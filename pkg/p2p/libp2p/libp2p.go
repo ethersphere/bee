@@ -53,6 +53,7 @@ type Service struct {
 	host              host.Host
 	natManager        basichost.NATManager
 	natAddrResolver   *staticAddressResolver
+	autonatDialer     host.Host
 	libp2pPeerstore   peerstore.Peerstore
 	metrics           metrics
 	networkID         uint64
@@ -219,6 +220,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		host:              h,
 		natManager:        natManager,
 		natAddrResolver:   natAddrResolver,
+		autonatDialer:     dialer,
 		handshakeService:  handshakeService,
 		libp2pPeerstore:   libp2pPeerstore,
 		metrics:           newMetrics(),
@@ -703,7 +705,12 @@ func (s *Service) Close() error {
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
 	}
-	if err := s.natManager.Close(); err != nil {
+	if s.natManager != nil {
+		if err := s.natManager.Close(); err != nil {
+			return err
+		}
+	}
+	if err := s.autonatDialer.Close(); err != nil {
 		return err
 	}
 
