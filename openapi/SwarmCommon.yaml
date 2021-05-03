@@ -34,13 +34,18 @@ components:
         pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
+    BigInt:
+      description: Numeric string that represents integer which might exceeds `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      type: string
+      example: "1000000000000000000"
+
     Balance:
       type: object
       properties:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         balance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     Balances:
       type: object
@@ -100,7 +105,7 @@ components:
         chequebook:
           $ref: "#/components/schemas/EthereumAddress"
         payout:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChequeAllPeersResponse:
       type: object
@@ -124,9 +129,9 @@ components:
       type: object
       properties:
         totalBalance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         availableBalance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChequebookAddress:
       type: object
@@ -372,7 +377,7 @@ components:
         recipient:
           $ref: "#/components/schemas/EthereumAddress"
         lastPayout:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         bounced:
           type: boolean
 
@@ -388,7 +393,7 @@ components:
         result:
           $ref: "#/components/schemas/SwapCashoutResult"
         uncashedAmount:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     TagName:
       type: string
