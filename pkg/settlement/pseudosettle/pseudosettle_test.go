@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
@@ -84,12 +85,14 @@ func TestPayment(t *testing.T) {
 	defer storeRecipient.Close()
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
+	peer := p2p.Peer{Address: peerID}
 
 	debt := int64(10000)
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
 	recipient.SetAccountingAPI(observer)
+	recipient.Init(context.Background(), peer)
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
@@ -209,12 +212,14 @@ func TestTimeLimitedPayment(t *testing.T) {
 	defer storeRecipient.Close()
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
+	peer := p2p.Peer{Address: peerID}
 
 	debt := testRefreshRate
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
 	recipient.SetAccountingAPI(observer)
+	recipient.Init(context.Background(), peer)
 
 	recorder := streamtest.New(
 		streamtest.WithProtocols(recipient.Protocol()),
