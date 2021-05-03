@@ -91,6 +91,7 @@ type Bee struct {
 	transactionMonitorCloser io.Closer
 	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
+	postageServiceCloser     io.Closer
 }
 
 type Options struct {
@@ -311,7 +312,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
 	validStamp := postage.ValidStamp(batchStore)
-	post := postage.NewService(stateStore, chainID)
+	post, err := postage.NewService(stateStore, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("postage service load: %w", err)
+	}
+	b.postageServiceCloser = post
 
 	var (
 		postageContractService postagecontract.Interface
@@ -714,8 +719,12 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	if b.listenerCloser != nil {
 		if err := b.listenerCloser.Close(); err != nil {
-			errs.add(fmt.Errorf("error listener: %w", err))
+			errs.add(fmt.Errorf("listener: %w", err))
 		}
+	}
+
+	if err := b.postageServiceCloser.Close(); err != nil {
+		errs.add(fmt.Errorf("postage service: %w", err))
 	}
 
 	if err := b.stateStoreCloser.Close(); err != nil {

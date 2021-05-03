@@ -64,10 +64,6 @@ func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
 	return nil, errors.New("stampissuer not found")
 }
 
-func (m *mockPostage) Load() error {
-	panic("not implemented") // TODO: Implement
-}
-
-func (m *mockPostage) Save() error {
-	panic("not implemented") // TODO: Implement
+func (m *mockPostage) Close() error {
+	return nil
 }
