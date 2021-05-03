@@ -92,9 +92,9 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	s.peersMu.Lock()
 	defer s.peersMu.Unlock()
 
-	peerData, ok := s.peers[p.Address.String()]
+	_, ok := s.peers[p.Address.String()]
 	if !ok {
-		peerData = &pseudoSettlePeer{}
+		peerData := &pseudoSettlePeer{}
 		s.peers[p.Address.String()] = peerData
 	}
 
