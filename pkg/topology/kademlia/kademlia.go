@@ -213,18 +213,64 @@ func hasBit(n, pos uint8) bool {
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
-	var (
-		peerToRemove swarm.Address
-		start        time.Time
-		spf          = func(peer swarm.Address) bool {
-			k.waitNextMu.Lock()
-			defer k.waitNextMu.Unlock()
-			if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
-				return true
+	var peerToRemove swarm.Address
+
+	// connect is a convenient method which wraps repetitive connect procedure..
+	connect := func(ctx context.Context, peer swarm.Address, po uint8) (bool, error) {
+		bzzAddr, err := k.addressBook.Get(peer)
+		if err != nil {
+			if err == addressbook.ErrNotFound {
+				k.logger.Debugf("failed to get address book entry for peer: %q", peer)
+				peerToRemove = peer
+				return false, errMissingAddressBookEntry
 			}
-			return false
+			// Either a peer is not known in the address book, in which case it
+			// should be removed, or that some severe I/O problem is at hand.
+			return false, err
 		}
-	)
+
+		err = k.connect(ctx, peer, bzzAddr.Underlay, po)
+		switch {
+		case errors.Is(err, errOverlayMismatch):
+			k.knownPeers.Remove(peer, po)
+			if err := k.addressBook.Remove(peer); err != nil {
+				k.logger.Debugf("could not remove peer %q from addressbook", peer)
+			}
+			fallthrough
+		case err != nil:
+			k.logger.Debugf("peer not reachable from kademlia %q: %w", bzzAddr, err)
+			k.logger.Warningf("peer not reachable when attempting to connect")
+
+			k.waitNextMu.Lock()
+			if _, ok := k.waitNext[peer.String()]; !ok {
+				// Don't override existing data in the map.
+				k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
+			}
+			k.waitNextMu.Unlock()
+			return true, nil
+		}
+
+		k.waitNextMu.Lock()
+		k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+		k.waitNextMu.Unlock()
+
+		k.connectedPeers.Add(peer, po)
+
+		k.depthMu.Lock()
+		k.depth = recalcDepth(k.connectedPeers, k.radius)
+		k.depthMu.Unlock()
+
+		return false, nil
+	}
+
+	skipPeers := func(peer swarm.Address) bool {
+		k.waitNextMu.Lock()
+		defer k.waitNextMu.Unlock()
+		if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
+			return true
+		}
+		return false
+	}
 
 	defer k.wg.Done()
 	defer close(k.done)
@@ -234,6 +280,8 @@ func (k *Kad) manage() {
 		<-k.quit
 		cancel()
 	}()
+
+	var start time.Time
 	for {
 		select {
 		case <-k.quit:
@@ -255,13 +303,10 @@ func (k *Kad) manage() {
 				continue
 			}
 
-			// attempt balanced connection first
+			// Attempt balanced connection first.
 			err := func() error {
-				// for each bin
-				for i := range k.commonBinPrefixes {
-					// and each pseudo address
-
-					for j := range k.commonBinPrefixes[i] {
+				for i := range k.commonBinPrefixes { // For each bin.
+					for j := range k.commonBinPrefixes[i] { // And each pseudo address.
 						pseudoAddr := k.commonBinPrefixes[i][j]
 
 						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn, swarm.ZeroAddress)
@@ -274,102 +319,57 @@ func (k *Kad) manage() {
 							continue
 						}
 
-						// check proximity
 						closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
-
-						if int(closestConnectedPO) < i+k.bitSuffixLength+1 {
-							// connect to closest known peer which we haven't tried connecting
-							// to recently
-
-							closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, spf, swarm.ZeroAddress)
-							if err != nil {
-								if errors.Is(err, topology.ErrNotFound) {
-									break
-								}
-
-								k.logger.Errorf("closest known peer: %v", err)
-								continue
-							}
-
-							if k.connectedPeers.Exists(closestKnownPeer) {
-								continue
-							}
-
-							closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
-
-							if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
-								continue
-							}
-
-							peer := closestKnownPeer
-
-							bzzAddr, err := k.addressBook.Get(peer)
-							if err != nil {
-								if err == addressbook.ErrNotFound {
-									k.logger.Debugf("failed to get address book entry for peer: %s", peer.String())
-									peerToRemove = peer
-									return errMissingAddressBookEntry
-								}
-								// either a peer is not known in the address book, in which case it
-								// should be removed, or that some severe I/O problem is at hand
-								return err
-							}
-
-							po := swarm.Proximity(k.base.Bytes(), peer.Bytes())
-
-							err = k.connect(ctx, peer, bzzAddr.Underlay, po)
-							if err != nil {
-								if errors.Is(err, errOverlayMismatch) {
-									k.knownPeers.Remove(peer, po)
-									if err := k.addressBook.Remove(peer); err != nil {
-										k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
-									}
-								}
-								k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
-								k.logger.Warningf("peer not reachable when attempting to connect")
-
-								k.waitNextMu.Lock()
-								if _, ok := k.waitNext[peer.String()]; !ok {
-									// don't override existing data in the map
-									k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
-								}
-								k.waitNextMu.Unlock()
-
-								// continue to next
-								continue
-							}
-
-							k.waitNextMu.Lock()
-							k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
-							k.waitNextMu.Unlock()
-
-							k.connectedPeers.Add(peer, po)
-
-							k.depthMu.Lock()
-							k.depth = recalcDepth(k.connectedPeers, k.radius)
-							k.depthMu.Unlock()
-
-							k.logger.Debugf("connected to peer: %s for bin: %d", peer, i)
-
-							k.notifyPeerSig()
+						if int(closestConnectedPO) >= i+k.bitSuffixLength+1 {
+							continue
 						}
+
+						// Connect to closest known peer which we haven't tried connecting to recently.
+						closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, skipPeers, swarm.ZeroAddress)
+						if err != nil {
+							if errors.Is(err, topology.ErrNotFound) {
+								break
+							}
+							k.logger.Errorf("closest known peer: %v", err)
+							continue
+						}
+
+						if k.connectedPeers.Exists(closestKnownPeer) {
+							continue
+						}
+
+						closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
+						if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
+							continue
+						}
+
+						po := swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes())
+
+						next, err := connect(ctx, closestKnownPeer, po)
+						if err != nil {
+							return fmt.Errorf("connect error: %w", err)
+						}
+						if next {
+							continue
+						}
+						k.logger.Debugf("connected to peer: %s for bin: %d", closestKnownPeer, i)
+
+						k.notifyPeerSig()
 					}
 				}
 				return nil
 			}()
 			k.logger.Tracef("kademlia balanced connector took %s to finish", time.Since(start))
 
-			if err != nil {
-				if errors.Is(err, errMissingAddressBookEntry) {
-					po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
-					k.knownPeers.Remove(peerToRemove, po)
-				} else {
-					k.logger.Errorf("kademlia manage loop iterator: %v", err)
-				}
+			switch {
+			case errors.Is(err, errMissingAddressBookEntry):
+				po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
+				k.knownPeers.Remove(peerToRemove, po)
+			case err != nil:
+				k.logger.Errorf("kademlia manage loop iterator: %w", err)
 			}
 
 			err = k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -386,49 +386,10 @@ func (k *Kad) manage() {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
-				bzzAddr, err := k.addressBook.Get(peer)
-				if err != nil {
-					if err == addressbook.ErrNotFound {
-						k.logger.Debugf("failed to get address book entry for peer: %s", peer.String())
-						peerToRemove = peer
-						return false, false, errMissingAddressBookEntry
-					}
-					// either a peer is not known in the address book, in which case it
-					// should be removed, or that some severe I/O problem is at hand
+				next, err := connect(ctx, peer, po)
+				if err != nil || next {
 					return false, false, err
 				}
-
-				err = k.connect(ctx, peer, bzzAddr.Underlay, po)
-				if err != nil {
-					if errors.Is(err, errOverlayMismatch) {
-						k.knownPeers.Remove(peer, po)
-						if err := k.addressBook.Remove(peer); err != nil {
-							k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
-						}
-					}
-					k.logger.Debugf("peer not reachable from kademlia %s: %v", bzzAddr.String(), err)
-					k.logger.Warningf("peer not reachable when attempting to connect")
-
-					k.waitNextMu.Lock()
-					if _, ok := k.waitNext[peer.String()]; !ok {
-						// don't override existing data in the map
-						k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
-					}
-					k.waitNextMu.Unlock()
-
-					// continue to next
-					return false, false, nil
-				}
-
-				k.waitNextMu.Lock()
-				k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
-				k.waitNextMu.Unlock()
-
-				k.connectedPeers.Add(peer, po)
-
-				k.depthMu.Lock()
-				k.depth = recalcDepth(k.connectedPeers, k.radius)
-				k.depthMu.Unlock()
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
 
@@ -446,20 +407,18 @@ func (k *Kad) manage() {
 			})
 			k.logger.Tracef("kademlia iterator took %s to finish", time.Since(start))
 
-			if err != nil {
-				if errors.Is(err, errMissingAddressBookEntry) {
-					po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
-					k.knownPeers.Remove(peerToRemove, po)
-				} else {
-					k.logger.Errorf("kademlia manage loop iterator: %v", err)
-				}
+			switch {
+			case errors.Is(err, errMissingAddressBookEntry):
+				po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
+				k.knownPeers.Remove(peerToRemove, po)
+			case err != nil:
+				k.logger.Errorf("kademlia manage loop iterator: %w", err)
 			}
 
 			if k.connectedPeers.Length() == 0 {
 				k.logger.Debug("kademlia has no connected peers, trying bootnodes")
 				k.connectBootnodes(ctx)
 			}
-
 		}
 	}
 }
