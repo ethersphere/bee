@@ -16,6 +16,7 @@ message Ack {
     BzzAddress Address = 1;
     uint64 NetworkID = 2;
     bool FullNode = 3;
+    string Transaction = 4;
     string WelcomeMessage  = 99;
 }
 

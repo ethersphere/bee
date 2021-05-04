@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -59,10 +61,15 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
+type swapBackend interface {
+	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+}
+
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
+	swapBackend           swapBackend
 	overlay               swarm.Address
 	fullNode              bool
 	networkID             uint64
@@ -269,6 +276,18 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
 	if len(ack.WelcomeMessage) > 0 {
 		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
+	}
+
+	incomingTx := common.HexToHash(ack.Transaction)
+
+	rcpt, err := s.swapBackend.TransactionReceipt(context.Background(), incomingTx)
+	if err != nil {
+		return nil, fmt.Errorf("get transaction receipt: %w", err)
+	}
+
+	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(rcpt.ContractAddress.Bytes(), s.networkID)
+	if !expectedRemoteBzzAddress.Equal(remoteBzzAddress.Overlay) {
+		return nil, fmt.Errorf("given address is spoofed: %v", remoteBzzAddress.Overlay)
 	}
 
 	return &Info{
