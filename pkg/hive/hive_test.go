@@ -93,7 +93,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 
 	lastRec := rec[len(rec)-1]
-	if !errors.Is(lastRec.Err(), hive.ErrRateLimitExceed) {
+	if !errors.Is(lastRec.Err(), hive.ErrRateLimitExceeded) {
 		t.Fatal(err)
 	}
 }

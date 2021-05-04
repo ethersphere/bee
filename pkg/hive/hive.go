@@ -37,9 +37,9 @@ const (
 )
 
 var (
-	ErrRateLimitExceed = errors.New("rate limit exceeded")
-	limitBurst         = 4 * int(swarm.MaxBins)
-	limitRate          = rate.Every(time.Minute)
+	ErrRateLimitExceeded = errors.New("rate limit exceeded")
+	limitBurst           = 4 * int(swarm.MaxBins)
+	limitRate            = rate.Every(time.Minute)
 )
 
 type Service struct {
@@ -61,7 +61,6 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		networkID:   networkID,
 		metrics:     newMetrics(),
 		limiter:     make(map[string]*rate.Limiter),
-		limiterLock: sync.Mutex{},
 	}
 }
 
@@ -153,7 +152,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
-	if err := s.rateLimitPeer(ctx, peer.Address, len(peersReq.Peers)); err != nil {
+	if err := s.rateLimitPeer(peer.Address, len(peersReq.Peers)); err != nil {
 		_ = stream.Reset()
 		return err
 	}
@@ -189,7 +188,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	return nil
 }
 
-func (s *Service) rateLimitPeer(ctx context.Context, peer swarm.Address, count int) error {
+func (s *Service) rateLimitPeer(peer swarm.Address, count int) error {
 
 	s.limiterLock.Lock()
 	defer s.limiterLock.Unlock()
@@ -206,5 +205,5 @@ func (s *Service) rateLimitPeer(ctx context.Context, peer swarm.Address, count i
 		return nil
 	}
 
-	return ErrRateLimitExceed
+	return ErrRateLimitExceeded
 }

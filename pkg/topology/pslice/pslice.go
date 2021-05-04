@@ -95,6 +95,28 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	return nil
 }
 
+func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
+	s.RLock()
+	defer s.RUnlock()
+
+	b := int(bin)
+	if b >= len(s.bins) {
+		return nil
+	}
+
+	var bEnd int
+	if b == len(s.bins)-1 {
+		bEnd = len(s.peers)
+	} else {
+		bEnd = int(s.bins[b+1])
+	}
+
+	ret := make([]swarm.Address, bEnd-int(s.bins[b]))
+	copy(ret, s.peers[s.bins[b]:bEnd])
+
+	return ret
+}
+
 func (s *PSlice) Length() int {
 	s.RLock()
 	defer s.RUnlock()
