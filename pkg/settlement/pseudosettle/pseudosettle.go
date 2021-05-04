@@ -276,6 +276,9 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 
 	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
 	w, r := protobuf.NewWriterAndReader(stream)
+
+	// balance_before
+
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount.Bytes(),
 	})
@@ -283,11 +286,16 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
+	// shadowReserve :=
+
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
 		return
 	}
+
+	// balance_after
+
 	checkTime := s.timeNow().Unix()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
@@ -313,8 +321,9 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	if experienceDifferenceInterval < -3 || experienceDifferenceInterval > 3 {
 		return
 	}
-	// check paymentAck.Timestamp
+	// enforce allowance
 	// check if value is appropriate
+	// enforcedAllowance := min(allegedInterval * refreshRate, outstandingDebt - shadowReserve)
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
 	lastTime.Timestamp = paymentAck.Timestamp

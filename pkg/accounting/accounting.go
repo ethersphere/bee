@@ -40,8 +40,8 @@ type Interface interface {
 	Release(peer swarm.Address, price uint64)
 	// Credit increases the balance the peer has with us (we "pay" the peer).
 	Credit(peer swarm.Address, price uint64) error
-	// Debit increases the balance we have with the peer (we get "paid" back).
-	Debit(peer swarm.Address, price uint64) error
+	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing reserve on the other side
+	PrepareDebit(peer swarm.Address, price uint64) Action
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (*big.Int, error)
 	// SurplusBalance returns the current surplus balance for the given peer.
@@ -54,14 +54,29 @@ type Interface interface {
 	CompensatedBalances() (map[string]*big.Int, error)
 }
 
+type Action interface {
+	Cleanup()
+	Apply() error
+}
+
+type debitAction struct {
+	accounting     *Accounting
+	price          *big.Int
+	peer           swarm.Address
+	accountingPeer *accountingPeer
+	applied        bool
+}
+
 type PayFunc func(context.Context, swarm.Address, *big.Int)
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock             sync.Mutex // lock to be held during any accounting action for this peer
-	reservedBalance  *big.Int   // amount currently reserved for active peer interaction
-	paymentThreshold *big.Int   // the threshold at which the peer expects us to pay
-	paymentOngoing   bool       // indicate if we are currently settling with the peer
+	lock                  sync.Mutex // lock to be held during any accounting action for this peer
+	reservedBalance       *big.Int   // amount currently reserved for active peer interaction
+	shadowReservedBalance *big.Int   // amount currently reserved for active peer interaction
+	paymentThreshold      *big.Int   // the threshold at which the peer expects us to pay
+	paymentOngoing        bool       // indicate if we are currently settling with the peer
+	paymentOngoingLock    sync.Mutex // lets ongoing payment delay new incoming request attempts
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -260,89 +275,6 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 	return nil
 }
 
-// Debit increases the amount of debt we have with the given peer (and decreases
-// existing credit).
-func (a *Accounting) Debit(peer swarm.Address, price uint64) error {
-	accountingPeer := a.getAccountingPeer(peer)
-
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
-	cost := new(big.Int).SetUint64(price)
-	// see if peer has surplus balance to deduct this transaction of
-
-	surplusBalance, err := a.SurplusBalance(peer)
-	if err != nil {
-		return fmt.Errorf("failed to get surplus balance: %w", err)
-	}
-	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
-
-		// get new surplus balance after deduct
-		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
-
-		// if nothing left for debiting, store new surplus balance and return from debit
-		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
-			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", peer, price, newSurplusBalance)
-
-			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
-			if err != nil {
-				return fmt.Errorf("failed to persist surplus balance: %w", err)
-			}
-			// count debit operations, terminate early
-			a.metrics.TotalDebitedAmount.Add(float64(price))
-			a.metrics.DebitEventsCount.Inc()
-			return nil
-		}
-
-		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
-		debitIncrease := new(big.Int).Sub(new(big.Int).SetUint64(price), surplusBalance)
-
-		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
-		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
-			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
-		}
-		cost.Set(debitIncrease)
-
-		// if we still have something to debit, than have run out of surplus balance,
-		// let's store 0 as surplus balance
-		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", peer, debitIncrease)
-
-		err = a.store.Put(peerSurplusBalanceKey(peer), big.NewInt(0))
-		if err != nil {
-			return fmt.Errorf("failed to persist surplus balance: %w", err)
-		}
-
-	}
-
-	currentBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
-	}
-
-	// Get nextBalance by safely increasing current balance with price
-	nextBalance := new(big.Int).Add(currentBalance, cost)
-
-	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
-
-	err = a.store.Put(peerBalanceKey(peer), nextBalance)
-	if err != nil {
-		return fmt.Errorf("failed to persist balance: %w", err)
-	}
-
-	a.metrics.TotalDebitedAmount.Add(float64(price))
-	a.metrics.DebitEventsCount.Inc()
-
-	if nextBalance.Cmp(new(big.Int).Add(a.paymentThreshold, a.paymentTolerance)) >= 0 {
-		// peer too much in debt
-		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewBlockPeerError(10000*time.Hour, ErrDisconnectThresholdExceeded)
-	}
-
-	return nil
-}
-
 // Balance returns the current balance for the given peer.
 func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 	err = a.store.Get(peerBalanceKey(peer), &balance)
@@ -419,7 +351,8 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			reservedBalance: big.NewInt(0),
+			reservedBalance:       big.NewInt(0),
+			shadowReservedBalance: big.NewInt(0),
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: new(big.Int).Set(a.paymentThreshold),
 		}
@@ -649,6 +582,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentOngoing = false
+	accountingPeer.paymentOngoingLock.Unlock()
 
 	if receivedError != nil {
 		a.logger.Warningf("accouting: payment failure %v", receivedError)
@@ -672,6 +606,127 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	if err != nil {
 		a.logger.Warningf("accounting: notifypaymentsent failed to persist balance: %v", err)
 		return
+	}
+}
+
+func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.paymentOngoingLock.Lock()
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+
+	accountingPeer.paymentOngoingLock.Unlock()
+
+	bigPrice := new(big.Int).SetUint64(price)
+
+	accountingPeer.shadowReservedBalance = new(big.Int).Add(accountingPeer.shadowReservedBalance, bigPrice)
+
+	return &debitAction{
+		accounting:     a,
+		price:          bigPrice,
+		peer:           peer,
+		accountingPeer: accountingPeer,
+		applied:        false,
+	}
+
+}
+
+func (d *debitAction) Apply() error {
+	d.accountingPeer.lock.Lock()
+	defer d.accountingPeer.lock.Unlock()
+
+	a := d.accounting
+
+	cost := new(big.Int).Set(d.price)
+	// see if peer has surplus balance to deduct this transaction of
+
+	surplusBalance, err := a.SurplusBalance(d.peer)
+	if err != nil {
+		return fmt.Errorf("failed to get surplus balance: %w", err)
+	}
+	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
+
+		// get new surplus balance after deduct
+		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
+
+		// if nothing left for debiting, store new surplus balance and return from debit
+		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
+			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", d.peer, d.price, newSurplusBalance)
+
+			err = a.store.Put(peerSurplusBalanceKey(d.peer), newSurplusBalance)
+			if err != nil {
+				return fmt.Errorf("failed to persist surplus balance: %w", err)
+			}
+			// count debit operations, terminate early
+			tot, _ := big.NewFloat(0).SetInt(d.price).Float64()
+
+			a.metrics.TotalDebitedAmount.Add(tot)
+			a.metrics.DebitEventsCount.Inc()
+			return nil
+		}
+
+		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
+		debitIncrease := new(big.Int).Sub(d.price, surplusBalance)
+
+		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
+		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
+			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
+		}
+		cost.Set(debitIncrease)
+
+		// if we still have something to debit, than have run out of surplus balance,
+		// let's store 0 as surplus balance
+		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", d.peer, debitIncrease)
+
+		err = a.store.Put(peerSurplusBalanceKey(d.peer), big.NewInt(0))
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+
+	}
+
+	currentBalance, err := a.Balance(d.peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return fmt.Errorf("failed to load balance: %w", err)
+		}
+	}
+
+	// Get nextBalance by safely increasing current balance with price
+	nextBalance := new(big.Int).Add(currentBalance, cost)
+
+	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", d.peer, d.price, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(d.peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	d.applied = true
+	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
+
+	tot, _ := big.NewFloat(0).SetInt(d.price).Float64()
+
+	a.metrics.TotalDebitedAmount.Add(tot)
+	a.metrics.DebitEventsCount.Inc()
+
+	if nextBalance.Cmp(new(big.Int).Add(a.paymentThreshold, a.paymentTolerance)) >= 0 {
+		// peer too much in debt
+		a.metrics.AccountingDisconnectsCount.Inc()
+		return p2p.NewBlockPeerError(10000*time.Hour, ErrDisconnectThresholdExceeded)
+	}
+
+	return nil
+}
+
+func (d *debitAction) Cleanup() {
+	d.accountingPeer.lock.Lock()
+	defer d.accountingPeer.lock.Unlock()
+
+	if !d.applied {
+		d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 	}
 }
 
