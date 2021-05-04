@@ -39,3 +39,7 @@ func (pricer *FixedPricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 func (pricer *FixedPricer) Price(chunk swarm.Address) uint64 {
 	return pricer.PeerPrice(pricer.overlay, chunk)
 }
+
+func (pricer *FixedPricer) MostExpensive() int64 {
+	return int64(10 * uint64(swarm.MaxPO) * pricer.poPrice) // can this overflow?
+}
