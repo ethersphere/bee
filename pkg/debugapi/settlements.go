@@ -28,8 +28,8 @@ type settlementResponse struct {
 }
 
 type settlementsResponse struct {
-	TotalSettlementReceived *bigint.BigInt             `json:"totalReceived"`
-	TotalSettlementSent     *bigint.BigInt             `json:"totalSent"`
+	TotalSettlementReceived *bigint.BigInt       `json:"totalReceived"`
+	TotalSettlementSent     *bigint.BigInt       `json:"totalSent"`
 	Settlements             []settlementResponse `json:"settlements"`
 }
 
