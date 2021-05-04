@@ -210,6 +210,105 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 	}
 }
 
+func TestFailToReplicateBeforeReceipt(t *testing.T) {
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000") // base 0111
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
+	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110
+	secondPeer := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")  // binary 0100
+	emptyPeer := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")   // binary 0101, this peer should not get the chunk
+
+	// node that is connected to secondPeer
+	// it's address is closer to the chunk than secondPeer but it will not receive the chunk
+	_, storerEmpty, _, _ := createPushSyncNode(t, emptyPeer, defaultPrices, nil, nil, defaultSigner)
+	defer storerEmpty.Close()
+
+	wFunc := func(addr swarm.Address) bool {
+		return false
+	}
+
+	// node that is connected to closestPeer
+	// will receieve chunk from closestPeer
+	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, nil, nil, defaultSigner, mock.WithPeers(emptyPeer), mock.WithIsWithinFunc(wFunc))
+	defer storerSecond.Close()
+	secondRecorder := streamtest.New(streamtest.WithProtocols(psSecond.Protocol()), streamtest.WithBaseAddr(closestPeer))
+
+	psStorer, storerPeer, _, storerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, secondRecorder, nil, defaultSigner, mock.WithPeers(secondPeer), mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer.Close()
+	recorder := streamtest.New(streamtest.WithProtocols(psStorer.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	// pivot node needs the streamer since the chunk is intercepted by
+	// the chunk worker, then gets sent by opening a new stream
+	psPivot, storerPivot, _, pivotAccounting := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner, mock.WithClosestPeer(closestPeer))
+	defer storerPivot.Close()
+
+	// Trigger the sending of chunk to the closest node
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the incoming receipt message
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
+
+	// sleep for a bit to allow the second peer to the store replicated chunk
+	time.Sleep(time.Millisecond * 500)
+
+	// this intercepts the outgoing delivery message from storer node to second storer node
+	waitOnRecordAndTest(t, secondPeer, secondRecorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the incoming receipt message
+	waitOnRecordAndTest(t, secondPeer, secondRecorder, chunk.Address(), nil)
+
+	_, err = storerEmpty.Get(context.Background(), storage.ModeGetSync, chunk.Address())
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatal(err)
+	}
+
+	balance, err := pivotAccounting.Balance(closestPeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance.Int64() != -int64(fixedPrice) {
+		t.Fatalf("unexpected balance on storer node. want %d got %d", int64(fixedPrice), balance)
+	}
+
+	balance, err = storerAccounting.Balance(pivotNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance.Int64() != int64(fixedPrice) {
+		t.Fatalf("unexpected balance on storer node. want %d got %d", int64(fixedPrice), balance)
+	}
+
+	balance, err = secondAccounting.Balance(closestPeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance.Int64() != int64(0) {
+		t.Fatalf("unexpected balance on second storer. want %d got %d", int64(0), balance)
+	}
+
+	balance, err = storerAccounting.Balance(secondPeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance.Int64() != -int64(0) {
+		t.Fatalf("unexpected balance on storer node. want %d got %d", -int64(0), balance)
+	}
+}
+
 // PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
 // it also checks wether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
