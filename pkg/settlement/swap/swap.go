@@ -101,7 +101,9 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		}
 	}
 
-	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
+	tot, _ := big.NewFloat(0).SetInt(amount).Float64()
+
+	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
 	return s.accountingAPI.NotifyPaymentReceived(peer, amount)

@@ -152,12 +152,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				ps.logger.Errorf("pushsync: chunk store: %v", err)
 			}
 
+			debit := ps.accounting.PrepareDebit(p.Address, price)
+			defer debit.Cleanup()
+
 			// return back receipt
 			receipt := pb.Receipt{Address: chunk.Address().Bytes()}
 			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
-			return ps.accounting.Debit(p.Address, price)
+			return debit.Apply()
 		}
 
 		return ErrOutOfDepthReplication
@@ -277,23 +280,29 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 
 			// return back receipt
+			debit := ps.accounting.PrepareDebit(p.Address, price)
+			defer debit.Cleanup()
+
 			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
 			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			return ps.accounting.Debit(p.Address, price)
+			return debit.Apply()
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
 
 	}
+
+	debit := ps.accounting.PrepareDebit(p.Address, price)
+	defer debit.Cleanup()
 
 	// pass back the receipt
 	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	return ps.accounting.Debit(p.Address, price)
+	return debit.Apply()
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
