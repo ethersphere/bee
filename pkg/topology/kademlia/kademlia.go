@@ -22,23 +22,25 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	nnLowWatermark         = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	maxConnAttempts        = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootnodeAttempts    = 3 // how many attempts to dial to bootnodes before giving up
-	defaultBitSuffixLength = 2 // the number of bits used to create pseudo addresses for balancing
+	nnLowWatermark         = 2    // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	maxConnAttempts        = 3    // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	maxBootnodeAttempts    = 3    // how many attempts to dial to bootnodes before giving up
+	defaultBitSuffixLength = 2    // the number of bits used to create pseudo addresses for balancing
+	numberOfWorkers        = 1000 // The number of workers which will be created to handle the connection procedure to peers.
 )
 
 var (
-	errMissingAddressBookEntry = errors.New("addressbook underlay entry not found")
-	errOverlayMismatch         = errors.New("overlay mismatch")
-	timeToRetry                = 60 * time.Second
-	shortRetry                 = 30 * time.Second
-	saturationPeers            = 4
-	overSaturationPeers        = 16
+	saturationPeers     = 4
+	overSaturationPeers = 16
+	shortRetry          = 30 * time.Second
+	timeToRetry         = 2 * shortRetry
 )
+
+var errOverlayMismatch = errors.New("overlay mismatch")
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 type sanctionedPeerFunc func(peer swarm.Address) bool
@@ -195,42 +197,134 @@ func (k *Kad) generateCommonBinPrefixes() {
 // Clears the bit at pos in n.
 func clearBit(n, pos uint8) uint8 {
 	mask := ^(uint8(1) << pos)
-	n &= mask
-	return n
+	return n & mask
 }
 
 // Sets the bit at pos in the integer n.
 func setBit(n, pos uint8) uint8 {
-	n |= (1 << pos)
-	return n
+	return n | 1<<pos
 }
 
 func hasBit(n, pos uint8) bool {
-	val := n & (1 << pos)
-	return (val > 0)
+	return n&(1<<pos) > 0
+}
+
+func (k *Kad) connectToPeers(ctx context.Context, connect func(context.Context, swarm.Address, uint8) bool) error {
+	skipPeers := func(peer swarm.Address) bool {
+		k.waitNextMu.Lock()
+		defer k.waitNextMu.Unlock()
+		next, ok := k.waitNext[peer.String()]
+		return ok && time.Now().Before(next.tryAfter)
+	}
+
+	type unconnectedPeer struct {
+		po   uint8
+		bin  int
+		addr swarm.Address
+	}
+
+	unconnectedPeerChan := make(chan *unconnectedPeer)
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		for i := range k.commonBinPrefixes {
+			for j := range k.commonBinPrefixes[i] {
+				pseudoAddr := k.commonBinPrefixes[i][j]
+
+				closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn)
+				if err != nil {
+					if errors.Is(err, topology.ErrNotFound) {
+						break
+					}
+					k.logger.Errorf("closest connected peer: %v", err)
+					continue
+				}
+
+				closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+				if int(closestConnectedPO) >= i+k.bitSuffixLength+1 {
+					continue
+				}
+
+				// Connect to closest known peer which we haven't tried connecting to recently.
+				closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, skipPeers)
+				if err != nil {
+					if errors.Is(err, topology.ErrNotFound) {
+						break
+					}
+					k.logger.Errorf("closest known peer: %v", err)
+					continue
+				}
+
+				if k.connectedPeers.Exists(closestKnownPeer) {
+					continue
+				}
+
+				closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
+				if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
+					continue
+				}
+
+				select {
+				case <-k.quit:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					unconnectedPeerChan <- &unconnectedPeer{
+						po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
+						bin:  i,
+						addr: closestKnownPeer,
+					}
+				}
+			}
+		}
+		close(unconnectedPeerChan)
+		return nil
+	})
+
+	for i := 0; i < numberOfWorkers; i++ {
+		g.Go(func() error {
+			for peer := range unconnectedPeerChan {
+				select {
+				case <-k.quit:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					if connect(ctx, peer.addr, peer.po) {
+						k.logger.Debugf("connected to peer: %q for bin: %d", peer.addr, peer.bin)
+						k.notifyPeerSig()
+					}
+				}
+			}
+			return nil
+		})
+	}
+
+	return g.Wait()
 }
 
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
-	var peerToRemove swarm.Address
+	defer k.wg.Done()
+	defer close(k.done)
 
-	// connect is a convenient method which wraps repetitive connect procedure..
-	connect := func(ctx context.Context, peer swarm.Address, po uint8) (bool, error) {
+	// connect is a convenient closure which handles errors produced by the connect method.
+	connect := func(ctx context.Context, peer swarm.Address, po uint8) bool {
 		bzzAddr, err := k.addressBook.Get(peer)
-		if err != nil {
-			if err == addressbook.ErrNotFound {
-				k.logger.Debugf("failed to get address book entry for peer: %q", peer)
-				peerToRemove = peer
-				return false, errMissingAddressBookEntry
-			}
-			// Either a peer is not known in the address book, in which case it
-			// should be removed, or that some severe I/O problem is at hand.
-			return false, err
+		switch {
+		case errors.Is(err, addressbook.ErrNotFound):
+			k.logger.Debugf("failed to get address book entry for peer: %q", peer)
+			po := swarm.Proximity(k.base.Bytes(), peer.Bytes())
+			k.knownPeers.Remove(peer, po)
+			return false
+		case err != nil:
+			k.logger.Debugf("unexpected error while getting address of peer %q: %w", peer, err)
+			return false
 		}
 
-		err = k.connect(ctx, peer, bzzAddr.Underlay, po)
-		switch {
+		switch err = k.connect(ctx, peer, bzzAddr.Underlay); {
 		case errors.Is(err, errOverlayMismatch):
 			k.knownPeers.Remove(peer, po)
 			if err := k.addressBook.Remove(peer); err != nil {
@@ -243,11 +337,12 @@ func (k *Kad) manage() {
 
 			k.waitNextMu.Lock()
 			if _, ok := k.waitNext[peer.String()]; !ok {
-				// Don't override existing data in the map.
-				k.waitNext[peer.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry)}
+				k.waitNext[peer.String()] = retryInfo{
+					tryAfter: time.Now().Add(timeToRetry),
+				}
 			}
 			k.waitNextMu.Unlock()
-			return true, nil
+			return false
 		}
 
 		k.waitNextMu.Lock()
@@ -260,20 +355,8 @@ func (k *Kad) manage() {
 		k.depth = recalcDepth(k.connectedPeers, k.radius)
 		k.depthMu.Unlock()
 
-		return false, nil
+		return true
 	}
-
-	skipPeers := func(peer swarm.Address) bool {
-		k.waitNextMu.Lock()
-		defer k.waitNextMu.Unlock()
-		if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
-			return true
-		}
-		return false
-	}
-
-	defer k.wg.Done()
-	defer close(k.done)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -303,73 +386,11 @@ func (k *Kad) manage() {
 				continue
 			}
 
-			// Attempt balanced connection first.
-			err := func() error {
-				for i := range k.commonBinPrefixes { // For each bin.
-					for j := range k.commonBinPrefixes[i] { // And each pseudo address.
-						pseudoAddr := k.commonBinPrefixes[i][j]
-
-						closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn, swarm.ZeroAddress)
-						if err != nil {
-							if errors.Is(err, topology.ErrNotFound) {
-								break
-							}
-
-							k.logger.Errorf("closest connected peer: %v", err)
-							continue
-						}
-
-						closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
-						if int(closestConnectedPO) >= i+k.bitSuffixLength+1 {
-							continue
-						}
-
-						// Connect to closest known peer which we haven't tried connecting to recently.
-						closestKnownPeer, err := closestPeer(k.knownPeers, pseudoAddr, skipPeers, swarm.ZeroAddress)
-						if err != nil {
-							if errors.Is(err, topology.ErrNotFound) {
-								break
-							}
-							k.logger.Errorf("closest known peer: %v", err)
-							continue
-						}
-
-						if k.connectedPeers.Exists(closestKnownPeer) {
-							continue
-						}
-
-						closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
-						if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
-							continue
-						}
-
-						po := swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes())
-
-						next, err := connect(ctx, closestKnownPeer, po)
-						if err != nil {
-							return fmt.Errorf("connect error: %w", err)
-						}
-						if next {
-							continue
-						}
-						k.logger.Debugf("connected to peer: %s for bin: %d", closestKnownPeer, i)
-
-						k.notifyPeerSig()
-					}
-				}
-				return nil
-			}()
-			k.logger.Tracef("kademlia balanced connector took %s to finish", time.Since(start))
-
-			switch {
-			case errors.Is(err, errMissingAddressBookEntry):
-				po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
-				k.knownPeers.Remove(peerToRemove, po)
-			case err != nil:
-				k.logger.Errorf("kademlia manage loop iterator: %w", err)
+			if err := k.connectToPeers(ctx, connect); err != nil {
+				k.logger.Errorf("unexpected error while connecting to peers: %w", err)
 			}
 
-			err = k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 				if k.connectedPeers.Exists(peer) {
 					return false, false, nil
 				}
@@ -386,9 +407,8 @@ func (k *Kad) manage() {
 					return false, true, nil // bin is saturated, skip to next bin
 				}
 
-				next, err := connect(ctx, peer, po)
-				if err != nil || next {
-					return false, false, err
+				if !connect(ctx, peer, po) {
+					return false, false, nil
 				}
 
 				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
@@ -407,11 +427,7 @@ func (k *Kad) manage() {
 			})
 			k.logger.Tracef("kademlia iterator took %s to finish", time.Since(start))
 
-			switch {
-			case errors.Is(err, errMissingAddressBookEntry):
-				po := swarm.Proximity(k.base.Bytes(), peerToRemove.Bytes())
-				k.knownPeers.Remove(peerToRemove, po)
-			case err != nil:
+			if err != nil {
 				k.logger.Errorf("kademlia manage loop iterator: %w", err)
 			}
 
@@ -569,7 +585,7 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
-func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
+func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
 	k.logger.Infof("attempting to connect to peer %s", peer)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -775,14 +791,13 @@ func (k *Kad) notifyPeerSig() {
 	}
 }
 
-func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFunc, skipPeers ...swarm.Address) (swarm.Address, error) {
-	closest := swarm.Address{}
+func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
+	closest := swarm.ZeroAddress
 	err := peers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
+		if peer.IsZero() {
+			return false, false, nil
 		}
+
 		// check whether peer is sanctioned
 		if spf(peer) {
 			return false, false, nil
@@ -808,12 +823,12 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFun
 		return false, false, nil
 	})
 	if err != nil {
-		return swarm.Address{}, err
+		return swarm.ZeroAddress, err
 	}
 
 	// check if found
 	if closest.IsZero() {
-		return swarm.Address{}, topology.ErrNotFound
+		return swarm.ZeroAddress, topology.ErrNotFound
 	}
 
 	return closest, nil
@@ -987,7 +1002,7 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	// for each pseudo address
 	for i := range k.commonBinPrefixes[bin] {
 		pseudoAddr := k.commonBinPrefixes[bin][i]
-		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn, swarm.ZeroAddress)
+		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn)
 		if err != nil {
 			return false
 		}
