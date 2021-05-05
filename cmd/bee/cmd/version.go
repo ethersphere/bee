@@ -5,17 +5,21 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/ethersphere/bee"
 
 	"github.com/spf13/cobra"
 )
 
 func (c *command) initVersionCmd() {
-	c.root.AddCommand(&cobra.Command{
+	v := &cobra.Command{
 		Use:   "version",
 		Short: "Print version number",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.Println(bee.Version)
 		},
-	})
+	}
+	v.SetOut(os.Stdout)
+	c.root.AddCommand(v)
 }
