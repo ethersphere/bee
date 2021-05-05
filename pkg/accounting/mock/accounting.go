@@ -24,6 +24,7 @@ type Service struct {
 	creditFunc              func(peer swarm.Address, price uint64) error
 	prepareDebitFunc        func(peer swarm.Address, price uint64) accounting.Action
 	balanceFunc             func(swarm.Address) (*big.Int, error)
+	shadowBalanceFunc       func(swarm.Address) (*big.Int, error)
 	balancesFunc            func() (map[string]*big.Int, error)
 	compensatedBalanceFunc  func(swarm.Address) (*big.Int, error)
 	compensatedBalancesFunc func() (map[string]*big.Int, error)
@@ -182,6 +183,19 @@ func (s *Service) Balance(peer swarm.Address) (*big.Int, error) {
 	defer s.lock.Unlock()
 	if bal, ok := s.balances[peer.String()]; ok {
 		return bal, nil
+	} else {
+		return big.NewInt(0), nil
+	}
+}
+
+func (s *Service) ShadowBalance(peer swarm.Address) (*big.Int, error) {
+	if s.shadowBalanceFunc != nil {
+		return s.shadowBalanceFunc(peer)
+	}
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if bal, ok := s.balances[peer.String()]; ok {
+		return new(big.Int).Neg(bal), nil
 	} else {
 		return big.NewInt(0), nil
 	}

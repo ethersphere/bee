@@ -62,6 +62,10 @@ func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	return nil, nil
 }
 
+func (t *testObserver) ShadowBalance(peer swarm.Address) (*big.Int, error) {
+	return nil, nil
+}
+
 func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
 	t.receivedCalled <- notifyPaymentReceivedCall{
 		peer:   peer,

@@ -32,6 +32,7 @@ type Interface interface {
 }
 
 type AccountingAPI interface {
+	ShadowBalance(peer swarm.Address) (*big.Int, error)
 	PeerDebt(peer swarm.Address) (*big.Int, error)
 	NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error
 	NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error)
