@@ -58,6 +58,7 @@ const (
 	optionNameSwapFactoryAddress        = "swap-factory-address"
 	optionNameSwapInitialDeposit        = "swap-initial-deposit"
 	optionNameSwapEnable                = "swap-enable"
+	optionNameTransaction               = "transaction"
 	optionNameFullNode                  = "full-node"
 	optionNamePostageContractAddress    = "postage-stamp-address"
 	optionNamePriceOracleAddress        = "price-oracle-address"

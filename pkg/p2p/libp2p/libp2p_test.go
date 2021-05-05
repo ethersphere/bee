@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -28,8 +31,14 @@ type libp2pServiceOpts struct {
 	Logger      logging.Logger
 	Addressbook addressbook.Interface
 	PrivateKey  *ecdsa.PrivateKey
+	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
 }
+
+// SwapBackend maps overlay to eth address
+type SwapBackend map[common.Hash]common.Address
+
+var MockSwapBackend = make(SwapBackend)
 
 // newService constructs a new libp2p service.
 func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.Service, overlay swarm.Address) {
@@ -69,7 +78,15 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 
 	lightnodes := lightnode.NewContainer()
 
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, lightnodes, o.Logger, nil, o.libp2pOpts)
+	opts := o.libp2pOpts
+	opts.Transaction = hexutil.EncodeUint64(o.PrivateKey.Y.Uint64())
+
+	signer := crypto.NewDefaultSigner(swarmKey)
+	ethAddr, _ := signer.EthereumAddress()
+	tx := common.HexToHash(opts.Transaction)
+	MockSwapBackend[tx] = ethAddr
+
+	s, err = libp2p.New(ctx, signer, networkID, overlay, addr, o.Addressbook, statestore, lightnodes, new(swapBackendMock), o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +95,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	t.Cleanup(func() {
 		cancel()
 		s.Close()
+		delete(MockSwapBackend, tx)
 	})
 	return s, overlay
 }
@@ -149,4 +167,12 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 		t.Fatal(err)
 	}
 	return addrs[0]
+}
+
+type swapBackendMock struct{}
+
+func (s *swapBackendMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	return &types.Receipt{
+		ContractAddress: MockSwapBackend[txHash],
+	}, nil
 }
