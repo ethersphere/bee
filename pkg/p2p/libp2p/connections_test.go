@@ -345,8 +345,8 @@ func TestBlocklisting(t *testing.T) {
 		t.Fatal("expected error during connection, got nil")
 	}
 
-	expectPeers(t, s1)
-	expectPeersEventually(t, s2)
+	expectPeersEventually(t, s1)
+	expectPeers(t, s2)
 }
 
 func TestTopologyNotifier(t *testing.T) {
