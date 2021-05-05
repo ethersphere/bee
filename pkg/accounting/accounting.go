@@ -144,17 +144,15 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 			return fmt.Errorf("failed to load balance: %w", err)
 		}
 	}
+	currentDebt := new(big.Int).Neg(currentBalance)
+	if currentDebt.Cmp(big.NewInt(0)) < 0 {
+		currentDebt.SetInt64(0)
+	}
 
 	bigPrice := new(big.Int).SetUint64(price)
 	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 
-	expectedBalance := new(big.Int).Sub(currentBalance, nextReserved)
-
-	// Determine if we will owe anything to the peer, if we owe less than 0, we conclude we owe nothing
-	expectedDebt := new(big.Int).Neg(expectedBalance)
-	if expectedDebt.Cmp(big.NewInt(0)) < 0 {
-		expectedDebt.SetInt64(0)
-	}
+	expectedDebt := new(big.Int).Add(currentDebt, nextReserved)
 
 	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
 	if threshold.Cmp(a.earlyPayment) > 0 {
