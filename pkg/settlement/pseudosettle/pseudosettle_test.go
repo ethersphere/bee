@@ -24,9 +24,10 @@ import (
 )
 
 type testObserver struct {
-	receivedCalled chan notifyPaymentReceivedCall
-	sentCalled     chan notifyPaymentSentCall
-	peerDebts      map[string]*big.Int
+	receivedCalled     chan notifyPaymentReceivedCall
+	sentCalled         chan notifyPaymentSentCall
+	peerDebts          map[string]*big.Int
+	peerShadowBalances map[string]*big.Int
 }
 
 type notifyPaymentReceivedCall struct {
@@ -40,11 +41,12 @@ type notifyPaymentSentCall struct {
 	err    error
 }
 
-func newTestObserver(debtAmounts map[string]*big.Int) *testObserver {
+func newTestObserver(debtAmounts map[string]*big.Int, shadowBalanceAmounts map[string]*big.Int) *testObserver {
 	return &testObserver{
-		receivedCalled: make(chan notifyPaymentReceivedCall, 1),
-		sentCalled:     make(chan notifyPaymentSentCall, 1),
-		peerDebts:      debtAmounts,
+		receivedCalled:     make(chan notifyPaymentReceivedCall, 1),
+		sentCalled:         make(chan notifyPaymentSentCall, 1),
+		peerDebts:          debtAmounts,
+		peerShadowBalances: shadowBalanceAmounts,
 	}
 }
 
@@ -52,8 +54,20 @@ func (t *testObserver) setPeerDebt(peer swarm.Address, debt *big.Int) {
 	t.peerDebts[peer.String()] = debt
 }
 
+func (t *testObserver) setPeerShadowBalance(peer swarm.Address, debt *big.Int) {
+	t.peerShadowBalances[peer.String()] = debt
+}
+
 func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	if debt, ok := t.peerDebts[peer.String()]; ok {
+		return debt, nil
+	}
+
+	return nil, errors.New("Peer not listed")
+}
+
+func (t *testObserver) ShadowBalance(peer swarm.Address) (*big.Int, error) {
+	if debt, ok := t.peerShadowBalances[peer.String()]; ok {
 		return debt, nil
 	}
 
@@ -89,7 +103,7 @@ func TestPayment(t *testing.T) {
 
 	debt := int64(10000)
 
-	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)})
+	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
 	recipient.SetAccountingAPI(observer)
 	err := recipient.Init(context.Background(), peer)
@@ -105,7 +119,7 @@ func TestPayment(t *testing.T) {
 	storePayer := mock.NewStateStore()
 	defer storePayer.Close()
 
-	observer2 := newTestObserver(map[string]*big.Int{})
+	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate))
 	payer.SetAccountingAPI(observer2)
 
@@ -219,7 +233,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 
 	debt := testRefreshRate
 
-	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)})
+	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
 	recipient.SetAccountingAPI(observer)
 	err := recipient.Init(context.Background(), peer)
@@ -235,7 +249,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	storePayer := mock.NewStateStore()
 	defer storePayer.Close()
 
-	observer2 := newTestObserver(map[string]*big.Int{})
+	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate))
 	payer.SetAccountingAPI(observer2)
 
@@ -351,6 +365,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	recipient.SetTime(int64(10003))
 
 	observer.setPeerDebt(peerID, amount)
+	observer2.setPeerShadowBalance(peerID, amount)
 
 	payer.Pay(context.Background(), peerID, amount)
 
@@ -458,6 +473,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	recipient.SetTime(int64(10004))
 
 	observer.setPeerDebt(peerID, amount)
+	observer2.setPeerShadowBalance(peerID, amount)
 
 	payer.Pay(context.Background(), peerID, amount)
 
@@ -565,6 +581,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	amount = big.NewInt(debt)
 
 	observer.setPeerDebt(peerID, amount)
+	observer2.setPeerShadowBalance(peerID, amount)
 
 	payer.Pay(context.Background(), peerID, amount)
 
@@ -611,6 +628,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	recipient.SetTime(int64(10004))
 
 	observer.setPeerDebt(peerID, amount)
+	observer2.setPeerShadowBalance(peerID, amount)
 
 	payer.Pay(context.Background(), peerID, amount)
 
@@ -657,6 +675,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	recipient.SetTime(int64(10010))
 
 	observer.setPeerDebt(peerID, amount)
+	observer2.setPeerShadowBalance(peerID, amount)
 
 	payer.Pay(context.Background(), peerID, amount)
 
@@ -767,6 +786,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	recipient.SetTime(int64(10020))
 
 	observer.setPeerDebt(peerID, amount)
+	observer2.setPeerShadowBalance(peerID, amount)
 
 	payer.Pay(context.Background(), peerID, amount)
 

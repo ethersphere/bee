@@ -289,6 +289,38 @@ func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 	return balance, nil
 }
 
+// ShadowBalance returns the current debt reduced by any potentially debitable amount stored in shadowReservedBalance
+func (a *Accounting) ShadowBalance(peer swarm.Address) (shadowBalance *big.Int, err error) {
+
+	balance := new(big.Int)
+	zero := big.NewInt(0)
+
+	err = a.store.Get(peerBalanceKey(peer), &balance)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return zero, nil
+		}
+		return nil, err
+	}
+
+	accountingPeer := a.getAccountingPeer(peer)
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+	if balance.Cmp(zero) >= 0 {
+		return zero, nil
+	}
+
+	negativeBalance := new(big.Int).Neg(balance)
+
+	if negativeBalance.Cmp(accountingPeer.shadowReservedBalance) > 0 {
+		return zero, nil
+	}
+
+	shadowBalance = new(big.Int).Sub(negativeBalance, accountingPeer.shadowReservedBalance)
+
+	return shadowBalance, nil
+}
+
 // SurplusBalance returns the current balance for the given peer.
 func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err error) {
 	err = a.store.Get(peerSurplusBalanceKey(peer), &balance)

@@ -32,8 +32,9 @@ var (
 	SettlementReceivedPrefix = "pseudosettle_total_received_"
 	SettlementSentPrefix     = "pseudosettle_total_sent_"
 
-	ErrSettlementTooSoon  = errors.New("settlement too soon")
-	ErrNoPseudoSettlePeer = errors.New("settlement peer not found")
+	ErrSettlementTooSoon              = errors.New("settlement too soon")
+	ErrNoPseudoSettlePeer             = errors.New("settlement peer not found")
+	ErrDisconnectAllowanceCheckFailed = errors.New("settlement allowance below enforced amount")
 )
 
 type Service struct {
@@ -277,8 +278,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	// balance_before
-
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{
 		Amount: amount.Bytes(),
 	})
@@ -286,17 +285,17 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
-	// shadowReserve :=
-
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
 		return
 	}
 
-	// balance_after
-
 	checkTime := s.timeNow().Unix()
+	checkAllowance, err := s.accountingAPI.ShadowBalance(peer)
+	if err != nil {
+		return
+	}
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
@@ -321,9 +320,20 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	if experienceDifferenceInterval < -3 || experienceDifferenceInterval > 3 {
 		return
 	}
+
 	// enforce allowance
 	// check if value is appropriate
-	// enforcedAllowance := min(allegedInterval * refreshRate, outstandingDebt - shadowReserve)
+	expectedAllowance := new(big.Int).Mul(big.NewInt(allegedInterval), s.refreshRate)
+	if expectedAllowance.Cmp(checkAllowance) < 0 {
+		expectedAllowance = new(big.Int).Set(checkAllowance)
+	}
+
+	if expectedAllowance.Cmp(acceptedAmount) < 0 {
+		// disconnect peer
+		err = ErrDisconnectAllowanceCheckFailed
+		_ = p2p.NewBlockPeerError(1*time.Hour, err)
+		return
+	}
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
 	lastTime.Timestamp = paymentAck.Timestamp
