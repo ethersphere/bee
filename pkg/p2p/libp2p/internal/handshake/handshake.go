@@ -52,6 +52,9 @@ var (
 	// ErrInvalidSyn is returned if observable address in ack is not a valid..
 	ErrInvalidSyn = errors.New("invalid syn")
 
+	// ErrAddressNotFound is returned if observable address in ack is not a valid..
+	ErrAddressNotFound = errors.New("address not found on blockchain")
+
 	// ErrWelcomeMessageLength is returned if the welcome message is longer than the maximum length
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
 )
@@ -292,7 +295,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(txReceipt.ContractAddress.Bytes(), s.networkID)
 	if !expectedRemoteBzzAddress.Equal(remoteBzzAddress.Overlay) {
-		return nil, fmt.Errorf("given address is not registered on Ethereum: %v", remoteBzzAddress.Overlay)
+		return nil, fmt.Errorf("given address is not registered on Ethereum: %v: %w", remoteBzzAddress.Overlay, ErrAddressNotFound)
 	}
 
 	return &Info{

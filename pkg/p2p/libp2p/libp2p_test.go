@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"io/ioutil"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,10 +36,10 @@ type libp2pServiceOpts struct {
 	libp2pOpts  libp2p.Options
 }
 
-// SwapBackend maps overlay to eth address
-type SwapBackend map[common.Hash]common.Address
-
-var MockSwapBackend = make(SwapBackend)
+// mockSwapBackend is used in spoofed address validation
+var mockSwapBackend = &SwapBackend{
+	addrs: make(map[common.Hash]common.Address),
+}
 
 // newService constructs a new libp2p service.
 func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.Service, overlay swarm.Address) {
@@ -84,9 +85,9 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	signer := crypto.NewDefaultSigner(swarmKey)
 	ethAddr, _ := signer.EthereumAddress()
 	tx := common.HexToHash(opts.Transaction)
-	MockSwapBackend[tx] = ethAddr
+	mockSwapBackend.add(tx, ethAddr)
 
-	s, err = libp2p.New(ctx, signer, networkID, overlay, addr, o.Addressbook, statestore, lightnodes, new(swapBackendMock), o.Logger, nil, opts)
+	s, err = libp2p.New(ctx, signer, networkID, overlay, addr, o.Addressbook, statestore, lightnodes, mockSwapBackend, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	t.Cleanup(func() {
 		cancel()
 		s.Close()
-		delete(MockSwapBackend, tx)
+		delete(mockSwapBackend.addrs, tx)
 	})
 	return s, overlay
 }
@@ -169,10 +170,24 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 	return addrs[0]
 }
 
-type swapBackendMock struct{}
+// SwapBackend maps overlay to eth address
+type SwapBackend struct {
+	addrs map[common.Hash]common.Address
+	m     sync.RWMutex
+}
 
-func (s *swapBackendMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+func (sb *SwapBackend) add(tx common.Hash, ethAddr common.Address) {
+	sb.m.Lock()
+	defer sb.m.Unlock()
+
+	mockSwapBackend.addrs[tx] = ethAddr
+}
+
+func (sb *SwapBackend) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	mockSwapBackend.m.RLock()
+	defer mockSwapBackend.m.RUnlock()
+
 	return &types.Receipt{
-		ContractAddress: MockSwapBackend[txHash],
+		ContractAddress: mockSwapBackend.addrs[txHash],
 	}, nil
 }
