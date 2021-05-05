@@ -32,7 +32,7 @@ const (
 	maxConnAttempts        = 3    // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootnodeAttempts    = 3    // how many attempts to dial to bootnodes before giving up
 	defaultBitSuffixLength = 2    // the number of bits used to create pseudo addresses for balancing
-	numberOfWorkers        = 1000 // The number of workers which will be created to handle the connection procedure to peers.
+	numberOfWorkers        = 1000 // The number of workers which will be created in order to concurrently connect to peers..
 )
 
 var (
@@ -76,7 +76,7 @@ type Kad struct {
 	depthMu           sync.RWMutex         // protect depth changes
 	manageC           chan struct{}        // trigger the manage forever loop to connect to new peers
 	waitNext          map[string]retryInfo // sanction connections to a peer, key is overlay string and value is a retry information
-	waitNextMu        sync.Mutex           // synchronize map
+	waitNextMu        sync.RWMutex         // guards waitNext map
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
 	logger            logging.Logger // logger
@@ -212,21 +212,25 @@ func hasBit(n, pos uint8) bool {
 	return n&(1<<pos) > 0
 }
 
-func (k *Kad) connectToPeers(ctx context.Context, connect func(context.Context, swarm.Address, uint8) bool) error {
+type connectFn func(context.Context, swarm.Address, uint8) bool
+
+// peerConnInfo groups necessary fields needed to create a connection.
+type peerConnInfo struct {
+	po   uint8
+	msg  string // Message which will be printed on successful connection.
+	addr swarm.Address
+}
+
+// connectBalanced attempts to connect to the balanced peers first.
+func (k *Kad) connectBalanced(ctx context.Context, connect connectFn) error {
 	skipPeers := func(peer swarm.Address) bool {
-		k.waitNextMu.Lock()
-		defer k.waitNextMu.Unlock()
+		k.waitNextMu.RLock()
+		defer k.waitNextMu.RUnlock()
 		next, ok := k.waitNext[peer.String()]
 		return ok && time.Now().Before(next.tryAfter)
 	}
 
-	type unconnectedPeer struct {
-		po   uint8
-		bin  int
-		addr swarm.Address
-	}
-
-	unconnectedPeerChan := make(chan *unconnectedPeer)
+	balancedPeerChan := make(chan *peerConnInfo)
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -273,21 +277,21 @@ func (k *Kad) connectToPeers(ctx context.Context, connect func(context.Context, 
 				case <-ctx.Done():
 					return ctx.Err()
 				default:
-					unconnectedPeerChan <- &unconnectedPeer{
+					balancedPeerChan <- &peerConnInfo{
 						po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
-						bin:  i,
+						msg:  fmt.Sprintf("connected to peer: %q for bin: %d", closestKnownPeer, i),
 						addr: closestKnownPeer,
 					}
 				}
 			}
 		}
-		close(unconnectedPeerChan)
+		close(balancedPeerChan)
 		return nil
 	})
 
 	for i := 0; i < numberOfWorkers; i++ {
 		g.Go(func() error {
-			for peer := range unconnectedPeerChan {
+			for peer := range balancedPeerChan {
 				select {
 				case <-k.quit:
 					return nil
@@ -295,8 +299,88 @@ func (k *Kad) connectToPeers(ctx context.Context, connect func(context.Context, 
 					return ctx.Err()
 				default:
 					if connect(ctx, peer.addr, peer.po) {
-						k.logger.Debugf("connected to peer: %q for bin: %d", peer.addr, peer.bin)
+						k.logger.Debug(peer.msg)
 						k.notifyPeerSig()
+						select {
+						case k.manageC <- struct{}{}:
+						default:
+						}
+					}
+				}
+			}
+			return nil
+		})
+	}
+
+	return g.Wait()
+}
+
+// connectNeighbours attempts to connect to the neighbours
+// which were not considered by the connectBalanced method.
+func (k *Kad) connectNeighbours(ctx context.Context, connect connectFn) error {
+	leftoverPeerChan := make(chan *peerConnInfo)
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		err := k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
+			if k.connectedPeers.Exists(addr) {
+				return false, false, nil
+			}
+
+			k.waitNextMu.RLock()
+			if next, ok := k.waitNext[addr.String()]; ok && time.Now().Before(next.tryAfter) {
+				k.waitNextMu.RUnlock()
+				return false, false, nil
+			}
+			k.waitNextMu.RUnlock()
+
+			currentDepth := k.NeighborhoodDepth()
+			if saturated, _ := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
+				return false, true, nil // Bin is saturated, skip to next bin.
+			}
+
+			select {
+			case <-k.quit:
+				return true, false, nil
+			case <-ctx.Done():
+				return true, false, ctx.Err()
+			default:
+				leftoverPeerChan <- &peerConnInfo{
+					po: po,
+					msg: fmt.Sprintf(
+						"connected to peer: %q old depth: %d new depth: %d",
+						addr,
+						currentDepth,
+						k.NeighborhoodDepth(),
+					),
+					addr: addr,
+				}
+			}
+
+			// The bin could be saturated or not, so a decision cannot
+			// be made before checking the next peer, so we iterate to next.
+			return false, true, nil
+		})
+		close(leftoverPeerChan)
+		return err
+	})
+
+	for i := 0; i < numberOfWorkers; i++ {
+		g.Go(func() error {
+			for peer := range leftoverPeerChan {
+				select {
+				case <-k.quit:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					if connect(ctx, peer.addr, peer.po) {
+						k.logger.Debug(peer.msg)
+						k.notifyPeerSig()
+						select {
+						case k.manageC <- struct{}{}:
+						default:
+						}
 					}
 				}
 			}
@@ -318,12 +402,12 @@ func (k *Kad) manage() {
 		bzzAddr, err := k.addressBook.Get(peer)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
-			k.logger.Debugf("failed to get address book entry for peer: %q", peer)
+			k.logger.Debugf("empty address book entry for peer %q", peer)
 			po := swarm.Proximity(k.base.Bytes(), peer.Bytes())
 			k.knownPeers.Remove(peer, po)
 			return false
 		case err != nil:
-			k.logger.Debugf("unexpected error while getting address of peer %q: %w", peer, err)
+			k.logger.Debugf("failed to get address book entry for peer %q: %v", peer, err)
 			return false
 		}
 
@@ -335,7 +419,7 @@ func (k *Kad) manage() {
 			}
 			fallthrough
 		case err != nil:
-			k.logger.Debugf("peer not reachable from kademlia %q: %w", bzzAddr, err)
+			k.logger.Debugf("peer not reachable from kademlia %q: %v", bzzAddr, err)
 			k.logger.Warningf("peer not reachable when attempting to connect")
 
 			k.waitNextMu.Lock()
@@ -367,19 +451,17 @@ func (k *Kad) manage() {
 		cancel()
 	}()
 
-	var start time.Time
 	for {
 		select {
 		case <-k.quit:
 			return
 		case <-time.After(30 * time.Second):
-			// periodically try to connect to new peers
 			select {
 			case k.manageC <- struct{}{}:
 			default:
 			}
 		case <-k.manageC:
-			start = time.Now()
+			start := time.Now()
 			select {
 			case <-k.quit:
 				return
@@ -389,50 +471,15 @@ func (k *Kad) manage() {
 				continue
 			}
 
-			if err := k.connectToPeers(ctx, connect); err != nil {
-				k.logger.Errorf("unexpected error while connecting to peers: %w", err)
+			if err := k.connectBalanced(ctx, connect); err != nil {
+				k.logger.Errorf("unexpected error while connecting to peers: %v", err)
 			}
+			k.logger.Tracef("kademlia balanced connector took %s to finish", time.Since(start))
 
-			err := k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-				if k.connectedPeers.Exists(peer) {
-					return false, false, nil
-				}
-
-				k.waitNextMu.Lock()
-				if next, ok := k.waitNext[peer.String()]; ok && time.Now().Before(next.tryAfter) {
-					k.waitNextMu.Unlock()
-					return false, false, nil
-				}
-				k.waitNextMu.Unlock()
-
-				currentDepth := k.NeighborhoodDepth()
-				if saturated, _ := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
-					return false, true, nil // bin is saturated, skip to next bin
-				}
-
-				if !connect(ctx, peer, po) {
-					return false, false, nil
-				}
-
-				k.logger.Debugf("connected to peer: %s old depth: %d new depth: %d", peer, currentDepth, k.NeighborhoodDepth())
-
-				k.notifyPeerSig()
-
-				select {
-				case <-k.quit:
-					return true, false, nil
-				default:
-				}
-
-				// the bin could be saturated or not, so a decision cannot
-				// be made before checking the next peer, so we iterate to next
-				return false, false, nil
-			})
+			if err := k.connectNeighbours(ctx, connect); err != nil {
+				k.logger.Errorf("unexpected error while connecting to peers: %v", err)
+			}
 			k.logger.Tracef("kademlia iterator took %s to finish", time.Since(start))
-
-			if err != nil {
-				k.logger.Errorf("kademlia manage loop iterator: %w", err)
-			}
 
 			if k.connectedPeers.Length() == 0 {
 				k.logger.Debug("kademlia has no connected peers, trying bootnodes")
@@ -798,10 +845,6 @@ func (k *Kad) notifyPeerSig() {
 func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
 	closest := swarm.ZeroAddress
 	err := peers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		if peer.IsZero() {
-			return false, false, nil
-		}
-
 		// check whether peer is sanctioned
 		if spf(peer) {
 			return false, false, nil
