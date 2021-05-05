@@ -36,7 +36,8 @@ const (
 )
 
 const (
-	maxPeers = 3
+	maxPeers    = 3
+	maxAttempts = 16
 )
 
 var (
@@ -315,24 +316,21 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	defer span.Finish()
+
 	var (
 		skipPeers      []swarm.Address
 		allowedRetries = 1
-		c              = make(chan *pb.Receipt)
-		done           = make(chan struct{})
+		resultC        = make(chan *pushResult)
+		includeSelf    = ps.isFullNode
 	)
 
-	defer span.Finish()
 	if retryAllowed {
 		// only originator retries
 		allowedRetries = maxPeers
 	}
 
-	t := time.NewTicker(preemptiveRetryTime)
-
-	includeSelf := ps.isFullNode
-
-	for i := allowedRetries; i > 0; i-- {
+	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipPeers...)
 		if err != nil {
@@ -341,42 +339,36 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
-
 		skipPeers = append(skipPeers, peer)
+
 		go func(peer swarm.Address, ch swarm.Chunk) {
 			ctxd, canceld := context.WithTimeout(ctx, timeToLive)
 			defer canceld()
-			r, err := ps.pushPeer(ctxd, peer, ch)
+
+			r, attempted, err := ps.pushPeer(ctxd, peer, ch)
+			// attempted is true if we get past accounting and actually attempt
+			// to send the request to the peer. If we dont get past accounting, we
+			// should not count the retry and try with a different peer again
+			if attempted {
+				allowedRetries--
+			}
 			if err != nil {
 				logger.Debugf("could not push to peer %s: %v", peer.String(), err)
+				resultC <- &pushResult{err: err}
 				return
 			}
 			select {
-			case c <- r:
-			case <-done:
+			case resultC <- &pushResult{receipt: r}:
 			case <-ctx.Done():
 			}
 		}(peer, ch)
 
-		if i == 1 {
-			t.Stop()
-			break
-		}
 		select {
-		case <-t.C:
-			// try next (whenever applicable)
-		case r := <-c:
-			t.Stop()
-			return r, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-
-	for ; allowedRetries > 0; allowedRetries-- {
-		select {
-		case r := <-c:
-			return r, nil
+		case r := <-resultC:
+			if r.receipt != nil {
+				return r.receipt, nil
+			}
+			// proceed to retrying if applicable
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -385,27 +377,28 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 	return nil, ErrNoPush
 }
 
-func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*pb.Receipt, error) {
+func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (*pb.Receipt, bool, error) {
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
+	// Reserve to see whether we can make the request
+	err := ps.accounting.Reserve(ctx, peer, receiptPrice)
+	if err != nil {
+		return nil, false, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
+	}
+	defer ps.accounting.Release(peer, receiptPrice)
+
 	stamp, err := ch.Stamp().MarshalBinary()
 	if err != nil {
-		return nil, err
+		// TODO: Return modified error?
+		return nil, false, err
 	}
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
+		return nil, true, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
 	}
 	defer streamer.Close()
-
-	// Reserve to see whether we can make the request
-	err = ps.accounting.Reserve(ctx, peer, receiptPrice)
-	if err != nil {
-		return nil, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
-	}
-	defer ps.accounting.Release(peer, receiptPrice)
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
@@ -414,7 +407,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		Stamp:   stamp,
 	}); err != nil {
 		_ = streamer.Reset()
-		return nil, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
+		return nil, true, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
 	}
 
 	ps.metrics.TotalSent.Inc()
@@ -424,30 +417,30 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	if err == nil && t != nil {
 		err = t.Inc(tags.StateSent)
 		if err != nil {
-			return nil, fmt.Errorf("tag %d increment: %v", ch.TagID(), err)
+			return nil, true, fmt.Errorf("tag %d increment: %v", ch.TagID(), err)
 		}
 	}
 
 	var receipt pb.Receipt
 	if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
 		_ = streamer.Reset()
-		return nil, fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
+		return nil, true, fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		// if the receipt is invalid, try to push to the next peer
-		return nil, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address().String(), peer.String())
+		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address().String(), peer.String())
 	}
 
 	err = ps.accounting.Credit(peer, receiptPrice)
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 
-	return &receipt, nil
+	return &receipt, true, nil
 }
 
 type pushResult struct {
-	r *pb.Receipt
-	e error
+	receipt *pb.Receipt
+	err     error
 }
