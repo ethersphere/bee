@@ -39,7 +39,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 	testThreshold := big.NewInt(100000)
 	observer := &testThresholdObserver{}
 
-	recipient := pricing.New(nil, logger, testThreshold, int64(1000))
+	recipient := pricing.New(nil, logger, testThreshold, big.NewInt(1000))
 	recipient.SetPaymentThresholdObserver(observer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
@@ -49,7 +49,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	payer := pricing.New(recorder, logger, testThreshold, int64(1000))
+	payer := pricing.New(recorder, logger, testThreshold, big.NewInt(1000))
 
 	paymentThreshold := big.NewInt(100000)
 
@@ -104,7 +104,7 @@ func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 	testThreshold := big.NewInt(100_000)
 	observer := &testThresholdObserver{}
 
-	minThreshold := int64(1_000_000) // above requested threashold
+	minThreshold := big.NewInt(1_000_000) // above requested threashold
 
 	recipient := pricing.New(nil, logger, testThreshold, minThreshold)
 	recipient.SetPaymentThresholdObserver(observer)

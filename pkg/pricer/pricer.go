@@ -5,6 +5,8 @@
 package pricer
 
 import (
+	"math/big"
+
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -40,6 +42,7 @@ func (pricer *FixedPricer) Price(chunk swarm.Address) uint64 {
 	return pricer.PeerPrice(pricer.overlay, chunk)
 }
 
-func (pricer *FixedPricer) MostExpensive() int64 {
-	return int64(10 * uint64(swarm.MaxPO) * pricer.poPrice) // can this overflow?
+func (pricer *FixedPricer) MostExpensive() *big.Int {
+	mostExp := int64(10 * uint64(swarm.MaxPO) * pricer.poPrice)
+	return big.NewInt(mostExp)
 }
