@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -642,7 +643,43 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	//TODO add bad case scenario
+	t.Run("Handle - transaction is not on the blockchain", func(t *testing.T) {
+		sbMock := &swapBackendMock{
+			contractAddr: common.BigToAddress(big.NewInt(11)),
+		}
+		handshakeService, err := handshake.New(signer1, aaddresser, sbMock, node1Info.BzzAddress.Overlay, networkID, true, "0xff", "", logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			ObservedUnderlay: node1maBinary,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.WriteMsg(&pb.Ack{
+			Address: &pb.BzzAddress{
+				Underlay:  node2maBinary,
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node2BzzAddress.Signature,
+			},
+			NetworkID: networkID,
+			FullNode:  true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		if !errors.Is(err, handshake.ErrAddressNotFound) {
+			t.Fatalf("expected error %v, got %v", handshake.ErrAddressNotFound, err)
+		}
+	})
 
 	t.Run("Handle - advertisable error", func(t *testing.T) {
 		handshakeService, err := handshake.New(signer1, aaddresser, swapBackend, node1Info.BzzAddress.Overlay, networkID, true, "", "", logger)
