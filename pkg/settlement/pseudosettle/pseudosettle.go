@@ -324,11 +324,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	// enforce allowance
 	// check if value is appropriate
 	expectedAllowance := new(big.Int).Mul(big.NewInt(allegedInterval), s.refreshRate)
-	if expectedAllowance.Cmp(checkAllowance) < 0 {
+	if expectedAllowance.Cmp(checkAllowance) > 0 {
 		expectedAllowance = new(big.Int).Set(checkAllowance)
 	}
 
-	if expectedAllowance.Cmp(acceptedAmount) < 0 {
+	if expectedAllowance.Cmp(acceptedAmount) > 0 {
 		// disconnect peer
 		err = ErrDisconnectAllowanceCheckFailed
 		_ = p2p.NewBlockPeerError(1*time.Hour, err)
