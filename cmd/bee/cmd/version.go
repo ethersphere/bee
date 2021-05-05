@@ -5,8 +5,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/ethersphere/bee"
 
 	"github.com/spf13/cobra"
@@ -20,6 +18,6 @@ func (c *command) initVersionCmd() {
 			cmd.Println(bee.Version)
 		},
 	}
-	v.SetOut(os.Stdout)
+	v.SetOut(c.root.OutOrStdout())
 	c.root.AddCommand(v)
 }
