@@ -282,6 +282,7 @@ func TestManage(t *testing.T) {
 		addOne(t, signer, kad, ab, addr)
 	}
 
+	time.Sleep(500 * time.Millisecond) // Give the goroutines enough time to finish the connection.
 	waitCounter(t, &conns, 50)
 	saturationVal = true
 
@@ -655,7 +656,7 @@ func TestAddressBookPrune(t *testing.T) {
 		*kademlia.TimeToRetry = t
 	}(*kademlia.TimeToRetry)
 
-	*kademlia.TimeToRetry = 50 * time.Millisecond
+	*kademlia.TimeToRetry = 100 * time.Millisecond
 
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
