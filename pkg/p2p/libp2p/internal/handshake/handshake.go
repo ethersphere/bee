@@ -61,7 +61,7 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
-type swapBackend interface {
+type SwapBackend interface {
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 }
 
@@ -69,9 +69,10 @@ type swapBackend interface {
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	swapBackend           swapBackend
+	swapBackend           SwapBackend
 	overlay               swarm.Address
 	fullNode              bool
+	transaction           string
 	networkID             uint64
 	welcomeMessage        atomic.Value
 	receivedHandshakes    map[libp2ppeer.ID]struct{}
@@ -96,7 +97,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, welcomeMessage string, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, swapBackend SwapBackend, overlay swarm.Address, networkID uint64, fullNode bool, transaction string, welcomeMessage string, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -107,6 +108,8 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		overlay:               overlay,
 		networkID:             networkID,
 		fullNode:              fullNode,
+		transaction:           transaction,
+		swapBackend:           swapBackend,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		logger:                logger,
 		Notifiee:              new(network.NoopNotifiee),
@@ -178,6 +181,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		},
 		NetworkID:      s.networkID,
 		FullNode:       s.fullNode,
+		Transaction:    s.transaction,
 		WelcomeMessage: welcomeMessage,
 	}); err != nil {
 		return nil, fmt.Errorf("write ack message: %w", err)
@@ -257,6 +261,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 			},
 			NetworkID:      s.networkID,
 			FullNode:       s.fullNode,
+			Transaction:    s.transaction,
 			WelcomeMessage: welcomeMessage,
 		},
 	}); err != nil {
@@ -280,14 +285,14 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	incomingTx := common.HexToHash(ack.Transaction)
 
-	rcpt, err := s.swapBackend.TransactionReceipt(context.Background(), incomingTx)
+	txReceipt, err := s.swapBackend.TransactionReceipt(ctx, incomingTx)
 	if err != nil {
 		return nil, fmt.Errorf("get transaction receipt: %w", err)
 	}
 
-	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(rcpt.ContractAddress.Bytes(), s.networkID)
+	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(txReceipt.ContractAddress.Bytes(), s.networkID)
 	if !expectedRemoteBzzAddress.Equal(remoteBzzAddress.Overlay) {
-		return nil, fmt.Errorf("given address is spoofed: %v", remoteBzzAddress.Overlay)
+		return nil, fmt.Errorf("given address is not registered on Ethereum: %v", remoteBzzAddress.Overlay)
 	}
 
 	return &Info{
