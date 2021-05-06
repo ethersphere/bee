@@ -246,7 +246,6 @@ func TestAccountingCallSettlement(t *testing.T) {
 	paychan := make(chan paymentCall, 1)
 
 	f := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
-		acc.PaymentOngoingLock(peer)
 		paychan <- paymentCall{peer: peer, amount: amount}
 	}
 
@@ -362,7 +361,6 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	paychan := make(chan paymentCall, 1)
 
 	f := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
-		acc.PaymentOngoingLock(peer)
 		paychan <- paymentCall{peer: peer, amount: amount}
 	}
 
