@@ -231,6 +231,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle address")
+	cmd.Flags().String(optionNameTransaction, "", "transaction hash")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

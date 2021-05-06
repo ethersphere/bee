@@ -274,6 +274,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	lightNodes := lightnode.NewContainer()
 
+	txHash, err := getTxHash(stateStore, logger, o.Transaction)
+	if err != nil {
+		return nil, err
+	}
+
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, swapBackend, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
@@ -282,7 +287,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		Standalone:     o.Standalone,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       o.FullNodeMode,
-		Transaction:    o.Transaction,
+		Transaction:    txHash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -780,4 +785,21 @@ func (e *multiError) add(err error) {
 
 func (e *multiError) hasErrors() bool {
 	return len(e.errors) > 0
+}
+
+func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transaction string) (string, error) {
+	if len(transaction) == 32 {
+		logger.Info("using the provided transaction hash")
+		return transaction, nil
+	}
+
+	logger.Info("no transaction hash provided, trying to fetch it from the state")
+
+	var txHash common.Hash
+	key := chequebook.ChequebookDeploymentKey
+	if err := stateStore.Get(key, &txHash); err != nil {
+		return "", err
+	}
+
+	return txHash.String(), nil
 }
