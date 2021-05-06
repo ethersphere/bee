@@ -43,9 +43,6 @@ const (
 var (
 	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
 	ErrNoPush                = errors.New("could not push chunk")
-
-	// time to wait before next retry attempt (whenever applicable)
-	preemptiveRetryTime = 5 * time.Second
 )
 
 type PushSyncer interface {
