@@ -50,16 +50,16 @@ type Service struct {
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
-	minPaymentThreashold     *big.Int
+	minPaymentThreshold      *big.Int
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
 func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int, minThreshold *big.Int) *Service {
 	return &Service{
-		streamer:             streamer,
-		logger:               logger,
-		paymentThreshold:     paymentThreshold,
-		minPaymentThreashold: minThreshold,
+		streamer:            streamer,
+		logger:              logger,
+		paymentThreshold:    paymentThreshold,
+		minPaymentThreshold: minThreshold,
 	}
 }
 
@@ -97,8 +97,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
 
-	if paymentThreshold.Cmp(s.minPaymentThreashold) < 0 {
-		s.logger.Tracef("payment threshold from peer %v of %d too small, need at least %d", p.Address, paymentThreshold, s.minPaymentThreashold)
+	if paymentThreshold.Cmp(s.minPaymentThreshold) < 0 {
+		s.logger.Tracef("payment threshold from peer %v of %d too small, need at least %d", p.Address, paymentThreshold, s.minPaymentThreshold)
 		return p2p.NewDisconnectError(ErrThresholdTooLow)
 	}
 

@@ -43,6 +43,8 @@ func (pricer *FixedPricer) Price(chunk swarm.Address) uint64 {
 }
 
 func (pricer *FixedPricer) MostExpensive() *big.Int {
-	mostExp := int64(10 * uint64(swarm.MaxPO) * pricer.poPrice)
-	return big.NewInt(mostExp)
+	poPrice := new(big.Int).SetUint64(pricer.poPrice)
+	maxPO := new(big.Int).SetUint64(uint64(swarm.MaxPO))
+	tenTimeMaxPO := new(big.Int).Mul(big.NewInt(10), maxPO)
+	return new(big.Int).Mul(tenTimeMaxPO, poPrice)
 }
