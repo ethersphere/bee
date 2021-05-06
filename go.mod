@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee
 
-go 1.14
+go 1.16
 
 require (
 	github.com/btcsuite/btcd v0.21.0-beta

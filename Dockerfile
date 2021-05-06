@@ -1,4 +1,4 @@
-FROM golang:1.15 AS build
+FROM golang:1.16 AS build
 
 WORKDIR /src
 # enable modules caching in separate layer
