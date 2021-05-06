@@ -672,8 +672,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 	addrs := []swarm.Address{}
 
-	//r := rand.New(securerand.NewSource())
-
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 
 		connectedPeers, err := randomSubset(k.connectedPeers.BinPeers(bin), broadcastBinSize)

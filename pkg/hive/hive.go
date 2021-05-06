@@ -74,6 +74,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.peersHandler,
 			},
 		},
+		DisconnectIn:  s.disconnect,
+		DisconnectOut: s.disconnect,
 	}
 }
 
@@ -206,4 +208,13 @@ func (s *Service) rateLimitPeer(peer swarm.Address, count int) error {
 	}
 
 	return ErrRateLimitExceeded
+}
+
+func (s *Service) disconnect(peer p2p.Peer) error {
+	s.limiterLock.Lock()
+	defer s.limiterLock.Unlock()
+
+	delete(s.limiter, peer.Address.String())
+
+	return nil
 }
