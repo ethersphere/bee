@@ -12,7 +12,9 @@ package hive
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -22,6 +24,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
+
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -32,6 +36,12 @@ const (
 	maxBatchSize    = 30
 )
 
+var (
+	ErrRateLimitExceeded = errors.New("rate limit exceeded")
+	limitBurst           = 4 * int(swarm.MaxBins)
+	limitRate            = rate.Every(time.Minute)
+)
+
 type Service struct {
 	streamer        p2p.Streamer
 	addressBook     addressbook.GetPutter
@@ -39,6 +49,8 @@ type Service struct {
 	networkID       uint64
 	logger          logging.Logger
 	metrics         metrics
+	limiter         map[string]*rate.Limiter
+	limiterLock     sync.Mutex
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
@@ -48,6 +60,7 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		addressBook: addressbook,
 		networkID:   networkID,
 		metrics:     newMetrics(),
+		limiter:     make(map[string]*rate.Limiter),
 	}
 }
 
@@ -61,6 +74,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.peersHandler,
 			},
 		},
+		DisconnectIn:  s.disconnect,
+		DisconnectOut: s.disconnect,
 	}
 }
 
@@ -139,6 +154,11 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
+	if err := s.rateLimitPeer(peer.Address, len(peersReq.Peers)); err != nil {
+		_ = stream.Reset()
+		return err
+	}
+
 	// close the stream before processing in order to unblock the sending side
 	// fullclose is called async because there is no need to wait for confirmation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
@@ -166,6 +186,35 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 			return err
 		}
 	}
+
+	return nil
+}
+
+func (s *Service) rateLimitPeer(peer swarm.Address, count int) error {
+
+	s.limiterLock.Lock()
+	defer s.limiterLock.Unlock()
+
+	addr := peer.String()
+
+	limiter, ok := s.limiter[addr]
+	if !ok {
+		limiter = rate.NewLimiter(limitRate, limitBurst)
+		s.limiter[addr] = limiter
+	}
+
+	if limiter.AllowN(time.Now(), count) {
+		return nil
+	}
+
+	return ErrRateLimitExceeded
+}
+
+func (s *Service) disconnect(peer p2p.Peer) error {
+	s.limiterLock.Lock()
+	defer s.limiterLock.Unlock()
+
+	delete(s.limiter, peer.Address.String())
 
 	return nil
 }

@@ -66,6 +66,7 @@ require (
 	golang.org/x/sys v0.0.0-20210108172913-0df2131ae363
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 	golang.org/x/text v0.3.4 // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.0.0-20200626171337-aa94e735be7f // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
