@@ -267,6 +267,7 @@ func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *ac
 	paymentAmount := new(big.Int).Neg(oldBalance)
 
 	balance.paymentOngoing = true
+	balance.paymentOngoingLock.Lock()
 
 	go a.payFunction(ctx, peer, paymentAmount)
 
