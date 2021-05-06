@@ -96,7 +96,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	t.Cleanup(func() {
 		cancel()
 		s.Close()
-		delete(mockSwapBackend.addrs, tx)
+		mockSwapBackend.remove(tx)
 	})
 	return s, overlay
 }
@@ -180,14 +180,21 @@ func (sb *SwapBackend) add(tx common.Hash, ethAddr common.Address) {
 	sb.m.Lock()
 	defer sb.m.Unlock()
 
-	mockSwapBackend.addrs[tx] = ethAddr
+	sb.addrs[tx] = ethAddr
+}
+
+func (sb *SwapBackend) remove(tx common.Hash) {
+	sb.m.Lock()
+	defer sb.m.Unlock()
+
+	delete(sb.addrs, tx)
 }
 
 func (sb *SwapBackend) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
-	mockSwapBackend.m.RLock()
-	defer mockSwapBackend.m.RUnlock()
+	sb.m.RLock()
+	defer sb.m.RUnlock()
 
 	return &types.Receipt{
-		ContractAddress: mockSwapBackend.addrs[txHash],
+		ContractAddress: sb.addrs[txHash],
 	}, nil
 }
