@@ -35,6 +35,7 @@ var (
 	ErrSettlementTooSoon              = errors.New("settlement too soon")
 	ErrNoPseudoSettlePeer             = errors.New("settlement peer not found")
 	ErrDisconnectAllowanceCheckFailed = errors.New("settlement allowance below enforced amount")
+	ErrTimeOutOfSync                  = errors.New("settlement allowance timestamps differ beyond tolerance")
 )
 
 type Service struct {
@@ -44,6 +45,7 @@ type Service struct {
 	accountingAPI settlement.AccountingAPI
 	metrics       metrics
 	refreshRate   *big.Int
+	p2pService    p2p.Service
 	timeNow       func() time.Time
 	peersMu       sync.Mutex
 	peers         map[string]*pseudoSettlePeer
@@ -59,13 +61,14 @@ type lastPayment struct {
 	Total          *big.Int
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accountingAPI settlement.AccountingAPI, refreshRate *big.Int) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accountingAPI settlement.AccountingAPI, refreshRate *big.Int, p2pService p2p.Service) *Service {
 	return &Service{
 		streamer:      streamer,
 		logger:        logger,
 		metrics:       newMetrics(),
 		store:         store,
 		accountingAPI: accountingAPI,
+		p2pService:    p2pService,
 		refreshRate:   refreshRate,
 		timeNow:       time.Now,
 		peers:         make(map[string]*pseudoSettlePeer),
@@ -275,6 +278,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		}
 	*/
 
+	checkAllowance, err := s.accountingAPI.ShadowBalance(peer)
+	if err != nil {
+		return
+	}
+
 	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -292,10 +300,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	}
 
 	checkTime := s.timeNow().Unix()
-	checkAllowance, err := s.accountingAPI.ShadowBalance(peer)
-	if err != nil {
-		return
-	}
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
@@ -307,17 +311,20 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	allegedInterval := paymentAck.Timestamp - lastTime.Timestamp
 
 	if allegedInterval < 0 {
+		err = ErrTimeOutOfSync
 		return
 	}
 
 	experienceDifferenceRecent := paymentAck.Timestamp - checkTime
 
 	if experienceDifferenceRecent < -2 || experienceDifferenceRecent > 2 {
+		err = ErrTimeOutOfSync
 		return
 	}
 
 	experienceDifferenceInterval := experiencedInterval - allegedInterval
 	if experienceDifferenceInterval < -3 || experienceDifferenceInterval > 3 {
+		err = ErrTimeOutOfSync
 		return
 	}
 
@@ -330,8 +337,10 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 
 	if expectedAllowance.Cmp(acceptedAmount) > 0 {
 		// disconnect peer
-		err = ErrDisconnectAllowanceCheckFailed
-		_ = p2p.NewBlockPeerError(1*time.Hour, err)
+		err = s.p2pService.Blocklist(peer, 10000*time.Hour)
+		if err != nil {
+			err = ErrDisconnectAllowanceCheckFailed
+		}
 		return
 	}
 
