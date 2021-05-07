@@ -21,8 +21,8 @@ func TestReservestate(t *testing.T) {
 	ts := newTestServer(t, testServerOptions{
 		BatchStore: mock.New(mock.WithReserveState(&postage.Reservestate{
 			Radius: 5,
-			Outer: big.NewInt(5),
-			Inner: big.NewInt(5),
+			Outer:  big.NewInt(5),
+			Inner:  big.NewInt(5),
 		})),
 	})
 
@@ -30,8 +30,8 @@ func TestReservestate(t *testing.T) {
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{
 				Radius: 5,
-				Outer: bigint.NewBigInt(5),
-				Inner: bigint.NewBigInt(5),
+				Outer:  bigint.NewBigInt(5),
+				Inner:  bigint.NewBigInt(5),
 			}),
 		)
 	})
