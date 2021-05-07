@@ -10,11 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -22,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/mock"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/swarm"
 
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
@@ -95,9 +93,8 @@ func TestHandshake(t *testing.T) {
 
 	aaddresser := &AdvertisableAddresserMock{}
 
-	ethAddr, _ := signer2.EthereumAddress()
-	swapBackend := &swapBackendMock{
-		contractAddr: ethAddr,
+	swapBackend := func(context.Context, string, uint64, swarm.Address) (bool, error) {
+		return true, nil
 	}
 
 	handshakeService, err := handshake.New(signer1, aaddresser, swapBackend, node1Info.BzzAddress.Overlay, networkID, true, "", testWelcomeMessage, logger)
@@ -644,9 +641,10 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - transaction is not on the blockchain", func(t *testing.T) {
-		sbMock := &swapBackendMock{
-			contractAddr: common.BigToAddress(big.NewInt(11)),
+		sbMock := func(context.Context, string, uint64, swarm.Address) (bool, error) {
+			return false, nil
 		}
+
 		handshakeService, err := handshake.New(signer1, aaddresser, sbMock, node1Info.BzzAddress.Overlay, networkID, true, "0xff", "", logger)
 		if err != nil {
 			t.Fatal(err)
@@ -738,14 +736,4 @@ func (a *AdvertisableAddresserMock) Resolve(observedAdddress ma.Multiaddr) (ma.M
 	}
 
 	return observedAdddress, nil
-}
-
-type swapBackendMock struct {
-	contractAddr common.Address
-}
-
-func (s *swapBackendMock) TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error) {
-	return &types.Receipt{
-		ContractAddress: s.contractAddr,
-	}, nil
 }

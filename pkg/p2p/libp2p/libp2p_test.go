@@ -10,13 +10,10 @@ import (
 	"crypto/ecdsa"
 	"io/ioutil"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -34,11 +31,6 @@ type libp2pServiceOpts struct {
 	PrivateKey  *ecdsa.PrivateKey
 	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
-}
-
-// mockSwapBackend is used in spoofed address validation
-var mockSwapBackend = &SwapBackend{
-	addrs: make(map[common.Hash]common.Address),
 }
 
 // newService constructs a new libp2p service.
@@ -82,12 +74,11 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	opts := o.libp2pOpts
 	opts.Transaction = hexutil.EncodeUint64(o.PrivateKey.Y.Uint64())
 
-	signer := crypto.NewDefaultSigner(swarmKey)
-	ethAddr, _ := signer.EthereumAddress()
-	tx := common.HexToHash(opts.Transaction)
-	mockSwapBackend.add(tx, ethAddr)
+	senderMatcher := func(context.Context, string, uint64, swarm.Address) (bool, error) {
+		return true, nil
+	}
 
-	s, err = libp2p.New(ctx, signer, networkID, overlay, addr, o.Addressbook, statestore, lightnodes, mockSwapBackend, o.Logger, nil, opts)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, lightnodes, senderMatcher, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +87,6 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	t.Cleanup(func() {
 		cancel()
 		s.Close()
-		mockSwapBackend.remove(tx)
 	})
 	return s, overlay
 }
@@ -168,33 +158,4 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 		t.Fatal(err)
 	}
 	return addrs[0]
-}
-
-// SwapBackend maps overlay to eth address
-type SwapBackend struct {
-	addrs map[common.Hash]common.Address
-	m     sync.RWMutex
-}
-
-func (sb *SwapBackend) add(tx common.Hash, ethAddr common.Address) {
-	sb.m.Lock()
-	defer sb.m.Unlock()
-
-	sb.addrs[tx] = ethAddr
-}
-
-func (sb *SwapBackend) remove(tx common.Hash) {
-	sb.m.Lock()
-	defer sb.m.Unlock()
-
-	delete(sb.addrs, tx)
-}
-
-func (sb *SwapBackend) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
-	sb.m.RLock()
-	defer sb.m.RUnlock()
-
-	return &types.Receipt{
-		ContractAddress: sb.addrs[txHash],
-	}, nil
 }

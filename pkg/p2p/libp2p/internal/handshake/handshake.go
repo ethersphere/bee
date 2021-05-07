@@ -53,7 +53,7 @@ var (
 	ErrInvalidSyn = errors.New("invalid syn")
 
 	// ErrAddressNotFound is returned if observable address in ack is not a valid..
-	ErrAddressNotFound = errors.New("address not found on blockchain")
+	ErrAddressNotFound = errors.New("address not found")
 
 	// ErrWelcomeMessageLength is returned if the welcome message is longer than the maximum length
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
@@ -72,7 +72,7 @@ type SwapBackend interface {
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	swapBackend           SwapBackend
+	isSender              SenderMatcher
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           string
@@ -99,8 +99,10 @@ func (i *Info) LightString() string {
 	return ""
 }
 
+type SenderMatcher func(context.Context, string, uint64, swarm.Address) (bool, error)
+
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, swapBackend SwapBackend, overlay swarm.Address, networkID uint64, fullNode bool, transaction string, welcomeMessage string, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction string, welcomeMessage string, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -112,7 +114,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		networkID:             networkID,
 		fullNode:              fullNode,
 		transaction:           transaction,
-		swapBackend:           swapBackend,
+		isSender:              isSender,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		logger:                logger,
 		Notifiee:              new(network.NoopNotifiee),
@@ -286,15 +288,12 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
 	}
 
-	incomingTx := common.HexToHash(ack.Transaction)
-
-	txReceipt, err := s.swapBackend.TransactionReceipt(ctx, incomingTx)
+	matchesSender, err := s.isSender(ctx, ack.Transaction, s.networkID, remoteBzzAddress.Overlay)
 	if err != nil {
-		return nil, fmt.Errorf("get transaction receipt: %w", err)
+		return nil, err
 	}
 
-	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(txReceipt.ContractAddress.Bytes(), s.networkID)
-	if !expectedRemoteBzzAddress.Equal(remoteBzzAddress.Overlay) {
+	if !matchesSender {
 		return nil, fmt.Errorf("given address is not registered on Ethereum: %v: %w", remoteBzzAddress.Overlay, ErrAddressNotFound)
 	}
 
