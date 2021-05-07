@@ -276,7 +276,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	txHash, err := getTxHash(stateStore, logger, o.Transaction)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("no transaction hash provided or found")
 	}
 
 	vd := transaction.NewMatcher(swapBackend, chainID)
@@ -796,8 +796,6 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transactio
 		logger.Info("using the provided transaction hash")
 		return transaction, nil
 	}
-
-	logger.Info("no transaction hash provided, trying to fetch it from the state")
 
 	var txHash common.Hash
 	key := chequebook.ChequebookDeploymentKey
