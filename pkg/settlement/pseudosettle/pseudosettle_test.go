@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	mockp2p "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
@@ -104,7 +105,7 @@ func TestPayment(t *testing.T) {
 	debt := int64(10000)
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
-	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
+	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), mockp2p.New())
 	recipient.SetAccountingAPI(observer)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
@@ -120,7 +121,7 @@ func TestPayment(t *testing.T) {
 	defer storePayer.Close()
 
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
-	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate))
+	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), mockp2p.New())
 	payer.SetAccountingAPI(observer2)
 
 	amount := big.NewInt(debt)
@@ -234,7 +235,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	debt := testRefreshRate
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
-	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate))
+	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), mockp2p.New())
 	recipient.SetAccountingAPI(observer)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
@@ -250,7 +251,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	defer storePayer.Close()
 
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
-	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate))
+	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), mockp2p.New())
 	payer.SetAccountingAPI(observer2)
 
 	payer.SetTime(int64(10000))

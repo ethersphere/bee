@@ -486,7 +486,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 		settlement = swapService
 	} else {
-		pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(1000000000000))
+		pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(1000000000000), p2ps)
 		if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 			return nil, fmt.Errorf("pseudosettle service: %w", err)
 		}
