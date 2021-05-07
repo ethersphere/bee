@@ -3,7 +3,6 @@ package transaction
 import (
 	"context"
 	"fmt"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -16,17 +15,17 @@ type Matcher struct {
 	signer  types.Signer
 }
 
-func NewMatcher(backend Backend, chainID int64) *Matcher {
+func NewMatcher(backend Backend, signer types.Signer) *Matcher {
 	return &Matcher{
 		backend: backend,
-		signer:  types.NewEIP155Signer(big.NewInt(chainID)),
+		signer:  signer,
 	}
 }
 
-func (s Matcher) Matches(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error) {
+func (m Matcher) Matches(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error) {
 	incomingTx := common.HexToHash(tx)
 
-	nTx, isPending, err := s.backend.TransactionByHash(ctx, incomingTx)
+	nTx, isPending, err := m.backend.TransactionByHash(ctx, incomingTx)
 	if err != nil {
 		return false, err //TODO wrap error
 	}
@@ -35,7 +34,7 @@ func (s Matcher) Matches(ctx context.Context, tx string, networkID uint64, sende
 		return false, fmt.Errorf("transaction still pending")
 	}
 
-	sender, err := types.Sender(nil, nTx)
+	sender, err := types.Sender(m.signer, nTx)
 	if err != nil {
 		return false, err //TODO wrap error
 	}
