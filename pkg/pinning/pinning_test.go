@@ -32,7 +32,7 @@ func TestPinningService(t *testing.T) {
 	)
 
 	pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-	ref, err := builder.FeedPipeline(ctx, pipe, strings.NewReader(content), int64(len(content)))
+	ref, err := builder.FeedPipeline(ctx, pipe, strings.NewReader(content))
 	if err != nil {
 		t.Fatal(err)
 	}

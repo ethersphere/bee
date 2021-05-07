@@ -72,7 +72,6 @@ var (
 	errNoResolver           = errors.New("no resolver connected")
 	errInvalidRequest       = errors.New("could not validate request")
 	errInvalidContentType   = errors.New("invalid content-type")
-	errInvalidContentLength = errors.New("invalid content-length")
 	errDirectoryStore       = errors.New("could not store directory")
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
@@ -339,13 +338,13 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 	return p.Storer.Put(ctx, mode, chs...)
 }
 
-type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
+type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
 func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
-	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
+	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
-		return builder.FeedPipeline(ctx, pipe, r, l)
+		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 

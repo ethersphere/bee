@@ -156,7 +156,7 @@ func TestTraversalBytes(t *testing.T) {
 			defer cancel()
 
 			pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -246,7 +246,7 @@ func TestTraversalFiles(t *testing.T) {
 			defer cancel()
 
 			pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -415,7 +415,7 @@ func TestTraversalManifest(t *testing.T) {
 				data := generateSample(f.size)
 
 				pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 				if err != nil {
 					t.Fatal(err)
 				}
