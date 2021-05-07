@@ -12,8 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -64,15 +62,15 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
-type SwapBackend interface {
-	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+type SenderMatcher interface {
+	Matches(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error)
 }
 
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	isSender              SenderMatcher
+	senderMatcher         SenderMatcher
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           string
@@ -99,8 +97,6 @@ func (i *Info) LightString() string {
 	return ""
 }
 
-type SenderMatcher func(context.Context, string, uint64, swarm.Address) (bool, error)
-
 // New creates a new handshake Service.
 func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction string, welcomeMessage string, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
@@ -114,7 +110,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		networkID:             networkID,
 		fullNode:              fullNode,
 		transaction:           transaction,
-		isSender:              isSender,
+		senderMatcher:         isSender,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		logger:                logger,
 		Notifiee:              new(network.NoopNotifiee),
@@ -288,7 +284,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
 	}
 
-	matchesSender, err := s.isSender(ctx, ack.Transaction, s.networkID, remoteBzzAddress.Overlay)
+	matchesSender, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, remoteBzzAddress.Overlay)
 	if err != nil {
 		return nil, err
 	}

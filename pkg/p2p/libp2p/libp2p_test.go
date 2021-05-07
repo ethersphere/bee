@@ -74,9 +74,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	opts := o.libp2pOpts
 	opts.Transaction = hexutil.EncodeUint64(o.PrivateKey.Y.Uint64())
 
-	senderMatcher := func(context.Context, string, uint64, swarm.Address) (bool, error) {
-		return true, nil
-	}
+	senderMatcher := &MockSenderMatcher{}
 
 	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, lightnodes, senderMatcher, o.Logger, nil, opts)
 	if err != nil {
@@ -158,4 +156,10 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 		t.Fatal(err)
 	}
 	return addrs[0]
+}
+
+type MockSenderMatcher struct{}
+
+func (m MockSenderMatcher) Matches(context.Context, string, uint64, swarm.Address) (bool, error) {
+	return true, nil
 }

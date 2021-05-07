@@ -11,24 +11,24 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type validator struct {
+type Matcher struct {
 	backend Backend
 	signer  types.Signer
 }
 
-func NewValidator(backend Backend, chainID int64) validator {
-	return validator{
+func NewMatcher(backend Backend, chainID int64) *Matcher {
+	return &Matcher{
 		backend: backend,
 		signer:  types.NewEIP155Signer(big.NewInt(chainID)),
 	}
 }
 
-func (s validator) MatchesSender(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error) {
+func (s Matcher) Matches(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error) {
 	incomingTx := common.HexToHash(tx)
 
 	nTx, isPending, err := s.backend.TransactionByHash(ctx, incomingTx)
 	if err != nil {
-		return false, err
+		return false, err //TODO wrap error
 	}
 
 	if isPending {
@@ -37,7 +37,7 @@ func (s validator) MatchesSender(ctx context.Context, tx string, networkID uint6
 
 	sender, err := types.Sender(nil, nTx)
 	if err != nil {
-		return false, err
+		return false, err //TODO wrap error
 	}
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID)
