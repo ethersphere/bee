@@ -21,8 +21,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/dgraph-io/badger/v3"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -54,7 +55,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 		db.dirtyAddresses = append(db.dirtyAddresses, addrs...)
 	}
 
-	batch := new(leveldb.Batch)
+	batch := db.shed.GetBatch(true)
 
 	// variables that provide information for operations
 	// to be done after write batch function successfully executes
@@ -127,7 +128,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 //   from push sync index
 // - update to gc index happens given item does not exist in pin index
 // Provided batch is updated.
-func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.ModeSet) (gcSizeChange int64, err error) {
+func (db *DB) setSync(batch *badger.Txn, addr swarm.Address, mode storage.ModeSet) (gcSizeChange int64, err error) {
 	item := addressToItem(addr)
 
 	// need to get access timestamp here as it is not
@@ -136,7 +137,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 
 	i, err := db.retrievalDataIndex.Get(item)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			// chunk is not found,
 			// no need to update gc index
 			// just delete from the push index
@@ -154,7 +155,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 
 	i, err = db.pushIndex.Get(item)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			// we handle this error internally, since this is an internal inconsistency of the indices
 			// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 			// but this function is called with ModeSetSync
@@ -191,7 +192,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 			return 0, err
 		}
 		gcSizeChange--
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 		// the chunk is not accessed before
 	default:
 		return 0, err
@@ -221,7 +222,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 // setRemove removes the chunk by updating indexes:
 //  - delete from retrieve, pull, gc
 // Provided batch is updated.
-func (db *DB) setRemove(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange int64, err error) {
+func (db *DB) setRemove(batch *badger.Txn, addr swarm.Address) (gcSizeChange int64, err error) {
 	item := addressToItem(addr)
 
 	// need to get access timestamp here as it is not
@@ -231,7 +232,7 @@ func (db *DB) setRemove(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange 
 	switch {
 	case err == nil:
 		item.AccessTimestamp = i.AccessTimestamp
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 	default:
 		return 0, err
 	}
@@ -271,14 +272,14 @@ func (db *DB) setRemove(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange 
 // setPin increments pin counter for the chunk by updating
 // pin index and sets the chunk to be excluded from garbage collection.
 // Provided batch is updated.
-func (db *DB) setPin(batch *leveldb.Batch, addr swarm.Address) (err error) {
+func (db *DB) setPin(batch *badger.Txn, addr swarm.Address) (err error) {
 	item := addressToItem(addr)
 
 	// Get the existing pin counter of the chunk
 	existingPinCounter := uint64(0)
 	pinnedChunk, err := db.pinIndex.Get(item)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			// If this Address is not present in DB, then its a new entry
 			existingPinCounter = 0
 
@@ -306,7 +307,7 @@ func (db *DB) setPin(batch *leveldb.Batch, addr swarm.Address) (err error) {
 
 // setUnpin decrements pin counter for the chunk by updating pin index.
 // Provided batch is updated.
-func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (err error) {
+func (db *DB) setUnpin(batch *badger.Txn, addr swarm.Address) (err error) {
 	item := addressToItem(addr)
 
 	// Get the existing pin counter of the chunk

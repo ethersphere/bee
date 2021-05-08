@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -29,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Store holds fields and indexes (including their encoding functions)
@@ -156,18 +154,15 @@ func (s *Store) Put(_ context.Context, ch swarm.Chunk) (err error) {
 // It updates access and gc indexes by removing the previous
 // items from them and adding new items as keys of index entries
 // are changed.
-func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err error) {
-	batch := new(leveldb.Batch)
+func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, err error) {
+	batch := s.db.GetBatch(true)
 
 	// Get the chunk data and storage timestamp.
 	item, err := s.retrievalIndex.Get(shed.Item{
 		Address: addr.Bytes(),
 	})
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
-			return nil, storage.ErrNotFound
-		}
-		return nil, fmt.Errorf("retrieval index get: %w", err)
+		return nil, err
 	}
 
 	// Get the chunk access timestamp.
@@ -185,9 +180,9 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		if err != nil {
 			return nil, fmt.Errorf("gc index delete in batch: %w", err)
 		}
-	case errors.Is(err, leveldb.ErrNotFound):
-		// Access timestamp is not found. Do not do anything.
-		// This is the first get request.
+	case shed.ErrNotFound:
+	// Access timestamp is not found. Do not do anything.
+	// This is the firs get request.
 	default:
 		return nil, fmt.Errorf("access index get: %w", err)
 	}
@@ -241,7 +236,7 @@ func (s *Store) CollectGarbage() (err error) {
 	for roundCount := 0; roundCount < maxRounds; roundCount++ {
 		var garbageCount int
 		// New batch for a new cg round.
-		trash := new(leveldb.Batch)
+		trash := s.db.GetBatch(true)
 		// Iterate through all index items and break when needed.
 		err = s.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 			// Remove the chunk.
@@ -283,7 +278,7 @@ func (s *Store) CollectGarbage() (err error) {
 // string from a database field.
 func (s *Store) GetSchema() (name string, err error) {
 	name, err = s.schemaName.Get()
-	if errors.Is(err, leveldb.ErrNotFound) {
+	if err == shed.ErrNotFound {
 		return "", nil
 	}
 	return name, err

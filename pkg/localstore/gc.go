@@ -21,9 +21,10 @@ import (
 	"fmt"
 	"time"
 
+	badger "github.com/dgraph-io/badger/v3"
+
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var (
@@ -86,7 +87,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		}
 		totalTimeMetric(db.metrics.TotalTimeCollectGarbage, start)
 	}(time.Now())
-	batch := new(leveldb.Batch)
+	batch := db.shed.GetBatch(true)
 	target := db.gcTarget()
 
 	// tell the localstore to start logging dirty addresses
@@ -211,7 +212,7 @@ func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
 		}
 	}()
 
-	batch := new(leveldb.Batch)
+	batch := db.shed.GetBatch(true)
 	excludedCount := 0
 	var gcSizeChange int64
 	err = db.gcExcludeIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -290,12 +291,12 @@ func (db *DB) triggerGarbageCollection() {
 // incGCSizeInBatch changes gcSize field value
 // by change which can be negative. This function
 // must be called under batchMu lock.
-func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
+func (db *DB) incGCSizeInBatch(batch *badger.Txn, change int64) (err error) {
 	if change == 0 {
 		return nil
 	}
 	gcSize, err := db.gcSize.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+	if err != nil && !errors.Is(err, shed.ErrNotFound) {
 		return err
 	}
 

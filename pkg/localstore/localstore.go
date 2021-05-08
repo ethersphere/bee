@@ -30,7 +30,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var _ storage.Storer = &DB{}
@@ -206,14 +205,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		db.updateGCSem = make(chan struct{}, maxParallelUpdateGC)
 	}
 
-	shedOpts := &shed.Options{
-		OpenFilesLimit:         o.OpenFilesLimit,
-		BlockCacheCapacity:     o.BlockCacheCapacity,
-		WriteBufferSize:        o.WriteBufferSize,
-		DisableSeeksCompaction: o.DisableSeeksCompaction,
-	}
-
-	db.shed, err = shed.NewDB(path, shedOpts)
+	db.shed, err = shed.NewDB(path, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +216,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		return nil, err
 	}
 	schemaName, err := db.schemaName.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+	if err != nil && !errors.Is(err, shed.ErrNotFound) {
 		return nil, err
 	}
 	if schemaName == "" {
