@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	ErrNotFound = errors.New("storage: not found")
+	ErrNotFound = errors.New("database: not found")
 )
 
 // DB provides abstractions over badgerDB in order to
