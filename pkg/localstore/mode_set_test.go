@@ -29,7 +29,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tags"
 	tagtesting "github.com/ethersphere/bee/pkg/tags/testing"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // here we try to set a normal tag (that should be handled by pushsync)
@@ -111,7 +110,7 @@ func TestModeSetRemove(t *testing.T) {
 
 			t.Run("retrieve indexes", func(t *testing.T) {
 				for _, ch := range chunks {
-					wantErr := leveldb.ErrNotFound
+					wantErr := shed.ErrNotFound
 					_, err := db.retrievalDataIndex.Get(addressToItem(ch.Address()))
 					if !errors.Is(err, wantErr) {
 						t.Errorf("got error %v, want %v", err, wantErr)
@@ -130,7 +129,7 @@ func TestModeSetRemove(t *testing.T) {
 			})
 
 			for _, ch := range chunks {
-				newPullIndexTest(db, ch, 0, leveldb.ErrNotFound)(t)
+				newPullIndexTest(db, ch, 0, shed.ErrNotFound)(t)
 			}
 
 			t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))

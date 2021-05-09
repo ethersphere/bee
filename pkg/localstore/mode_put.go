@@ -25,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Put stores Chunks to database and depending
@@ -296,7 +295,7 @@ func (db *DB) setGC(batch *badger.Txn, item shed.Item) (gcSizeChange int64, err 
 			return 0, err
 		}
 		gcSizeChange--
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 		// the chunk is not accessed before
 	default:
 		return 0, err

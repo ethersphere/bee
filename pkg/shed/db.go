@@ -60,6 +60,11 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 	o.ValueThreshold = DefaultValueThreshold
 	o.ValueLogMaxEntries = DefaultValueLogMaxEntries
 	o.Logger = nil // Dont enable the badger logs
+
+	if path == "" {
+		o.InMemory = true
+	}
+
 	database, err := badger.Open(o)
 	if err != nil {
 		return nil, err
@@ -135,7 +140,8 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 		item, err := txn.Get(key)
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
-				return ErrNotFound
+
+				return nil
 			}
 			return err
 		}
@@ -237,12 +243,13 @@ func (db *DB) CountFrom(prefix []byte) (count int, err error) {
 // Iterate goes through the entries in the DB starting from the startKey and executing a
 // given function to see if it needs to stop the iteration or not. The skipStartKey indicates
 // weather to skip the first key or not.
-func (db *DB) Iterate(startKey []byte, skipStartKey bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error) {
+func (db *DB) Iterate(startKey []byte, skipStartKey bool, reverse bool, fn func(key []byte, value []byte) (stop bool, err error)) (err error) {
 
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
 		o := badger.DefaultIteratorOptions
 		o.PrefetchValues = true
 		o.PrefetchSize = 1024
+		o.Reverse = reverse
 		i := txn.NewIterator(o)
 		defer i.Close()
 

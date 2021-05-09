@@ -18,6 +18,7 @@ package shed
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	badger "github.com/dgraph-io/badger/v3"
@@ -301,7 +302,7 @@ type IterateOptions struct {
 	Reverse bool
 }
 
-// Iterate function iterates over keys of the Index.
+/// Iterate function iterates over keys of the Index.
 // If IterateOptions is nil, the iterations is over all keys.
 func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 	if options == nil {
@@ -311,6 +312,9 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 	prefix := append(f.prefix, options.Prefix...)
 	// start from the prefix
 	startKey := prefix
+	if options.Reverse {
+		startKey = append(startKey, 0xFF)
+	}
 	if options.StartFrom != nil {
 		// start from the provided StartFrom Item key value
 		startKey, err = f.encodeKeyFunc(*options.StartFrom)
@@ -319,18 +323,78 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 		}
 	}
 
-	err = f.db.Iterate(startKey, options.SkipStartFromItem, func(key []byte, value []byte) (stop bool, err error) {
-		item, err := f.itemFromKeyValue(key, value, prefix)
-		if err != nil {
-			if err == badger.ErrKeyNotFound {
-				return true, nil
+	err = f.db.bdb.View(func(txn *badger.Txn) error {
+
+		var opt = badger.DefaultIteratorOptions
+
+		opt.Reverse = options.Reverse
+		opt.Prefix = prefix
+
+		it := txn.NewIterator(opt)
+
+		defer it.Close()
+
+		// move the cursor to the start key
+		it.Seek(startKey)
+
+		if options.SkipStartFromItem && bytes.Equal(startKey, it.Item().Key()) {
+			// skip the start from Item if it is the first key
+			// and it is explicitly configured to skip it
+			it.Next()
+			if !it.Valid() {
+				return ErrNotFound
 			}
-			return false, err
 		}
-		stop, err = fn(item)
-		return stop, err
+		for ; it.Valid(); it.Next() {
+
+			item, err := f.itemFromIterator(*it, prefix)
+			if err != nil {
+				if errors.Is(err, ErrNotFound) {
+					break
+				}
+				return fmt.Errorf("get item from iterator: %w", err)
+			}
+			stop, err := fn(item)
+			if err != nil {
+				return fmt.Errorf("index iterator function: %w", err)
+			}
+			if stop {
+				break
+			}
+		}
+
+		return nil
+
 	})
+
 	return err
+
+}
+
+// itemFromIterator returns the Item from the current iterator position.
+// If the complete encoded key does not start with totalPrefix,
+// leveldb.ErrNotFound is returned. Value for totalPrefix must start with
+// Index prefix.
+func (f Index) itemFromIterator(it badger.Iterator, totalPrefix []byte) (i Item, err error) {
+	key := it.Item().Key()
+	if !bytes.HasPrefix(key, totalPrefix) {
+		return i, ErrNotFound
+	}
+	// create a copy of key byte slice not to share leveldb underlaying slice array
+	keyItem, err := f.decodeKeyFunc(append([]byte(nil), key...))
+	if err != nil {
+		return i, fmt.Errorf("decode key: %w", err)
+	}
+	// create a copy of value byte slice not to share leveldb underlaying slice array
+	value, err := it.Item().ValueCopy(nil)
+	if err != nil {
+		return i, err
+	}
+	valueItem, err := f.decodeValueFunc(keyItem, append([]byte(nil), value...))
+	if err != nil {
+		return i, fmt.Errorf("decode value: %w", err)
+	}
+	return keyItem.Merge(valueItem), nil
 }
 
 // bytesIncrement increments the last byte that is not 0xFF, and returns

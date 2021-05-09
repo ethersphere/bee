@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestModePutRequest validates ModePutRequest index values on the provided DB.
@@ -137,7 +137,7 @@ func TestModePutSync(t *testing.T) {
 
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
-				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+				newPinIndexTest(db, ch, shed.ErrNotFound)(t)
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			}
@@ -172,7 +172,7 @@ func TestModePutUpload(t *testing.T) {
 				newRetrieveIndexesTest(db, ch, wantTimestamp, 0)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
-				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+				newPinIndexTest(db, ch, shed.ErrNotFound)(t)
 			}
 		})
 	}

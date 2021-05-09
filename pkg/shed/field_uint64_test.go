@@ -18,8 +18,6 @@ package shed
 
 import (
 	"testing"
-
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // TestUint64Field validates put and get operations

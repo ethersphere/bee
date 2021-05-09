@@ -20,12 +20,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -154,7 +154,7 @@ func (s *Store) Put(_ context.Context, ch swarm.Chunk) (err error) {
 // It updates access and gc indexes by removing the previous
 // items from them and adding new items as keys of index entries
 // are changed.
-func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, err error) {
+func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err error) {
 	batch := s.db.GetBatch(true)
 
 	// Get the chunk data and storage timestamp.
@@ -180,7 +180,7 @@ func (s *Store) Get(_ context.Context, addr storage.Address) (c storage.Chunk, e
 		if err != nil {
 			return nil, fmt.Errorf("gc index delete in batch: %w", err)
 		}
-	case shed.ErrNotFound:
+	case errors.Is(err, shed.ErrNotFound):
 	// Access timestamp is not found. Do not do anything.
 	// This is the firs get request.
 	default:

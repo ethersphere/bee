@@ -24,8 +24,6 @@ import (
 	"sort"
 	"testing"
 	"time"
-
-	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // Index functions for the index that is used in tests in this file.
@@ -576,7 +574,7 @@ func TestIndex_IterateReverse(t *testing.T) {
 			Data:    []byte("data1"),
 		},
 	}
-	batch := new(leveldb.Batch)
+	batch := db.GetBatch(true)
 	for _, i := range items {
 		err = index.PutInBatch(batch, i)
 		if err != nil {
@@ -600,6 +598,8 @@ func TestIndex_IterateReverse(t *testing.T) {
 	sort.SliceStable(items, func(i, j int) bool {
 		return bytes.Compare(items[i].Address, items[j].Address) < 0
 	})
+
+	time.Sleep(1 * time.Second)
 
 	t.Run("all", func(t *testing.T) {
 		i := len(items) - 1
@@ -975,7 +975,7 @@ func TestIndex_IterateReverse_withPrefix(t *testing.T) {
 		{Address: []byte("want-hash-09"), Data: []byte("data89")},
 		{Address: []byte("z-skip-hash-10"), Data: []byte("data90")},
 	}
-	batch := new(leveldb.Batch)
+	batch := db.GetBatch(true)
 	for _, i := range allItems {
 		err = index.PutInBatch(batch, i)
 		if err != nil {
