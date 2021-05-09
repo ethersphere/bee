@@ -337,7 +337,13 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 		// move the cursor to the start key
 		it.Seek(startKey)
 
-		if options.SkipStartFromItem && bytes.Equal(startKey, it.Item().Key()) {
+		if !it.Valid() {
+			return ErrNotFound
+		}
+
+		item := it.Item()
+
+		if options.SkipStartFromItem && bytes.Equal(startKey, item.Key()) {
 			// skip the start from Item if it is the first key
 			// and it is explicitly configured to skip it
 			it.Next()
@@ -376,7 +382,10 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 // leveldb.ErrNotFound is returned. Value for totalPrefix must start with
 // Index prefix.
 func (f Index) itemFromIterator(it badger.Iterator, totalPrefix []byte) (i Item, err error) {
-	key := it.Item().Key()
+
+	item := it.Item()
+
+	key := item.Key()
 	if !bytes.HasPrefix(key, totalPrefix) {
 		return i, ErrNotFound
 	}
@@ -386,7 +395,7 @@ func (f Index) itemFromIterator(it badger.Iterator, totalPrefix []byte) (i Item,
 		return i, fmt.Errorf("decode key: %w", err)
 	}
 	// create a copy of value byte slice not to share leveldb underlaying slice array
-	value, err := it.Item().ValueCopy(nil)
+	value, err := item.ValueCopy(nil)
 	if err != nil {
 		return i, err
 	}

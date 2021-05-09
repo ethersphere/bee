@@ -121,10 +121,10 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 			db.metrics.GetFailCounter.Inc()
 			return err
 		}
-		return item.Value(func(val []byte) error {
-			value = val
-			return nil
-		})
+
+		value, err = item.ValueCopy(nil)
+
+		return err
 	})
 	if err == nil {
 		db.metrics.GetCounter.Inc()
@@ -137,7 +137,7 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 func (db *DB) Has(key []byte) (yes bool, err error) {
 	yes = false
 	err = db.bdb.View(func(txn *badger.Txn) (err error) {
-		item, err := txn.Get(key)
+		_, err = txn.Get(key)
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
 
@@ -145,17 +145,14 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 			}
 			return err
 		}
-		return item.Value(func(val []byte) error {
-			yes = true
-			db.metrics.HasCounter.Inc()
-			return nil
-		})
+		yes = true
+		return nil
 	})
 	if err != nil {
 		db.metrics.HasFailCounter.Inc()
 		return false, err
 	}
-
+	db.metrics.HasCounter.Inc()
 	return yes, nil
 }
 
