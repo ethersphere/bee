@@ -67,8 +67,6 @@ func (i *addressIterator) Next(addr swarm.Address) error {
 	return nil
 }
 
-var _ Traverser = (*Service)(nil)
-
 func TestTraversalBytes(t *testing.T) {
 	testCases := []struct {
 		dataSize              int
