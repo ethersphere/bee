@@ -350,7 +350,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				allowedRetries--
 			}
 			if err != nil {
-				logger.Debugf("could not push to peer %s: %v", peer.String(), err)
+				logger.Debugf("could not push to peer %s: %v", peer, err)
 				resultC <- &pushResult{err: err}
 				return
 			}
@@ -381,7 +381,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	// Reserve to see whether we can make the request
 	err := ps.accounting.Reserve(ctx, peer, receiptPrice)
 	if err != nil {
-		return nil, false, fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
+		return nil, false, fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 	}
 	defer ps.accounting.Release(peer, receiptPrice)
 
@@ -393,7 +393,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, true, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
+		return nil, true, fmt.Errorf("new stream for peer %s: %w", peer, err)
 	}
 	defer streamer.Close()
 
@@ -404,7 +404,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		Stamp:   stamp,
 	}); err != nil {
 		_ = streamer.Reset()
-		return nil, true, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address().String(), peer.String(), err)
+		return nil, true, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address(), peer, err)
 	}
 
 	ps.metrics.TotalSent.Inc()
@@ -421,12 +421,12 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	var receipt pb.Receipt
 	if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
 		_ = streamer.Reset()
-		return nil, true, fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address().String(), peer.String(), err)
+		return nil, true, fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address(), peer, err)
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
 		// if the receipt is invalid, try to push to the next peer
-		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address().String(), peer.String())
+		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
 	err = ps.accounting.Credit(peer, receiptPrice)
