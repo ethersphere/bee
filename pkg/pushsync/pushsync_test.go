@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"sync"
 	"testing"
