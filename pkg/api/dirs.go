@@ -161,7 +161,7 @@ func storeDir(
 			}
 		}
 
-		fileReference, err := p(ctx, fileInfo.Reader, fileInfo.Size)
+		fileReference, err := p(ctx, fileInfo.Reader)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
