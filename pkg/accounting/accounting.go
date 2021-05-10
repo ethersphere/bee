@@ -674,11 +674,17 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, 
 
 	accountingPeer.refreshOngoingLock.Unlock()
 
+	a.logger.Info("refreshment sent 1")
+
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	a.logger.Info("refreshment sent 2")
+
 	accountingPeer.refreshOngoing = false
 	accountingPeer.refreshTimestamp = timestamp
+
+	a.logger.Info("refreshment sent 3")
 
 	if receivedError != nil {
 		a.logger.Warningf("accouting: refresh failure %v", receivedError)

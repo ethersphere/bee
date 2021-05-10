@@ -343,6 +343,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		// disconnect peer
 		err = s.p2pService.Blocklist(peer, 10000*time.Hour)
 		if err != nil {
+			s.logger.Info("pseudosettle blocklist")
 			err = ErrDisconnectAllowanceCheckFailed
 		}
 		return
