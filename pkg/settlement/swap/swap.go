@@ -114,7 +114,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	var err error
 	defer func() {
 		if err != nil {
-			s.accountingAPI.NotifyPaymentSent(peer, nil, err)
+			s.accountingAPI.NotifyPaymentSent(peer, amount, err)
 		}
 	}()
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)

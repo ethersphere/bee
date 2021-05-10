@@ -288,6 +288,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
 	if extraAmount.Cmp(a.refreshRate) > 0 {
 		balance.paymentOngoing = true
+		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
 		a.logger.Error("sending real payment")
 		go a.payFunction(context.Background(), peer, extraAmount)
 	}
@@ -644,6 +645,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentOngoing = false
+	accountingPeer.shadowReservedBalance.Sub(accountingPeer.shadowReservedBalance, amount)
 
 	if receivedError != nil {
 		a.logger.Warningf("accouting: payment failure %v", receivedError)
