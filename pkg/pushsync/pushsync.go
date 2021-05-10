@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -321,7 +322,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 	var (
 		skipPeers      []swarm.Address
-		blockedPeers   []swarm.Address
 		allowedRetries = 1
 		resultC        = make(chan *pushResult)
 		includeSelf    = ps.isFullNode
@@ -333,24 +333,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 	}
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
-		skipCheck := false
-		dontInclude := append(skipPeers, blockedPeers...)
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, dontInclude...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipPeers...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			// If there are blocked peers in this request context, and we don't find
 			// new peers, we will optimistically try the blockedPeers again
-			if len(blockedPeers) == 0 {
-				return nil, fmt.Errorf("closest peer: %w", err)
-			}
-			peer, blockedPeers = blockedPeers[0], blockedPeers[1:]
-			skipCheck = true
+			return nil, fmt.Errorf("closest peer: %w", err)
 		}
-		if !ps.failedRequests.Useful(peer, ch.Address()) && !skipCheck {
-			blockedPeers = append(blockedPeers, peer)
+		if !ps.failedRequests.Useful(peer, ch.Address()) {
+			skipPeers = append(skipPeers, peer)
 			continue
 		}
 		skipPeers = append(skipPeers, peer)
@@ -467,12 +461,13 @@ type pushResult struct {
 const failureThreshold = 3
 
 type failedRequestCache struct {
+	mtx   sync.RWMutex
 	cache *lru.Cache
 }
 
 func newFailedRequestCache() *failedRequestCache {
 	// not necessary to check error here if we use constant value
-	cache, _ := lru.New(128)
+	cache, _ := lru.New(10000)
 	return &failedRequestCache{cache: cache}
 }
 
@@ -481,6 +476,9 @@ func keyForReq(peer swarm.Address, chunk swarm.Address) string {
 }
 
 func (f *failedRequestCache) RecordFailure(peer swarm.Address, chunk swarm.Address) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+
 	val, found := f.cache.Get(keyForReq(peer, chunk))
 	if !found {
 		f.cache.Add(keyForReq(peer, chunk), 1)
@@ -491,11 +489,15 @@ func (f *failedRequestCache) RecordFailure(peer swarm.Address, chunk swarm.Addre
 }
 
 func (f *failedRequestCache) RecordSuccess(peer swarm.Address, chunk swarm.Address) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
 	f.cache.Remove(keyForReq(peer, chunk))
 }
 
 func (f *failedRequestCache) Useful(peer swarm.Address, chunk swarm.Address) bool {
+	f.mtx.RLock()
 	val, found := f.cache.Get(keyForReq(peer, chunk))
+	f.mtx.RUnlock()
 	if !found {
 		return true
 	}
