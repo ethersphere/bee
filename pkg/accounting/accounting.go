@@ -286,7 +286,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	maximumPossibleRefreshment := new(big.Int).Mul(big.NewInt(now-balance.refreshTimestamp), a.refreshRate)
 
 	extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
-	if extraAmount.Cmp(a.refreshRate) > 0 {
+	if extraAmount.Cmp(a.refreshRate) > 0 && !balance.paymentOngoing {
 		balance.paymentOngoing = true
 		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
 		a.logger.Error("sending real payment")
