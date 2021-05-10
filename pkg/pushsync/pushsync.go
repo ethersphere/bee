@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -26,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/hashicorp/golang-lru"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -69,9 +71,10 @@ type PushSync struct {
 	validStamp     func(swarm.Chunk, []byte) (swarm.Chunk, error)
 	signer         crypto.Signer
 	isFullNode     bool
+	failedRequests *failedRequestCache
 }
 
-var timeToLive = 20 * time.Second                     // request time to live
+var defaultTTL = 20 * time.Second                     // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
@@ -91,6 +94,7 @@ func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storag
 		tracer:         tracer,
 		validStamp:     validStamp,
 		signer:         signer,
+		failedRequests: newFailedRequestCache(),
 	}
 	return ps
 }
@@ -112,7 +116,7 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 // If the current node is the destination, it stores in the local store and sends a receipt.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
-	ctx, cancel := context.WithTimeout(ctx, timeToLive)
+	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
 	defer func() {
 		if err != nil {
@@ -317,6 +321,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 	var (
 		skipPeers      []swarm.Address
+		blockedPeers   []swarm.Address
 		allowedRetries = 1
 		resultC        = make(chan *pushResult)
 		includeSelf    = ps.isFullNode
@@ -328,18 +333,30 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 	}
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
+		skipCheck := false
+		dontInclude := append(skipPeers, blockedPeers...)
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipPeers...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, dontInclude...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
-			return nil, fmt.Errorf("closest peer: %w", err)
+			// If there are blocked peers in this request context, and we don't find
+			// new peers, we will optimistically try the blockedPeers again
+			if len(blockedPeers) == 0 {
+				return nil, fmt.Errorf("closest peer: %w", err)
+			}
+			peer, blockedPeers = blockedPeers[0], blockedPeers[1:]
+			skipCheck = true
+		}
+		if !ps.failedRequests.Useful(peer, ch.Address()) && !skipCheck {
+			blockedPeers = append(blockedPeers, peer)
+			continue
 		}
 		skipPeers = append(skipPeers, peer)
 
 		go func(peer swarm.Address, ch swarm.Chunk) {
-			ctxd, canceld := context.WithTimeout(ctx, timeToLive)
+			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 			defer canceld()
 
 			r, attempted, err := ps.pushPeer(ctxd, peer, ch)
@@ -351,7 +368,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			}
 			if err != nil {
 				logger.Debugf("could not push to peer %s: %v", peer, err)
-				resultC <- &pushResult{err: err}
+				resultC <- &pushResult{err: err, attempted: attempted}
 				return
 			}
 			select {
@@ -363,7 +380,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		select {
 		case r := <-resultC:
 			if r.receipt != nil {
+				ps.failedRequests.RecordSuccess(peer, ch.Address())
 				return r.receipt, nil
+			}
+			if r.err != nil && r.attempted {
+				ps.failedRequests.RecordFailure(peer, ch.Address())
 			}
 			// proceed to retrying if applicable
 		case <-ctx.Done():
@@ -438,6 +459,48 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 }
 
 type pushResult struct {
-	receipt *pb.Receipt
-	err     error
+	receipt   *pb.Receipt
+	err       error
+	attempted bool
+}
+
+const failureThreshold = 3
+
+type failedRequestCache struct {
+	cache *lru.Cache
+}
+
+func newFailedRequestCache() *failedRequestCache {
+	// not necessary to check error here if we use constant value
+	cache, _ := lru.New(128)
+	return &failedRequestCache{cache: cache}
+}
+
+func keyForReq(peer swarm.Address, chunk swarm.Address) string {
+	return strings.Join([]string{peer.String(), chunk.String()}, "/")
+}
+
+func (f *failedRequestCache) RecordFailure(peer swarm.Address, chunk swarm.Address) {
+	val, found := f.cache.Get(keyForReq(peer, chunk))
+	if !found {
+		f.cache.Add(keyForReq(peer, chunk), 1)
+		return
+	}
+	count := val.(int) + 1
+	f.cache.Add(keyForReq(peer, chunk), count)
+}
+
+func (f *failedRequestCache) RecordSuccess(peer swarm.Address, chunk swarm.Address) {
+	f.cache.Remove(keyForReq(peer, chunk))
+}
+
+func (f *failedRequestCache) Useful(peer swarm.Address, chunk swarm.Address) bool {
+	val, found := f.cache.Get(keyForReq(peer, chunk))
+	if !found {
+		return true
+	}
+	if val.(int) < failureThreshold {
+		return true
+	}
+	return false
 }

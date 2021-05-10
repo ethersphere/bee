@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -432,6 +433,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 					defer lock.Unlock()
 					if fail {
 						fail = false
+						defer stream.Close()
 						return errors.New("peer not reachable")
 					}
 
@@ -854,6 +856,236 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 			t.Fatalf("receipt address mismatch")
 		}
 	}
+}
+
+func TestFailureRequestCache(t *testing.T) {
+	cache := pushsync.FailedRequestCache()
+
+	peer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	chunk := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+
+	if !cache.Useful(peer, chunk) {
+		t.Fatal("incorrect initial cache state")
+	}
+
+	cache.RecordFailure(peer, chunk)
+
+	if !cache.Useful(peer, chunk) {
+		t.Fatal("incorrect cache state after first failure")
+	}
+
+	cache.RecordFailure(peer, chunk)
+	cache.RecordFailure(peer, chunk)
+
+	if cache.Useful(peer, chunk) {
+		t.Fatal("peer should no longer be useful")
+	}
+
+	cache.RecordSuccess(peer, chunk)
+
+	if !cache.Useful(peer, chunk) {
+		t.Fatal("incorrect cache state after success")
+	}
+}
+
+func TestPushChunkToClosestSkipFailed(t *testing.T) {
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+
+	peer1 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("9000000000000000000000000000000000000000000000000000000000000000")
+
+	// peer is the node responding to the chunk receipt message
+	// mock should return ErrWantSelf since there's no one to forward to
+	psPeer1, storerPeer1, _, peerAccounting1 := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer1.Close()
+
+	psPeer2, storerPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer2.Close()
+
+	psPeer3, storerPeer3, _, peerAccounting3 := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer3.Close()
+
+	psPeer4, storerPeer4, _, peerAccounting4 := createPushSyncNode(
+		t, peer4, defaultPrices, nil, nil, defaultSigner,
+		mock.WithClosestPeerErr(topology.ErrWantSelf),
+		mock.WithIsWithinFunc(func(_ swarm.Address) bool { return true }),
+	)
+	defer storerPeer4.Close()
+
+	var (
+		fail  = true
+		fail4 = false
+		lock  sync.Mutex
+	)
+
+	recorder := streamtest.New(
+		streamtest.WithProtocolsAndPeers(
+			map[string]p2p.ProtocolSpec{
+				peer1.String(): psPeer1.Protocol(),
+				peer2.String(): psPeer2.Protocol(),
+				peer3.String(): psPeer3.Protocol(),
+				peer4.String(): psPeer4.Protocol(),
+			},
+		),
+		streamtest.WithStreamError(
+			func(addr swarm.Address, _, _, _ string) error {
+				lock.Lock()
+				defer lock.Unlock()
+				if fail && addr.String() != peer4.String() {
+					return errors.New("peer not reachable")
+				}
+				if addr.String() == peer4.String() && fail4 {
+					return errors.New("peer no longer reachable")
+				}
+
+				return nil
+			},
+		),
+		streamtest.WithBaseAddr(pivotNode),
+	)
+
+	psPivot, storerPivot, pivotTags, pivotAccounting := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner, mock.WithPeers(peer1, peer2, peer3, peer4))
+	defer storerPivot.Close()
+
+	ta, err := pivotTags.Create(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk = chunk.WithTagID(ta.Uid)
+
+	ta1, err := pivotTags.Get(ta.Uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ta1.Get(tags.StateSent) != 0 || ta1.Get(tags.StateSynced) != 0 {
+		t.Fatalf("tags initialization error")
+	}
+
+	for i := 0; i < 3; i++ {
+		_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+		if err == nil {
+			t.Fatal("expected error while pushing")
+		}
+	}
+
+	// Trigger the sending of chunk to the closest node
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer4, recorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the incoming receipt message
+	waitOnRecordAndTest(t, peer4, recorder, chunk.Address(), nil)
+
+	ta2, err := pivotTags.Get(ta.Uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// out of 4, 3 peers should return accouting error. So we should have effectively
+	// sent only 1 msg
+	if ta2.Get(tags.StateSent) != 1 {
+		t.Fatalf("tags error")
+	}
+
+	balance, err := pivotAccounting.Balance(peer4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance.Int64() != -int64(fixedPrice) {
+		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
+	}
+
+	balance4, err := peerAccounting4.Balance(pivotNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance4.Int64() != int64(fixedPrice) {
+		t.Fatalf("unexpected balance on peer4. want %d got %d", int64(fixedPrice), balance4)
+	}
+
+	for _, p := range []struct {
+		addr swarm.Address
+		acct accounting.Interface
+	}{
+		{peer1, peerAccounting1},
+		{peer2, peerAccounting2},
+		{peer3, peerAccounting3},
+	} {
+		bal, err := p.acct.Balance(p.addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if bal.Int64() != 0 {
+			t.Fatalf("unexpected balance on %s. want %d got %d", p.addr, 0, bal)
+		}
+	}
+
+	lock.Lock()
+	fail, fail4 = false, true
+	lock.Unlock()
+
+	// Trigger the sending of chunk to the closest node
+	receipt, err = psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the incoming receipt message
+	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), nil)
+
+	ta3, err := pivotTags.Get(ta.Uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// out of 4, 3 peers should return accouting error. So we should have effectively
+	// sent only 1 msg
+	if ta3.Get(tags.StateSent) != 2 {
+		t.Fatalf("tags error")
+	}
+
+	balance, err = pivotAccounting.Balance(peer1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance.Int64() != -int64(fixedPrice) {
+		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
+	}
+
+	balance1, err := peerAccounting1.Balance(pivotNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance1.Int64() != int64(fixedPrice) {
+		t.Fatalf("unexpected balance on peer1. want %d got %d", int64(fixedPrice), balance1)
+	}
+
 }
 
 func chanFunc(c chan<- struct{}) func(swarm.Chunk) {
