@@ -226,7 +226,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
-	return s.accountingAPI.NotifyPaymentReceived(p.Address, paymentAmount)
+	return s.accountingAPI.NotifyRefreshmentReceived(p.Address, paymentAmount)
 }
 
 // Pay initiates a payment to the given peer

@@ -568,6 +568,37 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 	return nil
 }
 
+// NotifyPayment is called by Settlement when we receive a payment.
+func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+
+	currentBalance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return err
+		}
+	}
+
+	// if current balance is positive, let's make a partial credit to
+	nextBalance := new(big.Int).Sub(currentBalance, amount)
+
+	// Don't allow a payment to put us into debt
+	// This is to prevent another node tricking us into settling by settling
+	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
+
+	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	return nil
+}
+
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
 func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
 	accountingPeer := a.getAccountingPeer(peer)
