@@ -283,6 +283,10 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
+	if checkAllowance.Cmp(amount) > 0 {
+		checkAllowance.Set(amount)
+	}
+
 	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
 	w, r := protobuf.NewWriterAndReader(stream)
 
