@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -15,6 +16,12 @@ type Matcher struct {
 	signer  types.Signer
 }
 
+var (
+	ErrTransactionNotFound = errors.New("transaction not found")
+	ErrTransactionPending  = errors.New("transaction in pending status")
+	ErrTransactionSender   = errors.New("transaction sender")
+)
+
 func NewMatcher(backend Backend, signer types.Signer) *Matcher {
 	return &Matcher{
 		backend: backend,
@@ -27,16 +34,16 @@ func (m Matcher) Matches(ctx context.Context, tx string, networkID uint64, sende
 
 	nTx, isPending, err := m.backend.TransactionByHash(ctx, incomingTx)
 	if err != nil {
-		return false, err //TODO wrap error
+		return false, fmt.Errorf("%v: %w", err, ErrTransactionNotFound)
 	}
 
 	if isPending {
-		return false, fmt.Errorf("transaction still pending")
+		return false, ErrTransactionPending
 	}
 
 	sender, err := types.Sender(m.signer, nTx)
 	if err != nil {
-		return false, err //TODO wrap error
+		return false, fmt.Errorf("%v: %w", err, ErrTransactionSender)
 	}
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID)
