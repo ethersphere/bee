@@ -237,7 +237,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	var err error
 	defer func() {
 		if err != nil {
-			s.accountingAPI.NotifyPaymentSent(peer, nil, err)
+			s.accountingAPI.NotifyRefreshmentSent(peer, nil, 0, err)
 		}
 	}()
 
@@ -357,7 +357,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
-	s.accountingAPI.NotifyPaymentSent(peer, acceptedAmount, nil)
+	s.accountingAPI.NotifyRefreshmentSent(peer, acceptedAmount, lastTime.CheckTimestamp, nil)
 	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 }
