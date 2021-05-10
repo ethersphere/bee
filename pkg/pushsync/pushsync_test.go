@@ -859,32 +859,46 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 
 func TestFailureRequestCache(t *testing.T) {
 	cache := pushsync.FailedRequestCache()
-
 	peer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
 	chunk := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 
-	if !cache.Useful(peer, chunk) {
-		t.Fatal("incorrect initial cache state")
-	}
+	t.Run("not useful after threshold", func(t *testing.T) {
+		if !cache.Useful(peer, chunk) {
+			t.Fatal("incorrect initial cache state")
+		}
 
-	cache.RecordFailure(peer, chunk)
+		cache.RecordFailure(peer, chunk)
+		cache.RecordFailure(peer, chunk)
+		cache.RecordFailure(peer, chunk)
 
-	if !cache.Useful(peer, chunk) {
-		t.Fatal("incorrect cache state after first failure")
-	}
+		if cache.Useful(peer, chunk) {
+			t.Fatal("peer should no longer be useful")
+		}
+	})
 
-	cache.RecordFailure(peer, chunk)
-	cache.RecordFailure(peer, chunk)
+	t.Run("reset after success", func(t *testing.T) {
+		cache.RecordSuccess(peer, chunk)
+		if !cache.Useful(peer, chunk) {
+			t.Fatal("incorrect cache state after success")
+		}
 
-	if cache.Useful(peer, chunk) {
-		t.Fatal("peer should no longer be useful")
-	}
+		cache.RecordFailure(peer, chunk)
 
-	cache.RecordSuccess(peer, chunk)
+		if !cache.Useful(peer, chunk) {
+			t.Fatal("incorrect cache state after first failure")
+		}
 
-	if !cache.Useful(peer, chunk) {
-		t.Fatal("incorrect cache state after success")
-	}
+		cache.RecordSuccess(peer, chunk)
+		// success should remove the peer from failed cache. We should have swallowed
+		// the previous failed request and the peer should still be useful after
+		// more failures
+		cache.RecordFailure(peer, chunk)
+		cache.RecordFailure(peer, chunk)
+
+		if !cache.Useful(peer, chunk) {
+			t.Fatal("incorrect cache state after first failure")
+		}
+	})
 }
 
 func TestPushChunkToClosestSkipFailed(t *testing.T) {
