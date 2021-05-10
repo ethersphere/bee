@@ -338,8 +338,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
-			// If there are blocked peers in this request context, and we don't find
-			// new peers, we will optimistically try the blockedPeers again
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
 		if !ps.failedRequests.Useful(peer, ch.Address()) {
