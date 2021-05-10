@@ -36,4 +36,5 @@ type AccountingAPI interface {
 	PeerDebt(peer swarm.Address) (*big.Int, error)
 	NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error
 	NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error)
+	NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, timestamp int64, receivedError error)
 }
