@@ -472,7 +472,7 @@ func newFailedRequestCache() *failedRequestCache {
 }
 
 func keyForReq(peer swarm.Address, chunk swarm.Address) string {
-	return strings.Join([]string{peer.String(), chunk.String()}, "/")
+	return fmt.Sprintf("%s/%s", peer, chunk)
 }
 
 func (f *failedRequestCache) RecordFailure(peer swarm.Address, chunk swarm.Address) {
