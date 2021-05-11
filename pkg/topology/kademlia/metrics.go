@@ -18,10 +18,15 @@ import (
 // necessary for identification of the values stored in persistent store.
 type peerMetricsKeyPrefix string
 
-// Enumerates persistent metrics prefix keys.
+// peerConnectionDirection represents peer connection direction.
+type peerConnectionDirection string
+
 const (
 	peerLastSeen                peerMetricsKeyPrefix = "peer-last-seen"
 	peerTotalConnectionDuration peerMetricsKeyPrefix = "peer-total-connection-duration"
+
+	peerConnectionDirectionInbound  peerConnectionDirection = "inbound"
+	peerConnectionDirectionOutbound peerConnectionDirection = "outbound"
 )
 
 // peerMetricsKey helps with definition of the peer metrics keys.
@@ -52,7 +57,7 @@ type peerMetricsOp func(*peerMetrics) error
 // operation will panics if the given time is before the unix epoch.
 func setLastSeen(time time.Time) peerMetricsOp {
 	return func(m *peerMetrics) error {
-		t := time.Unix()
+		t := time.UnixNano()
 		if t < 0 {
 			panic(fmt.Errorf("time before unix epoch: %s", time))
 		}
@@ -68,7 +73,7 @@ func setConnectionTotalDuration(d time.Duration) peerMetricsOp {
 		if d < 0 {
 			panic(fmt.Errorf("negative duration: %d", d))
 		}
-		return m.lastSeen.Put(uint64(d))
+		return m.connTotalDuration.Put(uint64(d))
 	}
 }
 
@@ -91,12 +96,8 @@ func addSessionConnectionDuration(d time.Duration) peerMetricsOp {
 }
 
 // setSessionConnectionDirection sets the session connection direction to the
-// given value. The specified values is as follows:
-//	d > 0  - connection is outbound
-//	d == 0 - connection direction is unspecified.
-//	d < 0  - connection is inbound
-//
-func setSessionConnectionDirection(d int) peerMetricsOp {
+// given value.
+func setSessionConnectionDirection(d peerConnectionDirection) peerMetricsOp {
 	return func(m *peerMetrics) error {
 		m.sessionConnDirection = d
 		return nil
@@ -105,11 +106,11 @@ func setSessionConnectionDirection(d int) peerMetricsOp {
 
 // peerMetricsSnapshot represents snapshot of peer's metrics.
 type peerMetricsSnapshot struct {
-	LastSeen                   time.Time     `json:"lastSeen"`
-	ConnectionDuration         time.Duration `json:"connectionDuration"`
-	SessionConnectionRetry     int           `json:"sessionConnectionRetry"`
-	SessionConnectionDuration  time.Duration `json:"sessionConnectionDuration"`
-	SessionConnectionDirection int           `json:"sessionConnectionDirection"` // TODO direction enum.
+	LastSeen                   time.Time               `json:"lastSeen"`
+	ConnectionTotalDuration    time.Duration           `json:"connectionTotalDuration"`
+	SessionConnectionRetry     int                     `json:"sessionConnectionRetry"`
+	SessionConnectionDuration  time.Duration           `json:"sessionConnectionDuration"`
+	SessionConnectionDirection peerConnectionDirection `json:"sessionConnectionDirection"`
 }
 
 // peerMetrics represents a collection of peer metrics
@@ -121,7 +122,7 @@ type peerMetrics struct {
 	// In memory.
 	sessionConnRetry     int
 	sessionConnDuration  time.Duration
-	sessionConnDirection int
+	sessionConnDirection peerConnectionDirection
 }
 
 // newPeerMetricsCollector is a convenient constructor
@@ -141,10 +142,10 @@ type peerMetricsCollector struct {
 	data map[string]*peerMetrics
 }
 
-// collect collects a set of metrics for peer specified by the given address.
+// metrics records a set of metrics for peer specified by the given address.
 // The execution doesn't stop if some metric operation returns an error, it
 // rather continues and all the execution errors are returned.
-func (mc *peerMetricsCollector) collect(addr swarm.Address, mop ...peerMetricsOp) error {
+func (mc *peerMetricsCollector) metrics(addr swarm.Address, mop ...peerMetricsOp) error {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
 
@@ -207,8 +208,8 @@ func (mc *peerMetricsCollector) snapshot(addresses ...swarm.Address) (map[string
 		}
 
 		snapshot[addr] = &peerMetricsSnapshot{
-			LastSeen:                   time.Unix(int64(ls), 0),
-			ConnectionDuration:         time.Duration(cn),
+			LastSeen:                   time.Unix(0, int64(ls)),
+			ConnectionTotalDuration:    time.Duration(cn),
 			SessionConnectionRetry:     pm.sessionConnRetry,
 			SessionConnectionDuration:  pm.sessionConnDuration,
 			SessionConnectionDirection: pm.sessionConnDirection,
