@@ -129,6 +129,10 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.settlementsHandler),
 	})
 
+	router.Handle("/pseudo", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.settlementsHandlerPseudo),
+	})
+
 	router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerSettlementsHandler),
 	})
