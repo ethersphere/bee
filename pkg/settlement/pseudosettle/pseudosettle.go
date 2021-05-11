@@ -194,7 +194,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	if allowance.Cmp(attemptedAmount) < 0 {
 		paymentAmount = allowance
-		s.logger.Trace("pseudosettle accepting reduced payment from peer %v of %d", p.Address, paymentAmount)
+		s.logger.Tracef("pseudosettle accepting reduced payment from peer %v of %d", p.Address, paymentAmount)
 	} else {
 		s.logger.Tracef("pseudosettle accepting payment message from peer %v of %d", p.Address, paymentAmount)
 	}
