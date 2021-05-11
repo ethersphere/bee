@@ -464,7 +464,7 @@ type failedRequestCache struct {
 
 func newFailedRequestCache() *failedRequestCache {
 	// not necessary to check error here if we use constant value
-	cache, _ := lru.New(10000)
+	cache, _ := lru.New(1000)
 	return &failedRequestCache{cache: cache}
 }
 
@@ -498,8 +498,5 @@ func (f *failedRequestCache) Useful(peer swarm.Address, chunk swarm.Address) boo
 	if !found {
 		return true
 	}
-	if val.(int) < failureThreshold {
-		return true
-	}
-	return false
+	return val.(int) < failureThreshold
 }

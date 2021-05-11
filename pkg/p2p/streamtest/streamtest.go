@@ -45,7 +45,7 @@ func WithProtocols(protocols ...p2p.ProtocolSpec) Option {
 	})
 }
 
-func WithProtocolsAndPeers(protocolsWithPeers map[string]p2p.ProtocolSpec) Option {
+func WithPeerProtocols(protocolsWithPeers map[string]p2p.ProtocolSpec) Option {
 	return optionFunc(func(r *Recorder) {
 		r.protocolsWithPeers = protocolsWithPeers
 	})

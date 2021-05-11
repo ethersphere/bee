@@ -432,7 +432,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 					defer lock.Unlock()
 					if fail {
 						fail = false
-						defer stream.Close()
+						stream.Close()
 						return errors.New("peer not reachable")
 					}
 
@@ -868,7 +868,15 @@ func TestFailureRequestCache(t *testing.T) {
 		}
 
 		cache.RecordFailure(peer, chunk)
+		if !cache.Useful(peer, chunk) {
+			t.Fatal("incorrect cache state after 1st failure")
+		}
+
 		cache.RecordFailure(peer, chunk)
+		if !cache.Useful(peer, chunk) {
+			t.Fatal("incorrect cache state after 2nd failure")
+		}
+
 		cache.RecordFailure(peer, chunk)
 
 		if cache.Useful(peer, chunk) {
@@ -896,7 +904,7 @@ func TestFailureRequestCache(t *testing.T) {
 		cache.RecordFailure(peer, chunk)
 
 		if !cache.Useful(peer, chunk) {
-			t.Fatal("incorrect cache state after first failure")
+			t.Fatal("peer should still be useful after intermittent success")
 		}
 	})
 }
@@ -938,7 +946,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	)
 
 	recorder := streamtest.New(
-		streamtest.WithProtocolsAndPeers(
+		streamtest.WithPeerProtocols(
 			map[string]p2p.ProtocolSpec{
 				peer1.String(): psPeer1.Protocol(),
 				peer2.String(): psPeer2.Protocol(),
