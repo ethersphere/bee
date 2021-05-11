@@ -499,6 +499,14 @@ func (s *Syncer) Close() error {
 		defer close(cc)
 		s.wg.Wait()
 	}()
+
+	// cancel all contexts
+	s.ruidMtx.Lock()
+	for _, c := range s.ruidCtx {
+		c()
+	}
+	s.ruidMtx.Unlock()
+
 	select {
 	case <-cc:
 	case <-time.After(10 * time.Second):
