@@ -496,7 +496,8 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 			if attempts >= maxBootnodeAttempts {
 				return true, nil
 			}
-			bzzAddress, err := k.p2p.Connect(ctx, addr)
+			bzzAddress, isFull, err := k.p2p.Connect(ctx, addr)
+
 			attempts++
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
@@ -506,6 +507,11 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 				}
 				k.logger.Debugf("connect to bootnode fail: %v", err)
 				return false, nil
+			}
+
+			if !isFull {
+				_ = k.p2p.Disconnect(bzzAddress.Overlay)
+				return false, p2p.ErrDialLightNode
 			}
 
 			if err := k.connected(ctx, bzzAddress.Overlay); err != nil {
@@ -617,7 +623,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	k.logger.Infof("attempting to connect to peer %s", peer)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	i, err := k.p2p.Connect(ctx, ma)
+	i, isFull, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			if !i.Overlay.Equal(peer) {
@@ -655,6 +661,12 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 		k.waitNextMu.Unlock()
 		return err
+	}
+
+	if !isFull {
+		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(i.Overlay)
+		return addressbook.ErrPruneEntry
 	}
 
 	if !i.Overlay.Equal(peer) {

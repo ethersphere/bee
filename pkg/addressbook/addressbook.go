@@ -18,7 +18,10 @@ const keyPrefix = "addressbook_entry_"
 
 var _ Interface = (*store)(nil)
 
-var ErrNotFound = errors.New("addressbook: not found")
+var (
+	ErrNotFound   = errors.New("addressbook: not found")
+	ErrPruneEntry = errors.New("addressbook: prune entry")
+)
 
 // Interface is the AddressBook interface.
 type Interface interface {
