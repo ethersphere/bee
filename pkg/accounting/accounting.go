@@ -254,10 +254,15 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	// if no payment ongoing, then timesettle
 	// if there is already a timesettle ongoing
-
-	if balance.refreshOngoing {
+	if balance.refreshOngoing && balance.paymentOngoing {
 		return nil
 	}
+
+	// if either type of payment not ongoing, then
+	// if there is already a timesettle ongoing
+
+	now := time.Now().Unix()
+	timeElapsed := big.NewInt(now - balance.refreshTimestamp)
 
 	oldBalance, err := a.Balance(peer)
 	if err != nil {
@@ -276,21 +281,22 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
 	paymentAmount := new(big.Int).Neg(oldBalance)
 
-	balance.refreshOngoing = true
-	balance.refreshOngoingLock.Lock()
+	if !balance.refreshOngoing && timeElapsed.Cmp(big.NewInt(0)) > 0 {
+		balance.refreshOngoing = true
+		balance.refreshOngoingLock.Lock()
+		go a.refreshFunction(context.Background(), peer, paymentAmount)
+	}
 
-	go a.refreshFunction(context.Background(), peer, paymentAmount)
+	if !balance.paymentOngoing {
+		maximumPossibleRefreshment := new(big.Int).Mul(timeElapsed, a.refreshRate)
+		extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
+		if extraAmount.Cmp(a.refreshRate) > 0 {
+			balance.paymentOngoing = true
+			balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
+			a.logger.Error("sending real payment")
+			go a.payFunction(context.Background(), peer, extraAmount)
+		}
 
-	now := time.Now().Unix()
-
-	maximumPossibleRefreshment := new(big.Int).Mul(big.NewInt(now-balance.refreshTimestamp), a.refreshRate)
-
-	extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
-	if extraAmount.Cmp(a.refreshRate) > 0 && !balance.paymentOngoing {
-		balance.paymentOngoing = true
-		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
-		a.logger.Error("sending real payment")
-		go a.payFunction(context.Background(), peer, extraAmount)
 	}
 
 	return nil
