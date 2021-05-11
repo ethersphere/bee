@@ -271,12 +271,25 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		}
 	}
 
+	surplusBalance, err := a.SurplusBalance(peer)
+	if err != nil {
+		return fmt.Errorf("failed to load balance: %w", err)
+	}
+
+	if surplusBalance.Cmp(big.NewInt(0)) < 0 {
+		return ErrInvalidValue
+	}
+
+	compensatedBalance := new(big.Int).Sub(oldBalance, surplusBalance)
+
 	// Don't do anything if there is no actual debt.
 	// This might be the case if the peer owes us and the total reserve for a
 	// peer exceeds the payment treshold.
-	if oldBalance.Cmp(big.NewInt(0)) >= 0 {
+	if compensatedBalance.Cmp(big.NewInt(0)) >= 0 {
 		return nil
 	}
+
+	timeBasedPaymentAmount := new(big.Int).Neg(compensatedBalance)
 
 	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
 	paymentAmount := new(big.Int).Neg(oldBalance)
@@ -284,7 +297,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	if !balance.refreshOngoing && timeElapsed.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
 		balance.refreshOngoingLock.Lock()
-		go a.refreshFunction(context.Background(), peer, paymentAmount)
+		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
 
 	if !balance.paymentOngoing {
@@ -803,6 +816,8 @@ func (d *debitAction) Apply() error {
 			// count debit operations, terminate early
 			tot, _ := big.NewFloat(0).SetInt(d.price).Float64()
 
+			d.applied = true
+			d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 			a.metrics.TotalDebitedAmount.Add(tot)
 			a.metrics.DebitEventsCount.Inc()
 			return nil
