@@ -45,6 +45,7 @@ type Service struct {
 	tags               *tags.Tags
 	accounting         accounting.Interface
 	settlement         settlement.Interface
+	pseudo             settlement.Interface
 	chequebookEnabled  bool
 	chequebook         chequebook.Service
 	swap               swap.ApiInterface
@@ -95,6 +96,10 @@ func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, t
 	s.batchStore = batchStore
 
 	s.setRouter(s.newRouter())
+}
+
+func (s *Service) SetPseudo(pseudo settlement.Interface) {
+	s.pseudo = pseudo
 }
 
 // ServeHTTP implements http.Handler interface.
