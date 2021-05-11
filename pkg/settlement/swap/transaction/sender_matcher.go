@@ -17,9 +17,9 @@ type Matcher struct {
 }
 
 var (
-	ErrTransactionNotFound = errors.New("transaction not found")
-	ErrTransactionPending  = errors.New("transaction in pending status")
-	ErrTransactionSender   = errors.New("transaction sender")
+	ErrTransactionNotFound      = errors.New("transaction not found")
+	ErrTransactionPending       = errors.New("transaction in pending status")
+	ErrTransactionSenderInvalid = errors.New("invalid transaction sender")
 )
 
 func NewMatcher(backend Backend, signer types.Signer) *Matcher {
@@ -43,7 +43,7 @@ func (m Matcher) Matches(ctx context.Context, tx string, networkID uint64, sende
 
 	sender, err := types.Sender(m.signer, nTx)
 	if err != nil {
-		return false, fmt.Errorf("%v: %w", err, ErrTransactionSender)
+		return false, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
 	}
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID)

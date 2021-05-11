@@ -62,8 +62,8 @@ func TestMatchesSender(t *testing.T) {
 		matcher := transaction.NewMatcher(backendmock.New(txByHash), signer)
 
 		_, err := matcher.Matches(context.Background(), "0x123", 0, swarm.NewAddress([]byte{}))
-		if !errors.Is(err, transaction.ErrTransactionSender) {
-			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionSender, err)
+		if !errors.Is(err, transaction.ErrTransactionSenderInvalid) {
+			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionSenderInvalid, err)
 		}
 	})
 

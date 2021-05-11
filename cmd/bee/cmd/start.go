@@ -148,7 +148,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				SwapInitialDeposit:       c.config.GetString(optionNameSwapInitialDeposit),
 				SwapEnable:               c.config.GetBool(optionNameSwapEnable),
 				FullNodeMode:             fullNode,
-				Transaction:              c.config.GetString(optionNameTransaction),
+				Transaction:              c.config.GetString(optionNameTransactionHash),
 				PostageContractAddress:   c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:       c.config.GetString(optionNamePriceOracleAddress),
 			})
