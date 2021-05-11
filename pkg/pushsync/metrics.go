@@ -70,8 +70,8 @@ func newMetrics() metrics {
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "response_code_count",
-				Help:      "Response count grouped by status code",
+				Name:      "failed_cache_hits",
+				Help:      "FailedRequestCache hits",
 			},
 			[]string{"peer", "chunk"},
 		),
