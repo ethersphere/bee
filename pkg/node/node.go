@@ -792,17 +792,17 @@ func (e *multiError) hasErrors() bool {
 	return len(e.errors) > 0
 }
 
-func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transaction string) (string, error) {
+func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transaction string) ([]byte, error) {
 	if len(transaction) == 32 {
 		logger.Info("using the provided transaction hash")
-		return transaction, nil
+		return []byte(transaction), nil
 	}
 
 	var txHash common.Hash
 	key := chequebook.ChequebookDeploymentKey
 	if err := stateStore.Get(key, &txHash); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return txHash.String(), nil
+	return txHash.Bytes(), nil
 }

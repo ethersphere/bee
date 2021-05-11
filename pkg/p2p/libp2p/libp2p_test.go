@@ -72,7 +72,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	lightnodes := lightnode.NewContainer()
 
 	opts := o.libp2pOpts
-	opts.Transaction = hexutil.EncodeUint64(o.PrivateKey.Y.Uint64())
+	opts.Transaction = []byte(hexutil.EncodeUint64(o.PrivateKey.Y.Uint64()))
 
 	senderMatcher := &MockSenderMatcher{}
 
@@ -160,6 +160,6 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 
 type MockSenderMatcher struct{}
 
-func (m MockSenderMatcher) Matches(context.Context, string, uint64, swarm.Address) (bool, error) {
+func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address) (bool, error) {
 	return true, nil
 }

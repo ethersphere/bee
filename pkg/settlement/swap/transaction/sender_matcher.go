@@ -29,8 +29,8 @@ func NewMatcher(backend Backend, signer types.Signer) *Matcher {
 	}
 }
 
-func (m Matcher) Matches(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error) {
-	incomingTx := common.HexToHash(tx)
+func (m Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) (bool, error) {
+	incomingTx := common.BytesToHash(tx)
 
 	nTx, isPending, err := m.backend.TransactionByHash(ctx, incomingTx)
 	if err != nil {

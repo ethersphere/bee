@@ -63,7 +63,7 @@ type AdvertisableAddressResolver interface {
 }
 
 type SenderMatcher interface {
-	Matches(ctx context.Context, tx string, networkID uint64, senderOverlay swarm.Address) (bool, error)
+	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) (bool, error)
 }
 
 // Service can perform initiate or handle a handshake between peers.
@@ -73,7 +73,7 @@ type Service struct {
 	senderMatcher         SenderMatcher
 	overlay               swarm.Address
 	fullNode              bool
-	transaction           string
+	transaction           []byte
 	networkID             uint64
 	welcomeMessage        atomic.Value
 	receivedHandshakes    map[libp2ppeer.ID]struct{}
@@ -98,7 +98,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction string, welcomeMessage string, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}

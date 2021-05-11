@@ -84,7 +84,7 @@ type Options struct {
 	Standalone     bool
 	FullNode       bool
 	WelcomeMessage string
-	Transaction    string
+	Transaction    []byte
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, swapBackend handshake.SenderMatcher, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
