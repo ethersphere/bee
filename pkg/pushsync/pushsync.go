@@ -27,7 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -166,6 +166,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
+			ps.logger.Errorf("DEBIT PUSHSYNC %s %s %d", p.Address, chunk.Address(), price)
 			return debit.Apply()
 		}
 
@@ -270,6 +271,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 						return
 					}
 
+					ps.logger.Errorf("CREDIT PUSHSYNC %s %s %d", peer, chunk.Address(), receiptPrice)
+
 					err = ps.accounting.Credit(peer, receiptPrice)
 
 				}(peer)
@@ -294,6 +297,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
+			ps.logger.Errorf("DEBIT PUSHSYNC %s %s %d", p.Address, chunk.Address(), price)
 			return debit.Apply()
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
@@ -308,6 +312,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
+	ps.logger.Errorf("DEBIT PUSHSYNC %s %s %d", p.Address, chunk.Address(), price)
 	return debit.Apply()
 }
 
@@ -452,6 +457,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
+	ps.logger.Errorf("CREDIT PUSHSYNC %s %s %d", peer, ch.Address(), receiptPrice)
 	err = ps.accounting.Credit(peer, receiptPrice)
 	if err != nil {
 		return nil, true, err

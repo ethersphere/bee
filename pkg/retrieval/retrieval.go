@@ -260,6 +260,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		}
 	}
 
+	s.logger.Errorf("CREDIT RETRIEVAL %s %s %d", peer, chunk.Address(), chunkPrice)
 	// credit the peer after successful delivery
 	err = s.accounting.Credit(peer, chunkPrice)
 	if err != nil {
@@ -376,6 +377,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
+	s.logger.Errorf("DEBIT RETRIEVAL %s %s %d", p.Address, chunk.Address(), chunkPrice)
 	// debit price from p's balance
 	return debit.Apply()
 }
