@@ -56,7 +56,7 @@ func TestTracing(t *testing.T) {
 	connectContext, connectCancel := context.WithCancel(context.Background())
 	defer connectCancel()
 
-	if _, err := s2.Connect(connectContext, addr); err != nil {
+	if _, _, err := s2.Connect(connectContext, addr); err != nil {
 		t.Fatal(err)
 	}
 

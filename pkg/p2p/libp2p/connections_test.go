@@ -44,7 +44,7 @@ func TestConnectDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, _, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +69,14 @@ func TestDoubleConnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
+	if _, _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
 		t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 	}
 
@@ -93,7 +93,7 @@ func TestDoubleDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, _, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, _, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	bzzAddr, err = s2.Connect(ctx, addr)
+	bzzAddr, _, err = s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
-		bzzAddr, err := s2.Connect(ctx, addr)
+		bzzAddr, _, err := s2.Connect(ctx, addr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,14 +202,14 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 			FullNode: true,
 		}})
 
-		if _, err := s2.Connect(ctx, addr); err != nil {
+		if _, _, err := s2.Connect(ctx, addr); err != nil {
 			t.Fatal(err)
 		}
 
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		if _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
+		if _, _, err := s2.Connect(ctx, addr); !errors.Is(err, p2p.ErrAlreadyConnected) {
 			t.Fatalf("expected %s error, got %s error", p2p.ErrAlreadyConnected, err)
 		}
 
@@ -236,7 +236,7 @@ func TestDifferentNetworkIDs(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err == nil {
+	if _, _, err := s2.Connect(ctx, addr); err == nil {
 		t.Fatal("connect attempt should result with an error")
 	}
 
@@ -266,7 +266,7 @@ func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, addr); err != nil {
+	if _, _, err := s2.Connect(ctx, addr); err != nil {
 		t.Fatal(err)
 	}
 
@@ -284,7 +284,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	_, err := s2.Connect(ctx, addr)
+	_, _, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestBlocklisting(t *testing.T) {
 	addr1 := serviceUnderlayAddress(t, s1)
 	addr2 := serviceUnderlayAddress(t, s2)
 
-	_, err := s2.Connect(context.Background(), addr1)
+	_, _, err := s2.Connect(context.Background(), addr1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	_, err = s2.Connect(context.Background(), addr1)
+	_, _, err = s2.Connect(context.Background(), addr1)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
 	}
@@ -340,7 +340,7 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	_, err = s1.Connect(context.Background(), addr2)
+	_, _, err = s1.Connect(context.Background(), addr2)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
 	}
@@ -408,7 +408,7 @@ func TestTopologyNotifier(t *testing.T) {
 	addr := serviceUnderlayAddress(t, s1)
 
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
-	bzzAddr, err := s2.Connect(ctx, addr)
+	bzzAddr, _, err := s2.Connect(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestTopologyNotifier(t *testing.T) {
 
 	addr2 := serviceUnderlayAddress(t, s2)
 	// s1 connects to s2, thus the notifiee on s2 should be called on Connect
-	bzzAddr2, err := s1.Connect(ctx, addr2)
+	bzzAddr2, _, err := s1.Connect(ctx, addr2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +509,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 	addr := serviceUnderlayAddress(t, s1)
 
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
-	_, err := s2.Connect(ctx, addr)
+	_, _, err := s2.Connect(ctx, addr)
 	if err == nil {
 		t.Fatal("expected connect to fail but it didnt")
 	}
@@ -549,7 +549,7 @@ func TestWithDisconnectStreams(t *testing.T) {
 	expectPeers(t, s1)
 	expectPeers(t, s2)
 
-	if _, err := s2.Connect(ctx, s1_underlay); err != nil {
+	if _, _, err := s2.Connect(ctx, s1_underlay); err != nil {
 		t.Fatal(err)
 	}
 
@@ -590,7 +590,7 @@ func TestWithBlocklistStreams(t *testing.T) {
 
 	s1_underlay := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Connect(ctx, s1_underlay); err != nil {
+	if _, _, err := s2.Connect(ctx, s1_underlay); err != nil {
 		t.Fatal(err)
 	}
 
@@ -604,7 +604,7 @@ func TestWithBlocklistStreams(t *testing.T) {
 	expectPeersEventually(t, s2)
 	expectPeersEventually(t, s1)
 
-	if _, err := s2.Connect(ctx, s1_underlay); err == nil {
+	if _, _, err := s2.Connect(ctx, s1_underlay); err == nil {
 		t.Fatal("expected error when connecting to blocklisted peer")
 	}
 

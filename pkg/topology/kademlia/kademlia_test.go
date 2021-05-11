@@ -1055,10 +1055,10 @@ func newTestKademlia(connCounter, failedConnCounter *int32, kadOpts kademlia.Opt
 }
 
 func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, bool, error) {
 		if addr.Equal(nonConnectableAddress) {
 			_ = atomic.AddInt32(failedCounter, 1)
-			return nil, errors.New("non reachable node")
+			return nil, false, errors.New("non reachable node")
 		}
 		if counter != nil {
 			_ = atomic.AddInt32(counter, 1)
@@ -1066,26 +1066,26 @@ func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedC
 
 		addresses, err := ab.Addresses()
 		if err != nil {
-			return nil, errors.New("could not fetch addresbook addresses")
+			return nil, false, errors.New("could not fetch addresbook addresses")
 		}
 
 		for _, a := range addresses {
 			if a.Underlay.Equal(addr) {
-				return &a, nil
+				return &a, true, nil
 			}
 		}
 
 		address := test.RandomAddress()
 		bzzAddr, err := bzz.NewAddress(signer, addr, address, 0)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		if err := ab.Put(address, *bzzAddr); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
-		return bzzAddr, nil
+		return bzzAddr, true, nil
 	}))
 
 	return p2ps

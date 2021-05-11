@@ -493,16 +493,16 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, isFull bool, err error) {
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return nil, fmt.Errorf("addr from p2p: %w", err)
+		return nil, false, fmt.Errorf("addr from p2p: %w", err)
 	}
 
 	hostAddr, err := buildHostAddress(info.ID)
 	if err != nil {
-		return nil, fmt.Errorf("build host address: %w", err)
+		return nil, false, fmt.Errorf("build host address: %w", err)
 	}
 
 	remoteAddr := addr.Decapsulate(hostAddr)
@@ -512,21 +512,21 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 			Overlay:  overlay,
 			Underlay: addr,
 		}
-		return address, p2p.ErrAlreadyConnected
+		return address, false, p2p.ErrAlreadyConnected
 	}
 
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
 			s.metrics.ConnectBreakerCount.Inc()
-			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
+			return nil, false, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
 		}
-		return nil, err
+		return nil, false, err
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
 	if err != nil {
 		_ = s.host.Network().ClosePeer(info.ID)
-		return nil, fmt.Errorf("connect new stream: %w", err)
+		return nil, false, fmt.Errorf("connect new stream: %w", err)
 	}
 
 	handshakeStream := NewStream(stream)
@@ -534,7 +534,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
-		return nil, fmt.Errorf("handshake: %w", err)
+		return nil, false, fmt.Errorf("handshake: %w", err)
 	}
 
 	blocked, err := s.blocklist.Exists(i.BzzAddress.Overlay)
@@ -543,35 +543,35 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
-		return nil, fmt.Errorf("peer blocklisted")
+		return nil, i.FullNode, fmt.Errorf("peer blocklisted")
 	}
 
 	if blocked {
 		s.logger.Errorf("blocked connection to blocklisted peer %s", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
-		return nil, fmt.Errorf("peer blocklisted")
+		return nil, i.FullNode, fmt.Errorf("peer blocklisted")
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), i.BzzAddress.Overlay); exists {
 		if err := handshakeStream.FullClose(); err != nil {
 			_ = s.Disconnect(i.BzzAddress.Overlay)
-			return nil, fmt.Errorf("peer exists, full close: %w", err)
+			return nil, i.FullNode, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
-		return i.BzzAddress, nil
+		return i.BzzAddress, i.FullNode, nil
 	}
 
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(i.BzzAddress.Overlay)
-		return nil, fmt.Errorf("connect full close %w", err)
+		return nil, i.FullNode, fmt.Errorf("connect full close %w", err)
 	}
 
 	if i.FullNode {
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			_ = s.Disconnect(i.BzzAddress.Overlay)
-			return nil, fmt.Errorf("storing bzz address: %w", err)
+			return nil, i.FullNode, fmt.Errorf("storing bzz address: %w", err)
 		}
 	}
 
@@ -590,7 +590,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.logger.Debugf("successfully connected to peer %s%s (outbound)", i.BzzAddress.ShortString(), i.LightString())
 	s.logger.Infof("successfully connected to peer %s%s (outbound)", i.BzzAddress.Overlay, i.LightString())
-	return i.BzzAddress, nil
+	return i.BzzAddress, i.FullNode, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address) error {

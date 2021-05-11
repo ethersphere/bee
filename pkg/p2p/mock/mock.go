@@ -18,7 +18,7 @@ import (
 // Service is the mock of a P2P Service
 type Service struct {
 	addProtocolFunc       func(p2p.ProtocolSpec) error
-	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
+	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, full bool, err error)
 	disconnectFunc        func(overlay swarm.Address) error
 	peersFunc             func() []p2p.Peer
 	blocklistedPeersFunc  func() ([]p2p.Peer, error)
@@ -45,7 +45,7 @@ func WithSetPickyNotifierFunc(f func(p2p.PickyNotifier)) Option {
 }
 
 // WithConnectFunc sets the mock implementation of the Connect function
-func WithConnectFunc(f func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)) Option {
+func WithConnectFunc(f func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, full bool, err error)) Option {
 	return optionFunc(func(s *Service) {
 		s.connectFunc = f
 	})
@@ -115,9 +115,9 @@ func (s *Service) AddProtocol(spec p2p.ProtocolSpec) error {
 	return s.addProtocolFunc(spec)
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, b bool, err error) {
 	if s.connectFunc == nil {
-		return nil, errors.New("function Connect not configured")
+		return nil, false, errors.New("function Connect not configured")
 	}
 	return s.connectFunc(ctx, addr)
 }

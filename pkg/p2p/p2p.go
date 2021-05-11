@@ -20,7 +20,7 @@ import (
 type Service interface {
 	AddProtocol(ProtocolSpec) error
 	// Connect to a peer but do not notify topology about the established connection.
-	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
+	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, isFull bool, err error)
 	Disconnecter
 	Peers() []Peer
 	BlocklistedPeers() ([]Peer, error)

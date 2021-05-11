@@ -46,11 +46,11 @@ func TestConnect(t *testing.T) {
 	}
 
 	testServer := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, bool, error) {
 			if addr.String() == errorUnderlay {
-				return nil, testErr
+				return nil, false, testErr
 			}
-			return bzzAddress, nil
+			return bzzAddress, true, nil
 		})),
 	})
 
@@ -82,11 +82,11 @@ func TestConnect(t *testing.T) {
 
 	t.Run("error - add peer", func(t *testing.T) {
 		testServer := newTestServer(t, testServerOptions{
-			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, bool, error) {
 				if addr.String() == errorUnderlay {
-					return nil, testErr
+					return nil, false, testErr
 				}
-				return bzzAddress, nil
+				return bzzAddress, true, nil
 			})),
 		})
 
