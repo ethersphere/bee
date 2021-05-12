@@ -291,8 +291,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	timeBasedPaymentAmount := new(big.Int).Neg(compensatedBalance)
 
-	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
-	// paymentAmount := new(big.Int).Neg(oldBalance)
+	paymentAmount := new(big.Int).Neg(oldBalance)
 
 	if !balance.paymentOngoing && !balance.refreshOngoing && timeElapsed.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
@@ -300,17 +299,12 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
 
-	//	if !balance.paymentOngoing && !balance.refreshOngoing {
-	//		maximumPossibleRefreshment := new(big.Int).Mul(timeElapsed, a.refreshRate)
-	//		extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
-	//		if extraAmount.Cmp(a.refreshRate) > 0 {
-	//			balance.paymentOngoing = true
-	//			balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
-	//			a.logger.Error("sending real payment")
-	//			go a.payFunction(context.Background(), peer, extraAmount)
-	//		}
-	//
-	//	}
+	if !balance.paymentOngoing && !balance.refreshOngoing {
+		balance.paymentOngoing = true
+		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
+		a.logger.Error("sending real payment")
+		go a.payFunction(context.Background(), peer, paymentAmount)
+	}
 
 	return nil
 }
