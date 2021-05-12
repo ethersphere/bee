@@ -342,9 +342,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		}
 		if !ps.failedRequests.Useful(peer, ch.Address()) {
 			skipPeers = append(skipPeers, peer)
+			ps.metrics.FailedCacheHits.WithLabelValues(peer.String(), ch.Address().String()).Inc()
 			continue
 		}
 		skipPeers = append(skipPeers, peer)
+		ps.metrics.TotalSendAttempts.Inc()
 
 		go func(peer swarm.Address, ch swarm.Chunk) {
 			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
@@ -376,6 +378,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			}
 			if r.err != nil && r.attempted {
 				ps.failedRequests.RecordFailure(peer, ch.Address())
+				ps.metrics.TotalFailedSendAttempts.Inc()
 			}
 			// proceed to retrying if applicable
 		case <-ctx.Done():
