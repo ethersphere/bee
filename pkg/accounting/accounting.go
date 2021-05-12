@@ -301,7 +301,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	if !balance.paymentOngoing && !balance.refreshOngoing {
 		balance.paymentOngoing = true
-		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, extraAmount)
+		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
 		a.logger.Error("sending real payment")
 		go a.payFunction(context.Background(), peer, paymentAmount)
 	}
