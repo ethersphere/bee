@@ -27,12 +27,12 @@ import (
 const (
 	blockPage = 10000 // how many blocks to sync every time
 	tailSize  = 4     // how many blocks to tail from the tip of the chain
+	pollEvery = tailSize + 1
 )
 
 var (
-	chainUpdateInterval = 5 * time.Second
-	postageStampABI     = parseABI(postageabi.PostageStampABIv0_1_0)
-	priceOracleABI      = parseABI(postageabi.PriceOracleABIv0_1_0)
+	postageStampABI = parseABI(postageabi.PostageStampABIv0_1_0)
+	priceOracleABI  = parseABI(postageabi.PriceOracleABIv0_1_0)
 	// batchCreatedTopic is the postage contract's batch created event topic
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 	// batchTopupTopic is the postage contract's batch topup event topic
@@ -49,8 +49,9 @@ type BlockHeightContractFilterer interface {
 }
 
 type listener struct {
-	logger logging.Logger
-	ev     BlockHeightContractFilterer
+	logger    logging.Logger
+	ev        BlockHeightContractFilterer
+	blockTime uint64
 
 	postageStampAddress common.Address
 	priceOracleAddress  common.Address
@@ -63,10 +64,12 @@ func New(
 	ev BlockHeightContractFilterer,
 	postageStampAddress,
 	priceOracleAddress common.Address,
+	blockTime uint64,
 ) postage.Listener {
 	return &listener{
-		logger: logger,
-		ev:     ev,
+		logger:    logger,
+		ev:        ev,
+		blockTime: blockTime,
 
 		postageStampAddress: postageStampAddress,
 		priceOracleAddress:  priceOracleAddress,
@@ -148,6 +151,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 		<-l.quit
 		cancel()
 	}()
+
+	chainUpdateInterval := time.Duration(l.blockTime) * pollEvery * time.Second
 
 	synced := make(chan struct{})
 	closeOnce := new(sync.Once)
