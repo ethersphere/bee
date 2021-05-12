@@ -28,7 +28,10 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        fetch-depth: 1
+        fetch-depth: 0
+    - name: Commit linting
+      if: matrix.os == 'ubuntu-latest'
+      uses: wagoid/commitlint-github-action@v2
     - name: Cache Go modules
       uses: actions/cache@v1
       with:
