@@ -41,7 +41,10 @@ var (
 	broadcastBinSize    = 4
 )
 
-var errOverlayMismatch = errors.New("overlay mismatch")
+var (
+	errOverlayMismatch = errors.New("overlay mismatch")
+	errPruneEntry      = errors.New("addressbook: prune entry")
+)
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 type sanctionedPeerFunc func(peer swarm.Address) bool
@@ -666,7 +669,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	if !isFull {
 		_ = k.p2p.Disconnect(peer)
 		_ = k.p2p.Disconnect(i.Overlay)
-		return addressbook.ErrPruneEntry
+		return errPruneEntry
 	}
 
 	if !i.Overlay.Equal(peer) {

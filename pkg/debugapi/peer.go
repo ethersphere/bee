@@ -27,7 +27,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bzzAddr /*isFull*/, _, err := s.p2p.Connect(r.Context(), addr)
+	bzzAddr, _, err := s.p2p.Connect(r.Context(), addr)
 	if err != nil {
 		s.logger.Debugf("debug api: peer connect %s: %v", addr, err)
 		s.logger.Errorf("unable to connect to peer %s", addr)
