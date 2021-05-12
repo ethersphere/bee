@@ -402,7 +402,6 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 
 	stamp, err := ch.Stamp().MarshalBinary()
 	if err != nil {
-		// TODO: Return modified error?
 		return nil, false, err
 	}
 
