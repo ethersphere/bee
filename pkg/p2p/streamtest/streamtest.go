@@ -30,16 +30,24 @@ var (
 )
 
 type Recorder struct {
-	base        swarm.Address
-	records     map[string][]*Record
-	recordsMu   sync.Mutex
-	protocols   []p2p.ProtocolSpec
-	middlewares []p2p.HandlerMiddleware
+	base               swarm.Address
+	records            map[string][]*Record
+	recordsMu          sync.Mutex
+	protocols          []p2p.ProtocolSpec
+	middlewares        []p2p.HandlerMiddleware
+	streamErr          func(swarm.Address, string, string, string) error
+	protocolsWithPeers map[string]p2p.ProtocolSpec
 }
 
 func WithProtocols(protocols ...p2p.ProtocolSpec) Option {
 	return optionFunc(func(r *Recorder) {
 		r.protocols = append(r.protocols, protocols...)
+	})
+}
+
+func WithPeerProtocols(protocolsWithPeers map[string]p2p.ProtocolSpec) Option {
+	return optionFunc(func(r *Recorder) {
+		r.protocolsWithPeers = protocolsWithPeers
 	})
 }
 
@@ -52,6 +60,12 @@ func WithMiddlewares(middlewares ...p2p.HandlerMiddleware) Option {
 func WithBaseAddr(a swarm.Address) Option {
 	return optionFunc(func(r *Recorder) {
 		r.base = a
+	})
+}
+
+func WithStreamError(streamErr func(swarm.Address, string, string, string) error) Option {
+	return optionFunc(func(r *Recorder) {
+		r.streamErr = streamErr
 	})
 }
 
@@ -73,6 +87,12 @@ func (r *Recorder) SetProtocols(protocols ...p2p.ProtocolSpec) {
 }
 
 func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
+	if r.streamErr != nil {
+		err := r.streamErr(addr, protocolName, protocolVersion, streamName)
+		if err != nil {
+			return nil, err
+		}
+	}
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
@@ -80,14 +100,18 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 
 	var handler p2p.HandlerFunc
 	var headler p2p.HeadlerFunc
-	for _, p := range r.protocols {
-		if p.Name == protocolName && p.Version == protocolVersion {
-			for _, s := range p.StreamSpecs {
-				if s.Name == streamName {
-					handler = s.Handler
-					headler = s.Headler
-				}
+	peerHandlers, ok := r.protocolsWithPeers[addr.String()]
+	if !ok {
+		for _, p := range r.protocols {
+			if p.Name == protocolName && p.Version == protocolVersion {
+				peerHandlers = p
 			}
+		}
+	}
+	for _, s := range peerHandlers.StreamSpecs {
+		if s.Name == streamName {
+			handler = s.Handler
+			headler = s.Headler
 		}
 	}
 	if handler == nil {
