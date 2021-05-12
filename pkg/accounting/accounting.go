@@ -294,7 +294,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// This is safe because of the earlier check for oldbalance < 0 and the check for != MinInt64
 	paymentAmount := new(big.Int).Neg(oldBalance)
 
-	if !balance.refreshOngoing && timeElapsed.Cmp(big.NewInt(0)) > 0 {
+	if !balance.paymentOngoing && !balance.refreshOngoing && timeElapsed.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
 		balance.refreshOngoingLock.Lock()
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
