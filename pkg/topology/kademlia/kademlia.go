@@ -41,7 +41,10 @@ var (
 	broadcastBinSize    = 4
 )
 
-var errOverlayMismatch = errors.New("overlay mismatch")
+var (
+	errOverlayMismatch = errors.New("overlay mismatch")
+	errPruneEntry      = errors.New("prune entry")
+)
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 type sanctionedPeerFunc func(peer swarm.Address) bool
@@ -332,6 +335,16 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
+		case errors.Is(err, errPruneEntry):
+			k.logger.Debugf("dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
+			k.waitNextMu.Lock()
+			delete(k.waitNext, peer.addr.String())
+			k.waitNextMu.Unlock()
+			k.knownPeers.Remove(peer.addr, peer.po)
+			if err := k.addressBook.Remove(peer.addr); err != nil {
+				k.logger.Debugf("could not remove peer %q from addressbook", peer.addr)
+			}
+			return
 		case errors.Is(err, errOverlayMismatch):
 			k.logger.Debugf("overlay mismatch has occurred to an overlay %q with underlay %q", peer.addr, bzzAddr.Underlay)
 			k.waitNextMu.Lock()
@@ -497,8 +510,14 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 				return true, nil
 			}
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
+
 			attempts++
 			if err != nil {
+				if errors.Is(err, p2p.ErrDialLightNode) {
+					k.logger.Debugf("connect fail %s: %v", addr, err)
+					k.logger.Warningf("connect to bootnode %s", addr)
+					return false, err
+				}
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
 					k.logger.Debugf("connect fail %s: %v", addr, err)
 					k.logger.Warningf("connect to bootnode %s", addr)
@@ -619,6 +638,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	defer cancel()
 	i, err := k.p2p.Connect(ctx, ma)
 	if err != nil {
+		if errors.Is(err, p2p.ErrDialLightNode) {
+			return errPruneEntry
+		}
 		if errors.Is(err, p2p.ErrAlreadyConnected) {
 			if !i.Overlay.Equal(peer) {
 				return errOverlayMismatch
