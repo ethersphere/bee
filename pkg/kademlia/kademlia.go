@@ -574,7 +574,7 @@ func recalcDepth(peers *pslice.PSlice) uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr, po uint8) error {
-	k.logger.Infof("attempting to connect to peer %s", peer)
+	// k.logger.Infof("attempting to connect to peer %s", peer)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	i, err := k.p2p.Connect(ctx, ma)

@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"time"
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -90,6 +91,22 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 			return nil, err
 		}
 	}
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+		again:
+			logger.Trace("Running BadgerDB GC.")
+			err := db.bdb.RunValueLogGC(0.7)
+			if err == nil {
+				goto again
+			} else {
+				logger.Tracef("BadgerDB GC error: %s", err)
+			}
+		}
+	}()
+
 	return db, nil
 }
 

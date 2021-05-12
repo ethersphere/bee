@@ -24,6 +24,10 @@ import (
 	badger "github.com/dgraph-io/badger/v3"
 )
 
+var (
+	ErrEmptyIndex = errors.New("index: empty")
+)
+
 // Item holds fields relevant to Swarm Chunk data and metadata.
 // All information required for swarm storage and operations
 // on that storage must be defined here.
@@ -338,7 +342,7 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 		it.Seek(startKey)
 
 		if !it.Valid() {
-			return ErrNotFound
+			return nil
 		}
 
 		item := it.Item()
