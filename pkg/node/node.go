@@ -129,6 +129,7 @@ type Options struct {
 	FullNodeMode             bool
 	PostageContractAddress   string
 	PriceOracleAddress       string
+	BlockTime                uint64
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
@@ -341,7 +342,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, errors.New("no known postage stamp addresses for this network")
 		}
 
-		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress)
+		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress, o.BlockTime)
 		b.listenerCloser = eventListener
 
 		batchSvc = batchservice.New(batchStore, logger, eventListener)
