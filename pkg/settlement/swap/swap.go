@@ -134,7 +134,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return s.proto.EmitCheque(ctx, peer, signedCheque)
 	})
 	if err != nil {
-		return
+		return err
 	}
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)

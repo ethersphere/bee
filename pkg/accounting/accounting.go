@@ -300,7 +300,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
 
-	if !balance.paymentOngoing {
+	if !balance.paymentOngoing && !balance.refreshOngoing {
 		maximumPossibleRefreshment := new(big.Int).Mul(timeElapsed, a.refreshRate)
 		extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
 		if extraAmount.Cmp(a.refreshRate) > 0 {
