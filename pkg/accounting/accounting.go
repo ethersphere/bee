@@ -619,11 +619,13 @@ func (a *Accounting) ShadowBalance(peer swarm.Address) (shadowBalance *big.Int, 
 func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
+	accountingPeer.paymentOngoingLock.Unlock()
+
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentOngoing = false
-	accountingPeer.paymentOngoingLock.Unlock()
+
 
 	if receivedError != nil {
 		a.logger.Warningf("accouting: payment failure %v", receivedError)
@@ -653,12 +655,11 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.paymentOngoingLock.Lock()
-
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	accountingPeer.paymentOngoingLock.Unlock()
+	accountingPeer.paymentOngoingLock.Lock()
+	defer accountingPeer.paymentOngoingLock.Unlock()
 
 	bigPrice := new(big.Int).SetUint64(price)
 
