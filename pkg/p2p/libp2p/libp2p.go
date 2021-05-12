@@ -379,7 +379,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerID := streamlibp2p.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
-				_ = s.Disconnect(overlay)
 				_ = streamlibp2p.Reset()
 				s.logger.Debugf("overlay address for peer %q not found", peerID)
 				return
@@ -595,10 +594,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 func (s *Service) Disconnect(overlay swarm.Address) error {
 	s.metrics.DisconnectCount.Inc()
+
 	found, peerID := s.peers.remove(overlay)
-	if !found {
-		return p2p.ErrPeerNotFound
-	}
 
 	_ = s.host.Network().ClosePeer(peerID)
 
@@ -619,6 +616,10 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	}
 	if s.lightNodes != nil {
 		s.lightNodes.Disconnected(peer)
+	}
+
+	if !found {
+		return p2p.ErrPeerNotFound
 	}
 
 	return nil
