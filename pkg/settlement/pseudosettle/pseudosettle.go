@@ -243,7 +243,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, checkAllowance *big.Int) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -290,11 +290,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 			amount = allowance
 		}
 	*/
-
-	checkAllowance, err := s.accountingAPI.ShadowBalance(peer)
-	if err != nil {
-		return
-	}
 
 	if checkAllowance.Cmp(amount) > 0 {
 		checkAllowance.Set(amount)

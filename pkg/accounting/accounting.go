@@ -68,6 +68,7 @@ type debitAction struct {
 }
 
 type PayFunc func(context.Context, swarm.Address, *big.Int)
+type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int)
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
@@ -95,7 +96,7 @@ type Accounting struct {
 	paymentTolerance *big.Int
 	earlyPayment     *big.Int
 	payFunction      PayFunc
-	refreshFunction  PayFunc
+	refreshFunction  RefreshFunc
 	refreshRate      *big.Int
 	pricing          pricing.Interface
 	metrics          metrics
@@ -293,7 +294,15 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		a.logger.Infof("### %d", timeBasedPaymentAmount)
 		balance.refreshOngoingLock.Lock()
 		a.logger.Infof("### postlock %d", timeBasedPaymentAmount)
-		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
+
+		shadowBalance, err := a.shadowBalance(peer)
+		if err != nil {
+			balance.refreshOngoing = false
+			balance.refreshOngoingLock.Unlock()
+			return err
+		}
+
+		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount, shadowBalance)
 	}
 
 	//	paymentAmount := new(big.Int).Neg(oldBalance)
@@ -545,12 +554,8 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 }
 
 // ShadowBalance returns the current debt reduced by any potentially debitable amount stored in shadowReservedBalance
-func (a *Accounting) ShadowBalance(peer swarm.Address) (shadowBalance *big.Int, err error) {
-
+func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, err error) {
 	accountingPeer := a.getAccountingPeer(peer)
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
 	balance := new(big.Int)
 	zero := big.NewInt(0)
 
@@ -883,7 +888,7 @@ func (d *debitAction) Cleanup() {
 	}
 }
 
-func (a *Accounting) SetRefreshFunc(f PayFunc) {
+func (a *Accounting) SetRefreshFunc(f RefreshFunc) {
 	a.refreshFunction = f
 }
 
