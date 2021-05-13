@@ -297,8 +297,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
-			balance.refreshOngoing = false
 			balance.refreshOngoingLock.Unlock()
+			balance.refreshOngoing = false
 			return err
 		}
 
