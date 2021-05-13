@@ -290,9 +290,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	if !balance.paymentOngoing && !balance.refreshOngoing && timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
-		a.logger.Info("###")
-		a.logger.Info(timeBasedPaymentAmount)
-
+		a.logger.Infof("### %d", timeBasedPaymentAmount)
 		balance.refreshOngoingLock.Lock()
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
