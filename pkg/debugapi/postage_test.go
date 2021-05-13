@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/bigint"
+	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -19,11 +21,15 @@ func TestReserveState(t *testing.T) {
 		ts := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(mock.WithReserveState(&postage.ReserveState{
 				Radius: 5,
+				Outer:  big.NewInt(5),
+				Inner:  big.NewInt(5),
 			})),
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&postage.ReserveState{
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{
 				Radius: 5,
+				Outer:  bigint.Wrap(big.NewInt(5)),
+				Inner:  bigint.Wrap(big.NewInt(5)),
 			}),
 		)
 	})
