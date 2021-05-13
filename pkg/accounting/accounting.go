@@ -294,14 +294,14 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
 
-	paymentAmount := new(big.Int).Neg(oldBalance)
+	//	paymentAmount := new(big.Int).Neg(oldBalance)
 
-	if !balance.paymentOngoing && !balance.refreshOngoing && paymentAmount.Cmp(big.NewInt(0)) > 0 {
-		balance.paymentOngoing = true
-		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
-		a.logger.Error("sending real payment")
-		go a.payFunction(context.Background(), peer, paymentAmount)
-	}
+	// if !balance.paymentOngoing && !balance.refreshOngoing && paymentAmount.Cmp(big.NewInt(0)) > 0 {
+	// 		balance.paymentOngoing = true
+	// 		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+	// 		a.logger.Error("sending real payment")
+	// 		go a.payFunction(context.Background(), peer, paymentAmount)
+	// }
 
 	return nil
 }
