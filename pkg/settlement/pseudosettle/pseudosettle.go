@@ -217,17 +217,9 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err != nil {
 		return err
 	}
-	// Temporary writeback of paymentAck
-
-	var paymentAck pb.PaymentAck
-	err = r.ReadMsgWithContext(ctx, &paymentAck)
-	if err != nil {
-		return err
-	}
 
 	s.logger.Infof("###### %d instead of %d", attemptedAmount, paymentAmount)
 
-	// End of temporary part
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(p.Address, SettlementReceivedPrefix), &lastTime)
 	if err != nil {
@@ -369,15 +361,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		}
 		return
 	}
-
-	// temporary writeback of paymentAck
-
-	err = w.WriteMsgWithContext(ctx, &paymentAck)
-	if err != nil {
-		return
-	}
-
-	// end of temporary part
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
 	lastTime.Timestamp = paymentAck.Timestamp
