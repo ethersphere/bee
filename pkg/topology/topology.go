@@ -64,11 +64,26 @@ type EachNeighbor interface {
 // EachPeerFunc is a callback that is called with a peer and its PO
 type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
 
+// PeerInfo is a view of peer information exposed to a user.
+type PeerInfo struct {
+	Address swarm.Address       `json:"address"`
+	Metrics *MetricSnapshotView `json:"metrics,omitempty"`
+}
+
+// MetricSnapshotView represents snapshot of metrics counters in human readable form.
+type MetricSnapshotView struct {
+	LastSeen                   string `json:"lastSeen"`
+	ConnectionTotalDuration    string `json:"connectionTotalDuration"`
+	SessionConnectionRetry     int    `json:"sessionConnectionRetry"`
+	SessionConnectionDuration  string `json:"sessionConnectionDuration"`
+	SessionConnectionDirection string `json:"sessionConnectionDirection"`
+}
+
 type BinInfo struct {
-	BinPopulation     uint     `json:"population"`
-	BinConnected      uint     `json:"connected"`
-	DisconnectedPeers []string `json:"disconnectedPeers"`
-	ConnectedPeers    []string `json:"connectedPeers"`
+	BinPopulation     uint        `json:"population"`
+	BinConnected      uint        `json:"connected"`
+	DisconnectedPeers []*PeerInfo `json:"disconnectedPeers"`
+	ConnectedPeers    []*PeerInfo `json:"connectedPeers"`
 }
 
 type KadBins struct {

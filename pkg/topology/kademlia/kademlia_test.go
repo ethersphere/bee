@@ -546,7 +546,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 

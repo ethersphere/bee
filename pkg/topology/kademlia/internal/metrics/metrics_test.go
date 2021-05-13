@@ -56,13 +56,16 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 	ss := snapshot(t, c, t2, addr)
 	if have, want := ss.LastSeen, t1; !have.Equal(want) {
-		t.Fatalf("Snapshot(%q, ...): last seen metric mismatch: have %s; want %s", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %s; want %s", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDirection, PeerConnectionDirectionInbound; have != want {
-		t.Fatalf("Snapshot(%q, ...): session connection duration metric mismatch: have %q; want %q", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection direction counter mismatch: have %q; want %q", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDuration, t2.Sub(t1); have != want {
-		t.Fatalf("Snapshot(%q, ...): last seen metric mismatch: have %s; want %s", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %s; want %s", addr, have, want)
+	}
+	if have, want := ss.ConnectionTotalDuration, t2.Sub(t1); have != want {
+		t.Fatalf("Snapshot(%q, ...): connection total duration counter mismatch: have %s; want %s", addr, have, want)
 	}
 
 	// Login when already logged in.
@@ -72,13 +75,16 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 	ss = snapshot(t, c, t2, addr)
 	if have, want := ss.LastSeen, t1; !have.Equal(want) {
-		t.Fatalf("Snapshot(%q, ...): last seen metric mismatch: have %s; want %s", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %s; want %s", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDirection, PeerConnectionDirectionInbound; have != want {
-		t.Fatalf("Snapshot(%q, ...): session connection duration metric mismatch: have %q; want %q", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection direction counter mismatch: have %q; want %q", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDuration, t2.Sub(t1); have != want {
-		t.Fatalf("Snapshot(%q, ...): last seen metric mismatch: have %s; want %s", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %s; want %s", addr, have, want)
+	}
+	if have, want := ss.ConnectionTotalDuration, t2.Sub(t1); have != want {
+		t.Fatalf("Snapshot(%q, ...): connection total duration counter mismatch: have %s; want %s", addr, have, want)
 	}
 
 	// Inc session conn retry.
@@ -88,7 +94,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 	ss = snapshot(t, c, t2, addr)
 	if have, want := ss.SessionConnectionRetry, 2; have != want {
-		t.Fatalf("Snapshot(%q, ...): session connection retry metric mismatch: have %d; want %d", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection retry counter mismatch: have %d; want %d", addr, have, want)
 	}
 
 	// Logout.
@@ -98,16 +104,16 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 	ss = snapshot(t, c, t2, addr)
 	if have, want := ss.LastSeen, t3; !have.Equal(want) {
-		t.Fatalf("Snapshot(%q, ...): last seen metric mismatch: have %s; want %s", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %s; want %s", addr, have, want)
 	}
 	if have, want := ss.ConnectionTotalDuration, t3.Sub(t1); have != want {
-		t.Fatalf("Snapshot(%q, ...): connection total duration metric mismatch: have %s; want %s", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): connection total duration counter mismatch: have %s; want %s", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionRetry, 2; have != want {
-		t.Fatalf("Snapshot(%q, ...): session connection retry metric mismatch: have %d; want %d", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection retry counter mismatch: have %d; want %d", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDuration, t3.Sub(t1); have != want {
-		t.Fatalf("Snapshot(%q, ...): session connection duration metric mismatch: have %q; want %q", addr, have, want)
+		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %q; want %q", addr, have, want)
 	}
 
 	// Finalize.
@@ -120,6 +126,6 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t.Fatalf("Finalize(%s): unexpected error: %v", t3, err)
 	}
 	if have, want := len(c.counters), 0; have != want {
-		t.Fatalf("Finalize(%s): counters len mismatch: have %d; want %d", t3, have, want)
+		t.Fatalf("Finalize(%s): counters length mismatch: have %d; want %d", t3, have, want)
 	}
 }
