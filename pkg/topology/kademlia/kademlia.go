@@ -334,27 +334,25 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		}
 
+		remove := func(peer *peerConnInfo) {
+			k.waitNextMu.Lock()
+			delete(k.waitNext, peer.addr.String())
+			k.waitNextMu.Unlock()
+			k.knownPeers.Remove(peer.addr, peer.po)
+			if err := k.addressBook.Remove(peer.addr); err != nil {
+				k.logger.Debugf("could not remove peer %q from addressbook", peer.addr)
+			}
+		}
+
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
 		case errors.Is(err, errPruneEntry):
 			k.logger.Debugf("dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
-			k.waitNextMu.Lock()
-			delete(k.waitNext, peer.addr.String())
-			k.waitNextMu.Unlock()
-			k.knownPeers.Remove(peer.addr, peer.po)
-			if err := k.addressBook.Remove(peer.addr); err != nil {
-				k.logger.Debugf("could not remove peer %q from addressbook", peer.addr)
-			}
+			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
 			k.logger.Debugf("overlay mismatch has occurred to an overlay %q with underlay %q", peer.addr, bzzAddr.Underlay)
-			k.waitNextMu.Lock()
-			delete(k.waitNext, peer.addr.String())
-			k.waitNextMu.Unlock()
-			k.knownPeers.Remove(peer.addr, peer.po)
-			if err := k.addressBook.Remove(peer.addr); err != nil {
-				k.logger.Debugf("could not remove peer %q from addressbook", peer.addr)
-			}
-			fallthrough
+			remove(peer)
+			return
 		case err != nil:
 			k.logger.Debugf("peer not reachable from kademlia %q: %v", bzzAddr, err)
 			k.logger.Warningf("peer not reachable when attempting to connect")
@@ -512,17 +510,13 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
 
 			attempts++
-			if err != nil {
-				if errors.Is(err, p2p.ErrDialLightNode) {
-					k.logger.Debugf("connect fail %s: %v", addr, err)
-					k.logger.Warningf("connect to bootnode %s", addr)
-					return false, err
-				}
-				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debugf("connect fail %s: %v", addr, err)
-					k.logger.Warningf("connect to bootnode %s", addr)
-					return false, err
-				}
+
+			switch {
+			case errors.Is(err, p2p.ErrDialLightNode), !errors.Is(err, p2p.ErrAlreadyConnected):
+				k.logger.Debugf("connect fail %s: %v", addr, err)
+				k.logger.Warningf("connect to bootnode %s", addr)
+				return false, err
+			case err != nil:
 				k.logger.Debugf("connect to bootnode fail: %v", err)
 				return false, nil
 			}

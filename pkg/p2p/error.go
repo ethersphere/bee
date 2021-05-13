@@ -16,7 +16,7 @@ var (
 	ErrPeerNotFound = errors.New("peer not found")
 	// ErrAlreadyConnected is returned if connect was called for already connected node.
 	ErrAlreadyConnected = errors.New("already connected")
-	// ErrDialLightNode is returned if connect was attempted to a light node
+	// ErrDialLightNode is returned if connect was attempted to a light node.
 	ErrDialLightNode = errors.New("target peer is a light node")
 )
 
