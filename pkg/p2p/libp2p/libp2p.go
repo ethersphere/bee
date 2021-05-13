@@ -538,6 +538,12 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
+	if !i.FullNode {
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(info.ID)
+		return nil, p2p.ErrDialLightNode
+	}
+
 	blocked, err := s.blocklist.Exists(i.BzzAddress.Overlay)
 	if err != nil {
 		s.logger.Debugf("blocklisting: exists %s: %v", info.ID, err)
@@ -568,12 +574,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
-	if i.FullNode {
-		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
-		if err != nil {
-			_ = s.Disconnect(i.BzzAddress.Overlay)
-			return nil, fmt.Errorf("storing bzz address: %w", err)
-		}
+	err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
+	if err != nil {
+		_ = s.Disconnect(i.BzzAddress.Overlay)
+		return nil, fmt.Errorf("storing bzz address: %w", err)
 	}
 
 	s.protocolsmu.RLock()
