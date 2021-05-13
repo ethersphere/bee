@@ -292,6 +292,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		balance.refreshOngoing = true
 		a.logger.Infof("### %d", timeBasedPaymentAmount)
 		balance.refreshOngoingLock.Lock()
+		a.logger.Infof("### postlock %d", timeBasedPaymentAmount)
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
 
@@ -764,11 +765,11 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
 	accountingPeer.refreshOngoingLock.Lock()
 	defer accountingPeer.refreshOngoingLock.Unlock()
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
 	bigPrice := new(big.Int).SetUint64(price)
 
