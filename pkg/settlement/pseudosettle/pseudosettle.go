@@ -204,7 +204,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		paymentAmount.Set(big.NewInt(0))
 	}
 
-	s.accountingAPI.Reserve(ctx, p.Address, paymentAmount.Uint64())
+	err = s.accountingAPI.Reserve(ctx, p.Address, paymentAmount.Uint64())
+	if err != nil {
+		return
+	}
 	defer s.accountingAPI.Release(p.Address, paymentAmount.Uint64())
 
 	err = w.WriteMsgWithContext(ctx, &pb.PaymentAck{
