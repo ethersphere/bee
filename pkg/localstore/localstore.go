@@ -201,9 +201,9 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	capacityMB := float64(db.capacity*swarm.ChunkSize) * 9.5367431640625e-7
 
 	if capacityMB <= 1000 {
-		db.logger.Infof("database capacity: %d chunks (approximately %fMB)", db.capacity, capacityMB)
+		db.logger.Infof("cache capacity: %d chunks (approximately %fMB)", db.capacity, capacityMB)
 	} else {
-		db.logger.Infof("database capacity: %d chunks (approximately %0.1fGB)", db.capacity, capacityMB/1000)
+		db.logger.Infof("cache capacity: %d chunks (approximately %0.1fGB)", db.capacity, capacityMB/1000)
 	}
 
 	if maxParallelUpdateGC > 0 {
