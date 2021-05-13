@@ -206,7 +206,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	err = s.accountingAPI.Reserve(ctx, p.Address, paymentAmount.Uint64())
 	if err != nil {
-		return
+		return err
 	}
 	defer s.accountingAPI.Release(p.Address, paymentAmount.Uint64())
 
