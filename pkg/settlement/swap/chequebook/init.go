@@ -19,7 +19,7 @@ import (
 
 const (
 	chequebookKey           = "swap_chequebook"
-	chequebookDeploymentKey = "swap_chequebook_transaction_deployment"
+	ChequebookDeploymentKey = "swap_chequebook_transaction_deployment"
 
 	balanceCheckBackoffDuration = 20 * time.Second
 	balanceCheckMaxRetries      = 10
@@ -124,7 +124,7 @@ func Init(
 		}
 
 		var txHash common.Hash
-		err = stateStore.Get(chequebookDeploymentKey, &txHash)
+		err = stateStore.Get(ChequebookDeploymentKey, &txHash)
 		if err != nil && err != storage.ErrNotFound {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func Init(
 
 			logger.Infof("deploying new chequebook in transaction %x", txHash)
 
-			err = stateStore.Put(chequebookDeploymentKey, txHash)
+			err = stateStore.Put(ChequebookDeploymentKey, txHash)
 			if err != nil {
 				return nil, err
 			}
