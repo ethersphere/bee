@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -28,6 +29,7 @@ type libp2pServiceOpts struct {
 	Logger      logging.Logger
 	Addressbook addressbook.Interface
 	PrivateKey  *ecdsa.PrivateKey
+	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
 }
 
@@ -69,7 +71,12 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 
 	lightnodes := lightnode.NewContainer()
 
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, lightnodes, o.Logger, nil, o.libp2pOpts)
+	opts := o.libp2pOpts
+	opts.Transaction = []byte(hexutil.EncodeUint64(o.PrivateKey.Y.Uint64()))
+
+	senderMatcher := &MockSenderMatcher{}
+
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, lightnodes, senderMatcher, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,4 +156,10 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 		t.Fatal(err)
 	}
 	return addrs[0]
+}
+
+type MockSenderMatcher struct{}
+
+func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address) (bool, error) {
+	return true, nil
 }

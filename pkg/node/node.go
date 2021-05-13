@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -127,6 +128,7 @@ type Options struct {
 	SwapInitialDeposit       string
 	SwapEnable               bool
 	FullNodeMode             bool
+	Transaction              string
 	PostageContractAddress   string
 	PriceOracleAddress       string
 }
@@ -273,7 +275,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	lightNodes := lightnode.NewContainer()
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	txHash, err := getTxHash(stateStore, logger, o.Transaction)
+	if err != nil {
+		return nil, errors.New("no transaction hash provided or found")
+	}
+
+	senderMatcher := transaction.NewMatcher(swapBackend, types.NewEIP155Signer(big.NewInt(chainID)))
+
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
@@ -281,6 +290,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		Standalone:     o.Standalone,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       o.FullNodeMode,
+		Transaction:    txHash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -780,4 +790,19 @@ func (e *multiError) add(err error) {
 
 func (e *multiError) hasErrors() bool {
 	return len(e.errors) > 0
+}
+
+func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transaction string) ([]byte, error) {
+	if len(transaction) == 32 {
+		logger.Info("using the provided transaction hash")
+		return []byte(transaction), nil
+	}
+
+	var txHash common.Hash
+	key := chequebook.ChequebookDeploymentKey
+	if err := stateStore.Get(key, &txHash); err != nil {
+		return nil, err
+	}
+
+	return txHash.Bytes(), nil
 }
