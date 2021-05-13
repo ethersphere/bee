@@ -261,8 +261,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// if either type of payment not ongoing, then
 	// if there is already a timesettle ongoing
 
-	now := time.Now().Unix()
-	timeElapsed := big.NewInt(now - balance.refreshTimestamp)
+	// now := time.Now().Unix()
+	// timeElapsed := big.NewInt(now - balance.refreshTimestamp)
 
 	oldBalance, err := a.Balance(peer)
 	if err != nil {
@@ -288,7 +288,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	timeBasedPaymentAmount := new(big.Int).Neg(compensatedBalance)
 
-	if !balance.paymentOngoing && !balance.refreshOngoing && timeElapsed.Cmp(big.NewInt(0)) > 0 && timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
+	if !balance.paymentOngoing && !balance.refreshOngoing && timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
 		balance.refreshOngoingLock.Lock()
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
