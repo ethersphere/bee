@@ -174,7 +174,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	attemptedAmount := big.NewInt(0).SetBytes(req.Amount)
-	paymentAmount := attemptedAmount
+
+	paymentAmount := new(big.Int).Set(attemptedAmount)
 
 	s.peersMu.Lock()
 	pseudoSettlePeer, ok := s.peers[p.Address.String()]
@@ -193,10 +194,14 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	if allowance.Cmp(attemptedAmount) < 0 {
-		paymentAmount = allowance
+		paymentAmount.Set(allowance)
 		s.logger.Tracef("pseudosettle accepting reduced payment from peer %v of %d", p.Address, paymentAmount)
 	} else {
 		s.logger.Tracef("pseudosettle accepting payment message from peer %v of %d", p.Address, paymentAmount)
+	}
+
+	if paymentAmount.Cmp(big.NewInt(0)) < 0 {
+		paymentAmount.Set(big.NewInt(0))
 	}
 
 	s.accountingAPI.Reserve(ctx, p.Address, paymentAmount.Uint64())
@@ -308,13 +313,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
+	checkTime := s.timeNow().Unix()
+
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
 		return
 	}
-
-	checkTime := s.timeNow().Unix()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
