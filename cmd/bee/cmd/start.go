@@ -118,7 +118,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
-				DBCapacity:                 c.config.GetUint64(optionNameDBCapacity),
+				DBCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
 				DBBlockCacheCapacity:       c.config.GetUint64(optionNameDBBlockCacheCapacity),
 				DBWriteBufferSize:          c.config.GetUint64(optionNameDBWriteBufferSize),
