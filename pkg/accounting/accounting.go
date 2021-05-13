@@ -729,7 +729,6 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, 
 	a.logger.Info("refreshment sent 2")
 
 	accountingPeer.refreshOngoing = false
-	accountingPeer.refreshTimestamp = timestamp
 
 	a.logger.Info("refreshment sent 3")
 
@@ -737,6 +736,8 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, 
 		a.logger.Warningf("accouting: refresh failure %v", receivedError)
 		return
 	}
+
+	accountingPeer.refreshTimestamp = timestamp
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
