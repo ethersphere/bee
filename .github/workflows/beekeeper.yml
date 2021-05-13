@@ -126,7 +126,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
-          timeout 10m ./beeinfra.sh install --local -r "${REPLICA}" --geth --k3s --pay-threshold 1000000000000 --postage --db-capacity 100
+          timeout 10m ./beeinfra.sh install --local -r "${REPLICA}" --geth --k3s --pay-threshold 1000000000000 --postage --cache-capacity 100
       - name: Test gc
         id: gc-chunk-1
         run: ./beekeeper check gc --cache-capacity 100 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"

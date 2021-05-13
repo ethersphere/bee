@@ -21,7 +21,7 @@ import (
 
 const (
 	optionNameDataDir                   = "data-dir"
-	optionNameDBCapacity                = "db-capacity"
+	optionNameCacheCapacity             = "cache-capacity"
 	optionNameDBOpenFilesLimit          = "db-open-files-limit"
 	optionNameDBBlockCacheCapacity      = "db-block-cache-capacity"
 	optionNameDBWriteBufferSize         = "db-write-buffer-size"
@@ -191,7 +191,7 @@ func (c *command) setHomeDir() (err error) {
 
 func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
-	cmd.Flags().Uint64(optionNameDBCapacity, 5000000, fmt.Sprintf("db capacity in chunks, multiply by %d to get approximate capacity in bytes", swarm.ChunkSize))
+	cmd.Flags().Uint64(optionNameCacheCapacity, 1000000, fmt.Sprintf("cache capacity in chunks, multiply by %d to get approximate capacity in bytes", swarm.ChunkSize))
 	cmd.Flags().Uint64(optionNameDBOpenFilesLimit, 200, "number of open files allowed by database")
 	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
 	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
