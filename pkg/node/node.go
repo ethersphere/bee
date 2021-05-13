@@ -224,6 +224,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			stateStore,
 			o.SwapEndpoint,
 			signer,
+			o.BlockTime,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("init chain: %w", err)

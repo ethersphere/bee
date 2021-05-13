@@ -25,9 +25,8 @@ import (
 )
 
 const (
-	blockPage = 10000 // how many blocks to sync every time
-	tailSize  = 4     // how many blocks to tail from the tip of the chain
-	pollEvery = tailSize + 1
+	blockPage = 5000 // how many blocks to sync every time we page
+	tailSize  = 4    // how many blocks to tail from the tip of the chain
 )
 
 var (
@@ -152,7 +151,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 		cancel()
 	}()
 
-	chainUpdateInterval := time.Duration(l.blockTime) * pollEvery * time.Second
+	chainUpdateInterval := (time.Duration(l.blockTime) * time.Second) / 2
 
 	synced := make(chan struct{})
 	closeOnce := new(sync.Once)
