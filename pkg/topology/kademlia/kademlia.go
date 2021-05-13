@@ -510,13 +510,17 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
 
 			attempts++
-
-			switch {
-			case errors.Is(err, p2p.ErrDialLightNode), !errors.Is(err, p2p.ErrAlreadyConnected):
-				k.logger.Debugf("connect fail %s: %v", addr, err)
-				k.logger.Warningf("connect to bootnode %s", addr)
-				return false, err
-			case err != nil:
+			if err != nil {
+				if errors.Is(err, p2p.ErrDialLightNode) {
+					k.logger.Debugf("connect fail %s: %v", addr, err)
+					k.logger.Warningf("connect to bootnode %s", addr)
+					return false, err
+				}
+				if !errors.Is(err, p2p.ErrAlreadyConnected) {
+					k.logger.Debugf("connect fail %s: %v", addr, err)
+					k.logger.Warningf("connect to bootnode %s", addr)
+					return false, err
+				}
 				k.logger.Debugf("connect to bootnode fail: %v", err)
 				return false, nil
 			}
