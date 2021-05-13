@@ -290,6 +290,9 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	if !balance.paymentOngoing && !balance.refreshOngoing && timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
+		a.logger.Info("###")
+		a.logger.Info(timeBasedPaymentAmount)
+
 		balance.refreshOngoingLock.Lock()
 		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount)
 	}
@@ -505,110 +508,6 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 	return addr, nil
 }
 
-// NotifyPayment is called by Settlement when we receive a payment.
-func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
-	accountingPeer := a.getAccountingPeer(peer)
-
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
-	currentBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return err
-		}
-
-	}
-	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
-	if currentBalance.Cmp(big.NewInt(0)) <= 0 {
-		surplus, err := a.SurplusBalance(peer)
-		if err != nil {
-			return fmt.Errorf("failed to get surplus balance: %w", err)
-		}
-		increasedSurplus := new(big.Int).Add(surplus, amount)
-
-		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, amount, increasedSurplus)
-
-		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
-		if err != nil {
-			return fmt.Errorf("failed to persist surplus balance: %w", err)
-		}
-
-		return nil
-	}
-
-	// if current balance is positive, let's make a partial credit to
-	newBalance := new(big.Int).Sub(currentBalance, amount)
-
-	// Don't allow a payment to put us into debt
-	// This is to prevent another node tricking us into settling by settling
-	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
-	nextBalance := newBalance
-	if newBalance.Cmp(big.NewInt(0)) < 0 {
-		nextBalance = big.NewInt(0)
-	}
-
-	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
-
-	err = a.store.Put(peerBalanceKey(peer), nextBalance)
-	if err != nil {
-		return fmt.Errorf("failed to persist balance: %w", err)
-	}
-
-	// If payment would have put us into debt, rather, let's add to surplusBalance,
-	// so as that an oversettlement attempt creates balance for future forwarding services
-	// charges to be deducted of
-	if newBalance.Cmp(big.NewInt(0)) < 0 {
-		surplusGrowth := new(big.Int).Sub(amount, currentBalance)
-
-		surplus, err := a.SurplusBalance(peer)
-		if err != nil {
-			return fmt.Errorf("failed to get surplus balance: %w", err)
-		}
-		increasedSurplus := new(big.Int).Add(surplus, surplusGrowth)
-
-		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
-
-		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
-		if err != nil {
-			return fmt.Errorf("failed to persist surplus balance: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// NotifyPayment is called by Settlement when we receive a payment.
-func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
-	accountingPeer := a.getAccountingPeer(peer)
-
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
-	currentBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return err
-		}
-	}
-
-	// if current balance is positive, let's make a partial credit to
-	nextBalance := new(big.Int).Sub(currentBalance, amount)
-
-	// Don't allow a payment to put us into debt
-	// This is to prevent another node tricking us into settling by settling
-	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
-
-	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
-
-	err = a.store.Put(peerBalanceKey(peer), nextBalance)
-	if err != nil {
-		return fmt.Errorf("failed to persist balance: %w", err)
-	}
-
-	return nil
-}
-
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
 func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
 	accountingPeer := a.getAccountingPeer(peer)
@@ -754,6 +653,114 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, 
 		a.logger.Warningf("accounting: notifyrefreshmentsent failed to persist balance: %v", err)
 		return
 	}
+
+	a.logger.Info("######### refreshment sent %d", amount)
+}
+
+// NotifyPayment is called by Settlement when we receive a payment.
+func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+
+	currentBalance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return err
+		}
+
+	}
+	// if balance is already negative or zero, we credit full amount received to surplus balance and terminate early
+	if currentBalance.Cmp(big.NewInt(0)) <= 0 {
+		surplus, err := a.SurplusBalance(peer)
+		if err != nil {
+			return fmt.Errorf("failed to get surplus balance: %w", err)
+		}
+		increasedSurplus := new(big.Int).Add(surplus, amount)
+
+		a.logger.Tracef("surplus crediting peer %v with amount %d due to payment, new surplus balance is %d", peer, amount, increasedSurplus)
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+
+		return nil
+	}
+
+	// if current balance is positive, let's make a partial credit to
+	newBalance := new(big.Int).Sub(currentBalance, amount)
+
+	// Don't allow a payment to put us into debt
+	// This is to prevent another node tricking us into settling by settling
+	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
+	nextBalance := newBalance
+	if newBalance.Cmp(big.NewInt(0)) < 0 {
+		nextBalance = big.NewInt(0)
+	}
+
+	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	a.logger.Info("############ refreshment received %d", amount)
+
+	// If payment would have put us into debt, rather, let's add to surplusBalance,
+	// so as that an oversettlement attempt creates balance for future forwarding services
+	// charges to be deducted of
+	if newBalance.Cmp(big.NewInt(0)) < 0 {
+		surplusGrowth := new(big.Int).Sub(amount, currentBalance)
+
+		surplus, err := a.SurplusBalance(peer)
+		if err != nil {
+			return fmt.Errorf("failed to get surplus balance: %w", err)
+		}
+		increasedSurplus := new(big.Int).Add(surplus, surplusGrowth)
+
+		a.logger.Tracef("surplus crediting peer %v with amount %d due to refreshment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
+		if err != nil {
+			return fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// NotifyPayment is called by Settlement when we receive a payment.
+func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+
+	currentBalance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return err
+		}
+	}
+
+	// if current balance is positive, let's make a partial credit to
+	nextBalance := new(big.Int).Sub(currentBalance, amount)
+
+	// Don't allow a payment to put us into debt
+	// This is to prevent another node tricking us into settling by settling
+	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
+
+	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	return nil
 }
 
 func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {

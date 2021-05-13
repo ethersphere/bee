@@ -222,6 +222,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
+	s.logger.Infof("###### %d instead of %d", attemptedAmount, paymentAmount)
+
 	// End of temporary part
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(p.Address, SettlementReceivedPrefix), &lastTime)
