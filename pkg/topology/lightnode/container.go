@@ -53,16 +53,19 @@ func (c *Container) PeerInfo() topology.BinInfo {
 	return topology.BinInfo{
 		BinPopulation:     uint(c.connectedPeers.Length()),
 		BinConnected:      uint(c.connectedPeers.Length()),
-		DisconnectedPeers: toAddrs(c.disconnectedPeers),
-		ConnectedPeers:    toAddrs(c.connectedPeers),
+		DisconnectedPeers: peersInfo(c.disconnectedPeers),
+		ConnectedPeers:    peersInfo(c.connectedPeers),
 	}
 }
 
-func toAddrs(s *pslice.PSlice) (addrs []string) {
+func peersInfo(s *pslice.PSlice) []*topology.PeerInfo {
+	if s.Length() == 0 {
+		return nil
+	}
+	peers := make([]*topology.PeerInfo, 0, s.Length())
 	_ = s.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		addrs = append(addrs, addr.String())
+		peers = append(peers, &topology.PeerInfo{Address: addr})
 		return false, false, nil
 	})
-
-	return
+	return peers
 }

@@ -428,11 +428,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if err != nil {
 		return nil, fmt.Errorf("unable to create in-memory metrics storage for kademlia: %w", err)
 	}
-	defer func() {
-		if err := metricsDB.Close(); err != nil {
-			panic(err)
-		}
-	}()
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
 	b.topologyCloser = kad

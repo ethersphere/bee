@@ -376,7 +376,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			peer.addr,
 			metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionOutbound),
 		); err != nil {
-			k.logger.Debugf("unable to record login outbound metrics for %q: %v", peer.addr, err)
+			k.logger.Debugf("kademlia: unable to record login outbound metrics for %q: %v", peer.addr, err)
 		}
 
 		k.depthMu.Lock()
@@ -678,7 +678,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		}
 
 		if err := k.collector.Record(peer, metrics.IncSessionConnectionRetry()); err != nil {
-			k.logger.Debugf("unable to record session connection retry metrics for %q: %v", peer, err)
+			k.logger.Debugf("kademlia: unable to record session connection retry metrics for %q: %v", peer, err)
 		}
 
 		if failedAttempts > maxConnAttempts {
@@ -815,7 +815,7 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 		addr,
 		metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionInbound),
 	); err != nil {
-		k.logger.Debugf("unable to record login inbound metrics for %q: %v", err)
+		k.logger.Debugf("kademlia: unable to record login inbound metrics for %q: %v", addr, err)
 	}
 
 	k.waitNextMu.Lock()
@@ -847,7 +847,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 		peer.Address,
 		metrics.PeerLogOut(time.Now()),
 	); err != nil {
-		k.logger.Debugf("unable to record logout metrics for %q: %v", err)
+		k.logger.Debugf("kademlia: unable to record logout metrics for %q: %v", peer.Address, err)
 	}
 
 	k.depthMu.Lock()
@@ -1116,9 +1116,20 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		infos = append(infos, topology.BinInfo{})
 	}
 
+	ss, err := k.collector.Snapshot(time.Now())
+	if err != nil {
+		k.logger.Debugf("kademlia: unable to take metrics snapshot: %v", err)
+	}
+
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		infos[po].BinConnected++
-		infos[po].ConnectedPeers = append(infos[po].ConnectedPeers, addr.String())
+		infos[po].ConnectedPeers = append(
+			infos[po].ConnectedPeers,
+			&topology.PeerInfo{
+				Address: addr,
+				Metrics: createMetricsSnapshotView(ss[addr.String()]),
+			},
+		)
 		return false, false, nil
 	})
 
@@ -1128,12 +1139,18 @@ func (k *Kad) Snapshot() *topology.KadParams {
 
 		for _, v := range infos[po].ConnectedPeers {
 			// peer already connected, don't show in the known peers list
-			if v == addr.String() {
+			if v.Address.Equal(addr) {
 				return false, false, nil
 			}
 		}
 
-		infos[po].DisconnectedPeers = append(infos[po].DisconnectedPeers, addr.String())
+		infos[po].DisconnectedPeers = append(
+			infos[po].DisconnectedPeers,
+			&topology.PeerInfo{
+				Address: addr,
+				Metrics: createMetricsSnapshotView(ss[addr.String()]),
+			},
+		)
 		return false, false, nil
 	})
 
@@ -1204,7 +1221,7 @@ func (k *Kad) Close() error {
 	}()
 
 	if err := k.collector.Finalize(time.Now()); err != nil {
-		k.logger.Debugf("unable to finalize open sessions: %v", err)
+		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
 	}
 
 	select {
@@ -1238,4 +1255,16 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 	}
 
 	return addrs[:count], nil
+}
+
+// createMetricsSnapshotView creates new topology.MetricSnapshotView
+// from the given metrics.Snapshot.
+func createMetricsSnapshotView(ss *metrics.Snapshot) *topology.MetricSnapshotView {
+	return &topology.MetricSnapshotView{
+		LastSeen:                   ss.LastSeen.Format(time.RFC822),
+		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Round(time.Second).String(),
+		SessionConnectionRetry:     ss.SessionConnectionRetry,
+		SessionConnectionDuration:  ss.SessionConnectionDuration.Round(time.Second).String(),
+		SessionConnectionDirection: string(ss.SessionConnectionDirection),
+	}
 }
