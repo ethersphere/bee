@@ -27,8 +27,8 @@ type Traverser interface {
 	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
 }
 
-// NewService is a convenient constructor for Service.
-func NewService(store storage.Storer) Traverser {
+// New constructs for a new Traverser.
+func New(store storage.Storer) Traverser {
 	return &service{store: store}
 }
 

@@ -513,7 +513,7 @@ func (s *server) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
-	err = s.stewardess.Reupload(r.Context(), address)
+	err = s.steward.Reupload(r.Context(), address)
 	if err != nil {
 		s.logger.Debugf("bzz patch: reupload %s: %v", address.String(), err)
 		s.logger.Error("bzz patch: reupload")

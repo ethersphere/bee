@@ -58,7 +58,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	"github.com/ethersphere/bee/pkg/stewardess"
+	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -514,7 +514,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		ns = netstore.New(storer, validStamp, nil, retrieve, logger)
 	}
 
-	traversalService := traversal.NewService(ns)
+	traversalService := traversal.New(ns)
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
@@ -573,8 +573,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.APIAddr != "" {
 		// API server
 		feedFactory := factory.New(ns)
-		stewardess := stewardess.New(storer, traversalService, pushSyncProtocol)
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, stewardess, signer, logger, tracer, api.Options{
+		steward := steward.New(storer, traversalService, pushSyncProtocol)
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
