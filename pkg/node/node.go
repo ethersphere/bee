@@ -794,11 +794,9 @@ func (e *multiError) hasErrors() bool {
 	return len(e.errors) > 0
 }
 
-var standaloneTxHash = []byte("00000000000000000000000000000000")
-
 func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
 	if o.Standalone {
-		return standaloneTxHash, nil
+		return nil, nil // in standalone mode tx hash is not used
 	}
 	if len(o.Transaction) == 32 {
 		logger.Info("using the provided transaction hash")
