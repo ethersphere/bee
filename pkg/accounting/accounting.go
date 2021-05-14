@@ -309,7 +309,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		if extraAmount.Cmp(big.NewInt(0)) > 0 {
 			balance.paymentOngoing = true
 
-			if balance.refreshOngoing == true {
+			if balance.refreshOngoing {
 				balance.shadowReserveRefreshLock.Lock()
 				balance.shadowReserveDuringRefresh = new(big.Int).Add(balance.shadowReserveDuringRefresh, extraAmount)
 				balance.shadowReserveRefreshLock.Unlock()
@@ -776,7 +776,7 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 
 	bigPrice := new(big.Int).SetUint64(price)
 
-	if accountingPeer.refreshOngoing == true {
+	if accountingPeer.refreshOngoing {
 		accountingPeer.shadowReserveRefreshLock.Lock()
 		accountingPeer.shadowReserveDuringRefresh = new(big.Int).Add(accountingPeer.shadowReserveDuringRefresh, bigPrice)
 		accountingPeer.shadowReserveRefreshLock.Unlock()
