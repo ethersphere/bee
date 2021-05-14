@@ -21,7 +21,7 @@ import (
 type peerKeyPrefix string
 
 const (
-	peerLastSeen                peerKeyPrefix = "peer-last-seen"
+	peerLastSeenTimestamp       peerKeyPrefix = "peer-last-seen-timestamp"
 	peerTotalConnectionDuration peerKeyPrefix = "peer-total-connection-duration"
 )
 
@@ -75,7 +75,7 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 			panic(fmt.Errorf("time before unix epoch: %s", t))
 		}
 		cs.sessionConnDirection = dir
-		return cs.lastSeen.Put(uint64(ls))
+		return cs.lastSeenTimestamp.Put(uint64(ls))
 	}
 }
 
@@ -97,7 +97,7 @@ func PeerLogOut(t time.Time) RecordOp {
 			panic(fmt.Errorf("time before unix epoch: %s", t))
 		}
 
-		curLs, err := cs.lastSeen.Get()
+		curLs, err := cs.lastSeenTimestamp.Get()
 		if err != nil {
 			return err
 		}
@@ -113,7 +113,7 @@ func PeerLogOut(t time.Time) RecordOp {
 		if err != nil {
 			return err
 		}
-		return cs.lastSeen.Put(newLs)
+		return cs.lastSeenTimestamp.Put(newLs)
 
 	}
 }
@@ -131,9 +131,9 @@ func IncSessionConnectionRetry() RecordOp {
 
 // Snapshot represents a snapshot of peers' metrics counters.
 type Snapshot struct {
-	LastSeen                   time.Time
+	LastSeenTimestamp          int64
 	ConnectionTotalDuration    time.Duration
-	SessionConnectionRetry     int
+	SessionConnectionRetry     uint
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 }
@@ -143,10 +143,10 @@ type Snapshot struct {
 type Counters struct {
 	loggedIn bool
 	// Persistent.
-	lastSeen          *shed.Uint64Field
+	lastSeenTimestamp *shed.Uint64Field
 	connTotalDuration *shed.Uint64Field
 	// In memory.
-	sessionConnRetry     int
+	sessionConnRetry     uint
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
 }
@@ -183,7 +183,7 @@ func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
 	key := addr.String()
 	cs, ok := c.counters[key]
 	if !ok {
-		mk := newPeerKey(peerLastSeen, key)
+		mk := newPeerKey(peerLastSeenTimestamp, key)
 		ls, err := c.db.NewUint64Field(mk.String())
 		if err != nil {
 			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
@@ -196,7 +196,7 @@ func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
 		}
 
 		cs = &Counters{
-			lastSeen:          &ls,
+			lastSeenTimestamp: &ls,
 			connTotalDuration: &cd,
 		}
 	}
@@ -234,27 +234,27 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 			return
 		}
 
-		ls, err := cs.lastSeen.Get()
+		ls, err := cs.lastSeenTimestamp.Get()
 		if err != nil {
 			mErr = multierror.Append(mErr, fmt.Errorf("unable to take last seen snapshot for %q: %w", addr, err))
 		}
-		lastSeen := time.Unix(0, int64(ls))
+		lastSeenTimestamp := int64(ls)
 
 		cn, err := cs.connTotalDuration.Get()
 		if err != nil {
 			mErr = multierror.Append(mErr, fmt.Errorf("unable to take connection duration snapshot for %q: %w", addr, err))
 		}
-		connTotalDur := time.Duration(cn)
+		connTotalDuration := time.Duration(cn)
 
 		sessionConnDuration := cs.sessionConnDuration
 		if cs.loggedIn {
-			sessionConnDuration = t.Sub(lastSeen)
-			connTotalDur += sessionConnDuration
+			sessionConnDuration = t.Sub(time.Unix(0, lastSeenTimestamp))
+			connTotalDuration += sessionConnDuration
 		}
 
 		snapshot[addr] = &Snapshot{
-			LastSeen:                   lastSeen,
-			ConnectionTotalDuration:    connTotalDur,
+			LastSeenTimestamp:          lastSeenTimestamp,
+			ConnectionTotalDuration:    connTotalDuration,
 			SessionConnectionRetry:     cs.sessionConnRetry,
 			SessionConnectionDuration:  sessionConnDuration,
 			SessionConnectionDirection: cs.sessionConnDirection,
