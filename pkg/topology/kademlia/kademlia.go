@@ -721,6 +721,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
+		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
 		_ = k.p2p.Disconnect(peer)
 	}
 
@@ -807,6 +808,9 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(peer p2p.Peer) {
+
+	k.logger.Debugf("kademlia: disconnected peer %s", peer.Address)
+
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
 	k.connectedPeers.Remove(peer.Address, po)
 
