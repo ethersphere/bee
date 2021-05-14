@@ -72,13 +72,15 @@ type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int)
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock                  sync.Mutex // lock to be held during any accounting action for this peer
-	reservedBalance       *big.Int   // amount currently reserved for active peer interaction
-	shadowReservedBalance *big.Int   // amount currently reserved for active peer interaction
-	paymentThreshold      *big.Int   // the threshold at which the peer expects us to pay
-	refreshOngoing        bool
-	refreshTimestamp      int64
-	paymentOngoing        bool // indicate if we are currently settling with the peer
+	lock                       sync.Mutex // lock to be held during any accounting action for this peer
+	reservedBalance            *big.Int   // amount currently reserved for active peer interaction
+	shadowReservedBalance      *big.Int   // amount currently reserved for active peer interaction
+	paymentThreshold           *big.Int   // the threshold at which the peer expects us to pay
+	refreshOngoing             bool
+	shadowReserveRefreshLock   sync.Mutex
+	shadowReserveDuringRefresh *big.Int
+	refreshTimestamp           int64
+	paymentOngoing             bool // indicate if we are currently settling with the peer
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -252,17 +254,10 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 // called.
 func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
-	// if no payment ongoing, then timesettle
-	// if there is already a timesettle ongoing
 	if balance.refreshOngoing && balance.paymentOngoing {
 		return nil
 	}
-
-	// if either type of payment not ongoing, then
-	// if there is already a timesettle ongoing
-
-	// now := time.Now().Unix()
-	// timeElapsed := big.NewInt(now - balance.refreshTimestamp)
+	// if either type of payment not already ongoing, continue
 
 	oldBalance, err := a.Balance(peer)
 	if err != nil {
@@ -271,45 +266,60 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		}
 	}
 
-	surplusBalance, err := a.SurplusBalance(peer)
-	if err != nil {
-		return fmt.Errorf("failed to load balance: %w", err)
-	}
+	now := time.Now().Unix()
+	interval := big.NewInt(now - balance.refreshTimestamp)
 
-	if surplusBalance.Cmp(big.NewInt(0)) < 0 {
-		return ErrInvalidValue
-	}
+	// if no refreshment ongoing, and we are not in the same second as the last one happened in, than timesettle
+	if !balance.refreshOngoing && interval.Cmp(big.NewInt(0)) > 0 {
 
-	compensatedBalance := new(big.Int).Sub(oldBalance, surplusBalance)
-
-	// Don't do anything if there is no actual debt.
-	// This might be the case if the peer owes us and the total reserve for a
-	// peer exceeds the payment treshold.
-
-	timeBasedPaymentAmount := new(big.Int).Neg(compensatedBalance)
-
-	if !balance.paymentOngoing && !balance.refreshOngoing && timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
-		balance.refreshOngoing = true
-		a.logger.Infof("### %d", timeBasedPaymentAmount)
-		a.logger.Infof("### postlock %d", timeBasedPaymentAmount)
-
-		shadowBalance, err := a.shadowBalance(peer)
+		surplusBalance, err := a.SurplusBalance(peer)
 		if err != nil {
-			balance.refreshOngoing = false
-			return err
+			return fmt.Errorf("failed to load balance: %w", err)
 		}
 
-		go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount, shadowBalance)
+		if surplusBalance.Cmp(big.NewInt(0)) < 0 {
+			return ErrInvalidValue
+		}
+
+		compensatedBalance := new(big.Int).Sub(oldBalance, surplusBalance)
+		timeBasedPaymentAmount := new(big.Int).Neg(compensatedBalance)
+
+		// Don't do anything if there is no actual debt.
+		// This should not happen as the reserve call is still holding the accountingPeer lock inhibiting balance changes
+		if timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
+			balance.refreshOngoing = true
+
+			shadowBalance, err := a.shadowBalance(peer)
+			if err != nil {
+				balance.refreshOngoing = false
+				return err
+			}
+
+			go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount, shadowBalance)
+		}
+
 	}
 
-	//	paymentAmount := new(big.Int).Neg(oldBalance)
+	if !balance.paymentOngoing {
 
-	// if !balance.paymentOngoing && !balance.refreshOngoing && paymentAmount.Cmp(big.NewInt(0)) > 0 {
-	// 		balance.paymentOngoing = true
-	// 		balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
-	// 		a.logger.Error("sending real payment")
-	// 		go a.payFunction(context.Background(), peer, paymentAmount)
-	// }
+		maximumPossibleRefreshment := new(big.Int).Mul(interval, a.refreshRate)
+
+		paymentAmount := new(big.Int).Neg(oldBalance)
+		extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
+		if extraAmount.Cmp(big.NewInt(0)) > 0 {
+			balance.paymentOngoing = true
+
+			if balance.refreshOngoing == true {
+				balance.shadowReserveRefreshLock.Lock()
+				balance.shadowReserveDuringRefresh = new(big.Int).Add(balance.shadowReserveDuringRefresh, extraAmount)
+				balance.shadowReserveRefreshLock.Unlock()
+			}
+
+			balance.shadowReservedBalance = new(big.Int).Add(balance.shadowReservedBalance, extraAmount)
+
+			go a.payFunction(context.Background(), peer, extraAmount)
+		}
+	}
 
 	return nil
 }
@@ -619,11 +629,9 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	a.logger.Info("refreshment sent 2")
-
 	accountingPeer.refreshOngoing = false
 
-	a.logger.Info("refreshment sent 3")
+	a.ShadowReserveOngoingRefreshReset(peer)
 
 	if receivedError != nil {
 		a.logger.Warningf("accouting: refresh failure %v", receivedError)
@@ -768,6 +776,12 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 
 	bigPrice := new(big.Int).SetUint64(price)
 
+	if accountingPeer.refreshOngoing == true {
+		accountingPeer.shadowReserveRefreshLock.Lock()
+		accountingPeer.shadowReserveDuringRefresh = new(big.Int).Add(accountingPeer.shadowReserveDuringRefresh, bigPrice)
+		accountingPeer.shadowReserveRefreshLock.Unlock()
+	}
+
 	accountingPeer.shadowReservedBalance = new(big.Int).Add(accountingPeer.shadowReservedBalance, bigPrice)
 
 	return &debitAction{
@@ -876,6 +890,24 @@ func (d *debitAction) Cleanup() {
 		defer d.accountingPeer.lock.Unlock()
 		d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 	}
+}
+
+func (a *Accounting) ShadowReserveOngoingRefresh(peer swarm.Address) *big.Int {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.shadowReserveRefreshLock.Lock()
+	growth := new(big.Int).Set(accountingPeer.shadowReserveDuringRefresh)
+	accountingPeer.shadowReserveRefreshLock.Unlock()
+
+	return growth
+}
+
+func (a *Accounting) ShadowReserveOngoingRefreshReset(peer swarm.Address) {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.shadowReserveRefreshLock.Lock()
+	accountingPeer.shadowReserveDuringRefresh.SetUint64(0)
+	accountingPeer.shadowReserveRefreshLock.Unlock()
 }
 
 func (a *Accounting) SetRefreshFunc(f RefreshFunc) {

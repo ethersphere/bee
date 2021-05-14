@@ -313,6 +313,8 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 		return
 	}
 
+	shadowReserveGrowth := s.accountingAPI.ShadowReserveOngoingRefresh(peer)
+
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
 		err = fmt.Errorf("pseudosettle other peer %v accepted payment larger than expected", peer)
@@ -343,6 +345,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 	// enforce allowance
 	// check if value is appropriate
 	expectedAllowance := new(big.Int).Mul(big.NewInt(allegedInterval), s.refreshRate)
+	checkAllowance = new(big.Int).Sub(checkAllowance, shadowReserveGrowth)
 	if expectedAllowance.Cmp(checkAllowance) > 0 {
 		expectedAllowance = new(big.Int).Set(checkAllowance)
 	}
