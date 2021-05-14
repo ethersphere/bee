@@ -420,10 +420,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var settlement settlement.Interface
 	var swapService *swap.Service
 
-	// TODO: (this is temporary) store all kademlia persistent metrics in memory.
-	metricsDB, err := shed.NewDB("", nil)
+	metricsDB, err := shed.NewDBWrap(stateStore.DB())
 	if err != nil {
-		return nil, fmt.Errorf("unable to create in-memory metrics storage for kademlia: %w", err)
+		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
