@@ -99,7 +99,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 
 	// Inc session conn retry.
-	err = mc.Record(addr, metrics.IncSessionConnectionRetry())
+	err = mc.Record(addr, metrics.IncSessionConnectionRetry(), metrics.IncSessionConnectionRetry())
 	if err != nil {
 		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
 	}
