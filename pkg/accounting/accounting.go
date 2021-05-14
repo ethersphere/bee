@@ -77,7 +77,6 @@ type accountingPeer struct {
 	shadowReservedBalance *big.Int   // amount currently reserved for active peer interaction
 	paymentThreshold      *big.Int   // the threshold at which the peer expects us to pay
 	refreshOngoing        bool
-	refreshOngoingLock    sync.Mutex // lets ongoing payment delay new incoming request attempts
 	refreshTimestamp      int64
 	paymentOngoing        bool // indicate if we are currently settling with the peer
 }
@@ -292,12 +291,10 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	if !balance.paymentOngoing && !balance.refreshOngoing && timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
 		balance.refreshOngoing = true
 		a.logger.Infof("### %d", timeBasedPaymentAmount)
-		balance.refreshOngoingLock.Lock()
 		a.logger.Infof("### postlock %d", timeBasedPaymentAmount)
 
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
-			balance.refreshOngoingLock.Unlock()
 			balance.refreshOngoing = false
 			return err
 		}
@@ -619,10 +616,6 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, timestamp int64, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.refreshOngoingLock.Unlock()
-
-	a.logger.Info("refreshment sent 1")
-
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
@@ -769,9 +762,6 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 
 func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 	accountingPeer := a.getAccountingPeer(peer)
-
-	accountingPeer.refreshOngoingLock.Lock()
-	defer accountingPeer.refreshOngoingLock.Unlock()
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
