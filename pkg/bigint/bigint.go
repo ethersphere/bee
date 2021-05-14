@@ -25,6 +25,10 @@ func (i *BigInt) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	if i.Int == nil {
+		i.Int = new(big.Int)
+	}
+
 	i.SetString(val, 10)
 
 	return nil
