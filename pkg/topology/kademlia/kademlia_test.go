@@ -537,6 +537,60 @@ func TestOversaturationBootnode(t *testing.T) {
 	}
 }
 
+func TestBootnodeMaxConnections(t *testing.T) {
+	defer func(p int) {
+		*kademlia.BootnodeOverSaturationPeers = p
+	}(*kademlia.BootnodeOverSaturationPeers)
+	*kademlia.BootnodeOverSaturationPeers = 4
+
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
+	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	// Add maximum accepted number of peers up until bin 5 without problems
+	for i := 0; i < 6; i++ {
+		for j := 0; j < *kademlia.BootnodeOverSaturationPeers; j++ {
+			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
+
+	// see depth is 5
+	kDepth(t, kad, 5)
+
+	depth := 5
+	outSideDepthPeers := 5
+
+	for k := 0; k < depth; k++ {
+		// further connections should succeed outside of depth
+		for l := 0; l < outSideDepthPeers; l++ {
+			addr := test.RandomAddressAt(base, k)
+			// if error is not as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+			// check that pick works correctly
+			if !kad.Pick(p2p.Peer{Address: addr}) {
+				t.Fatal("should pick the peer but didnt")
+			}
+		}
+		// see depth is still as expected
+		kDepth(t, kad, 5)
+	}
+
+	if conns != -int32(depth*outSideDepthPeers) {
+		t.Fatal("conns is not equal to the number of expected disconnected peers")
+	}
+}
+
 // TestNotifierHooks tests that the Connected/Disconnected hooks
 // result in the correct behavior once called.
 func TestNotifierHooks(t *testing.T) {
@@ -1055,38 +1109,46 @@ func newTestKademlia(connCounter, failedConnCounter *int32, kadOpts kademlia.Opt
 }
 
 func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-		if addr.Equal(nonConnectableAddress) {
-			_ = atomic.AddInt32(failedCounter, 1)
-			return nil, errors.New("non reachable node")
-		}
-		if counter != nil {
-			_ = atomic.AddInt32(counter, 1)
-		}
-
-		addresses, err := ab.Addresses()
-		if err != nil {
-			return nil, errors.New("could not fetch addresbook addresses")
-		}
-
-		for _, a := range addresses {
-			if a.Underlay.Equal(addr) {
-				return &a, nil
+	p2ps := p2pmock.New(
+		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+			if addr.Equal(nonConnectableAddress) {
+				_ = atomic.AddInt32(failedCounter, 1)
+				return nil, errors.New("non reachable node")
 			}
-		}
+			if counter != nil {
+				_ = atomic.AddInt32(counter, 1)
+			}
 
-		address := test.RandomAddress()
-		bzzAddr, err := bzz.NewAddress(signer, addr, address, 0)
-		if err != nil {
-			return nil, err
-		}
+			addresses, err := ab.Addresses()
+			if err != nil {
+				return nil, errors.New("could not fetch addresbook addresses")
+			}
 
-		if err := ab.Put(address, *bzzAddr); err != nil {
-			return nil, err
-		}
+			for _, a := range addresses {
+				if a.Underlay.Equal(addr) {
+					return &a, nil
+				}
+			}
 
-		return bzzAddr, nil
-	}))
+			address := test.RandomAddress()
+			bzzAddr, err := bzz.NewAddress(signer, addr, address, 0)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := ab.Put(address, *bzzAddr); err != nil {
+				return nil, err
+			}
+
+			return bzzAddr, nil
+		}),
+		p2pmock.WithDisconnectFunc(func(swarm.Address) error {
+			if counter != nil {
+				_ = atomic.AddInt32(counter, -1)
+			}
+			return nil
+		}),
+	)
 
 	return p2ps
 }
