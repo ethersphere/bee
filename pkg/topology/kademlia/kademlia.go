@@ -1296,10 +1296,13 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 // given metrics.Snapshot and rounds all the timestamps and durations to its
 // nearest second.
 func createMetricsSnapshotView(ss *metrics.Snapshot) *topology.MetricSnapshotView {
+	if ss == nil {
+		return nil
+	}
 	return &topology.MetricSnapshotView{
 		LastSeenTimestamp:          time.Unix(0, ss.LastSeenTimestamp).Unix(),
-		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionRetry:     ss.SessionConnectionRetry,
+		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 	}

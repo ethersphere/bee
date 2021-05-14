@@ -73,8 +73,8 @@ type PeerInfo struct {
 // MetricSnapshotView represents snapshot of metrics counters in more human readable form.
 type MetricSnapshotView struct {
 	LastSeenTimestamp          int64   `json:"lastSeenTimestamp"`
-	ConnectionTotalDuration    float64 `json:"connectionTotalDuration"`
 	SessionConnectionRetry     uint    `json:"sessionConnectionRetry"`
+	ConnectionTotalDuration    float64 `json:"connectionTotalDuration"`
 	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
 }

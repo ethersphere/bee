@@ -1105,6 +1105,8 @@ func TestStart(t *testing.T) {
 }
 
 func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+	t.Helper()
+
 	metricsDB, err := shed.NewDB("", nil)
 	if err != nil {
 		t.Fatal(err)

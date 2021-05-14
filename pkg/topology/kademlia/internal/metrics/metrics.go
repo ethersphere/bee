@@ -16,13 +16,9 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-// peerKeyPrefix represents the type for defining peer metrics prefix key
-// necessary for identification of the values stored in persistent store.
-type peerKeyPrefix string
-
 const (
-	peerLastSeenTimestamp       peerKeyPrefix = "peer-last-seen-timestamp"
-	peerTotalConnectionDuration peerKeyPrefix = "peer-total-connection-duration"
+	peerLastSeenTimestamp       string = "peer-last-seen-timestamp"
+	peerTotalConnectionDuration string = "peer-total-connection-duration"
 )
 
 // PeerConnectionDirection represents peer connection direction.
@@ -35,7 +31,7 @@ const (
 
 // peerKey is used to store peers' persistent metrics counters.
 type peerKey struct {
-	prefix  peerKeyPrefix
+	prefix  string
 	address string
 }
 
@@ -45,7 +41,7 @@ func (pk peerKey) String() string {
 }
 
 // newPeerKey is a convenient constructor for creating new peerKey.
-func newPeerKey(p peerKeyPrefix, a string) *peerKey {
+func newPeerKey(p, a string) *peerKey {
 	return &peerKey{
 		prefix:  p,
 		address: a,
@@ -67,8 +63,6 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 			return nil // Ignore when the peer is already logged in.
 		}
 		cs.loggedIn = true
-
-		cs.resetSession()
 
 		ls := t.UnixNano()
 		if ls < 0 {
@@ -119,12 +113,10 @@ func PeerLogOut(t time.Time) RecordOp {
 }
 
 // IncSessionConnectionRetry increments the session connection retry
-// counter by 1. The operation will be ignored if peer is not logged in.
+// counter by 1.
 func IncSessionConnectionRetry() RecordOp {
 	return func(cs *Counters) error {
-		if cs.loggedIn {
-			cs.sessionConnRetry++
-		}
+		cs.sessionConnRetry++
 		return nil
 	}
 }
@@ -132,8 +124,8 @@ func IncSessionConnectionRetry() RecordOp {
 // Snapshot represents a snapshot of peers' metrics counters.
 type Snapshot struct {
 	LastSeenTimestamp          int64
-	ConnectionTotalDuration    time.Duration
 	SessionConnectionRetry     uint
+	ConnectionTotalDuration    time.Duration
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 }
@@ -149,12 +141,6 @@ type Counters struct {
 	sessionConnRetry     uint
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
-}
-
-// resetSession resets the session counters.
-func (cs *Counters) resetSession() {
-	cs.sessionConnRetry = 0
-	cs.sessionConnDirection = ""
 }
 
 // NewCollector is a convenient constructor for creating new Collector.
@@ -254,8 +240,8 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 
 		snapshot[addr] = &Snapshot{
 			LastSeenTimestamp:          lastSeenTimestamp,
-			ConnectionTotalDuration:    connTotalDuration,
 			SessionConnectionRetry:     cs.sessionConnRetry,
+			ConnectionTotalDuration:    connTotalDuration,
 			SessionConnectionDuration:  sessionConnDuration,
 			SessionConnectionDirection: cs.sessionConnDirection,
 		}
