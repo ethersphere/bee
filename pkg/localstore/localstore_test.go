@@ -58,13 +58,13 @@ func init() {
 	}
 }
 
-func TestDBCapacity(t *testing.T) {
+func TestCacheCapacity(t *testing.T) {
 	lo := Options{
 		Capacity: 500,
 	}
 	db := newTestDB(t, &lo)
 	if db.cacheCapacity != 500 {
-		t.Fatal("could not set db capacity")
+		t.Fatal("could not set cache capacity")
 	}
 }
 
