@@ -13,6 +13,7 @@ import (
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var (
@@ -173,6 +174,8 @@ type StateStorer interface {
 	Put(key string, i interface{}) (err error)
 	Delete(key string) (err error)
 	Iterate(prefix string, iterFunc StateIterFunc) (err error)
+	// DB returns the underlying DB storage.
+	DB() *leveldb.DB
 	io.Closer
 }
 
