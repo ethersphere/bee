@@ -70,13 +70,13 @@ type PeerInfo struct {
 	Metrics *MetricSnapshotView `json:"metrics,omitempty"`
 }
 
-// MetricSnapshotView represents snapshot of metrics counters in human readable form.
+// MetricSnapshotView represents snapshot of metrics counters in more human readable form.
 type MetricSnapshotView struct {
-	LastSeen                   string `json:"lastSeen"`
-	ConnectionTotalDuration    string `json:"connectionTotalDuration"`
-	SessionConnectionRetry     int    `json:"sessionConnectionRetry"`
-	SessionConnectionDuration  string `json:"sessionConnectionDuration"`
-	SessionConnectionDirection string `json:"sessionConnectionDirection"`
+	LastSeenTimestamp          int64   `json:"lastSeenTimestamp"`
+	ConnectionTotalDuration    float64 `json:"connectionTotalDuration"`
+	SessionConnectionRetry     uint    `json:"sessionConnectionRetry"`
+	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
+	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
 }
 
 type BinInfo struct {

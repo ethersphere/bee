@@ -1257,14 +1257,15 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 	return addrs[:count], nil
 }
 
-// createMetricsSnapshotView creates new topology.MetricSnapshotView
-// from the given metrics.Snapshot.
+// createMetricsSnapshotView creates new topology.MetricSnapshotView from the
+// given metrics.Snapshot and rounds all the timestamps and durations to its
+// nearest second.
 func createMetricsSnapshotView(ss *metrics.Snapshot) *topology.MetricSnapshotView {
 	return &topology.MetricSnapshotView{
-		LastSeen:                   ss.LastSeen.Format(time.RFC822),
-		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Round(time.Second).String(),
+		LastSeenTimestamp:          time.Unix(0, ss.LastSeenTimestamp).Unix(),
+		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionRetry:     ss.SessionConnectionRetry,
-		SessionConnectionDuration:  ss.SessionConnectionDuration.Round(time.Second).String(),
+		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 	}
 }
