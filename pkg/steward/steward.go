@@ -4,7 +4,7 @@
 
 // Package stewardess provides convenience methods
 // for reseeding content on Swarm.
-package stewardess
+package steward
 
 import (
 	"context"
@@ -26,14 +26,14 @@ type Reuploader interface {
 	Reupload(context.Context, swarm.Address) error
 }
 
-type stew struct {
+type steward struct {
 	getter    storage.Getter
 	push      pushsync.PushSyncer
 	traverser traversal.Traverser
 }
 
 func New(getter storage.Getter, t traversal.Traverser, p pushsync.PushSyncer) Reuploader {
-	return &stew{getter: getter, push: p, traverser: t}
+	return &steward{getter: getter, push: p, traverser: t}
 }
 
 // Reupload content with the given root hash to the network.
@@ -41,18 +41,18 @@ func New(getter storage.Getter, t traversal.Traverser, p pushsync.PushSyncer) Re
 // addresses and push every chunk individually to the network.
 // It assumes all chunks are available locally. It is therefore
 // advisable to pin the content locally before trying to reupload it.
-func (s *stew) Reupload(ctx context.Context, root swarm.Address) error {
-	tokenPool := make(chan struct{}, parallelPush)
+func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
+	sem := make(chan struct{}, parallelPush)
 	eg, _ := errgroup.WithContext(ctx)
-	f := func(addr swarm.Address) error {
+	fn := func(addr swarm.Address) error {
 		c, err := s.getter.Get(ctx, storage.ModeGetSync, addr)
 		if err != nil {
 			return err
 		}
 
-		tokenPool <- struct{}{}
+		sem <- struct{}{}
 		eg.Go(func() error {
-			defer func() { <-tokenPool }()
+			defer func() { <-sem }()
 			_, err := s.push.PushChunkToClosest(ctx, c)
 			if err != nil {
 				return err
@@ -62,7 +62,7 @@ func (s *stew) Reupload(ctx context.Context, root swarm.Address) error {
 		return nil
 	}
 
-	if err := s.traverser.Traverse(ctx, root, f); err != nil {
+	if err := s.traverser.Traverse(ctx, root, fn); err != nil {
 		return fmt.Errorf("traversal of %s failed: %w", root.String(), err)
 	}
 

@@ -605,15 +605,15 @@ func TestBzzReupload(t *testing.T) {
 	var (
 		logger         = logging.New(ioutil.Discard, 0)
 		mockStatestore = statestore.NewStateStore()
-		m              = &mockStewardess{}
+		m              = &mockSteward{}
 		storer         = smock.NewStorer()
 		addr           = swarm.NewAddress([]byte{31: 128})
 	)
 	client, _, _ := newTestServer(t, testServerOptions{
-		Storer:     storer,
-		Tags:       tags.NewTags(mockStatestore, logger),
-		Logger:     logger,
-		Stewardess: m,
+		Storer:  storer,
+		Tags:    tags.NewTags(mockStatestore, logger),
+		Logger:  logger,
+		Steward: m,
 	})
 	jsonhttptest.Request(t, client, http.MethodPatch, "/v1/bzz/"+addr.String(), http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -626,11 +626,11 @@ func TestBzzReupload(t *testing.T) {
 	}
 }
 
-type mockStewardess struct {
+type mockSteward struct {
 	addr swarm.Address
 }
 
-func (m *mockStewardess) Reupload(_ context.Context, addr swarm.Address) error {
+func (m *mockSteward) Reupload(_ context.Context, addr swarm.Address) error {
 	m.addr = addr
 	return nil
 }

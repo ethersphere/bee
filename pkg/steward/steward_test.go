@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.package storage
 
-package stewardess_test
+package steward_test
 
 import (
 	"bytes"
@@ -14,30 +14,30 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	psmock "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/stewardess"
+	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 )
 
-func TestStewardess(t *testing.T) {
+func TestSteward(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
 		data           = make([]byte, chunks*4096) //1k chunks
 		store          = mock.NewStorer()
-		traverser      = traversal.NewService(store)
+		traverser      = traversal.New(store)
 		traversedAddrs = make(map[string]struct{})
 		mu             sync.Mutex
-		f              = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
+		fn             = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
 			mu.Lock()
 			traversedAddrs[ch.Address().String()] = struct{}{}
 			mu.Unlock()
 			return nil, nil
 		}
-		ps = psmock.New(f)
-		s  = stewardess.New(store, traverser, ps)
+		ps = psmock.New(fn)
+		s  = steward.New(store, traverser, ps)
 	)
 	n, err := rand.Read(data)
 	if n != cap(data) {

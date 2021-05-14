@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package traversal
+package traversal_test
 
 import (
 	"bytes"
@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/traversal"
 )
 
 const (
@@ -159,7 +160,7 @@ func TestTraversalBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = NewService(storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -281,7 +282,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = NewService(storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -434,7 +435,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = NewService(storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
