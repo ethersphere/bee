@@ -34,16 +34,18 @@ const (
 )
 
 var (
-	saturationPeers     = 4
-	overSaturationPeers = 16
-	shortRetry          = 30 * time.Second
-	timeToRetry         = 2 * shortRetry
-	broadcastBinSize    = 4
+	saturationPeers             = 4
+	overSaturationPeers         = 16
+	bootnodeOverSaturationPeers = 64
+	shortRetry                  = 30 * time.Second
+	timeToRetry                 = 2 * shortRetry
+	broadcastBinSize            = 4
 )
 
 var (
 	errOverlayMismatch = errors.New("overlay mismatch")
 	errPruneEntry      = errors.New("prune entry")
+	errEmptyBin        = errors.New("empty bin")
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
@@ -101,7 +103,11 @@ func New(base swarm.Address,
 	logger logging.Logger,
 	o Options) *Kad {
 	if o.SaturationFunc == nil {
-		o.SaturationFunc = binSaturated
+		os := overSaturationPeers
+		if o.BootnodeMode {
+			os = bootnodeOverSaturationPeers
+		}
+		o.SaturationFunc = binSaturated(os)
 	}
 	if o.BitSuffixLength == 0 {
 		o.BitSuffixLength = defaultBitSuffixLength
@@ -543,30 +549,32 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
-	potentialDepth := recalcDepth(peers, swarm.MaxPO)
+func binSaturated(oversaturationAmount int) binSaturationFunc {
+	return func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+		potentialDepth := recalcDepth(peers, swarm.MaxPO)
 
-	// short circuit for bins which are >= depth
-	if bin >= potentialDepth {
-		return false, false
-	}
-
-	// lets assume for now that the minimum number of peers in a bin
-	// would be 2, under which we would always want to connect to new peers
-	// obviously this should be replaced with a better optimization
-	// the iterator is used here since when we check if a bin is saturated,
-	// the plain number of size of bin might not suffice (for example for squared
-	// gaps measurement)
-
-	size := 0
-	_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
-		if po == bin {
-			size++
+		// short circuit for bins which are >= depth
+		if bin >= potentialDepth {
+			return false, false
 		}
-		return false, false, nil
-	})
 
-	return size >= saturationPeers, size >= overSaturationPeers
+		// lets assume for now that the minimum number of peers in a bin
+		// would be 2, under which we would always want to connect to new peers
+		// obviously this should be replaced with a better optimization
+		// the iterator is used here since when we check if a bin is saturated,
+		// the plain number of size of bin might not suffice (for example for squared
+		// gaps measurement)
+
+		size := 0
+		_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
+			if po == bin {
+				size++
+			}
+			return false, false, nil
+		})
+
+		return size >= saturationPeers, size >= oversaturationAmount
+	}
 }
 
 // recalcDepth calculates and returns the kademlia depth.
@@ -763,15 +771,26 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
-	if !k.bootnode {
-		// don't run this check if we're a bootnode
-		po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-		if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
-			return topology.ErrOversaturated
+
+	address := peer.Address
+	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
+
+	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+
+		if k.bootnode {
+			randPeer, err := k.randomPeer(po)
+			if err != nil {
+				return err
+			}
+			_ = k.p2p.Disconnect(randPeer)
+			goto connected
 		}
+
+		return topology.ErrOversaturated
 	}
 
-	if err := k.connected(ctx, peer.Address); err != nil {
+connected:
+	if err := k.connected(ctx, address); err != nil {
 		return err
 	}
 
@@ -1202,4 +1221,20 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 	}
 
 	return addrs[:count], nil
+}
+
+func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
+
+	peers := k.connectedPeers.BinPeers(bin)
+
+	if len(peers) == 0 {
+		return swarm.ZeroAddress, errEmptyBin
+	}
+
+	rndIndx, err := random.Int(random.Reader, big.NewInt(int64(len(peers))))
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return peers[rndIndx.Int64()], nil
 }
