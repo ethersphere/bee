@@ -300,28 +300,28 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		}
 
 	}
-
-	if !balance.paymentOngoing {
-
-		maximumPossibleRefreshment := new(big.Int).Mul(interval, a.refreshRate)
-
-		paymentAmount := new(big.Int).Neg(oldBalance)
-		extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
-		if extraAmount.Cmp(big.NewInt(0)) > 0 {
-			balance.paymentOngoing = true
-
-			if balance.refreshOngoing {
-				balance.shadowReserveRefreshLock.Lock()
-				balance.shadowReserveDuringRefresh = new(big.Int).Add(balance.shadowReserveDuringRefresh, extraAmount)
-				balance.shadowReserveRefreshLock.Unlock()
-			}
-
-			balance.shadowReservedBalance = new(big.Int).Add(balance.shadowReservedBalance, extraAmount)
-
-			go a.payFunction(context.Background(), peer, extraAmount)
-		}
-	}
-
+	//
+	//	if !balance.paymentOngoing {
+	//
+	//		maximumPossibleRefreshment := new(big.Int).Mul(interval, a.refreshRate)
+	//
+	//		paymentAmount := new(big.Int).Neg(oldBalance)
+	//		extraAmount := new(big.Int).Sub(paymentAmount, maximumPossibleRefreshment)
+	//		if extraAmount.Cmp(big.NewInt(0)) > 0 {
+	//			balance.paymentOngoing = true
+	//
+	//			if balance.refreshOngoing {
+	//				balance.shadowReserveRefreshLock.Lock()
+	//				balance.shadowReserveDuringRefresh = new(big.Int).Add(balance.shadowReserveDuringRefresh, extraAmount)
+	//				balance.shadowReserveRefreshLock.Unlock()
+	//			}
+	//
+	//			balance.shadowReservedBalance = new(big.Int).Add(balance.shadowReservedBalance, extraAmount)
+	//
+	//			go a.payFunction(context.Background(), peer, extraAmount)
+	//		}
+	//	}
+	//
 	return nil
 }
 
