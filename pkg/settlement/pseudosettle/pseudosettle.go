@@ -369,7 +369,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 		return
 	}
 
-	s.accountingAPI.NotifyRefreshmentSent(peer, acceptedAmount, lastTime.CheckTimestamp, nil)
+	s.accountingAPI.NotifyRefreshmentSent(peer, acceptedAmount, lastTime.Timestamp, nil)
 	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 }
