@@ -791,11 +791,7 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 	// if current balance is positive, let's make a partial credit to
 	nextBalance := new(big.Int).Sub(currentBalance, amount)
 
-	// Don't allow a payment to put us into debt
-	// This is to prevent another node tricking us into settling by settling
-	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
-
-	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
+	a.logger.Tracef("crediting peer %v with amount %d due to refreshment, new balance is %d", peer, amount, nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {

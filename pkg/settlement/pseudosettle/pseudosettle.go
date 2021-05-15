@@ -295,14 +295,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 		return
 	}
 
-	checkTime := s.timeNow().Unix()
-
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
 		return
 	}
 
+	checkTime := s.timeNow().Unix()
 	shadowReserveGrowth := s.accountingAPI.ShadowReserveOngoingRefresh(peer)
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
