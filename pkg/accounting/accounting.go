@@ -586,7 +586,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentOngoing = false
-	accountingPeer.shadowReservedBalance.Sub(accountingPeer.shadowReservedBalance, amount)
+	accountingPeer.shadowReservedBalance = new(big.Int).Sub(accountingPeer.shadowReservedBalance, amount)
 
 	if receivedError != nil {
 		a.logger.Warningf("accouting: payment failure %v", receivedError)
@@ -616,10 +616,10 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, price *big.Int, timestamp int64, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
+	accountingPeer.refreshOngoing = false
+
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
-
-	accountingPeer.refreshOngoing = false
 
 	if receivedError != nil {
 		a.logger.Warningf("accounting: refresh failure %v", receivedError)
