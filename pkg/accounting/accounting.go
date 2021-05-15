@@ -626,21 +626,22 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, price *big.Int, timestamp int64, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
-	accountingPeer.refreshOngoing = false
+
+	if receivedError != nil {
+		a.logger.Warningf("accounting: refresh failure %v", receivedError)
+		accountingPeer.refreshOngoing = false
+		return
+	}
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	accountingPeer.refreshOngoing = false
+	accountingPeer.refreshTimestamp = timestamp
+
 	cost := new(big.Int).Set(price)
 
 	a.ShadowReserveOngoingRefreshReset(peer)
-
-	if receivedError != nil {
-		a.logger.Warningf("accounting: refresh failure %v", receivedError)
-		return
-	}
-
-	accountingPeer.refreshTimestamp = timestamp
 
 	surplusBalance, err := a.SurplusBalance(peer)
 	if err != nil {
