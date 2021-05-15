@@ -200,16 +200,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		s.logger.Tracef("pseudosettle accepting payment message from peer %v of %d", p.Address, paymentAmount)
 	}
 
-	if paymentAmount.Cmp(big.NewInt(0)) < 0 {
-		paymentAmount = big.NewInt(0)
-	}
-
-	err = s.accountingAPI.Reserve(ctx, p.Address, paymentAmount.Uint64())
-	if err != nil {
-		return err
-	}
-	defer s.accountingAPI.Release(p.Address, paymentAmount.Uint64())
-
 	err = w.WriteMsgWithContext(ctx, &pb.PaymentAck{
 		Amount:    paymentAmount.Bytes(),
 		Timestamp: timestamp,
