@@ -276,8 +276,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		balance.refreshOngoing = true
 
 		go a.refreshFunction(context.Background(), peer, compensatedBalance, shadowBalance)
-
-		return nil
 	}
 
 	if !balance.paymentOngoing {
