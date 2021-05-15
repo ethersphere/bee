@@ -179,12 +179,13 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		return ErrInvalidValue
 	}
 
+	increasedDebt := new(big.Int).Add(currentDebt, additionalDebt)
 	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
 
 	// If our expected debt is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
-	if increasedExpectedDebt.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
+	if increasedExpectedDebt.Cmp(threshold) >= 0 && increasedDebt.Cmp(big.NewInt(0)) > 0 {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
