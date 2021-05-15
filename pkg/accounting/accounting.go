@@ -258,50 +258,40 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	if balance.refreshOngoing && balance.paymentOngoing {
 		return nil
 	}
-	// if either type of payment not already ongoing, continue
 
-	oldBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
-	}
+	if !balance.refreshOngoing {
 
-	now := time.Now().Unix()
-	interval := big.NewInt(now - balance.refreshTimestamp)
-
-	// if no refreshment ongoing, and we are not in the same second as the last one happened in, than timesettle
-	if !balance.refreshOngoing && interval.Cmp(big.NewInt(0)) > 0 {
-
-		surplusBalance, err := a.SurplusBalance(peer)
+		compensatedBalance, err := a.CompensatedBalance(peer)
 		if err != nil {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
-
-		if surplusBalance.Cmp(big.NewInt(0)) < 0 {
-			return ErrInvalidValue
-		}
-
-		compensatedBalance := new(big.Int).Sub(oldBalance, surplusBalance)
-		timeBasedPaymentAmount := new(big.Int).Neg(compensatedBalance)
-
-		// Don't do anything if there is no actual debt.
-		// This should not happen as the reserve call is still holding the accountingPeer lock inhibiting balance changes
-		if timeBasedPaymentAmount.Cmp(big.NewInt(0)) > 0 {
-			balance.refreshOngoing = true
-
-			shadowBalance, err := a.shadowBalance(peer)
-			if err != nil {
-				balance.refreshOngoing = false
-				return err
+			if !errors.Is(err, ErrPeerNoBalance) {
+				return fmt.Errorf("failed to load balance: %w", err)
 			}
-
-			go a.refreshFunction(context.Background(), peer, timeBasedPaymentAmount, shadowBalance)
 		}
 
+		shadowBalance, err := a.shadowBalance(peer)
+		if err != nil {
+			balance.refreshOngoing = false
+			return err
+		}
+
+		balance.refreshOngoing = true
+
+		go a.refreshFunction(context.Background(), peer, compensatedBalance, shadowBalance)
+
+		return nil
 	}
 
 	if !balance.paymentOngoing {
+
+		oldBalance, err := a.Balance(peer)
+		if err != nil {
+			if !errors.Is(err, ErrPeerNoBalance) {
+				return fmt.Errorf("failed to load balance: %w", err)
+			}
+		}
+
+		now := time.Now().Unix()
+		interval := big.NewInt(now - balance.refreshTimestamp)
 
 		maximumPossibleRefreshment := new(big.Int).Mul(interval, a.refreshRate)
 
