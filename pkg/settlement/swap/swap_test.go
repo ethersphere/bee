@@ -70,12 +70,23 @@ func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int
 	return nil
 }
 
+func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+	return nil
+}
+
 func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {
 	t.sentCalled <- notifyPaymentSentCall{
 		peer:   peer,
 		amount: amount,
 		err:    err,
 	}
+}
+
+func (t *testObserver) Reserve(ctx context.Context, peer swarm.Address, amount uint64) error {
+	return nil
+}
+
+func (t *testObserver) Release(peer swarm.Address, amount uint64) {
 }
 
 type addressbookMock struct {

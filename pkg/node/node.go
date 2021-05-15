@@ -54,7 +54,6 @@ import (
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
-	settlement "github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -135,6 +134,11 @@ type Options struct {
 	PriceOracleAddress         string
 	BlockTime                  uint64
 }
+
+const (
+	refreshRate = int64(1000000000000)
+	basePrice   = 1000000000
+)
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -419,7 +423,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 	}
 
-	var settlement settlement.Interface
 	var swapService *swap.Service
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
@@ -445,7 +448,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
-	pricer := pricer.NewFixedPricer(swarmAddress, 1000000000)
+	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
 	minThreshold := pricer.MostExpensive()
 
@@ -472,6 +475,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if !ok {
 		return nil, fmt.Errorf("invalid payment early: %s", paymentEarly)
 	}
+
 	acc, err := accounting.NewAccounting(
 		paymentThreshold,
 		paymentTolerance,
@@ -479,10 +483,18 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		logger,
 		stateStore,
 		pricing,
+		big.NewInt(refreshRate),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
+
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
+	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
+		return nil, fmt.Errorf("pseudosettle service: %w", err)
+	}
+
+	acc.SetRefreshFunc(pseudosettleService.Pay)
 
 	if o.SwapEnable {
 		swapService, err = InitSwap(
@@ -499,16 +511,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
-		settlement = swapService
-	} else {
-		pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc)
-		if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
-			return nil, fmt.Errorf("pseudosettle service: %w", err)
-		}
-		settlement = pseudosettleService
+		acc.SetPayFunc(swapService.Pay)
 	}
-
-	acc.SetPayFunc(settlement.Pay)
 
 	pricing.SetPaymentThresholdObserver(acc)
 
@@ -645,12 +649,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			debugAPIService.MustRegisterMetrics(l.Metrics()...)
 		}
 
-		if l, ok := settlement.(metrics.Collector); ok {
-			debugAPIService.MustRegisterMetrics(l.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pseudosettleService.Metrics()...)
+
+		if swapService != nil {
+			debugAPIService.MustRegisterMetrics(swapService.Metrics()...)
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService, batchStore)
+		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {

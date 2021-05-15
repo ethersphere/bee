@@ -362,6 +362,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err != nil {
 		return fmt.Errorf("stamp marshal: %w", err)
 	}
+
+	chunkPrice := s.pricer.Price(chunk.Address())
+	debit := s.accounting.PrepareDebit(p.Address, chunkPrice)
+	defer debit.Cleanup()
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data:  chunk.Data(),
 		Stamp: stamp,
@@ -371,8 +376,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
-	chunkPrice := s.pricer.Price(chunk.Address())
-
 	// debit price from p's balance
-	return s.accounting.Debit(p.Address, chunkPrice)
+	return debit.Apply()
 }
