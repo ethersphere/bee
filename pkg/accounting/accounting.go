@@ -623,43 +623,91 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	}
 }
 
-func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, amount *big.Int, timestamp int64, receivedError error) {
+func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, price *big.Int, timestamp int64, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	accountingPeer.refreshOngoing = false
+	cost := new(big.Int).Set(price)
 
+	accountingPeer.refreshOngoing = false
 	a.ShadowReserveOngoingRefreshReset(peer)
 
 	if receivedError != nil {
-		a.logger.Warningf("accouting: refresh failure %v", receivedError)
+		a.logger.Warningf("accounting: refresh failure %v", receivedError)
 		return
 	}
 
 	accountingPeer.refreshTimestamp = timestamp
 
+	surplusBalance, err := a.SurplusBalance(peer)
+	if err != nil {
+		a.logger.Errorf("failed to get surplus balance by refreshment: %w", err)
+		return
+	}
+	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
+
+		// get new surplus balance after deduct
+		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
+
+		// if nothing left for debiting, store new surplus balance and return from debit
+		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
+			a.logger.Tracef("surplus debiting peer %v by refreshment with value %d, new surplus balance is %d", peer, price, newSurplusBalance)
+
+			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
+			if err != nil {
+				a.logger.Errorf("failed to persist surplus balance by refreshment: %w", err)
+				return
+			}
+
+			return
+		}
+
+		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
+		debitIncrease := new(big.Int).Sub(cost, surplusBalance)
+
+		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
+		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
+			a.logger.Errorf("sanity check failed for partial debit by refreshment after surplus balance drawn")
+			return
+		}
+		cost.Set(debitIncrease)
+
+		// if we still have something to debit, than have run out of surplus balance,
+		// let's store 0 as surplus balance
+		a.logger.Tracef("surplus debiting peer %v by refreshment with value %d, new surplus balance is 0", peer, debitIncrease)
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), big.NewInt(0))
+		if err != nil {
+			a.logger.Errorf("failed to persist surplus balance by refreshment: %w", err)
+			return
+		}
+
+	}
+
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
-			a.logger.Warningf("accounting: notifyrefreshmentsent: failed to load balance: %v", err)
+			a.logger.Errorf("failed to load balance by refreshment: %w", err)
 			return
 		}
 	}
 
 	// Get nextBalance by safely increasing current balance with price
-	nextBalance := new(big.Int).Add(currentBalance, amount)
+	nextBalance := new(big.Int).Add(currentBalance, cost)
 
-	a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, amount, nextBalance)
+	a.logger.Tracef("debiting peer %v by refreshment with price %d, new balance is %d", peer, price, nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		a.logger.Warningf("accounting: notifyrefreshmentsent failed to persist balance: %v", err)
+		a.logger.Errorf("failed to persist balance by refreshment: %w", err)
 		return
 	}
 
-	a.logger.Info("######### refreshment sent %d", amount)
+	a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, price, nextBalance)
+
+	return
 }
 
 // NotifyPayment is called by Settlement when we receive a payment.
