@@ -30,7 +30,8 @@ var (
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 )
 
-type ApiInterface interface {
+type Interface interface {
+	settlement.Interface
 	// LastSentCheque returns the last sent cheque for the peer
 	LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error)
 	// LastSentCheques returns the list of last sent cheques for all peers
@@ -101,7 +102,8 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		}
 	}
 
-	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
+	tot, _ := big.NewFloat(0).SetInt(amount).Float64()
+	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
 	return s.accountingAPI.NotifyPaymentReceived(peer, amount)
@@ -112,7 +114,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	var err error
 	defer func() {
 		if err != nil {
-			s.accountingAPI.NotifyPaymentSent(peer, nil, err)
+			s.accountingAPI.NotifyPaymentSent(peer, amount, err)
 		}
 	}()
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
