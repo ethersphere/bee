@@ -592,11 +592,11 @@ func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, 
 
 func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
-	accountingPeer.paymentOngoing = false
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	accountingPeer.paymentOngoing = false
 	accountingPeer.shadowReservedBalance.Sub(accountingPeer.shadowReservedBalance, amount)
 
 	if receivedError != nil {
@@ -627,16 +627,16 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, price *big.Int, timestamp int64, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	if receivedError != nil {
-		a.logger.Warningf("accounting: refresh failure %v", receivedError)
-		accountingPeer.refreshOngoing = false
-		return
-	}
-
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.refreshOngoing = false
+
+	if receivedError != nil {
+		a.logger.Warningf("accounting: refresh failure %v", receivedError)
+		return
+	}
+
 	accountingPeer.refreshTimestamp = timestamp
 
 	cost := new(big.Int).Set(price)
@@ -708,8 +708,6 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, price *big.Int, t
 	}
 
 	a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, price, nextBalance)
-
-	return
 }
 
 // NotifyPayment is called by Settlement when we receive a payment.
