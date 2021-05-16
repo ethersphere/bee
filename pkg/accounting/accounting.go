@@ -145,7 +145,7 @@ func NewAccounting(
 		metrics:          newMetrics(),
 		refreshRate:      refreshRate,
 		timeNow:          time.Now,
-		minimumPayment:   new(big.Int).Div(refreshRate, big.NewInt(3)),
+		minimumPayment:   new(big.Int).Div(refreshRate, big.NewInt(5)),
 	}, nil
 }
 
@@ -264,7 +264,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
 // called.
 func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
-	now := time.Now().Unix()
+	now := a.timeNow().Unix()
 	timeElapsed := now - balance.refreshTimestamp
 
 	oldBalance, err := a.Balance(peer)
