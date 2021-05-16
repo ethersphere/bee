@@ -203,7 +203,7 @@ func InitSwap(
 	chequebookService chequebook.Service,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
-	accountingAPI settlement.AccountingAPI,
+	accounting settlement.Accounting,
 ) (*swap.Service, error) {
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 	swapAddressBook := swap.NewAddressbook(stateStore)
@@ -218,7 +218,7 @@ func InitSwap(
 		networkID,
 		cashoutService,
 		p2ps,
-		accountingAPI,
+		accounting,
 	)
 
 	swapProtocol.SetSwap(swapService)

@@ -39,16 +39,16 @@ var (
 )
 
 type Service struct {
-	streamer      p2p.Streamer
-	logger        logging.Logger
-	store         storage.StateStorer
-	accountingAPI settlement.AccountingAPI
-	metrics       metrics
-	refreshRate   *big.Int
-	p2pService    p2p.Service
-	timeNow       func() time.Time
-	peersMu       sync.Mutex
-	peers         map[string]*pseudoSettlePeer
+	streamer    p2p.Streamer
+	logger      logging.Logger
+	store       storage.StateStorer
+	accounting  settlement.Accounting
+	metrics     metrics
+	refreshRate *big.Int
+	p2pService  p2p.Service
+	timeNow     func() time.Time
+	peersMu     sync.Mutex
+	peers       map[string]*pseudoSettlePeer
 }
 
 type pseudoSettlePeer struct {
@@ -61,17 +61,17 @@ type lastPayment struct {
 	Total          *big.Int
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accountingAPI settlement.AccountingAPI, refreshRate *big.Int, p2pService p2p.Service) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accounting settlement.Accounting, refreshRate *big.Int, p2pService p2p.Service) *Service {
 	return &Service{
-		streamer:      streamer,
-		logger:        logger,
-		metrics:       newMetrics(),
-		store:         store,
-		accountingAPI: accountingAPI,
-		p2pService:    p2pService,
-		refreshRate:   refreshRate,
-		timeNow:       time.Now,
-		peers:         make(map[string]*pseudoSettlePeer),
+		streamer:    streamer,
+		logger:      logger,
+		metrics:     newMetrics(),
+		store:       store,
+		accounting:  accounting,
+		p2pService:  p2pService,
+		refreshRate: refreshRate,
+		timeNow:     time.Now,
+		peers:       make(map[string]*pseudoSettlePeer),
 	}
 }
 
@@ -146,7 +146,7 @@ func (s *Service) peerAllowance(peer swarm.Address) (limit *big.Int, stamp int64
 
 	maxAllowance := new(big.Int).Mul(big.NewInt(currentTime-lastTime.Timestamp), s.refreshRate)
 
-	peerDebt, err := s.accountingAPI.PeerDebt(peer)
+	peerDebt, err := s.accounting.PeerDebt(peer)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -203,12 +203,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		paymentAmount.Set(big.NewInt(0))
 	}
 
-	err = s.accountingAPI.Reserve(ctx, p.Address, paymentAmount.Uint64())
-	if err != nil {
-		return err
-	}
-	defer s.accountingAPI.Release(p.Address, paymentAmount.Uint64())
-
 	err = w.WriteMsgWithContext(ctx, &pb.PaymentAck{
 		Amount:    paymentAmount.Bytes(),
 		Timestamp: timestamp,
@@ -236,7 +230,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
-	return s.accountingAPI.NotifyRefreshmentReceived(p.Address, paymentAmount)
+	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount)
 }
 
 // Pay initiates a payment to the given peer
@@ -350,8 +344,8 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 	return acceptedAmount, lastTime.CheckTimestamp, nil
 }
 
-func (s *Service) SetAccountingAPI(accountingAPI settlement.AccountingAPI) {
-	s.accountingAPI = accountingAPI
+func (s *Service) SetAccounting(accounting settlement.Accounting) {
+	s.accounting = accounting
 }
 
 // TotalSent returns the total amount sent to a peer

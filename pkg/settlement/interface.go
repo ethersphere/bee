@@ -5,7 +5,6 @@
 package settlement
 
 import (
-	"context"
 	"errors"
 	"math/big"
 
@@ -28,12 +27,9 @@ type Interface interface {
 	SettlementsReceived() (map[string]*big.Int, error)
 }
 
-type AccountingAPI interface {
+type Accounting interface {
 	PeerDebt(peer swarm.Address) (*big.Int, error)
 	NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error
 	NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error)
 	NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error
-
-	Reserve(ctx context.Context, peer swarm.Address, price uint64) error
-	Release(peer swarm.Address, price uint64)
 }
