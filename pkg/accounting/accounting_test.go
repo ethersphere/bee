@@ -584,6 +584,29 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("payment not sent")
 	}
+
+	acc.Release(peer1Addr, 1)
+
+	acc.NotifyPaymentSent(peer1Addr, big.NewInt(int64(requestPrice)), errors.New("error"))
+	acc.SetTime(ts + 1)
+
+	// try another request
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case call := <-refreshchan:
+		if call.amount.Cmp(big.NewInt(int64(requestPrice))) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, requestPrice)
+		}
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
+		}
+	default:
+		t.Fatal("no refreshment")
+	}
 }
 
 // TestAccountingCallSettlementEarly tests that settlement is called correctly if the payment threshold minus early payment is hit
