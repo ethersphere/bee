@@ -313,7 +313,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			// compute debt excluding debt created by incoming payments
 			paymentAmount := new(big.Int).Neg(oldBalance)
 			// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
-			if paymentAmount.Cmp(big.NewInt(1)) >= 0 {
+			if paymentAmount.Cmp(big.NewInt(0)) > 0 {
 				balance.paymentOngoing = true
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
 				go a.payFunction(context.Background(), peer, paymentAmount)
