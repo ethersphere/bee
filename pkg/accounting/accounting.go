@@ -268,12 +268,16 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			}
 		}
 
+		balance.shadowReserveRefreshLock.Lock()
+
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
 			return err
 		}
 
 		balance.refreshOngoing = true
+
+		balance.shadowReserveRefreshLock.Unlock()
 
 		go a.refreshFunction(context.Background(), peer, compensatedBalance, shadowBalance)
 	}
