@@ -428,7 +428,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
-	pricer := pricer.NewFixedPricer(swarmAddress, 22)
+	pricer := pricer.NewFixedPricer(swarmAddress, 16)
 
 	minThreshold := pricer.MostExpensive()
 
