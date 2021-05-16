@@ -298,12 +298,14 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		balance.refreshTimestamp = timestamp
 
-		oldBalance, err = a.increaseBalance(peer, balance, acceptedAmount)
-		if err != nil {
-			return fmt.Errorf("balance update: %w", err)
-		}
+		oldBalance = new(big.Int).Add(oldBalance, acceptedAmount)
 
 		a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, acceptedAmount, oldBalance)
+
+		err = a.store.Put(peerBalanceKey(peer), oldBalance)
+		if err != nil {
+			return fmt.Errorf("settle: failed to persist balance: %w", err)
+		}
 	}
 
 	if a.payFunction != nil {
