@@ -456,7 +456,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("invalid payment early: %s", paymentEarly)
 	}
 
-	refreshRate := int64(30000)
+	refreshRate := int64(40000)
 
 	acc, err := accounting.NewAccounting(
 		paymentThreshold,
