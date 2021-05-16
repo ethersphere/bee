@@ -142,7 +142,7 @@ func NewAccounting(
 		paymentThreshold: new(big.Int).Set(PaymentThreshold),
 		paymentTolerance: new(big.Int).Set(PaymentTolerance),
 		earlyPayment:     new(big.Int).Set(EarlyPayment),
-		disconnectLimit:  new(big.Int).Add(PaymentThreshold, PaymentTolerance)
+		disconnectLimit:  new(big.Int).Add(PaymentThreshold, PaymentTolerance),
 		logger:           Logger,
 		store:            Store,
 		pricing:          Pricing,
