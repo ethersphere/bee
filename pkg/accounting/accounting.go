@@ -170,6 +170,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	bigPrice := new(big.Int).SetUint64(price)
 	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 
+	// debt if all reserved operations are successfully credited excluding debt created by surplus balance
 	expectedDebt := new(big.Int).Add(currentDebt, nextReserved)
 
 	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
@@ -179,17 +180,16 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		threshold.SetInt64(0)
 	}
 
+	// additionalDebt is debt created by incoming payments which we don't consider debt for monetary settlement purposes
 	additionalDebt, err := a.SurplusBalance(peer)
 	if err != nil {
 		return fmt.Errorf("failed to load surplus balance: %w", err)
 	}
 
-	// uint64 conversion of surplusbalance is safe because surplusbalance is always positive
-	if additionalDebt.Cmp(big.NewInt(0)) < 0 {
-		return ErrInvalidValue
-	}
-
+	// debt if all reserved operations are successfully credited including debt created by surplus balance
 	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
+	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
+	// in other words this the debt the other node sees if everything pending is successful
 	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, accountingPeer.shadowReservedBalance)
 
 	// If our expected debt is less than earlyPayment away from our payment threshold
@@ -298,15 +298,12 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		balance.refreshTimestamp = timestamp
 
-		// Get nextBalance by safely increasing current balance with price
-		oldBalance = new(big.Int).Add(oldBalance, acceptedAmount)
+		oldBalance, err = a.increaseBalance(peer, balance, acceptedAmount)
+		if err != nil {
+			return fmt.Errorf("balance update: %w", err)
+		}
 
 		a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, acceptedAmount, oldBalance)
-
-		err = a.store.Put(peerBalanceKey(peer), oldBalance)
-		if err != nil {
-			return fmt.Errorf("settle: failed to persist balance: %w", err)
-		}
 	}
 
 	if a.payFunction != nil {
@@ -351,6 +348,10 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err e
 		return nil, err
 	}
 
+	if balance.Cmp(big.NewInt(0)) < 0 {
+		return nil, ErrInvalidValue
+	}
+
 	return balance, nil
 }
 
@@ -359,10 +360,6 @@ func (a *Accounting) CompensatedBalance(peer swarm.Address) (compensated *big.In
 	surplus, err := a.SurplusBalance(peer)
 	if err != nil {
 		return nil, err
-	}
-
-	if surplus.Cmp(big.NewInt(0)) < 0 {
-		return nil, ErrInvalidValue
 	}
 
 	balance, err := a.Balance(peer)
@@ -755,6 +752,70 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 	}
 }
 
+func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *accountingPeer, price *big.Int) (*big.Int, error) {
+	cost := new(big.Int).Set(price)
+	// see if peer has surplus balance to deduct this transaction of
+
+	surplusBalance, err := a.SurplusBalance(peer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get surplus balance: %w", err)
+	}
+
+	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
+		// get new surplus balance after deduct
+		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
+
+		// if nothing left for debiting, store new surplus balance and return from debit
+		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
+			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", peer, price, newSurplusBalance)
+
+			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
+			if err != nil {
+				return nil, fmt.Errorf("failed to persist surplus balance: %w", err)
+			}
+
+			return a.Balance(peer)
+		}
+
+		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
+		debitIncrease := new(big.Int).Sub(price, surplusBalance)
+
+		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
+		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
+			return nil, fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
+		}
+		cost.Set(debitIncrease)
+
+		// if we still have something to debit, than have run out of surplus balance,
+		// let's store 0 as surplus balance
+		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", peer, debitIncrease)
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), big.NewInt(0))
+		if err != nil {
+			return nil, fmt.Errorf("failed to persist surplus balance: %w", err)
+		}
+	}
+
+	currentBalance, err := a.Balance(peer)
+	if err != nil {
+		if !errors.Is(err, ErrPeerNoBalance) {
+			return nil, fmt.Errorf("failed to load balance: %w", err)
+		}
+	}
+
+	// Get nextBalance by safely increasing current balance with price
+	nextBalance := new(big.Int).Add(currentBalance, cost)
+
+	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
+
+	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	if err != nil {
+		return nil, fmt.Errorf("failed to persist balance: %w", err)
+	}
+
+	return nextBalance, nil
+}
+
 // Apply applies the debit operation and decreases the shadowReservedBalance
 func (d *debitAction) Apply() error {
 	d.accountingPeer.lock.Lock()
@@ -763,70 +824,10 @@ func (d *debitAction) Apply() error {
 	a := d.accounting
 
 	cost := new(big.Int).Set(d.price)
-	// see if peer has surplus balance to deduct this transaction of
 
-	surplusBalance, err := a.SurplusBalance(d.peer)
+	nextBalance, err := d.accounting.increaseBalance(d.peer, d.accountingPeer, cost)
 	if err != nil {
-		return fmt.Errorf("failed to get surplus balance: %w", err)
-	}
-	if surplusBalance.Cmp(big.NewInt(0)) > 0 {
-
-		// get new surplus balance after deduct
-		newSurplusBalance := new(big.Int).Sub(surplusBalance, cost)
-
-		// if nothing left for debiting, store new surplus balance and return from debit
-		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
-			a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is %d", d.peer, d.price, newSurplusBalance)
-
-			err = a.store.Put(peerSurplusBalanceKey(d.peer), newSurplusBalance)
-			if err != nil {
-				return fmt.Errorf("failed to persist surplus balance: %w", err)
-			}
-			// count debit operations, terminate early
-			tot, _ := big.NewFloat(0).SetInt(d.price).Float64()
-
-			d.applied = true
-			d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
-			a.metrics.TotalDebitedAmount.Add(tot)
-			a.metrics.DebitEventsCount.Inc()
-			return nil
-		}
-
-		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
-		debitIncrease := new(big.Int).Sub(d.price, surplusBalance)
-
-		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
-		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
-			return fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
-		}
-		cost.Set(debitIncrease)
-
-		// if we still have something to debit, than have run out of surplus balance,
-		// let's store 0 as surplus balance
-		a.logger.Tracef("surplus debiting peer %v with value %d, new surplus balance is 0", d.peer, debitIncrease)
-
-		err = a.store.Put(peerSurplusBalanceKey(d.peer), big.NewInt(0))
-		if err != nil {
-			return fmt.Errorf("failed to persist surplus balance: %w", err)
-		}
-
-	}
-
-	currentBalance, err := a.Balance(d.peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
-	}
-
-	// Get nextBalance by safely increasing current balance with price
-	nextBalance := new(big.Int).Add(currentBalance, cost)
-
-	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", d.peer, d.price, nextBalance)
-
-	err = a.store.Put(peerBalanceKey(d.peer), nextBalance)
-	if err != nil {
-		return fmt.Errorf("failed to persist balance: %w", err)
+		return err
 	}
 
 	d.applied = true
