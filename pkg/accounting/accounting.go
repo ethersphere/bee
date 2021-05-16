@@ -751,8 +751,6 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
-	a.logger.Info("############ refreshment received %d", amount)
-
 	// If payment would have put us into debt, rather, let's add to surplusBalance,
 	// so as that an oversettlement attempt creates balance for future forwarding services
 	// charges to be deducted of
