@@ -103,7 +103,7 @@ func TestPayment(t *testing.T) {
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), mockp2p.New())
-	recipient.SetAccountingAPI(observer)
+	recipient.SetAccounting(observer)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestPayment(t *testing.T) {
 
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), mockp2p.New())
-	payer.SetAccountingAPI(observer2)
+	payer.SetAccounting(observer2)
 
 	amount := big.NewInt(debt)
 
@@ -223,7 +223,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), mockp2p.New())
-	recipient.SetAccountingAPI(observer)
+	recipient.SetAccounting(observer)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +239,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), mockp2p.New())
-	payer.SetAccountingAPI(observer2)
+	payer.SetAccounting(observer2)
 
 	payer.SetTime(int64(10000))
 	recipient.SetTime(int64(10000))

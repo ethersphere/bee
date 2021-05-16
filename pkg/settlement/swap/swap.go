@@ -48,33 +48,33 @@ type Interface interface {
 
 // Service is the implementation of the swap settlement layer.
 type Service struct {
-	proto         swapprotocol.Interface
-	logger        logging.Logger
-	store         storage.StateStorer
-	accountingAPI settlement.AccountingAPI
-	metrics       metrics
-	chequebook    chequebook.Service
-	chequeStore   chequebook.ChequeStore
-	cashout       chequebook.CashoutService
-	p2pService    p2p.Service
-	addressbook   Addressbook
-	networkID     uint64
+	proto       swapprotocol.Interface
+	logger      logging.Logger
+	store       storage.StateStorer
+	accounting  settlement.Accounting
+	metrics     metrics
+	chequebook  chequebook.Service
+	chequeStore chequebook.ChequeStore
+	cashout     chequebook.CashoutService
+	p2pService  p2p.Service
+	addressbook Addressbook
+	networkID   uint64
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service, accountingAPI settlement.AccountingAPI) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service, accounting settlement.Accounting) *Service {
 	return &Service{
-		proto:         proto,
-		logger:        logger,
-		store:         store,
-		metrics:       newMetrics(),
-		chequebook:    chequebook,
-		chequeStore:   chequeStore,
-		addressbook:   addressbook,
-		networkID:     networkID,
-		cashout:       cashout,
-		p2pService:    p2pService,
-		accountingAPI: accountingAPI,
+		proto:       proto,
+		logger:      logger,
+		store:       store,
+		metrics:     newMetrics(),
+		chequebook:  chequebook,
+		chequeStore: chequeStore,
+		addressbook: addressbook,
+		networkID:   networkID,
+		cashout:     cashout,
+		p2pService:  p2pService,
+		accounting:  accounting,
 	}
 }
 
@@ -106,7 +106,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
-	return s.accountingAPI.NotifyPaymentReceived(peer, amount)
+	return s.accounting.NotifyPaymentReceived(peer, amount)
 }
 
 // Pay initiates a payment to the given peer
@@ -114,7 +114,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	var err error
 	defer func() {
 		if err != nil {
-			s.accountingAPI.NotifyPaymentSent(peer, amount, err)
+			s.accounting.NotifyPaymentSent(peer, amount, err)
 		}
 	}()
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
@@ -138,14 +138,14 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	}
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
-	s.accountingAPI.NotifyPaymentSent(peer, amount, nil)
+	s.accounting.NotifyPaymentSent(peer, amount, nil)
 	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalSent.Add(amountFloat)
 	s.metrics.ChequesSent.Inc()
 }
 
-func (s *Service) SetAccountingAPI(accountingAPI settlement.AccountingAPI) {
-	s.accountingAPI = accountingAPI
+func (s *Service) SetAccounting(accounting settlement.Accounting) {
+	s.accounting = accounting
 }
 
 // TotalSent returns the total amount sent to a peer

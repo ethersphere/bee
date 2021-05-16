@@ -82,13 +82,6 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 	}
 }
 
-func (t *testObserver) Reserve(ctx context.Context, peer swarm.Address, amount uint64) error {
-	return nil
-}
-
-func (t *testObserver) Release(peer swarm.Address, amount uint64) {
-}
-
 type addressbookMock struct {
 	beneficiary     func(peer swarm.Address) (beneficiary common.Address, known bool, err error)
 	chequebook      func(peer swarm.Address) (chequebookAddress common.Address, known bool, err error)
@@ -434,7 +427,7 @@ func TestPayIssueError(t *testing.T) {
 	)
 
 	observer := newTestObserver()
-	swap.SetAccountingAPI(observer)
+	swap.SetAccounting(observer)
 
 	swap.Pay(context.Background(), peer, amount)
 	select {
