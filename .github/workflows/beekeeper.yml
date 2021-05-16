@@ -64,16 +64,13 @@ jobs:
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
           for ((i=0; i<REPLICA; i++)); do echo -e "127.0.1.$((i+1))\tbee-${i}.localhost bee-${i}-debug.localhost"; done | sudo tee -a /etc/hosts
-          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s --pay-threshold 2500000000000 --postage
+          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --bootnode /dnsaddr/localhost --geth --k3s --pay-threshold 1500000000000 --postage
       - name: Test pingpong
         id: pingpong-1
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity-1
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" 
-      - name: Test settlements
-        id: settlements-1
-        run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 2500000000000
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: ./beekeeper check pushsync --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" --chunks-per-node 3 --upload-chunks --retry-delay 15s
@@ -89,6 +86,11 @@ jobs:
       - name: Test soc
         id: soc
         run: ./beekeeper check soc --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
+      - name: Test settlements
+        id: settlements-1
+        run: |
+          sleep 5
+          ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 1500000000000
       - name: Destroy the cluster
         run: |
           ./beeinfra.sh uninstall
@@ -101,7 +103,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
-          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --pay-threshold 2500000000000 --postage
+          timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --pay-threshold 1500000000000 --postage
       - name: Test pingpong
         id: pingpong-2
         run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
@@ -110,7 +112,7 @@ jobs:
         run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
       - name: Test settlements
         id: settlements-2
-        run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 2500000000000
+        run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 1500000000000
       - name: Destroy the cluster
         run: |
           ./beeinfra.sh uninstall
@@ -126,7 +128,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
-          timeout 10m ./beeinfra.sh install --local -r "${REPLICA}" --geth --k3s --pay-threshold 2500000000000 --postage --db-capacity 100
+          timeout 10m ./beeinfra.sh install --local -r "${REPLICA}" --geth --k3s --pay-threshold 1500000000000 --postage --db-capacity 100
       - name: Test gc
         id: gc-chunk-1
         run: ./beekeeper check gc --cache-capacity 100 --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
