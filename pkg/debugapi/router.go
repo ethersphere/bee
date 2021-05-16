@@ -125,19 +125,18 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
-	router.Handle("/settlements", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.settlementsHandler),
-	})
-
-	router.Handle("/pseudo", jsonhttp.MethodHandler{
+	router.Handle("/pseudosettlements", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
-	router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peerSettlementsHandler),
-	})
-
 	if s.chequebookEnabled {
+		router.Handle("/settlements", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.settlementsHandler),
+		})
+		router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+		})
+
 		router.Handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})
