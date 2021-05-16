@@ -372,17 +372,14 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 
 	notTimeSettledAmount := big.NewInt(testRefreshRate * 2)
 
-	f := func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
+	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: amount}
 		return new(big.Int).Sub(amount, notTimeSettledAmount), 0, nil
-	}
+	})
 
-	pay := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+	acc.SetPayFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int) {
 		paychan <- paymentCall{peer: peer, amount: amount}
-	}
-
-	acc.SetRefreshFunc(f)
-	acc.SetPayFunc(pay)
+	})
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -444,54 +441,36 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		t.Fatalf("expected balance to be adjusted. got %d", balance)
 	}
 
+	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
+		refreshchan <- paymentCall{peer: peer, amount: amount}
+		return big.NewInt(0), 0, nil
+	})
+
 	// Credit until the expected debt exceeeds payment threshold
-	expectedAmount := testPaymentThreshold.Uint64() - notTimeSettledAmount.Uint64()
+	expectedAmount := testPaymentThreshold.Uint64() // - notTimeSettledAmount.Uint64()
+
 	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatalf("expected overdraft, got %v", err)
 	}
-	/*
 
-		// Assume 100 is reserved by some other request
-		err = acc.Reserve(context.Background(), peer1Addr, 100)
-		if err != nil {
-			t.Fatal(err)
+	select {
+	case call := <-refreshchan:
+		if call.amount.Cmp(notTimeSettledAmount) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, notTimeSettledAmount)
 		}
-
-
-		err = acc.Credit(peer1Addr, expectedAmount)
-		if err != nil {
-			t.Fatal(err)
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
 		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for refreshment")
+	}
 
-		acc.Release(peer1Addr, expectedAmount)
-
-		// try another request to trigger settlement
-		err = acc.Reserve(context.Background(), peer1Addr, 1)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		acc.Release(peer1Addr, 1)
-
-		select {
-		case call := <-refreshchan:
-			if call.amount.Cmp(big.NewInt(int64(expectedAmount))) != 0 {
-				t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, expectedAmount)
-			}
-			if !call.peer.Equal(peer1Addr) {
-				t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
-			}
-		case <-time.After(1 * time.Second):
-			t.Fatal("timeout waiting for payment")
-		}
-
-		if acc.IsPaymentOngoing(peer1Addr) {
-			t.Fatal("triggered monetary settlement")
-		}
-
-		acc.Release(peer1Addr, 100)
-	*/
+	select {
+	case <-paychan:
+		t.Fatal("pay called twice")
+	case <-time.After(1 * time.Second):
+	}
 }
 
 // TestAccountingCallSettlementEarly tests that settlement is called correctly if the payment threshold minus early payment is hit
