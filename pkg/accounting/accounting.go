@@ -40,7 +40,7 @@ type Interface interface {
 	Release(peer swarm.Address, price uint64)
 	// Credit increases the balance the peer has with us (we "pay" the peer).
 	Credit(peer swarm.Address, price uint64) error
-	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing reserve on the other side
+	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing a possibly credited part of reserve on the other side.
 	PrepareDebit(peer swarm.Address, price uint64) Action
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (*big.Int, error)
@@ -99,16 +99,21 @@ type Accounting struct {
 	// The amount in BZZ we let peers exceed the payment threshold before we
 	// disconnect them.
 	paymentTolerance *big.Int
-	earlyPayment     *big.Int
+	// Start settleing when reserve plus debt reaches this close to threshold.
+	earlyPayment *big.Int
+	// Limit to disconnect peer after going in debt over
+	disconnectLimit *big.Int
 	// function used for monetory settlement
 	payFunction PayFunc
 	// function used for time settlement
 	refreshFunction RefreshFunc
-	refreshRate     *big.Int
-	minimumPayment  *big.Int
-	pricing         pricing.Interface
-	metrics         metrics
-	timeNow         func() time.Time
+	// allowance based on time used in pseudosettle
+	refreshRate *big.Int
+	// lower bound for the value of issued cheques
+	minimumPayment *big.Int
+	pricing        pricing.Interface
+	metrics        metrics
+	timeNow        func() time.Time
 }
 
 var (
@@ -118,8 +123,6 @@ var (
 	ErrDisconnectThresholdExceeded = errors.New("disconnect threshold exceeded")
 	// ErrPeerNoBalance is the error returned if no balance in store exists for a peer
 	ErrPeerNoBalance = errors.New("no balance for peer")
-	// ErrOverflow denotes an arithmetic operation overflowed.
-	ErrOverflow = errors.New("overflow error")
 	// ErrInvalidValue denotes an invalid value read from store
 	ErrInvalidValue = errors.New("invalid value")
 )
@@ -139,6 +142,7 @@ func NewAccounting(
 		paymentThreshold: new(big.Int).Set(PaymentThreshold),
 		paymentTolerance: new(big.Int).Set(PaymentTolerance),
 		earlyPayment:     new(big.Int).Set(EarlyPayment),
+		disconnectLimit:  new(big.Int).Add(PaymentThreshold, PaymentTolerance)
 		logger:           Logger,
 		store:            Store,
 		pricing:          Pricing,
@@ -192,7 +196,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// in other words this the debt the other node sees if everything pending is successful
 	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, accountingPeer.shadowReservedBalance)
 
-	// If our expected debt is less than earlyPayment away from our payment threshold
+	// If our expected debt reduced by what could have been credited on the other side already is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
@@ -246,7 +250,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64) error {
 		}
 	}
 
-	// Calculate next balance by safely decreasing current balance with the price we credit
+	// Calculate next balance by decreasing current balance with the price we credit
 	nextBalance := new(big.Int).Sub(currentBalance, new(big.Int).SetUint64(price))
 
 	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
@@ -282,9 +286,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 
-	// Don't do anything if there is no actual debt.
-	// This might be the case if the peer owes us and the total reserve for a
-	// peer exceeds the payment treshold.
+	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
+	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment treshold.
 	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
@@ -316,6 +319,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
 			if paymentAmount.Cmp(a.minimumPayment) >= 0 {
 				balance.paymentOngoing = true
+				// add settled amount to shadow reserve before sending it
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
 				go a.payFunction(context.Background(), peer, paymentAmount)
 			}
@@ -523,6 +527,7 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 	return addr, nil
 }
 
+// PeerDebt returns the positive part of the sum of the outstanding balance and the shadow reserve
 func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 
 	accountingPeer := a.getAccountingPeer(peer)
@@ -550,6 +555,7 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 }
 
 // shadowBalance returns the current debt reduced by any potentially debitable amount stored in shadowReservedBalance
+// this represents how much less our debt could potentially be seen by the other party if it's ahead with processing credits corresponding to our shadow reserve
 func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, err error) {
 	accountingPeer := a.getAccountingPeer(peer)
 	balance := new(big.Int)
@@ -585,6 +591,7 @@ func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, 
 	return shadowBalance, nil
 }
 
+// NotifyPaymentSent is triggered by async monetary settlement to update our balance and remove it's price from the shadow reserve
 func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
@@ -592,6 +599,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentOngoing = false
+	// decrease shadow reserve by payment value
 	accountingPeer.shadowReservedBalance.Sub(accountingPeer.shadowReservedBalance, amount)
 
 	if receivedError != nil {
@@ -607,7 +615,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 		}
 	}
 
-	// Get nextBalance by safely increasing current balance with price
+	// Get nextBalance by increasing current balance with price
 	nextBalance := new(big.Int).Add(currentBalance, amount)
 
 	a.logger.Tracef("registering payment sent to peer %v with amount %d, new balance is %d", peer, amount, nextBalance)
@@ -703,7 +711,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 	return nil
 }
 
-// NotifyPayment is called by Settlement when we receive a payment.
+// NotifyRefreshmentReceived is called by pseudosettle when we receive a time based settlement.
 func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
@@ -717,13 +725,10 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 		}
 	}
 
-	// if current balance is positive, let's make a partial credit to
+	// Get nextBalance by increasing current balance with amount
 	nextBalance := new(big.Int).Sub(currentBalance, amount)
 
-	// Don't allow a payment to put us into debt
-	// This is to prevent another node tricking us into settling by settling
-	// first (e.g. send a bouncing cheque to trigger an honest cheque in swap).
-
+	// We allow a refreshment to potentially put us into debt as it was previously negotiated and be limited to the peer's outstanding debt plus shadow reserve
 	a.logger.Tracef("crediting peer %v with amount %d due to payment, new balance is %d", peer, amount, nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
@@ -782,7 +787,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 		// if surplus balance didn't cover full transaction, let's continue with leftover part as cost
 		debitIncrease := new(big.Int).Sub(price, surplusBalance)
 
-		// conversion to uint64 is safe because we know the relationship between the values by now, but let's make a sanity check
+		// a sanity check
 		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
 			return nil, fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
 		}
@@ -805,7 +810,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 		}
 	}
 
-	// Get nextBalance by safely increasing current balance with price
+	// Get nextBalance by increasing current balance with price
 	nextBalance := new(big.Int).Add(currentBalance, cost)
 
 	a.logger.Tracef("debiting peer %v with price %d, new balance is %d", peer, price, nextBalance)
@@ -840,7 +845,7 @@ func (d *debitAction) Apply() error {
 	a.metrics.TotalDebitedAmount.Add(tot)
 	a.metrics.DebitEventsCount.Inc()
 
-	if nextBalance.Cmp(new(big.Int).Add(a.paymentThreshold, a.paymentTolerance)) >= 0 {
+	if nextBalance.Cmp(a.disconnectLimit) >= 0 {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
 		return p2p.NewBlockPeerError(10000*time.Hour, ErrDisconnectThresholdExceeded)
@@ -849,6 +854,7 @@ func (d *debitAction) Apply() error {
 	return nil
 }
 
+// Cleanup reduces shadow reserve if and only if debitaction have not been applied
 func (d *debitAction) Cleanup() {
 	if !d.applied {
 		d.accountingPeer.lock.Lock()
