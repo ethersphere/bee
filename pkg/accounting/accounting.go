@@ -107,6 +107,7 @@ type Accounting struct {
 	refreshRate     *big.Int
 	pricing         pricing.Interface
 	metrics         metrics
+	timeNow         func() time.Time
 }
 
 var (
@@ -142,6 +143,7 @@ func NewAccounting(
 		pricing:          Pricing,
 		metrics:          newMetrics(),
 		refreshRate:      refreshRate,
+		timeNow:          time.Now,
 	}, nil
 }
 
@@ -186,11 +188,12 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	}
 
 	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
+	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, accountingPeer.shadowReservedBalance)
 
 	// If our expected debt is less than earlyPayment away from our payment threshold
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
-	if increasedExpectedDebt.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
+	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
@@ -280,7 +283,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// Don't do anything if there is no actual debt.
 	// This might be the case if the peer owes us and the total reserve for a
 	// peer exceeds the payment treshold.
-	if !balance.paymentOngoing && paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
+	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
 			return err
@@ -305,11 +308,10 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	}
 
 	if a.payFunction != nil {
-		// if there is no monetary settlement happening, check if there is something to settle
 		if !balance.paymentOngoing {
+			// if there is no monetary settlement happening, check if there is something to settle
 			// compute debt excluding debt created by incoming payments
 			paymentAmount := new(big.Int).Neg(oldBalance)
-
 			// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
 			if paymentAmount.Cmp(a.refreshRate) >= 0 {
 				balance.paymentOngoing = true
