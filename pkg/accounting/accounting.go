@@ -99,7 +99,7 @@ type Accounting struct {
 	// The amount in BZZ we let peers exceed the payment threshold before we
 	// disconnect them.
 	paymentTolerance *big.Int
-	// Start settleing when reserve plus debt reaches this close to threshold.
+	// Start settling when reserve plus debt reaches this close to threshold.
 	earlyPayment *big.Int
 	// Limit to disconnect peer after going in debt over
 	disconnectLimit *big.Int
@@ -311,18 +311,16 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		}
 	}
 
-	if a.payFunction != nil {
-		if !balance.paymentOngoing {
-			// if there is no monetary settlement happening, check if there is something to settle
-			// compute debt excluding debt created by incoming payments
-			paymentAmount := new(big.Int).Neg(oldBalance)
-			// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
-			if paymentAmount.Cmp(a.minimumPayment) >= 0 {
-				balance.paymentOngoing = true
-				// add settled amount to shadow reserve before sending it
-				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
-				go a.payFunction(context.Background(), peer, paymentAmount)
-			}
+	if a.payFunction != nil && !balance.paymentOngoing {
+		// if there is no monetary settlement happening, check if there is something to settle
+		// compute debt excluding debt created by incoming payments
+		paymentAmount := new(big.Int).Neg(oldBalance)
+		// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
+		if paymentAmount.Cmp(a.minimumPayment) >= 0 {
+			balance.paymentOngoing = true
+			// add settled amount to shadow reserve before sending it
+			balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+			go a.payFunction(context.Background(), peer, paymentAmount)
 		}
 	}
 
