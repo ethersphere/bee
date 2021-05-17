@@ -83,6 +83,16 @@ func NewDB(path string, o *Options) (db *DB, err error) {
 		return nil, err
 	}
 
+	return NewDBWrap(ldb)
+}
+
+// NewDBWrap returns new DB which uses the given ldb as its underlying storage.
+// The function will panics if the given ldb is nil.
+func NewDBWrap(ldb *leveldb.DB) (db *DB, err error) {
+	if ldb == nil {
+		panic(errors.New("shed: NewDBWrap: nil ldb"))
+	}
+
 	db = &DB{
 		ldb:     ldb,
 		metrics: newMetrics(),
@@ -90,7 +100,7 @@ func NewDB(path string, o *Options) (db *DB, err error) {
 
 	if _, err = db.getSchema(); err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
-			// save schema with initialized default fields
+			// Save schema with initialized default fields.
 			if err = db.putSchema(schema{
 				Fields:  make(map[string]fieldSpec),
 				Indexes: make(map[byte]indexSpec),
@@ -102,7 +112,7 @@ func NewDB(path string, o *Options) (db *DB, err error) {
 		}
 	}
 
-	// Create a quit channel for the periodic metrics collector and run it
+	// Create a quit channel for the periodic metrics collector and run it.
 	db.quit = make(chan struct{})
 
 	return db, nil

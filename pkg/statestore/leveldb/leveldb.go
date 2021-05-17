@@ -25,7 +25,7 @@ type store struct {
 	logger logging.Logger
 }
 
-// New creates a new persistent state storage.
+// NewStateStore creates a new persistent state storage.
 func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
@@ -136,6 +136,11 @@ func (s *store) getSchemaName() (string, error) {
 
 func (s *store) putSchemaName(val string) error {
 	return s.db.Put([]byte(dbSchemaKey), []byte(val), nil)
+}
+
+// DB implements StateStorer.DB method.
+func (s *store) DB() *leveldb.DB {
+	return s.db
 }
 
 // Close releases the resources used by the store.
