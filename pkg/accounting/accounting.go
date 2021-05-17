@@ -26,6 +26,9 @@ var (
 	_                     Interface = (*Accounting)(nil)
 	balancesPrefix        string    = "accounting_balance_"
 	balancesSurplusPrefix string    = "accounting_surplusbalance_"
+	// fraction of the refresh rate that is the minimum for monetary settlement
+	// this value is chosen so that tiny payments are prevented while still allowing small payments in environments with lower payment thresholds
+	minimumPaymentDivisor = int64(5)
 )
 
 // Interface is the Accounting interface.
@@ -149,7 +152,7 @@ func NewAccounting(
 		metrics:          newMetrics(),
 		refreshRate:      refreshRate,
 		timeNow:          time.Now,
-		minimumPayment:   new(big.Int).Div(refreshRate, big.NewInt(5)),
+		minimumPayment:   new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
 	}, nil
 }
 
