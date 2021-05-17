@@ -164,7 +164,7 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		Address: addr.Bytes(),
 	})
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			return nil, storage.ErrNotFound
 		}
 		return nil, fmt.Errorf("retrieval index get: %w", err)
@@ -185,7 +185,7 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		if err != nil {
 			return nil, fmt.Errorf("gc index delete in batch: %w", err)
 		}
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 		// Access timestamp is not found. Do not do anything.
 		// This is the first get request.
 	default:
@@ -283,7 +283,7 @@ func (s *Store) CollectGarbage() (err error) {
 // string from a database field.
 func (s *Store) GetSchema() (name string, err error) {
 	name, err = s.schemaName.Get()
-	if errors.Is(err, leveldb.ErrNotFound) {
+	if errors.Is(err, shed.ErrNotFound) {
 		return "", nil
 	}
 	return name, err

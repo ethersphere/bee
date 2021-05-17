@@ -39,8 +39,8 @@ func TestStructField(t *testing.T) {
 	t.Run("get empty", func(t *testing.T) {
 		var s complexStructure
 		err := complexField.Get(&s)
-		if err != leveldb.ErrNotFound {
-			t.Fatalf("got error %v, want %v", err, leveldb.ErrNotFound)
+		if err != ErrNotFound {
+			t.Fatalf("got error %v, want %v", err, ErrNotFound)
 		}
 		want := ""
 		if s.A != want {

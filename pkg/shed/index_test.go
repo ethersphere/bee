@@ -250,7 +250,7 @@ func TestIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		wantErr := leveldb.ErrNotFound
+		wantErr := ErrNotFound
 		_, err = index.Get(Item{
 			Address: want.Address,
 		})
@@ -290,7 +290,7 @@ func TestIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		wantErr := leveldb.ErrNotFound
+		wantErr := ErrNotFound
 		_, err = index.Get(Item{
 			Address: want.Address,
 		})
@@ -353,7 +353,7 @@ func TestIndex(t *testing.T) {
 			items = append(items, Item{
 				Address: []byte("put-hash-missing"),
 			})
-			want := leveldb.ErrNotFound
+			want := ErrNotFound
 			err := index.Fill(items)
 			if !errors.Is(err, want) {
 				t.Errorf("got error %v, want %v", err, want)
@@ -1414,11 +1414,11 @@ func TestIndex_firstAndLast(t *testing.T) {
 		},
 		{
 			prefix: []byte{0, 3},
-			err:    leveldb.ErrNotFound,
+			err:    ErrNotFound,
 		},
 		{
 			prefix: []byte{222},
-			err:    leveldb.ErrNotFound,
+			err:    ErrNotFound,
 		},
 	} {
 		got, err := index.Last(tc.prefix)

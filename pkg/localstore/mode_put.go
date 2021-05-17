@@ -308,7 +308,7 @@ func (db *DB) setGC(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, e
 			return 0, err
 		}
 		gcSizeChange--
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 		// the chunk is not accessed before
 	default:
 		return 0, err

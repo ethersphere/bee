@@ -178,6 +178,9 @@ func (f Index) Fill(items []Item) (err error) {
 		}
 		value, err := snapshot.Get(key, nil)
 		if err != nil {
+			if err == leveldb.ErrNotFound {
+				err = ErrNotFound
+			}
 			return fmt.Errorf("get value: %w", err)
 		}
 		v, err := f.decodeValueFunc(item, value)
@@ -373,7 +376,7 @@ func (f Index) Iterate(fn IndexIterFunc, options *IterateOptions) (err error) {
 	for ; ok; ok = itSeekerFn() {
 		item, err := f.itemFromIterator(it, prefix)
 		if err != nil {
-			if errors.Is(err, leveldb.ErrNotFound) {
+			if errors.Is(err, ErrNotFound) {
 				break
 			}
 			return fmt.Errorf("get item from iterator: %w", err)
@@ -411,7 +414,7 @@ func bytesIncrement(bytes []byte) []byte {
 
 // First returns the first item in the Index which encoded key starts with a prefix.
 // If the prefix is nil, the first element of the whole index is returned.
-// If Index has no elements, a leveldb.ErrNotFound error is returned.
+// If Index has no elements, a shed.ErrNotFound error is returned.
 func (f Index) First(prefix []byte) (i Item, err error) {
 	it := f.db.NewIterator()
 	defer it.Release()
@@ -424,12 +427,12 @@ func (f Index) First(prefix []byte) (i Item, err error) {
 
 // itemFromIterator returns the Item from the current iterator position.
 // If the complete encoded key does not start with totalPrefix,
-// leveldb.ErrNotFound is returned. Value for totalPrefix must start with
+// shed.ErrNotFound is returned. Value for totalPrefix must start with
 // Index prefix.
 func (f Index) itemFromIterator(it iterator.Iterator, totalPrefix []byte) (i Item, err error) {
 	key := it.Key()
 	if !bytes.HasPrefix(key, totalPrefix) {
-		return i, leveldb.ErrNotFound
+		return i, ErrNotFound
 	}
 	// create a copy of key byte slice not to share leveldb underlaying slice array
 	keyItem, err := f.decodeKeyFunc(append([]byte(nil), key...))
@@ -446,7 +449,7 @@ func (f Index) itemFromIterator(it iterator.Iterator, totalPrefix []byte) (i Ite
 
 // Last returns the last item in the Index which encoded key starts with a prefix.
 // If the prefix is nil, the last element of the whole index is returned.
-// If Index has no elements, a leveldb.ErrNotFound error is returned.
+// If Index has no elements, a shed.ErrNotFound error is returned.
 func (f Index) Last(prefix []byte) (i Item, err error) {
 	it := f.db.NewIterator()
 	defer it.Release()

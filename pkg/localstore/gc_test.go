@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestDB_collectGarbageWorker tests garbage collection runs
@@ -255,7 +254,7 @@ func TestPinGC(t *testing.T) {
 	t.Run("first chunks after pinned chunks should be removed", func(t *testing.T) {
 		for i := pinChunksCount; i < (int(dbCapacity) - int(gcTarget)); i++ {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
-			if !errors.Is(err, leveldb.ErrNotFound) {
+			if !errors.Is(err, shed.ErrNotFound) {
 				t.Fatal(err)
 			}
 		}

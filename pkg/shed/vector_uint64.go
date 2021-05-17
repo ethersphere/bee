@@ -50,7 +50,7 @@ func (db *DB) NewUint64Vector(name string) (f Uint64Vector, err error) {
 func (f Uint64Vector) Get(i uint64) (val uint64, err error) {
 	b, err := f.db.Get(f.indexKey(i))
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			return 0, nil
 		}
 		return 0, err
@@ -74,7 +74,7 @@ func (f Uint64Vector) PutInBatch(batch *leveldb.Batch, i, val uint64) {
 func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			val = 0
 		} else {
 			return 0, err
@@ -90,7 +90,7 @@ func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 func (f Uint64Vector) IncInBatch(batch *leveldb.Batch, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			val = 0
 		} else {
 			return 0, err
@@ -107,7 +107,7 @@ func (f Uint64Vector) IncInBatch(batch *leveldb.Batch, i uint64) (val uint64, er
 func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			val = 0
 		} else {
 			return 0, err
@@ -126,7 +126,7 @@ func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 func (f Uint64Vector) DecInBatch(batch *leveldb.Batch, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			val = 0
 		} else {
 			return 0, err

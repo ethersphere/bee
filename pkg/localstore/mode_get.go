@@ -45,7 +45,7 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 
 	out, err := db.get(mode, addr)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			return nil, storage.ErrNotFound
 		}
 		return nil, err
@@ -137,7 +137,7 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 	switch {
 	case err == nil:
 		item.AccessTimestamp = i.AccessTimestamp
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 		// no chunk accesses
 	default:
 		return err

@@ -32,6 +32,10 @@ import (
 )
 
 var (
+	ErrNotFound = errors.New("database: not found")
+)
+
+var (
 	defaultOpenFilesLimit         = uint64(256)
 	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
@@ -89,7 +93,7 @@ func NewDB(path string, o *Options) (db *DB, err error) {
 	}
 
 	if _, err = db.getSchema(); err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if err == ErrNotFound {
 			// save schema with initialized default fields
 			if err = db.putSchema(schema{
 				Fields:  make(map[string]fieldSpec),
@@ -125,6 +129,7 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
 			db.metrics.GetNotFoundCounter.Inc()
+			return nil, ErrNotFound
 		} else {
 			db.metrics.GetFailCounter.Inc()
 		}

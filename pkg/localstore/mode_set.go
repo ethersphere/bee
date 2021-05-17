@@ -23,6 +23,7 @@ import (
 
 	"github.com/syndtr/goleveldb/leveldb"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -136,7 +137,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 
 	i, err := db.retrievalDataIndex.Get(item)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			// chunk is not found,
 			// no need to update gc index
 			// just delete from the push index
@@ -154,7 +155,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 
 	i, err = db.pushIndex.Get(item)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			// we handle this error internally, since this is an internal inconsistency of the indices
 			// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 			// but this function is called with ModeSetSync
@@ -191,7 +192,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address, mode storage.Mod
 			return 0, err
 		}
 		gcSizeChange--
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 		// the chunk is not accessed before
 	default:
 		return 0, err
@@ -231,7 +232,7 @@ func (db *DB) setRemove(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange 
 	switch {
 	case err == nil:
 		item.AccessTimestamp = i.AccessTimestamp
-	case errors.Is(err, leveldb.ErrNotFound):
+	case errors.Is(err, shed.ErrNotFound):
 	default:
 		return 0, err
 	}
@@ -278,7 +279,7 @@ func (db *DB) setPin(batch *leveldb.Batch, addr swarm.Address) (err error) {
 	existingPinCounter := uint64(0)
 	pinnedChunk, err := db.pinIndex.Get(item)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			// If this Address is not present in DB, then its a new entry
 			existingPinCounter = 0
 

@@ -49,7 +49,7 @@ func (db *DB) NewStringField(name string) (f StringField, err error) {
 func (f StringField) Get() (val string, err error) {
 	b, err := f.db.Get(f.key)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			return "", nil
 		}
 		return "", err
