@@ -7,7 +7,6 @@ require (
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
-	github.com/dgraph-io/badger v1.6.1
 	github.com/dgraph-io/badger/v3 v3.2011.1
 	github.com/ethereum/go-ethereum v1.9.23
 	github.com/ethersphere/bmt v0.1.4
