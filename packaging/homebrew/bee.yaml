@@ -52,8 +52,8 @@ password-file: /usr/local/var/lib/swarm-bee/password
 # payment-early: 1000000000000
 ## threshold in BZZ where you expect to get paid from your peers (default 10000000000000)
 # payment-threshold: 10000000000000
-## excess debt above payment threshold in BZZ where you disconnect from your peer (default 50000000000000)
-# payment-tolerance: 50000000000000
+## excess debt above payment threshold in BZZ where you disconnect from your peer (default 10000000000000)
+# payment-tolerance: 10000000000000
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # resolver-options: []
 ## whether we want the node to start with no listen addresses for p2p

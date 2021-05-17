@@ -55,12 +55,12 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_PASSWORD=
 ## path to a file that contains password for decrypting keys
 # BEE_PASSWORD_FILE=
-## amount in BZZ below the peers payment threshold when we initiate settlement (default 10000)
-# BEE_PAYMENT_EARLY=10000
-## threshold in BZZ where you expect to get paid from your peers (default 100000)
-# BEE_PAYMENT_THRESHOLD=100000
-## excess debt above payment threshold in BZZ where you disconnect from your peer (default 10000)
-# BEE_PAYMENT_TOLERANCE=10000
+## amount in BZZ below the peers payment threshold when we initiate settlement (default 1000000000000)
+# BEE_PAYMENT_EARLY=1000000000000
+## threshold in BZZ where you expect to get paid from your peers (default 10000000000000)
+# BEE_PAYMENT_THRESHOLD=10000000000000
+## excess debt above payment threshold in BZZ where you disconnect from your peer (default 10000000000000)
+# BEE_PAYMENT_TOLERANCE=10000000000000
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # BEE_RESOLVER_OPTIONS=[]
 ## whether we want the node to start with no listen addresses for p2p
