@@ -10,11 +10,11 @@ import (
 	"io/ioutil"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
-	mockSettlement "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -28,6 +28,11 @@ var (
 	testPaymentEarly     = big.NewInt(1000)
 	testPaymentThreshold = big.NewInt(10000)
 )
+
+type paymentCall struct {
+	peer   swarm.Address
+	amount *big.Int
+}
 
 // booking represents an accounting action and the expected result afterwards
 type booking struct {
@@ -43,7 +48,7 @@ func TestAccountingAddBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +109,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +136,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc, err = accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, nil)
+	acc, err = accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +167,7 @@ func TestAccountingReserve(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +195,7 @@ func TestAccountingDisconnect(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,30 +230,38 @@ func TestAccountingCallSettlement(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := mockSettlement.New()
-
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, settlement, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	paychan := make(chan paymentCall, 1)
+
+	f := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+		paychan <- paymentCall{peer: peer, amount: amount}
+	}
+
+	acc.SetPayFunc(f)
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = acc.Reserve(context.Background(), peer1Addr, testPaymentThreshold.Uint64())
+	requestPrice := testPaymentThreshold.Uint64() - 1000
+
+	err = acc.Reserve(context.Background(), peer1Addr, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Credit until payment treshold
-	err = acc.Credit(peer1Addr, testPaymentThreshold.Uint64())
+	err = acc.Credit(peer1Addr, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	acc.Release(peer1Addr, testPaymentThreshold.Uint64())
+	acc.Release(peer1Addr, requestPrice)
 
 	// try another request
 	err = acc.Reserve(context.Background(), peer1Addr, 1)
@@ -256,16 +269,20 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	select {
+	case call := <-paychan:
+		if call.amount.Cmp(big.NewInt(int64(requestPrice))) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, requestPrice)
+		}
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for payment")
+	}
+
 	acc.Release(peer1Addr, 1)
-
-	totalSent, err := settlement.TotalSent(peer1Addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if totalSent.Cmp(testPaymentThreshold) != 0 {
-		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, testPaymentThreshold)
-	}
+	acc.NotifyPaymentSent(peer1Addr, big.NewInt(int64(requestPrice)), nil)
 
 	balance, err := acc.Balance(peer1Addr)
 	if err != nil {
@@ -282,7 +299,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	}
 
 	// Credit until the expected debt exceeeds payment threshold
-	expectedAmount := testPaymentThreshold.Uint64() - 100
+	expectedAmount := testPaymentThreshold.Uint64() - 101
 	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +312,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 
 	acc.Release(peer1Addr, expectedAmount)
 
-	// try another request
+	// try another request to trigger settlement
 	err = acc.Reserve(context.Background(), peer1Addr, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -303,13 +320,16 @@ func TestAccountingCallSettlement(t *testing.T) {
 
 	acc.Release(peer1Addr, 1)
 
-	totalSent, err = settlement.TotalSent(peer1Addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if totalSent.Cmp(new(big.Int).Add(new(big.Int).SetUint64(expectedAmount), testPaymentThreshold)) != 0 {
-		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, new(big.Int).Add(new(big.Int).SetUint64(expectedAmount), testPaymentThreshold))
+	select {
+	case call := <-paychan:
+		if call.amount.Cmp(big.NewInt(int64(expectedAmount))) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, expectedAmount)
+		}
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for payment")
 	}
 
 	acc.Release(peer1Addr, 100)
@@ -322,14 +342,21 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := mockSettlement.New()
 	debt := uint64(500)
 	earlyPayment := big.NewInt(1000)
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, settlement, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	paychan := make(chan paymentCall, 1)
+
+	f := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+		paychan <- paymentCall{peer: peer, amount: amount}
+	}
+
+	acc.SetPayFunc(f)
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -349,14 +376,20 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 
 	acc.Release(peer1Addr, payment)
 
-	totalSent, err := settlement.TotalSent(peer1Addr)
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case call := <-paychan:
+		if call.amount.Cmp(big.NewInt(int64(debt))) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, debt)
+		}
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for payment")
 	}
 
-	if totalSent.Cmp(new(big.Int).SetUint64(debt)) != 0 {
-		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, testPaymentThreshold)
-	}
+	acc.Release(peer1Addr, 1)
+	acc.NotifyPaymentSent(peer1Addr, big.NewInt(int64(debt)), nil)
 
 	balance, err := acc.Balance(peer1Addr)
 	if err != nil {
@@ -373,9 +406,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	settlement := mockSettlement.New()
-
-	acc, err := accounting.NewAccounting(testPaymentThreshold, big.NewInt(0), big.NewInt(0), logger, store, settlement, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, big.NewInt(0), big.NewInt(0), logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +420,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Notify of incoming payment from same peer, so balance goes to 0 with surplusbalance 2
-	err = acc.NotifyPayment(peer1Addr, new(big.Int).Add(testPaymentThreshold, big.NewInt(1)))
+	err = acc.NotifyPaymentReceived(peer1Addr, new(big.Int).Add(testPaymentThreshold, big.NewInt(1)))
 	if err != nil {
 		t.Fatal("Unexpected overflow from doable NotifyPayment")
 	}
@@ -410,7 +441,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 		t.Fatal("Not expected balance")
 	}
 	// Notify of incoming payment from same peer, so balance goes to 0 with surplusbalance 10002 (testpaymentthreshold+2)
-	err = acc.NotifyPayment(peer1Addr, testPaymentThreshold)
+	err = acc.NotifyPaymentReceived(peer1Addr, testPaymentThreshold)
 	if err != nil {
 		t.Fatal("Unexpected error from NotifyPayment")
 	}
@@ -454,7 +485,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	// Debit for same peer, so balance goes to 9998 (testpaymentthreshold - 2) with surplusbalance decreasing to 0
 	err = acc.Debit(peer1Addr, testPaymentThreshold.Uint64())
 	if err != nil {
-		t.Fatal("Unexpected error from NotifyPayment")
+		t.Fatal("Unexpected error from Debit")
 	}
 	// samity check surplus balance
 	val, err = acc.SurplusBalance(peer1Addr)
@@ -475,13 +506,13 @@ func TestAccountingSurplusBalance(t *testing.T) {
 }
 
 // TestAccountingNotifyPayment tests that payments adjust the balance and payment which put us into debt are rejected
-func TestAccountingNotifyPayment(t *testing.T) {
+func TestAccountingNotifyPaymentReceived(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, nil)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +528,7 @@ func TestAccountingNotifyPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.NotifyPayment(peer1Addr, new(big.Int).SetUint64(debtAmount+testPaymentTolerance.Uint64()))
+	err = acc.NotifyPaymentReceived(peer1Addr, new(big.Int).SetUint64(debtAmount+testPaymentTolerance.Uint64()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +538,7 @@ func TestAccountingNotifyPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.NotifyPayment(peer1Addr, new(big.Int).SetUint64(debtAmount+testPaymentTolerance.Uint64()+1))
+	err = acc.NotifyPaymentReceived(peer1Addr, new(big.Int).SetUint64(debtAmount+testPaymentTolerance.Uint64()+1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +572,7 @@ func TestAccountingConnected(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, pricing)
+	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,12 +607,19 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	defer store.Close()
 
 	pricing := &pricingMock{}
-	settlement := mockSettlement.New()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, big.NewInt(0), logger, store, settlement, pricing)
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, big.NewInt(0), logger, store, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	paychan := make(chan paymentCall, 1)
+
+	f := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+		paychan <- paymentCall{peer: peer, amount: amount}
+	}
+
+	acc.SetPayFunc(f)
 
 	peer1Addr, err := swarm.ParseHexAddress("00112233")
 	if err != nil {
@@ -602,16 +640,75 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	}
 
 	err = acc.Reserve(context.Background(), peer1Addr, lowerThreshold)
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatal(err)
+	}
+
+	select {
+	case call := <-paychan:
+		if call.amount.Cmp(big.NewInt(int64(debt))) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, debt)
+		}
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for payment")
+	}
+
+}
+
+func TestAccountingPeerDebt(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, big.NewInt(0), logger, store, pricing)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	totalSent, err := settlement.TotalSent(peer1Addr)
+	peer1Addr := swarm.MustParseHexAddress("00112233")
+	debt := uint64(1000)
+	err = acc.Debit(peer1Addr, debt)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if totalSent.Cmp(new(big.Int).SetUint64(debt)) != 0 {
-		t.Fatalf("paid wrong amount. got %d wanted %d", totalSent, debt)
+	actualDebt, err := acc.PeerDebt(peer1Addr)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if actualDebt.Cmp(new(big.Int).SetUint64(debt)) != 0 {
+		t.Fatalf("wrong actual debt. got %d wanted %d", actualDebt, debt)
+	}
+
+	peer2Addr := swarm.MustParseHexAddress("11112233")
+	err = acc.Credit(peer2Addr, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualDebt, err = acc.PeerDebt(peer2Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actualDebt.Cmp(big.NewInt(0)) != 0 {
+		t.Fatalf("wrong actual debt. got %d wanted 0", actualDebt)
+	}
+
+	peer3Addr := swarm.MustParseHexAddress("22112233")
+	actualDebt, err = acc.PeerDebt(peer3Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actualDebt.Cmp(big.NewInt(0)) != 0 {
+		t.Fatalf("wrong actual debt. got %d wanted 0", actualDebt)
+	}
+
 }

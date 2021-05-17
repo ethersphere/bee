@@ -33,19 +33,20 @@ var (
 )
 
 type Service struct {
-	streamer          p2p.Streamer
-	logger            logging.Logger
-	store             storage.StateStorer
-	notifyPaymentFunc settlement.NotifyPaymentFunc
-	metrics           metrics
+	streamer      p2p.Streamer
+	logger        logging.Logger
+	store         storage.StateStorer
+	accountingAPI settlement.AccountingAPI
+	metrics       metrics
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accountingAPI settlement.AccountingAPI) *Service {
 	return &Service{
-		streamer: streamer,
-		logger:   logger,
-		metrics:  newMetrics(),
-		store:    store,
+		streamer:      streamer,
+		logger:        logger,
+		metrics:       newMetrics(),
+		store:         store,
+		accountingAPI: accountingAPI,
 	}
 }
 
@@ -106,17 +107,22 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
-	return s.notifyPaymentFunc(p.Address, new(big.Int).SetUint64(req.Amount))
+	return s.accountingAPI.NotifyPaymentReceived(p.Address, new(big.Int).SetUint64(req.Amount))
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-
+	var err error
+	defer func() {
+		if err != nil {
+			s.accountingAPI.NotifyPaymentSent(peer, nil, err)
+		}
+	}()
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return err
+		return
 	}
 	defer func() {
 		if err != nil {
@@ -132,28 +138,27 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		Amount: amount.Uint64(),
 	})
 	if err != nil {
-		return err
+		return
 	}
 	totalSent, err := s.TotalSent(peer)
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			return err
+			return
 		}
 		totalSent = big.NewInt(0)
 	}
+
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), totalSent.Add(totalSent, amount))
 	if err != nil {
-		return err
+		return
 	}
-
+	s.accountingAPI.NotifyPaymentSent(peer, amount, nil)
 	amountFloat, _ := new(big.Float).SetInt(amount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
-	return nil
 }
 
-// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
-func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymentFunc) {
-	s.notifyPaymentFunc = notifyPaymentFunc
+func (s *Service) SetAccountingAPI(accountingAPI settlement.AccountingAPI) {
+	s.accountingAPI = accountingAPI
 }
 
 // TotalSent returns the total amount sent to a peer

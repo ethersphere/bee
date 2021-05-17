@@ -26,12 +26,11 @@ type Service struct {
 	settlementsSentFunc func() (map[string]*big.Int, error)
 	settlementsRecvFunc func() (map[string]*big.Int, error)
 
-	receiveChequeFunc    func(context.Context, swarm.Address, *chequebook.SignedCheque) error
-	payFunc              func(context.Context, swarm.Address, *big.Int) error
-	setNotifyPaymentFunc settlement.NotifyPaymentFunc
-	handshakeFunc        func(swarm.Address, common.Address) error
-	lastSentChequeFunc   func(swarm.Address) (*chequebook.SignedCheque, error)
-	lastSentChequesFunc  func() (map[string]*chequebook.SignedCheque, error)
+	receiveChequeFunc   func(context.Context, swarm.Address, *chequebook.SignedCheque) error
+	payFunc             func(context.Context, swarm.Address, *big.Int)
+	handshakeFunc       func(swarm.Address, common.Address) error
+	lastSentChequeFunc  func(swarm.Address) (*chequebook.SignedCheque, error)
+	lastSentChequesFunc func() (map[string]*chequebook.SignedCheque, error)
 
 	lastReceivedChequeFunc  func(swarm.Address) (*chequebook.SignedCheque, error)
 	lastReceivedChequesFunc func() (map[string]*chequebook.SignedCheque, error)
@@ -72,16 +71,9 @@ func WithReceiveChequeFunc(f func(context.Context, swarm.Address, *chequebook.Si
 	})
 }
 
-func WithPayFunc(f func(context.Context, swarm.Address, *big.Int) error) Option {
+func WithPayFunc(f func(context.Context, swarm.Address, *big.Int)) Option {
 	return optionFunc(func(s *Service) {
 		s.payFunc = f
-	})
-}
-
-// WithsettlementsFunc sets the mock settlements function
-func WithSetNotifyPaymentFunc(f settlement.NotifyPaymentFunc) Option {
-	return optionFunc(func(s *Service) {
-		s.setNotifyPaymentFunc = f
 	})
 }
 
@@ -155,21 +147,15 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 }
 
 // Pay is the mock Pay function of swap.
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) {
 	if s.payFunc != nil {
-		return s.payFunc(ctx, peer, amount)
+		s.payFunc(ctx, peer, amount)
+		return
 	}
 	if settlement, ok := s.settlementsSent[peer.String()]; ok {
 		s.settlementsSent[peer.String()] = big.NewInt(0).Add(settlement, amount)
 	} else {
 		s.settlementsSent[peer.String()] = amount
-	}
-	return nil
-}
-
-func (s *Service) SetNotifyPaymentFunc(f settlement.NotifyPaymentFunc) {
-	if s.setNotifyPaymentFunc != nil {
-		s.SetNotifyPaymentFunc(f)
 	}
 }
 
