@@ -86,26 +86,43 @@ func InitChequebookFactory(
 	chainID int64,
 	transactionService transaction.Service,
 	factoryAddress string,
+	legacyFactoryAddresses []string,
 ) (chequebook.Factory, error) {
-	var addr common.Address
+	var currentFactory common.Address
+	var legacyFactories []common.Address
+
+	foundFactory, foundLegacyFactories, found := chequebook.DiscoverFactoryAddress(chainID)
 	if factoryAddress == "" {
-		var found bool
-		addr, found = chequebook.DiscoverFactoryAddress(chainID)
 		if !found {
 			return nil, errors.New("no known factory address for this network")
 		}
-		logger.Infof("using default factory address for chain id %d: %x", chainID, addr)
+		currentFactory = foundFactory
+		logger.Infof("using default factory address for chain id %d: %x", chainID, currentFactory)
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
-		addr = common.HexToAddress(factoryAddress)
-		logger.Infof("using custom factory address: %x", addr)
+		currentFactory = common.HexToAddress(factoryAddress)
+		logger.Infof("using custom factory address: %x", currentFactory)
+	}
+
+	if legacyFactoryAddresses == nil {
+		if found {
+			legacyFactories = foundLegacyFactories
+		}
+	} else {
+		for _, legacyAddress := range legacyFactoryAddresses {
+			if !common.IsHexAddress(legacyAddress) {
+				return nil, errors.New("malformed factory address")
+			}
+			legacyFactories = append(legacyFactories, common.HexToAddress(legacyAddress))
+		}
 	}
 
 	return chequebook.NewFactory(
 		backend,
 		transactionService,
-		addr,
+		currentFactory,
+		legacyFactories,
 	), nil
 }
 
