@@ -6,6 +6,7 @@ package chequebook
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"math/big"
 	"time"
@@ -137,8 +138,14 @@ func Init(
 				}
 			}
 
+			nonce := make([]byte, 32)
+			_, err = rand.Read(nonce)
+			if err != nil {
+				return nil, err
+			}
+
 			// if we don't yet have a chequebook, deploy a new one
-			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
+			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0), common.BytesToHash(nonce))
 			if err != nil {
 				return nil, err
 			}

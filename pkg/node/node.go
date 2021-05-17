@@ -97,42 +97,43 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir                  string
-	DBCapacity               uint64
-	DBOpenFilesLimit         uint64
-	DBWriteBufferSize        uint64
-	DBBlockCacheCapacity     uint64
-	DBDisableSeeksCompaction bool
-	APIAddr                  string
-	DebugAPIAddr             string
-	Addr                     string
-	NATAddr                  string
-	EnableWS                 bool
-	EnableQUIC               bool
-	WelcomeMessage           string
-	Bootnodes                []string
-	CORSAllowedOrigins       []string
-	Logger                   logging.Logger
-	Standalone               bool
-	TracingEnabled           bool
-	TracingEndpoint          string
-	TracingServiceName       string
-	GlobalPinningEnabled     bool
-	PaymentThreshold         string
-	PaymentTolerance         string
-	PaymentEarly             string
-	ResolverConnectionCfgs   []multiresolver.ConnectionConfig
-	GatewayMode              bool
-	BootnodeMode             bool
-	SwapEndpoint             string
-	SwapFactoryAddress       string
-	SwapInitialDeposit       string
-	SwapEnable               bool
-	FullNodeMode             bool
-	Transaction              string
-	PostageContractAddress   string
-	PriceOracleAddress       string
-	BlockTime                uint64
+	DataDir                    string
+	DBCapacity                 uint64
+	DBOpenFilesLimit           uint64
+	DBWriteBufferSize          uint64
+	DBBlockCacheCapacity       uint64
+	DBDisableSeeksCompaction   bool
+	APIAddr                    string
+	DebugAPIAddr               string
+	Addr                       string
+	NATAddr                    string
+	EnableWS                   bool
+	EnableQUIC                 bool
+	WelcomeMessage             string
+	Bootnodes                  []string
+	CORSAllowedOrigins         []string
+	Logger                     logging.Logger
+	Standalone                 bool
+	TracingEnabled             bool
+	TracingEndpoint            string
+	TracingServiceName         string
+	GlobalPinningEnabled       bool
+	PaymentThreshold           string
+	PaymentTolerance           string
+	PaymentEarly               string
+	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
+	GatewayMode                bool
+	BootnodeMode               bool
+	SwapEndpoint               string
+	SwapFactoryAddress         string
+	SwapLegacyFactoryAddresses []string
+	SwapInitialDeposit         string
+	SwapEnable                 bool
+	FullNodeMode               bool
+	Transaction                string
+	PostageContractAddress     string
+	PriceOracleAddress         string
+	BlockTime                  uint64
 }
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
@@ -241,6 +242,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			chainID,
 			transactionService,
 			o.SwapFactoryAddress,
+			o.SwapLegacyFactoryAddresses,
 		)
 		if err != nil {
 			return nil, err

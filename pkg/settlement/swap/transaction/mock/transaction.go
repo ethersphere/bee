@@ -89,13 +89,15 @@ func New(opts ...Option) transaction.Service {
 
 type Call struct {
 	abi    *abi.ABI
+	to     common.Address
 	result []byte
 	method string
 	params []interface{}
 }
 
-func ABICall(abi *abi.ABI, result []byte, method string, params ...interface{}) Call {
+func ABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...interface{}) Call {
 	return Call{
+		to:     to,
 		abi:    abi,
 		result: result,
 		method: method,
@@ -121,6 +123,13 @@ func WithABICallSequence(calls ...Call) Option {
 				return nil, fmt.Errorf("wrong data. wanted %x, got %x", data, request.Data)
 			}
 
+			if request.To == nil {
+				return nil, errors.New("call with no recipient")
+			}
+			if *request.To != call.to {
+				return nil, fmt.Errorf("wrong recipient. wanted %x, got %x", call.to, *request.To)
+			}
+
 			calls = calls[1:]
 
 			return call.result, nil
@@ -128,8 +137,8 @@ func WithABICallSequence(calls ...Call) Option {
 	})
 }
 
-func WithABICall(abi *abi.ABI, result []byte, method string, params ...interface{}) Option {
-	return WithABICallSequence(ABICall(abi, result, method, params...))
+func WithABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...interface{}) Option {
+	return WithABICallSequence(ABICall(abi, to, result, method, params...))
 }
 
 func WithABISend(abi *abi.ABI, txHash common.Hash, expectedAddress common.Address, expectedValue *big.Int, method string, params ...interface{}) Option {
