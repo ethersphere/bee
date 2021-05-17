@@ -531,6 +531,14 @@ components:
       required: false
       description: Upload file/files as a collection
 
+    SwarmPostageBatchId:
+      in: header
+      name: swarm-postage-batch-id
+      description: "ID of Postage Batch that is used to upload data with"
+      required: true
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+
   responses:
     "204":
       description: The resource was deleted successfully.
