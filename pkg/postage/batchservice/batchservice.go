@@ -108,7 +108,10 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	return nil
 }
 
-func (svc *batchService) Start() <-chan struct{} {
+func (svc *batchService) Start(startBlock uint64) <-chan struct{} {
 	cs := svc.storer.GetChainState()
-	return svc.listener.Listen(cs.Block+1, svc)
+	if cs.Block > startBlock {
+		startBlock = cs.Block + 1
+	}
+	return svc.listener.Listen(startBlock, svc)
 }

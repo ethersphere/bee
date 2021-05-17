@@ -342,8 +342,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		batchSvc               postage.EventUpdater
 	)
 
+	var postageSyncStart uint64 = 0
 	if !o.Standalone {
-		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID)
+		postageContractAddress, priceOracleAddress, startBlock, found := listener.DiscoverAddresses(chainID)
 		if o.PostageContractAddress != "" {
 			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
@@ -358,6 +359,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 		if (o.PostageContractAddress == "" || o.PriceOracleAddress == "") && !found {
 			return nil, errors.New("no known postage stamp addresses for this network")
+		}
+		if found {
+			postageSyncStart = startBlock
 		}
 
 		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress, o.BlockTime)
@@ -432,7 +436,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil {
-		syncedChan := batchSvc.Start()
+		syncedChan := batchSvc.Start(postageSyncStart)
 		// wait for the postage contract listener to sync
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
