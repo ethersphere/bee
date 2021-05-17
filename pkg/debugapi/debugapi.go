@@ -44,10 +44,10 @@ type Service struct {
 	tracer             *tracing.Tracer
 	tags               *tags.Tags
 	accounting         accounting.Interface
-	settlement         settlement.Interface
+	pseudosettle       settlement.Interface
 	chequebookEnabled  bool
 	chequebook         chequebook.Service
-	swap               swap.ApiInterface
+	swap               swap.Interface
 	batchStore         postage.Storer
 	corsAllowedOrigins []string
 	metricsRegistry    *prometheus.Registry
@@ -80,19 +80,19 @@ func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereu
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, settlement settlement.Interface, chequebookEnabled bool, swap swap.ApiInterface, chequebook chequebook.Service, batchStore postage.Storer) {
+func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer) {
 	s.p2p = p2p
 	s.pingpong = pingpong
 	s.topologyDriver = topologyDriver
 	s.storer = storer
 	s.tags = tags
 	s.accounting = accounting
-	s.settlement = settlement
 	s.chequebookEnabled = chequebookEnabled
 	s.chequebook = chequebook
 	s.swap = swap
 	s.lightNodes = lightNodes
 	s.batchStore = batchStore
+	s.pseudosettle = pseudosettle
 
 	s.setRouter(s.newRouter())
 }
