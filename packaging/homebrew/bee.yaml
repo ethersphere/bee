@@ -60,8 +60,8 @@ password-file: /usr/local/var/lib/swarm-bee/password
 # standalone: false
 ## enable swap (default true)
 # swap-enable: true
-## swap ethereum blockchain endpoint (default "http://localhost:8545")
-swap-endpoint: https://rpc.slock.it/goerli
+## swap ethereum blockchain endpoint (default "ws://localhost:8546")
+# swap-endpoint: ws://localhost:8546
 ## swap factory address
 # swap-factory-address: ""
 ## initial deposit if deploying a new chequebook (default 100000000000000000)

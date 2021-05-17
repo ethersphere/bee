@@ -11,8 +11,8 @@ Set all configuration variables inside `.env`
 
 `clef` is configured with `CLEF_CHAINID=5` for goerli
 
-To configure `bee` set:
-- `BEE_SWAP_ENDPOINT=https://rpc.slock.it/goerli`
+To configure `bee` set obtain free Infura account and set:
+- `BEE_SWAP_ENDPOINT=wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 
 Set bee password by either setting `BEE_PASSWORD` or `BEE_PASSWORD_FILE`
 
