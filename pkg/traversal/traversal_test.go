@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package traversal
+package traversal_test
 
 import (
 	"bytes"
@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/traversal"
 )
 
 const (
@@ -66,8 +67,6 @@ func (i *addressIterator) Next(addr swarm.Address) error {
 	i.seen[addr.String()] = true
 	return nil
 }
-
-var _ Traverser = (*Service)(nil)
 
 func TestTraversalBytes(t *testing.T) {
 	testCases := []struct {
@@ -156,12 +155,12 @@ func TestTraversalBytes(t *testing.T) {
 			defer cancel()
 
 			pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = NewService(storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -246,7 +245,7 @@ func TestTraversalFiles(t *testing.T) {
 			defer cancel()
 
 			pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -283,7 +282,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = NewService(storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -415,7 +414,7 @@ func TestTraversalManifest(t *testing.T) {
 				data := generateSample(f.size)
 
 				pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
-				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data), int64(len(data)))
+				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -436,7 +435,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = NewService(storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}

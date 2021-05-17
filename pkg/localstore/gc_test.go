@@ -72,29 +72,33 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		case <-closed:
 		}
 	}))
+
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, &Options{
 		Capacity: 100,
 	})
 	closed = db.close
 
-	addrs := make([]swarm.Address, 0)
-
+	addrs := make([]swarm.Address, chunkCount)
+	ctx := context.Background()
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
-
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
+		_, err := db.Put(ctx, storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		err = db.Set(ctx, storage.ModeSetSync, ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		addrs = append(addrs, ch.Address())
-
+		addrs[i] = ch.Address()
 	}
 
 	gcTarget := db.gcTarget()
@@ -149,7 +153,6 @@ func testDBCollectGarbageWorker(t *testing.T) {
 // Pin a file, upload chunks to go past the gc limit to trigger GC,
 // check if the pinned files are still around and removed from gcIndex
 func TestPinGC(t *testing.T) {
-
 	chunkCount := 150
 	pinChunksCount := 50
 	dbCapacity := uint64(100)
@@ -170,6 +173,7 @@ func TestPinGC(t *testing.T) {
 		case <-closed:
 		}
 	}))
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 
 	db := newTestDB(t, &Options{
 		Capacity: dbCapacity,
@@ -182,6 +186,10 @@ func TestPinGC(t *testing.T) {
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
 
 		mode := storage.ModePutUpload
 		if i < pinChunksCount {
@@ -219,8 +227,6 @@ func TestPinGC(t *testing.T) {
 	}
 
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, pinChunksCount))
-
-	t.Run("gc exclude index count", newItemsCountTest(db.gcExcludeIndex, pinChunksCount))
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)+pinChunksCount))
 
@@ -276,6 +282,10 @@ func TestGCAfterPin(t *testing.T) {
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -297,8 +307,6 @@ func TestGCAfterPin(t *testing.T) {
 
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, chunkCount))
 
-	t.Run("gc exclude index count", newItemsCountTest(db.gcExcludeIndex, chunkCount))
-
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(0)))
 
 	for _, hash := range pinAddrs {
@@ -313,10 +321,6 @@ func TestGCAfterPin(t *testing.T) {
 // to test garbage collection runs by uploading, syncing and
 // requesting a number of chunks.
 func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
-	db := newTestDB(t, &Options{
-		Capacity: 100,
-	})
-
 	testHookCollectGarbageChan := make(chan uint64)
 	defer setTestHookCollectGarbage(func(collectedCount uint64) {
 		// don't trigger if we haven't collected anything - this may
@@ -329,11 +333,21 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 		testHookCollectGarbageChan <- collectedCount
 	})()
 
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+
+	db := newTestDB(t, &Options{
+		Capacity: 100,
+	})
+
 	addrs := make([]swarm.Address, 0)
 
 	// upload random chunks just up to the capacity
 	for i := 0; i < int(db.capacity)-1; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -356,7 +370,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 		close(testHookUpdateGCChan)
 	})
 
-	// request the latest synced chunk
+	// request the oldest synced chunk
 	// to prioritize it in the gc index
 	// not to be collected
 	_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
@@ -378,6 +392,11 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	// upload and sync another chunk to trigger
 	// garbage collection
 	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
 	_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
@@ -467,6 +486,10 @@ func TestDB_gcSize(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -498,6 +521,13 @@ func setTestHookCollectGarbage(h func(collectedCount uint64)) (reset func()) {
 	current := testHookCollectGarbage
 	reset = func() { testHookCollectGarbage = current }
 	testHookCollectGarbage = h
+	return reset
+}
+
+func setWithinRadiusFunc(h func(*DB, shed.Item) bool) (reset func()) {
+	current := withinRadiusFn
+	reset = func() { withinRadiusFn = current }
+	withinRadiusFn = h
 	return reset
 }
 
@@ -555,6 +585,7 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 }
 
 func TestPinAfterMultiGC(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, &Options{
 		Capacity: 10,
 	})
@@ -564,6 +595,11 @@ func TestPinAfterMultiGC(t *testing.T) {
 	// upload random chunks above db capacity to see if chunks are still pinned
 	for i := 0; i < 20; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
+
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -580,6 +616,11 @@ func TestPinAfterMultiGC(t *testing.T) {
 	}
 	for i := 0; i < 20; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
+
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -591,6 +632,11 @@ func TestPinAfterMultiGC(t *testing.T) {
 	}
 	for i := 0; i < 20; i++ {
 		ch := generateTestRandomChunk()
+		// call unreserve on the batch with radius 0 so that
+		// localstore is aware of the batch and the chunk can
+		// be inserted into the database
+		unreserveChunkBatch(t, db, 0, ch)
+
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -621,21 +667,26 @@ func TestPinAfterMultiGC(t *testing.T) {
 
 func generateAndPinAChunk(t *testing.T, db *DB) swarm.Chunk {
 	// Create a chunk and pin it
-	pinnedChunk := generateTestRandomChunk()
+	ch := generateTestRandomChunk()
 
-	_, err := db.Put(context.Background(), storage.ModePutUpload, pinnedChunk)
+	_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Set(context.Background(), storage.ModeSetPin, pinnedChunk.Address())
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
+	err = db.Set(context.Background(), storage.ModeSetPin, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Set(context.Background(), storage.ModeSetSync, pinnedChunk.Address())
+	err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pinnedChunk
+	return ch
 }
 
 func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
@@ -715,6 +766,8 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 	var chunks []swarm.Chunk
 	for i := 0; i < count; i++ {
 		ch := generateTestRandomChunk()
+		unreserveChunkBatch(t, db, 0, ch)
+
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -749,6 +802,7 @@ func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
 func TestGC_NoEvictDirty(t *testing.T) {
 	// lower the maximal number of chunks in a single
 	// gc batch to ensure multiple batches.
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	defer func(s uint64) { gcBatchSize = s }(gcBatchSize)
 	gcBatchSize = 1
 
@@ -809,6 +863,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	// upload random chunks
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
+		unreserveChunkBatch(t, db, 0, ch)
 
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -878,7 +933,6 @@ func TestGC_NoEvictDirty(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-
 }
 
 // setTestHookGCIteratorDone sets testHookGCIteratorDone and
@@ -889,4 +943,14 @@ func setTestHookGCIteratorDone(h func()) (reset func()) {
 	reset = func() { testHookGCIteratorDone = current }
 	testHookGCIteratorDone = h
 	return reset
+}
+
+func unreserveChunkBatch(t *testing.T, db *DB, radius uint8, chs ...swarm.Chunk) {
+	t.Helper()
+	for _, ch := range chs {
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), radius)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }

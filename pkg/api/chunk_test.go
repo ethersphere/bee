@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/tags"
@@ -45,11 +46,13 @@ func TestChunkUploadDownload(t *testing.T) {
 			Storer:  storerMock,
 			Pinning: pinningMock,
 			Tags:    tag,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
 	t.Run("empty chunk", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "data length",
 				Code:    http.StatusBadRequest,
@@ -58,7 +61,8 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
@@ -76,7 +80,8 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "invalid-pin"),
@@ -88,7 +93,8 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-header-missing", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
@@ -99,29 +105,30 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 	})
 	t.Run("pin-ok", func(t *testing.T) {
-		address := chunk.Address()
-		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusOK,
+		reference := chunk.Address()
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: address}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: reference}),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "True"),
 		)
 
-		has, err := storerMock.Has(context.Background(), address)
+		has, err := storerMock.Has(context.Background(), reference)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !has {
-			t.Fatal("storer check root chunk address: have none; want one")
+			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 
-		if have, want := len(pinningMock.Entries()), 1; have != want {
-			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
-		}
-		addrs, err := pinningMock.Pins()
+		refs, err := pinningMock.Pins()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if have, want := addrs[0], address; !have.Equal(want) {
+		if have, want := len(refs), 1; have != want {
+			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
+		}
+		if have, want := refs[0], reference; !have.Equal(want) {
 			t.Fatalf("root pin reference mismatch: have %q; want %q", have, want)
 		}
 

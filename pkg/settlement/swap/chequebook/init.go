@@ -6,6 +6,7 @@ package chequebook
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"math/big"
 	"time"
@@ -19,7 +20,7 @@ import (
 
 const (
 	chequebookKey           = "swap_chequebook"
-	chequebookDeploymentKey = "swap_chequebook_transaction_deployment"
+	ChequebookDeploymentKey = "swap_chequebook_transaction_deployment"
 
 	balanceCheckBackoffDuration = 20 * time.Second
 	balanceCheckMaxRetries      = 10
@@ -124,7 +125,7 @@ func Init(
 		}
 
 		var txHash common.Hash
-		err = stateStore.Get(chequebookDeploymentKey, &txHash)
+		err = stateStore.Get(ChequebookDeploymentKey, &txHash)
 		if err != nil && err != storage.ErrNotFound {
 			return nil, err
 		}
@@ -137,15 +138,21 @@ func Init(
 				}
 			}
 
+			nonce := make([]byte, 32)
+			_, err = rand.Read(nonce)
+			if err != nil {
+				return nil, err
+			}
+
 			// if we don't yet have a chequebook, deploy a new one
-			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0))
+			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0), common.BytesToHash(nonce))
 			if err != nil {
 				return nil, err
 			}
 
 			logger.Infof("deploying new chequebook in transaction %x", txHash)
 
-			err = stateStore.Put(chequebookDeploymentKey, txHash)
+			err = stateStore.Put(ChequebookDeploymentKey, txHash)
 			if err != nil {
 				return nil, err
 			}

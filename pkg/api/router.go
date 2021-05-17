@@ -98,6 +98,10 @@ func (s *server) setupRouting() {
 			s.newTracingHandler("bzz-download"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
+		"PATCH": web.ChainHandlers(
+			s.newTracingHandler("bzz-patch"),
+			web.FinalHandlerFunc(s.bzzPatchHandler),
+		),
 	})
 
 	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(
@@ -143,7 +147,7 @@ func (s *server) setupRouting() {
 			"GET": http.HandlerFunc(s.listPinnedRootHashes),
 		})),
 	)
-	handle("/pins/{address}", web.ChainHandlers(
+	handle("/pins/{reference}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getPinnedRootHash),
@@ -152,17 +156,39 @@ func (s *server) setupRouting() {
 		})),
 	)
 
+	handle("/stamps", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+		})),
+	)
+
+	handle("/stamps/{id}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
+		})),
+	)
+
+	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageCreateHandler),
+		})),
+	)
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
 		// todo: add recovery handler
+		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
 		func(h http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
 					w.Header().Set("Access-Control-Allow-Origin", o)
-					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method")
+					w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id")
 					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
 					w.Header().Set("Access-Control-Max-Age", "3600")
 				}

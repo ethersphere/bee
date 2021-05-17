@@ -31,6 +31,7 @@ func TestBalanceOf(t *testing.T) {
 		transactionmock.New(
 			transactionmock.WithABICall(
 				&erc20ABI,
+				erc20Address,
 				expectedBalance.FillBytes(make([]byte, 32)),
 				"balanceOf",
 				account,

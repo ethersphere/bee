@@ -29,9 +29,9 @@ components:
             $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
           $ref: "#/components/schemas/EthereumAddress"
-        public_key:
+        publicKey:
           $ref: "#/components/schemas/PublicKey"
-        pss_public_key:
+        pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
     Balance:
@@ -131,7 +131,7 @@ components:
     ChequebookAddress:
       type: object
       properties:
-        chequebookaddress:
+        chequebookAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
     DateTime:
@@ -237,14 +237,6 @@ components:
           items:
             $ref: "#/components/schemas/Address"
 
-    PinningState:
-      type: object
-      properties:
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-        pinCounter:
-          type: integer
-
     PssRecipient:
       type: string
 
@@ -262,6 +254,18 @@ components:
       properties:
         reference:
           $ref: "#/components/schemas/SwarmReference"
+
+    PostageBatchesResponse:
+      type: object
+      properties:
+        stamps:
+          $ref: "#/components/schemas/PostageBatches"
+
+    BatchIDResponse:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/BatchID"
 
     Response:
       type: object
@@ -283,6 +287,20 @@ components:
         status:
           type: string
 
+    PostageBatch:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/BatchID"
+        utilization:
+          type: integer
+
+    PostageBatches:
+      type: array
+      items:
+        $ref: "#/components/schemas/PostageBatch"
+
+
     Settlement:
       type: object
       properties:
@@ -296,9 +314,9 @@ components:
     Settlements:
       type: object
       properties:
-        totalreceived:
+        totalReceived:
           type: integer
-        totalsent:
+        totalSent:
           type: integer
         settlements:
           type: array
@@ -325,10 +343,22 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
+    BatchID:
+      pattern: "^[A-Fa-f0-9]{64}$"
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
+
+    SwarmOnlyReferencesList:
+      type: object
+      properties:
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/SwarmOnlyReference"
 
     SwarmReference:
       oneOf:
@@ -380,7 +410,7 @@ components:
     WelcomeMessage:
       type: object
       properties:
-        welcome_message:
+        welcomeMessage:
           type: string
 
     FeedType:

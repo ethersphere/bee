@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -44,12 +45,14 @@ func TestDirs(t *testing.T) {
 			Tags:            tags.NewTags(mockStatestore, logger),
 			Logger:          logger,
 			PreventRedirect: true,
+			Post:            mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
 	t.Run("empty request body", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource,
 			http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -65,6 +68,7 @@ func TestDirs(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource,
 			http.StatusInternalServerError,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(file),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -84,6 +88,7 @@ func TestDirs(t *testing.T) {
 		// submit valid tar, but with wrong content-type
 		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource,
 			http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -382,6 +387,7 @@ func TestDirs(t *testing.T) {
 				var resp api.BzzUploadResponse
 
 				options := []jsonhttptest.Option{
+					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 					jsonhttptest.WithRequestBody(tarReader),
 					jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 					jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -398,7 +404,7 @@ func TestDirs(t *testing.T) {
 				}
 
 				// verify directory tar upload response
-				jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
+				jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusCreated, options...)
 
 				if resp.Reference.String() == "" {
 					t.Fatalf("expected file reference, did not got any")
@@ -414,6 +420,7 @@ func TestDirs(t *testing.T) {
 					var resp api.BzzUploadResponse
 
 					options := []jsonhttptest.Option{
+						jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 						jsonhttptest.WithRequestBody(mwReader),
 						jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 						jsonhttptest.WithRequestHeader("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%q", mwBoundary)),
@@ -430,7 +437,7 @@ func TestDirs(t *testing.T) {
 					}
 
 					// verify directory tar upload response
-					jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
+					jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusCreated, options...)
 
 					if resp.Reference.String() == "" {
 						t.Fatalf("expected file reference, did not got any")

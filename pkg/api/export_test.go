@@ -17,16 +17,20 @@ type (
 	TagResponse           = tagResponse
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
+	PostageCreateResponse = postageCreateResponse
+	PostageStampResponse  = postageStampResponse
+	PostageStampsResponse = postageStampsResponse
 )
 
 var (
-	InvalidContentType  = invalidContentType
-	InvalidRequest      = invalidRequest
-	DirectoryStoreError = directoryStoreError
+	InvalidContentType  = errInvalidContentType
+	InvalidRequest      = errInvalidRequest
+	DirectoryStoreError = errDirectoryStore
 )
 
 var (
-	ContentTypeTar = contentTypeTar
+	ContentTypeTar    = contentTypeTar
+	ContentTypeHeader = contentTypeHeader
 )
 
 var (

@@ -19,11 +19,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
-	"github.com/ethersphere/bee/pkg/crypto"
 	beeCrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/discovery/mock"
-	"github.com/ethersphere/bee/pkg/kademlia"
-	"github.com/ethersphere/bee/pkg/kademlia/pslice"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
@@ -31,6 +28,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/kademlia"
+	"github.com/ethersphere/bee/pkg/topology/pslice"
 )
 
 func init() {
@@ -50,6 +49,8 @@ func TestNeighborhoodDepth(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
 	)
+
+	kad.SetRadius(swarm.MaxPO) // initial tests do not check for radius
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -112,8 +113,14 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// depth is 7 because bin 7 is unsaturated (1 peer)
 	kDepth(t, kad, 7)
 
-	// expect shallow peers not in depth
+	// set the radius to be lower than unsaturated, expect radius as depth
+	kad.SetRadius(6)
+	kDepth(t, kad, 6)
 
+	// set the radius to MaxPO again so that intermediate checks can run
+	kad.SetRadius(swarm.MaxPO)
+
+	// expect shallow peers not in depth
 	for _, a := range shallowPeers {
 		if kad.IsWithinDepth(a) {
 			t.Fatal("expected address to outside of depth")
@@ -142,6 +149,13 @@ func TestNeighborhoodDepth(t *testing.T) {
 	waitConn(t, &conns)
 	kDepth(t, kad, 8)
 
+	// again set radius to lower value, expect that as depth
+	kad.SetRadius(5)
+	kDepth(t, kad, 5)
+
+	// reset radius to MaxPO for the rest of the checks
+	kad.SetRadius(swarm.MaxPO)
+
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
 	for i := 9; i < int(swarm.MaxBins); i++ {
@@ -156,16 +170,16 @@ func TestNeighborhoodDepth(t *testing.T) {
 
 	// add a whole bunch of peers in bin 15, expect depth to stay at 15
 	for i := 0; i < 15; i++ {
-		addr = test.RandomAddressAt(base, 15)
+		addr = test.RandomAddressAt(base, int(swarm.MaxPO))
 		addOne(t, signer, kad, ab, addr)
 	}
 
 	waitCounter(t, &conns, 15)
-	kDepth(t, kad, 15)
+	kDepth(t, kad, 31)
 
 	// remove one at 14, depth should be 14
 	removeOne(kad, addrs[len(addrs)-5])
-	kDepth(t, kad, 14)
+	kDepth(t, kad, 30)
 
 	// empty bin 9 and expect depth 9
 	for i := 0; i < 4; i++ {
@@ -304,6 +318,8 @@ func TestManageWithBalancing(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
 	)
 
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+
 	// implement satiration function (while having access to Kademlia instance)
 	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 		return kad.IsBalanced(bin), false
@@ -419,6 +435,7 @@ func TestOversaturation(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
 	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -474,6 +491,7 @@ func TestOversaturationBootnode(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
 	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -519,6 +537,60 @@ func TestOversaturationBootnode(t *testing.T) {
 	}
 }
 
+func TestBootnodeMaxConnections(t *testing.T) {
+	defer func(p int) {
+		*kademlia.BootnodeOverSaturationPeers = p
+	}(*kademlia.BootnodeOverSaturationPeers)
+	*kademlia.BootnodeOverSaturationPeers = 4
+
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
+	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	// Add maximum accepted number of peers up until bin 5 without problems
+	for i := 0; i < 6; i++ {
+		for j := 0; j < *kademlia.BootnodeOverSaturationPeers; j++ {
+			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
+
+	// see depth is 5
+	kDepth(t, kad, 5)
+
+	depth := 5
+	outSideDepthPeers := 5
+
+	for k := 0; k < depth; k++ {
+		// further connections should succeed outside of depth
+		for l := 0; l < outSideDepthPeers; l++ {
+			addr := test.RandomAddressAt(base, k)
+			// if error is not as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+			// check that pick works correctly
+			if !kad.Pick(p2p.Peer{Address: addr}) {
+				t.Fatal("should pick the peer but didnt")
+			}
+		}
+	}
+
+	got := atomic.LoadInt32(&conns)
+	want := -int32(depth * outSideDepthPeers)
+	if got != want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+}
+
 // TestNotifierHooks tests that the Connected/Disconnected hooks
 // result in the correct behavior once called.
 func TestNotifierHooks(t *testing.T) {
@@ -536,7 +608,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, signer, kad, ab, peer, nil)
 
-	p, err := kad.ClosestPeer(addr)
+	p, err := kad.ClosestPeer(addr, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +619,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(p2p.Peer{Address: peer})
-	_, err = kad.ClosestPeer(addr)
+	_, err = kad.ClosestPeer(addr, true)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -745,7 +817,7 @@ func TestClosestPeer(t *testing.T) {
 	}
 	defer kad.Close()
 
-	pk, _ := crypto.GenerateSecp256k1Key()
+	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	for _, v := range connectedPeers {
 		addOne(t, beeCrypto.NewDefaultSigner(pk), kad, ab, v.Address)
 	}
@@ -755,37 +827,50 @@ func TestClosestPeer(t *testing.T) {
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
 		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
+		includeSelf  bool
 	}{
 		{
 			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111, wants peer 2
 			expectedPeer: 2,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("c000000000000000000000000000000000000000000000000000000000000000"), // 1100, want peer 0
 			expectedPeer: 0,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("e000000000000000000000000000000000000000000000000000000000000000"), // 1110, want peer 0
 			expectedPeer: 0,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("a000000000000000000000000000000000000000000000000000000000000000"), // 1010, want peer 0
 			expectedPeer: 0,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000"), // 0100, want peer 1
 			expectedPeer: 1,
+			includeSelf:  true,
 		},
 		{
 			chunkAddress: swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000"), // 0101, want peer 1
 			expectedPeer: 1,
+			includeSelf:  true,
 		},
 		{
-			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // want self
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want self
 			expectedPeer: -1,
+			includeSelf:  true,
+		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want peer 1
+			expectedPeer: 1,                                                                                             // smallest distance: 2894...
+			includeSelf:  false,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress)
+		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
@@ -1010,7 +1095,7 @@ func TestStart(t *testing.T) {
 
 func newTestKademlia(connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	var (
-		pk, _  = crypto.GenerateSecp256k1Key()                       // random private key
+		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
 		base   = test.RandomAddress()                                // base address
 		ab     = addressbook.New(mockstate.NewStateStore())          // address book
@@ -1024,38 +1109,46 @@ func newTestKademlia(connCounter, failedConnCounter *int32, kadOpts kademlia.Opt
 }
 
 func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {
-	p2ps := p2pmock.New(p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-		if addr.Equal(nonConnectableAddress) {
-			_ = atomic.AddInt32(failedCounter, 1)
-			return nil, errors.New("non reachable node")
-		}
-		if counter != nil {
-			_ = atomic.AddInt32(counter, 1)
-		}
-
-		addresses, err := ab.Addresses()
-		if err != nil {
-			return nil, errors.New("could not fetch addresbook addresses")
-		}
-
-		for _, a := range addresses {
-			if a.Underlay.Equal(addr) {
-				return &a, nil
+	p2ps := p2pmock.New(
+		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
+			if addr.Equal(nonConnectableAddress) {
+				_ = atomic.AddInt32(failedCounter, 1)
+				return nil, errors.New("non reachable node")
 			}
-		}
+			if counter != nil {
+				_ = atomic.AddInt32(counter, 1)
+			}
 
-		address := test.RandomAddress()
-		bzzAddr, err := bzz.NewAddress(signer, addr, address, 0)
-		if err != nil {
-			return nil, err
-		}
+			addresses, err := ab.Addresses()
+			if err != nil {
+				return nil, errors.New("could not fetch addresbook addresses")
+			}
 
-		if err := ab.Put(address, *bzzAddr); err != nil {
-			return nil, err
-		}
+			for _, a := range addresses {
+				if a.Underlay.Equal(addr) {
+					return &a, nil
+				}
+			}
 
-		return bzzAddr, nil
-	}))
+			address := test.RandomAddress()
+			bzzAddr, err := bzz.NewAddress(signer, addr, address, 0)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := ab.Put(address, *bzzAddr); err != nil {
+				return nil, err
+			}
+
+			return bzzAddr, nil
+		}),
+		p2pmock.WithDisconnectFunc(func(swarm.Address) error {
+			if counter != nil {
+				_ = atomic.AddInt32(counter, -1)
+			}
+			return nil
+		}),
+	)
 
 	return p2ps
 }

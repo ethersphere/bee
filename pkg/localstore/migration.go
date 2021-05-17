@@ -32,7 +32,10 @@ type migration struct {
 // schemaMigrations contains an ordered list of the database schemes, that is
 // in order to run data migrations in the correct sequence
 var schemaMigrations = []migration{
-	{name: DbSchemaCode, fn: func(db *DB) error { return nil }},
+	{name: DbSchemaCode, fn: func(_ *DB) error { return nil }},
+	{name: DbSchemaYuj, fn: func(_ *DB) error {
+		return errors.New("db schema incompatible. you must migrate your data manually. see the release notes for more info")
+	}},
 }
 
 func (db *DB) migrate(schemaName string) error {

@@ -45,6 +45,10 @@ type Item struct {
 	BinID           uint64
 	PinCounter      uint64 // maintains the no of time a chunk is pinned
 	Tag             uint32
+	BatchID         []byte // postage batch ID
+	Sig             []byte // postage stamp
+	Depth           uint8  // postage batch depth
+	Radius          uint8  // postage batch reserve radius, po upto and excluding which chunks are unpinned
 }
 
 // Merge is a helper method to construct a new
@@ -71,6 +75,18 @@ func (i Item) Merge(i2 Item) Item {
 	}
 	if i.Tag == 0 {
 		i.Tag = i2.Tag
+	}
+	if len(i.Sig) == 0 {
+		i.Sig = i2.Sig
+	}
+	if len(i.BatchID) == 0 {
+		i.BatchID = i2.BatchID
+	}
+	if i.Depth == 0 {
+		i.Depth = i2.Depth
+	}
+	if i.Radius == 0 {
+		i.Radius = i2.Radius
 	}
 	return i
 }

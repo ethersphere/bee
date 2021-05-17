@@ -20,44 +20,50 @@ import (
 )
 
 const (
-	optionNameDataDir                   = "data-dir"
-	optionNameDBCapacity                = "db-capacity"
-	optionNameDBOpenFilesLimit          = "db-open-files-limit"
-	optionNameDBBlockCacheCapacity      = "db-block-cache-capacity"
-	optionNameDBWriteBufferSize         = "db-write-buffer-size"
-	optionNameDBDisableSeeksCompaction  = "db-disable-seeks-compaction"
-	optionNamePassword                  = "password"
-	optionNamePasswordFile              = "password-file"
-	optionNameAPIAddr                   = "api-addr"
-	optionNameP2PAddr                   = "p2p-addr"
-	optionNameNATAddr                   = "nat-addr"
-	optionNameP2PWSEnable               = "p2p-ws-enable"
-	optionNameP2PQUICEnable             = "p2p-quic-enable"
-	optionNameDebugAPIEnable            = "debug-api-enable"
-	optionNameDebugAPIAddr              = "debug-api-addr"
-	optionNameBootnodes                 = "bootnode"
-	optionNameNetworkID                 = "network-id"
-	optionWelcomeMessage                = "welcome-message"
-	optionCORSAllowedOrigins            = "cors-allowed-origins"
-	optionNameStandalone                = "standalone"
-	optionNameTracingEnabled            = "tracing-enable"
-	optionNameTracingEndpoint           = "tracing-endpoint"
-	optionNameTracingServiceName        = "tracing-service-name"
-	optionNameVerbosity                 = "verbosity"
-	optionNameGlobalPinningEnabled      = "global-pinning-enable"
-	optionNamePaymentThreshold          = "payment-threshold"
-	optionNamePaymentTolerance          = "payment-tolerance"
-	optionNamePaymentEarly              = "payment-early"
-	optionNameResolverEndpoints         = "resolver-options"
-	optionNameBootnodeMode              = "bootnode-mode"
-	optionNameGatewayMode               = "gateway-mode"
-	optionNameClefSignerEnable          = "clef-signer-enable"
-	optionNameClefSignerEndpoint        = "clef-signer-endpoint"
-	optionNameClefSignerEthereumAddress = "clef-signer-ethereum-address"
-	optionNameSwapEndpoint              = "swap-endpoint"
-	optionNameSwapFactoryAddress        = "swap-factory-address"
-	optionNameSwapInitialDeposit        = "swap-initial-deposit"
-	optionNameSwapEnable                = "swap-enable"
+	optionNameDataDir                    = "data-dir"
+	optionNameDBCapacity                 = "db-capacity"
+	optionNameDBOpenFilesLimit           = "db-open-files-limit"
+	optionNameDBBlockCacheCapacity       = "db-block-cache-capacity"
+	optionNameDBWriteBufferSize          = "db-write-buffer-size"
+	optionNameDBDisableSeeksCompaction   = "db-disable-seeks-compaction"
+	optionNamePassword                   = "password"
+	optionNamePasswordFile               = "password-file"
+	optionNameAPIAddr                    = "api-addr"
+	optionNameP2PAddr                    = "p2p-addr"
+	optionNameNATAddr                    = "nat-addr"
+	optionNameP2PWSEnable                = "p2p-ws-enable"
+	optionNameP2PQUICEnable              = "p2p-quic-enable"
+	optionNameDebugAPIEnable             = "debug-api-enable"
+	optionNameDebugAPIAddr               = "debug-api-addr"
+	optionNameBootnodes                  = "bootnode"
+	optionNameNetworkID                  = "network-id"
+	optionWelcomeMessage                 = "welcome-message"
+	optionCORSAllowedOrigins             = "cors-allowed-origins"
+	optionNameStandalone                 = "standalone"
+	optionNameTracingEnabled             = "tracing-enable"
+	optionNameTracingEndpoint            = "tracing-endpoint"
+	optionNameTracingServiceName         = "tracing-service-name"
+	optionNameVerbosity                  = "verbosity"
+	optionNameGlobalPinningEnabled       = "global-pinning-enable"
+	optionNamePaymentThreshold           = "payment-threshold"
+	optionNamePaymentTolerance           = "payment-tolerance"
+	optionNamePaymentEarly               = "payment-early"
+	optionNameResolverEndpoints          = "resolver-options"
+	optionNameBootnodeMode               = "bootnode-mode"
+	optionNameGatewayMode                = "gateway-mode"
+	optionNameClefSignerEnable           = "clef-signer-enable"
+	optionNameClefSignerEndpoint         = "clef-signer-endpoint"
+	optionNameClefSignerEthereumAddress  = "clef-signer-ethereum-address"
+	optionNameSwapEndpoint               = "swap-endpoint"
+	optionNameSwapFactoryAddress         = "swap-factory-address"
+	optionNameSwapLegacyFactoryAddresses = "swap-legacy-factory-addresses"
+	optionNameSwapInitialDeposit         = "swap-initial-deposit"
+	optionNameSwapEnable                 = "swap-enable"
+	optionNameTransactionHash            = "transaction"
+	optionNameFullNode                   = "full-node"
+	optionNamePostageContractAddress     = "postage-stamp-address"
+	optionNamePriceOracleAddress         = "price-oracle-address"
+	optionNameBlockTime                  = "block-time"
 )
 
 func init() {
@@ -187,7 +193,7 @@ func (c *command) setHomeDir() (err error) {
 
 func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
-	cmd.Flags().Uint64(optionNameDBCapacity, 5000000, fmt.Sprintf("db capacity in chunks, multiply by %d to get approximate capacity in bytes", swarm.ChunkSize))
+	cmd.Flags().Uint64(optionNameDBCapacity, 1000000, fmt.Sprintf("db capacity in chunks, multiply by %d to get approximate capacity in bytes", swarm.ChunkSize))
 	cmd.Flags().Uint64(optionNameDBOpenFilesLimit, 200, "number of open files allowed by database")
 	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
 	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
@@ -212,7 +218,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().Bool(optionNameGlobalPinningEnabled, false, "enable global pinning")
 	cmd.Flags().String(optionNamePaymentThreshold, "10000000000000", "threshold in BZZ where you expect to get paid from your peers")
-	cmd.Flags().String(optionNamePaymentTolerance, "50000000000000", "excess debt above payment threshold in BZZ where you disconnect from your peer")
+	cmd.Flags().String(optionNamePaymentTolerance, "10000000000000", "excess debt above payment threshold in BZZ where you disconnect from your peer")
 	cmd.Flags().String(optionNamePaymentEarly, "1000000000000", "amount in BZZ below the peers payment threshold when we initiate settlement")
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameGatewayMode, false, "disable a set of sensitive features in the api")
@@ -221,9 +227,15 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
 	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "ethereum address to use from clef signer")
 	cmd.Flags().String(optionNameSwapEndpoint, "http://localhost:8545", "swap ethereum blockchain endpoint")
-	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory address")
+	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
+	cmd.Flags().StringSlice(optionNameSwapLegacyFactoryAddresses, nil, "legacy swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "100000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
+	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
+	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
+	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle address")
+	cmd.Flags().String(optionNameTransactionHash, "", "proof-of-identity transaction hash")
+	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

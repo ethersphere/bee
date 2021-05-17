@@ -7,6 +7,7 @@ package libp2p_test
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/libp2p/go-libp2p-core/mux"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -37,8 +39,9 @@ func TestConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -59,12 +62,33 @@ func TestConnectDisconnect(t *testing.T) {
 	expectPeersEventually(t, s1)
 }
 
+func TestConnectToLightPeer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: false,
+	}})
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	_, err := s2.Connect(ctx, addr)
+	if err != p2p.ErrDialLightNode {
+		t.Fatalf("expected err %v, got %v", p2p.ErrDialLightNode, err)
+	}
+
+	expectPeers(t, s2)
+	expectPeersEventually(t, s1)
+}
+
 func TestDoubleConnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -88,8 +112,9 @@ func TestDoubleDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -121,7 +146,9 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
@@ -162,7 +189,9 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
@@ -192,8 +221,9 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
@@ -232,7 +262,6 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	defer cancel()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
-
 	s2, _ := newService(t, 2, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -253,6 +282,7 @@ func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
 		libp2pOpts: libp2p.Options{
 			EnableQUIC: true,
 			EnableWS:   true,
+			FullNode:   true,
 		},
 	})
 
@@ -260,6 +290,7 @@ func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
 		libp2pOpts: libp2p.Options{
 			EnableQUIC: true,
 			EnableWS:   true,
+			FullNode:   true,
 		},
 	})
 
@@ -278,8 +309,11 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
 	addr := serviceUnderlayAddress(t, s1)
 
 	_, err := s2.Connect(ctx, addr)
@@ -309,13 +343,14 @@ func TestConnectRepeatHandshake(t *testing.T) {
 }
 
 func TestBlocklisting(t *testing.T) {
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr1 := serviceUnderlayAddress(t, s1)
 	addr2 := serviceUnderlayAddress(t, s2)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err := s2.Connect(context.Background(), addr1)
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +366,6 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err = s2.Connect(context.Background(), addr1)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
@@ -340,14 +374,13 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err = s1.Connect(context.Background(), addr2)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
 	}
 
-	expectPeers(t, s1)
-	expectPeersEventually(t, s2)
+	expectPeersEventually(t, s1)
+	expectPeers(t, s2)
 }
 
 func TestTopologyNotifier(t *testing.T) {
@@ -389,11 +422,21 @@ func TestTopologyNotifier(t *testing.T) {
 		}
 	)
 	notifier1 := mockNotifier(n1c, n1d, true)
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		Addressbook: ab1,
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		},
+	})
 	s1.SetPickyNotifier(notifier1)
 
 	notifier2 := mockNotifier(n2c, n2d, true)
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		Addressbook: ab2,
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		},
+	})
 	s2.SetPickyNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -490,7 +533,9 @@ func TestTopologyOverSaturated(t *testing.T) {
 	)
 	//this notifier will not pick the peer
 	notifier1 := mockNotifier(n1c, n1d, false)
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1, libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s1.SetPickyNotifier(notifier1)
 
 	notifier2 := mockNotifier(n2c, n2d, false)
@@ -509,6 +554,130 @@ func TestTopologyOverSaturated(t *testing.T) {
 	expectPeersEventually(t, s2)
 
 	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
+}
+
+func TestWithDisconnectStreams(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
+	testSpec := p2p.ProtocolSpec{
+		Name:    testProtocolName,
+		Version: testProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{
+			{
+				Name: testStreamName,
+				Handler: func(c context.Context, p p2p.Peer, s p2p.Stream) error {
+					return nil
+				},
+			},
+		},
+	}
+
+	p2p.WithDisconnectStreams(testSpec)
+
+	_ = s1.AddProtocol(testSpec)
+
+	s1_underlay := serviceUnderlayAddress(t, s1)
+
+	expectPeers(t, s1)
+	expectPeers(t, s2)
+
+	if _, err := s2.Connect(ctx, s1_underlay); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s1, overlay2)
+	expectPeers(t, s2, overlay1)
+
+	s, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+
+	expectStreamReset(t, s, err)
+
+	expectPeersEventually(t, s2)
+	expectPeersEventually(t, s1)
+}
+
+func TestWithBlocklistStreams(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
+	testSpec := p2p.ProtocolSpec{
+		Name:    testProtocolName,
+		Version: testProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{
+			{
+				Name: testStreamName,
+				Handler: func(c context.Context, p p2p.Peer, s p2p.Stream) error {
+					return nil
+				},
+			},
+		},
+	}
+
+	p2p.WithBlocklistStreams(1*time.Minute, testSpec)
+
+	_ = s1.AddProtocol(testSpec)
+
+	s1_underlay := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, s1_underlay); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
+
+	s, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+
+	expectStreamReset(t, s, err)
+
+	expectPeersEventually(t, s2)
+	expectPeersEventually(t, s1)
+
+	if _, err := s2.Connect(ctx, s1_underlay); err == nil {
+		t.Fatal("expected error when connecting to blocklisted peer")
+	}
+
+	expectPeersEventually(t, s2)
+	expectPeersEventually(t, s1)
+}
+
+func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
+	t.Helper()
+
+	// due to the fact that disconnect method is asynchronous
+	// stream reset error should occur either on creation or on first read attempt
+	if err != nil && !errors.Is(err, mux.ErrReset) {
+		t.Fatalf("expected stream reset error, got %v", err)
+	}
+
+	if err == nil {
+		readErr := make(chan error)
+		go func() {
+			_, err := s.Read(make([]byte, 10))
+			readErr <- err
+		}()
+
+		select {
+		// because read could block without erroring we should also expect timeout
+		case <-time.After(2 * time.Second):
+			t.Error("expected stream reset error, got timeout reading")
+		case err := <-readErr:
+			if !errors.Is(err, mux.ErrReset) {
+				t.Errorf("expected stream reset error, got %v", err)
+			}
+		}
+	}
 }
 
 func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
@@ -565,6 +734,10 @@ func (n *notifiee) Disconnected(p p2p.Peer) {
 
 func (n *notifiee) Pick(p p2p.Peer) bool {
 	return n.pick
+}
+
+func (n *notifiee) Announce(context.Context, swarm.Address) error {
+	return nil
 }
 
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
