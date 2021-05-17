@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // TestDB_ReserveGC_AllOutOfRadius tests that when all chunks fall outside of
@@ -422,7 +421,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	t.Run("batches for the all evicted batches should be evicted", func(t *testing.T) {
 		for _, ch := range gcChs {
 			item := shed.Item{BatchID: ch.Stamp().BatchID()}
-			if _, err := db.postageRadiusIndex.Get(item); !errors.Is(err, leveldb.ErrNotFound) {
+			if _, err := db.postageRadiusIndex.Get(item); !errors.Is(err, shed.ErrNotFound) {
 				t.Fatalf("wanted ErrNotFound but got %v", err)
 			}
 		}

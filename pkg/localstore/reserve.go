@@ -28,7 +28,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 
 	i, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+		if !errors.Is(err, shed.ErrNotFound) {
 			return err
 		}
 		item.Radius = radius
@@ -76,7 +76,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	}
 
 	gcSize, err := db.gcSize.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+	if err != nil && !errors.Is(err, shed.ErrNotFound) {
 		return err
 	}
 	// trigger garbage collection if we reached the capacity

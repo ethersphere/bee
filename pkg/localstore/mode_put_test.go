@@ -154,7 +154,7 @@ func TestModePutRequestCache(t *testing.T) {
 
 			for _, ch := range chunks {
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
-				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+				newPinIndexTest(db, ch, shed.ErrNotFound)(t)
 			}
 
 			newItemsCountTest(db.gcIndex, tc.count)(t)

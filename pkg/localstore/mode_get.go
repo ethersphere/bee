@@ -163,7 +163,7 @@ func (db *DB) updateGC(item shed.Item) (err error) {
 		if err != nil {
 			return err
 		}
-	} else if !errors.Is(err, leveldb.ErrNotFound) {
+	} else if !errors.Is(err, shed.ErrNotFound) {
 		return err
 	}
 	// if the item is not in the gc we don't

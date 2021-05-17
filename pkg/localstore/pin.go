@@ -6,7 +6,6 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // pinCounter returns the pin counter for a given swarm address, provided that the
@@ -17,7 +16,7 @@ func (db *DB) pinCounter(address swarm.Address) (uint64, error) {
 	})
 
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
+		if errors.Is(err, shed.ErrNotFound) {
 			return 0, storage.ErrNotFound
 		}
 		return 0, err
