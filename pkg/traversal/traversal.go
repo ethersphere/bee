@@ -27,18 +27,18 @@ type Traverser interface {
 	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
 }
 
-// NewService is a convenient constructor for Service.
-func NewService(store storage.Storer) *Service {
-	return &Service{store: store}
+// New constructs for a new Traverser.
+func New(store storage.Storer) Traverser {
+	return &service{store: store}
 }
 
-// Service is implementation of Interface using storage.Storer as its storage.
-type Service struct {
+// service is implementation of Traverser using storage.Storer as its storage.
+type service struct {
 	store storage.Storer
 }
 
 // Traverse implements Traverser.Traverse method.
-func (s *Service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
+func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
 	processBytes := func(ref swarm.Address) error {
 		j, _, err := joiner.New(ctx, s.store, ref)
 		if err != nil {
