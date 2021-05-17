@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package pinning
+package pinning_test
 
 import (
 	"context"
@@ -10,13 +10,12 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/pinning"
 	statestorem "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	storagem "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 )
-
-var _ Interface = (*Service)(nil)
 
 func TestPinningService(t *testing.T) {
 	const content = "Hello, Bee!"
@@ -24,10 +23,10 @@ func TestPinningService(t *testing.T) {
 	var (
 		ctx        = context.Background()
 		storerMock = storagem.NewStorer()
-		service    = NewService(
+		service    = pinning.NewService(
 			storerMock,
 			statestorem.NewStateStore(),
-			traversal.NewService(storerMock),
+			traversal.New(storerMock),
 		)
 	)
 
