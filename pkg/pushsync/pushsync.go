@@ -147,29 +147,37 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	price := ps.pricer.Price(chunk.Address())
 
-	// if the peer is closer to the chunk, we were selected for replication. Return early.
-	if dcmp, _ := swarm.DistanceCmp(chunk.Address().Bytes(), p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-		if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
-			ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
-			defer canceld()
+	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
+	if p.FullNode {
+		bytes := chunk.Address().Bytes()
+		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
+			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+				defer canceld()
 
-			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
-			if err != nil {
-				ps.logger.Errorf("pushsync: chunk store: %v", err)
+				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
+				if err != nil {
+					ps.logger.Errorf("pushsync: chunk store: %v", err)
+				}
+
+				debit := ps.accounting.PrepareDebit(p.Address, price)
+				defer debit.Cleanup()
+
+				// return back receipt
+				signature, err := ps.signer.Sign(bytes)
+				if err != nil {
+					return fmt.Errorf("receipt signature: %w", err)
+				}
+				receipt := pb.Receipt{Address: bytes, Signature: signature}
+				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
+					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
+				}
+
+				return debit.Apply()
 			}
 
-			debit := ps.accounting.PrepareDebit(p.Address, price)
-			defer debit.Cleanup()
-
-			// return back receipt
-			receipt := pb.Receipt{Address: chunk.Address().Bytes()}
-			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-			}
-			return debit.Apply()
+			return ErrOutOfDepthReplication
 		}
-
-		return ErrOutOfDepthReplication
 	}
 
 	// forwarding replication
