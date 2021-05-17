@@ -19,19 +19,24 @@ package leveldb
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
-var errMissingCurrentSchema = errors.New("could not find current db schema")
-var errMissingTargetSchema = errors.New("could not find target db schema")
+var (
+	errMissingCurrentSchema = errors.New("could not find current db schema")
+	errMissingTargetSchema  = errors.New("could not find target db schema")
+)
 
 const (
 	dbSchemaKey = "statestore_schema"
 
-	dbSchemaGrace = "grace"
+	dbSchemaGrace         = "grace"
+	dbSchemaDrain         = "drain"
+	dbSchemaCleanInterval = "clean-interval"
 )
 
 var (
-	dbSchemaCurrent = dbSchemaGrace
+	dbSchemaCurrent = dbSchemaCleanInterval
 )
 
 type migration struct {
@@ -43,6 +48,38 @@ type migration struct {
 // in order to run data migrations in the correct sequence
 var schemaMigrations = []migration{
 	{name: dbSchemaGrace, fn: func(s *store) error { return nil }},
+	{name: dbSchemaDrain, fn: migrateGrace},
+	{name: dbSchemaCleanInterval, fn: migrateGrace},
+}
+
+func migrateGrace(s *store) error {
+	var collectedKeys []string
+	mgfn := func(k, v []byte) (bool, error) {
+		stk := string(k)
+		if strings.Contains(stk, "|") &&
+			len(k) > 32 &&
+			!strings.Contains(stk, "swap") &&
+			!strings.Contains(stk, "peer") {
+			s.logger.Infof("found key designated to deletion", string(k))
+			collectedKeys = append(collectedKeys, stk)
+		}
+
+		return false, nil
+	}
+
+	_ = s.Iterate("", mgfn)
+
+	for _, v := range collectedKeys {
+		err := s.Delete(v)
+		if err != nil {
+			s.logger.Infof("error deleting key", v)
+			continue
+		}
+		s.logger.Infof("deleted key", v)
+	}
+	s.logger.Infof("deleted keys:", len(collectedKeys))
+
+	return nil
 }
 
 func (s *store) migrate(schemaName string) error {
