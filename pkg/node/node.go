@@ -277,7 +277,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	lightNodes := lightnode.NewContainer()
 
-	txHash, err := getTxHash(stateStore, logger, o.Transaction)
+	txHash, err := getTxHash(stateStore, logger, o)
 	if err != nil {
 		return nil, errors.New("no transaction hash provided or found")
 	}
@@ -794,10 +794,13 @@ func (e *multiError) hasErrors() bool {
 	return len(e.errors) > 0
 }
 
-func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transaction string) ([]byte, error) {
-	if len(transaction) == 32 {
+func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
+	if o.Standalone {
+		return nil, nil // in standalone mode tx hash is not used
+	}
+	if len(o.Transaction) == 32 {
 		logger.Info("using the provided transaction hash")
-		return []byte(transaction), nil
+		return []byte(o.Transaction), nil
 	}
 
 	var txHash common.Hash
