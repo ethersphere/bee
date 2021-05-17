@@ -105,7 +105,7 @@ func InitChequebookFactory(
 		logger.Infof("using custom factory address: %x", currentFactory)
 	}
 
-	if legacyFactoryAddresses == nil {
+	if len(legacyFactoryAddresses) == 0 {
 		if found {
 			legacyFactories = foundLegacyFactories
 		}
