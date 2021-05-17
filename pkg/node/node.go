@@ -461,29 +461,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		logger.Debugf("p2p address: %s", addr)
 	}
 
-	if o.SwapEnable {
-		swapService, err = InitSwap(
-			p2ps,
-			logger,
-			stateStore,
-			networkID,
-			overlayEthAddress,
-			chequebookService,
-			chequeStore,
-			cashoutService,
-		)
-		if err != nil {
-			return nil, err
-		}
-		settlement = swapService
-	} else {
-		pseudosettleService := pseudosettle.New(p2ps, logger, stateStore)
-		if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
-			return nil, fmt.Errorf("pseudosettle service: %w", err)
-		}
-		settlement = pseudosettleService
-	}
-
 	paymentTolerance, ok := new(big.Int).SetString(o.PaymentTolerance, 10)
 	if !ok {
 		return nil, fmt.Errorf("invalid payment tolerance: %s", paymentTolerance)
@@ -498,16 +475,39 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		paymentEarly,
 		logger,
 		stateStore,
-		settlement,
 		pricing,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
 
+	if o.SwapEnable {
+		swapService, err = InitSwap(
+			p2ps,
+			logger,
+			stateStore,
+			networkID,
+			overlayEthAddress,
+			chequebookService,
+			chequeStore,
+			cashoutService,
+			acc,
+		)
+		if err != nil {
+			return nil, err
+		}
+		settlement = swapService
+	} else {
+		pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc)
+		if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
+			return nil, fmt.Errorf("pseudosettle service: %w", err)
+		}
+		settlement = pseudosettleService
+	}
+
+	acc.SetPayFunc(settlement.Pay)
+
 	pricing.SetPaymentThresholdObserver(acc)
-	settlement.SetNotifyPaymentFunc(acc.AsyncNotifyPayment)
 
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer)
 	tagService := tags.NewTags(stateStore, logger)
