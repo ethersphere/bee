@@ -5,6 +5,7 @@
 package batchstore
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/big"
 
@@ -24,7 +25,11 @@ var Exp2 = exp2
 func IterateAll(bs postage.Storer, f func(b *postage.Batch) (bool, error)) error {
 	s := bs.(*store)
 	return s.store.Iterate(batchKeyPrefix, func(key []byte, _ []byte) (bool, error) {
-		b, err := s.Get(key[len(key)-32:])
+		k, err := hex.DecodeString(string(key[len(key)-64:]))
+		if err != nil {
+			return true, err
+		}
+		b, err := s.Get(k)
 		if err != nil {
 			return true, err
 		}
