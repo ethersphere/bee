@@ -735,20 +735,18 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
-	addr := test.RandomAddressAt(base, 1)
-	addr1 := test.RandomAddressAt(base, 1)
-	addr2 := test.RandomAddressAt(base, 1)
-
 	p, err := ab.Get(nonConnPeer.Overlay)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	addr := test.RandomAddressAt(base, 1)
+	addr1 := test.RandomAddressAt(base, 1)
+	addr2 := test.RandomAddressAt(base, 1)
+
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr)
 	waitCounter(t, &conns, 1)
@@ -786,6 +784,50 @@ func TestAddressBookPrune(t *testing.T) {
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if err != addressbook.ErrNotFound {
+		t.Fatal(err)
+	}
+}
+
+func TestAddressBookQuickPrune(t *testing.T) {
+	// test pruning addressbook after successive failed connect attempts
+	// cheat and decrease the timer
+	defer func(t time.Duration) {
+		*kademlia.TimeToRetry = t
+	}(*kademlia.TimeToRetry)
+
+	*kademlia.TimeToRetry = 50 * time.Millisecond
+
+	var (
+		conns, failedConns       int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, test.RandomAddressAt(base, 1), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := test.RandomAddressAt(base, 1)
+	// add one valid peer
+	addOne(t, signer, kad, ab, addr)
+	waitCounter(t, &conns, 1)
+	waitCounter(t, &failedConns, 0)
+
+	// add non connectable peer, check connection and failed connection counters
+	_ = kad.AddPeers(context.Background(), nonConnPeer.Overlay)
+	waitCounter(t, &conns, 0)
+	waitCounter(t, &failedConns, 1)
+
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
 }

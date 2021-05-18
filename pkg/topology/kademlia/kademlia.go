@@ -689,7 +689,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			k.logger.Debugf("kademlia: unable to record session connection retry metrics for %q: %v", peer, err)
 		}
 
-		if failedAttempts > maxConnAttempts {
+		if k.quickPrune(peer) || failedAttempts > maxConnAttempts {
 			delete(k.waitNext, peer.String())
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
@@ -700,6 +700,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		}
 
 		k.waitNextMu.Unlock()
+
 		return err
 	}
 
@@ -710,6 +711,22 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	}
 
 	return k.Announce(ctx, peer)
+}
+
+// quickPrune will return true for cases where:
+//  there are other connected peers, the addr has never been seen before, AND it's the first failed attempt
+func (k *Kad) quickPrune(addr swarm.Address) bool {
+
+	if k.connectedPeers.Length() == 0 {
+		return false
+	}
+
+	snapshot, _ := k.collector.Peer(time.Now(), addr)
+	if snapshot == nil || (snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1) {
+		return true
+	}
+
+	return false
 }
 
 // announce a newly connected peer to our connected peers, but also
