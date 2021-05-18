@@ -43,7 +43,7 @@ vet:
 
 .PHONY: test-race
 test-race:
-	$(GO) test -race -v ./...
+	$(GO) test -race -failfast -v ./...
 
 .PHONY: test-integration
 test-integration:
@@ -51,7 +51,7 @@ test-integration:
 
 .PHONY: test
 test:
-	$(GO) test -v ./...
+	$(GO) test -v -failfast ./...
 
 .PHONY: build
 build: export CGO_ENABLED=0
