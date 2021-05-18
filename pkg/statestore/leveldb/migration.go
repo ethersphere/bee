@@ -60,7 +60,7 @@ func migrateGrace(s *store) error {
 			len(k) > 32 &&
 			!strings.Contains(stk, "swap") &&
 			!strings.Contains(stk, "peer") {
-			s.logger.Infof("found key designated to deletion", string(k))
+			s.logger.Infof("found key designated to deletion %s", k)
 			collectedKeys = append(collectedKeys, stk)
 		}
 
@@ -72,12 +72,12 @@ func migrateGrace(s *store) error {
 	for _, v := range collectedKeys {
 		err := s.Delete(v)
 		if err != nil {
-			s.logger.Infof("error deleting key", v)
+			s.logger.Infof("error deleting key %s", v)
 			continue
 		}
-		s.logger.Infof("deleted key", v)
+		s.logger.Infof("deleted key %s", v)
 	}
-	s.logger.Infof("deleted keys:", len(collectedKeys))
+	s.logger.Infof("deleted keys: %d", len(collectedKeys))
 
 	return nil
 }
