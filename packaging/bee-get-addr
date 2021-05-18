@@ -26,7 +26,7 @@ The node's output was:
         echo "
 Please make sure there is sufficient ETH and BZZ available on the node's Ethereum address: $ETH_ADDRESS.
 
-You can get both Goerli ETH and Goerli BZZ via the Bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=10&slippage=30&receiver=0x$ETH_ADDRESS
+You can get both Goerli ETH and Goerli BZZ via the Bzzaar at https://docs.ethswarm.org/docs/installation/fund-your-node
 
 Or you can join us on Discord (at https://discord.gg/ykCupZMuww) and ask our bot for a sprinkle in the #faucet-request channel.
 
