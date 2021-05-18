@@ -80,7 +80,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 		return err
 	}
 	// trigger garbage collection if we reached the capacity
-	if gcSize >= db.capacity {
+	if gcSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()
 	}
 

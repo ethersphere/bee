@@ -63,7 +63,7 @@ func TestDBCapacity(t *testing.T) {
 		Capacity: 500,
 	}
 	db := newTestDB(t, &lo)
-	if db.capacity != 500 {
+	if db.cacheCapacity != 500 {
 		t.Fatal("could not set db capacity")
 	}
 }
