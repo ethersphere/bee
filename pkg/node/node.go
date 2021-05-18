@@ -54,11 +54,12 @@ import (
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
-	settlement "github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -96,43 +97,49 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir                  string
-	DBCapacity               uint64
-	DBOpenFilesLimit         uint64
-	DBWriteBufferSize        uint64
-	DBBlockCacheCapacity     uint64
-	DBDisableSeeksCompaction bool
-	APIAddr                  string
-	DebugAPIAddr             string
-	Addr                     string
-	NATAddr                  string
-	EnableWS                 bool
-	EnableQUIC               bool
-	WelcomeMessage           string
-	Bootnodes                []string
-	CORSAllowedOrigins       []string
-	Logger                   logging.Logger
-	Standalone               bool
-	TracingEnabled           bool
-	TracingEndpoint          string
-	TracingServiceName       string
-	GlobalPinningEnabled     bool
-	PaymentThreshold         string
-	PaymentTolerance         string
-	PaymentEarly             string
-	ResolverConnectionCfgs   []multiresolver.ConnectionConfig
-	GatewayMode              bool
-	BootnodeMode             bool
-	SwapEndpoint             string
-	SwapFactoryAddress       string
-	SwapInitialDeposit       string
-	SwapEnable               bool
-	FullNodeMode             bool
-	Transaction              string
-	PostageContractAddress   string
-	PriceOracleAddress       string
-	BlockTime                uint64
+	DataDir                    string
+	DBCapacity                 uint64
+	DBOpenFilesLimit           uint64
+	DBWriteBufferSize          uint64
+	DBBlockCacheCapacity       uint64
+	DBDisableSeeksCompaction   bool
+	APIAddr                    string
+	DebugAPIAddr               string
+	Addr                       string
+	NATAddr                    string
+	EnableWS                   bool
+	EnableQUIC                 bool
+	WelcomeMessage             string
+	Bootnodes                  []string
+	CORSAllowedOrigins         []string
+	Logger                     logging.Logger
+	Standalone                 bool
+	TracingEnabled             bool
+	TracingEndpoint            string
+	TracingServiceName         string
+	GlobalPinningEnabled       bool
+	PaymentThreshold           string
+	PaymentTolerance           string
+	PaymentEarly               string
+	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
+	GatewayMode                bool
+	BootnodeMode               bool
+	SwapEndpoint               string
+	SwapFactoryAddress         string
+	SwapLegacyFactoryAddresses []string
+	SwapInitialDeposit         string
+	SwapEnable                 bool
+	FullNodeMode               bool
+	Transaction                string
+	PostageContractAddress     string
+	PriceOracleAddress         string
+	BlockTime                  uint64
 }
+
+const (
+	refreshRate = int64(1000000000000)
+	basePrice   = 1000000000
+)
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -195,6 +202,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	stateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
+		_ = stateStore.Close()
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
@@ -240,6 +248,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			chainID,
 			transactionService,
 			o.SwapFactoryAddress,
+			o.SwapLegacyFactoryAddresses,
 		)
 		if err != nil {
 			return nil, err
@@ -277,7 +286,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	lightNodes := lightnode.NewContainer()
 
-	txHash, err := getTxHash(stateStore, logger, o.Transaction)
+	txHash, err := getTxHash(stateStore, logger, o)
 	if err != nil {
 		return nil, errors.New("no transaction hash provided or found")
 	}
@@ -335,8 +344,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		batchSvc               postage.EventUpdater
 	)
 
+	var postageSyncStart uint64 = 0
 	if !o.Standalone {
-		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID)
+		postageContractAddress, priceOracleAddress, startBlock, found := listener.DiscoverAddresses(chainID)
 		if o.PostageContractAddress != "" {
 			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
@@ -351,6 +361,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 		if (o.PostageContractAddress == "" || o.PriceOracleAddress == "") && !found {
 			return nil, errors.New("no known postage stamp addresses for this network")
+		}
+		if found {
+			postageSyncStart = startBlock
 		}
 
 		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress, o.BlockTime)
@@ -416,17 +429,21 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 	}
 
-	var settlement settlement.Interface
 	var swapService *swap.Service
 
-	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
+	metricsDB, err := shed.NewDBWrap(stateStore.DB())
+	if err != nil {
+		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
+	}
+
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil {
-		syncedChan := batchSvc.Start()
+		syncedChan := batchSvc.Start(postageSyncStart)
 		// wait for the postage contract listener to sync
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
@@ -442,7 +459,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
-	pricer := pricer.NewFixedPricer(swarmAddress, 1000000000)
+	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
 	minThreshold := pricer.MostExpensive()
 
@@ -469,6 +486,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if !ok {
 		return nil, fmt.Errorf("invalid payment early: %s", paymentEarly)
 	}
+
 	acc, err := accounting.NewAccounting(
 		paymentThreshold,
 		paymentTolerance,
@@ -476,10 +494,18 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		logger,
 		stateStore,
 		pricing,
+		big.NewInt(refreshRate),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
+
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
+	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
+		return nil, fmt.Errorf("pseudosettle service: %w", err)
+	}
+
+	acc.SetRefreshFunc(pseudosettleService.Pay)
 
 	if o.SwapEnable {
 		swapService, err = InitSwap(
@@ -496,16 +522,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
-		settlement = swapService
-	} else {
-		pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc)
-		if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
-			return nil, fmt.Errorf("pseudosettle service: %w", err)
-		}
-		settlement = pseudosettleService
+		acc.SetPayFunc(swapService.Pay)
 	}
-
-	acc.SetPayFunc(settlement.Pay)
 
 	pricing.SetPaymentThresholdObserver(acc)
 
@@ -525,7 +543,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		ns = netstore.New(storer, validStamp, nil, retrieve, logger)
 	}
 
-	traversalService := traversal.NewService(ns)
+	traversalService := traversal.New(ns)
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
@@ -584,7 +602,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if o.APIAddr != "" {
 		// API server
 		feedFactory := factory.New(ns)
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, signer, logger, tracer, api.Options{
+		steward := steward.New(storer, traversalService, pushSyncProtocol)
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
@@ -641,12 +660,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			debugAPIService.MustRegisterMetrics(l.Metrics()...)
 		}
 
-		if l, ok := settlement.(metrics.Collector); ok {
-			debugAPIService.MustRegisterMetrics(l.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pseudosettleService.Metrics()...)
+
+		if swapService != nil {
+			debugAPIService.MustRegisterMetrics(swapService.Metrics()...)
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, settlement, o.SwapEnable, swapService, chequebookService, batchStore)
+		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
@@ -794,10 +815,13 @@ func (e *multiError) hasErrors() bool {
 	return len(e.errors) > 0
 }
 
-func getTxHash(stateStore storage.StateStorer, logger logging.Logger, transaction string) ([]byte, error) {
-	if len(transaction) == 32 {
+func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
+	if o.Standalone {
+		return nil, nil // in standalone mode tx hash is not used
+	}
+	if len(o.Transaction) == 32 {
 		logger.Info("using the provided transaction hash")
-		return []byte(transaction), nil
+		return []byte(o.Transaction), nil
 	}
 
 	var txHash common.Hash

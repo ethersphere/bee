@@ -17,7 +17,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
 	UpdatePrice(price *big.Int) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start() <-chan struct{}
+	Start(startBlock uint64) <-chan struct{}
 }
 
 // Storer represents the persistence layer for batches on the current (highest

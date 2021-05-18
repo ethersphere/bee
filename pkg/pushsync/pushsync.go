@@ -27,7 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -147,33 +147,47 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	price := ps.pricer.Price(chunk.Address())
 
-	// if the peer is closer to the chunk, we were selected for replication. Return early.
-	if dcmp, _ := swarm.DistanceCmp(chunk.Address().Bytes(), p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-		if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
-			ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
-			defer canceld()
+	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
+	if p.FullNode {
+		bytes := chunk.Address().Bytes()
+		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
+			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+				defer canceld()
 
-			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
-			if err != nil {
-				ps.logger.Errorf("pushsync: chunk store: %v", err)
+				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
+				if err != nil {
+					ps.logger.Errorf("pushsync: chunk store: %v", err)
+				}
+
+				debit := ps.accounting.PrepareDebit(p.Address, price)
+				defer debit.Cleanup()
+
+				// return back receipt
+				signature, err := ps.signer.Sign(bytes)
+				if err != nil {
+					return fmt.Errorf("receipt signature: %w", err)
+				}
+				receipt := pb.Receipt{Address: bytes, Signature: signature}
+				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
+					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
+				}
+
+				return debit.Apply()
 			}
 
-			// return back receipt
-			receipt := pb.Receipt{Address: chunk.Address().Bytes()}
-			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-			}
-			return ps.accounting.Debit(p.Address, price)
+			return ErrOutOfDepthReplication
 		}
-
-		return ErrOutOfDepthReplication
 	}
 
 	// forwarding replication
+	storedChunk := false
 	if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
 		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 		if err != nil {
 			ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
+		} else {
+			storedChunk = true
 		}
 	}
 
@@ -183,9 +197,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
-			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
-			if err != nil {
-				return fmt.Errorf("chunk store: %w", err)
+			if !storedChunk {
+				_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
+				if err != nil {
+					return fmt.Errorf("chunk store: %w", err)
+				}
 			}
 
 			count := 0
@@ -283,23 +299,29 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 
 			// return back receipt
+			debit := ps.accounting.PrepareDebit(p.Address, price)
+			defer debit.Cleanup()
+
 			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
 			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			return ps.accounting.Debit(p.Address, price)
+			return debit.Apply()
 		}
 		return fmt.Errorf("handler: push to closest: %w", err)
 
 	}
+
+	debit := ps.accounting.PrepareDebit(p.Address, price)
+	defer debit.Cleanup()
 
 	// pass back the receipt
 	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
-	return ps.accounting.Debit(p.Address, price)
+	return debit.Apply()
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
@@ -342,7 +364,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		}
 		if !ps.failedRequests.Useful(peer, ch.Address()) {
 			skipPeers = append(skipPeers, peer)
-			ps.metrics.FailedCacheHits.WithLabelValues(peer.String(), ch.Address().String()).Inc()
+			ps.metrics.TotalFailedCacheHits.Inc()
 			continue
 		}
 		skipPeers = append(skipPeers, peer)

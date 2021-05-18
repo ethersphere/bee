@@ -600,3 +600,37 @@ func TestFeedIndirection(t *testing.T) {
 		jsonhttptest.WithExpectedResponse(updateData),
 	)
 }
+
+func TestBzzReupload(t *testing.T) {
+	var (
+		logger         = logging.New(ioutil.Discard, 0)
+		mockStatestore = statestore.NewStateStore()
+		m              = &mockSteward{}
+		storer         = smock.NewStorer()
+		addr           = swarm.NewAddress([]byte{31: 128})
+	)
+	client, _, _ := newTestServer(t, testServerOptions{
+		Storer:  storer,
+		Tags:    tags.NewTags(mockStatestore, logger),
+		Logger:  logger,
+		Steward: m,
+	})
+	jsonhttptest.Request(t, client, http.MethodPatch, "/v1/bzz/"+addr.String(), http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: http.StatusText(http.StatusOK),
+			Code:    http.StatusOK,
+		}),
+	)
+	if !m.addr.Equal(addr) {
+		t.Fatalf("got address %s want %s", m.addr.String(), addr.String())
+	}
+}
+
+type mockSteward struct {
+	addr swarm.Address
+}
+
+func (m *mockSteward) Reupload(_ context.Context, addr swarm.Address) error {
+	m.addr = addr
+	return nil
+}

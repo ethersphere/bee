@@ -44,7 +44,7 @@ var (
 
 var (
 	// Default value for Capacity DB option.
-	defaultCapacity uint64 = 5000000
+	defaultCapacity uint64 = 1000000
 	// Limit the number of goroutines created by Getters
 	// that call updateGC function. Value 0 sets no limit.
 	maxParallelUpdateGC = 1000

@@ -83,7 +83,7 @@ func TestPinHandlers(t *testing.T) {
 		storerMock   = mock.NewStorer()
 		client, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,
-			Traversal: traversal.NewService(storerMock),
+			Traversal: traversal.New(storerMock),
 			Tags:      tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
 			Pinning:   pinning.NewServiceMock(),
 			Logger:    logging.New(ioutil.Discard, 5),
