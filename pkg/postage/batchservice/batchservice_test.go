@@ -184,7 +184,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 func TestBatchServiceUpdatePrice(t *testing.T) {
 	testChainState := postagetesting.NewChainState()
-	testChainState.Price = big.NewInt(100000)
+	testChainState.CurrentPrice = big.NewInt(100000)
 	testNewPrice := big.NewInt(20000000)
 
 	t.Run("expect put error", func(t *testing.T) {
@@ -209,16 +209,16 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 		}
 
 		cs := batchStore.GetChainState()
-		if cs.Price.Cmp(testNewPrice) != 0 {
-			t.Fatalf("bad price: want %v, got %v", cs.Price, testNewPrice)
+		if cs.CurrentPrice.Cmp(testNewPrice) != 0 {
+			t.Fatalf("bad price: want %v, got %v", cs.CurrentPrice, testNewPrice)
 		}
 	})
 }
 func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 	testChainState := &postage.ChainState{
-		Block: 1,
-		Price: big.NewInt(100),
-		Total: big.NewInt(100),
+		Block:        1,
+		CurrentPrice: big.NewInt(100),
+		TotalAmount:  big.NewInt(100),
 	}
 	svc, batchStore := newTestStoreAndService(
 		mock.WithChainState(testChainState),
@@ -232,8 +232,8 @@ func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 	}
 	nn := big.NewInt(400)
 	cs := batchStore.GetChainState()
-	if cs.Total.Cmp(nn) != 0 {
-		t.Fatalf("bad price: want %v, got %v", nn, cs.Total)
+	if cs.TotalAmount.Cmp(nn) != 0 {
+		t.Fatalf("bad price: want %v, got %v", nn, cs.TotalAmount)
 	}
 }
 

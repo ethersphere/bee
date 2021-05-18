@@ -17,9 +17,10 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/postage"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	batchstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	postmock "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	contractmock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {
@@ -32,8 +33,8 @@ func TestPostageCreateStamp(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+		contract := contractmock.New(
+			contractmock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
 					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
@@ -58,8 +59,8 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("with-error", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+		contract := contractmock.New(
+			contractmock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
 				return nil, errors.New("err")
 			}),
 		)
@@ -76,8 +77,8 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("out-of-funds", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+		contract := contractmock.New(
+			contractmock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
 				return nil, postagecontract.ErrInsufficientFunds
 			}),
 		)
@@ -105,8 +106,8 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("depth less than bucket depth", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+		contract := contractmock.New(
+			contractmock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
 				return nil, postagecontract.ErrInvalidDepth
 			}),
 		)
@@ -135,8 +136,14 @@ func TestPostageCreateStamp(t *testing.T) {
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
-	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
+	cs := &postage.ChainState{
+		Block:        1234567890,
+		TotalAmount:  big.NewInt(50),
+		CurrentPrice: big.NewInt(5),
+	}
+	bs := batchstoremock.New(batchstoremock.WithChainState(cs))
+	mp := postmock.New(postmock.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	client, _, _ := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs})
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
@@ -146,12 +153,13 @@ func TestPostageGetStamps(t *testing.T) {
 					Utilization: 0,
 				},
 			},
+			Price: cs,
 		}),
 	)
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	mp := postmock.New(postmock.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {

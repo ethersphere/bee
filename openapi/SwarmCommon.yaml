@@ -259,6 +259,16 @@ components:
           oneOf:
             - $ref: '#/components/schemas/EmptyNull'
             - $ref: "#/components/schemas/PostageBatches"
+        price:
+          type: object
+          nullable: true
+          properties:
+            block:
+              type: integer
+            totalAmount:
+              type: integer
+            currentPrice:
+              type: integer
 
     BatchIDResponse:
       type: object

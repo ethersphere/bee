@@ -98,6 +98,7 @@ type server struct {
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
 	post            postage.Service
+	batchStore      postage.Storer
 	postageContract postagecontract.Interface
 	Options
 	http.Handler
@@ -119,7 +120,7 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Reuploader, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, batchStore postage.Storer, postageContract postagecontract.Interface, steward steward.Reuploader, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		tags:            tags,
 		storer:          storer,
@@ -129,6 +130,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		pinning:         pinning,
 		feedFactory:     feedFactory,
 		post:            post,
+		batchStore:      batchStore,
 		postageContract: postageContract,
 		steward:         steward,
 		signer:          signer,

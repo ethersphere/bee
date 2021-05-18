@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/gorilla/mux"
 )
@@ -80,11 +81,12 @@ type postageStampResponse struct {
 
 type postageStampsResponse struct {
 	Stamps []postageStampResponse `json:"stamps"`
+	Price  *postage.ChainState    `json:"price,omitempty"`
 }
 
 func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	issuers := s.post.StampIssuers()
-	resp := postageStampsResponse{}
+	resp := postageStampsResponse{Price: s.batchStore.GetChainState()}
 	for _, v := range issuers {
 		issuer := postageStampResponse{BatchID: v.ID(), Utilization: v.Utilization()}
 		resp.Stamps = append(resp.Stamps, issuer)
