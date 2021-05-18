@@ -30,7 +30,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Commit linting
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v2
     - name: Cache Go modules
       uses: actions/cache@v1
