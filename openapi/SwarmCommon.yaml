@@ -50,19 +50,6 @@ components:
           items:
             $ref: "#/components/schemas/Balance"
 
-    BzzChunksPinned:
-      type: object
-      properties:
-        chunks:
-          type: array
-          items:
-            type: object
-            properties:
-              address:
-                type: string
-              pinCounter:
-                type: integer
-
     BzzTopology:
       type: object
       properties:
@@ -106,9 +93,11 @@ components:
       type: object
       properties:
         lastcheques:
-          type: array
-          items:
-            $ref: "#/components/schemas/ChequePeerResponse"
+          oneOf:
+            - $ref: '#/components/schemas/EmptyNull'
+            - type: array
+              items:
+                $ref: "#/components/schemas/ChequePeerResponse"
 
     ChequePeerResponse:
       type: object
@@ -149,6 +138,10 @@ components:
       type: string
       pattern: "^[A-Fa-f0-9]{40}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
+      
+    EmptyNull:
+      type: 'null'
+      description: When no entries 'null' is returned instead of empty array.
 
     FileName:
       type: string
@@ -221,9 +214,11 @@ components:
       type: object
       properties:
         tags:
-          type: array
-          items:
-            $ref: "#/components/schemas/NewTagResponse"
+          oneOf:
+            - $ref: '#/components/schemas/EmptyNull'
+            - type: array
+              items:
+                $ref: "#/components/schemas/NewTagResponse"
 
     P2PUnderlay:
       type: string
@@ -233,9 +228,11 @@ components:
       type: object
       properties:
         peers:
-          type: array
-          items:
-            $ref: "#/components/schemas/Address"
+          oneOf:
+            - $ref: '#/components/schemas/EmptyNull'
+            - type: array
+              items:
+                $ref: "#/components/schemas/Address"
 
     PssRecipient:
       type: string
@@ -259,7 +256,9 @@ components:
       type: object
       properties:
         stamps:
-          $ref: "#/components/schemas/PostageBatches"
+          oneOf:
+            - $ref: '#/components/schemas/EmptyNull'
+            - $ref: "#/components/schemas/PostageBatches"
 
     BatchIDResponse:
       type: object
@@ -319,9 +318,11 @@ components:
         totalSent:
           type: integer
         settlements:
-          type: array
-          items:
-            $ref: "#/components/schemas/Settlement"
+          oneOf:
+            - $ref: '#/components/schemas/EmptyNull'
+            - type: array
+              items:
+                $ref: "#/components/schemas/Settlement"
 
     SwarmAddress:
       type: string
@@ -356,9 +357,11 @@ components:
       type: object
       properties:
         addresses:
-          type: array
-          items:
-            $ref: "#/components/schemas/SwarmOnlyReference"
+          oneOf:
+            - $ref: '#/components/schemas/EmptyNull'
+            - type: array
+              items:
+                $ref: "#/components/schemas/SwarmOnlyReference"
 
     SwarmReference:
       oneOf:
