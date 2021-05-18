@@ -151,6 +151,7 @@ LOOP:
 					} else {
 						s.metrics.TotalErrors.Inc()
 						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+						logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
 					}
 					mtx.Lock()
 					delete(inflight, ch.Address().String())
