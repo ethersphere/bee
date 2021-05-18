@@ -64,8 +64,8 @@ password-file: /usr/local/var/lib/swarm-bee/password
 swap-endpoint: https://rpc.slock.it/goerli
 ## swap factory address
 # swap-factory-address: ""
-## initial deposit if deploying a new chequebook (default 100000000000000000)
-# swap-initial-deposit: 100000000000000000
+## initial deposit if deploying a new chequebook (default 10000000000000000)
+# swap-initial-deposit: 10000000000000000
 ## enable tracing
 # tracing-enable: false
 ## endpoint to send tracing data (default "127.0.0.1:6831")
