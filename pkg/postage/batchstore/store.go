@@ -5,6 +5,7 @@
 package batchstore
 
 import (
+	"encoding/hex"
 	"errors"
 	"math/big"
 
@@ -165,7 +166,7 @@ func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
 func batchKey(id []byte) string {
-	return batchKeyPrefix + string(id)
+	return batchKeyPrefix + hex.EncodeToString(id)
 }
 
 // valueKey returns the index key for the batch ID used in the by-ID batch index.
