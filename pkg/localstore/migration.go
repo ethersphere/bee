@@ -132,11 +132,12 @@ func migrateYuj(db *DB) error {
 		return err
 	}
 
-	c, err := pinIndex.Count()
-	if err != nil {
-		return fmt.Errorf("get pin index count: %w", err)
-	}
-	if c > 0 {
+	hasPinned := false
+	_ = pinIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+		hasPinned = true
+		return true, nil
+	}, nil)
+	if hasPinned {
 		return errors.New("failed to update your node due to the existence of pinned content. Please refer to the release notes on how to safely migrate your pinned content.")
 	}
 
