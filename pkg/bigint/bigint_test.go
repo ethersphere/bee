@@ -20,7 +20,7 @@ func TestMarshaling(t *testing.T) {
 		Bg: bigint.Wrap(new(big.Int).Mul(big.NewInt(math.MaxInt64), big.NewInt(math.MaxInt64))),
 	})
 	if err != nil {
-		t.Errorf("Marshaling failed")
+		t.Errorf("Marshaling failed: %v", err)
 	}
 	if !reflect.DeepEqual(mar, []byte("{\"Bg\":\"85070591730234615847396907784232501249\"}")) {
 		t.Errorf("Wrongly marshaled data")
