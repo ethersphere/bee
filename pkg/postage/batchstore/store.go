@@ -42,9 +42,9 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 			return nil, err
 		}
 		cs = &postage.ChainState{
-			Block: 0,
-			Total: big.NewInt(0),
-			Price: big.NewInt(0),
+			Block:        0,
+			TotalAmount:  big.NewInt(0),
+			CurrentPrice: big.NewInt(0),
 		}
 	}
 	rs := &reserveState{}

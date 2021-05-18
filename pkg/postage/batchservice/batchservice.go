@@ -85,7 +85,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 // price from the chain in the service chain state.
 func (svc *batchService) UpdatePrice(price *big.Int) error {
 	cs := svc.storer.GetChainState()
-	cs.Price = price
+	cs.CurrentPrice = price
 	if err := svc.storer.PutChainState(cs); err != nil {
 		return fmt.Errorf("put chain state: %w", err)
 	}
@@ -98,7 +98,7 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	cs := svc.storer.GetChainState()
 	diff := big.NewInt(0).SetUint64(blockNumber - cs.Block)
 
-	cs.Total.Add(cs.Total, diff.Mul(diff, cs.Price))
+	cs.TotalAmount.Add(cs.TotalAmount, diff.Mul(diff, cs.CurrentPrice))
 	cs.Block = blockNumber
 	if err := svc.storer.PutChainState(cs); err != nil {
 		return fmt.Errorf("put chain state: %w", err)
