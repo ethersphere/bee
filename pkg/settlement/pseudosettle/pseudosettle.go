@@ -326,7 +326,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 		if err != nil {
 			return nil, 0, err
 		}
-		return nil, 0, ErrDisconnectAllowanceCheckFailed
 	}
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
