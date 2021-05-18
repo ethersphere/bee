@@ -351,7 +351,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		}
 		if !ps.failedRequests.Useful(peer, ch.Address()) {
 			skipPeers = append(skipPeers, peer)
-			ps.metrics.FailedCacheHits.WithLabelValues(peer.String(), ch.Address().String()).Inc()
+			ps.metrics.TotalFailedCacheHits.Inc()
 			continue
 		}
 		skipPeers = append(skipPeers, peer)
