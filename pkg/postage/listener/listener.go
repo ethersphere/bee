@@ -278,12 +278,17 @@ type priceUpdateEvent struct {
 	Price *big.Int
 }
 
+var (
+	GoerliPostageStampContractAddress = common.HexToAddress("0xF7a041E7e2B79ccA1975852Eb6D4c6cE52986b4a")
+	GoerliPriceOracleContractAddress  = common.HexToAddress("0x1044534090de6f4014ece6d036C699130Bd5Df43")
+	GoerliStartBlock                  = uint64(4247101)
+)
+
 // DiscoverAddresses returns the canonical contracts for this chainID
 func DiscoverAddresses(chainID int64) (postageStamp, priceOracle common.Address, startBlock uint64, found bool) {
 	if chainID == 5 {
 		// goerli
-		return common.HexToAddress("0xF7a041E7e2B79ccA1975852Eb6D4c6cE52986b4a"), common.HexToAddress("0x1044534090de6f4014ece6d036C699130Bd5Df43"),
-			4247101, true
+		return GoerliPostageStampContractAddress, GoerliPriceOracleContractAddress, GoerliStartBlock, true
 	}
 	return common.Address{}, common.Address{}, 0, false
 }
