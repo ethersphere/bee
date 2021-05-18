@@ -785,6 +785,7 @@ paths:
             type: string
           required: false
           description: An optional label for this batch
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       responses:
         "201":
           description: Returns the newly created postage batch ID
