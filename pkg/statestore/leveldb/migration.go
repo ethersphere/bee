@@ -60,7 +60,7 @@ func migrateGrace(s *store) error {
 			len(k) > 32 &&
 			!strings.Contains(stk, "swap") &&
 			!strings.Contains(stk, "peer") {
-			s.logger.Infof("found key designated to deletion %s", k)
+			s.logger.Debugf("found key designated to deletion %s", k)
 			collectedKeys = append(collectedKeys, stk)
 		}
 
@@ -72,12 +72,12 @@ func migrateGrace(s *store) error {
 	for _, v := range collectedKeys {
 		err := s.Delete(v)
 		if err != nil {
-			s.logger.Infof("error deleting key %s", v)
+			s.logger.Debugf("error deleting key %s", v)
 			continue
 		}
-		s.logger.Infof("deleted key %s", v)
+		s.logger.Debugf("deleted key %s", v)
 	}
-	s.logger.Infof("deleted keys: %d", len(collectedKeys))
+	s.logger.Debugf("deleted keys: %d", len(collectedKeys))
 
 	return nil
 }
@@ -93,7 +93,7 @@ func (s *store) migrate(schemaName string) error {
 		return nil
 	}
 
-	s.logger.Infof("statestore: need to run %d data migrations to schema %s", len(migrations), schemaName)
+	s.logger.Debugf("statestore: need to run %d data migrations to schema %s", len(migrations), schemaName)
 	for i := 0; i < len(migrations); i++ {
 		err := migrations[i].fn(s)
 		if err != nil {
@@ -107,7 +107,7 @@ func (s *store) migrate(schemaName string) error {
 		if err != nil {
 			return err
 		}
-		s.logger.Infof("statestore: successfully ran migration: id %d current schema: %s", i, schemaName)
+		s.logger.Debugf("statestore: successfully ran migration: id %d current schema: %s", i, schemaName)
 	}
 	return nil
 }
@@ -128,7 +128,7 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 				return nil, errors.New("found schema name for the second time when looking for migrations")
 			}
 			foundCurrent = true
-			store.logger.Infof("statestore migration: found current schema %s, migrate to %s, total migrations %d", currentSchema, dbSchemaCurrent, len(allSchemeMigrations)-i)
+			store.logger.Debugf("statestore migration: found current schema %s, migrate to %s, total migrations %d", currentSchema, dbSchemaCurrent, len(allSchemeMigrations)-i)
 			continue // current schema migration should not be executed (already has been when schema was migrated to)
 		case targetSchema:
 			foundTarget = true
