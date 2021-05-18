@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/pinning"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -36,8 +37,11 @@ func (s *server) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.pinning.CreatePin(r.Context(), ref, true)
-	if err != nil {
+	switch err = s.pinning.CreatePin(r.Context(), ref, true); {
+	case errors.Is(err, storage.ErrNotFound):
+		jsonhttp.NotFound(w, nil)
+		return
+	case err != nil:
 		s.logger.Debugf("pin root hash: creation of tracking pin for %q failed: %v", ref, err)
 		s.logger.Error("pin root hash: creation of tracking pin failed")
 		jsonhttp.InternalServerError(w, nil)

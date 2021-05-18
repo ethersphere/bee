@@ -20,8 +20,10 @@ import (
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -34,16 +36,18 @@ const (
 )
 
 var (
-	saturationPeers     = 4
-	overSaturationPeers = 16
-	shortRetry          = 30 * time.Second
-	timeToRetry         = 2 * shortRetry
-	broadcastBinSize    = 4
+	saturationPeers             = 4
+	overSaturationPeers         = 16
+	bootnodeOverSaturationPeers = 64
+	shortRetry                  = 30 * time.Second
+	timeToRetry                 = 2 * shortRetry
+	broadcastBinSize            = 4
 )
 
 var (
 	errOverlayMismatch = errors.New("overlay mismatch")
 	errPruneEntry      = errors.New("prune entry")
+	errEmptyBin        = errors.New("empty bin")
 )
 
 type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
@@ -83,8 +87,9 @@ type Kad struct {
 	logger            logging.Logger // logger
 	standalone        bool           // indicates whether the node is working in standalone mode
 	bootnode          bool           // indicates whether the node is working in bootnode mode
-	quit              chan struct{}  // quit channel
-	done              chan struct{}  // signal that `manage` has quit
+	collector         *metrics.Collector
+	quit              chan struct{} // quit channel
+	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 }
 
@@ -94,14 +99,21 @@ type retryInfo struct {
 }
 
 // New returns a new Kademlia.
-func New(base swarm.Address,
+func New(
+	base swarm.Address,
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2p p2p.Service,
+	metricsDB *shed.DB,
 	logger logging.Logger,
-	o Options) *Kad {
+	o Options,
+) *Kad {
 	if o.SaturationFunc == nil {
-		o.SaturationFunc = binSaturated
+		os := overSaturationPeers
+		if o.BootnodeMode {
+			os = bootnodeOverSaturationPeers
+		}
+		o.SaturationFunc = binSaturated(os)
 	}
 	if o.BitSuffixLength == 0 {
 		o.BitSuffixLength = defaultBitSuffixLength
@@ -123,6 +135,7 @@ func New(base swarm.Address,
 		logger:            logger,
 		standalone:        o.StandaloneMode,
 		bootnode:          o.BootnodeMode,
+		collector:         metrics.NewCollector(metricsDB),
 		quit:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
@@ -365,6 +378,13 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		k.connectedPeers.Add(peer.addr, peer.po)
 
+		if err := k.collector.Record(
+			peer.addr,
+			metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionOutbound),
+		); err != nil {
+			k.logger.Debugf("kademlia: unable to record login outbound metrics for %q: %v", peer.addr, err)
+		}
+
 		k.depthMu.Lock()
 		k.depth = recalcDepth(k.connectedPeers, k.radius)
 		k.depthMu.Unlock()
@@ -543,30 +563,32 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
-	potentialDepth := recalcDepth(peers, swarm.MaxPO)
+func binSaturated(oversaturationAmount int) binSaturationFunc {
+	return func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+		potentialDepth := recalcDepth(peers, swarm.MaxPO)
 
-	// short circuit for bins which are >= depth
-	if bin >= potentialDepth {
-		return false, false
-	}
-
-	// lets assume for now that the minimum number of peers in a bin
-	// would be 2, under which we would always want to connect to new peers
-	// obviously this should be replaced with a better optimization
-	// the iterator is used here since when we check if a bin is saturated,
-	// the plain number of size of bin might not suffice (for example for squared
-	// gaps measurement)
-
-	size := 0
-	_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
-		if po == bin {
-			size++
+		// short circuit for bins which are >= depth
+		if bin >= potentialDepth {
+			return false, false
 		}
-		return false, false, nil
-	})
 
-	return size >= saturationPeers, size >= overSaturationPeers
+		// lets assume for now that the minimum number of peers in a bin
+		// would be 2, under which we would always want to connect to new peers
+		// obviously this should be replaced with a better optimization
+		// the iterator is used here since when we check if a bin is saturated,
+		// the plain number of size of bin might not suffice (for example for squared
+		// gaps measurement)
+
+		size := 0
+		_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
+			if po == bin {
+				size++
+			}
+			return false, false, nil
+		})
+
+		return size >= saturationPeers, size >= oversaturationAmount
+	}
 }
 
 // recalcDepth calculates and returns the kademlia depth.
@@ -663,7 +685,11 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			failedAttempts++
 		}
 
-		if failedAttempts > maxConnAttempts {
+		if err := k.collector.Record(peer, metrics.IncSessionConnectionRetry()); err != nil {
+			k.logger.Debugf("kademlia: unable to record session connection retry metrics for %q: %v", peer, err)
+		}
+
+		if k.quickPrune(peer) || failedAttempts > maxConnAttempts {
 			delete(k.waitNext, peer.String())
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
@@ -674,6 +700,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		}
 
 		k.waitNextMu.Unlock()
+
 		return err
 	}
 
@@ -684,6 +711,22 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	}
 
 	return k.Announce(ctx, peer)
+}
+
+// quickPrune will return true for cases where:
+//  there are other connected peers, the addr has never been seen before, AND it's the first failed attempt
+func (k *Kad) quickPrune(addr swarm.Address) bool {
+
+	if k.connectedPeers.Length() == 0 {
+		return false
+	}
+
+	snapshot, _ := k.collector.Peer(time.Now(), addr)
+	if snapshot == nil || (snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1) {
+		return true
+	}
+
+	return false
 }
 
 // announce a newly connected peer to our connected peers, but also
@@ -763,15 +806,26 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 // Connected is called when a peer has dialed in.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
-	if !k.bootnode {
-		// don't run this check if we're a bootnode
-		po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-		if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
-			return topology.ErrOversaturated
+
+	address := peer.Address
+	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
+
+	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
+
+		if k.bootnode {
+			randPeer, err := k.randomPeer(po)
+			if err != nil {
+				return err
+			}
+			_ = k.p2p.Disconnect(randPeer)
+			goto connected
 		}
+
+		return topology.ErrOversaturated
 	}
 
-	if err := k.connected(ctx, peer.Address); err != nil {
+connected:
+	if err := k.connected(ctx, address); err != nil {
 		return err
 	}
 
@@ -792,6 +846,13 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 
 	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
+
+	if err := k.collector.Record(
+		addr,
+		metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionInbound),
+	); err != nil {
+		k.logger.Debugf("kademlia: unable to record login inbound metrics for %q: %v", addr, err)
+	}
 
 	k.waitNextMu.Lock()
 	delete(k.waitNext, addr.String())
@@ -817,6 +878,13 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.waitNextMu.Lock()
 	k.waitNext[peer.Address.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
+
+	if err := k.collector.Record(
+		peer.Address,
+		metrics.PeerLogOut(time.Now()),
+	); err != nil {
+		k.logger.Debugf("kademlia: unable to record logout metrics for %q: %v", peer.Address, err)
+	}
 
 	k.depthMu.Lock()
 	k.depth = recalcDepth(k.connectedPeers, k.radius)
@@ -1084,9 +1152,20 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		infos = append(infos, topology.BinInfo{})
 	}
 
+	ss, err := k.collector.Snapshot(time.Now())
+	if err != nil {
+		k.logger.Debugf("kademlia: unable to take metrics snapshot: %v", err)
+	}
+
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		infos[po].BinConnected++
-		infos[po].ConnectedPeers = append(infos[po].ConnectedPeers, addr.String())
+		infos[po].ConnectedPeers = append(
+			infos[po].ConnectedPeers,
+			&topology.PeerInfo{
+				Address: addr,
+				Metrics: createMetricsSnapshotView(ss[addr.String()]),
+			},
+		)
 		return false, false, nil
 	})
 
@@ -1096,12 +1175,18 @@ func (k *Kad) Snapshot() *topology.KadParams {
 
 		for _, v := range infos[po].ConnectedPeers {
 			// peer already connected, don't show in the known peers list
-			if v == addr.String() {
+			if v.Address.Equal(addr) {
 				return false, false, nil
 			}
 		}
 
-		infos[po].DisconnectedPeers = append(infos[po].DisconnectedPeers, addr.String())
+		infos[po].DisconnectedPeers = append(
+			infos[po].DisconnectedPeers,
+			&topology.PeerInfo{
+				Address: addr,
+				Metrics: createMetricsSnapshotView(ss[addr.String()]),
+			},
+		)
 		return false, false, nil
 	})
 
@@ -1171,6 +1256,10 @@ func (k *Kad) Close() error {
 		k.wg.Wait()
 	}()
 
+	if err := k.collector.Finalize(time.Now()); err != nil {
+		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
+	}
+
 	select {
 	case <-cc:
 	case <-time.After(10 * time.Second):
@@ -1202,4 +1291,36 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 	}
 
 	return addrs[:count], nil
+}
+
+func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
+
+	peers := k.connectedPeers.BinPeers(bin)
+
+	if len(peers) == 0 {
+		return swarm.ZeroAddress, errEmptyBin
+	}
+
+	rndIndx, err := random.Int(random.Reader, big.NewInt(int64(len(peers))))
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return peers[rndIndx.Int64()], nil
+}
+
+// createMetricsSnapshotView creates new topology.MetricSnapshotView from the
+// given metrics.Snapshot and rounds all the timestamps and durations to its
+// nearest second.
+func createMetricsSnapshotView(ss *metrics.Snapshot) *topology.MetricSnapshotView {
+	if ss == nil {
+		return nil
+	}
+	return &topology.MetricSnapshotView{
+		LastSeenTimestamp:          time.Unix(0, ss.LastSeenTimestamp).Unix(),
+		SessionConnectionRetry:     ss.SessionConnectionRetry,
+		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
+		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
+		SessionConnectionDirection: string(ss.SessionConnectionDirection),
+	}
 }

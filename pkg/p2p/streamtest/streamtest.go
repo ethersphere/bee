@@ -31,6 +31,7 @@ var (
 
 type Recorder struct {
 	base               swarm.Address
+	fullNode           bool
 	records            map[string][]*Record
 	recordsMu          sync.Mutex
 	protocols          []p2p.ProtocolSpec
@@ -63,6 +64,12 @@ func WithBaseAddr(a swarm.Address) Option {
 	})
 }
 
+func WithLightNode() Option {
+	return optionFunc(func(r *Recorder) {
+		r.fullNode = false
+	})
+}
+
 func WithStreamError(streamErr func(swarm.Address, string, string, string) error) Option {
 	return optionFunc(func(r *Recorder) {
 		r.streamErr = streamErr
@@ -71,7 +78,8 @@ func WithStreamError(streamErr func(swarm.Address, string, string, string) error
 
 func New(opts ...Option) *Recorder {
 	r := &Recorder{
-		records: make(map[string][]*Record),
+		records:  make(map[string][]*Record),
+		fullNode: true,
 	}
 
 	r.middlewares = append(r.middlewares, noopMiddleware)
@@ -129,7 +137,7 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 
 		// pass a new context to handler,
 		// do not cancel it with the client stream context
-		err := handler(context.Background(), p2p.Peer{Address: r.base}, streamIn)
+		err := handler(context.Background(), p2p.Peer{Address: r.base, FullNode: r.fullNode}, streamIn)
 		if err != nil && err != io.EOF {
 			record.setErr(err)
 		}

@@ -40,6 +40,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       requestBody:
         content:
           application/octet-stream:
@@ -56,6 +57,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -131,6 +134,7 @@ paths:
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       requestBody:
         content:
           application/octet-stream:
@@ -179,6 +183,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCollection"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       requestBody:
         content:
           multipart/form-data:
@@ -463,6 +468,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -551,6 +558,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/PssRecipient"
           required: false
           description: Recipient publickey
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       responses:
         "201":
           description: Subscribed to topic
@@ -565,7 +573,7 @@ paths:
     get:
       summary: Subscribe for messages on the given topic.
       tags:
-        - Pss subscribe
+        - Postal Service for Swarm
       parameters:
         - in: path
           name: topic
@@ -647,6 +655,7 @@ paths:
           required: false
           description: "Feed indexing scheme (default: sequence)"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       responses:
         "201":
           description: Created
@@ -716,7 +725,7 @@ paths:
     get:
       summary: Get all available stamps for this node
       tags:
-        - Get stamp batches
+        - Postage Stamps
       responses:
         "200":
           description: Returns an array of all available postage batches.
@@ -739,7 +748,7 @@ paths:
     get:
       summary: Get an individual postage batch status
       tags:
-        - Get stamp batch
+        - Postage Stamps
       responses:
         "200":
           description: Returns an individual postage batch state
@@ -753,23 +762,23 @@ paths:
           description: Default response
 
   "/stamps/{amount}/{depth}":
-    get:
-      summary: Buy a new postage batch
+    post:
+      summary: Buy a new postage batch. \n\n Be aware, this endpoint create an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
       tags:
-        - Buy stamp batch
+        - Postage Stamps
       parameters:
         - in: path
           name: amount
           schema:
             type: integer
           required: true
-          description: Amount added to the balance
+          description: Amount of BZZ added that the postage batch will have.
         - in: path
           name: depth
           schema:
             type: integer
           required: true
-          description: Batch depth. Must be higher than default bucket depth (16)
+          description: Batch depth which specifies how many chunks can be signed with the batch. It is a logarithm. Must be higher than default bucket depth (16)
         - in: query
           name: label
           schema:

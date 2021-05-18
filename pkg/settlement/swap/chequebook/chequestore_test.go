@@ -53,12 +53,12 @@ func TestReceiveCheque(t *testing.T) {
 		beneficiary,
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, issuer.Hash().Bytes(), "issuer"),
-				transactionmock.ABICall(&chequebookABI, cumulativePayout2.FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
-				transactionmock.ABICall(&chequebookABI, issuer.Hash().Bytes(), "issuer"),
-				transactionmock.ABICall(&chequebookABI, cumulativePayout2.FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Hash().Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, cumulativePayout2.FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Hash().Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, cumulativePayout2.FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 			),
 		),
 		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
@@ -175,9 +175,9 @@ func TestReceiveChequeInvalidAmount(t *testing.T) {
 		beneficiary,
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, issuer.Hash().Bytes(), "issuer"),
-				transactionmock.ABICall(&chequebookABI, cumulativePayout.FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Hash().Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, cumulativePayout.FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 			),
 		),
 		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
@@ -232,8 +232,8 @@ func TestReceiveChequeInvalidChequebook(t *testing.T) {
 		beneficiary,
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, issuer.Bytes(), "issuer"),
-				transactionmock.ABICall(&chequebookABI, cumulativePayout.FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, cumulativePayout.FillBytes(make([]byte, 32)), "balance"),
 			),
 		),
 		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
@@ -273,7 +273,7 @@ func TestReceiveChequeInvalidSignature(t *testing.T) {
 		beneficiary,
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, issuer.Hash().Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Hash().Bytes(), "issuer"),
 			),
 		),
 		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
@@ -313,9 +313,9 @@ func TestReceiveChequeInsufficientBalance(t *testing.T) {
 		beneficiary,
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, issuer.Hash().Bytes(), "issuer"),
-				transactionmock.ABICall(&chequebookABI, new(big.Int).Sub(cumulativePayout, big.NewInt(1)).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Hash().Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, new(big.Int).Sub(cumulativePayout, big.NewInt(1)).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 			),
 		),
 		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {
@@ -355,9 +355,9 @@ func TestReceiveChequeSufficientBalancePaidOut(t *testing.T) {
 		beneficiary,
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, issuer.Hash().Bytes(), "issuer"),
-				transactionmock.ABICall(&chequebookABI, new(big.Int).Sub(cumulativePayout, big.NewInt(100)).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, issuer.Hash().Bytes(), "issuer"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, new(big.Int).Sub(cumulativePayout, big.NewInt(100)).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, chequebookAddress, big.NewInt(0).FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 			),
 		),
 		func(c *chequebook.SignedCheque, cid int64) (common.Address, error) {

@@ -256,7 +256,7 @@ func TestCashoutStatusReverted(t *testing.T) {
 		),
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
-			transactionmock.WithABICall(&chequebookABI, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+			transactionmock.WithABICall(&chequebookABI, chequebookAddress, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 		),
 		chequestoremock.NewChequeStore(
 			chequestoremock.WithLastChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
