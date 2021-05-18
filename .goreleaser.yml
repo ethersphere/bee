@@ -196,7 +196,7 @@ brews:
         Logs:   #{var}/log/swarm-bee/bee.log
         Config: #{etc}/swarm-bee/bee.yaml
 
-        Bee has SWAP enabled and by default is using ws://localhost:8546 ethereum endpoint.
+        Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
         If needed obtain a free Infura account and set:
         `swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         It is recommended to use external signer with bee.
