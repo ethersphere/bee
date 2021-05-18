@@ -26,9 +26,7 @@ The node's output was:
         echo "
 Please make sure there is sufficient ETH and BZZ available on the node's Ethereum address: $ETH_ADDRESS.
 
-You can get both Goerli ETH and Goerli BZZ via the Bzzaar at https://docs.ethswarm.org/docs/installation/fund-your-node
-
-Or you can join us on Discord (at https://discord.gg/ykCupZMuww) and ask our bot for a sprinkle in the #faucet-request channel.
+Learn how to fund your node by visiting our docs at at https://docs.ethswarm.org/docs/installation/fund-your-node
 
 Once the node's wallet has received the funds it will begin joining the Swarm network.
 
