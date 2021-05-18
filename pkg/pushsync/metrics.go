@@ -17,7 +17,7 @@ type metrics struct {
 	TotalReplicatedError    prometheus.Counter
 	TotalSendAttempts       prometheus.Counter
 	TotalFailedSendAttempts prometheus.Counter
-	FailedCacheHits         *prometheus.CounterVec
+	TotalFailedCacheHits    prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -66,15 +66,12 @@ func newMetrics() metrics {
 			Name:      "total_failed_send_attempts",
 			Help:      "Total no of failed attempts to push chunk.",
 		}),
-		FailedCacheHits: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "failed_cache_hits",
-				Help:      "FailedRequestCache hits",
-			},
-			[]string{"peer", "chunk"},
-		),
+		TotalFailedCacheHits: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_failed_cache_hits",
+			Help:      "Total FailedRequestCache hits",
+		}),
 	}
 }
 
