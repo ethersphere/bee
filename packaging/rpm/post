@@ -10,7 +10,9 @@ if [ $1 -eq 1 ] ; then
 Logs:   journalctl -f -u bee.service
 Config: /etc/bee/bee.yaml
 
-Bee has SWAP enabled and by default is using slock.it goerli ethereum endpoint.
+Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
+If needed obtain a free Infura account and set:
+`swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 It is recommended to use external signer with bee.
 Check documentation for more info:
 - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives

@@ -67,8 +67,8 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_STANDALONE=false
 ## enable swap (default true)
 # BEE_SWAP_ENABLE=true
-## swap ethereum blockchain endpoint (default http://localhost:8545)
-# BEE_SWAP_ENDPOINT=http://localhost:8545
+## swap ethereum blockchain endpoint (default ws://localhost:8546)
+# BEE_SWAP_ENDPOINT=ws://localhost:8546
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
 ## initial deposit if deploying a new chequebook (default 100000000)
