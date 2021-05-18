@@ -33,6 +33,8 @@ const (
 	maxConnAttempts        = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootnodeAttempts    = 3 // how many attempts to dial to bootnodes before giving up
 	defaultBitSuffixLength = 2 // the number of bits used to create pseudo addresses for balancing
+
+	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
 )
 
 var (
@@ -653,35 +655,34 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
-	k.logger.Infof("attempting to connect to peer %s", peer)
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	k.logger.Infof("attempting to connect to peer %q", peer)
+
+	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
-	i, err := k.p2p.Connect(ctx, ma)
-	if err != nil {
-		if errors.Is(err, p2p.ErrDialLightNode) {
-			return errPruneEntry
-		}
-		if errors.Is(err, p2p.ErrAlreadyConnected) {
-			if !i.Overlay.Equal(peer) {
-				return errOverlayMismatch
-			}
 
-			return nil
+	switch i, err := k.p2p.Connect(ctx, ma); {
+	case errors.Is(err, p2p.ErrDialLightNode):
+		return errPruneEntry
+	case errors.Is(err, p2p.ErrAlreadyConnected):
+		if !i.Overlay.Equal(peer) {
+			return errOverlayMismatch
 		}
+		return nil
+	case errors.Is(err, context.Canceled):
+		return err
+	case err != nil:
+		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
-		k.logger.Debugf("could not connect to peer %s: %v", peer, err)
+		k.waitNextMu.Lock()
 		retryTime := time.Now().Add(timeToRetry)
 		var e *p2p.ConnectionBackoffError
-		k.waitNextMu.Lock()
 		failedAttempts := 0
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
 		} else {
-			info, ok := k.waitNext[peer.String()]
-			if ok {
+			if info, ok := k.waitNext[peer.String()]; ok {
 				failedAttempts = info.failedAttempts
 			}
-
 			failedAttempts++
 		}
 
@@ -692,19 +693,19 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if k.quickPrune(peer) || failedAttempts > maxConnAttempts {
 			delete(k.waitNext, peer.String())
 			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
+				k.logger.Debugf("could not remove peer from addressbook: %q", peer)
 			}
-			k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
+			k.logger.Debugf("kademlia pruned peer from address book %q", peer)
 		} else {
-			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
+			k.waitNext[peer.String()] = retryInfo{
+				tryAfter:       retryTime,
+				failedAttempts: failedAttempts,
+			}
 		}
-
 		k.waitNextMu.Unlock()
 
 		return err
-	}
-
-	if !i.Overlay.Equal(peer) {
+	case !i.Overlay.Equal(peer):
 		_ = k.p2p.Disconnect(peer)
 		_ = k.p2p.Disconnect(i.Overlay)
 		return errOverlayMismatch
@@ -714,19 +715,20 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 }
 
 // quickPrune will return true for cases where:
-//  there are other connected peers, the addr has never been seen before, AND it's the first failed attempt
+// 	- there are other connected peers
+//	- the addr has never been seen before and it's the first failed attempt
 func (k *Kad) quickPrune(addr swarm.Address) bool {
-
 	if k.connectedPeers.Length() == 0 {
 		return false
 	}
 
-	snapshot, _ := k.collector.Peer(time.Now(), addr)
-	if snapshot == nil || (snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1) {
-		return true
+	sss, err := k.collector.Snapshot(time.Now(), addr)
+	if err != nil {
+		k.logger.Debugf("kademlia: quickPrune: unable to take snapshot for %q: %v", addr, err)
 	}
-
-	return false
+	snapshot := sss[addr.String()]
+	return snapshot == nil ||
+		(snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1)
 }
 
 // announce a newly connected peer to our connected peers, but also
@@ -1252,17 +1254,13 @@ func (k *Kad) Close() error {
 	cc := make(chan struct{})
 
 	go func() {
-		defer close(cc)
 		k.wg.Wait()
+		close(cc)
 	}()
-
-	if err := k.collector.Finalize(time.Now()); err != nil {
-		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
-	}
 
 	select {
 	case <-cc:
-	case <-time.After(10 * time.Second):
+	case <-time.After(peerConnectionAttemptTimeout):
 		k.logger.Warning("kademlia shutting down with announce goroutines")
 	}
 
@@ -1270,6 +1268,10 @@ func (k *Kad) Close() error {
 	case <-k.done:
 	case <-time.After(5 * time.Second):
 		k.logger.Warning("kademlia manage loop did not shut down properly")
+	}
+
+	if err := k.collector.Finalize(time.Now()); err != nil {
+		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
 	}
 
 	return nil
