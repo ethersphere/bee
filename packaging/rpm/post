@@ -11,7 +11,8 @@ Logs:   journalctl -f -u bee.service
 Config: /etc/bee/bee.yaml
 
 Bee has SWAP enabled and by default is using ws://localhost:8546 ethereum endpoint.
-If needed obtain Infura account and set it.
+If needed obtain free Infura account and set:
+`swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 It is recommended to use external signer with bee.
 Check documentation for more info:
 - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
