@@ -329,11 +329,12 @@ func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Sign
 	return &stamperPutter{Storer: s, stamper: stamper}, nil
 }
 
-func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
 	var (
 		ctp []swarm.Chunk
 		idx []int
 	)
+	exists = make([]bool, len(chs))
 
 	for i, c := range chs {
 		has, err := p.Storer.Has(ctx, c.Address())
