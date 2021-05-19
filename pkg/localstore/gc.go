@@ -200,7 +200,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 // gcTrigger retruns the absolute value for garbage collection
 // target value, calculated from db.capacity and gcTargetRatio.
 func (db *DB) gcTarget() (target uint64) {
-	return uint64(float64(db.capacity) * gcTargetRatio)
+	return uint64(float64(db.cacheCapacity) * gcTargetRatio)
 }
 
 // triggerGarbageCollection signals collectGarbageWorker
@@ -242,7 +242,7 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 	db.metrics.GCSize.Set(float64(newSize))
 
 	// trigger garbage collection if we reached the capacity
-	if newSize >= db.capacity {
+	if newSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()
 	}
 	return nil
