@@ -27,7 +27,7 @@ type Storer interface {
 	Put(*Batch, *big.Int, uint8) error
 	PutChainState(*ChainState) error
 	GetChainState() *ChainState
-	GetReserveState() *Reservestate
+	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
 }
 

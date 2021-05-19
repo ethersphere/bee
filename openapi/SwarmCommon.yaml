@@ -34,6 +34,28 @@ components:
         pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
+    ReserveState:
+      type: object
+      properties:
+        radius:
+          type: integer
+        available:
+          type: integer
+        outer:
+          type: integer
+        inner:
+          type: integer
+
+    ChainState:
+      type: object
+      properties:
+        block:
+          type: integer
+        totalAmount:
+          type: integer
+        currentPrice:
+          type: integer
+
     Balance:
       type: object
       properties:

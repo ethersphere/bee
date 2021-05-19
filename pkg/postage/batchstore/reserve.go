@@ -75,9 +75,9 @@ func (s *store) evictExpired() error {
 	until := new(big.Int)
 
 	// if inner > 0 && total >= inner
-	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.Total.Cmp(s.rs.Inner) >= 0 {
+	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.TotalAmount.Cmp(s.rs.Inner) >= 0 {
 		// collect until total+1
-		until.Add(s.cs.Total, big1)
+		until.Add(s.cs.TotalAmount, big1)
 	} else {
 		// collect until inner (collect all outer ones)
 		until.Set(s.rs.Inner)
@@ -120,7 +120,7 @@ func (s *store) evictExpired() error {
 		s.rs.Available += multiplier * exp2(b.Radius-s.rs.Radius-1)
 
 		// if batch has no value then delete it
-		if b.Value.Cmp(s.cs.Total) <= 0 {
+		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
 			toDelete = append(toDelete, b.ID)
 		}
 		return false, nil

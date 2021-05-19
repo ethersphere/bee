@@ -219,9 +219,9 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 
 	// initialise chainstate
 	err = bStore.PutChainState(&postage.ChainState{
-		Block: 0,
-		Total: big.NewInt(0),
-		Price: big.NewInt(1),
+		Block:        0,
+		TotalAmount:  big.NewInt(0),
+		CurrentPrice: big.NewInt(1),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -234,10 +234,10 @@ func nextChainState(bStore postage.Storer) (*postage.ChainState, error) {
 	// random advance on the blockchain
 	advance := newBlockAdvance()
 	cs = &postage.ChainState{
-		Block: advance + cs.Block,
-		Price: cs.Price,
+		Block:        advance + cs.Block,
+		CurrentPrice: cs.CurrentPrice,
 		// settle although no price change
-		Total: cs.Total.Add(cs.Total, new(big.Int).Mul(cs.Price, big.NewInt(int64(advance)))),
+		TotalAmount: cs.TotalAmount.Add(cs.TotalAmount, new(big.Int).Mul(cs.CurrentPrice, big.NewInt(int64(advance)))),
 	}
 	return cs, bStore.PutChainState(cs)
 }
@@ -246,23 +246,23 @@ func nextChainState(bStore postage.Storer) (*postage.ChainState, error) {
 func createBatch(bStore postage.Storer, cs *postage.ChainState, depth uint8) (*postage.Batch, error) {
 	b := postagetest.MustNewBatch()
 	b.Depth = newBatchDepth(depth)
-	value := newValue(cs.Price, cs.Total)
+	value := newValue(cs.CurrentPrice, cs.TotalAmount)
 	b.Value = big.NewInt(0)
 	return b, bStore.Put(b, value, b.Depth)
 }
 
 // tops up a batch with random amount
 func topUp(bStore postage.Storer, cs *postage.ChainState, b *postage.Batch) error {
-	value := newValue(cs.Price, b.Value)
+	value := newValue(cs.CurrentPrice, b.Value)
 	return bStore.Put(b, value, b.Depth)
 }
 
 // dilutes the batch with random factor
 func increaseDepth(bStore postage.Storer, cs *postage.ChainState, b *postage.Batch) error {
 	diff := newDilutionFactor()
-	value := new(big.Int).Sub(b.Value, cs.Total)
+	value := new(big.Int).Sub(b.Value, cs.TotalAmount)
 	value.Div(value, big.NewInt(int64(1<<diff)))
-	value.Add(value, cs.Total)
+	value.Add(value, cs.TotalAmount)
 	return bStore.Put(b, value, b.Depth+uint8(diff))
 }
 
@@ -824,7 +824,7 @@ func TestBatchStore_EvictExpired(t *testing.T) {
 
 	cs := store.GetChainState()
 	cs.Block = 4
-	cs.Total = big.NewInt(4)
+	cs.TotalAmount = big.NewInt(4)
 	err := store.PutChainState(cs)
 	if err != nil {
 		t.Fatal(err)
