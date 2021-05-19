@@ -157,7 +157,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 				if err != nil {
-					ps.logger.Errorf("pushsync: chunk store: %v", err)
+					return fmt.Errorf("chunk store: %w", err)
 				}
 
 				debit := ps.accounting.PrepareDebit(p.Address, price)
