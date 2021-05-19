@@ -343,7 +343,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	addrs := make([]swarm.Address, 0)
 
 	// upload random chunks just up to the capacity
-	for i := 0; i < int(db.capacity)-1; i++ {
+	for i := 0; i < int(db.cacheCapacity)-1; i++ {
 		ch := generateTestRandomChunk()
 		// call unreserve on the batch with radius 0 so that
 		// localstore is aware of the batch and the chunk can

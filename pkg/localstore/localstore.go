@@ -26,6 +26,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -44,7 +45,7 @@ var (
 
 var (
 	// Default value for Capacity DB option.
-	defaultCapacity uint64 = 1000000
+	defaultCacheCapacity uint64 = 1000000
 	// Limit the number of goroutines created by Getters
 	// that call updateGC function. Value 0 sets no limit.
 	maxParallelUpdateGC = 1000
@@ -99,8 +100,8 @@ type DB struct {
 	gcSize shed.Uint64Field
 
 	// garbage collection is triggered when gcSize exceeds
-	// the capacity value
-	capacity uint64
+	// the cacheCapacity value
+	cacheCapacity uint64
 
 	// triggers garbage collection event loop
 	collectGarbageTrigger chan struct{}
@@ -176,14 +177,14 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	if o == nil {
 		// default options
 		o = &Options{
-			Capacity: defaultCapacity,
+			Capacity: defaultCacheCapacity,
 		}
 	}
 
 	db = &DB{
-		capacity: o.Capacity,
-		baseKey:  baseKey,
-		tags:     o.Tags,
+		cacheCapacity: o.Capacity,
+		baseKey:       baseKey,
+		tags:          o.Tags,
 		// channel collectGarbageTrigger
 		// needs to be buffered with the size of 1
 		// to signal another event if it
@@ -194,16 +195,16 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		metrics:                  newMetrics(),
 		logger:                   logger,
 	}
-	if db.capacity == 0 {
-		db.capacity = defaultCapacity
+	if db.cacheCapacity == 0 {
+		db.cacheCapacity = defaultCacheCapacity
 	}
 
-	capacityMB := float64(db.capacity*swarm.ChunkSize) * 9.5367431640625e-7
+	capacityMB := float64((db.cacheCapacity+uint64(batchstore.Capacity))*swarm.ChunkSize) * 9.5367431640625e-7
 
 	if capacityMB <= 1000 {
-		db.logger.Infof("database capacity: %d chunks (approximately %fMB)", db.capacity, capacityMB)
+		db.logger.Infof("database capacity: %d chunks (approximately %fMB)", db.cacheCapacity, capacityMB)
 	} else {
-		db.logger.Infof("database capacity: %d chunks (approximately %0.1fGB)", db.capacity, capacityMB/1000)
+		db.logger.Infof("database capacity: %d chunks (approximately %0.1fGB)", db.cacheCapacity, capacityMB/1000)
 	}
 
 	if maxParallelUpdateGC > 0 {
