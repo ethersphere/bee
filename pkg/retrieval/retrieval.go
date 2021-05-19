@@ -126,20 +126,21 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 				go func() {
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp)
-					if requested {
-						requestAttempt++
-					}
-
 					if err != nil {
+						if requested {
+							requestAttempt++
+						}
+
 						if !peer.IsZero() {
 							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, peer, err)
 						}
 
 						errC <- err
-						return
 					}
 
-					resultC <- chunk
+					if chunk != nil {
+						resultC <- chunk
+					}
 				}()
 			} else {
 				ticker.Stop()
@@ -158,7 +159,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			}
 
 			// all results received
-			if peersResults >= maxPeers {
+			if peersResults >= maxPeers && requestAttempt >= maxPeers {
 				logger.Tracef("retrieval: failed to get chunk %s", addr)
 				return nil, storage.ErrNotFound
 			}
