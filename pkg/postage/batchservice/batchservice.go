@@ -96,6 +96,9 @@ func (svc *batchService) UpdatePrice(price *big.Int) error {
 
 func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	cs := svc.storer.GetChainState()
+	if blockNumber == cs.Block {
+		return nil
+	}
 	diff := big.NewInt(0).SetUint64(blockNumber - cs.Block)
 
 	cs.TotalAmount.Add(cs.TotalAmount, diff.Mul(diff, cs.CurrentPrice))
