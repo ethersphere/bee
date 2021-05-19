@@ -93,11 +93,10 @@ components:
       type: object
       properties:
         lastcheques:
-          oneOf:
-            - $ref: '#/components/schemas/EmptyNull'
-            - type: array
-              items:
-                $ref: "#/components/schemas/ChequePeerResponse"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ChequePeerResponse"
 
     ChequePeerResponse:
       type: object
@@ -139,10 +138,6 @@ components:
       pattern: "^[A-Fa-f0-9]{40}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
       
-    EmptyNull:
-      type: 'null'
-      description: When no entries 'null' is returned instead of empty array.
-
     FileName:
       type: string
 
@@ -214,11 +209,10 @@ components:
       type: object
       properties:
         tags:
-          oneOf:
-            - $ref: '#/components/schemas/EmptyNull'
-            - type: array
-              items:
-                $ref: "#/components/schemas/NewTagResponse"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/NewTagResponse"
 
     P2PUnderlay:
       type: string
@@ -228,11 +222,10 @@ components:
       type: object
       properties:
         peers:
-          oneOf:
-            - $ref: '#/components/schemas/EmptyNull'
-            - type: array
-              items:
-                $ref: "#/components/schemas/Address"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/Address"
 
     PssRecipient:
       type: string
@@ -256,9 +249,10 @@ components:
       type: object
       properties:
         stamps:
-          oneOf:
-            - $ref: '#/components/schemas/EmptyNull'
-            - $ref: "#/components/schemas/PostageBatches"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PostageBatch"
 
     BatchIDResponse:
       type: object
@@ -294,12 +288,6 @@ components:
         utilization:
           type: integer
 
-    PostageBatches:
-      type: array
-      items:
-        $ref: "#/components/schemas/PostageBatch"
-
-
     Settlement:
       type: object
       properties:
@@ -318,11 +306,10 @@ components:
         totalSent:
           type: integer
         settlements:
-          oneOf:
-            - $ref: '#/components/schemas/EmptyNull'
-            - type: array
-              items:
-                $ref: "#/components/schemas/Settlement"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/Settlement"
 
     SwarmAddress:
       type: string
@@ -357,11 +344,10 @@ components:
       type: object
       properties:
         addresses:
-          oneOf:
-            - $ref: '#/components/schemas/EmptyNull'
-            - type: array
-              items:
-                $ref: "#/components/schemas/SwarmOnlyReference"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/SwarmOnlyReference"
 
     SwarmReference:
       oneOf:
