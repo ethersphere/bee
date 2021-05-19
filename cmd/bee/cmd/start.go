@@ -152,7 +152,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				FullNodeMode:               fullNode,
 				Transaction:                c.config.GetString(optionNameTransactionHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
-				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
 				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
 			})
 			if err != nil {
