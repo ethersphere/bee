@@ -200,16 +200,11 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				return err
 			}
 
-			// this is called before processing the events
-			// so that the eviction in batchstore gets the correct
-			// block height context for the gc round. otherwise
-			// expired batches might be "revived".
-			err = updater.UpdateBlockNumber(to)
-			if err != nil {
-				return err
-			}
-
 			for _, e := range events {
+				err = updater.UpdateBlockNumber(e.BlockNumber)
+				if err != nil {
+					return err
+				}
 				if err = l.processEvent(e, updater); err != nil {
 					return err
 				}
