@@ -204,6 +204,11 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				}
 			}
 
+			err = updater.UpdateBlockNumber(to)
+			if err != nil {
+				return err
+			}
+
 			from = to + 1
 		}
 	}

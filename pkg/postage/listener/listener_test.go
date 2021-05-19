@@ -242,6 +242,13 @@ func TestListener(t *testing.T) {
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
+
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for block number update")
+		}
 	})
 }
 
