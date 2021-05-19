@@ -21,8 +21,6 @@ import (
 
 const (
 	optionNameDataDir                    = "data-dir"
-	optionNameSwapLegacyFactoryAddresses = "swap-legacy-factory-addresses"
-	optionNameBlockTime                  = "block-time"
 	optionNameCacheCapacity              = "cache-capacity"
 	optionNameDBOpenFilesLimit           = "db-open-files-limit"
 	optionNameDBBlockCacheCapacity       = "db-block-cache-capacity"
@@ -58,12 +56,14 @@ const (
 	optionNameClefSignerEthereumAddress  = "clef-signer-ethereum-address"
 	optionNameSwapEndpoint               = "swap-endpoint"
 	optionNameSwapFactoryAddress         = "swap-factory-address"
+	optionNameSwapLegacyFactoryAddresses = "swap-legacy-factory-addresses"
 	optionNameSwapInitialDeposit         = "swap-initial-deposit"
 	optionNameSwapEnable                 = "swap-enable"
 	optionNameTransactionHash            = "transaction"
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
 	optionNamePriceOracleAddress         = "price-oracle-address"
+	optionNameBlockTime                  = "block-time"
 )
 
 func init() {
