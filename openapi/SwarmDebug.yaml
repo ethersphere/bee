@@ -391,6 +391,24 @@ paths:
         default:
           description: Default response
 
+  "/timesettlements":
+    get:
+      summary: Get time based settlements with all known peers and total amount sent or received
+      tags:
+        - Settlements
+      responses:
+        "200":
+          description: Time based settlements with all known peers and total amount sent or received
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Settlements"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+
   "/topology":
     get:
       description: Get topology of known network
