@@ -77,7 +77,6 @@ type command struct {
 	passwordReader passwordReader
 	cfgFile        string
 	homeDir        string
-	deployGasPrice uint64
 }
 
 type option func(*command)
