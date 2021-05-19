@@ -18,7 +18,7 @@ servers:
         default: "localhost"
         description: Base address of the local bee node debug API
       port:
-        default: 1635
+        default: "1635"
         description: Service port provided in bee node config
 
 paths:
@@ -246,6 +246,36 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/reservestate":
+    get:
+      summary: Get reserve state
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Reserve State
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ReserveState"
+        default:
+          description: Default response
+
+  "/chainstate":
+    get:
+      summary: Get chain state
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Chain State
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ChainState"
         default:
           description: Default response
 
