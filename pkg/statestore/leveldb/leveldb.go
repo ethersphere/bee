@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -45,6 +46,27 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		db:     db,
 		logger: l,
 	}
+
+	var collectedKeys []string
+	mgfn := func(k, v []byte) (bool, error) {
+		stk := string(k)
+		collectedKeys = append(collectedKeys, stk)
+
+		return false, nil
+	}
+	_ = s.Iterate("", mgfn)
+	for _, v := range collectedKeys {
+		err := s.Delete(v)
+		if err != nil {
+			fmt.Println("error deleting key", v)
+			continue
+		}
+		fmt.Println("deleted key", v)
+	}
+	fmt.Println("deleted keys:", len(collectedKeys))
+	fmt.Println("done!")
+	fmt.Println("sleeping for 5 minutes so you could ssh and delete the node storage... hurry!")
+	<-time.After(5 * time.Minute)
 
 	sn, err := s.getSchemaName()
 	if err != nil {
