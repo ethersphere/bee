@@ -23,8 +23,8 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_CORS_ALLOWED_ORIGINS=[]
 ## data directory (default /home/<user>/.bee)
 # BEE_DATA_DIR=/home/bee/.bee
-## db capacity in chunks, multiply by 4096 to get approximate capacity in bytes
-# BEE_DB_CAPACITY=1000000
+## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
+# BEE_CACHE_CAPACITY=1000000
 ## number of open files allowed by database
 # BEE_DB_OPEN_FILES_LIMIT=200
 ## size of block cache of the database in bytes

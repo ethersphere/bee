@@ -14,8 +14,8 @@ config: ./bee.yaml
 # cors-allowed-origins: []
 ## data directory (default "/home/<user>/.bee")
 data-dir: ./data
-## db capacity in chunks, multiply by 4096 to get approximate capacity in bytes
-# db-capacity: 1000000
+## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
+# cache-capacity: 1000000
 ## debug HTTP API listen address (default ":1635")
 # debug-api-addr: 127.0.0.1:1635
 ## enable debug HTTP API
