@@ -45,7 +45,7 @@ var (
 
 var (
 	// Default value for Capacity DB option.
-	defaultCapacity uint64 = 1000000
+	defaultCacheCapacity uint64 = 1000000
 	// Limit the number of goroutines created by Getters
 	// that call updateGC function. Value 0 sets no limit.
 	maxParallelUpdateGC = 1000
@@ -177,7 +177,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	if o == nil {
 		// default options
 		o = &Options{
-			Capacity: defaultCapacity,
+			Capacity: defaultCacheCapacity,
 		}
 	}
 
@@ -196,7 +196,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		logger:                   logger,
 	}
 	if db.cacheCapacity == 0 {
-		db.cacheCapacity = defaultCapacity
+		db.cacheCapacity = defaultCacheCapacity
 	}
 
 	capacityMB := float64((db.cacheCapacity+uint64(batchstore.Capacity))*swarm.ChunkSize) * 9.5367431640625e-7
