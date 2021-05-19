@@ -91,6 +91,7 @@ func (c *command) initDeployCmd() error {
 				transactionService,
 				chequebookFactory,
 				swapInitialDeposit,
+				c.config.GetUint64(optionNameDeployGasPrice),
 			)
 
 			return err

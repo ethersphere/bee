@@ -103,6 +103,7 @@ func Init(
 	chainId int64,
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
+	deployGasPrice uint64,
 ) (chequebookService Service, err error) {
 	// verify that the supplied factory is valid
 	err = chequebookFactory.VerifyBytecode(ctx)
@@ -145,7 +146,7 @@ func Init(
 			}
 
 			// if we don't yet have a chequebook, deploy a new one
-			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0), common.BytesToHash(nonce))
+			txHash, err = chequebookFactory.Deploy(ctx, overlayEthAddress, big.NewInt(0), common.BytesToHash(nonce), deployGasPrice)
 			if err != nil {
 				return nil, err
 			}

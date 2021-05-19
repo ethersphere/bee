@@ -275,7 +275,7 @@ func TestFactoryDeploy(t *testing.T) {
 		nil,
 	)
 
-	txHash, err := factory.Deploy(context.Background(), issuerAddress, defaultTimeout, nonce)
+	txHash, err := factory.Deploy(context.Background(), issuerAddress, defaultTimeout, nonce, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

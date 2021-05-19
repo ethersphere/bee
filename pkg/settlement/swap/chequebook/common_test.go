@@ -22,7 +22,7 @@ func (m *chequeSignerMock) Sign(cheque *chequebook.Cheque) ([]byte, error) {
 
 type factoryMock struct {
 	erc20Address     func(ctx context.Context) (common.Address, error)
-	deploy           func(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error)
+	deploy           func(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash, deployGasPrice uint64) (common.Hash, error)
 	waitDeployed     func(ctx context.Context, txHash common.Hash) (common.Address, error)
 	verifyBytecode   func(ctx context.Context) error
 	verifyChequebook func(ctx context.Context, chequebook common.Address) error
@@ -33,8 +33,8 @@ func (m *factoryMock) ERC20Address(ctx context.Context) (common.Address, error) 
 	return m.erc20Address(ctx)
 }
 
-func (m *factoryMock) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error) {
-	return m.deploy(ctx, issuer, defaultHardDepositTimeoutDuration, nonce)
+func (m *factoryMock) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash, deployGasPrice uint64) (common.Hash, error) {
+	return m.deploy(ctx, issuer, defaultHardDepositTimeoutDuration, nonce, deployGasPrice)
 }
 
 func (m *factoryMock) WaitDeployed(ctx context.Context, txHash common.Hash) (common.Address, error) {

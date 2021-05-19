@@ -139,6 +139,7 @@ func InitChequebookService(
 	transactionService transaction.Service,
 	chequebookFactory chequebook.Factory,
 	initialDeposit string,
+	deployGasPrice uint64,
 ) (chequebook.Service, error) {
 	chequeSigner := chequebook.NewChequeSigner(signer, chainID)
 
@@ -158,6 +159,7 @@ func InitChequebookService(
 		chainID,
 		overlayEthAddress,
 		chequeSigner,
+		deployGasPrice,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("chequebook init: %w", err)

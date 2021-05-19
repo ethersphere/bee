@@ -64,6 +64,7 @@ const (
 	optionNamePostageContractAddress     = "postage-stamp-address"
 	optionNamePriceOracleAddress         = "price-oracle-address"
 	optionNameBlockTime                  = "block-time"
+	optionNameDeployGasPrice             = "deploy-gas-price"
 )
 
 func init() {
@@ -76,6 +77,7 @@ type command struct {
 	passwordReader passwordReader
 	cfgFile        string
 	homeDir        string
+	deployGasPrice uint64
 }
 
 type option func(*command)
@@ -236,6 +238,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle address")
 	cmd.Flags().String(optionNameTransactionHash, "", "proof-of-identity transaction hash")
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
+	cmd.Flags().Uint64(optionNameDeployGasPrice, 0, "deploy chequebook tx gas price")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
