@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var (
@@ -60,26 +61,26 @@ func migrateGrace(s *store) error {
 			len(k) > 32 &&
 			!strings.Contains(stk, "swap") &&
 			!strings.Contains(stk, "peer") {
-			s.logger.Debugf("found key designated to deletion %s", k)
+			fmt.Println("found key designated to deletion", string(k))
 			collectedKeys = append(collectedKeys, stk)
 		}
 
 		return false, nil
 	}
-
 	_ = s.Iterate("", mgfn)
-
 	for _, v := range collectedKeys {
 		err := s.Delete(v)
 		if err != nil {
-			s.logger.Debugf("error deleting key %s", v)
+			fmt.Println("error deleting key", v)
 			continue
 		}
-		s.logger.Debugf("deleted key %s", v)
+		fmt.Println("deleted key", v)
 	}
-	s.logger.Debugf("deleted keys: %d", len(collectedKeys))
-
-	return nil
+	fmt.Println("deleted keys:", len(collectedKeys))
+	fmt.Println("done!")
+	fmt.Println("sleeping for 5 minutes so you could ssh and delete the node storage... hurry!")
+	<-time.After(5 * time.Minute)
+	return errors.New("returning error so that bee could shut down")
 }
 
 func (s *store) migrate(schemaName string) error {
