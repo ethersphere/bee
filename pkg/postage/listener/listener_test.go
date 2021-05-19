@@ -27,6 +27,7 @@ var priceOracleAddress common.Address = common.HexToAddress("eeef")
 
 func TestListener(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
+	blockNumber := uint64(500)
 	timeout := 5 * time.Second
 	// test that when the listener gets a certain event
 	// then we would like to assert the appropriate EventUpdater method was called
@@ -42,17 +43,17 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				c.toLog(),
+				c.toLog(496),
 			),
 		)
-		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
-		listener.Listen(0, ev)
+		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l.Listen(0, ev)
 
 		select {
 		case e := <-evC:
-			e.(blockNumberCall).compare(t, 0) // event args should be equal
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
-			t.Fatal("timed out waiting for event")
+			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
@@ -73,17 +74,17 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				topup.toLog(),
+				topup.toLog(496),
 			),
 		)
-		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
-		listener.Listen(0, ev)
+		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l.Listen(0, ev)
 
 		select {
 		case e := <-evC:
-			e.(blockNumberCall).compare(t, 0) // event args should be equal
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
-			t.Fatal("timed out waiting for event")
+			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
@@ -104,17 +105,17 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				depthIncrease.toLog(),
+				depthIncrease.toLog(496),
 			),
 		)
-		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
-		listener.Listen(0, ev)
+		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l.Listen(0, ev)
 
 		select {
 		case e := <-evC:
-			e.(blockNumberCall).compare(t, 0) // event args should be equal
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
-			t.Fatal("timed out waiting for event")
+			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
@@ -133,17 +134,16 @@ func TestListener(t *testing.T) {
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				priceUpdate.toLog(),
+				priceUpdate.toLog(496),
 			),
 		)
-		listener := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
-		listener.Listen(0, ev)
-
+		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l.Listen(0, ev)
 		select {
 		case e := <-evC:
-			e.(blockNumberCall).compare(t, 0) // event args should be equal
+			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
-			t.Fatal("timed out waiting for event")
+			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
@@ -179,15 +179,13 @@ func TestListener(t *testing.T) {
 			price: big.NewInt(500),
 		}
 
-		blockNumber := uint64(500)
-
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
-				c.toLog(),
-				topup.toLog(),
-				depthIncrease.toLog(),
-				priceUpdate.toLog(),
+				c.toLog(495),
+				topup.toLog(496),
+				depthIncrease.toLog(497),
+				priceUpdate.toLog(498),
 			),
 			WithBlockNumber(blockNumber),
 		)
@@ -196,7 +194,7 @@ func TestListener(t *testing.T) {
 
 		select {
 		case e := <-evC:
-			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
+			e.(blockNumberCall).compare(t, 495) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
@@ -207,12 +205,23 @@ func TestListener(t *testing.T) {
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
-
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, 496) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for block number update")
+		}
 		select {
 		case e := <-evC:
 			e.(topupArgs).compare(t, topup) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, 497) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
@@ -220,6 +229,12 @@ func TestListener(t *testing.T) {
 			e.(depthArgs).compare(t, depthIncrease) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+		select {
+		case e := <-evC:
+			e.(blockNumberCall).compare(t, 498) // event args should be equal
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
@@ -367,14 +382,15 @@ func (c createArgs) compare(t *testing.T, want createArgs) {
 	}
 }
 
-func (c createArgs) toLog() types.Log {
+func (c createArgs) toLog(blockNumber uint64) types.Log {
 	b, err := listener.PostageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.depth)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{listener.BatchCreatedTopic, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Data:        b,
+		BlockNumber: blockNumber,
+		Topics:      []common.Hash{listener.BatchCreatedTopic, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -394,14 +410,15 @@ func (ta topupArgs) compare(t *testing.T, want topupArgs) {
 	}
 }
 
-func (ta topupArgs) toLog() types.Log {
+func (ta topupArgs) toLog(blockNumber uint64) types.Log {
 	b, err := listener.PostageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(ta.amount, ta.normalisedBalance)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{listener.BatchTopupTopic, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Data:        b,
+		BlockNumber: blockNumber,
+		Topics:      []common.Hash{listener.BatchTopupTopic, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -424,14 +441,15 @@ func (d depthArgs) compare(t *testing.T, want depthArgs) {
 	}
 }
 
-func (d depthArgs) toLog() types.Log {
+func (d depthArgs) toLog(blockNumber uint64) types.Log {
 	b, err := listener.PostageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(d.depth, d.normalisedBalance)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{listener.BatchDepthIncreaseTopic, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Data:        b,
+		BlockNumber: blockNumber,
+		Topics:      []common.Hash{listener.BatchDepthIncreaseTopic, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -446,14 +464,15 @@ func (p priceArgs) compare(t *testing.T, want priceArgs) {
 	}
 }
 
-func (p priceArgs) toLog() types.Log {
+func (p priceArgs) toLog(blockNumber uint64) types.Log {
 	b, err := listener.PriceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
-		Data:   b,
-		Topics: []common.Hash{listener.PriceUpdateTopic},
+		Data:        b,
+		BlockNumber: blockNumber,
+		Topics:      []common.Hash{listener.PriceUpdateTopic},
 	}
 }
 
