@@ -364,6 +364,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 					}
 				},
 			),
+			streamtest.WithBaseAddr(clientAddress),
 		)
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
