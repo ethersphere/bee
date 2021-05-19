@@ -23,7 +23,6 @@ var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc651
 var addr common.Address = common.HexToAddress("abcdef")
 
 var postageStampAddress common.Address = common.HexToAddress("eeee")
-var priceOracleAddress common.Address = common.HexToAddress("eeef")
 
 func TestListener(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
@@ -46,7 +45,7 @@ func TestListener(t *testing.T) {
 				c.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l := listener.New(logger, mf, postageStampAddress, 1)
 		l.Listen(0, ev)
 
 		select {
@@ -77,7 +76,7 @@ func TestListener(t *testing.T) {
 				topup.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l := listener.New(logger, mf, postageStampAddress, 1)
 		l.Listen(0, ev)
 
 		select {
@@ -108,7 +107,7 @@ func TestListener(t *testing.T) {
 				depthIncrease.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l := listener.New(logger, mf, postageStampAddress, 1)
 		l.Listen(0, ev)
 
 		select {
@@ -137,7 +136,7 @@ func TestListener(t *testing.T) {
 				priceUpdate.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l := listener.New(logger, mf, postageStampAddress, 1)
 		l.Listen(0, ev)
 		select {
 		case e := <-evC:
@@ -189,7 +188,7 @@ func TestListener(t *testing.T) {
 			),
 			WithBlockNumber(blockNumber),
 		)
-		l := listener.New(logger, mf, postageStampAddress, priceOracleAddress, 1)
+		l := listener.New(logger, mf, postageStampAddress, 1)
 		l.Listen(0, ev)
 
 		select {
@@ -465,7 +464,7 @@ func (p priceArgs) compare(t *testing.T, want priceArgs) {
 }
 
 func (p priceArgs) toLog(blockNumber uint64) types.Log {
-	b, err := listener.PriceOracleABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
+	b, err := listener.PostageStampABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
 	if err != nil {
 		panic(err)
 	}
