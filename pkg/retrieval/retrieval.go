@@ -98,7 +98,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 	maxPeers := 1
 
 	if origin {
-		maxPeers = 5
+		maxPeers = 8
 	}
 
 	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
@@ -161,6 +161,11 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			if peersResults >= maxPeers {
 				logger.Tracef("retrieval: failed to get chunk %s", addr)
 				return nil, storage.ErrNotFound
+			}
+
+			if peerAttempt >= maxPeers {
+				// wait and reset skiplist
+				sp = newSkipPeers()
 			}
 		}
 	})
