@@ -1,4 +1,4 @@
 48c48
-< var Capacity = exp2(23)
+< var Capacity = exp2(22)
 ---
 > var Capacity = exp2(10)
