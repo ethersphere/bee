@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
@@ -70,7 +71,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 	txHash, err := c.transactionService.Send(ctx, &transaction.TxRequest{
 		To:       &c.bzzTokenAddress,
 		Data:     callData,
-		GasPrice: nil,
+		GasPrice: sctx.GetGasPrice(ctx),
 		GasLimit: 0,
 		Value:    big.NewInt(0),
 	})
@@ -99,7 +100,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 	request := &transaction.TxRequest{
 		To:       &c.postageContractAddress,
 		Data:     callData,
-		GasPrice: nil,
+		GasPrice: sctx.GetGasPrice(ctx),
 		GasLimit: 0,
 		Value:    big.NewInt(0),
 	}

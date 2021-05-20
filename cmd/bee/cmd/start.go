@@ -82,19 +82,20 @@ func (c *command) initStartCmd() (err error) {
 
 			beeASCII := `
 Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
-                \     /
-            \    o ^ o    /
-              \ (     ) /
-   ____________(%%%%%%%)____________
-  (     /   /  )%%%%%%%(  \   \     )
-  (___/___/__/           \__\___\___)
-     (     /  /(%%%%%%%)\  \     )
-      (__/___/ (%%%%%%%) \___\__)
-              /(       )\
-            /   (%%%%%)   \
-                 (%%%)
-                   !                   `
 
+               .-.         .--''-.
+             .'   '.     /'       '
+             '.     '. ,'          |
+   _        o    '.o   ,'        _.-'
+ .\ /.       \.--./'. /.:. :._:.'
+< ~O~ >    .'    '._-': ': ': ': ':
+ '/_\'     :(.) (.) :  ': ': ': ': ':>-
+ \ | /      ' ____ .'_.:' :' :' :' :'
+  \|/        '\<>/'/ | | :' :' :'
+   |               \  \ \
+   |                '  ' '
+	
+		   `
 			fmt.Println(beeASCII)
 			logger.Infof("version: %v", bee.Version)
 
@@ -117,7 +118,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
-				DBCapacity:                 c.config.GetUint64(optionNameDBCapacity),
+				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
 				DBBlockCacheCapacity:       c.config.GetUint64(optionNameDBBlockCacheCapacity),
 				DBWriteBufferSize:          c.config.GetUint64(optionNameDBWriteBufferSize),
@@ -151,7 +152,6 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				FullNodeMode:               fullNode,
 				Transaction:                c.config.GetString(optionNameTransactionHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
-				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
 				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
 			})
 			if err != nil {

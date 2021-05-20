@@ -58,6 +58,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -97,7 +98,7 @@ type Bee struct {
 
 type Options struct {
 	DataDir                    string
-	DBCapacity                 uint64
+	CacheCapacity              uint64
 	DBOpenFilesLimit           uint64
 	DBWriteBufferSize          uint64
 	DBBlockCacheCapacity       uint64
@@ -201,6 +202,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	stateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
+		_ = stateStore.Close()
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
@@ -310,10 +312,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var path string
 
 	if o.DataDir != "" {
+		logger.Infof("using datadir in: '%s'", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
-		Capacity:               o.DBCapacity,
+		Capacity:               o.CacheCapacity,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
@@ -340,30 +343,28 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var (
 		postageContractService postagecontract.Interface
 		batchSvc               postage.EventUpdater
+		eventListener          postage.Listener
 	)
 
+	var postageSyncStart uint64 = 0
 	if !o.Standalone {
-		postageContractAddress, priceOracleAddress, found := listener.DiscoverAddresses(chainID)
+		postageContractAddress, startBlock, found := listener.DiscoverAddresses(chainID)
 		if o.PostageContractAddress != "" {
 			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
 			}
 			postageContractAddress = common.HexToAddress(o.PostageContractAddress)
-		}
-		if o.PriceOracleAddress != "" {
-			if !common.IsHexAddress(o.PriceOracleAddress) {
-				return nil, errors.New("malformed price oracle address")
-			}
-			priceOracleAddress = common.HexToAddress(o.PriceOracleAddress)
-		}
-		if (o.PostageContractAddress == "" || o.PriceOracleAddress == "") && !found {
+		} else if !found {
 			return nil, errors.New("no known postage stamp addresses for this network")
 		}
+		if found {
+			postageSyncStart = startBlock
+		}
 
-		eventListener := listener.New(logger, swapBackend, postageContractAddress, priceOracleAddress, o.BlockTime)
+		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime)
 		b.listenerCloser = eventListener
 
-		batchSvc = batchservice.New(batchStore, logger, eventListener)
+		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener)
 
 		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {
@@ -425,14 +426,22 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var swapService *swap.Service
 
-	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
+	metricsDB, err := shed.NewDBWrap(stateStore.DB())
+	if err != nil {
+		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
+	}
+
+	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
 	b.topologyCloser = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil {
-		syncedChan := batchSvc.Start()
+		syncedChan, err := batchSvc.Start(postageSyncStart)
+		if err != nil {
+			return nil, fmt.Errorf("unable to start batch service: %w", err)
+		}
 		// wait for the postage contract listener to sync
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
@@ -636,6 +645,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugAPIService.MustRegisterMetrics(bs.Metrics()...)
+		}
+
+		if eventListener != nil {
+			if ls, ok := eventListener.(metrics.Collector); ok {
+				debugAPIService.MustRegisterMetrics(ls.Metrics()...)
+			}
 		}
 
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {

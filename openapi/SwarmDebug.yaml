@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.3
+  version: 0.6.0
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 
@@ -18,7 +18,7 @@ servers:
         default: "localhost"
         description: Base address of the local bee node debug API
       port:
-        default: 1635
+        default: "1635"
         description: Service port provided in bee node config
 
 paths:
@@ -249,6 +249,36 @@ paths:
         default:
           description: Default response
 
+  "/reservestate":
+    get:
+      summary: Get reserve state
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Reserve State
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ReserveState"
+        default:
+          description: Default response
+
+  "/chainstate":
+    get:
+      summary: Get chain state
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Chain State
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ChainState"
+        default:
+          description: Default response
+
   "/health":
     get:
       summary: Get health of node
@@ -390,6 +420,24 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+
+  "/timesettlements":
+    get:
+      summary: Get time based settlements with all known peers and total amount sent or received
+      tags:
+        - Settlements
+      responses:
+        "200":
+          description: Time based settlements with all known peers and total amount sent or received
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Settlements"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
 
   "/topology":
     get:

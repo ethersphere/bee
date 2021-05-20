@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -45,9 +46,14 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 // A more in depth testing of the functionality in `manage()` is explicitly
 // tested in TestManage below.
 func TestNeighborhoodDepth(t *testing.T) {
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // initial tests do not check for radius
@@ -196,7 +202,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 func TestEachNeighbor(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 		peers                    []swarm.Address
 	)
 
@@ -268,7 +274,7 @@ func TestManage(t *testing.T) {
 		saturationFunc    = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 			return saturationVal, overSaturationVal
 		}
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BitSuffixLength: -1, SaturationFunc: saturationFunc})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1, SaturationFunc: saturationFunc})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -305,6 +311,10 @@ func TestManage(t *testing.T) {
 
 func TestManageWithBalancing(t *testing.T) {
 	// use "fixed" seed for this
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 	rand.Seed(2)
 
 	var (
@@ -315,7 +325,7 @@ func TestManageWithBalancing(t *testing.T) {
 			f := *saturationFuncImpl
 			return f(bin, peers, connected)
 		}
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
@@ -378,7 +388,7 @@ func TestBinSaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BitSuffixLength: -1})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1})
 		peers                    []swarm.Address
 	)
 
@@ -433,7 +443,7 @@ func TestOversaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
@@ -487,9 +497,14 @@ func TestOversaturationBootnode(t *testing.T) {
 	}(*kademlia.OverSaturationPeers)
 	*kademlia.OverSaturationPeers = 4
 
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
@@ -543,9 +558,14 @@ func TestBootnodeMaxConnections(t *testing.T) {
 	}(*kademlia.BootnodeOverSaturationPeers)
 	*kademlia.BootnodeOverSaturationPeers = 4
 
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{BootnodeMode: true})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
@@ -596,7 +616,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 func TestNotifierHooks(t *testing.T) {
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
 	var (
-		base, kad, ab, _, signer = newTestKademlia(nil, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, nil, nil, kademlia.Options{})
 		peer                     = test.RandomAddressAt(base, 3)
 		addr                     = test.RandomAddressAt(peer, 4) // address which is closer to peer
 	)
@@ -631,7 +651,7 @@ func TestNotifierHooks(t *testing.T) {
 func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
-		_, kad, ab, disc, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 		p1, p2, p3               = test.RandomAddress(), test.RandomAddress(), test.RandomAddress()
 	)
 
@@ -670,7 +690,7 @@ func TestBackoff(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -713,7 +733,7 @@ func TestAddressBookPrune(t *testing.T) {
 
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(&conns, &failedConns, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -734,20 +754,18 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
-	addr := test.RandomAddressAt(base, 1)
-	addr1 := test.RandomAddressAt(base, 1)
-	addr2 := test.RandomAddressAt(base, 1)
-
 	p, err := ab.Get(nonConnPeer.Overlay)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if !nonConnPeer.Equal(p) {
 		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	addr := test.RandomAddressAt(base, 1)
+	addr1 := test.RandomAddressAt(base, 1)
+	addr2 := test.RandomAddressAt(base, 1)
+
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr)
 	waitCounter(t, &conns, 1)
@@ -789,8 +807,62 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 }
 
+func TestAddressBookQuickPrune(t *testing.T) {
+	// test pruning addressbook after successive failed connect attempts
+	// cheat and decrease the timer
+	defer func(t time.Duration) {
+		*kademlia.TimeToRetry = t
+	}(*kademlia.TimeToRetry)
+
+	*kademlia.TimeToRetry = 50 * time.Millisecond
+
+	var (
+		conns, failedConns       int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, test.RandomAddressAt(base, 1), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := test.RandomAddressAt(base, 1)
+	// add one valid peer
+	addOne(t, signer, kad, ab, addr)
+	waitCounter(t, &conns, 1)
+	waitCounter(t, &failedConns, 0)
+
+	// add non connectable peer, check connection and failed connection counters
+	_ = kad.AddPeers(context.Background(), nonConnPeer.Overlay)
+	waitCounter(t, &conns, 0)
+	waitCounter(t, &failedConns, 1)
+
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatal(err)
+	}
+}
+
 // TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
 func TestClosestPeer(t *testing.T) {
+	metricsDB, err := shed.NewDB("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := metricsDB.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
@@ -811,7 +883,7 @@ func TestClosestPeer(t *testing.T) {
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
 
-	kad := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), logger, kademlia.Options{})
+	kad := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), metricsDB, logger, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -901,7 +973,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	}
 
 	t.Run("single subscription", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, kademlia.Options{})
+		base, kad, ab, _, sg := newTestKademlia(t, nil, nil, kademlia.Options{})
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -917,7 +989,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("single subscription, remove peer", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, kademlia.Options{})
+		base, kad, ab, _, sg := newTestKademlia(t, nil, nil, kademlia.Options{})
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -936,7 +1008,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("multiple subscriptions", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, kademlia.Options{})
+		base, kad, ab, _, sg := newTestKademlia(t, nil, nil, kademlia.Options{})
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -957,7 +1029,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("multiple changes", func(t *testing.T) {
-		base, kad, ab, _, sg := newTestKademlia(nil, nil, kademlia.Options{})
+		base, kad, ab, _, sg := newTestKademlia(t, nil, nil, kademlia.Options{})
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -982,7 +1054,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 	})
 
 	t.Run("no depth change", func(t *testing.T) {
-		_, kad, _, _, _ := newTestKademlia(nil, nil, kademlia.Options{})
+		_, kad, _, _, _ := newTestKademlia(t, nil, nil, kademlia.Options{})
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -1005,7 +1077,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 
 func TestSnapshot(t *testing.T) {
 	var conns = new(int32)
-	sa, kad, ab, _, signer := newTestKademlia(conns, nil, kademlia.Options{})
+	sa, kad, ab, _, signer := newTestKademlia(t, conns, nil, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -1053,7 +1125,7 @@ func TestStart(t *testing.T) {
 
 	t.Run("non-empty addressbook", func(t *testing.T) {
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
-		_, kad, ab, _, signer := newTestKademlia(&conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
+		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
 		defer kad.Close()
 
 		for i := 0; i < 3; i++ {
@@ -1081,7 +1153,7 @@ func TestStart(t *testing.T) {
 
 	t.Run("empty addressbook", func(t *testing.T) {
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
-		_, kad, _, _, _ := newTestKademlia(&conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
+		_, kad, _, _, _ := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
 		defer kad.Close()
 
 		if err := kad.Start(context.Background()); err != nil {
@@ -1093,16 +1165,27 @@ func TestStart(t *testing.T) {
 	})
 }
 
-func newTestKademlia(connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+	t.Helper()
+
+	metricsDB, err := shed.NewDB("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := metricsDB.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
 	var (
-		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
-		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
-		base   = test.RandomAddress()                                // base address
-		ab     = addressbook.New(mockstate.NewStateStore())          // address book
-		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock
-		logger = logging.New(ioutil.Discard, 0)                      // logger
-		disc   = mock.NewDiscovery()                                 // mock discovery protocol
-		kad    = kademlia.New(base, ab, disc, p2p, logger, kadOpts)  // kademlia instance
+		pk, _  = beeCrypto.GenerateSecp256k1Key()                              // random private key
+		signer = beeCrypto.NewDefaultSigner(pk)                                // signer
+		base   = test.RandomAddress()                                          // base address
+		ab     = addressbook.New(mockstate.NewStateStore())                    // address book
+		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter)           // p2p mock
+		logger = logging.New(ioutil.Discard, 0)                                // logger
+		disc   = mock.NewDiscovery()                                           // mock discovery protocol
+		kad    = kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts) // kademlia instance
 	)
 
 	return base, kad, ab, disc, signer

@@ -849,7 +849,7 @@ func (d *debitAction) Apply() error {
 	if nextBalance.Cmp(a.disconnectLimit) >= 0 {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewBlockPeerError(10000*time.Hour, ErrDisconnectThresholdExceeded)
+		return p2p.NewBlockPeerError(24*time.Hour, ErrDisconnectThresholdExceeded)
 	}
 
 	return nil

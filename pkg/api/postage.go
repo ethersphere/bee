@@ -14,7 +14,13 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/gorilla/mux"
+)
+
+const (
+	gasPriceHeader = "Gas-Price"
+	errBadGasPrice = "bad gas price"
 )
 
 type batchID []byte
@@ -48,7 +54,18 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	label := r.URL.Query().Get("label")
 
-	batchID, err := s.postageContract.CreateBatch(r.Context(), amount, uint8(depth), label)
+	ctx := r.Context()
+	if price, ok := r.Header[gasPriceHeader]; ok {
+		p, ok := big.NewInt(0).SetString(price[0], 10)
+		if !ok {
+			s.logger.Error("create batch: bad gas price")
+			jsonhttp.BadRequest(w, errBadGasPrice)
+			return
+		}
+		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), label)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			s.logger.Debugf("create batch: out of funds: %v", err)

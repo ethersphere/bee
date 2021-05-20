@@ -322,11 +322,10 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 
 	if expectedAllowance.Cmp(acceptedAmount) > 0 {
 		// disconnect peer
-		err = s.p2pService.Blocklist(peer, 10000*time.Hour)
+		err = s.p2pService.Blocklist(peer, 1*time.Hour)
 		if err != nil {
 			return nil, 0, err
 		}
-		return nil, 0, ErrDisconnectAllowanceCheckFailed
 	}
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)

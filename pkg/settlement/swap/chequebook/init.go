@@ -73,7 +73,7 @@ func checkBalance(
 				logger.Warningf("cannot continue until there is at least %d BZZ available on %x", neededERC20, overlayEthAddress)
 			}
 			if chainId == 5 {
-				logger.Warningf("get your Goerli ETH and Goerli BZZ now via the bzzaar at https://bzz.ethswarm.org/?transaction=buy&amount=%d&slippage=30&receiver=0x%x", neededERC20, overlayEthAddress)
+				logger.Warningf("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 			select {
 			case <-time.After(balanceCheckBackoffDuration):
