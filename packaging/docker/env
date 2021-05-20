@@ -9,6 +9,8 @@ CLEF_CHAINID=5
 
 ## HTTP API listen address (default :1633)
 # BEE_API_ADDR=:1633
+## chain block time (default 15)
+# BEE_BLOCK_TIME=15
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
 # BEE_BOOTNODE=[/dnsaddr/bootnode.ethswarm.org]
 ## cause the node to always accept incoming connections
@@ -41,6 +43,8 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_GATEWAY_MODE=false
 ## enable global pinning
 # BEE_GLOBAL_PINNING_ENABLE=false
+## cause the node to start in full mode
+# BEE_FULL_NODE=false
 ## NAT exposed address
 # BEE_NAT_ADDR=
 ## ID of the Swarm network (default 1)
@@ -61,6 +65,8 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_PAYMENT_THRESHOLD=10000000000000
 ## excess debt above payment threshold in BZZ where you disconnect from your peer (default 10000000000000)
 # BEE_PAYMENT_TOLERANCE=10000000000000
+## postage stamp contract address
+# BEE_POSTAGE_STAMP_ADDRESS=
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # BEE_RESOLVER_OPTIONS=[]
 ## whether we want the node to start with no listen addresses for p2p
@@ -71,14 +77,18 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_SWAP_ENDPOINT=ws://localhost:8546
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
-## initial deposit if deploying a new chequebook (default 100000000)
-# BEE_SWAP_INITIAL_DEPOSIT=100000000
+## legacy swap factory addresses
+# BEE_SWAP_LEGACY_FACTORY_ADDRESSES=
+## initial deposit if deploying a new chequebook (default 10000000000000000)
+# BEE_SWAP_INITIAL_DEPOSIT=10000000000000000
 ## enable tracing
 # BEE_TRACING_ENABLE=false
 ## endpoint to send tracing data (default 127.0.0.1:6831)
 # BEE_TRACING_ENDPOINT=127.0.0.1:6831
 ## service name identifier for tracing (default bee)
 # BEE_TRACING_SERVICE_NAME=bee
+## proof-of-identity transaction hash
+# BEE_TRANSACTION=
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default info)
 # BEE_VERBOSITY=info
 ## send a welcome message string during handshakes

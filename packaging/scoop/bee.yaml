@@ -2,6 +2,8 @@
 
 ## HTTP API listen address (default ":1633")
 # api-addr: :1633
+## chain block time (default 15)
+# block-time: 15
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
 # bootnode: [/dnsaddr/bootnode.ethswarm.org]
 ## enable clef signer
@@ -24,6 +26,8 @@ data-dir: ./data
 # gateway-mode: false
 ## enable global pinning
 # global-pinning-enable: false
+## cause the node to start in full mode
+# full-node: false
 ## NAT exposed address
 # nat-addr: ""
 ## ID of the Swarm network (default 1)
@@ -44,6 +48,8 @@ password-file: ./password
 # payment-threshold: 10000000000000
 ## excess debt above payment threshold in BZZ where you disconnect from your peer (default 10000000000000)
 # payment-tolerance: 10000000000000
+## postage stamp contract address
+# postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # resolver-options: []
 ## whether we want the node to start with no listen addresses for p2p
@@ -54,6 +60,8 @@ password-file: ./password
 # swap-endpoint: ws://localhost:8546
 ## swap factory address
 # swap-factory-address: ""
+## legacy swap factory addresses
+# swap-legacy-factory-addresses: ""
 ## initial deposit if deploying a new chequebook (default 10000000000000000)
 # swap-initial-deposit: 10000000000000000
 ## enable tracing
@@ -62,6 +70,8 @@ password-file: ./password
 # tracing-endpoint: 127.0.0.1:6831
 ## service name identifier for tracing (default "bee")
 # tracing-service-name: bee
+## proof-of-identity transaction hash
+# transaction: ""
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default "info")
 # verbosity: info
 ## send a welcome message string during handshakes
