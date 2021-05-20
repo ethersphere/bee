@@ -72,7 +72,7 @@ BEE_CLEF_SIGNER_ENABLE=true
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
 ## initial deposit if deploying a new chequebook (default 100000000)
-# BEE_SWAP_INITIAL_DEPOSIT=100000000
+# BEE_SWAP_INITIAL_DEPOSIT=10000000000000000
 ## enable tracing
 # BEE_TRACING_ENABLE=false
 ## endpoint to send tracing data (default 127.0.0.1:6831)
