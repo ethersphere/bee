@@ -342,6 +342,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var (
 		postageContractService postagecontract.Interface
 		batchSvc               postage.EventUpdater
+		eventListener          postage.Listener
 	)
 
 	var postageSyncStart uint64 = 0
@@ -359,7 +360,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			postageSyncStart = startBlock
 		}
 
-		eventListener := listener.New(logger, swapBackend, postageContractAddress, o.BlockTime)
+		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime)
 		b.listenerCloser = eventListener
 
 		batchSvc = batchservice.New(batchStore, logger, eventListener)
@@ -640,6 +641,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugAPIService.MustRegisterMetrics(bs.Metrics()...)
+		}
+
+		if eventListener != nil {
+			if ls, ok := eventListener.(metrics.Collector); ok {
+				debugAPIService.MustRegisterMetrics(ls.Metrics()...)
+			}
 		}
 
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
