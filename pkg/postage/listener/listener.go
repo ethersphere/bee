@@ -194,6 +194,10 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				return err
 			}
 
+			if err := updater.TransactionStart(); err != nil {
+				return err
+			}
+
 			for _, e := range events {
 				err = updater.UpdateBlockNumber(e.BlockNumber)
 				if err != nil {
@@ -206,6 +210,10 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 
 			err = updater.UpdateBlockNumber(to)
 			if err != nil {
+				return err
+			}
+
+			if err := updater.TransactionEnd(); err != nil {
 				return err
 			}
 
