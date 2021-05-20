@@ -94,19 +94,25 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout = 10 * time.Second
-
+	retrieveChunkTimeout          = 10 * time.Second
 	retrieveRetryIntervalDuration = 5 * time.Second
+	maxSelects                    = 8
+	originSuffix                  = "_origin"
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin bool) (swarm.Chunk, error) {
 	s.metrics.RequestCounter.Inc()
 
-	v, err, _ := s.singleflight.Do(addr.String(), func() (interface{}, error) {
+	flightRoute := addr.String()
+	if origin {
+		flightRoute = addr.String() + originSuffix
+	}
+
+	v, err, _ := s.singleflight.Do(flightRoute, func() (interface{}, error) {
 
 		maxPeers := 1
 		if origin {
-			maxPeers = 8
+			maxPeers = maxSelects
 		}
 
 		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
@@ -120,12 +126,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan retrievalResult, maxPeers)
+			resultC      = make(chan retrievalResult, maxSelects)
 		)
 
 		requestAttempt := 0
-		for requestAttempt < 3 {
-			if peerAttempt < maxPeers {
+		for requestAttempt < 5 {
+			if peerAttempt < maxSelects {
 				peerAttempt++
 
 				s.metrics.PeerRequestCounter.Inc()
@@ -162,19 +168,21 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				return nil, fmt.Errorf("retrieval: %w", ctx.Err())
 			}
 
-			// all results received
+			// all results received, only successfully attempted requests are counted
 			if peersResults >= maxPeers {
 				logger.Tracef("retrieval: failed to get chunk %s", addr)
 				return nil, storage.ErrNotFound
 			}
 
-			if peerAttempt >= maxPeers {
+			// if we have not counted enough successful attempts but out of selection amount, reset
+			if peerAttempt >= maxSelects {
 				requestAttempt++
 				peerAttempt = 0
 				sp = newSkipPeers()
 			}
 		}
 
+		// if we have not managed to get results after 5 rounds of peer selections, give up
 		return nil, storage.ErrNotFound
 
 	})
