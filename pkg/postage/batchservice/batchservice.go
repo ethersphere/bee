@@ -6,17 +6,22 @@ package batchservice
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
+const dirtyDBKey = "batchservice_dirty_db"
+
 type batchService struct {
-	storer   postage.Storer
-	logger   logging.Logger
-	listener postage.Listener
+	stateStore storage.StateStorer
+	storer     postage.Storer
+	logger     logging.Logger
+	listener   postage.Listener
 }
 
 type Interface interface {
@@ -24,8 +29,8 @@ type Interface interface {
 }
 
 // New will create a new BatchService.
-func New(storer postage.Storer, logger logging.Logger, listener postage.Listener) Interface {
-	return &batchService{storer, logger, listener}
+func New(stateStore storage.StateStorer, storer postage.Storer, logger logging.Logger, listener postage.Listener) Interface {
+	return &batchService{stateStore, storer, logger, listener}
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -110,11 +115,33 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	svc.logger.Debugf("batch service: updated block height to %d", blockNumber)
 	return nil
 }
+func (svc *batchService) TransactionStart() error {
+	return svc.stateStore.Put(dirtyDBKey, true)
+}
+func (svc *batchService) TransactionEnd() error {
+	return svc.stateStore.Delete(dirtyDBKey)
+}
 
-func (svc *batchService) Start(startBlock uint64) <-chan struct{} {
+func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
+	dirty := false
+	err := svc.stateStore.Get(dirtyDBKey, &dirty)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, err
+	}
+	if dirty {
+		svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+		if err := svc.storer.Reset(); err != nil {
+			return nil, err
+		}
+		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
+			return nil, err
+		}
+		svc.logger.Warning("batch service: batch store reset. your node will now resync chain data")
+	}
+
 	cs := svc.storer.GetChainState()
 	if cs.Block > startBlock {
 		startBlock = cs.Block
 	}
-	return svc.listener.Listen(startBlock+1, svc)
+	return svc.listener.Listen(startBlock+1, svc), nil
 }
