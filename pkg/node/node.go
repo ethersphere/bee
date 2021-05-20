@@ -312,6 +312,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	var path string
 
 	if o.DataDir != "" {
+		logger.Infof("using datadir in: '%s'", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
