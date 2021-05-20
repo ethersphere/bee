@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -163,6 +164,18 @@ func (s *store) GetChainState() *postage.ChainState {
 
 func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
 	s.radiusSetter = r
+}
+
+func (s *store) Reset() error {
+	prefix := "batchstore_"
+	return s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
+		if strings.HasPrefix(string(k), prefix) {
+			if err := s.store.Delete(string(k)); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
+	})
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
