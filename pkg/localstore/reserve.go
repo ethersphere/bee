@@ -40,9 +40,16 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	oldRadius := i.Radius
 	var gcSizeChange int64 // number to add or subtract from gcSize
 	unpin := func(item shed.Item) (stop bool, err error) {
-		c, err := db.setUnpin(batch, swarm.NewAddress(item.Address))
+		addr := swarm.NewAddress(item.Address)
+		c, err := db.setUnpin(batch, addr)
 		if err != nil {
-			return false, fmt.Errorf("unpin: %w", err)
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return false, fmt.Errorf("unpin: %w", err)
+			} else {
+				// this is possible when we are resyncing chain data after
+				// a dirty shutdown
+				db.logger.Tracef("unreserve set unpin chunk %s: %v", addr.String(), err)
+			}
 		}
 
 		gcSizeChange += c
