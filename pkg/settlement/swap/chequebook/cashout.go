@@ -106,10 +106,12 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		// fix for out of gas errors
 		lim = 300000
 	}
+	temp := new(big.Int)
+	price := temp.Mul(sctx.GetGasPrice(ctx), big.NewInt(2))
 	request := &transaction.TxRequest{
 		To:       &chequebook,
 		Data:     callData,
-		GasPrice: sctx.GetGasPrice(ctx),
+		GasPrice: price,
 		GasLimit: lim,
 		Value:    big.NewInt(0),
 	}
