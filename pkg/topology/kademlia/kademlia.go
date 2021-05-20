@@ -20,8 +20,10 @@ import (
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -30,11 +32,13 @@ const (
 	nnLowWatermark         = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	maxConnAttempts        = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootnodeAttempts    = 3 // how many attempts to dial to bootnodes before giving up
-	defaultBitSuffixLength = 2 // the number of bits used to create pseudo addresses for balancing
+	defaultBitSuffixLength = 3 // the number of bits used to create pseudo addresses for balancing
+
+	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
 )
 
 var (
-	saturationPeers             = 4
+	saturationPeers             = 8
 	overSaturationPeers         = 16
 	bootnodeOverSaturationPeers = 64
 	shortRetry                  = 30 * time.Second
@@ -85,8 +89,9 @@ type Kad struct {
 	logger            logging.Logger // logger
 	standalone        bool           // indicates whether the node is working in standalone mode
 	bootnode          bool           // indicates whether the node is working in bootnode mode
-	quit              chan struct{}  // quit channel
-	done              chan struct{}  // signal that `manage` has quit
+	collector         *metrics.Collector
+	quit              chan struct{} // quit channel
+	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 }
 
@@ -96,12 +101,15 @@ type retryInfo struct {
 }
 
 // New returns a new Kademlia.
-func New(base swarm.Address,
+func New(
+	base swarm.Address,
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2p p2p.Service,
+	metricsDB *shed.DB,
 	logger logging.Logger,
-	o Options) *Kad {
+	o Options,
+) *Kad {
 	if o.SaturationFunc == nil {
 		os := overSaturationPeers
 		if o.BootnodeMode {
@@ -129,6 +137,7 @@ func New(base swarm.Address,
 		logger:            logger,
 		standalone:        o.StandaloneMode,
 		bootnode:          o.BootnodeMode,
+		collector:         metrics.NewCollector(metricsDB),
 		quit:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
@@ -331,12 +340,12 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		bzzAddr, err := k.addressBook.Get(peer.addr)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
-			k.logger.Debugf("empty address book entry for peer %q", peer.addr)
+			k.logger.Debugf("kademlia: empty address book entry for peer %q", peer.addr)
 			po := swarm.Proximity(k.base.Bytes(), peer.addr.Bytes())
 			k.knownPeers.Remove(peer.addr, po)
 			return
 		case err != nil:
-			k.logger.Debugf("failed to get address book entry for peer %q: %v", peer.addr, err)
+			k.logger.Debugf("kademlia: failed to get address book entry for peer %q: %v", peer.addr, err)
 			return
 		}
 
@@ -346,21 +355,21 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			k.waitNextMu.Unlock()
 			k.knownPeers.Remove(peer.addr, peer.po)
 			if err := k.addressBook.Remove(peer.addr); err != nil {
-				k.logger.Debugf("could not remove peer %q from addressbook", peer.addr)
+				k.logger.Debugf("kademlia: could not remove peer %q from addressbook", peer.addr)
 			}
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debugf("dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
+			k.logger.Debugf("kademlia: dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debugf("overlay mismatch has occurred to an overlay %q with underlay %q", peer.addr, bzzAddr.Underlay)
+			k.logger.Debugf("kademlia: overlay mismatch has occurred to an overlay %q with underlay %q", peer.addr, bzzAddr.Underlay)
 			remove(peer)
 			return
 		case err != nil:
-			k.logger.Debugf("peer not reachable from kademlia %q: %v", bzzAddr, err)
+			k.logger.Debugf("kademlia: peer not reachable from kademlia %q: %v", bzzAddr, err)
 			k.logger.Warningf("peer not reachable when attempting to connect")
 			return
 		}
@@ -371,16 +380,19 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		k.connectedPeers.Add(peer.addr, peer.po)
 
+		if err := k.collector.Record(
+			peer.addr,
+			metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionOutbound),
+		); err != nil {
+			k.logger.Debugf("kademlia: unable to record login outbound metrics for %q: %v", peer.addr, err)
+		}
+
 		k.depthMu.Lock()
 		k.depth = recalcDepth(k.connectedPeers, k.radius)
 		k.depthMu.Unlock()
 
-		select {
-		case k.manageC <- struct{}{}:
-		default:
-		}
-
-		k.logger.Debugf("connected to peer: %q for bin: %d", peer.addr, peer.po)
+		k.logger.Debugf("kademlia: connected to peer: %q in bin: %d", peer.addr, peer.po)
+		k.notifyManageLoop()
 		k.notifyPeerSig()
 	}
 
@@ -425,6 +437,14 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 	}
 }
 
+// notifyManageLoop notifies kademlia manage loop.
+func (k *Kad) notifyManageLoop() {
+	select {
+	case k.manageC <- struct{}{}:
+	default:
+	}
+}
+
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
@@ -448,10 +468,7 @@ func (k *Kad) manage() {
 		case <-k.quit:
 			return
 		case <-time.After(30 * time.Second):
-			select {
-			case k.manageC <- struct{}{}:
-			default:
-			}
+			k.notifyManageLoop()
 		case <-k.manageC:
 			start := time.Now()
 
@@ -639,59 +656,80 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
-	k.logger.Infof("attempting to connect to peer %s", peer)
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	k.logger.Infof("attempting to connect to peer %q", peer)
+
+	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
-	i, err := k.p2p.Connect(ctx, ma)
-	if err != nil {
-		if errors.Is(err, p2p.ErrDialLightNode) {
-			return errPruneEntry
-		}
-		if errors.Is(err, p2p.ErrAlreadyConnected) {
-			if !i.Overlay.Equal(peer) {
-				return errOverlayMismatch
-			}
 
-			return nil
+	switch i, err := k.p2p.Connect(ctx, ma); {
+	case errors.Is(err, p2p.ErrDialLightNode):
+		return errPruneEntry
+	case errors.Is(err, p2p.ErrAlreadyConnected):
+		if !i.Overlay.Equal(peer) {
+			return errOverlayMismatch
 		}
+		return nil
+	case errors.Is(err, context.Canceled):
+		return err
+	case err != nil:
+		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
-		k.logger.Debugf("could not connect to peer %s: %v", peer, err)
+		k.waitNextMu.Lock()
 		retryTime := time.Now().Add(timeToRetry)
 		var e *p2p.ConnectionBackoffError
-		k.waitNextMu.Lock()
 		failedAttempts := 0
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
 		} else {
-			info, ok := k.waitNext[peer.String()]
-			if ok {
+			if info, ok := k.waitNext[peer.String()]; ok {
 				failedAttempts = info.failedAttempts
 			}
-
 			failedAttempts++
 		}
 
-		if failedAttempts > maxConnAttempts {
-			delete(k.waitNext, peer.String())
-			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debugf("could not remove peer from addressbook: %s", peer.String())
-			}
-			k.logger.Debugf("kademlia pruned peer from address book %s", peer.String())
-		} else {
-			k.waitNext[peer.String()] = retryInfo{tryAfter: retryTime, failedAttempts: failedAttempts}
+		if err := k.collector.Record(peer, metrics.IncSessionConnectionRetry()); err != nil {
+			k.logger.Debugf("kademlia: unable to record session connection retry metrics for %q: %v", peer, err)
 		}
 
+		if k.quickPrune(peer) || failedAttempts > maxConnAttempts {
+			delete(k.waitNext, peer.String())
+			if err := k.addressBook.Remove(peer); err != nil {
+				k.logger.Debugf("could not remove peer from addressbook: %q", peer)
+			}
+			k.logger.Debugf("kademlia pruned peer from address book %q", peer)
+		} else {
+			k.waitNext[peer.String()] = retryInfo{
+				tryAfter:       retryTime,
+				failedAttempts: failedAttempts,
+			}
+		}
 		k.waitNextMu.Unlock()
-		return err
-	}
 
-	if !i.Overlay.Equal(peer) {
+		return err
+	case !i.Overlay.Equal(peer):
 		_ = k.p2p.Disconnect(peer)
 		_ = k.p2p.Disconnect(i.Overlay)
 		return errOverlayMismatch
 	}
 
 	return k.Announce(ctx, peer)
+}
+
+// quickPrune will return true for cases where:
+// 	- there are other connected peers
+//	- the addr has never been seen before and it's the first failed attempt
+func (k *Kad) quickPrune(addr swarm.Address) bool {
+	if k.connectedPeers.Length() == 0 {
+		return false
+	}
+
+	sss, err := k.collector.Snapshot(time.Now(), addr)
+	if err != nil {
+		k.logger.Debugf("kademlia: quickPrune: unable to take snapshot for %q: %v", addr, err)
+	}
+	snapshot := sss[addr.String()]
+	return snapshot == nil ||
+		(snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1)
 }
 
 // announce a newly connected peer to our connected peers, but also
@@ -748,12 +786,7 @@ func (k *Kad) AddPeers(ctx context.Context, addrs ...swarm.Address) error {
 		po := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 		k.knownPeers.Add(addr, po)
 	}
-
-	select {
-	case k.manageC <- struct{}{}:
-	default:
-	}
-
+	k.notifyManageLoop()
 	return nil
 }
 
@@ -793,12 +826,7 @@ connected:
 	if err := k.connected(ctx, address); err != nil {
 		return err
 	}
-
-	select {
-	case k.manageC <- struct{}{}:
-	default:
-	}
-
+	k.notifyManageLoop()
 	return nil
 }
 
@@ -811,6 +839,13 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 
 	k.knownPeers.Add(addr, po)
 	k.connectedPeers.Add(addr, po)
+
+	if err := k.collector.Record(
+		addr,
+		metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionInbound),
+	); err != nil {
+		k.logger.Debugf("kademlia: unable to record login inbound metrics for %q: %v", addr, err)
+	}
 
 	k.waitNextMu.Lock()
 	delete(k.waitNext, addr.String())
@@ -837,14 +872,18 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.waitNext[peer.Address.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
 
+	if err := k.collector.Record(
+		peer.Address,
+		metrics.PeerLogOut(time.Now()),
+	); err != nil {
+		k.logger.Debugf("kademlia: unable to record logout metrics for %q: %v", peer.Address, err)
+	}
+
 	k.depthMu.Lock()
 	k.depth = recalcDepth(k.connectedPeers, k.radius)
 	k.depthMu.Unlock()
 
-	select {
-	case k.manageC <- struct{}{}:
-	default:
-	}
+	k.notifyManageLoop()
 	k.notifyPeerSig()
 }
 
@@ -1090,10 +1129,7 @@ func (k *Kad) SetRadius(r uint8) {
 	oldD := k.depth
 	k.depth = recalcDepth(k.connectedPeers, k.radius)
 	if k.depth != oldD {
-		select {
-		case k.manageC <- struct{}{}:
-		default:
-		}
+		k.notifyManageLoop()
 	}
 }
 
@@ -1103,9 +1139,20 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		infos = append(infos, topology.BinInfo{})
 	}
 
+	ss, err := k.collector.Snapshot(time.Now())
+	if err != nil {
+		k.logger.Debugf("kademlia: unable to take metrics snapshot: %v", err)
+	}
+
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		infos[po].BinConnected++
-		infos[po].ConnectedPeers = append(infos[po].ConnectedPeers, addr.String())
+		infos[po].ConnectedPeers = append(
+			infos[po].ConnectedPeers,
+			&topology.PeerInfo{
+				Address: addr,
+				Metrics: createMetricsSnapshotView(ss[addr.String()]),
+			},
+		)
 		return false, false, nil
 	})
 
@@ -1115,12 +1162,18 @@ func (k *Kad) Snapshot() *topology.KadParams {
 
 		for _, v := range infos[po].ConnectedPeers {
 			// peer already connected, don't show in the known peers list
-			if v == addr.String() {
+			if v.Address.Equal(addr) {
 				return false, false, nil
 			}
 		}
 
-		infos[po].DisconnectedPeers = append(infos[po].DisconnectedPeers, addr.String())
+		infos[po].DisconnectedPeers = append(
+			infos[po].DisconnectedPeers,
+			&topology.PeerInfo{
+				Address: addr,
+				Metrics: createMetricsSnapshotView(ss[addr.String()]),
+			},
+		)
 		return false, false, nil
 	})
 
@@ -1186,13 +1239,13 @@ func (k *Kad) Close() error {
 	cc := make(chan struct{})
 
 	go func() {
-		defer close(cc)
 		k.wg.Wait()
+		close(cc)
 	}()
 
 	select {
 	case <-cc:
-	case <-time.After(10 * time.Second):
+	case <-time.After(peerConnectionAttemptTimeout):
 		k.logger.Warning("kademlia shutting down with announce goroutines")
 	}
 
@@ -1200,6 +1253,10 @@ func (k *Kad) Close() error {
 	case <-k.done:
 	case <-time.After(5 * time.Second):
 		k.logger.Warning("kademlia manage loop did not shut down properly")
+	}
+
+	if err := k.collector.Finalize(time.Now()); err != nil {
+		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
 	}
 
 	return nil
@@ -1237,4 +1294,20 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	}
 
 	return peers[rndIndx.Int64()], nil
+}
+
+// createMetricsSnapshotView creates new topology.MetricSnapshotView from the
+// given metrics.Snapshot and rounds all the timestamps and durations to its
+// nearest second.
+func createMetricsSnapshotView(ss *metrics.Snapshot) *topology.MetricSnapshotView {
+	if ss == nil {
+		return nil
+	}
+	return &topology.MetricSnapshotView{
+		LastSeenTimestamp:          time.Unix(0, ss.LastSeenTimestamp).Unix(),
+		SessionConnectionRetry:     ss.SessionConnectionRetry,
+		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
+		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
+		SessionConnectionDirection: string(ss.SessionConnectionDirection),
+	}
 }

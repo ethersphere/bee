@@ -42,10 +42,9 @@ var ErrBatchNotFound = errors.New("postage batch not found or expired")
 // DefaultDepth is the initial depth for the reserve
 var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging to master
 
-// Capacity is the number of chunks in reserve. `2^23` (8388608) was chosen to remain
+// Capacity is the number of chunks in reserve. `2^22` (4194304) was chosen to remain
 // relatively near the current 5M chunks ~25GB.
-// Utilization is estimated at 50%-60%, which should result in about 4~5mil chunks in reserve.
-var Capacity = exp2(23)
+var Capacity = exp2(22)
 
 var big1 = big.NewInt(1)
 
@@ -75,9 +74,9 @@ func (s *store) evictExpired() error {
 	until := new(big.Int)
 
 	// if inner > 0 && total >= inner
-	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.Total.Cmp(s.rs.Inner) >= 0 {
+	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.TotalAmount.Cmp(s.rs.Inner) >= 0 {
 		// collect until total+1
-		until.Add(s.cs.Total, big1)
+		until.Add(s.cs.TotalAmount, big1)
 	} else {
 		// collect until inner (collect all outer ones)
 		until.Set(s.rs.Inner)
@@ -120,7 +119,7 @@ func (s *store) evictExpired() error {
 		s.rs.Available += multiplier * exp2(b.Radius-s.rs.Radius-1)
 
 		// if batch has no value then delete it
-		if b.Value.Cmp(s.cs.Total) <= 0 {
+		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
 			toDelete = append(toDelete, b.ID)
 		}
 		return false, nil

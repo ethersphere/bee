@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.3
+  version: 0.6.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -34,6 +34,28 @@ components:
         pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
+    ReserveState:
+      type: object
+      properties:
+        radius:
+          type: integer
+        available:
+          type: integer
+        outer:
+          type: integer
+        inner:
+          type: integer
+
+    ChainState:
+      type: object
+      properties:
+        block:
+          type: integer
+        totalAmount:
+          type: integer
+        currentPrice:
+          type: integer
+
     Balance:
       type: object
       properties:
@@ -49,19 +71,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Balance"
-
-    BzzChunksPinned:
-      type: object
-      properties:
-        chunks:
-          type: array
-          items:
-            type: object
-            properties:
-              address:
-                type: string
-              pinCounter:
-                type: integer
 
     BzzTopology:
       type: object
@@ -107,6 +116,7 @@ components:
       properties:
         lastcheques:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/ChequePeerResponse"
 
@@ -149,7 +159,7 @@ components:
       type: string
       pattern: "^[A-Fa-f0-9]{40}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
-
+      
     FileName:
       type: string
 
@@ -222,6 +232,7 @@ components:
       properties:
         tags:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/NewTagResponse"
 
@@ -234,6 +245,7 @@ components:
       properties:
         peers:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Address"
 
@@ -259,7 +271,10 @@ components:
       type: object
       properties:
         stamps:
-          $ref: "#/components/schemas/PostageBatches"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PostageBatch"
 
     BatchIDResponse:
       type: object
@@ -295,12 +310,6 @@ components:
         utilization:
           type: integer
 
-    PostageBatches:
-      type: array
-      items:
-        $ref: "#/components/schemas/PostageBatch"
-
-
     Settlement:
       type: object
       properties:
@@ -320,6 +329,7 @@ components:
           type: integer
         settlements:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Settlement"
 
@@ -357,6 +367,7 @@ components:
       properties:
         addresses:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
 
@@ -530,6 +541,14 @@ components:
         type: boolean
       required: false
       description: Upload file/files as a collection
+
+    SwarmPostageBatchId:
+      in: header
+      name: swarm-postage-batch-id
+      description: "ID of Postage Batch that is used to upload data with"
+      required: true
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
 
   responses:
     "204":

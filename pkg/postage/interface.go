@@ -17,7 +17,10 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
 	UpdatePrice(price *big.Int) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start() <-chan struct{}
+	Start(startBlock uint64) (<-chan struct{}, error)
+
+	TransactionStart() error
+	TransactionEnd() error
 }
 
 // Storer represents the persistence layer for batches on the current (highest
@@ -27,8 +30,10 @@ type Storer interface {
 	Put(*Batch, *big.Int, uint8) error
 	PutChainState(*ChainState) error
 	GetChainState() *ChainState
-	GetReserveState() *Reservestate
+	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
+
+	Reset() error
 }
 
 type RadiusSetter interface {

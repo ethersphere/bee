@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -30,16 +31,15 @@ const (
 )
 
 var (
-	postageStampABI = parseABI(postageabi.PostageStampABIv0_1_0)
-	priceOracleABI  = parseABI(postageabi.PriceOracleABIv0_1_0)
+	postageStampABI = parseABI(postageabi.PostageStampABIv0_2_0)
 	// batchCreatedTopic is the postage contract's batch created event topic
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 	// batchTopupTopic is the postage contract's batch topup event topic
 	batchTopupTopic = postageStampABI.Events["BatchTopUp"].ID
 	// batchDepthIncreaseTopic is the postage contract's batch dilution event topic
 	batchDepthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
-	// priceUpdateTopic is the price oracle's price update event topic
-	priceUpdateTopic = priceOracleABI.Events["PriceUpdate"].ID
+	// priceUpdateTopic is the postage contract's price update event topic
+	priceUpdateTopic = postageStampABI.Events["PriceUpdate"].ID
 )
 
 type BlockHeightContractFilterer interface {
@@ -53,26 +53,24 @@ type listener struct {
 	blockTime uint64
 
 	postageStampAddress common.Address
-	priceOracleAddress  common.Address
 	quit                chan struct{}
 	wg                  sync.WaitGroup
+	metrics             metrics
 }
 
 func New(
 	logger logging.Logger,
 	ev BlockHeightContractFilterer,
-	postageStampAddress,
-	priceOracleAddress common.Address,
+	postageStampAddress common.Address,
 	blockTime uint64,
 ) postage.Listener {
 	return &listener{
-		logger:    logger,
-		ev:        ev,
-		blockTime: blockTime,
-
+		logger:              logger,
+		ev:                  ev,
+		blockTime:           blockTime,
 		postageStampAddress: postageStampAddress,
-		priceOracleAddress:  priceOracleAddress,
 		quit:                make(chan struct{}),
+		metrics:             newMetrics(),
 	}
 }
 
@@ -82,7 +80,6 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 		ToBlock:   to,
 		Addresses: []common.Address{
 			l.postageStampAddress,
-			l.priceOracleAddress,
 		},
 		Topics: [][]common.Hash{
 			{
@@ -96,6 +93,7 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 }
 
 func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
+	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
 	case batchCreatedTopic:
 		c := &batchCreatedEvent{}
@@ -103,6 +101,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.CreatedCounter.Inc()
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
@@ -115,6 +114,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.TopupCounter.Inc()
 		return updater.TopUp(
 			c.BatchId[:],
 			c.NormalisedBalance,
@@ -125,6 +125,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.DepthCounter.Inc()
 		return updater.UpdateDepth(
 			c.BatchId[:],
 			c.NewDepth,
@@ -132,14 +133,16 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		)
 	case priceUpdateTopic:
 		c := &priceUpdateEvent{}
-		err := transaction.ParseEvent(&priceOracleABI, "PriceUpdate", c, e)
+		err := transaction.ParseEvent(&postageStampABI, "PriceUpdate", c, e)
 		if err != nil {
 			return err
 		}
+		l.metrics.PriceCounter.Inc()
 		return updater.UpdatePrice(
 			c.Price,
 		)
 	default:
+		l.metrics.EventErrors.Inc()
 		return errors.New("unknown event")
 	}
 }
@@ -169,8 +172,12 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			case <-l.quit:
 				return nil
 			}
+			start := time.Now()
+
+			l.metrics.BackendCalls.Inc()
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
+				l.metrics.BackendErrors.Inc()
 				return err
 			}
 
@@ -194,28 +201,42 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			} else {
 				closeOnce.Do(func() { close(synced) })
 			}
+			l.metrics.BackendCalls.Inc()
 
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
+				l.metrics.BackendErrors.Inc()
 				return err
 			}
 
-			// this is called before processing the events
-			// so that the eviction in batchstore gets the correct
-			// block height context for the gc round. otherwise
-			// expired batches might be "revived".
+			if err := updater.TransactionStart(); err != nil {
+				return err
+			}
+
+			for _, e := range events {
+				startEv := time.Now()
+				err = updater.UpdateBlockNumber(e.BlockNumber)
+				if err != nil {
+					return err
+				}
+				if err = l.processEvent(e, updater); err != nil {
+					return err
+				}
+				totalTimeMetric(l.metrics.EventProcessDuration, startEv)
+			}
+
 			err = updater.UpdateBlockNumber(to)
 			if err != nil {
 				return err
 			}
 
-			for _, e := range events {
-				if err = l.processEvent(e, updater); err != nil {
-					return err
-				}
+			if err := updater.TransactionEnd(); err != nil {
+				return err
 			}
 
 			from = to + 1
+			totalTimeMetric(l.metrics.PageProcessDuration, start)
+			l.metrics.PagesProcessed.Inc()
 		}
 	}
 
@@ -278,11 +299,21 @@ type priceUpdateEvent struct {
 	Price *big.Int
 }
 
+var (
+	GoerliPostageStampContractAddress = common.HexToAddress("0xB3B7f2eD97B735893316aEeA849235de5e8972a2")
+	GoerliStartBlock                  = uint64(4818979)
+)
+
 // DiscoverAddresses returns the canonical contracts for this chainID
-func DiscoverAddresses(chainID int64) (postageStamp, priceOracle common.Address, found bool) {
+func DiscoverAddresses(chainID int64) (postageStamp common.Address, startBlock uint64, found bool) {
 	if chainID == 5 {
 		// goerli
-		return common.HexToAddress("0xF7a041E7e2B79ccA1975852Eb6D4c6cE52986b4a"), common.HexToAddress("0x1044534090de6f4014ece6d036C699130Bd5Df43"), true
+		return GoerliPostageStampContractAddress, GoerliStartBlock, true
 	}
-	return common.Address{}, common.Address{}, false
+	return common.Address{}, 0, false
+}
+
+func totalTimeMetric(metric prometheus.Counter, start time.Time) {
+	totalTime := time.Since(start)
+	metric.Add(float64(totalTime))
 }
