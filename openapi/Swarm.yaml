@@ -788,7 +788,7 @@ paths:
 
   "/stamps/{amount}/{depth}":
     post:
-      summary: Buy a new postage batch. \n\n Be aware, this endpoint create an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
+      summary: Buy a new postage batch. Be aware, this endpoint create an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
       tags:
         - Postage Stamps
       parameters:
