@@ -46,6 +46,11 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 // A more in depth testing of the functionality in `manage()` is explicitly
 // tested in TestManage below.
 func TestNeighborhoodDepth(t *testing.T) {
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
@@ -103,7 +108,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// to shift. the depth will be that of the shallowest
 	// unsaturated bin.
 	for i := 0; i < 7; i++ {
-		for j := 0; j < 7; j++ {
+		for j := 0; j < 3; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addOne(t, signer, kad, ab, addr)
 			waitConn(t, &conns)
@@ -137,7 +142,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 7)
 
 	// now fill bin 7 so that it is saturated, expect depth 8
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 3; i++ {
 		addr := test.RandomAddressAt(base, 7)
 		addOne(t, signer, kad, ab, addr)
 		waitConn(t, &conns)
@@ -145,12 +150,10 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 8)
 
 	// saturate bin 8
-	for i := 0; i < 5; i++ {
-		addr = test.RandomAddressAt(base, 8)
-		addOne(t, signer, kad, ab, addr)
-		waitConn(t, &conns)
-		kDepth(t, kad, 8)
-	}
+	addr = test.RandomAddressAt(base, 8)
+	addOne(t, signer, kad, ab, addr)
+	waitConn(t, &conns)
+	kDepth(t, kad, 8)
 
 	// again set radius to lower value, expect that as depth
 	kad.SetRadius(5)
@@ -162,7 +165,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
 	for i := 9; i < int(swarm.MaxBins); i++ {
-		for j := 0; j < 8; j++ {
+		for j := 0; j < 4; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addOne(t, signer, kad, ab, addr)
 			waitConn(t, &conns)
@@ -181,7 +184,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 31)
 
 	// remove one at 14, depth should be 14
-	removeOne(kad, addrs[len(addrs)-9])
+	removeOne(kad, addrs[len(addrs)-5])
 	kDepth(t, kad, 30)
 
 	// empty bin 9 and expect depth 9
@@ -308,6 +311,10 @@ func TestManage(t *testing.T) {
 
 func TestManageWithBalancing(t *testing.T) {
 	// use "fixed" seed for this
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 	rand.Seed(2)
 
 	var (
@@ -318,7 +325,7 @@ func TestManageWithBalancing(t *testing.T) {
 			f := *saturationFuncImpl
 			return f(bin, peers, connected)
 		}
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 3})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
@@ -344,7 +351,7 @@ func TestManageWithBalancing(t *testing.T) {
 
 	// add peers for other bins, enough to have balanced connections
 	for i := 1; i <= int(swarm.MaxPO); i++ {
-		for j := 0; j < 50; j++ {
+		for j := 0; j < 20; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addOne(t, signer, kad, ab, addr)
 		}
@@ -488,7 +495,12 @@ func TestOversaturationBootnode(t *testing.T) {
 	defer func(p int) {
 		*kademlia.OverSaturationPeers = p
 	}(*kademlia.OverSaturationPeers)
-	*kademlia.OverSaturationPeers = 8
+	*kademlia.OverSaturationPeers = 4
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
@@ -544,7 +556,12 @@ func TestBootnodeMaxConnections(t *testing.T) {
 	defer func(p int) {
 		*kademlia.BootnodeOverSaturationPeers = p
 	}(*kademlia.BootnodeOverSaturationPeers)
-	*kademlia.BootnodeOverSaturationPeers = 8
+	*kademlia.BootnodeOverSaturationPeers = 4
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
