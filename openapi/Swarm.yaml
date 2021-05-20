@@ -477,8 +477,14 @@ paths:
       tags:
         - Root hash pinning
       responses:
+        "200":
+          description: Pin already exists, so no operation
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
         "201":
-          description: Pinning root hash with reference
+          description: New pin with root reference was created
           content:
             application/json:
               schema:
