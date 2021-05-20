@@ -24,6 +24,7 @@ type BatchStore struct {
 	getErrDelayCnt int
 	putErr         error
 	putErrDelayCnt int
+	resetCallCount int
 }
 
 // Option is a an option passed to New
@@ -133,4 +134,13 @@ func (bs *BatchStore) GetReserveState() *postage.ReserveState {
 
 func (bs *BatchStore) SetRadiusSetter(r postage.RadiusSetter) {
 	panic("not implemented")
+}
+
+func (bs *BatchStore) Reset() error {
+	bs.resetCallCount++
+	return nil
+}
+
+func (bs *BatchStore) ResetCalls() int {
+	return bs.resetCallCount
 }

@@ -364,7 +364,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime)
 		b.listenerCloser = eventListener
 
-		batchSvc = batchservice.New(batchStore, logger, eventListener)
+		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener)
 
 		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {
@@ -438,7 +438,10 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil {
-		syncedChan := batchSvc.Start(postageSyncStart)
+		syncedChan, err := batchSvc.Start(postageSyncStart)
+		if err != nil {
+			return nil, fmt.Errorf("unable to start batch service: %w", err)
+		}
 		// wait for the postage contract listener to sync
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 

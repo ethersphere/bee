@@ -300,7 +300,9 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return nil
 }
 
-func (u *updater) Start(_ uint64) <-chan struct{} { return nil }
+func (u *updater) Start(_ uint64) (<-chan struct{}, error) { return nil, nil }
+func (u *updater) TransactionStart() error                 { return nil }
+func (u *updater) TransactionEnd() error                   { return nil }
 
 type mockFilterer struct {
 	filterLogEvents    []types.Log
