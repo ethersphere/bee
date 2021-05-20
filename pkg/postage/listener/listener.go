@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -54,6 +55,7 @@ type listener struct {
 	postageStampAddress common.Address
 	quit                chan struct{}
 	wg                  sync.WaitGroup
+	metrics             metrics
 }
 
 func New(
@@ -68,6 +70,7 @@ func New(
 		blockTime:           blockTime,
 		postageStampAddress: postageStampAddress,
 		quit:                make(chan struct{}),
+		metrics:             newMetrics(),
 	}
 }
 
@@ -90,6 +93,7 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 }
 
 func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
+	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
 	case batchCreatedTopic:
 		c := &batchCreatedEvent{}
@@ -97,6 +101,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.CreatedCounter.Inc()
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
@@ -109,6 +114,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.TopupCounter.Inc()
 		return updater.TopUp(
 			c.BatchId[:],
 			c.NormalisedBalance,
@@ -119,6 +125,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.DepthCounter.Inc()
 		return updater.UpdateDepth(
 			c.BatchId[:],
 			c.NewDepth,
@@ -130,10 +137,12 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
+		l.metrics.PriceCounter.Inc()
 		return updater.UpdatePrice(
 			c.Price,
 		)
 	default:
+		l.metrics.EventErrors.Inc()
 		return errors.New("unknown event")
 	}
 }
@@ -163,8 +172,12 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			case <-l.quit:
 				return nil
 			}
+			start := time.Now()
+
+			l.metrics.BackendCalls.Inc()
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
+				l.metrics.BackendErrors.Inc()
 				return err
 			}
 
@@ -188,13 +201,16 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			} else {
 				closeOnce.Do(func() { close(synced) })
 			}
+			l.metrics.BackendCalls.Inc()
 
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
+				l.metrics.BackendErrors.Inc()
 				return err
 			}
 
 			for _, e := range events {
+				startEv := time.Now()
 				err = updater.UpdateBlockNumber(e.BlockNumber)
 				if err != nil {
 					return err
@@ -202,6 +218,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				if err = l.processEvent(e, updater); err != nil {
 					return err
 				}
+				totalTimeMetric(l.metrics.EventProcessDuration, startEv)
 			}
 
 			err = updater.UpdateBlockNumber(to)
@@ -210,6 +227,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			}
 
 			from = to + 1
+			totalTimeMetric(l.metrics.PageProcessDuration, start)
 		}
 	}
 
@@ -284,4 +302,9 @@ func DiscoverAddresses(chainID int64) (postageStamp common.Address, startBlock u
 		return GoerliPostageStampContractAddress, GoerliStartBlock, true
 	}
 	return common.Address{}, 0, false
+}
+
+func totalTimeMetric(metric prometheus.Counter, start time.Time) {
+	totalTime := time.Since(start)
+	metric.Add(float64(totalTime))
 }
