@@ -46,6 +46,11 @@ var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cT
 // A more in depth testing of the functionality in `manage()` is explicitly
 // tested in TestManage below.
 func TestNeighborhoodDepth(t *testing.T) {
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
@@ -306,6 +311,10 @@ func TestManage(t *testing.T) {
 
 func TestManageWithBalancing(t *testing.T) {
 	// use "fixed" seed for this
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 	rand.Seed(2)
 
 	var (
@@ -488,6 +497,11 @@ func TestOversaturationBootnode(t *testing.T) {
 	}(*kademlia.OverSaturationPeers)
 	*kademlia.OverSaturationPeers = 4
 
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
@@ -543,6 +557,11 @@ func TestBootnodeMaxConnections(t *testing.T) {
 		*kademlia.BootnodeOverSaturationPeers = p
 	}(*kademlia.BootnodeOverSaturationPeers)
 	*kademlia.BootnodeOverSaturationPeers = 4
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock

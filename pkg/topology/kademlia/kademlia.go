@@ -32,13 +32,13 @@ const (
 	nnLowWatermark         = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	maxConnAttempts        = 3 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootnodeAttempts    = 3 // how many attempts to dial to bootnodes before giving up
-	defaultBitSuffixLength = 2 // the number of bits used to create pseudo addresses for balancing
+	defaultBitSuffixLength = 3 // the number of bits used to create pseudo addresses for balancing
 
 	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
 )
 
 var (
-	saturationPeers             = 4
+	saturationPeers             = 8
 	overSaturationPeers         = 16
 	bootnodeOverSaturationPeers = 64
 	shortRetry                  = 30 * time.Second
