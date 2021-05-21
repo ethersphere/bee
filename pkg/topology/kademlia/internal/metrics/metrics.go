@@ -130,6 +130,13 @@ type Snapshot struct {
 	SessionConnectionDirection PeerConnectionDirection
 }
 
+// HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
+// peer which has at maximum one session connection attempt but it still isn't
+// logged in.
+func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
+	return ss.LastSeenTimestamp == 0 && ss.SessionConnectionRetry <= 1
+}
+
 // Counters represents a collection of peer metrics
 // mainly collected for statistics and debugging.
 type Counters struct {
@@ -257,6 +264,22 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 	}
 
 	return snapshot, mErr
+}
+
+// Inspect allows to inspect current snapshot for the given peer address by
+// executing the given fn in a safe manner when write to the counters is
+// blocked while the performing inspection function is executed.
+func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	snapshots, err := c.Snapshot(time.Now(), addr)
+	if err != nil {
+		return err
+	}
+	fn(snapshots[addr.String()])
+
+	return nil
 }
 
 // Finalize logs out all ongoing peer sessions
