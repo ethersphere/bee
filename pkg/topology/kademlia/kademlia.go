@@ -691,17 +691,26 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			k.logger.Debugf("kademlia: unable to record session connection retry metrics for %q: %v", peer, err)
 		}
 
-		if k.quickPrune(peer) || failedAttempts > maxConnAttempts {
-			delete(k.waitNext, peer.String())
-			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debugf("could not remove peer from addressbook: %q", peer)
+		if err := k.collector.Inspect(peer, func(ss *metrics.Snapshot) error {
+			quickPrune := ss == nil ||
+				(ss.LastSeenTimestamp == 0 && ss.SessionConnectionRetry <= 1)
+
+			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts > maxConnAttempts {
+				delete(k.waitNext, peer.String())
+				if err := k.addressBook.Remove(peer); err != nil {
+					k.logger.Debugf("could not remove peer from addressbook: %q", peer)
+				}
+				k.logger.Debugf("kademlia pruned peer from address book %q", peer)
+			} else {
+				k.waitNext[peer.String()] = retryInfo{
+					tryAfter:       retryTime,
+					failedAttempts: failedAttempts,
+				}
 			}
-			k.logger.Debugf("kademlia pruned peer from address book %q", peer)
-		} else {
-			k.waitNext[peer.String()] = retryInfo{
-				tryAfter:       retryTime,
-				failedAttempts: failedAttempts,
-			}
+
+			return nil
+		}); err != nil {
+			k.logger.Debugf("kademlia: connect: unable to inspect snapshot for %q: %v", peer, err)
 		}
 		k.waitNextMu.Unlock()
 
@@ -715,24 +724,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	return k.Announce(ctx, peer)
 }
 
-// quickPrune will return true for cases where:
-// 	- there are other connected peers
-//	- the addr has never been seen before and it's the first failed attempt
-func (k *Kad) quickPrune(addr swarm.Address) bool {
-	if k.connectedPeers.Length() == 0 {
-		return false
-	}
-
-	sss, err := k.collector.Snapshot(time.Now(), addr)
-	if err != nil {
-		k.logger.Debugf("kademlia: quickPrune: unable to take snapshot for %q: %v", addr, err)
-	}
-	snapshot := sss[addr.String()]
-	return snapshot == nil ||
-		(snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1)
-}
-
-// announce a newly connected peer to our connected peers, but also
+// Announce a newly connected peer to our connected peers, but also
 // notify the peer about our already connected peers
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 	addrs := []swarm.Address{}
