@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,12 +20,17 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/pinning"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -33,13 +39,15 @@ import (
 )
 
 const (
-	SwarmPinHeader           = "Swarm-Pin"
-	SwarmTagHeader           = "Swarm-Tag"
-	SwarmEncryptHeader       = "Swarm-Encrypt"
-	SwarmIndexDocumentHeader = "Swarm-Index-Document"
-	SwarmErrorDocumentHeader = "Swarm-Error-Document"
-	SwarmFeedIndexHeader     = "Swarm-Feed-Index"
-	SwarmFeedIndexNextHeader = "Swarm-Feed-Index-Next"
+	SwarmPinHeader            = "Swarm-Pin"
+	SwarmTagHeader            = "Swarm-Tag"
+	SwarmEncryptHeader        = "Swarm-Encrypt"
+	SwarmIndexDocumentHeader  = "Swarm-Index-Document"
+	SwarmErrorDocumentHeader  = "Swarm-Error-Document"
+	SwarmFeedIndexHeader      = "Swarm-Feed-Index"
+	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
+	SwarmCollectionHeader     = "Swarm-Collection"
+	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -54,9 +62,20 @@ const (
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
 )
 
+const (
+	contentTypeHeader = "Content-Type"
+	multiPartFormData = "multipart/form-data"
+	contentTypeTar    = "application/x-tar"
+)
+
 var (
 	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
 	errNoResolver           = errors.New("no resolver connected")
+	errInvalidRequest       = errors.New("could not validate request")
+	errInvalidContentType   = errors.New("invalid content-type")
+	errDirectoryStore       = errors.New("could not store directory")
+	errFileStore            = errors.New("could not store file")
+	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 )
 
 // Service is the API service interface.
@@ -67,14 +86,19 @@ type Service interface {
 }
 
 type server struct {
-	tags        *tags.Tags
-	storer      storage.Storer
-	resolver    resolver.Interface
-	pss         pss.Interface
-	traversal   traversal.Service
-	logger      logging.Logger
-	tracer      *tracing.Tracer
-	feedFactory feeds.Factory
+	tags            *tags.Tags
+	storer          storage.Storer
+	resolver        resolver.Interface
+	pss             pss.Interface
+	traversal       traversal.Traverser
+	pinning         pinning.Interface
+	steward         steward.Reuploader
+	logger          logging.Logger
+	tracer          *tracing.Tracer
+	feedFactory     feeds.Factory
+	signer          crypto.Signer
+	post            postage.Service
+	postageContract postagecontract.Interface
 	Options
 	http.Handler
 	metrics metrics
@@ -95,19 +119,24 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Service, feedFactory feeds.Factory, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Reuploader, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
-		tags:        tags,
-		storer:      storer,
-		resolver:    resolver,
-		pss:         pss,
-		traversal:   traversalService,
-		feedFactory: feedFactory,
-		Options:     o,
-		logger:      logger,
-		tracer:      tracer,
-		metrics:     newMetrics(),
-		quit:        make(chan struct{}),
+		tags:            tags,
+		storer:          storer,
+		resolver:        resolver,
+		pss:             pss,
+		traversal:       traversalService,
+		pinning:         pinning,
+		feedFactory:     feedFactory,
+		post:            post,
+		postageContract: postageContract,
+		steward:         steward,
+		signer:          signer,
+		Options:         o,
+		logger:          logger,
+		tracer:          tracer,
+		metrics:         newMetrics(),
+		quit:            make(chan struct{}),
 	}
 
 	s.setupRouting()
@@ -196,6 +225,21 @@ func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }
 
+func requestPostageBatchId(r *http.Request) ([]byte, error) {
+	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
+		if len(h) != 64 {
+			return nil, errInvalidPostageBatch
+		}
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, errInvalidPostageBatch
+		}
+		return b, nil
+	}
+
+	return nil, errInvalidPostageBatch
+}
+
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -270,13 +314,63 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
-type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
+type stamperPutter struct {
+	storage.Storer
+	stamper postage.Stamper
+}
 
-func requestPipelineFn(s storage.Storer, r *http.Request) pipelineFunc {
+func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (storage.Storer, error) {
+	i, err := post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	stamper := postage.NewStamper(i, signer)
+	return &stamperPutter{Storer: s, stamper: stamper}, nil
+}
+
+func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
+	var (
+		ctp []swarm.Chunk
+		idx []int
+	)
+	exists = make([]bool, len(chs))
+
+	for i, c := range chs {
+		has, err := p.Storer.Has(ctx, c.Address())
+		if err != nil {
+			return nil, err
+		}
+		if has || containsChunk(c.Address(), chs[:i]...) {
+			exists[i] = true
+			continue
+		}
+		stamp, err := p.stamper.Stamp(c.Address())
+		if err != nil {
+			return nil, err
+		}
+		chs[i] = c.WithStamp(stamp)
+		ctp = append(ctp, chs[i])
+		idx = append(idx, i)
+	}
+
+	exists2, err := p.Storer.Put(ctx, mode, ctp...)
+	if err != nil {
+		return nil, err
+	}
+	for i, v := range idx {
+		exists[v] = exists2[i]
+	}
+	return exists, nil
+}
+
+type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
+
+func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
-	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
+	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
-		return builder.FeedPipeline(ctx, pipe, r, l)
+		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
@@ -308,4 +402,15 @@ func requestCalculateNumberOfChunks(r *http.Request) int64 {
 		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
 	}
 	return 0
+}
+
+// containsChunk returns true if the chunk with a specific address
+// is present in the provided chunk slice.
+func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
+	for _, c := range chs {
+		if addr.Equal(c.Address()) {
+			return true
+		}
+	}
+	return false
 }

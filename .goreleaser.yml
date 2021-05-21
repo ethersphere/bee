@@ -53,10 +53,17 @@ builds:
 snapshot:
   name_template: "{{.Tag}}-snapshot"
 
+signs:
+  - artifacts: checksum
+    args: [
+    "--pinentry-mode", "loopback",
+    "--passphrase", "{{ .Env.GPG_PASSPHRASE }}",
+    "-u", "{{ .Env.GPG_FINGERPRINT }}",
+    "--output", "${signature}",
+    "--detach-sign", "${artifact}",
+  ]
+
 archives:
-  -
-    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format: binary
   -
     id: scoop
     builds:
@@ -68,6 +75,9 @@ archives:
     - packaging/scoop/bee.yaml
     - LICENSE
     - README.md
+  -
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format: binary
   -
     id: homebrew
     builds:
@@ -99,13 +109,17 @@ nfpms:
       - deb
       - rpm
     
-    files:
-      "packaging/bee.service": "/lib/systemd/system/bee.service"
-      "packaging/bee-get-addr": "/usr/bin/bee-get-addr"
-
-    config_files:
-      "packaging/bee.yaml": "/etc/bee/bee.yaml"
-      "packaging/default": "/etc/default/bee"
+    contents:
+      - src: packaging/bee.service
+        dst: /lib/systemd/system/bee.service
+      - src: packaging/bee-get-addr
+        dst: /usr/bin/bee-get-addr
+      - src: packaging/bee.yaml
+        dst: /etc/bee/bee.yaml
+        type: config
+      - src: packaging/default
+        dst: /etc/default/bee
+        type: config
 
     overrides:
       deb:
@@ -160,7 +174,8 @@ scoop:
     - "(Get-Content -path $persist_dir\\bee.yaml -Raw) -replace './password',\"$persist_dir\\password\" | Set-Content -Path $persist_dir\\bee.yaml"
     - "if(!(Test-Path $persist_dir\\password)){[System.Web.Security.Membership]::GeneratePassword(32,5) | Set-Content -Path $persist_dir\\password}"
     - "if(sc.exe query SwarmBeeSvc | Select-String FAILED){sc.exe create SwarmBeeSvc binPath= \"$dir\\bee.exe start --config=$persist_dir\\bee.yaml\" type= share start= auto displayName= \"Bee\"; sc.exe description SwarmBeeSvc \"Swarm client implemented in Go.\"}"
-    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.\nYou can get both goerli eth and goerli bzz from https://bzz.ethswarm.org/?transaction=buy&amount=10&slippage=30&receiver=0x$ETH_ADDRESS\""
+    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.\nLearn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node\""
+    - "Write-Host \"Obtain a free Infura account and set: swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx inside $persist_dir\\bee.yaml\""
     - "Write-Host \"After the initial fund deploy Bee chequebook with [sudo] $dir\\bee.exe deploy --config=$persist_dir\\bee.yaml\""
     - "Write-Host 'Start Bee service with [sudo] sc.exe start SwarmBeeSvc'" 
 
@@ -181,7 +196,9 @@ brews:
         Logs:   #{var}/log/swarm-bee/bee.log
         Config: #{etc}/swarm-bee/bee.yaml
 
-        Bee has SWAP enabled and by default is using slock.it goerli ethereum endpoint.
+        Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
+        If needed obtain a free Infura account and set:
+        `swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         It is recommended to use external signer with bee.
         Check documentation for more info:
         - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
@@ -230,6 +247,7 @@ brews:
 dockers:
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-amd64"
+  - "quay.io/ethersphere/bee:{{ .Version }}-amd64"
   use_buildx: true
   ids:
     - linux
@@ -244,6 +262,7 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-armv7"
+  - "quay.io/ethersphere/bee:{{ .Version }}-armv7"
   use_buildx: true
   ids:
     - linux
@@ -259,6 +278,7 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-arm64v8"
+  - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8"
   use_buildx: true
   ids:
     - linux
@@ -297,3 +317,28 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
   - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:{{ .Major }}
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:latest
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/bee:beta
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8

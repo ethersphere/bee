@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
@@ -24,7 +25,8 @@ import (
 )
 
 const (
-	maxDelay = 1 * time.Minute
+	maxDelay          = 1 * time.Minute
+	cancellationDepth = 6
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
@@ -35,40 +37,45 @@ func InitChain(
 	stateStore storage.StateStorer,
 	endpoint string,
 	signer crypto.Signer,
-) (*ethclient.Client, common.Address, int64, transaction.Service, error) {
+	blocktime uint64,
+) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend, err := ethclient.Dial(endpoint)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("dial eth client: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial eth client: %w", err)
 	}
 
 	chainID, err := backend.ChainID(ctx)
 	if err != nil {
 		logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", endpoint)
-		return nil, common.Address{}, 0, nil, fmt.Errorf("get chain id: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
 	}
 
-	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID)
-	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("new transaction service: %w", err)
-	}
+	pollingInterval := time.Duration(blocktime) * time.Second
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("eth address: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
+	}
+
+	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
+
+	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
+	if err != nil {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
 
 	// Sync the with the given Ethereum backend:
 	isSynced, err := transaction.IsSynced(ctx, backend, maxDelay)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, fmt.Errorf("is synced: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
 		logger.Infof("waiting to sync with the Ethereum backend")
 		err := transaction.WaitSynced(ctx, backend, maxDelay)
 		if err != nil {
-			return nil, common.Address{}, 0, nil, fmt.Errorf("waiting backend sync: %w", err)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("waiting backend sync: %w", err)
 		}
 	}
-	return backend, overlayEthAddress, chainID.Int64(), transactionService, nil
+	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
 }
 
 // InitChequebookFactory will initialize the chequebook factory with the given
@@ -79,26 +86,43 @@ func InitChequebookFactory(
 	chainID int64,
 	transactionService transaction.Service,
 	factoryAddress string,
+	legacyFactoryAddresses []string,
 ) (chequebook.Factory, error) {
-	var addr common.Address
+	var currentFactory common.Address
+	var legacyFactories []common.Address
+
+	foundFactory, foundLegacyFactories, found := chequebook.DiscoverFactoryAddress(chainID)
 	if factoryAddress == "" {
-		var found bool
-		addr, found = chequebook.DiscoverFactoryAddress(chainID)
 		if !found {
 			return nil, errors.New("no known factory address for this network")
 		}
-		logger.Infof("using default factory address for chain id %d: %x", chainID, addr)
+		currentFactory = foundFactory
+		logger.Infof("using default factory address for chain id %d: %x", chainID, currentFactory)
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
-		addr = common.HexToAddress(factoryAddress)
-		logger.Infof("using custom factory address: %x", addr)
+		currentFactory = common.HexToAddress(factoryAddress)
+		logger.Infof("using custom factory address: %x", currentFactory)
+	}
+
+	if len(legacyFactoryAddresses) == 0 {
+		if found {
+			legacyFactories = foundLegacyFactories
+		}
+	} else {
+		for _, legacyAddress := range legacyFactoryAddresses {
+			if !common.IsHexAddress(legacyAddress) {
+				return nil, errors.New("malformed factory address")
+			}
+			legacyFactories = append(legacyFactories, common.HexToAddress(legacyAddress))
+		}
 	}
 
 	return chequebook.NewFactory(
 		backend,
 		transactionService,
-		addr,
+		currentFactory,
+		legacyFactories,
 	), nil
 }
 
@@ -134,7 +158,6 @@ func InitChequebookService(
 		chainID,
 		overlayEthAddress,
 		chequeSigner,
-		chequebook.NewSimpleSwapBindings,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("chequebook init: %w", err)
@@ -153,11 +176,10 @@ func initChequeStoreCashout(
 ) (chequebook.ChequeStore, chequebook.CashoutService) {
 	chequeStore := chequebook.NewChequeStore(
 		stateStore,
-		swapBackend,
 		chequebookFactory,
 		chainID,
 		overlayEthAddress,
-		chequebook.NewSimpleSwapBindings,
+		transactionService,
 		chequebook.RecoverCheque,
 	)
 
@@ -181,6 +203,7 @@ func InitSwap(
 	chequebookService chequebook.Service,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
+	accounting settlement.Accounting,
 ) (*swap.Service, error) {
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
 	swapAddressBook := swap.NewAddressbook(stateStore)
@@ -195,6 +218,7 @@ func InitSwap(
 		networkID,
 		cashoutService,
 		p2ps,
+		accounting,
 	)
 
 	swapProtocol.SetSwap(swapService)

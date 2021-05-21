@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestHeaders(t *testing.T) {
@@ -22,7 +24,9 @@ func TestHeaders(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
@@ -69,7 +73,9 @@ func TestHeaders_empty(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
@@ -125,7 +131,9 @@ func TestHeadler(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, _ := newService(t, 1, libp2pServiceOpts{})
 
@@ -140,7 +148,7 @@ func TestHeadler(t *testing.T) {
 				Handler: func(_ context.Context, _ p2p.Peer, stream p2p.Stream) error {
 					return nil
 				},
-				Headler: func(headers p2p.Headers) p2p.Headers {
+				Headler: func(headers p2p.Headers, address swarm.Address) p2p.Headers {
 					defer close(handled)
 					gotReceivedHeaders = headers
 					return sentHeaders

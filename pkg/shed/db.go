@@ -42,15 +42,28 @@ var (
 	ErrNotFound = errors.New("database: not found")
 )
 
+var (
+	defaultOpenFilesLimit         = uint64(256)
+	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
+	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
+	defaultDisableSeeksCompaction = false
+)
+
+type Options struct {
+	BlockCacheCapacity     uint64
+	WriteBufferSize        uint64
+	OpenFilesLimit         uint64
+	DisableSeeksCompaction bool
+}
+
 // DB provides abstractions over badgerDB in order to
 // implement complex structures using fields and ordered indexes.
 // It provides a schema functionality to store fields and indexes
 // information about naming and types.
 type DB struct {
-	path    string
 	bdb     *badger.DB
 	metrics metrics
-	logger  logging.Logger
+	quit    chan struct{} // Quit channel to stop the metrics collection before closing the database
 }
 
 // NewDB opens the badger DB with options that make the DB useful for
@@ -66,16 +79,24 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 		o.InMemory = true
 	}
 
-	database, err := badger.Open(o)
+	bdb, err := badger.Open(o)
 	if err != nil {
 		return nil, err
 	}
 
+	return NewDBWrap(bdb, logger)
+}
+
+// NewDBWrap returns new DB which uses the given ldb as its underlying storage.
+// The function will panics if the given ldb is nil.
+func NewDBWrap(bdb *badger.DB, logger logging.Logger) (db *DB, err error) {
+	if bdb == nil {
+		panic(errors.New("shed: NewDBWrap: nil ldb"))
+	}
+
 	db = &DB{
-		bdb:     database,
+		bdb:     bdb,
 		metrics: newMetrics(),
-		logger:  logger,
-		path:    path,
 	}
 
 	if _, err = db.getSchema(); err != nil {
@@ -106,6 +127,8 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 			}
 		}
 	}()
+	// Create a quit channel for the periodic metrics collector and run it.
+	db.quit = make(chan struct{})
 
 	return db, nil
 }

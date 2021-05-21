@@ -13,6 +13,7 @@ import (
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var (
@@ -34,6 +35,8 @@ func (m ModeGet) String() string {
 		return "Lookup"
 	case ModeGetPin:
 		return "PinLookup"
+	case ModeGetRequestPin:
+		return "RequestPin"
 	default:
 		return "Unknown"
 	}
@@ -49,6 +52,8 @@ const (
 	ModeGetLookup
 	// ModeGetPin: used when a pinned chunk is accessed
 	ModeGetPin
+	// ModeGetRequestPin represents request for retrieval of pinned chunk.
+	ModeGetRequestPin
 )
 
 // ModePut enumerates different Putter modes.
@@ -81,6 +86,8 @@ const (
 	ModePutUploadPin
 	// ModePutRequestPin: the same as ModePutRequest but also pin the chunk with the put
 	ModePutRequestPin
+	// ModePutRequestCache forces a retrieved chunk to be stored in the cache
+	ModePutRequestCache
 )
 
 // ModeSet enumerates different Setter modes.
@@ -120,12 +127,6 @@ type Descriptor struct {
 	BinID   uint64
 }
 
-// Pinner holds the required information for pinning
-type Pinner struct {
-	Address    swarm.Address
-	PinCounter uint64
-}
-
 func (d *Descriptor) String() string {
 	if d == nil {
 		return ""
@@ -142,8 +143,6 @@ type Storer interface {
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	PullSubscriber
 	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
-	PinnedChunks(ctx context.Context, offset, limit int) (pinnedChunks []*Pinner, err error)
-	PinCounter(address swarm.Address) (uint64, error)
 	io.Closer
 }
 
@@ -175,6 +174,8 @@ type StateStorer interface {
 	Put(key string, i interface{}) (err error)
 	Delete(key string) (err error)
 	Iterate(prefix string, iterFunc StateIterFunc) (err error)
+	// DB returns the underlying DB storage.
+	DB() *leveldb.DB
 	io.Closer
 }
 

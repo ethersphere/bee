@@ -77,6 +77,14 @@ func (s *Service) newRouter() *mux.Router {
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
+	router.Handle("/reservestate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.reserveStateHandler),
+	})
+
+	router.Handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
+	})
+
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
@@ -121,15 +129,18 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
-	router.Handle("/settlements", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.settlementsHandler),
-	})
-
-	router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peerSettlementsHandler),
+	router.Handle("/timesettlements", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
 	if s.chequebookEnabled {
+		router.Handle("/settlements", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.settlementsHandler),
+		})
+		router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+		})
+
 		router.Handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})

@@ -12,11 +12,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	"github.com/ethersphere/sw3-bindings/v3/simpleswapfactory"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	erc20ABI = transaction.ParseABIUnchecked(simpleswapfactory.ERC20ABI)
+	erc20ABI = transaction.ParseABIUnchecked(sw3abi.ERC20ABIv0_3_1)
 )
 
 type transferEvent struct {
@@ -25,7 +25,7 @@ type transferEvent struct {
 	Value *big.Int
 }
 
-func newTransferLog(address common.Address, from common.Address, to common.Address, value *big.Int) *types.Log {
+func newTransferLog(address, from, to common.Address, value *big.Int) *types.Log {
 	return &types.Log{
 		Topics: []common.Hash{
 			erc20ABI.Events["Transfer"].ID,

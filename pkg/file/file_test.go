@@ -52,7 +52,7 @@ func testSplitThenJoin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dataReader := file.NewSimpleReadCloser(data)
-	resultAddress, err := builder.FeedPipeline(ctx, p, dataReader, int64(len(data)))
+	resultAddress, err := builder.FeedPipeline(ctx, p, dataReader)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,5 +9,5 @@ package pricing;
 option go_package = "pb";
 
 message AnnouncePaymentThreshold {
-  bytes PaymentThreshold = 1;
+ bytes PaymentThreshold = 1;
 }

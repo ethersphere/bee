@@ -11,14 +11,17 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"sync"
 	"testing"
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -28,24 +31,31 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-var testTimeout = 5 * time.Second
+var (
+	testTimeout  = 5 * time.Second
+	defaultPrice = uint64(10)
+)
 
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	var (
+		chunk                = testingc.FixtureChunk("0033")
 		logger               = logging.New(ioutil.Discard, 0)
 		mockStorer           = storemock.NewStorer()
-		chunk                = testingc.FixtureChunk("0033")
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
 		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
 		serverAddr           = swarm.MustParseHexAddress("9ee7add7")
 
-		price      = uint64(10)
-		pricerMock = accountingmock.NewPricer(price, price)
+		pricerMock = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
+	stamp, err := chunk.Stamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// put testdata in the mock store of the server
-	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+	_, err = mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +87,13 @@ func TestDelivery(t *testing.T) {
 	}
 	if !bytes.Equal(v.Data(), chunk.Data()) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
+	}
+	vstamp, err := v.Stamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(vstamp, stamp) {
+		t.Fatal("stamp mismatch")
 	}
 	records, err := recorder.Records(serverAddr, "retrieval", "1.0.0", "retrieval")
 	if err != nil {
@@ -121,20 +138,21 @@ func TestDelivery(t *testing.T) {
 	}
 
 	clientBalance, _ := clientMockAccounting.Balance(serverAddr)
-	if clientBalance.Int64() != -int64(price) {
-		t.Fatalf("unexpected balance on client. want %d got %d", -price, clientBalance)
+	if clientBalance.Int64() != -int64(defaultPrice) {
+		t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientBalance)
 	}
 
 	serverBalance, _ := serverMockAccounting.Balance(clientAddr)
-	if serverBalance.Int64() != int64(price) {
-		t.Fatalf("unexpected balance on server. want %d got %d", price, serverBalance)
+	if serverBalance.Int64() != int64(defaultPrice) {
+		t.Fatalf("unexpected balance on server. want %d got %d", defaultPrice, serverBalance)
 	}
 }
 
 func TestRetrieveChunk(t *testing.T) {
+
 	var (
 		logger = logging.New(ioutil.Discard, 0)
-		pricer = accountingmock.NewPricer(1, 1)
+		pricer = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
 
 	// requesting a chunk from downstream peer is expected
@@ -230,14 +248,12 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
-	t.Skip("needs some more tendering. baseaddr change made a mess here")
 	logger := logging.New(ioutil.Discard, 0)
 
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
 
-	price := uint64(1)
-	pricerMock := accountingmock.NewPricer(price, price)
+	pricerMock := pricermock.NewMockService(defaultPrice, defaultPrice)
 
 	clientAddress := swarm.MustParseHexAddress("1010")
 
@@ -289,6 +305,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noPeerSuggester, logger, accountingmock.NewAccounting(), pricerMock, nil)
 
 	t.Run("peer not reachable", func(t *testing.T) {
+		ranOnce := true
+		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
 			streamtest.WithProtocols(
 				server1.Protocol(),
@@ -297,19 +315,19 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithMiddlewares(
 				func(h p2p.HandlerFunc) p2p.HandlerFunc {
 					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+						ranMux.Lock()
+						defer ranMux.Unlock()
 						// NOTE: return error for peer1
-						if serverAddress1.Equal(peer.Address) {
+						if ranOnce {
+							ranOnce = false
 							return fmt.Errorf("peer not reachable: %s", peer.Address.String())
 						}
 
-						if serverAddress2.Equal(peer.Address) {
-							return server2.Handler(ctx, peer, stream)
-						}
-
-						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
+			streamtest.WithBaseAddr(clientAddress),
 		)
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil)
@@ -325,6 +343,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	})
 
 	t.Run("peer does not have chunk", func(t *testing.T) {
+		ranOnce := true
+		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
 			streamtest.WithProtocols(
 				server1.Protocol(),
@@ -333,15 +353,14 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithMiddlewares(
 				func(h p2p.HandlerFunc) p2p.HandlerFunc {
 					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-						if serverAddress1.Equal(peer.Address) {
+						ranMux.Lock()
+						defer ranMux.Unlock()
+						if ranOnce {
+							ranOnce = false
 							return server1.Handler(ctx, peer, stream)
 						}
 
-						if serverAddress2.Equal(peer.Address) {
-							return server2.Handler(ctx, peer, stream)
-						}
-
-						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
@@ -383,6 +402,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		// (here one second more)
 		server1ResponseDelayDuration := 6 * time.Second
 
+		ranOnce := true
+		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
 			streamtest.WithProtocols(
 				server1.Protocol(),
@@ -391,17 +412,17 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithMiddlewares(
 				func(h p2p.HandlerFunc) p2p.HandlerFunc {
 					return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-						if serverAddress1.Equal(peer.Address) {
+						ranMux.Lock()
+						if ranOnce {
 							// NOTE: sleep time must be more than retry duration
+							ranOnce = false
+							ranMux.Unlock()
 							time.Sleep(server1ResponseDelayDuration)
 							return server1.Handler(ctx, peer, stream)
 						}
 
-						if serverAddress2.Equal(peer.Address) {
-							return server2.Handler(ctx, peer, stream)
-						}
-
-						return fmt.Errorf("unknown peer: %s", peer.Address.String())
+						ranMux.Unlock()
+						return server2.Handler(ctx, peer, stream)
 					}
 				},
 			),
@@ -422,12 +443,12 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		clientServer1Balance, _ := clientMockAccounting.Balance(serverAddress1)
 		if clientServer1Balance.Int64() != 0 {
-			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer1Balance)
+			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer1Balance)
 		}
 
 		clientServer2Balance, _ := clientMockAccounting.Balance(serverAddress2)
-		if clientServer2Balance.Int64() != -int64(price) {
-			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer2Balance)
+		if clientServer2Balance.Int64() != -int64(defaultPrice) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer2Balance)
 		}
 
 		// wait and check balance again
@@ -435,13 +456,13 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		time.Sleep(2 * time.Second)
 
 		clientServer1Balance, _ = clientMockAccounting.Balance(serverAddress1)
-		if clientServer1Balance.Int64() != -int64(price) {
-			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer1Balance)
+		if clientServer1Balance.Int64() != -int64(defaultPrice) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer1Balance)
 		}
 
 		clientServer2Balance, _ = clientMockAccounting.Balance(serverAddress2)
-		if clientServer2Balance.Int64() != -int64(price) {
-			t.Fatalf("unexpected balance on client. want %d got %d", -price, clientServer2Balance)
+		if clientServer2Balance.Int64() != -int64(defaultPrice) {
+			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer2Balance)
 		}
 	})
 

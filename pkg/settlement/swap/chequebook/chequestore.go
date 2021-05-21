@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
@@ -44,14 +43,13 @@ type ChequeStore interface {
 }
 
 type chequeStore struct {
-	lock                  sync.Mutex
-	store                 storage.StateStorer
-	factory               Factory
-	chaindID              int64
-	simpleSwapBindingFunc SimpleSwapBindingFunc
-	backend               transaction.Backend
-	beneficiary           common.Address // the beneficiary we expect in cheques sent to us
-	recoverChequeFunc     RecoverChequeFunc
+	lock               sync.Mutex
+	store              storage.StateStorer
+	factory            Factory
+	chaindID           int64
+	transactionService transaction.Service
+	beneficiary        common.Address // the beneficiary we expect in cheques sent to us
+	recoverChequeFunc  RecoverChequeFunc
 }
 
 type RecoverChequeFunc func(cheque *SignedCheque, chainID int64) (common.Address, error)
@@ -59,20 +57,18 @@ type RecoverChequeFunc func(cheque *SignedCheque, chainID int64) (common.Address
 // NewChequeStore creates new ChequeStore
 func NewChequeStore(
 	store storage.StateStorer,
-	backend transaction.Backend,
 	factory Factory,
 	chainID int64,
 	beneficiary common.Address,
-	simpleSwapBindingFunc SimpleSwapBindingFunc,
+	transactionService transaction.Service,
 	recoverChequeFunc RecoverChequeFunc) ChequeStore {
 	return &chequeStore{
-		store:                 store,
-		factory:               factory,
-		backend:               backend,
-		chaindID:              chainID,
-		simpleSwapBindingFunc: simpleSwapBindingFunc,
-		beneficiary:           beneficiary,
-		recoverChequeFunc:     recoverChequeFunc,
+		store:              store,
+		factory:            factory,
+		chaindID:           chainID,
+		transactionService: transactionService,
+		beneficiary:        beneficiary,
+		recoverChequeFunc:  recoverChequeFunc,
 	}
 }
 
@@ -135,16 +131,10 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 	}
 
 	// blockchain calls below
-
-	binding, err := s.simpleSwapBindingFunc(cheque.Chequebook, s.backend)
-	if err != nil {
-		return nil, err
-	}
+	contract := newChequebookContract(cheque.Chequebook, s.transactionService)
 
 	// this does not change for the same chequebook
-	expectedIssuer, err := binding.Issuer(&bind.CallOpts{
-		Context: ctx,
-	})
+	expectedIssuer, err := contract.Issuer(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -161,16 +151,12 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 
 	// basic liquidity check
 	// could be omitted as it is not particularly useful
-	balance, err := binding.Balance(&bind.CallOpts{
-		Context: ctx,
-	})
+	balance, err := contract.Balance(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	alreadyPaidOut, err := binding.PaidOut(&bind.CallOpts{
-		Context: ctx,
-	}, s.beneficiary)
+	alreadyPaidOut, err := contract.PaidOut(ctx, s.beneficiary)
 	if err != nil {
 		return nil, err
 	}

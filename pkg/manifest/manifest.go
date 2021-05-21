@@ -3,8 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package manifest contains the abstractions needed for
-// collection representation in Swarm. It uses implementations
-// in ethersphere/manifest repo under the hood.
+// collection representation in Swarm.
 package manifest
 
 import (
@@ -16,6 +15,14 @@ import (
 )
 
 const DefaultManifestType = ManifestMantarayContentType
+
+const (
+	RootPath                      = "/"
+	WebsiteIndexDocumentSuffixKey = "website-index-document"
+	WebsiteErrorDocumentPathKey   = "website-error-document"
+	EntryMetadataContentTypeKey   = "Content-Type"
+	EntryMetadataFilenameKey      = "Filename"
+)
 
 var (
 	// ErrNotFound is returned when an Entry is not found in the manifest.
@@ -67,6 +74,14 @@ func NewDefaultManifest(
 	encrypted bool,
 ) (Interface, error) {
 	return NewManifest(DefaultManifestType, ls, encrypted)
+}
+
+// NewDefaultManifestReference creates a new manifest with default type.
+func NewDefaultManifestReference(
+	reference swarm.Address,
+	ls file.LoadSaver,
+) (Interface, error) {
+	return NewManifestReference(DefaultManifestType, reference, ls)
 }
 
 // NewManifest creates a new manifest.

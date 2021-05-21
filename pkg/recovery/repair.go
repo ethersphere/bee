@@ -35,7 +35,7 @@ func NewCallback(pssSender pss.Sender) Callback {
 	return func(chunkAddress swarm.Address, targets pss.Targets) {
 		payload := chunkAddress
 		ctx := context.Background()
-		_ = pssSender.Send(ctx, Topic, payload.Bytes(), &recipient, targets)
+		_ = pssSender.Send(ctx, Topic, payload.Bytes(), nil, &recipient, targets)
 	}
 }
 

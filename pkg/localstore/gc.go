@@ -18,7 +18,6 @@ package localstore
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	badger "github.com/dgraph-io/badger/v3"
@@ -102,13 +101,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.batchMu.Unlock()
 	}()
 
-	// run through the recently pinned chunks and
-	// remove them from the gcIndex before iterating through gcIndex
-	err = db.removeChunksInExcludeIndexFromGC()
-	if err != nil {
-		return 0, true, fmt.Errorf("remove chunks in exclude index: %v", err)
-	}
-
 	gcSize, err := db.gcSize.Get()
 	if err != nil {
 		return 0, true, err
@@ -186,6 +178,10 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
+		err = db.postageChunksIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return 0, false, err
+		}
 	}
 	if gcSize-collectedCount > target {
 		done = false
@@ -202,80 +198,10 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	return collectedCount, done, nil
 }
 
-// removeChunksInExcludeIndexFromGC removed any recently chunks in the exclude Index, from the gcIndex.
-func (db *DB) removeChunksInExcludeIndexFromGC() (err error) {
-	db.metrics.GCExcludeCounter.Inc()
-	defer totalTimeMetric(db.metrics.TotalTimeGCExclude, time.Now())
-	defer func() {
-		if err != nil {
-			db.metrics.GCExcludeError.Inc()
-		}
-	}()
-
-	batch := db.shed.GetBatch(true)
-	excludedCount := 0
-	var gcSizeChange int64
-	err = db.gcExcludeIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-		// Get access timestamp
-		retrievalAccessIndexItem, err := db.retrievalAccessIndex.Get(item)
-		if err != nil {
-			return false, err
-		}
-		item.AccessTimestamp = retrievalAccessIndexItem.AccessTimestamp
-
-		// Get the binId
-		retrievalDataIndexItem, err := db.retrievalDataIndex.Get(item)
-		if err != nil {
-			return false, err
-		}
-		item.BinID = retrievalDataIndexItem.BinID
-
-		// Check if this item is in gcIndex and remove it
-		ok, err := db.gcIndex.Has(item)
-		if err != nil {
-			return false, nil
-		}
-		if ok {
-			err = db.gcIndex.DeleteInBatch(batch, item)
-			if err != nil {
-				return false, nil
-			}
-			if _, err := db.gcIndex.Get(item); err == nil {
-				gcSizeChange--
-			}
-			excludedCount++
-			err = db.gcExcludeIndex.DeleteInBatch(batch, item)
-			if err != nil {
-				return false, nil
-			}
-		}
-
-		return false, nil
-	}, nil)
-	if err != nil {
-		return err
-	}
-
-	// update the gc size based on the no of entries deleted in gcIndex
-	err = db.incGCSizeInBatch(batch, gcSizeChange)
-	if err != nil {
-		return err
-	}
-
-	db.metrics.GCExcludeCounter.Add(float64(excludedCount))
-	err = db.shed.WriteBatch(batch)
-	if err != nil {
-		db.metrics.GCExcludeWriteBatchError.Inc()
-		return err
-	}
-
-	return nil
-}
-
 // gcTrigger retruns the absolute value for garbage collection
 // target value, calculated from db.capacity and gcTargetRatio.
 func (db *DB) gcTarget() (target uint64) {
-	return uint64(float64(db.capacity) * gcTargetRatio)
+	return uint64(float64(db.cacheCapacity) * gcTargetRatio)
 }
 
 // triggerGarbageCollection signals collectGarbageWorker
@@ -317,7 +243,7 @@ func (db *DB) incGCSizeInBatch(batch *badger.Txn, change int64) (err error) {
 	db.metrics.GCSize.Set(float64(newSize))
 
 	// trigger garbage collection if we reached the capacity
-	if newSize >= db.capacity {
+	if newSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()
 	}
 	return nil
@@ -332,3 +258,5 @@ var testHookCollectGarbage func(collectedCount uint64)
 // when the GC is done collecting candidate items for
 // eviction.
 var testHookGCIteratorDone func()
+
+var withinRadiusFn func(*DB, shed.Item) bool

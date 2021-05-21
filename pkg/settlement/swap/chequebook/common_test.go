@@ -8,33 +8,9 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
-
-type simpleSwapBindingMock struct {
-	balance      func(*bind.CallOpts) (*big.Int, error)
-	issuer       func(*bind.CallOpts) (common.Address, error)
-	totalPaidOut func(o *bind.CallOpts) (*big.Int, error)
-	paidOut      func(*bind.CallOpts, common.Address) (*big.Int, error)
-}
-
-func (m *simpleSwapBindingMock) Balance(o *bind.CallOpts) (*big.Int, error) {
-	return m.balance(o)
-}
-
-func (m *simpleSwapBindingMock) Issuer(o *bind.CallOpts) (common.Address, error) {
-	return m.issuer(o)
-}
-
-func (m *simpleSwapBindingMock) TotalPaidOut(o *bind.CallOpts) (*big.Int, error) {
-	return m.totalPaidOut(o)
-}
-
-func (m *simpleSwapBindingMock) PaidOut(o *bind.CallOpts, c common.Address) (*big.Int, error) {
-	return m.paidOut(o, c)
-}
 
 type chequeSignerMock struct {
 	sign func(cheque *chequebook.Cheque) ([]byte, error)
@@ -46,7 +22,7 @@ func (m *chequeSignerMock) Sign(cheque *chequebook.Cheque) ([]byte, error) {
 
 type factoryMock struct {
 	erc20Address     func(ctx context.Context) (common.Address, error)
-	deploy           func(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Hash, error)
+	deploy           func(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error)
 	waitDeployed     func(ctx context.Context, txHash common.Hash) (common.Address, error)
 	verifyBytecode   func(ctx context.Context) error
 	verifyChequebook func(ctx context.Context, chequebook common.Address) error
@@ -57,8 +33,8 @@ func (m *factoryMock) ERC20Address(ctx context.Context) (common.Address, error) 
 	return m.erc20Address(ctx)
 }
 
-func (m *factoryMock) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int) (common.Hash, error) {
-	return m.deploy(ctx, issuer, defaultHardDepositTimeoutDuration)
+func (m *factoryMock) Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error) {
+	return m.deploy(ctx, issuer, defaultHardDepositTimeoutDuration, nonce)
 }
 
 func (m *factoryMock) WaitDeployed(ctx context.Context, txHash common.Hash) (common.Address, error) {

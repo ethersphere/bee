@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	random "crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	random "math/rand"
+	"math"
+	"math/big"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -31,6 +33,8 @@ var (
 
 	// ErrVarLenTargets is returned when the given target list for a trojan chunk has addresses of different lengths
 	ErrVarLenTargets = errors.New("target list cannot have targets of different length")
+
+	maxUint32 = big.NewInt(math.MaxUint32)
 )
 
 // Topic is the type that classifies messages, allows client applications to subscribe to
@@ -180,13 +184,11 @@ func hasher(span, b []byte) func([]byte) ([]byte, error) {
 		s := append(nonce, b...)
 		hasher := bmtpool.Get()
 		defer bmtpool.Put(hasher)
-		if err := hasher.SetSpanBytes(span); err != nil {
-			return nil, err
-		}
+		hasher.SetHeader(span)
 		if _, err := hasher.Write(s); err != nil {
 			return nil, err
 		}
-		return hasher.Sum(nil), nil
+		return hasher.Hash(nil)
 	}
 }
 
@@ -204,7 +206,11 @@ func contains(col Targets, elem []byte) bool {
 func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
 	seeds := make([]uint32, 8)
 	for i := range seeds {
-		seeds[i] = random.Uint32()
+		b, err := random.Int(random.Reader, maxUint32)
+		if err != nil {
+			return nil, err
+		}
+		seeds[i] = uint32(b.Int64())
 	}
 	initnonce := make([]byte, 32)
 	for i := 0; i < 8; i++ {
@@ -271,7 +277,7 @@ func extractPublicKey(chunkData []byte) (*ecdsa.PublicKey, error) {
 // instead the hash of the secret key and the topic is matched against a hint (64 bit meta info)q
 // proper integrity check will disambiguate any potential collisions (false positives)
 // if the topic matches the hint, it returns the el-Gamal decryptor, otherwise an error
-func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint []byte, topic []byte) (encryption.Decrypter, error) {
+func matchTopic(key *ecdsa.PrivateKey, pubkey *ecdsa.PublicKey, hint, topic []byte) (encryption.Decrypter, error) {
 	dec, err := elgamal.NewDecrypter(key, pubkey, topic, swarm.NewHasher)
 	if err != nil {
 		return nil, err

@@ -481,6 +481,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 	recipientAddress := common.HexToAddress("efff")
 	totalPayout := big.NewInt(100)
 	cumulativePayout := big.NewInt(700)
+	uncashedAmount := big.NewInt(200)
 	chequebookAddress := common.HexToAddress("0xcfec")
 	peer := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 
@@ -504,44 +505,120 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		Bounced:          false,
 	}
 
-	cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
-		status := &chequebook.CashoutStatus{
-			TxHash:   actionTxHash,
-			Cheque:   *cheque,
-			Result:   result,
-			Reverted: false,
+	t.Run("with result", func(t *testing.T) {
+		cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+			status := &chequebook.CashoutStatus{
+				Last: &chequebook.LastCashout{
+					TxHash:   actionTxHash,
+					Cheque:   *cheque,
+					Result:   result,
+					Reverted: false,
+				},
+				UncashedAmount: uncashedAmount,
+			}
+			return status, nil
 		}
-		return status, nil
-	}
 
-	testServer := newTestServer(t, testServerOptions{
-		SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+		testServer := newTestServer(t, testServerOptions{
+			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+		})
+
+		expected := &debugapi.SwapCashoutStatusResponse{
+			Peer:            peer,
+			TransactionHash: &actionTxHash,
+			Cheque: &debugapi.ChequebookLastChequePeerResponse{
+				Chequebook:  chequebookAddress.String(),
+				Payout:      cumulativePayout,
+				Beneficiary: cheque.Beneficiary.String(),
+			},
+			Result: &debugapi.SwapCashoutStatusResult{
+				Recipient:  recipientAddress,
+				LastPayout: totalPayout,
+				Bounced:    false,
+			},
+			UncashedAmount: uncashedAmount,
+		}
+
+		var got *debugapi.SwapCashoutStatusResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
+		}
 	})
 
-	statusResult := &debugapi.SwapCashoutStatusResult{
-		Recipient:  recipientAddress,
-		LastPayout: totalPayout,
-		Bounced:    false,
-	}
+	t.Run("without result", func(t *testing.T) {
+		cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+			status := &chequebook.CashoutStatus{
+				Last: &chequebook.LastCashout{
+					TxHash:   actionTxHash,
+					Cheque:   *cheque,
+					Result:   nil,
+					Reverted: false,
+				},
+				UncashedAmount: uncashedAmount,
+			}
+			return status, nil
+		}
 
-	expected := &debugapi.SwapCashoutStatusResponse{
-		Peer:             peer,
-		TransactionHash:  actionTxHash,
-		Chequebook:       chequebookAddress,
-		CumulativePayout: cumulativePayout,
-		Beneficiary:      cheque.Beneficiary,
-		Result:           statusResult,
-	}
+		testServer := newTestServer(t, testServerOptions{
+			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+		})
 
-	var got *debugapi.SwapCashoutStatusResponse
-	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-		jsonhttptest.WithUnmarshalJSONResponse(&got),
-	)
+		expected := &debugapi.SwapCashoutStatusResponse{
+			Peer:            peer,
+			TransactionHash: &actionTxHash,
+			Cheque: &debugapi.ChequebookLastChequePeerResponse{
+				Chequebook:  chequebookAddress.String(),
+				Payout:      cumulativePayout,
+				Beneficiary: cheque.Beneficiary.String(),
+			},
+			Result:         nil,
+			UncashedAmount: uncashedAmount,
+		}
 
-	if !reflect.DeepEqual(got, expected) {
-		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
-	}
+		var got *debugapi.SwapCashoutStatusResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
 
+		if !reflect.DeepEqual(got, expected) {
+			t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
+		}
+	})
+
+	t.Run("without last", func(t *testing.T) {
+		cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+			status := &chequebook.CashoutStatus{
+				Last:           nil,
+				UncashedAmount: uncashedAmount,
+			}
+			return status, nil
+		}
+
+		testServer := newTestServer(t, testServerOptions{
+			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+		})
+
+		expected := &debugapi.SwapCashoutStatusResponse{
+			Peer:            peer,
+			TransactionHash: nil,
+			Cheque:          nil,
+			Result:          nil,
+			UncashedAmount:  uncashedAmount,
+		}
+
+		var got *debugapi.SwapCashoutStatusResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
+		}
+	})
 }
 
 func LastChequesEqual(a, b *debugapi.ChequebookLastChequesResponse) bool {

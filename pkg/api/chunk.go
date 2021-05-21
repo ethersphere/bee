@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/netstore"
@@ -83,7 +84,23 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seen, err := s.storer.Put(ctx, requestModePut(r), chunk)
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		s.logger.Debugf("chunk upload: postage batch id: %v", err)
+		s.logger.Error("chunk upload: postage batch id")
+		jsonhttp.BadRequest(w, "invalid postage batch id")
+		return
+	}
+
+	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	if err != nil {
+		s.logger.Debugf("chunk upload: putter:%v", err)
+		s.logger.Error("chunk upload: putter")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	seen, err := putter.Put(ctx, requestModePut(r), chunk)
 	if err != nil {
 		s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
 		s.logger.Error("chunk upload: chunk write error")
@@ -111,8 +128,17 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	}
 
+	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+		if err := s.pinning.CreatePin(ctx, chunk.Address(), false); err != nil {
+			s.logger.Debugf("chunk upload: creation of pin for %q failed: %v", chunk.Address(), err)
+			s.logger.Error("chunk upload: creation of pin failed")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+	}
+
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, chunkAddressResponse{Reference: chunk.Address()})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
 }
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {

@@ -44,7 +44,7 @@ func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	return exist, err
 }
 
-// put stores Chunks to database and updates other indexes. It acquires lockAddr
+// put stores Chunks to database and updates other indexes. It acquires batchMu
 // to protect two calls of this function for the same address in parallel. Item
 // fields Address and Data must not be with their nil values. If chunks with the
 // same address are passed in arguments, only the first chunk will be stored,
@@ -52,6 +52,19 @@ func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 // slice. This is the same behaviour as if the same chunks are passed one by one
 // in multiple put method calls.
 func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+	// this is an optimization that tries to optimize on already existing chunks
+	// not needing to acquire batchMu. This is in order to reduce lock contention
+	// when chunks are retried across the network for whatever reason.
+	if len(chs) == 1 && mode != storage.ModePutRequestPin && mode != storage.ModePutUploadPin {
+		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
+		if err != nil {
+			return nil, err
+		}
+		if has {
+			return []bool{true}, nil
+		}
+	}
+
 	// protect parallel updates
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
@@ -78,25 +91,21 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	binIDs := make(map[uint8]uint64)
 
 	switch mode {
-	case storage.ModePutRequest, storage.ModePutRequestPin:
+	case storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutRequestCache:
 		for i, ch := range chs {
 			if containsChunk(ch.Address(), chs[:i]...) {
 				exist[i] = true
 				continue
 			}
-			exists, c, err := db.putRequest(batch, binIDs, chunkToItem(ch))
+			item := chunkToItem(ch)
+			pin := mode == storage.ModePutRequestPin     // force pin in this mode
+			cache := mode == storage.ModePutRequestCache // force cache
+			exists, c, err := db.putRequest(batch, binIDs, item, pin, cache)
 			if err != nil {
 				return nil, err
 			}
 			exist[i] = exists
 			gcSizeChange += c
-
-			if mode == storage.ModePutRequestPin {
-				err = db.setPin(batch, ch.Address())
-				if err != nil {
-					return nil, err
-				}
-			}
 		}
 
 	case storage.ModePutUpload, storage.ModePutUploadPin:
@@ -105,7 +114,8 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				exist[i] = true
 				continue
 			}
-			exists, c, err := db.putUpload(batch, binIDs, chunkToItem(ch))
+			item := chunkToItem(ch)
+			exists, c, err := db.putUpload(batch, binIDs, item)
 			if err != nil {
 				return nil, err
 			}
@@ -118,11 +128,12 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			}
 			gcSizeChange += c
 			if mode == storage.ModePutUploadPin {
-				err = db.setPin(batch, ch.Address())
+				c, err = db.setPin(batch, item)
 				if err != nil {
 					return nil, err
 				}
 			}
+			gcSizeChange += c
 		}
 
 	case storage.ModePutSync:
@@ -176,12 +187,12 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 //  - it does not enter the syncpool
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
-	has, err := db.retrievalDataIndex.Has(item)
+func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item, forcePin, forceCache bool) (exists bool, gcSizeChange int64, err error) {
+	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
 		return false, 0, err
 	}
-	if has {
+	if exists {
 		return true, 0, nil
 	}
 
@@ -190,15 +201,33 @@ func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-
-	gcSizeChange, err = db.setGC(batch, item)
+	err = db.retrievalDataIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
 
-	err = db.retrievalDataIndex.PutInBatch(batch, item)
+	item.AccessTimestamp = now()
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
+	}
+
+	gcSizeChange, err = db.preserveOrCache(batch, item, forcePin, forceCache)
+	if err != nil {
+		return false, 0, err
+	}
+
+	if !forceCache {
+		// if we are here it means the chunk has a valid stamp
+		// therefore we'd like to be able to pullsync it
+		err = db.pullIndex.PutInBatch(batch, item)
+		if err != nil {
+			return false, 0, err
+		}
 	}
 
 	return false, gcSizeChange, nil
@@ -235,6 +264,10 @@ func (db *DB) putUpload(batch *badger.Txn, binIDs map[uint8]uint64, item shed.It
 		return false, 0, err
 	}
 
+	err = db.postageChunksIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	return false, 0, nil
 }
 
@@ -264,7 +297,18 @@ func (db *DB) putSync(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item
 	if err != nil {
 		return false, 0, err
 	}
-	gcSizeChange, err = db.setGC(batch, item)
+	err = db.postageChunksIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+
+	item.AccessTimestamp = now()
+	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
+
+	gcSizeChange, err = db.preserveOrCache(batch, item, false, false)
 	if err != nil {
 		return false, 0, err
 	}
@@ -272,38 +316,20 @@ func (db *DB) putSync(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item
 	return false, gcSizeChange, nil
 }
 
-// setGC is a helper function used to add chunks to the retrieval access
-// index and the gc index in the cases that the putToGCCheck condition
-// warrants a gc set. this is to mitigate index leakage in edge cases where
-// a chunk is added to a node's localstore and given that the chunk is
-// already within that node's NN (thus, it can be added to the gc index
-// safely)
-func (db *DB) setGC(batch *badger.Txn, item shed.Item) (gcSizeChange int64, err error) {
-	if item.BinID == 0 {
-		i, err := db.retrievalDataIndex.Get(item)
-		if err != nil {
-			return 0, err
-		}
-		item.BinID = i.BinID
-	}
-	i, err := db.retrievalAccessIndex.Get(item)
-	switch {
-	case err == nil:
-		item.AccessTimestamp = i.AccessTimestamp
-		err = db.gcIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return 0, err
-		}
-		gcSizeChange--
-	case errors.Is(err, shed.ErrNotFound):
-		// the chunk is not accessed before
-	default:
-		return 0, err
-	}
-	item.AccessTimestamp = now()
-	err = db.retrievalAccessIndex.PutInBatch(batch, item)
+// preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
+// (the retrieval access index and the gc index)
+func (db *DB) preserveOrCache(batch *badger.Txn, item shed.Item, forcePin, forceCache bool) (gcSizeChange int64, err error) {
+	// item needs to be populated with Radius
+	item2, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
-		return 0, err
+		// if there's an error, assume the chunk needs to be GCd
+		forceCache = true
+	} else {
+		item.Radius = item2.Radius
+	}
+
+	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
+		return db.setPin(batch, item)
 	}
 
 	// add new entry to gc index ONLY if it is not present in pinIndex
@@ -311,13 +337,21 @@ func (db *DB) setGC(batch *badger.Txn, item shed.Item) (gcSizeChange int64, err 
 	if err != nil {
 		return 0, err
 	}
-	if !ok {
-		err = db.gcIndex.PutInBatch(batch, item)
-		if err != nil {
-			return 0, err
-		}
-		gcSizeChange++
+	if ok {
+		return gcSizeChange, nil
 	}
+	exists, err := db.gcIndex.Has(item)
+	if err != nil && !errors.Is(err, shed.ErrNotFound) {
+		return 0, err
+	}
+	if exists {
+		return 0, nil
+	}
+	err = db.gcIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0, err
+	}
+	gcSizeChange++
 
 	return gcSizeChange, nil
 }
