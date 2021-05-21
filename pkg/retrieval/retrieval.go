@@ -20,6 +20,8 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/pricer"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -52,12 +54,12 @@ type Service struct {
 	singleflight  singleflight.Group
 	logger        logging.Logger
 	accounting    accounting.Interface
-	pricer        accounting.Pricer
 	metrics       metrics
+	pricer        pricer.Interface
 	tracer        *tracing.Tracer
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer accounting.Pricer, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -201,13 +203,8 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	sp.Add(peer)
 
-	// compute the price we pay for this chunk and reserve it for the rest of this function
+	// compute the peer's price for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
-	err = s.accounting.Reserve(ctx, peer, chunkPrice)
-	if err != nil {
-		return nil, peer, err
-	}
-	defer s.accounting.Release(peer, chunkPrice)
 
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -215,6 +212,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, fmt.Errorf("new stream: %w", err)
 	}
+
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -222,6 +220,13 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			go stream.FullClose()
 		}
 	}()
+
+	// Reserve to see whether we can request the chunk
+	err = s.accounting.Reserve(ctx, peer, chunkPrice)
+	if err != nil {
+		return nil, peer, err
+	}
+	defer s.accounting.Release(peer, chunkPrice)
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
@@ -241,7 +246,12 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		Observe(time.Since(startTimer).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
-	chunk = swarm.NewChunk(addr, d.Data)
+	stamp := new(postage.Stamp)
+	err = stamp.UnmarshalBinary(d.Stamp)
+	if err != nil {
+		return nil, peer, fmt.Errorf("stamp unmarshal: %w", err)
+	}
+	chunk = swarm.NewChunk(addr, d.Data).WithStamp(stamp)
 	if !cac.Valid(chunk) {
 		if !soc.Valid(chunk) {
 			s.metrics.InvalidChunkRetrieved.Inc()
@@ -329,6 +339,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
+
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
@@ -347,20 +358,24 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 
+	stamp, err := chunk.Stamp().MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("stamp marshal: %w", err)
+	}
+
+	chunkPrice := s.pricer.Price(chunk.Address())
+	debit := s.accounting.PrepareDebit(p.Address, chunkPrice)
+	defer debit.Cleanup()
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
-		Data: chunk.Data(),
+		Data:  chunk.Data(),
+		Stamp: stamp,
 	}); err != nil {
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
-	// compute the price we charge for this chunk and debit it from p's balance
-	chunkPrice := s.pricer.Price(chunk.Address())
-	err = s.accounting.Debit(p.Address, chunkPrice)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	// debit price from p's balance
+	return debit.Apply()
 }

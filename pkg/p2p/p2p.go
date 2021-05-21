@@ -44,6 +44,7 @@ type PickyNotifier interface {
 type Notifier interface {
 	Connected(context.Context, Peer) error
 	Disconnected(Peer)
+	Announce(context.Context, swarm.Address) error
 }
 
 // DebugService extends the Service with method used for debugging.
@@ -67,6 +68,7 @@ type StreamerDisconnecter interface {
 type Stream interface {
 	io.ReadWriter
 	io.Closer
+	ResponseHeaders() Headers
 	Headers() Headers
 	FullClose() error
 	Reset() error
@@ -92,7 +94,8 @@ type StreamSpec struct {
 
 // Peer holds information about a Peer.
 type Peer struct {
-	Address swarm.Address `json:"address"`
+	Address  swarm.Address `json:"address"`
+	FullNode bool          `json:"fullNode"`
 }
 
 // HandlerFunc handles a received Stream from a Peer.
@@ -103,7 +106,7 @@ type HandlerMiddleware func(HandlerFunc) HandlerFunc
 
 // HeadlerFunc is returning response headers based on the received request
 // headers.
-type HeadlerFunc func(Headers) Headers
+type HeadlerFunc func(Headers, swarm.Address) Headers
 
 // Headers represents a collection of p2p header key value pairs.
 type Headers map[string][]byte

@@ -51,7 +51,7 @@ type Store struct {
 // and possible conflicts with schema from existing database is checked
 // automatically.
 func New(path string) (s *Store, err error) {
-	db, err := shed.NewDB(path)
+	db, err := shed.NewDB(path, nil)
 	if err != nil {
 		return nil, err
 	}

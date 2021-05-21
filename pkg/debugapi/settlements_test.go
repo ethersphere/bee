@@ -36,7 +36,7 @@ func TestSettlements(t *testing.T) {
 	}
 
 	testServer := newTestServer(t, testServerOptions{
-		SettlementOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc), mock.WithSettlementsRecvFunc(settlementsRecvFunc)},
+		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc), mock.WithSettlementsRecvFunc(settlementsRecvFunc)},
 	})
 
 	expected := &debugapi.SettlementsResponse{
@@ -84,7 +84,7 @@ func TestSettlementsError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
-		SettlementOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc)},
+		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements", http.StatusInternalServerError,
@@ -101,7 +101,7 @@ func TestSettlementsPeers(t *testing.T) {
 		return big.NewInt(1000000000000000000), nil
 	}
 	testServer := newTestServer(t, testServerOptions{
-		SettlementOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
+		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusOK,
@@ -124,7 +124,7 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 
 	t.Run("no sent", func(t *testing.T) {
 		testServer := newTestServer(t, testServerOptions{
-			SettlementOpts: []mock.Option{
+			SwapOpts: []mock.Option{
 				mock.WithSettlementSentFunc(errFunc),
 				mock.WithSettlementRecvFunc(noErrFunc),
 			},
@@ -141,7 +141,7 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 
 	t.Run("no received", func(t *testing.T) {
 		testServer := newTestServer(t, testServerOptions{
-			SettlementOpts: []mock.Option{
+			SwapOpts: []mock.Option{
 				mock.WithSettlementSentFunc(noErrFunc),
 				mock.WithSettlementRecvFunc(errFunc),
 			},
@@ -164,7 +164,7 @@ func TestSettlementsPeersError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer := newTestServer(t, testServerOptions{
-		SettlementOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
+		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusInternalServerError,
@@ -182,7 +182,7 @@ func TestSettlementsInvalidAddress(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/settlements/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrInvaliAddress,
+			Message: debugapi.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)

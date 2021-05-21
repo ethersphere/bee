@@ -18,9 +18,10 @@ import (
 )
 
 type transactionServiceMock struct {
-	send           func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)
-	waitForReceipt func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
-	call           func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
+	send                 func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)
+	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
+	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
+	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
@@ -35,6 +36,13 @@ func (m *transactionServiceMock) WaitForReceipt(ctx context.Context, txHash comm
 		return m.waitForReceipt(ctx, txHash)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error) {
+	if m.watchSentTransaction != nil {
+		return m.watchSentTransaction(txHash)
+	}
+	return nil, nil, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) Call(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
@@ -81,13 +89,15 @@ func New(opts ...Option) transaction.Service {
 
 type Call struct {
 	abi    *abi.ABI
+	to     common.Address
 	result []byte
 	method string
 	params []interface{}
 }
 
-func ABICall(abi *abi.ABI, result []byte, method string, params ...interface{}) Call {
+func ABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...interface{}) Call {
 	return Call{
+		to:     to,
 		abi:    abi,
 		result: result,
 		method: method,
@@ -113,6 +123,13 @@ func WithABICallSequence(calls ...Call) Option {
 				return nil, fmt.Errorf("wrong data. wanted %x, got %x", data, request.Data)
 			}
 
+			if request.To == nil {
+				return nil, errors.New("call with no recipient")
+			}
+			if *request.To != call.to {
+				return nil, fmt.Errorf("wrong recipient. wanted %x, got %x", call.to, *request.To)
+			}
+
 			calls = calls[1:]
 
 			return call.result, nil
@@ -120,8 +137,8 @@ func WithABICallSequence(calls ...Call) Option {
 	})
 }
 
-func WithABICall(abi *abi.ABI, result []byte, method string, params ...interface{}) Option {
-	return WithABICallSequence(ABICall(abi, result, method, params...))
+func WithABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...interface{}) Option {
+	return WithABICallSequence(ABICall(abi, to, result, method, params...))
 }
 
 func WithABISend(abi *abi.ABI, txHash common.Hash, expectedAddress common.Address, expectedValue *big.Int, method string, params ...interface{}) Option {

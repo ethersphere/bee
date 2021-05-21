@@ -65,7 +65,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 	go func() {
 		defer clean()
 		defer db.subscritionsWG.Done()
-		db.metrics.SubscribePullStop.Inc()
+		defer db.metrics.SubscribePullStop.Inc()
 		// close the returned store.Descriptor channel at the end to
 		// signal that the subscription is done
 		defer close(chunkDescriptors)

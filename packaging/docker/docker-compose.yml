@@ -2,7 +2,7 @@ version: "3"
 
 services:
   clef-1:
-    image: ethersphere/clef:0.4.9
+    image: ethersphere/clef:0.4.12
     restart: unless-stopped
     environment:
       - CLEF_CHAINID
@@ -11,17 +11,22 @@ services:
     command: full
 
   bee-1:
-    image: ethersphere/bee:0.5.1
+    image: ethersphere/bee:beta
     restart: unless-stopped
     environment:
       - BEE_API_ADDR
       - BEE_BOOTNODE
+      - BEE_BOOTNODE_MODE
       - BEE_CLEF_SIGNER_ENABLE
       - BEE_CLEF_SIGNER_ENDPOINT=http://clef-1:8550
       - BEE_CONFIG
       - BEE_CORS_ALLOWED_ORIGINS
       - BEE_DATA_DIR
-      - BEE_DB_CAPACITY
+      - BEE_CACHE_CAPACITY
+      - BEE_DB_OPEN_FILES_LIMIT
+      - BEE_DB_BLOCK_CACHE_CAPACITY
+      - BEE_DB_WRITE_BUFFER_SIZE
+      - BEE_DB_DISABLE_SEEKS_COMPACTION
       - BEE_DEBUG_API_ADDR
       - BEE_DEBUG_API_ENABLE
       - BEE_GATEWAY_MODE

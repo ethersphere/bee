@@ -32,10 +32,18 @@ import (
 )
 
 var (
-	openFileLimit      = 128 // The limit for LevelDB OpenFilesCacheCapacity.
-	blockCacheCapacity = 32 * 1024 * 1024
-	writeBuffer        = 32 * 1024 * 1024
+	defaultOpenFilesLimit         = uint64(256)
+	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
+	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
+	defaultDisableSeeksCompaction = false
 )
+
+type Options struct {
+	BlockCacheCapacity     uint64
+	WriteBufferSize        uint64
+	OpenFilesLimit         uint64
+	DisableSeeksCompaction bool
+}
 
 // DB provides abstractions over LevelDB in order to
 // implement complex structures using fields and ordered indexes.
@@ -50,21 +58,39 @@ type DB struct {
 // NewDB constructs a new DB and validates the schema
 // if it exists in database on the given path.
 // metricsPrefix is used for metrics collection for the given DB.
-func NewDB(path string) (db *DB, err error) {
+func NewDB(path string, o *Options) (db *DB, err error) {
+	if o == nil {
+		o = &Options{
+			OpenFilesLimit:         defaultOpenFilesLimit,
+			BlockCacheCapacity:     defaultBlockCacheCapacity,
+			WriteBufferSize:        defaultWriteBufferSize,
+			DisableSeeksCompaction: defaultDisableSeeksCompaction,
+		}
+	}
 	var ldb *leveldb.DB
 	if path == "" {
 		ldb, err = leveldb.Open(storage.NewMemStorage(), nil)
 	} else {
 		ldb, err = leveldb.OpenFile(path, &opt.Options{
-			OpenFilesCacheCapacity: openFileLimit,
-			BlockCacheCapacity:     blockCacheCapacity,
-			DisableSeeksCompaction: true,
-			WriteBuffer:            writeBuffer,
+			OpenFilesCacheCapacity: int(o.OpenFilesLimit),
+			BlockCacheCapacity:     int(o.BlockCacheCapacity),
+			WriteBuffer:            int(o.WriteBufferSize),
+			DisableSeeksCompaction: o.DisableSeeksCompaction,
 		})
 	}
 
 	if err != nil {
 		return nil, err
+	}
+
+	return NewDBWrap(ldb)
+}
+
+// NewDBWrap returns new DB which uses the given ldb as its underlying storage.
+// The function will panics if the given ldb is nil.
+func NewDBWrap(ldb *leveldb.DB) (db *DB, err error) {
+	if ldb == nil {
+		panic(errors.New("shed: NewDBWrap: nil ldb"))
 	}
 
 	db = &DB{
@@ -74,7 +100,7 @@ func NewDB(path string) (db *DB, err error) {
 
 	if _, err = db.getSchema(); err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
-			// save schema with initialized default fields
+			// Save schema with initialized default fields.
 			if err = db.putSchema(schema{
 				Fields:  make(map[string]fieldSpec),
 				Indexes: make(map[byte]indexSpec),
@@ -86,7 +112,7 @@ func NewDB(path string) (db *DB, err error) {
 		}
 	}
 
-	// Create a quit channel for the periodic metrics collector and run it
+	// Create a quit channel for the periodic metrics collector and run it.
 	db.quit = make(chan struct{})
 
 	return db, nil

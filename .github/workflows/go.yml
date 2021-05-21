@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        go: [1.15]
+        go: [1.16]
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
     - name: Setup Go
@@ -28,7 +28,10 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        fetch-depth: 1
+        fetch-depth: 0
+    - name: Commit linting
+      if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
+      uses: wagoid/commitlint-github-action@v2
     - name: Cache Go modules
       uses: actions/cache@v1
       with:

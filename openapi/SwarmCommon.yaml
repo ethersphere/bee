@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.1
+  version: 0.6.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -29,10 +29,32 @@ components:
             $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
           $ref: "#/components/schemas/EthereumAddress"
-        public_key:
+        publicKey:
           $ref: "#/components/schemas/PublicKey"
-        pss_public_key:
+        pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
+
+    ReserveState:
+      type: object
+      properties:
+        radius:
+          type: integer
+        available:
+          type: integer
+        outer:
+          type: integer
+        inner:
+          type: integer
+
+    ChainState:
+      type: object
+      properties:
+        block:
+          type: integer
+        totalAmount:
+          type: integer
+        currentPrice:
+          type: integer
 
     Balance:
       type: object
@@ -49,19 +71,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Balance"
-
-    BzzChunksPinned:
-      type: object
-      properties:
-        chunks:
-          type: array
-          items:
-            type: object
-            properties:
-              address:
-                type: string
-              pinCounter:
-                type: integer
 
     BzzTopology:
       type: object
@@ -107,6 +116,7 @@ components:
       properties:
         lastcheques:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/ChequePeerResponse"
 
@@ -131,7 +141,7 @@ components:
     ChequebookAddress:
       type: object
       properties:
-        chequebookaddress:
+        chequebookAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
     DateTime:
@@ -149,9 +159,17 @@ components:
       type: string
       pattern: "^[A-Fa-f0-9]{40}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
-
+      
     FileName:
       type: string
+
+    GasLimit:
+      type: integer
+      minimum: 0
+      maximum: 18446744073709551615
+
+    GasPrice:
+      type: integer
 
     Hash:
       type: object
@@ -214,6 +232,7 @@ components:
       properties:
         tags:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/NewTagResponse"
 
@@ -226,16 +245,9 @@ components:
       properties:
         peers:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Address"
-
-    PinningState:
-      type: object
-      properties:
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-        pinCounter:
-          type: integer
 
     PssRecipient:
       type: string
@@ -254,6 +266,21 @@ components:
       properties:
         reference:
           $ref: "#/components/schemas/SwarmReference"
+
+    PostageBatchesResponse:
+      type: object
+      properties:
+        stamps:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PostageBatch"
+
+    BatchIDResponse:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/BatchID"
 
     Response:
       type: object
@@ -275,6 +302,14 @@ components:
         status:
           type: string
 
+    PostageBatch:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/BatchID"
+        utilization:
+          type: integer
+
     Settlement:
       type: object
       properties:
@@ -288,12 +323,13 @@ components:
     Settlements:
       type: object
       properties:
-        totalreceived:
+        totalReceived:
           type: integer
-        totalsent:
+        totalSent:
           type: integer
         settlements:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Settlement"
 
@@ -317,10 +353,23 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
+    BatchID:
+      pattern: "^[A-Fa-f0-9]{64}$"
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
+
+    SwarmOnlyReferencesList:
+      type: object
+      properties:
+        addresses:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/SwarmOnlyReference"
 
     SwarmReference:
       oneOf:
@@ -343,16 +392,14 @@ components:
       properties:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
-        chequebook:
-          $ref: "#/components/schemas/EthereumAddress"
-        cumulativePayout:
-          type: integer
-        beneficiary:
-          $ref: "#/components/schemas/EthereumAddress"
+        lastCashedCheque:
+          $ref: "#/components/schemas/Cheque"
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
         result:
           $ref: "#/components/schemas/SwapCashoutResult"
+        uncashedAmount:
+          type: integer
 
     TagName:
       type: string
@@ -374,7 +421,7 @@ components:
     WelcomeMessage:
       type: object
       properties:
-        welcome_message:
+        welcomeMessage:
           type: string
 
     FeedType:
@@ -413,6 +460,22 @@ components:
         type: string
 
   parameters:
+
+    GasPriceParameter:
+      in: header
+      name: gas-price
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/GasPrice"
+      required: false
+      description: "Gas price for transaction"
+
+    GasLimitParameter:
+      in: header
+      name: gas-limit
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/GasLimit"
+      required: false
+      description: "Gas limit for transaction"
 
     SwarmRecoveryTargetsParameter:
       in: query
@@ -470,6 +533,22 @@ components:
         example: error.html
       required: false
       description: Configure custom error document to be returned when a specified path can not be found in collection
+
+    SwarmCollection:
+      in: header
+      name: swarm-collection
+      schema:
+        type: boolean
+      required: false
+      description: Upload file/files as a collection
+
+    SwarmPostageBatchId:
+      in: header
+      name: swarm-postage-batch-id
+      description: "ID of Postage Batch that is used to upload data with"
+      required: true
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
 
   responses:
     "204":

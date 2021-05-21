@@ -9,27 +9,28 @@ import "github.com/ethersphere/bee/pkg/swarm"
 type Server = server
 
 type (
-	BytesPostResponse        = bytesPostResponse
-	ChunkAddressResponse     = chunkAddressResponse
-	SocPostResponse          = socPostResponse
-	FeedReferenceResponse    = feedReferenceResponse
-	FileUploadResponse       = fileUploadResponse
-	TagResponse              = tagResponse
-	TagRequest               = tagRequest
-	ListTagsResponse         = listTagsResponse
-	PinnedChunk              = pinnedChunk
-	ListPinnedChunksResponse = listPinnedChunksResponse
-	UpdatePinCounter         = updatePinCounter
+	BytesPostResponse     = bytesPostResponse
+	ChunkAddressResponse  = chunkAddressResponse
+	SocPostResponse       = socPostResponse
+	FeedReferenceResponse = feedReferenceResponse
+	BzzUploadResponse     = bzzUploadResponse
+	TagResponse           = tagResponse
+	TagRequest            = tagRequest
+	ListTagsResponse      = listTagsResponse
+	PostageCreateResponse = postageCreateResponse
+	PostageStampResponse  = postageStampResponse
+	PostageStampsResponse = postageStampsResponse
 )
 
 var (
-	ContentTypeTar = contentTypeTar
+	InvalidContentType  = errInvalidContentType
+	InvalidRequest      = errInvalidRequest
+	DirectoryStoreError = errDirectoryStore
 )
 
 var (
-	ManifestRootPath                      = manifestRootPath
-	ManifestWebsiteIndexDocumentSuffixKey = manifestWebsiteIndexDocumentSuffixKey
-	ManifestWebsiteErrorDocumentPathKey   = manifestWebsiteErrorDocumentPathKey
+	ContentTypeTar    = contentTypeTar
+	ContentTypeHeader = contentTypeHeader
 )
 
 var (

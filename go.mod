@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee
 
-go 1.14
+go 1.16
 
 require (
 	github.com/btcsuite/btcd v0.21.0-beta
@@ -8,19 +8,20 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/ethereum/go-ethereum v1.9.23
-	github.com/ethersphere/bmt v0.1.4
+	github.com/ethersphere/go-storage-incentives-abi v0.2.0
+	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
-	github.com/ethersphere/manifest v0.3.6
-	github.com/ethersphere/sw3-bindings/v3 v3.0.3
-	github.com/foxcpp/go-mockdns v0.0.0-20201212160233-ede2f9158d15
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
+	github.com/google/go-cmp v0.5.0
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
+	github.com/hashicorp/go-multierror v1.1.1
+	github.com/hashicorp/golang-lru v0.5.4
 	github.com/kardianos/service v1.2.0
 	github.com/koron/go-ssdp v0.0.2 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -67,6 +68,7 @@ require (
 	golang.org/x/sys v0.0.0-20210108172913-0df2131ae363
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 	golang.org/x/text v0.3.4 // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.0.0-20200626171337-aa94e735be7f // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect

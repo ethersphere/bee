@@ -21,15 +21,16 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p/mock"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/resolver"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
@@ -51,6 +52,7 @@ type testServerOptions struct {
 	SettlementOpts     []swapmock.Option
 	ChequebookOpts     []chequebookmock.Option
 	SwapOpts           []swapmock.Option
+	BatchStore         postage.Storer
 }
 
 type testServer struct {
@@ -63,9 +65,10 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
-	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
+	swapserv := swapmock.New(o.SwapOpts...)
+	ln := lightnode.NewContainer()
 	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins)
-	s.Configure(o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
+	s.Configure(o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -121,7 +124,7 @@ func TestServer_Configure(t *testing.T) {
 		PSSPublicKey:    pssPrivateKey.PublicKey,
 		Overlay:         overlay,
 		EthereumAddress: ethereumAddress,
-		P2P: mock.New(mock.WithAddressesFunc(func() ([]multiaddr.Multiaddr, error) {
+		P2P: p2pmock.New(p2pmock.WithAddressesFunc(func() ([]multiaddr.Multiaddr, error) {
 			return addresses, nil
 		})),
 	}
@@ -129,7 +132,8 @@ func TestServer_Configure(t *testing.T) {
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
-	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
+	swapserv := swapmock.New(o.SwapOpts...)
+	ln := lightnode.NewContainer()
 	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
@@ -162,7 +166,7 @@ func TestServer_Configure(t *testing.T) {
 		}),
 	)
 
-	s.Configure(o.P2P, o.Pingpong, topologyDriver, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook)
+	s.Configure(o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,

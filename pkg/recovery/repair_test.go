@@ -16,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/postage"
+	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
@@ -218,19 +220,23 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 
 	mockStorer := storemock.NewStorer()
 	serverMockAccounting := accountingmock.NewAccounting()
-	price := uint64(12345)
-	pricerMock := accountingmock.NewPricer(price, price)
+
+	pricerMock := pricermock.NewMockService(10, 10)
 	peerID := swarm.MustParseHexAddress("deadbeef")
 	ps := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, nil, nil)
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 	)
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
-	ns := netstore.New(storer, recoveryFunc, retrieve, logger)
+	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
+	}
+
+	ns := netstore.New(storer, validStamp, recoveryFunc, retrieve, logger)
 	return ns
 }
 
@@ -250,7 +256,7 @@ type mockPssSender struct {
 }
 
 // Send mocks the pss Send function
-func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, recipient *ecdsa.PublicKey, targets pss.Targets) error {
+func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, _ postage.Stamper, recipient *ecdsa.PublicKey, targets pss.Targets) error {
 	mp.callbackC <- true
 	return nil
 }

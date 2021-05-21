@@ -10,8 +10,11 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
 )
@@ -36,12 +39,18 @@ type cashoutService struct {
 	chequeStore        ChequeStore
 }
 
-// CashoutStatus is the action plus its result
-type CashoutStatus struct {
+// LastCashout contains information about the last cashout
+type LastCashout struct {
 	TxHash   common.Hash
 	Cheque   SignedCheque // the cheque that was used to cashout which may be different from the latest cheque
 	Result   *CashChequeResult
 	Reverted bool
+}
+
+// CashoutStatus is information about the last cashout and uncashed amounts
+type CashoutStatus struct {
+	Last           *LastCashout // last cashout for a chequebook
+	UncashedAmount *big.Int     // amount not yet cashed out
 }
 
 // CashChequeResult summarizes the result of a CashCheque or CashChequeBeneficiary call
@@ -89,6 +98,37 @@ func cashoutActionKey(chequebook common.Address) string {
 	return fmt.Sprintf("swap_cashout_%x", chequebook)
 }
 
+func (s *cashoutService) paidOut(ctx context.Context, chequebook, beneficiary common.Address) (*big.Int, error) {
+	callData, err := chequebookABI.Pack("paidOut", beneficiary)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := s.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &chequebook,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := chequebookABI.Unpack("paidOut", output)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) != 1 {
+		return nil, errDecodeABI
+	}
+
+	paidOut, ok := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
+	if !ok || paidOut == nil {
+		return nil, errDecodeABI
+	}
+
+	return paidOut, nil
+}
+
 // CashCheque sends a cashout transaction for the last cheque of the chequebook
 func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient common.Address) (common.Hash, error) {
 	cheque, err := s.chequeStore.LastCheque(chequebook)
@@ -100,12 +140,16 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 	if err != nil {
 		return common.Hash{}, err
 	}
-
+	lim := sctx.GetGasLimit(ctx)
+	if lim == 0 {
+		// fix for out of gas errors
+		lim = 300000
+	}
 	request := &transaction.TxRequest{
 		To:       &chequebook,
 		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
+		GasPrice: sctx.GetGasPrice(ctx),
+		GasLimit: lim,
 		Value:    big.NewInt(0),
 	}
 
@@ -127,26 +171,42 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 
 // CashoutStatus gets the status of the latest cashout transaction for the chequebook
 func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*CashoutStatus, error) {
-	var action *cashoutAction
-	err := s.store.Get(cashoutActionKey(chequebookAddress), &action)
+	cheque, err := s.chequeStore.LastCheque(chequebookAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	var action cashoutAction
+	err = s.store.Get(cashoutActionKey(chequebookAddress), &action)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, ErrNoCashout
+			return &CashoutStatus{
+				Last:           nil,
+				UncashedAmount: cheque.CumulativePayout, // if we never cashed out, assume everything is uncashed
+			}, nil
 		}
 		return nil, err
 	}
 
 	_, pending, err := s.backend.TransactionByHash(ctx, action.TxHash)
 	if err != nil {
-		return nil, err
+		// treat not found as pending
+		if !errors.Is(err, ethereum.NotFound) {
+			return nil, err
+		}
+		pending = true
 	}
 
 	if pending {
 		return &CashoutStatus{
-			TxHash:   action.TxHash,
-			Cheque:   action.Cheque,
-			Result:   nil,
-			Reverted: false,
+			Last: &LastCashout{
+				TxHash:   action.TxHash,
+				Cheque:   action.Cheque,
+				Result:   nil,
+				Reverted: false,
+			},
+			// uncashed is the difference since the last sent cashout. we assume that the entire cheque will clear in the pending transaction.
+			UncashedAmount: new(big.Int).Sub(cheque.CumulativePayout, action.Cheque.CumulativePayout),
 		}, nil
 	}
 
@@ -156,11 +216,21 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 	}
 
 	if receipt.Status == types.ReceiptStatusFailed {
+		// if a tx failed (should be almost impossible in practice) we no longer have the necessary information to compute uncashed locally
+		// assume there are no pending transactions and that the on-chain paidOut is the last cashout action
+		paidOut, err := s.paidOut(ctx, chequebookAddress, cheque.Beneficiary)
+		if err != nil {
+			return nil, err
+		}
+
 		return &CashoutStatus{
-			TxHash:   action.TxHash,
-			Cheque:   action.Cheque,
-			Result:   nil,
-			Reverted: true,
+			Last: &LastCashout{
+				TxHash:   action.TxHash,
+				Cheque:   action.Cheque,
+				Result:   nil,
+				Reverted: true,
+			},
+			UncashedAmount: new(big.Int).Sub(cheque.CumulativePayout, paidOut),
 		}, nil
 	}
 
@@ -170,10 +240,14 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 	}
 
 	return &CashoutStatus{
-		TxHash:   action.TxHash,
-		Cheque:   action.Cheque,
-		Result:   result,
-		Reverted: false,
+		Last: &LastCashout{
+			TxHash:   action.TxHash,
+			Cheque:   action.Cheque,
+			Result:   result,
+			Reverted: false,
+		},
+		// uncashed is the difference since the last sent (and confirmed) cashout.
+		UncashedAmount: new(big.Int).Sub(cheque.CumulativePayout, result.CumulativePayout),
 	}, nil
 }
 

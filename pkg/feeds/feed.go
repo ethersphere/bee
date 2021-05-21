@@ -102,7 +102,7 @@ func (f *Feed) Update(index Index) *Update {
 }
 
 // NewUpdate creates an update from an index, timestamp, payload and signature
-func NewUpdate(f *Feed, idx Index, timestamp int64, payload []byte, sig []byte) (swarm.Chunk, error) {
+func NewUpdate(f *Feed, idx Index, timestamp int64, payload, sig []byte) (swarm.Chunk, error) {
 	id, err := f.Update(idx).Id()
 	if err != nil {
 		return nil, fmt.Errorf("update: %w", err)

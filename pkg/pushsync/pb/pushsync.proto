@@ -11,8 +11,10 @@ option go_package = "pb";
 message Delivery {
   bytes Address = 1;
   bytes Data = 2;
+  bytes Stamp = 3;
 }
 
 message Receipt {
   bytes Address = 1;
+  bytes Signature = 2;
 }
