@@ -129,25 +129,6 @@ func TestIntervalChunks_GetChunksLater(t *testing.T) {
 	}
 }
 
-func TestIntervalChunks_Blocking(t *testing.T) {
-	desc := someDescriptors(0, 2)
-	ps, _ := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		<-time.After(100 * time.Millisecond)
-		cancel()
-	}()
-
-	_, _, err := ps.IntervalChunks(ctx, 0, 0, 5, limit)
-	if err == nil {
-		t.Fatal("expected error but got none")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
-}
-
 func TestIntervalChunks_DbShutdown(t *testing.T) {
 	ps, db := newPullStorage(t, mock.WithPartialInterval(true))
 

@@ -324,7 +324,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			}
 			if ruid == 0 {
 				p.metrics.HistWorkerErrCounter.Inc()
-				return
 			}
 			if err := p.syncer.CancelRuid(ctx, peer, ruid); err != nil && logMore {
 				p.logger.Debugf("histSyncWorker cancel ruid: %v", err)
@@ -368,7 +367,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			}
 			if ruid == 0 {
 				p.metrics.LiveWorkerErrCounter.Inc()
-				return
 			}
 			if err := p.syncer.CancelRuid(ctx, peer, ruid); err != nil && logMore {
 				p.logger.Debugf("histSyncWorker cancel ruid: %v", err)
