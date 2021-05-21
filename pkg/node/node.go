@@ -202,7 +202,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	stateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
-		_ = stateStore.Close()
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
