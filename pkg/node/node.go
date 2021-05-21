@@ -137,6 +137,7 @@ type Options struct {
 	PostageContractAddress     string
 	PriceOracleAddress         string
 	BlockTime                  uint64
+	DeployGasPrice             string
 }
 
 const (
@@ -271,6 +272,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			transactionService,
 			chequebookFactory,
 			o.SwapInitialDeposit,
+			o.DeployGasPrice,
 		)
 		if err != nil {
 			return nil, err

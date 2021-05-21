@@ -153,6 +153,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				Transaction:                c.config.GetString(optionNameTransactionHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
+				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 			})
 			if err != nil {
 				return err

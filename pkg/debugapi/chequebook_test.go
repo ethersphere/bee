@@ -130,54 +130,115 @@ func TestChequebookWithdraw(t *testing.T) {
 
 	txHash := common.HexToHash("0xfffff")
 
-	chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-		if amount.Cmp(big.NewInt(500)) == 0 {
-			return txHash, nil
+	t.Run("ok", func(t *testing.T) {
+		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+			if amount.Cmp(big.NewInt(500)) == 0 {
+				return txHash, nil
+			}
+			return common.Hash{}, nil
 		}
-		return common.Hash{}, nil
-	}
 
-	testServer := newTestServer(t, testServerOptions{
-		ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
+		testServer := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
+		})
+
+		expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+
+		var got *debugapi.ChequebookTxResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("got address: %+v, expected: %+v", got, expected)
+		}
 	})
 
-	expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+	t.Run("custom gas", func(t *testing.T) {
+		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
+				return common.Hash{}, errors.New("wrong gas price")
+			}
+			if amount.Cmp(big.NewInt(500)) == 0 {
+				return txHash, nil
+			}
+			return common.Hash{}, nil
+		}
 
-	var got *debugapi.ChequebookTxResponse
-	jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
-		jsonhttptest.WithUnmarshalJSONResponse(&got),
-	)
+		testServer := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
+		})
 
-	if !reflect.DeepEqual(got, expected) {
-		t.Errorf("got address: %+v, expected: %+v", got, expected)
-	}
+		expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+
+		var got *debugapi.ChequebookTxResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
+			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("got address: %+v, expected: %+v", got, expected)
+		}
+	})
 }
 
 func TestChequebookDeposit(t *testing.T) {
 
 	txHash := common.HexToHash("0xfffff")
 
-	chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-		if amount.Cmp(big.NewInt(700)) == 0 {
-			return txHash, nil
+	t.Run("ok", func(t *testing.T) {
+		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+			if amount.Cmp(big.NewInt(700)) == 0 {
+				return txHash, nil
+			}
+			return common.Hash{}, nil
 		}
-		return common.Hash{}, nil
-	}
 
-	testServer := newTestServer(t, testServerOptions{
-		ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
+		testServer := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
+		})
+
+		expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+
+		var got *debugapi.ChequebookTxResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("got address: %+v, expected: %+v", got, expected)
+		}
 	})
 
-	expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+	t.Run("custom gas", func(t *testing.T) {
+		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
+				return common.Hash{}, errors.New("wrong gas price")
+			}
 
-	var got *debugapi.ChequebookTxResponse
-	jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
-		jsonhttptest.WithUnmarshalJSONResponse(&got),
-	)
+			if amount.Cmp(big.NewInt(700)) == 0 {
+				return txHash, nil
+			}
+			return common.Hash{}, nil
+		}
 
-	if !reflect.DeepEqual(got, expected) {
-		t.Errorf("got address: %+v, expected: %+v", got, expected)
-	}
+		testServer := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
+		})
+
+		expected := &debugapi.ChequebookTxResponse{TransactionHash: txHash}
+
+		var got *debugapi.ChequebookTxResponse
+		jsonhttptest.Request(t, testServer.Client, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
+			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("got address: %+v, expected: %+v", got, expected)
+		}
+	})
 }
 
 func TestChequebookLastCheques(t *testing.T) {
