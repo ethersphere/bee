@@ -426,7 +426,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var swapService *swap.Service
 
-	metricsDB, err := shed.NewDBWrap(stateStore.DB(), logger)
+	metricsDB, err := shed.NewDB(filepath.Join(o.DataDir, "metrics"), logger)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}

@@ -210,7 +210,6 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 		db.updateGCSem = make(chan struct{}, maxParallelUpdateGC)
 	}
 
-	db.shed, err = shed.NewDB(path, logger)
 	// shedOpts := &shed.Options{
 	// 	OpenFilesLimit:         o.OpenFilesLimit,
 	// 	BlockCacheCapacity:     o.BlockCacheCapacity,
