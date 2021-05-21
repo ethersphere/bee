@@ -68,7 +68,7 @@ func New(storer storage.Storer) Storer {
 func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
 	var (
 		k = subKey(bin, from, to, limit)
-		c = make(chan intervalChunks)
+		c = make(chan intervalChunks, 1)
 	)
 	s.openSubsMu.Lock()
 	if subs, ok := s.openSubs[k]; ok {
@@ -91,89 +91,102 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 			return nil, 0, ctx.Err()
 		}
 	}
-	s.openSubs[k] = make([]chan intervalChunks, 0)
+	subs := make([]chan intervalChunks, 0)
+	subs = append(subs, c)
+	s.openSubs[k] = subs
 	s.openSubsMu.Unlock()
 
-	// call iterator, iterate either until upper bound or limit reached
-	// return addresses, topmost is the topmost bin ID
-	var (
-		timer  *time.Timer
-		timerC <-chan time.Time
-	)
+	go func() {
+		fn := func(ctx context.Context) (chs []swarm.Address, topmost uint64, err error) {
+			// call iterator, iterate either until upper bound or limit reached
+			// return addresses, topmost is the topmost bin ID
+			var (
+				timer  *time.Timer
+				timerC <-chan time.Time
+			)
 
-	ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
-	defer func(start time.Time) {
-		stop()
-		if timer != nil {
-			timer.Stop()
-		}
-
-		// tell others about the results
-		s.openSubsMu.Lock()
-		for _, c := range s.openSubs[k] {
-			select {
-			case c <- intervalChunks{chs: chs, topmost: topmost, err: err}:
-			default:
-				// this is needed because the polling goroutine might go away in
-				// the meanwhile due to context cancellation, and therefore a
-				// simple write to the channel will necessarily result in a
-				// deadlock, since there's one reading on the other side, causing
-				// this goroutine to deadlock.
-			}
-		}
-		delete(s.openSubs, k)
-		s.openSubsMu.Unlock()
-
-	}(time.Now())
-
-	var nomore bool
-
-LOOP:
-	for limit > 0 {
-		select {
-		case v, ok := <-ch:
-			if !ok {
-				nomore = true
-				break LOOP
-			}
-			chs = append(chs, v.Address)
-			if v.BinID > topmost {
-				topmost = v.BinID
-			}
-			limit--
-			if timer == nil {
-				timer = time.NewTimer(batchTimeout)
-			} else {
-				if !timer.Stop() {
-					<-timer.C
+			ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
+			defer func(start time.Time) {
+				stop()
+				if timer != nil {
+					timer.Stop()
 				}
-				timer.Reset(batchTimeout)
+
+				// tell others about the results
+				s.openSubsMu.Lock()
+				for _, cc := range s.openSubs[k] {
+					cc <- intervalChunks{chs: chs, topmost: topmost, err: err}
+				}
+				delete(s.openSubs, k)
+				s.openSubsMu.Unlock()
+
+			}(time.Now())
+
+			var nomore bool
+
+		LOOP:
+			for limit > 0 {
+				select {
+				case v, ok := <-ch:
+					if !ok {
+						nomore = true
+						break LOOP
+					}
+					chs = append(chs, v.Address)
+					if v.BinID > topmost {
+						topmost = v.BinID
+					}
+					limit--
+					if timer == nil {
+						timer = time.NewTimer(batchTimeout)
+					} else {
+						if !timer.Stop() {
+							<-timer.C
+						}
+						timer.Reset(batchTimeout)
+					}
+					timerC = timer.C
+				case <-ctx.Done():
+					return nil, 0, ctx.Err()
+				case <-timerC:
+					// return batch if new chunks are not received after some time
+					break LOOP
+				}
 			}
-			timerC = timer.C
-		case <-ctx.Done():
-			return nil, 0, ctx.Err()
-		case <-timerC:
-			// return batch if new chunks are not received after some time
-			break LOOP
+
+			select {
+			case <-ctx.Done():
+				return nil, 0, ctx.Err()
+			case <-dbClosed:
+				return nil, 0, ErrDbClosed
+			default:
+			}
+
+			if nomore {
+				// end of interval reached. no more chunks so interval is complete
+				// return requested `to`. it could be that len(chs) == 0 if the interval
+				// is empty
+				topmost = to
+			}
+
+			return chs, topmost, nil
 		}
-	}
+		_, _, _ = fn(context.Background())
+	}()
 
 	select {
+	case res := <-c:
+		// since this is a simple read from a channel, one slow
+		// peer requesting chunks will not affect another
+		return res.chs, res.topmost, res.err
 	case <-ctx.Done():
+		// note that there's no cleanup here of the existing channel.
+		// this is due to a possible deadlock in case notification is
+		// already ongoing (we cannot acquire the lock and the notifying
+		// goroutine will still potentially try to write to our channel,
+		// however since we're not selecting on the channel it will deadlock.
 		return nil, 0, ctx.Err()
-	case <-dbClosed:
-		return nil, 0, ErrDbClosed
-	default:
 	}
-
-	if nomore {
-		// end of interval reached. no more chunks so interval is complete
-		// return requested `to`. it could be that len(chs) == 0 if the interval
-		// is empty
-		topmost = to
-	}
-
-	return chs, topmost, nil
 }
 
 // Cursors gets the last BinID for every bin in the local storage
