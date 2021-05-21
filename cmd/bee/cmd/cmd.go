@@ -235,7 +235,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().String(optionNameTransactionHash, "", "proof-of-identity transaction hash")
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
-	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price to use for deployment and funding")
+	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
