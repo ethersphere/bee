@@ -259,6 +259,22 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 	return snapshot, mErr
 }
 
+// Inspect allows to inspect current snapshot for the given peer address by
+// executing the given fn in a safe manner when write to the counters is
+// blocked while the performing inspection function is executed.
+func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	sss, err := c.Snapshot(time.Now(), addr)
+	if err != nil {
+		return err
+	}
+	fn(sss[addr.String()])
+
+	return nil
+}
+
 // Finalize logs out all ongoing peer sessions
 // and flushes all in-memory metrics counters.
 func (c *Collector) Finalize(t time.Time) error {

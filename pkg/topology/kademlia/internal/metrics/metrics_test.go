@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
+	"github.com/google/go-cmp/cmp"
 )
 
 func snapshot(t *testing.T, mc *metrics.Collector, sst time.Time, addr swarm.Address) *metrics.Snapshot {
@@ -125,6 +126,16 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 	if have, want := ss.SessionConnectionDuration, t3.Sub(t1); have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %q; want %q", addr, have, want)
+	}
+
+	// Inspect.
+	if err := mc.Inspect(addr, func(have *metrics.Snapshot) {
+		want := ss
+		if diff := cmp.Diff(have, want); diff != "" {
+			t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
+		}
+	}); err != nil {
+		t.Fatalf("Inspect(%q, ...): unexpected error: %v", addr, err)
 	}
 
 	// Finalize.
