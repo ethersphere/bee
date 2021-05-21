@@ -173,14 +173,18 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 	var gasPrice *big.Int
 	if request.GasPrice == nil {
 		gasPrice, err = backend.SuggestGasPrice(ctx)
+		t.logger.Infof("===============gasPrice==============", gasPrice)
 		temp := new(big.Int)
 		gasPrice = temp.Mul(request.GasPrice, big.NewInt(3))
+		t.logger.Infof("===============gasPrice======3x========", gasPrice)
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		t.logger.Infof("===============gasPrice==============", gasPrice)
 		temp := new(big.Int)
 		gasPrice = temp.Mul(request.GasPrice, big.NewInt(3))
+		t.logger.Infof("===============gasPrice======3x========", gasPrice)
 	}
 
 	if request.To != nil {
