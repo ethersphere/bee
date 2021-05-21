@@ -10,6 +10,7 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -288,7 +290,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	txHash, err := getTxHash(stateStore, logger, o)
 	if err != nil {
-		return nil, errors.New("no transaction hash provided or found")
+		return nil, fmt.Errorf("invalid transaction hash: %w", err)
 	}
 
 	senderMatcher := transaction.NewMatcher(swapBackend, types.NewEIP155Signer(big.NewInt(chainID)))
@@ -754,16 +756,29 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 	if o.Standalone {
 		return nil, nil // in standalone mode tx hash is not used
 	}
-	if len(o.Transaction) == 32 {
-		logger.Info("using the provided transaction hash")
-		return []byte(o.Transaction), nil
+
+	if o.Transaction != "" {
+		txHashTrimmed := strings.TrimPrefix(o.Transaction, "0x")
+		if len(txHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		txHash, err := hex.DecodeString(txHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided transaction hash %x", txHash)
+		return txHash, nil
 	}
 
 	var txHash common.Hash
 	key := chequebook.ChequebookDeploymentKey
 	if err := stateStore.Get(key, &txHash); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, errors.New("chequebook deployment transaction hash not found. Please specify the transaction hash manually.")
+		}
 		return nil, err
 	}
 
+	logger.Infof("using the chequebook transaction hash %x", txHash)
 	return txHash.Bytes(), nil
 }
