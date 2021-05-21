@@ -18,10 +18,10 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	signermock "github.com/ethersphere/bee/pkg/crypto/mock"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/monitormock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/pkg/transaction/monitormock"
 )
 
 func nonceKey(sender common.Address) string {
