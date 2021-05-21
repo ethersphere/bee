@@ -7,12 +7,10 @@ package pullstorage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/sync/singleflight"
 )
 
 var (
@@ -42,16 +40,9 @@ type Storer interface {
 	Has(ctx context.Context, addr swarm.Address) (bool, error)
 }
 
-type intervalChunks struct {
-	chs     []swarm.Address
-	topmost uint64
-	err     error
-}
-
 // ps wraps storage.Storer.
 type ps struct {
 	storage.Storer
-	openSubs singleflight.Group
 }
 
 // New returns a new pullstorage Storer instance.
@@ -63,92 +54,68 @@ func New(storer storage.Storer) Storer {
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
+	// call iterator, iterate either until upper bound or limit reached
+	// return addresses, topmost is the topmost bin ID
 	var (
-		k = subKey(bin, from, to, limit)
-		c = make(chan intervalChunks, 1)
+		timer  *time.Timer
+		timerC <-chan time.Time
 	)
-	go func() {
-		v, _, _ := s.openSubs.Do(k, func() (interface{}, error) {
-			fn := func(ctx context.Context) (chs []swarm.Address, topmost uint64, err error) {
-				// call iterator, iterate either until upper bound or limit reached
-				// return addresses, topmost is the topmost bin ID
-				var (
-					timer  *time.Timer
-					timerC <-chan time.Time
-				)
-
-				ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
-				defer func(start time.Time) {
-					stop()
-					if timer != nil {
-						timer.Stop()
-					}
-				}(time.Now())
-
-				var nomore bool
-
-			LOOP:
-				for limit > 0 {
-					select {
-					case v, ok := <-ch:
-						if !ok {
-							nomore = true
-							break LOOP
-						}
-						chs = append(chs, v.Address)
-						if v.BinID > topmost {
-							topmost = v.BinID
-						}
-						limit--
-						if timer == nil {
-							timer = time.NewTimer(batchTimeout)
-						} else {
-							if !timer.Stop() {
-								<-timer.C
-							}
-							timer.Reset(batchTimeout)
-						}
-						timerC = timer.C
-					case <-ctx.Done():
-						return nil, 0, ctx.Err()
-					case <-timerC:
-						// return batch if new chunks are not received after some time
-						break LOOP
-					}
-				}
-
-				select {
-				case <-ctx.Done():
-					return nil, 0, ctx.Err()
-				case <-dbClosed:
-					return nil, 0, ErrDbClosed
-				default:
-				}
-
-				if nomore {
-					// end of interval reached. no more chunks so interval is complete
-					// return requested `to`. it could be that len(chs) == 0 if the interval
-					// is empty
-					topmost = to
-				}
-
-				return chs, topmost, nil
-			}
-			chs, top, err := fn(context.Background())
-			return intervalChunks{chs, top, err}, nil
-		})
-		res := v.(intervalChunks)
-		select {
-		case c <- res:
-		default:
+	ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
+	defer func(start time.Time) {
+		stop()
+		if timer != nil {
+			timer.Stop()
 		}
-	}()
+	}(time.Now())
+
+	var nomore bool
+
+LOOP:
+	for limit > 0 {
+		select {
+		case v, ok := <-ch:
+			if !ok {
+				nomore = true
+				break LOOP
+			}
+			chs = append(chs, v.Address)
+			if v.BinID > topmost {
+				topmost = v.BinID
+			}
+			limit--
+			if timer == nil {
+				timer = time.NewTimer(batchTimeout)
+			} else {
+				if !timer.Stop() {
+					<-timer.C
+				}
+				timer.Reset(batchTimeout)
+			}
+			timerC = timer.C
+		case <-ctx.Done():
+			return nil, 0, ctx.Err()
+		case <-timerC:
+			// return batch if new chunks are not received after some time
+			break LOOP
+		}
+	}
+
 	select {
-	case res := <-c:
-		return res.chs, res.topmost, res.err
 	case <-ctx.Done():
 		return nil, 0, ctx.Err()
+	case <-dbClosed:
+		return nil, 0, ErrDbClosed
+	default:
 	}
+
+	if nomore {
+		// end of interval reached. no more chunks so interval is complete
+		// return requested `to`. it could be that len(chs) == 0 if the interval
+		// is empty
+		topmost = to
+	}
+
+	return chs, topmost, nil
 }
 
 // Cursors gets the last BinID for every bin in the local storage
@@ -173,8 +140,4 @@ func (s *ps) Get(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Addre
 func (s *ps) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) error {
 	_, err := s.Storer.Put(ctx, mode, chs...)
 	return err
-}
-
-func subKey(bin uint8, from, to uint64, limit int) string {
-	return fmt.Sprintf("%d_%d_%d_%d", bin, from, to, limit)
 }
