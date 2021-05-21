@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
@@ -78,7 +79,7 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 	request := &transaction.TxRequest{
 		To:       &c.address,
 		Data:     callData,
-		GasPrice: nil,
+		GasPrice: sctx.GetGasPrice(ctx),
 		GasLimit: 0,
 		Value:    big.NewInt(0),
 	}
