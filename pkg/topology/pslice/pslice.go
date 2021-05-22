@@ -173,12 +173,9 @@ func (s *PSlice) Add(addr swarm.Address, po uint8) {
 		return
 	}
 
-	peers, bins := s.copy()
+	peers, bins := s.copy(1)
 
-	head := peers[:s.bins[po]]
-	tail := append([]swarm.Address{addr}, peers[s.bins[po]:]...)
-
-	peers = append(head, tail...)
+	peers = insertAddresses(peers, int(s.bins[po]), addr)
 	s.peers = peers
 
 	incDeeper(bins, po)
@@ -195,7 +192,7 @@ func (s *PSlice) Remove(addr swarm.Address, po uint8) {
 		return
 	}
 
-	peers, bins := s.copy()
+	peers, bins := s.copy(0)
 
 	peers = append(peers[:i], peers[i+1:]...)
 	s.peers = peers
@@ -231,10 +228,29 @@ func decDeeper(bins []uint, po uint8) {
 	}
 }
 
-func (s *PSlice) copy() (peers []swarm.Address, bins []uint) {
-	peers = make([]swarm.Address, len(s.peers))
+// copy makes copies of peers and bins with a possibility of adding peers
+// additional capacity if it is know that a number of new addresses will be
+// inserted.
+func (s *PSlice) copy(peersExtraCap int) (peers []swarm.Address, bins []uint) {
+	peers = make([]swarm.Address, len(s.peers), len(s.peers)+peersExtraCap)
 	copy(peers, s.peers)
 	bins = make([]uint, len(s.bins))
 	copy(bins, s.bins)
 	return peers, bins
+}
+
+// insertAddresses is based on the optimized implementation from
+// https://github.com/golang/go/wiki/SliceTricks#insertvector
+func insertAddresses(s []swarm.Address, pos int, vs ...swarm.Address) []swarm.Address {
+	if n := len(s) + len(vs); n <= cap(s) {
+		s2 := s[:n]
+		copy(s2[pos+len(vs):], s[pos:])
+		copy(s2[pos:], vs)
+		return s2
+	}
+	s2 := make([]swarm.Address, len(s)+len(vs))
+	copy(s2, s[:pos])
+	copy(s2[pos:], vs)
+	copy(s2[pos+len(vs):], s[pos:])
+	return s2
 }
