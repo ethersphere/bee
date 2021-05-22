@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// InitStateStore will initialze the stateStore with the given path to the
+// InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
 func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer, err error) {
