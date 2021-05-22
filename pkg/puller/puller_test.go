@@ -6,8 +6,8 @@ package puller_test
 
 import (
 	"errors"
-	"io/ioutil"
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -37,7 +37,7 @@ func TestOneSync(t *testing.T) {
 	var (
 		addr        = test.RandomAddress()
 		cursors     = []uint64{1000, 1000, 1000}
-		liveReplies = []uint64{1}
+		liveReplies = []uint64{1001}
 	)
 
 	puller, _, kad, pullsync := newPuller(opts{
@@ -592,7 +592,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
-	logger := logging.New(ioutil.Discard, 6)
+	logger := logging.New(os.Stdout, 5)
 
 	o := puller.Options{
 		Bins: ops.bins,
