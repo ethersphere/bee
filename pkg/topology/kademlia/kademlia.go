@@ -239,7 +239,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 	skipPeers := func(peer swarm.Address) bool {
 		k.waitNextMu.Lock()
 		defer k.waitNextMu.Unlock()
-		next, ok := k.waitNext[peer.String()]
+		next, ok := k.waitNext[peer.ByteString()]
 		return ok && time.Now().Before(next.tryAfter)
 	}
 
@@ -306,7 +306,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		}
 
 		k.waitNextMu.Lock()
-		if next, ok := k.waitNext[addr.String()]; ok && time.Now().Before(next.tryAfter) {
+		if next, ok := k.waitNext[addr.ByteString()]; ok && time.Now().Before(next.tryAfter) {
 			k.waitNextMu.Unlock()
 			return false, false, nil
 		}
@@ -351,7 +351,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		remove := func(peer *peerConnInfo) {
 			k.waitNextMu.Lock()
-			delete(k.waitNext, peer.addr.String())
+			delete(k.waitNext, peer.addr.ByteString())
 			k.waitNextMu.Unlock()
 			k.knownPeers.Remove(peer.addr, peer.po)
 			if err := k.addressBook.Remove(peer.addr); err != nil {
@@ -375,7 +375,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		}
 
 		k.waitNextMu.Lock()
-		k.waitNext[peer.addr.String()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
+		k.waitNext[peer.addr.ByteString()] = retryInfo{tryAfter: time.Now().Add(shortRetry)}
 		k.waitNextMu.Unlock()
 
 		k.connectedPeers.Add(peer.addr, peer.po)
@@ -413,7 +413,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 					// Check if the peer was penalized.
 					k.waitNextMu.Lock()
-					next, ok := k.waitNext[addr]
+					next, ok := k.waitNext[peer.addr.ByteString()]
 					if ok && time.Now().Before(next.tryAfter) {
 						k.waitNextMu.Unlock()
 						wg.Done()
@@ -681,7 +681,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
 		} else {
-			if info, ok := k.waitNext[peer.String()]; ok {
+			if info, ok := k.waitNext[peer.ByteString()]; ok {
 				failedAttempts = info.failedAttempts
 			}
 			failedAttempts++
@@ -691,17 +691,22 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			k.logger.Debugf("kademlia: unable to record session connection retry metrics for %q: %v", peer, err)
 		}
 
-		if k.quickPrune(peer) || failedAttempts > maxConnAttempts {
-			delete(k.waitNext, peer.String())
-			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debugf("could not remove peer from addressbook: %q", peer)
+		if err := k.collector.Inspect(peer, func(ss *metrics.Snapshot) {
+			quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
+			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts > maxConnAttempts {
+				delete(k.waitNext, peer.ByteString())
+				if err := k.addressBook.Remove(peer); err != nil {
+					k.logger.Debugf("could not remove peer from addressbook: %q", peer)
+				}
+				k.logger.Debugf("kademlia pruned peer from address book %q", peer)
+			} else {
+				k.waitNext[peer.ByteString()] = retryInfo{
+					tryAfter:       retryTime,
+					failedAttempts: failedAttempts,
+				}
 			}
-			k.logger.Debugf("kademlia pruned peer from address book %q", peer)
-		} else {
-			k.waitNext[peer.String()] = retryInfo{
-				tryAfter:       retryTime,
-				failedAttempts: failedAttempts,
-			}
+		}); err != nil {
+			k.logger.Debugf("kademlia: connect: unable to inspect snapshot for %q: %v", peer, err)
 		}
 		k.waitNextMu.Unlock()
 
@@ -715,24 +720,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	return k.Announce(ctx, peer)
 }
 
-// quickPrune will return true for cases where:
-// 	- there are other connected peers
-//	- the addr has never been seen before and it's the first failed attempt
-func (k *Kad) quickPrune(addr swarm.Address) bool {
-	if k.connectedPeers.Length() == 0 {
-		return false
-	}
-
-	sss, err := k.collector.Snapshot(time.Now(), addr)
-	if err != nil {
-		k.logger.Debugf("kademlia: quickPrune: unable to take snapshot for %q: %v", addr, err)
-	}
-	snapshot := sss[addr.String()]
-	return snapshot == nil ||
-		(snapshot.LastSeenTimestamp == 0 && snapshot.SessionConnectionRetry <= 1)
-}
-
-// announce a newly connected peer to our connected peers, but also
+// Announce a newly connected peer to our connected peers, but also
 // notify the peer about our already connected peers
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 	addrs := []swarm.Address{}
@@ -848,7 +836,7 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	}
 
 	k.waitNextMu.Lock()
-	delete(k.waitNext, addr.String())
+	delete(k.waitNext, addr.ByteString())
 	k.waitNextMu.Unlock()
 
 	k.depthMu.Lock()
@@ -869,7 +857,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.connectedPeers.Remove(peer.Address, po)
 
 	k.waitNextMu.Lock()
-	k.waitNext[peer.Address.String()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
+	k.waitNext[peer.Address.ByteString()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
 	k.waitNextMu.Unlock()
 
 	if err := k.collector.Record(

@@ -598,6 +598,7 @@ paths:
             type: integer
           required: true
           description: amount of tokens to deposit
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       tags:
         - Chequebook
       responses:
@@ -624,6 +625,7 @@ paths:
             type: integer
           required: true
           description: amount of tokens to withdraw
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       tags:
         - Chequebook
       responses:
