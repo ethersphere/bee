@@ -27,6 +27,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/singleflight"
 )
 
 type Service struct {
@@ -39,10 +40,13 @@ type Service struct {
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
+	retryMap          map[string]time.Time
+	retryMux          sync.Mutex
 }
 
 var (
 	retryInterval  = 5 * time.Second // time interval between retries
+	expiresAfter   = 5 * time.Minute // time interval between retries
 	concurrentJobs = 10              // how many chunks to push simultaneously
 )
 
@@ -59,6 +63,7 @@ func New(networkID uint64, storer storage.Storer, peerSuggester topology.Closest
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
+		retryMap:          make(map[string]time.Time),
 	}
 	go service.chunksWorker()
 	return service
@@ -75,10 +80,9 @@ func (s *Service) chunksWorker() {
 		cctx, cancel  = context.WithCancel(context.Background())
 		ctx           = cctx
 		sem           = make(chan struct{}, concurrentJobs)
-		inflight      = make(map[string]struct{})
-		mtx           sync.Mutex
 		span          opentracing.Span
 		logger        *logrus.Entry
+		requestGroup  singleflight.Group
 	)
 	defer timer.Stop()
 	defer close(s.chunksWorkerQuitC)
@@ -88,6 +92,7 @@ func (s *Service) chunksWorker() {
 	}()
 
 LOOP:
+
 	for {
 		select {
 		// handle incoming chunks
@@ -124,91 +129,92 @@ LOOP:
 
 				return
 			}
-			mtx.Lock()
-			if _, ok := inflight[ch.Address().String()]; ok {
-				mtx.Unlock()
-				<-sem
-				continue
-			}
 
-			inflight[ch.Address().String()] = struct{}{}
-			mtx.Unlock()
+			func(ctx context.Context, ch swarm.Chunk) {
+				_ = requestGroup.DoChan(ch.Address().String(), func() (_ interface{}, _ error) {
+					var (
+						err        error
+						startTime  = time.Now()
+						t          *tags.Tag
+						wantSelf   bool
+						storerPeer swarm.Address
+					)
+					defer func() {
+						if err == nil {
+							s.metrics.TotalSynced.Inc()
+							s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
+							// only print this if there was no error while sending the chunk
+							logger.Tracef("pusher: pushed chunk %s to node %s", ch.Address().String(), storerPeer.String())
+						} else {
+							s.metrics.TotalErrors.Inc()
+							s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+							logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
+						}
+						<-sem
+					}()
 
-			go func(ctx context.Context, ch swarm.Chunk) {
-				var (
-					err        error
-					startTime  = time.Now()
-					t          *tags.Tag
-					wantSelf   bool
-					storerPeer swarm.Address
-				)
-				defer func() {
-					if err == nil {
-						s.metrics.TotalSynced.Inc()
-						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-						// only print this if there was no error while sending the chunk
-						logger.Tracef("pusher: pushed chunk %s to node %s", ch.Address().String(), storerPeer.String())
-					} else {
-						s.metrics.TotalErrors.Inc()
-						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-						logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
-					}
-					mtx.Lock()
-					delete(inflight, ch.Address().String())
-					mtx.Unlock()
-					<-sem
-				}()
-
-				// Later when we process receipt, get the receipt and process it
-				// for now ignoring the receipt and checking only for error
-				receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
-				if err != nil {
-					if errors.Is(err, topology.ErrWantSelf) {
-						// we are the closest ones - this is fine
-						// this is to make sure that the sent number does not diverge from the synced counter
-						// the edge case is on the uploader node, in the case where the uploader node is
-						// connected to other nodes, but is the closest one to the chunk.
-						wantSelf = true
-					} else {
-						return
-					}
-				}
-
-				if receipt != nil {
-					var publicKey *ecdsa.PublicKey
-					publicKey, err = crypto.Recover(receipt.Signature, receipt.Address.Bytes())
+					// Later when we process receipt, get the receipt and process it
+					// for now ignoring the receipt and checking only for error
+					receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
 					if err != nil {
-						err = fmt.Errorf("pusher: receipt recover: %w", err)
-						return
-					}
-
-					storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID)
-					if err != nil {
-						err = fmt.Errorf("pusher: receipt storer address: %w", err)
-						return
-					}
-				}
-
-				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-					err = fmt.Errorf("pusher: set sync: %w", err)
-					return
-				}
-
-				t, err = s.tag.Get(ch.TagID())
-				if err == nil && t != nil {
-					err = t.Inc(tags.StateSynced)
-					if err != nil {
-						err = fmt.Errorf("pusher: increment synced: %v", err)
-						return
-					}
-					if wantSelf {
-						err = t.Inc(tags.StateSent)
-						if err != nil {
-							err = fmt.Errorf("pusher: increment sent: %w", err)
-							return
+						if errors.Is(err, topology.ErrWantSelf) {
+							// we are the closest ones - this is fine
+							// this is to make sure that the sent number does not diverge from the synced counter
+							// the edge case is on the uploader node, in the case where the uploader node is
+							// connected to other nodes, but is the closest one to the chunk.
+							wantSelf = true
+						} else {
+							if retry, clean := s.retry(ch.Address()); retry {
+								return
+							} else {
+								clean()
+								_ = s.storer.Set(ctx, storage.ModeSetRemove, ch.Address())
+							}
 						}
 					}
-				}
+
+					if receipt != nil {
+						var publicKey *ecdsa.PublicKey
+						publicKey, err = crypto.Recover(receipt.Signature, receipt.Address.Bytes())
+						if err != nil {
+							err = fmt.Errorf("pusher: receipt recover: %w", err)
+							return
+
+						}
+
+						storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID)
+						if err != nil {
+							err = fmt.Errorf("pusher: receipt storer address: %w", err)
+							return
+
+						}
+					}
+
+					if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
+						err = fmt.Errorf("pusher: set sync: %w", err)
+						return
+
+					}
+
+					t, err = s.tag.Get(ch.TagID())
+					if err == nil && t != nil {
+						err = t.Inc(tags.StateSynced)
+						if err != nil {
+							err = fmt.Errorf("pusher: increment synced: %v", err)
+							return
+						}
+						if wantSelf {
+							err = t.Inc(tags.StateSent)
+							if err != nil {
+								err = fmt.Errorf("pusher: increment sent: %w", err)
+								return
+
+							}
+						}
+					}
+					return
+				})
+
 			}(ctx, ch)
 		case <-timer.C:
 			// initially timer is set to go off as well as every time we hit the end of push index
@@ -271,4 +277,23 @@ func (s *Service) Close() error {
 	case <-time.After(6 * time.Second):
 	}
 	return nil
+}
+
+func (s *Service) retry(addr swarm.Address) (bool, func()) {
+
+	s.retryMux.Lock()
+	defer s.retryMux.Unlock()
+
+	if expiration, ok := s.retryMap[addr.String()]; !ok {
+		s.retryMap[addr.String()] = time.Now().Add(expiresAfter)
+		return true, nil
+	} else if time.Now().Before(expiration) {
+		return true, nil
+	}
+
+	return false, func() {
+		s.retryMux.Lock()
+		defer s.retryMux.Unlock()
+		delete(s.retryMap, addr.String())
+	}
 }
