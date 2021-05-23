@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	logMore = false // enable this to get more logging
+	logMore = true // enable this to get more logging
 )
 
 type Options struct {
@@ -337,6 +337,9 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.logger.Errorf("could not persist interval for peer %s, quitting", peer)
 			return
 		}
+		if logMore {
+			p.logger.Debugf("histSyncWorker pulled bin %d [%d:%d], peer %s", bin, s, top, peer)
+		}
 	}
 }
 
@@ -381,6 +384,10 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.logger.Errorf("liveSyncWorker exit on add peer interval. peer %s bin %d from %d err %v", peer, bin, from, err)
 			return
 		}
+		if logMore {
+			p.logger.Debugf("liveSyncWorker pulled bin %d [%d:%d], peer %s", bin, from, top, peer)
+		}
+
 		from = top + 1
 	}
 }

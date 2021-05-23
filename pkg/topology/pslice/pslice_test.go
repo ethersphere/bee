@@ -413,3 +413,23 @@ func chkNotExists(t *testing.T, ps *pslice.PSlice, addrs ...swarm.Address) {
 		}
 	}
 }
+
+func BenchmarkAdd(b *testing.B) {
+	var (
+		ps   = pslice.New(16)
+		base = test.RandomAddress()
+	)
+
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 300; j++ {
+			ps.Add(test.RandomAddressAt(base, i), uint8(i))
+		}
+	}
+
+	const po = 8
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		ps.Add(test.RandomAddressAt(base, po), po)
+	}
+}
