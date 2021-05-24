@@ -40,7 +40,7 @@ const (
 var (
 	saturationPeers             = 8
 	overSaturationPeers         = 16
-	bootnodeOverSaturationPeers = 64
+	bootnodeOverSaturationPeers = 32
 	shortRetry                  = 30 * time.Second
 	timeToRetry                 = 2 * shortRetry
 	broadcastBinSize            = 4
