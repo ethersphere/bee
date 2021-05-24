@@ -341,8 +341,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
 			k.logger.Debugf("kademlia: empty address book entry for peer %q", peer.addr)
-			po := swarm.Proximity(k.base.Bytes(), peer.addr.Bytes())
-			k.knownPeers.Remove(peer.addr, po)
+			k.knownPeers.Remove(peer.addr, swarm.Proximity(k.base.Bytes(), peer.addr.Bytes()))
 			return
 		case err != nil:
 			k.logger.Debugf("kademlia: failed to get address book entry for peer %q: %v", peer.addr, err)
@@ -695,6 +694,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
 			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts > maxConnAttempts {
 				delete(k.waitNext, peer.ByteString())
+				k.knownPeers.Remove(peer, swarm.Proximity(k.base.Bytes(), peer.Bytes()))
 				if err := k.addressBook.Remove(peer); err != nil {
 					k.logger.Debugf("could not remove peer from addressbook: %q", peer)
 				}
@@ -857,7 +857,11 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.connectedPeers.Remove(peer.Address, po)
 
 	k.waitNextMu.Lock()
-	k.waitNext[peer.Address.ByteString()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
+	newInfo := retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
+	if info, ok := k.waitNext[peer.Address.ByteString()]; ok {
+		newInfo.failedAttempts = info.failedAttempts
+	}
+	k.waitNext[peer.Address.ByteString()] = newInfo
 	k.waitNextMu.Unlock()
 
 	if err := k.collector.Record(
