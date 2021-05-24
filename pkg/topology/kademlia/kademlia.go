@@ -857,7 +857,11 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.connectedPeers.Remove(peer.Address, po)
 
 	k.waitNextMu.Lock()
-	k.waitNext[peer.Address.ByteString()] = retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
+	newInfo := retryInfo{tryAfter: time.Now().Add(timeToRetry), failedAttempts: 0}
+	if info, ok := k.waitNext[peer.Address.ByteString()]; ok {
+		newInfo.failedAttempts = info.failedAttempts
+	}
+	k.waitNext[peer.Address.ByteString()] = newInfo
 	k.waitNextMu.Unlock()
 
 	if err := k.collector.Record(
