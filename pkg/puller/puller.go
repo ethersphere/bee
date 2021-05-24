@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	logMore = true // enable this to get more logging
+	logMore = false // enable this to get more logging
 )
 
 type Options struct {
@@ -167,7 +167,12 @@ func (p *Puller) manage() {
 			}
 
 			for _, v := range peersToRecalc {
-				p.recalcPeer(ctx, v.addr, v.po, depth)
+				dontSync := p.recalcPeer(ctx, v.addr, v.po, depth)
+				// stopgap solution for peers that dont return the correct
+				// amount of cursors we expect
+				if dontSync {
+					peersDisconnected[v.addr.String()] = v
+				}
 			}
 
 			for _, v := range peersDisconnected {
@@ -186,13 +191,14 @@ func (p *Puller) disconnectPeer(ctx context.Context, peer swarm.Address, po uint
 	if logMore {
 		p.logger.Debugf("puller disconnect cleanup peer %s po %d", peer, po)
 	}
-	syncCtx := p.syncPeers[po][peer.String()] // disconnectPeer is called under lock, this is safe
-	syncCtx.gone()
-
+	if syncCtx, ok := p.syncPeers[po][peer.String()]; ok {
+		// disconnectPeer is called under lock, this is safe
+		syncCtx.gone()
+	}
 	delete(p.syncPeers[po], peer.String())
 }
 
-func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
+func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) (dontSync bool) {
 	if logMore {
 		p.logger.Debugf("puller recalculating peer %s po %d depth %d", peer, po, d)
 	}
@@ -204,6 +210,10 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	p.cursorsMtx.Lock()
 	c := p.cursors[peer.String()]
 	p.cursorsMtx.Unlock()
+
+	if len(c) != int(p.bins) {
+		return true
+	}
 
 	var want, dontWant []uint8
 	if po >= d {
@@ -233,6 +243,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	}
 
 	syncCtx.cancelBins(dontWant...)
+	return false
 }
 
 func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
@@ -259,6 +270,13 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 		p.cursors[peer.String()] = cursors
 		p.cursorsMtx.Unlock()
 		c = cursors
+	}
+
+	// if length of returned cursors does not add up to
+	// what we expect it to be - dont do anything
+	if len(c) != int(p.bins) {
+		delete(p.syncPeers[po], peer.String())
+		return
 	}
 
 	for bin, cur := range c {

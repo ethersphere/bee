@@ -6,8 +6,8 @@ package puller_test
 
 import (
 	"errors"
+	"io/ioutil"
 	"math"
-	"os"
 	"testing"
 	"time"
 
@@ -123,7 +123,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 					), mockk.WithDepth(1),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
-				bins:     5,
+				bins:     2,
 			})
 			t.Cleanup(func() {
 				pullsync.Close()
@@ -199,7 +199,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 					), mockk.WithDepth(1),
 				},
 				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
-				bins:     5,
+				bins:     2,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -592,7 +592,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
-	logger := logging.New(os.Stdout, 5)
+	logger := logging.New(ioutil.Discard, 0)
 
 	o := puller.Options{
 		Bins: ops.bins,
