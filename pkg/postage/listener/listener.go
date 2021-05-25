@@ -47,6 +47,12 @@ type BlockHeightContractFilterer interface {
 	BlockNumber(context.Context) (uint64, error)
 }
 
+// Shutdowner interface is passed to the listener to shutdown the node if we hit
+// error while listening for blockchain events.
+type Shutdowner interface {
+	Shutdown(context.Context) error
+}
+
 type listener struct {
 	logger    logging.Logger
 	ev        BlockHeightContractFilterer
@@ -56,6 +62,7 @@ type listener struct {
 	quit                chan struct{}
 	wg                  sync.WaitGroup
 	metrics             metrics
+	shutdowner          Shutdowner
 }
 
 func New(
@@ -63,6 +70,7 @@ func New(
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
 	blockTime uint64,
+	shutdowner Shutdowner,
 ) postage.Listener {
 	return &listener{
 		logger:              logger,
@@ -71,6 +79,7 @@ func New(
 		postageStampAddress: postageStampAddress,
 		quit:                make(chan struct{}),
 		metrics:             newMetrics(),
+		shutdowner:          shutdowner,
 	}
 }
 
@@ -244,6 +253,9 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 		err := listenf()
 		if err != nil {
 			l.logger.Errorf("event listener sync: %v", err)
+			if l.shutdowner != nil {
+				_ = l.shutdowner.Shutdown(context.Background())
+			}
 		}
 	}()
 
