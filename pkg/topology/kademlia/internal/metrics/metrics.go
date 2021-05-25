@@ -59,6 +59,10 @@ type RecordOp func(*Counters) error
 // panics if the given time is before the Unix epoch.
 func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 	return func(cs *Counters) error {
+
+		cs.Lock()
+		defer cs.Unlock()
+
 		if cs.loggedIn {
 			return nil // Ignore when the peer is already logged in.
 		}
@@ -80,6 +84,10 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 // panics if the given time is before the Unix epoch.
 func PeerLogOut(t time.Time) RecordOp {
 	return func(cs *Counters) error {
+
+		cs.Lock()
+		defer cs.Unlock()
+
 		if !cs.loggedIn {
 			return nil // Ignore when the peer is not logged in.
 		}
@@ -116,6 +124,9 @@ func PeerLogOut(t time.Time) RecordOp {
 // counter by 1.
 func IncSessionConnectionRetry() RecordOp {
 	return func(cs *Counters) error {
+		cs.Lock()
+		defer cs.Unlock()
+
 		cs.sessionConnRetry++
 		return nil
 	}
@@ -148,6 +159,7 @@ type Counters struct {
 	sessionConnRetry     uint
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
+	sync.Mutex
 }
 
 // NewCollector is a convenient constructor for creating new Collector.
@@ -170,11 +182,13 @@ type Collector struct {
 // The execution doesn't stop if some metric operation returns an error, it
 // rather continues and all the execution errors are returned.
 func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	key := addr.String()
+
+	c.mu.RLock()
 	cs, ok := c.counters[key]
+	c.mu.RUnlock()
+
 	if !ok {
 		mk := newPeerKey(peerLastSeenTimestamp, key)
 		ls, err := c.db.NewUint64Field(mk.String())
@@ -193,7 +207,10 @@ func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
 			connTotalDuration: &cd,
 		}
 	}
+
+	c.mu.Lock()
 	c.counters[key] = cs
+	c.mu.Unlock()
 
 	var err error
 	for i, op := range rop {
@@ -215,14 +232,16 @@ func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
 // error, it rather continues and all the execution errors are returned together
 // with the successful metrics snapshots.
 func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[string]*Snapshot, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 
 	var mErr error
 	snapshot := make(map[string]*Snapshot)
 
 	take := func(addr string) {
+
+		c.mu.RLock()
 		cs := c.counters[addr]
+		c.mu.RUnlock()
+
 		if cs == nil {
 			return
 		}
@@ -239,6 +258,7 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 		}
 		connTotalDuration := time.Duration(cn)
 
+		cs.Lock()
 		sessionConnDuration := cs.sessionConnDuration
 		if cs.loggedIn {
 			sessionConnDuration = t.Sub(time.Unix(0, lastSeenTimestamp))
@@ -252,13 +272,15 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 			SessionConnectionDuration:  sessionConnDuration,
 			SessionConnectionDirection: cs.sessionConnDirection,
 		}
+		cs.Unlock()
 	}
 
 	for _, addr := range addresses {
 		take(addr.String())
 	}
+
 	if len(addresses) == 0 {
-		for addr := range c.counters {
+		for _, addr := range c.keys() {
 			take(addr)
 		}
 	}
@@ -266,13 +288,24 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[strin
 	return snapshot, mErr
 }
 
+func (c *Collector) keys() []string {
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	keys := make([]string, 0, len(c.counters))
+
+	for k := range c.counters {
+		keys = append(keys, k)
+	}
+
+	return keys
+}
+
 // Inspect allows to inspect current snapshot for the given peer address by
 // executing the given fn in a safe manner when write to the counters is
 // blocked while the performing inspection function is executed.
 func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	snapshots, err := c.Snapshot(time.Now(), addr)
 	if err != nil {
 		return err
