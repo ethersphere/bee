@@ -78,7 +78,7 @@ func TestAccountingAddBalance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = acc.Credit(booking.peer, uint64(-booking.price))
+			err = acc.Credit(booking.peer, uint64(-booking.price), true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,7 +136,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	debitAction.Cleanup()
 
 	peer2CreditAmount := 2 * testPrice
-	err = acc.Credit(peer2Addr, peer2CreditAmount)
+	err = acc.Credit(peer2Addr, peer2CreditAmount, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,8 +269,8 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment threshold
-	err = acc.Credit(peer1Addr, requestPrice)
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Credit(peer1Addr, expectedAmount)
+	err = acc.Credit(peer1Addr, expectedAmount, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,8 +393,8 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment threshold
-	err = acc.Credit(peer1Addr, requestPrice)
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,8 +510,8 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment threshold
-	err = acc.Credit(peer1Addr, requestPrice)
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,8 +553,8 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment threshold
-	err = acc.Credit(peer1Addr, requestPrice)
+	// Credit until payment treshold
+	err = acc.Credit(peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,7 +638,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Credit(peer1Addr, debt)
+	err = acc.Credit(peer1Addr, debt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -917,7 +917,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = acc.Credit(peer1Addr, debt)
+	err = acc.Credit(peer1Addr, debt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -974,7 +974,7 @@ func TestAccountingPeerDebt(t *testing.T) {
 	}
 
 	peer2Addr := swarm.MustParseHexAddress("11112233")
-	err = acc.Credit(peer2Addr, 500)
+	err = acc.Credit(peer2Addr, 500, true)
 	if err != nil {
 		t.Fatal(err)
 	}
