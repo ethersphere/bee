@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -266,7 +267,7 @@ func TestListener(t *testing.T) {
 		for {
 			select {
 			case <-time.After(time.Millisecond * 100):
-				if shutdowner.shutdownCalls == 1 {
+				if shutdowner.NoOfCalls() == 1 {
 					break LOOP
 				}
 				if time.Since(start) > time.Second*5 {
@@ -278,10 +279,21 @@ func TestListener(t *testing.T) {
 }
 
 type countShutdowner struct {
+	mtx           sync.Mutex
 	shutdownCalls int
 }
 
+func (c *countShutdowner) NoOfCalls() int {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	return c.shutdownCalls
+}
+
 func (c *countShutdowner) Shutdown(_ context.Context) error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	c.shutdownCalls++
 	return nil
 }
