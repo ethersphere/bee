@@ -137,7 +137,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				s.metrics.PeerRequestCounter.Inc()
 
 				go func() {
-					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp)
+					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
 					resultC <- retrievalResult{
 						chunk:     chunk,
 						peer:      peer,
@@ -193,7 +193,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers, originated bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
 	startTimer := time.Now()
 
 	v := ctx.Value(requestSourceContextKey{})
@@ -293,7 +293,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 
 	// credit the peer after successful delivery
-	err = s.accounting.Credit(peer, chunkPrice)
+	err = s.accounting.Credit(peer, chunkPrice, originated)
 	if err != nil {
 		return nil, peer, true, err
 	}
