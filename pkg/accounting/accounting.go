@@ -945,11 +945,12 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 		}
 	}
 
+	if limit.Cmp(zero) > 0 {
+		limit.Set(zero)
+	}
+
 	// If originated balance is more into the negative domain, set it to limit
 	if originatedBalance.Cmp(limit) < 0 {
-		if limit.Cmp(zero) > 0 {
-			limit.Set(zero)
-		}
 		err = a.store.Put(originatedBalanceKey(peer), limit)
 		if err != nil {
 			return fmt.Errorf("failed to persist originated balance: %w", err)
