@@ -673,17 +673,18 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case err != nil:
 		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
-		k.waitNextMu.Lock()
 		retryTime := time.Now().Add(timeToRetry)
 		var e *p2p.ConnectionBackoffError
 		failedAttempts := 0
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
 		} else {
+			k.waitNextMu.Lock()
 			if info, ok := k.waitNext[peer.ByteString()]; ok {
 				failedAttempts = info.failedAttempts
 			}
 			failedAttempts++
+			k.waitNextMu.Unlock()
 		}
 
 		if err := k.collector.Record(peer, metrics.IncSessionConnectionRetry()); err != nil {
@@ -692,6 +693,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 		if err := k.collector.Inspect(peer, func(ss *metrics.Snapshot) {
 			quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
+
+			k.waitNextMu.Lock()
 			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts > maxConnAttempts {
 				delete(k.waitNext, peer.ByteString())
 				k.knownPeers.Remove(peer, swarm.Proximity(k.base.Bytes(), peer.Bytes()))
@@ -705,10 +708,10 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 					failedAttempts: failedAttempts,
 				}
 			}
+			k.waitNextMu.Unlock()
 		}); err != nil {
 			k.logger.Debugf("kademlia: connect: unable to inspect snapshot for %q: %v", peer, err)
 		}
-		k.waitNextMu.Unlock()
 
 		return err
 	case !i.Overlay.Equal(peer):
