@@ -45,14 +45,13 @@ type Storer interface {
 // ps wraps storage.Storer.
 type ps struct {
 	storage.Storer
-	intervalFlight *singleflight.Group
+	intervalFlight singleflight.Group
 }
 
 // New returns a new pullstorage Storer instance.
 func New(storer storage.Storer) Storer {
 	return &ps{
-		Storer:         storer,
-		intervalFlight: &singleflight.Group{},
+		Storer: storer,
 	}
 }
 
@@ -63,14 +62,14 @@ type intervalFlightResult struct {
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
-	result, err, _ := s.intervalFlight.Do(subKey(bin, from, to, limit), func() (interface{}, error) {
+	resultC := s.intervalFlight.DoChan(subKey(bin, from, to, limit), func() (interface{}, error) {
 		// call iterator, iterate either until upper bound or limit reached
 		// return addresses, topmost is the topmost bin ID
 		var (
 			timer  *time.Timer
 			timerC <-chan time.Time
 		)
-		ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
+		ch, dbClosed, stop := s.SubscribePull(context.Background(), bin, from, to)
 		defer func(start time.Time) {
 			stop()
 			if timer != nil {
@@ -102,8 +101,6 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 					timer.Reset(batchTimeout)
 				}
 				timerC = timer.C
-			case <-ctx.Done():
-				return nil, ctx.Err()
 			case <-timerC:
 				// return batch if new chunks are not received after some time
 				break LOOP
@@ -111,8 +108,6 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 		}
 
 		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
 		case <-dbClosed:
 			return nil, ErrDbClosed
 		default:
@@ -127,11 +122,16 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 
 		return &intervalFlightResult{chs: chs, topmost: topmost}, nil
 	})
-	if err != nil {
-		return nil, 0, err
+	select {
+	case <-ctx.Done():
+	case r := <-resultC:
+		if r.Err != nil {
+			return nil, 0, r.Err
+		}
+		intervalRes := r.Val.(*intervalFlightResult)
+		return intervalRes.chs, intervalRes.topmost, nil
 	}
-	intervalRes := result.(*intervalFlightResult)
-	return intervalRes.chs, intervalRes.topmost, nil
+	return nil, 0, ctx.Err()
 }
 
 func subKey(bin uint8, from, to uint64, limit int) string {
