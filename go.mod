@@ -59,6 +59,7 @@ require (
 	github.com/wealdtech/go-ens/v3 v3.4.4
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.opencensus.io v0.22.5 // indirect
+	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
