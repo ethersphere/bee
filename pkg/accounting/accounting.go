@@ -350,7 +350,14 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	if a.payFunction != nil && !balance.paymentOngoing {
 		// if there is no monetary settlement happening, check if there is something to settle
 		// compute debt excluding debt created by incoming payments
-		paymentAmount := new(big.Int).Neg(oldBalance)
+		originatedBalance, err := a.OriginatedBalance(peer)
+		if err != nil {
+			if !errors.Is(err, ErrPeerNoBalance) {
+				return fmt.Errorf("failed to load originated balance to settle: %w", err)
+			}
+		}
+
+		paymentAmount := new(big.Int).Neg(originatedBalance)
 		// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
 		if paymentAmount.Cmp(a.minimumPayment) >= 0 {
 			balance.paymentOngoing = true
