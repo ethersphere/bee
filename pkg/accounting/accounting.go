@@ -938,6 +938,8 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 
 	zero := big.NewInt(0)
 
+	toSet := new(big.Int).Set(limit)
+
 	originatedBalance, err := a.OriginatedBalance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
@@ -945,17 +947,17 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 		}
 	}
 
-	if limit.Cmp(zero) > 0 {
-		limit.Set(zero)
+	if toSet.Cmp(zero) > 0 {
+		toSet.Set(zero)
 	}
 
 	// If originated balance is more into the negative domain, set it to limit
-	if originatedBalance.Cmp(limit) < 0 {
-		err = a.store.Put(originatedBalanceKey(peer), limit)
+	if originatedBalance.Cmp(toSet) < 0 {
+		err = a.store.Put(originatedBalanceKey(peer), toSet)
 		if err != nil {
 			return fmt.Errorf("failed to persist originated balance: %w", err)
 		}
-		a.logger.Tracef("decreasing originated balance to peer %v to current balance %d", peer, limit)
+		a.logger.Tracef("decreasing originated balance to peer %v to current balance %d", peer, toSet)
 	}
 
 	return nil
