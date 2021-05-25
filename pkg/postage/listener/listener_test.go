@@ -263,16 +263,13 @@ func TestListener(t *testing.T) {
 		l.Listen(0, ev)
 
 		start := time.Now()
-	LOOP:
 		for {
-			select {
-			case <-time.After(time.Millisecond * 100):
-				if shutdowner.NoOfCalls() == 1 {
-					break LOOP
-				}
-				if time.Since(start) > time.Second*5 {
-					t.Fatal("expected shutdown call by now")
-				}
+			time.Sleep(time.Millisecond * 100)
+			if shutdowner.NoOfCalls() == 1 {
+				break
+			}
+			if time.Since(start) > time.Second*5 {
+				t.Fatal("expected shutdown call by now")
 			}
 		}
 	})
