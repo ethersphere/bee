@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -365,7 +366,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			postageSyncStart = startBlock
 		}
 
-		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, b)
+		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{})
 		b.listenerCloser = eventListener
 
 		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener)
@@ -783,4 +784,16 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 
 	logger.Infof("using the chequebook transaction hash %x", txHash)
 	return txHash.Bytes(), nil
+}
+
+// pidKiller is used to issue a forced shut down of the node from sub modules. The issue with using the
+// node's Shutdown method is that it only shuts down the node and does not exit the start process
+// which is waiting on the os.Signals. This is not desirable, but currently bee node cannot handle
+// rate-limiting blockchain API calls properly. We will shut down the node in this case to allow the
+// user to rectify the API issues (by adjusting limits or using a different one).
+type pidKiller struct{}
+
+func (p *pidKiller) Shutdown(_ context.Context) error {
+	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	return nil
 }
