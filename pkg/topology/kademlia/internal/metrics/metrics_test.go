@@ -17,18 +17,15 @@ import (
 func snapshot(t *testing.T, mc *metrics.Collector, sst time.Time, addr swarm.Address) *metrics.Snapshot {
 	t.Helper()
 
-	ss, err := mc.Snapshot(sst, addr)
-	if err != nil {
-		t.Fatalf("Snapshot(%q, ...): unexpected error: %v", addr, err)
-	}
+	ss := mc.Snapshot(sst, addr)
 	if have, want := len(ss), 1; have != want {
 		t.Fatalf("Snapshot(%q, ...): length mismatch: have: %d; want: %d", addr, have, want)
 	}
-	pm, ok := ss[addr.String()]
+	cs, ok := ss[addr.ByteString()]
 	if !ok {
 		t.Fatalf("Snapshot(%q, ...): missing peer metrics", addr)
 	}
-	return pm
+	return cs
 }
 
 func TestPeerMetricsCollector(t *testing.T) {
@@ -52,20 +49,14 @@ func TestPeerMetricsCollector(t *testing.T) {
 	)
 
 	// Inc session conn retry.
-	err = mc.Record(addr, metrics.IncSessionConnectionRetry())
-	if err != nil {
-		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
-	}
+	mc.Record(addr, metrics.IncSessionConnectionRetry())
 	ss := snapshot(t, mc, t2, addr)
-	if have, want := ss.SessionConnectionRetry, uint(1); have != want {
+	if have, want := ss.SessionConnectionRetry, uint64(1); have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection retry counter mismatch: have %d; want %d", addr, have, want)
 	}
 
 	// Login.
-	err = mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound))
-	if err != nil {
-		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
-	}
+	mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound))
 	ss = snapshot(t, mc, t2, addr)
 	if have, want := ss.LastSeenTimestamp, t1.UnixNano(); have != want {
 		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %d; want %d", addr, have, want)
@@ -81,10 +72,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 
 	// Login when already logged in.
-	err = mc.Record(addr, metrics.PeerLogIn(t1.Add(1*time.Second), metrics.PeerConnectionDirectionOutbound))
-	if err != nil {
-		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
-	}
+	mc.Record(addr, metrics.PeerLogIn(t1.Add(1*time.Second), metrics.PeerConnectionDirectionOutbound))
 	ss = snapshot(t, mc, t2, addr)
 	if have, want := ss.LastSeenTimestamp, t1.UnixNano(); have != want {
 		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %d; want %d", addr, have, want)
@@ -100,20 +88,14 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 
 	// Inc session conn retry.
-	err = mc.Record(addr, metrics.IncSessionConnectionRetry())
-	if err != nil {
-		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
-	}
+	mc.Record(addr, metrics.IncSessionConnectionRetry())
 	ss = snapshot(t, mc, t2, addr)
-	if have, want := ss.SessionConnectionRetry, uint(2); have != want {
+	if have, want := ss.SessionConnectionRetry, uint64(2); have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection retry counter mismatch: have %d; want %d", addr, have, want)
 	}
 
 	// Logout.
-	err = mc.Record(addr, metrics.PeerLogOut(t3))
-	if err != nil {
-		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
-	}
+	mc.Record(addr, metrics.PeerLogOut(t3))
 	ss = snapshot(t, mc, t2, addr)
 	if have, want := ss.LastSeenTimestamp, t3.UnixNano(); have != want {
 		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %d; want %d", addr, have, want)
@@ -121,7 +103,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 	if have, want := ss.ConnectionTotalDuration, t3.Sub(t1); have != want {
 		t.Fatalf("Snapshot(%q, ...): connection total duration counter mismatch: have %s; want %s", addr, have, want)
 	}
-	if have, want := ss.SessionConnectionRetry, uint(2); have != want {
+	if have, want := ss.SessionConnectionRetry, uint64(2); have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection retry counter mismatch: have %d; want %d", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDuration, t3.Sub(t1); have != want {
@@ -129,29 +111,24 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 
 	// Inspect.
-	if err := mc.Inspect(addr, func(have *metrics.Snapshot) {
+	mc.Inspect(addr, func(have *metrics.Snapshot) {
 		want := ss
 		if diff := cmp.Diff(have, want); diff != "" {
 			t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
 		}
-	}); err != nil {
-		t.Fatalf("Inspect(%q, ...): unexpected error: %v", addr, err)
+	})
+
+	// Flush.
+	if err := mc.Flush(addr); err != nil {
+		t.Fatalf("Flush(): unexpected error: %v", err)
 	}
 
 	// Finalize.
-	err = mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound))
-	if err != nil {
-		t.Fatalf("Record(%q, ...): unexpected error: %v", addr, err)
-	}
-	err = mc.Finalize(t3)
-	if err != nil {
+	mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound))
+	if err := mc.Finalize(t3); err != nil {
 		t.Fatalf("Finalize(%s): unexpected error: %v", t3, err)
 	}
-	snapshots, err := mc.Snapshot(t2, addr)
-	if err != nil {
-		t.Fatalf("Snapshot(%q, ...): unexpected error: %v", addr, err)
-	}
-	if have, want := len(snapshots), 0; have != want {
+	if have, want := len(mc.Snapshot(t2, addr)), 0; have != want {
 		t.Fatalf("Finalize(%s): counters length mismatch: have %d; want %d", t3, have, want)
 	}
 }

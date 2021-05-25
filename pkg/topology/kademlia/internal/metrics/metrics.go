@@ -50,7 +50,7 @@ func newPeerKey(p, a string) *peerKey {
 
 // RecordOp is a definition of a peer metrics Record
 // operation whose execution modifies a specific metrics.
-type RecordOp func(*Counters) error
+type RecordOp func(*Counters)
 
 // PeerLogIn will first update the current last seen to the give time t and as
 // the second it'll set the direction of the session connection to the given
@@ -58,13 +58,12 @@ type RecordOp func(*Counters) error
 // The time is set as Unix timestamp ignoring the timezone. The operation will
 // panics if the given time is before the Unix epoch.
 func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
-	return func(cs *Counters) error {
-
+	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
 
 		if cs.loggedIn {
-			return nil // Ignore when the peer is already logged in.
+			return // Ignore when the peer is already logged in.
 		}
 		cs.loggedIn = true
 
@@ -73,7 +72,8 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 			panic(fmt.Errorf("time before unix epoch: %s", t))
 		}
 		cs.sessionConnDirection = dir
-		return cs.lastSeenTimestamp.Put(uint64(ls))
+		cs.lastSeenTimestamp = ls
+		cs.dirty = true
 	}
 }
 
@@ -83,59 +83,43 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 // The time is set as Unix timestamp ignoring the timezone. The operation will
 // panics if the given time is before the Unix epoch.
 func PeerLogOut(t time.Time) RecordOp {
-	return func(cs *Counters) error {
-
+	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
 
 		if !cs.loggedIn {
-			return nil // Ignore when the peer is not logged in.
+			return // Ignore when the peer is not logged in.
 		}
 		cs.loggedIn = false
 
-		unixt := t.UnixNano()
-		newLs := uint64(unixt)
-		if unixt < 0 {
+		curLs := cs.lastSeenTimestamp
+		newLs := t.UnixNano()
+		if newLs < 0 {
 			panic(fmt.Errorf("time before unix epoch: %s", t))
 		}
 
-		curLs, err := cs.lastSeenTimestamp.Get()
-		if err != nil {
-			return err
-		}
-
-		ctd, err := cs.connTotalDuration.Get()
-		if err != nil {
-			return err
-		}
-
-		diff := newLs - curLs
-		cs.sessionConnDuration = time.Duration(diff)
-		err = cs.connTotalDuration.Put(ctd + diff)
-		if err != nil {
-			return err
-		}
-		return cs.lastSeenTimestamp.Put(newLs)
-
+		cs.sessionConnDuration = time.Duration(newLs - curLs)
+		cs.connTotalDuration += cs.sessionConnDuration
+		cs.lastSeenTimestamp = newLs
+		cs.dirty = true
 	}
 }
 
 // IncSessionConnectionRetry increments the session connection retry
 // counter by 1.
 func IncSessionConnectionRetry() RecordOp {
-	return func(cs *Counters) error {
+	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
 
 		cs.sessionConnRetry++
-		return nil
 	}
 }
 
 // Snapshot represents a snapshot of peers' metrics counters.
 type Snapshot struct {
 	LastSeenTimestamp          int64
-	SessionConnectionRetry     uint
+	SessionConnectionRetry     uint64
 	ConnectionTotalDuration    time.Duration
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
@@ -151,74 +135,107 @@ func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
 // Counters represents a collection of peer metrics
 // mainly collected for statistics and debugging.
 type Counters struct {
+	sync.Mutex
+	// Bookkeeping.
+	peer     *swarm.Address
+	dirty    bool
 	loggedIn bool
-	// Persistent.
-	lastSeenTimestamp *shed.Uint64Field
-	connTotalDuration *shed.Uint64Field
-	// In memory.
-	sessionConnRetry     uint
+	// In memory counters.
+	lastSeenTimestamp    int64
+	connTotalDuration    time.Duration
+	sessionConnRetry     uint64
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
-	sync.Mutex
+	// Persistent counters.
+	persistent *struct {
+		lastSeenTimestamp *shed.Uint64Field
+		connTotalDuration *shed.Uint64Field
+	}
+}
+
+// flush writes the current state of in memory counters into the given db.
+func (cs *Counters) flush(db *shed.DB) error {
+	cs.Lock()
+	defer cs.Unlock()
+
+	if !cs.dirty {
+		return nil
+	}
+
+	if cs.persistent == nil {
+		key := cs.peer.ByteString()
+		mk := newPeerKey(peerLastSeenTimestamp, key)
+		ls, err := db.NewUint64Field(mk.String())
+		if err != nil {
+			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
+		}
+
+		mk = newPeerKey(peerTotalConnectionDuration, key)
+		cd, err := db.NewUint64Field(mk.String())
+		if err != nil {
+			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
+		}
+
+		cs.persistent = &struct {
+			lastSeenTimestamp *shed.Uint64Field
+			connTotalDuration *shed.Uint64Field
+		}{
+			lastSeenTimestamp: &ls,
+			connTotalDuration: &cd,
+		}
+	}
+
+	if err := cs.persistent.lastSeenTimestamp.Put(uint64(cs.lastSeenTimestamp)); err != nil {
+		return fmt.Errorf("unable to persist last seen timestamp counter %d: %w", cs.lastSeenTimestamp, err)
+	}
+	if err := cs.persistent.connTotalDuration.Put(uint64(cs.connTotalDuration)); err != nil {
+		return fmt.Errorf("unable to persist connection total duration counter %d: %w", cs.connTotalDuration, err)
+	}
+
+	cs.dirty = false
+
+	return nil
+}
+
+// snapshot returns current snapshot of counters referenced to the given t.
+func (cs *Counters) snapshot(t time.Time) *Snapshot {
+	cs.Lock()
+	defer cs.Unlock()
+
+	connTotalDuration := cs.connTotalDuration
+	sessionConnDuration := cs.sessionConnDuration
+	if cs.loggedIn {
+		sessionConnDuration = t.Sub(time.Unix(0, cs.lastSeenTimestamp))
+		connTotalDuration += sessionConnDuration
+	}
+
+	return &Snapshot{
+		LastSeenTimestamp:          cs.lastSeenTimestamp,
+		SessionConnectionRetry:     cs.sessionConnRetry,
+		ConnectionTotalDuration:    connTotalDuration,
+		SessionConnectionDuration:  sessionConnDuration,
+		SessionConnectionDirection: cs.sessionConnDirection,
+	}
 }
 
 // NewCollector is a convenient constructor for creating new Collector.
 func NewCollector(db *shed.DB) *Collector {
-	return &Collector{
-		db:       db,
-		counters: make(map[string]*Counters),
-	}
+	return &Collector{db: db}
 }
 
 // Collector collects various metrics about
 // peers specified be the swarm.Address.
 type Collector struct {
 	db       *shed.DB
-	mu       sync.RWMutex // mu guards counters.
-	counters map[string]*Counters
+	counters sync.Map
 }
 
 // Record records a set of metrics for peer specified by the given address.
-// The execution doesn't stop if some metric operation returns an error, it
-// rather continues and all the execution errors are returned.
-func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
-
-	key := addr.String()
-
-	c.mu.RLock()
-	cs, ok := c.counters[key]
-	c.mu.RUnlock()
-
-	if !ok {
-		mk := newPeerKey(peerLastSeenTimestamp, key)
-		ls, err := c.db.NewUint64Field(mk.String())
-		if err != nil {
-			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
-		}
-
-		mk = newPeerKey(peerTotalConnectionDuration, key)
-		cd, err := c.db.NewUint64Field(mk.String())
-		if err != nil {
-			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
-		}
-
-		cs = &Counters{
-			lastSeenTimestamp: &ls,
-			connTotalDuration: &cd,
-		}
+func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) {
+	val, _ := c.counters.LoadOrStore(addr.ByteString(), &Counters{peer: &addr})
+	for _, op := range rop {
+		op(val.(*Counters))
 	}
-
-	c.mu.Lock()
-	c.counters[key] = cs
-	c.mu.Unlock()
-
-	var err error
-	for i, op := range rop {
-		if opErr := op(cs); opErr != nil {
-			err = multierror.Append(err, fmt.Errorf("operation #%d for %q failed: %w", i, key, opErr))
-		}
-	}
-	return err
 }
 
 // Snapshot returns the current state of the metrics collector for peer(s).
@@ -228,105 +245,82 @@ func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) error {
 // returned. If the peer is still logged in, the session-related counters will
 // be evaluated against the last seen time, which equals to the login time. If
 // the peer is logged out, then the session counters will reflect its last
-// session. The execution doesn't stop if some metric collection returns an
-// error, it rather continues and all the execution errors are returned together
-// with the successful metrics snapshots.
-func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) (map[string]*Snapshot, error) {
-
-	var mErr error
+// session.
+func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string]*Snapshot {
 	snapshot := make(map[string]*Snapshot)
 
-	take := func(addr string) {
-
-		c.mu.RLock()
-		cs := c.counters[addr]
-		c.mu.RUnlock()
-
-		if cs == nil {
-			return
-		}
-
-		ls, err := cs.lastSeenTimestamp.Get()
-		if err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to take last seen snapshot for %q: %w", addr, err))
-		}
-		lastSeenTimestamp := int64(ls)
-
-		cn, err := cs.connTotalDuration.Get()
-		if err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to take connection duration snapshot for %q: %w", addr, err))
-		}
-		connTotalDuration := time.Duration(cn)
-
-		cs.Lock()
-		sessionConnDuration := cs.sessionConnDuration
-		if cs.loggedIn {
-			sessionConnDuration = t.Sub(time.Unix(0, lastSeenTimestamp))
-			connTotalDuration += sessionConnDuration
-		}
-
-		snapshot[addr] = &Snapshot{
-			LastSeenTimestamp:          lastSeenTimestamp,
-			SessionConnectionRetry:     cs.sessionConnRetry,
-			ConnectionTotalDuration:    connTotalDuration,
-			SessionConnectionDuration:  sessionConnDuration,
-			SessionConnectionDirection: cs.sessionConnDirection,
-		}
-		cs.Unlock()
-	}
-
 	for _, addr := range addresses {
-		take(addr.String())
+		val, ok := c.counters.Load(addr.ByteString())
+		if !ok {
+			continue
+		}
+		cs := val.(*Counters)
+		snapshot[addr.ByteString()] = cs.snapshot(t)
 	}
 
 	if len(addresses) == 0 {
-		for _, addr := range c.keys() {
-			take(addr)
+		c.counters.Range(func(key, val interface{}) bool {
+			cs := val.(*Counters)
+			snapshot[cs.peer.ByteString()] = cs.snapshot(t)
+			return true
+		})
+	}
+
+	return snapshot
+}
+
+// Inspect allows to inspect current snapshot for the given
+// peer address by executing the inspection function.
+func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) {
+	snapshots := c.Snapshot(time.Now(), addr)
+	fn(snapshots[addr.ByteString()])
+}
+
+// Flush sync the dirty in memory counters by flushing their values to the
+// underlying storage. If an address or a set of addresses is specified then
+// only counters related to them will be flushed, otherwise counters for all
+// peers will be returned.
+func (c *Collector) Flush(addresses ...swarm.Address) error {
+	var mErr error
+
+	for _, addr := range addresses {
+		val, ok := c.counters.Load(addr.ByteString())
+		if !ok {
+			continue
+		}
+		cs := val.(*Counters)
+		if err := cs.flush(c.db); err != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", addr, err))
 		}
 	}
 
-	return snapshot, mErr
-}
-
-func (c *Collector) keys() []string {
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	keys := make([]string, 0, len(c.counters))
-
-	for k := range c.counters {
-		keys = append(keys, k)
+	if len(addresses) == 0 {
+		c.counters.Range(func(_, val interface{}) bool {
+			cs := val.(*Counters)
+			if err := cs.flush(c.db); err != nil {
+				mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", cs.peer, err))
+			}
+			return true
+		})
 	}
 
-	return keys
-}
-
-// Inspect allows to inspect current snapshot for the given peer address by
-// executing the given fn in a safe manner when write to the counters is
-// blocked while the performing inspection function is executed.
-func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) error {
-	snapshots, err := c.Snapshot(time.Now(), addr)
-	if err != nil {
-		return err
-	}
-	fn(snapshots[addr.String()])
-
-	return nil
+	return mErr
 }
 
 // Finalize logs out all ongoing peer sessions
 // and flushes all in-memory metrics counters.
 func (c *Collector) Finalize(t time.Time) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	var mErr error
-	for addr, cs := range c.counters {
-		if err := PeerLogOut(t)(cs); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to logout peer %q: %w", addr, err))
+
+	c.counters.Range(func(_, val interface{}) bool {
+		cs := val.(*Counters)
+		PeerLogOut(t)(cs)
+		if err := cs.flush(c.db); err != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", cs.peer, err))
 		}
-		delete(c.counters, addr)
-	}
+		c.counters.Delete(cs.peer.ByteString())
+		return true
+	})
+
 	return mErr
 }
