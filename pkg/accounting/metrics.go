@@ -13,13 +13,15 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	TotalDebitedAmount         prometheus.Counter
-	TotalCreditedAmount        prometheus.Counter
-	DebitEventsCount           prometheus.Counter
-	CreditEventsCount          prometheus.Counter
-	AccountingDisconnectsCount prometheus.Counter
-	AccountingBlocksCount      prometheus.Counter
-	AccountingReserveCount     prometheus.Counter
+	TotalDebitedAmount            prometheus.Counter
+	TotalCreditedAmount           prometheus.Counter
+	DebitEventsCount              prometheus.Counter
+	CreditEventsCount             prometheus.Counter
+	AccountingDisconnectsCount    prometheus.Counter
+	AccountingBlocksCount         prometheus.Counter
+	AccountingReserveCount        prometheus.Counter
+	TotalOriginatedCreditedAmount prometheus.Counter
+	OriginatedCreditEventsCount   prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -38,6 +40,12 @@ func newMetrics() metrics {
 			Name:      "total_credited_amount",
 			Help:      "Amount of BZZ credited to peers (potential cost of the node)",
 		}),
+		TotalOriginatedCreditedAmount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_originated_credited_amount",
+			Help:      "Amount of BZZ credited to peers (potential cost of the node) for originated traffic",
+		}),
 		DebitEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -49,6 +57,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "credit_events_count",
 			Help:      "Number of occurrences of BZZ credit events towards peers",
+		}),
+		OriginatedCreditEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "originated_credit_events_count",
+			Help:      "Number of occurrences of BZZ credit events as originator towards peers",
 		}),
 		AccountingDisconnectsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
