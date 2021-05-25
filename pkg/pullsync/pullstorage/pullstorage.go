@@ -7,6 +7,8 @@ package pullstorage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"golang.org/x/sync/singleflight"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -43,79 +45,97 @@ type Storer interface {
 // ps wraps storage.Storer.
 type ps struct {
 	storage.Storer
+	intervalFlight *singleflight.Group
 }
 
 // New returns a new pullstorage Storer instance.
 func New(storer storage.Storer) Storer {
 	return &ps{
-		Storer: storer,
+		Storer:         storer,
+		intervalFlight: &singleflight.Group{},
 	}
+}
+
+type intervalFlightResult struct {
+	chs     []swarm.Address
+	topmost uint64
 }
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
-	// call iterator, iterate either until upper bound or limit reached
-	// return addresses, topmost is the topmost bin ID
-	var (
-		timer  *time.Timer
-		timerC <-chan time.Time
-	)
-	ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
-	defer func(start time.Time) {
-		stop()
-		if timer != nil {
-			timer.Stop()
-		}
-	}(time.Now())
+	result, err, _ := s.intervalFlight.Do(subKey(bin, from, to, limit), func() (interface{}, error) {
+		// call iterator, iterate either until upper bound or limit reached
+		// return addresses, topmost is the topmost bin ID
+		var (
+			timer  *time.Timer
+			timerC <-chan time.Time
+		)
+		ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
+		defer func(start time.Time) {
+			stop()
+			if timer != nil {
+				timer.Stop()
+			}
+		}(time.Now())
 
-	var nomore bool
+		var nomore bool
 
-LOOP:
-	for limit > 0 {
-		select {
-		case v, ok := <-ch:
-			if !ok {
-				nomore = true
+	LOOP:
+		for limit > 0 {
+			select {
+			case v, ok := <-ch:
+				if !ok {
+					nomore = true
+					break LOOP
+				}
+				chs = append(chs, v.Address)
+				if v.BinID > topmost {
+					topmost = v.BinID
+				}
+				limit--
+				if timer == nil {
+					timer = time.NewTimer(batchTimeout)
+				} else {
+					if !timer.Stop() {
+						<-timer.C
+					}
+					timer.Reset(batchTimeout)
+				}
+				timerC = timer.C
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-timerC:
+				// return batch if new chunks are not received after some time
 				break LOOP
 			}
-			chs = append(chs, v.Address)
-			if v.BinID > topmost {
-				topmost = v.BinID
-			}
-			limit--
-			if timer == nil {
-				timer = time.NewTimer(batchTimeout)
-			} else {
-				if !timer.Stop() {
-					<-timer.C
-				}
-				timer.Reset(batchTimeout)
-			}
-			timerC = timer.C
-		case <-ctx.Done():
-			return nil, 0, ctx.Err()
-		case <-timerC:
-			// return batch if new chunks are not received after some time
-			break LOOP
 		}
-	}
 
-	select {
-	case <-ctx.Done():
-		return nil, 0, ctx.Err()
-	case <-dbClosed:
-		return nil, 0, ErrDbClosed
-	default:
-	}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-dbClosed:
+			return nil, ErrDbClosed
+		default:
+		}
 
-	if nomore {
-		// end of interval reached. no more chunks so interval is complete
-		// return requested `to`. it could be that len(chs) == 0 if the interval
-		// is empty
-		topmost = to
-	}
+		if nomore {
+			// end of interval reached. no more chunks so interval is complete
+			// return requested `to`. it could be that len(chs) == 0 if the interval
+			// is empty
+			topmost = to
+		}
 
-	return chs, topmost, nil
+		return &intervalFlightResult{chs: chs, topmost: topmost}, nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	intervalRes := result.(*intervalFlightResult)
+	return intervalRes.chs, intervalRes.topmost, nil
+}
+
+func subKey(bin uint8, from, to uint64, limit int) string {
+	return fmt.Sprintf("%d_%d_%d_%d", bin, from, to, limit)
 }
 
 // Cursors gets the last BinID for every bin in the local storage
