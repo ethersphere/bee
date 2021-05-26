@@ -18,6 +18,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -790,9 +791,21 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 // node's Shutdown method is that it only shuts down the node and does not exit the start process
 // which is waiting on the os.Signals. This is not desirable, but currently bee node cannot handle
 // rate-limiting blockchain API calls properly. We will shut down the node in this case to allow the
-// user to rectify the API issues (by adjusting limits or using a different one).
-type pidKiller struct{}
+// user to rectify the API issues (by adjusting limits or using a different one). There is no platform
+// agnostic way to trigger os.Signals in go unfortunately. Which is why we will use the process.Kill
+// approach which works on windows as well.
+type pidKiller struct {
+	node *Bee
+}
 
-func (p *pidKiller) Shutdown(_ context.Context) error {
-	return syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+func (p *pidKiller) Shutdown(ctx context.Context) error {
+	err := p.node.Shutdown(ctx)
+	if err != nil {
+		return err
+	}
+	ps, err := os.FindProcess(syscall.Getpid())
+	if err != nil {
+		return err
+	}
+	return ps.Kill()
 }
