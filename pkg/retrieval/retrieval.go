@@ -130,7 +130,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		)
 
 		requestAttempt := 0
+		lastTime := time.Now().Unix()
+
 		for requestAttempt < 5 {
+
 			if peerAttempt < maxSelects {
 				peerAttempt++
 
@@ -176,9 +179,24 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 			// if we have not counted enough successful attempts but out of selection amount, reset
 			if peerAttempt >= maxSelects {
-				requestAttempt++
-				peerAttempt = 0
-				sp = newSkipPeers()
+				if origin {
+					return nil, storage.ErrNotFound
+				}
+
+				timeNow := time.Now().Unix()
+				if timeNow > lastTime {
+					lastTime = timeNow
+					requestAttempt++
+					peerAttempt = 0
+					sp.Reset()
+				} else {
+					select {
+					case <-time.After(400 * time.Millisecond):
+					case <-ctx.Done():
+						logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
+						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
+					}
+				}
 			}
 		}
 
@@ -233,17 +251,18 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			Inc()
 	}
 
-	sp.Add(peer)
-
 	// compute the peer's price for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
 	// Reserve to see whether we can request the chunk
 	err = s.accounting.Reserve(ctx, peer, chunkPrice)
 	if err != nil {
+		sp.AddOverdraft(peer)
 		return nil, peer, false, err
 	}
 	defer s.accounting.Release(peer, chunkPrice)
+
+	sp.Add(peer)
 
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
