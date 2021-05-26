@@ -794,6 +794,5 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 type pidKiller struct{}
 
 func (p *pidKiller) Shutdown(_ context.Context) error {
-	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-	return nil
+	return syscall.Kill(syscall.Getpid(), syscall.SIGINT)
 }
