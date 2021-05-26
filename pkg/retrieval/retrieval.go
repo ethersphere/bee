@@ -179,7 +179,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 			// if we have not counted enough successful attempts but out of selection amount, reset
 			if peerAttempt >= maxSelects {
-				if origin {
+				if !origin {
 					return nil, storage.ErrNotFound
 				}
 
