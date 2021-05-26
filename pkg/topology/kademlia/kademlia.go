@@ -1193,7 +1193,6 @@ func (k *Kad) String() string {
 // Close shuts down kademlia.
 func (k *Kad) Close() error {
 	k.logger.Info("kademlia shutting down")
-	defer k.logger.Info("kademlia shut down complete")
 	close(k.quit)
 	cc := make(chan struct{})
 
