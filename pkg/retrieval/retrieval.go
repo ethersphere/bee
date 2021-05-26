@@ -130,7 +130,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		)
 
 		requestAttempt := 0
-		emptyRounds := 0
 
 		lastTime := time.Now().Unix()
 
@@ -159,7 +158,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				if res.retrieved {
 					if res.err != nil {
 						if !res.peer.IsZero() {
-							emptyRounds++
 							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, res.peer, res.err)
 						}
 						peersResults++
@@ -200,10 +198,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				}
 			}
 
-			if emptyRounds >= maxSelects {
-				requestAttempt++
-				emptyRounds = 0
-			}
 		}
 
 		// if we have not managed to get results after 5 rounds of peer selections, give up
