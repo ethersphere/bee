@@ -75,7 +75,7 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 		}
 		cs.sessionConnDirection = dir
 		cs.lastSeenTimestamp = ls
-		cs.dirty.Store(true)
+		cs.dirty.Store(3)
 	}
 }
 
@@ -103,7 +103,7 @@ func PeerLogOut(t time.Time) RecordOp {
 		cs.sessionConnDuration = time.Duration(newLs - curLs)
 		cs.connTotalDuration += cs.sessionConnDuration
 		cs.lastSeenTimestamp = newLs
-		cs.dirty.Store(true)
+		cs.dirty.Store(3)
 	}
 }
 
@@ -138,27 +138,36 @@ func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
 // mainly collected for statistics and debugging.
 type Counters struct {
 	sync.Mutex
+
 	// Bookkeeping.
 	peer     *swarm.Address
-	dirty    atomic.Bool
 	loggedIn bool
-	// In memory counters.
+
+	// Watches in-memory counters which has to be persisted.
+	// 	3 - dirty, need to be persisted
+	//	2 - snapshot of counters in progress
+	//	1 - batched for persistent write
+	//	0 - persisted
+	dirty atomic.Int32
+
+	// In-memory counters.
 	lastSeenTimestamp    int64
 	connTotalDuration    time.Duration
 	sessionConnRetry     uint64
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
-	// Persistent counters.
-	persistentLastSeenTimestamp atomic.Value //*shed.Uint64Field
-	persistentConnTotalDuration atomic.Value //*shed.Uint64Field
 
+	// Persistent counters.
+	persistentLastSeenTimestamp atomic.Value
+	persistentConnTotalDuration atomic.Value
 }
 
 // flush writes the current state of in memory counters into the given db.
-func (cs *Counters) flush(db *shed.DB) error {
-	if !cs.dirty.Load() {
+func (cs *Counters) flush(db *shed.DB, batch *leveldb.Batch) error {
+	if cs.dirty.Load() > 1 {
 		return nil
 	}
+	cs.dirty.CAS(3, 2)
 
 	cs.Lock()
 	var (
@@ -190,14 +199,10 @@ func (cs *Counters) flush(db *shed.DB) error {
 		cs.persistentConnTotalDuration.Store(cd)
 	}
 
-	batch := new(leveldb.Batch)
 	ls.PutInBatch(batch, uint64(lastSeenTimestampSnapshot))
 	cd.PutInBatch(batch, uint64(connectionTotalDurationSnapshot))
-	if err := db.WriteBatch(batch); err != nil {
-		return fmt.Errorf("unable to persist counters in batch: %w", err)
-	}
 
-	cs.dirty.Store(false)
+	cs.dirty.CAS(2, 1)
 
 	return nil
 }
@@ -286,7 +291,11 @@ func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) {
 // only counters related to them will be flushed, otherwise counters for all
 // peers will be flushed.
 func (c *Collector) Flush(addresses ...swarm.Address) error {
-	var mErr error
+	var (
+		mErr  error
+		dirty []string
+		batch = new(leveldb.Batch)
+	)
 
 	for _, addr := range addresses {
 		val, ok := c.counters.Load(addr.ByteString())
@@ -294,19 +303,39 @@ func (c *Collector) Flush(addresses ...swarm.Address) error {
 			continue
 		}
 		cs := val.(*Counters)
-		if err := cs.flush(c.db); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", addr, err))
+		if err := cs.flush(c.db, batch); err != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("unable to batch the counters of peer %q for flash: %w", addr, err))
+			continue
 		}
+		dirty = append(dirty, addr.ByteString())
 	}
 
 	if len(addresses) == 0 {
 		c.counters.Range(func(_, val interface{}) bool {
 			cs := val.(*Counters)
-			if err := cs.flush(c.db); err != nil {
-				mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", cs.peer, err))
+			if err := cs.flush(c.db, batch); err != nil {
+				mErr = multierror.Append(mErr, fmt.Errorf("unable to batch the counters of peer %q for flash: %w", cs.peer, err))
+				return true
 			}
+			dirty = append(dirty, cs.peer.ByteString())
 			return true
 		})
+	}
+
+	if batch.Len() == 0 {
+		return mErr
+	}
+	if err := c.db.WriteBatch(batch); err != nil {
+		mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
+	}
+
+	for _, addr := range dirty {
+		val, ok := c.counters.Load(addr)
+		if !ok {
+			continue
+		}
+		cs := val.(*Counters)
+		cs.dirty.CAS(1, 0)
 	}
 
 	return mErr
@@ -315,14 +344,28 @@ func (c *Collector) Flush(addresses ...swarm.Address) error {
 // Finalize logs out all ongoing peer sessions
 // and flushes all in-memory metrics counters.
 func (c *Collector) Finalize(t time.Time) error {
-	var mErr error
+	var (
+		mErr  error
+		batch = new(leveldb.Batch)
+	)
 
 	c.counters.Range(func(_, val interface{}) bool {
 		cs := val.(*Counters)
 		PeerLogOut(t)(cs)
-		if err := cs.flush(c.db); err != nil {
+		if err := cs.flush(c.db, batch); err != nil {
 			mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", cs.peer, err))
 		}
+		return true
+	})
+
+	if batch.Len() > 0 {
+		if err := c.db.WriteBatch(batch); err != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
+		}
+	}
+
+	c.counters.Range(func(_, val interface{}) bool {
+		cs := val.(*Counters)
 		c.counters.Delete(cs.peer.ByteString())
 		return true
 	})
