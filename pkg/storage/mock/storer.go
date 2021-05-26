@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -245,7 +244,6 @@ func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until 
 		m.mtx.Unlock()
 
 		if m.partialInterval {
-			fmt.Println("waiting for partial interval")
 			// block since we're at the top of the bin and waiting for new chunks
 			select {
 			case <-done:
@@ -253,12 +251,10 @@ func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until 
 			case <-m.quit:
 				return
 			case <-ctx.Done():
-				fmt.Println("Got context cancellation")
 				return
 			case <-m.morePull:
 
 			}
-			fmt.Println("exit waiting for partial interval")
 		}
 
 		m.mtx.Lock()
