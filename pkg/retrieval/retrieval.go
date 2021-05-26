@@ -130,15 +130,15 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		)
 
 		requestAttempt := 0
+		emptyRounds := 0
+
 		lastTime := time.Now().Unix()
 
 		for requestAttempt < 5 {
 
 			if peerAttempt < maxSelects {
 				peerAttempt++
-
 				s.metrics.PeerRequestCounter.Inc()
-
 				go func() {
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp)
 					resultC <- retrievalResult{
@@ -149,7 +149,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					}
 				}()
 			} else {
-				ticker.Stop()
+				resultC <- retrievalResult{}
 			}
 
 			select {
@@ -159,6 +159,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				if res.retrieved {
 					if res.err != nil {
 						if !res.peer.IsZero() {
+							emptyRounds++
 							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, res.peer, res.err)
 						}
 						peersResults++
@@ -183,20 +184,25 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					return nil, storage.ErrNotFound
 				}
 
+				requestAttempt++
 				timeNow := time.Now().Unix()
 				if timeNow > lastTime {
 					lastTime = timeNow
-					requestAttempt++
 					peerAttempt = 0
 					sp.Reset()
 				} else {
 					select {
-					case <-time.After(400 * time.Millisecond):
+					case <-time.After(600 * time.Millisecond):
 					case <-ctx.Done():
 						logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
 						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
 					}
 				}
+			}
+
+			if emptyRounds >= maxSelects {
+				requestAttempt++
+				emptyRounds = 0
 			}
 		}
 
@@ -213,7 +219,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
 	startTimer := time.Now()
-
 	v := ctx.Value(requestSourceContextKey{})
 	sourcePeerAddr := swarm.Address{}
 	// allow upstream requests if this node is the source of the request
@@ -317,7 +322,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		return nil, peer, true, err
 	}
 	s.metrics.ChunkPrice.Observe(float64(chunkPrice))
-
 	return chunk, peer, true, err
 }
 
