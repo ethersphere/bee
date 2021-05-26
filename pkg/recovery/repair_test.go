@@ -230,6 +230,7 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithBaseAddr(peerID),
 	)
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
