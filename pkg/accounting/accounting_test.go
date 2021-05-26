@@ -37,9 +37,13 @@ type paymentCall struct {
 
 // booking represents an accounting action and the expected result afterwards
 type booking struct {
-	peer            swarm.Address
-	price           int64 // Credit if <0, Debit otherwise
-	expectedBalance int64
+	peer              swarm.Address
+	price             int64 // Credit if <0, Debit otherwise
+	expectedBalance   int64
+	originatedBalance int64
+	originatedCredit  bool
+	amount            int64
+	notifyPaymentSent bool
 }
 
 // TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
@@ -100,6 +104,88 @@ func TestAccountingAddBalance(t *testing.T) {
 		if balance.Int64() != booking.expectedBalance {
 			t.Fatalf("balance for peer %v not as expected after booking %d. got %d, wanted %d", booking.peer.String(), i, balance, booking.expectedBalance)
 		}
+	}
+}
+
+// TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
+func TestAccountingAddOriginatedBalance(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bookings := []booking{
+		// originated credit
+		{peer: peer1Addr, price: -200, expectedBalance: -200, originatedBalance: -200, originatedCredit: true},
+		// forwarder credit
+		{peer: peer1Addr, price: -200, expectedBalance: -400, originatedBalance: -200, originatedCredit: false},
+		// inconsequential debit not moving balance closer to 0 than originbalance is to 0
+		{peer: peer1Addr, price: 100, expectedBalance: -300, originatedBalance: -200},
+		// consequential debit moving balance closer to 0 than originbalance, therefore also moving originated balance along
+		{peer: peer1Addr, price: 200, expectedBalance: -100, originatedBalance: -100},
+		// notifypaymentsent that moves originated balance into positive domain
+		{peer: peer1Addr, amount: 200, expectedBalance: 100, originatedBalance: 100, notifyPaymentSent: true},
+		// inconsequential debit because originated balance is in the positive domain
+		{peer: peer1Addr, price: 100, expectedBalance: 200, originatedBalance: 100},
+		// originated credit moving the originated balance back into the negative domain, should be limited to the expectedbalance
+		{peer: peer1Addr, price: -300, expectedBalance: -100, originatedBalance: -200, originatedCredit: true},
+	}
+
+	for i, booking := range bookings {
+		if booking.notifyPaymentSent {
+			acc.NotifyPaymentSent(booking.peer, big.NewInt(booking.amount), nil)
+
+		} else {
+
+			if booking.price < 0 {
+				err = acc.Reserve(context.Background(), booking.peer, uint64(-booking.price))
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = acc.Credit(booking.peer, uint64(-booking.price), booking.originatedCredit)
+				if err != nil {
+					t.Fatal(err)
+				}
+				acc.Release(booking.peer, uint64(-booking.price))
+			} else {
+				debitAction := acc.PrepareDebit(booking.peer, uint64(booking.price))
+				err = debitAction.Apply()
+				if err != nil {
+					t.Fatal(err)
+				}
+				debitAction.Cleanup()
+			}
+
+		}
+
+		balance, err := acc.Balance(booking.peer)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if balance.Int64() != booking.expectedBalance {
+			t.Fatalf("balance for peer %v not as expected after booking %d. got %d, wanted %d", booking.peer.String(), i, balance, booking.expectedBalance)
+		}
+
+		originatedBalance, err := acc.OriginatedBalance(booking.peer)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if originatedBalance.Int64() != booking.originatedBalance {
+			t.Fatalf("originated balance for peer %v not as expected after booking %d. got %d, wanted %d", booking.peer.String(), i, originatedBalance, booking.originatedBalance)
+		}
+
 	}
 }
 
