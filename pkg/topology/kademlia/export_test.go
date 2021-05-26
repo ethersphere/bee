@@ -6,6 +6,7 @@ package kademlia
 
 var (
 	TimeToRetry                 = &timeToRetry
+	QuickSaturation             = &quickSaturation
 	SaturationPeers             = &saturationPeers
 	OverSaturationPeers         = &overSaturationPeers
 	BootnodeOverSaturationPeers = &bootnodeOverSaturationPeers

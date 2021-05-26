@@ -39,8 +39,9 @@ const (
 )
 
 var (
+	quickSaturation             = 4
 	saturationPeers             = 8
-	overSaturationPeers         = 16
+	overSaturationPeers         = 20
 	bootnodeOverSaturationPeers = 20
 	shortRetry                  = 30 * time.Second
 	timeToRetry                 = 2 * shortRetry
@@ -293,16 +294,17 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	// The topology.EachPeerFunc doesn't return an error
 	// so we ignore the error returned from EachBinRev.
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
+
+		if po < k.NeighborhoodDepth() {
+			return false, true, nil
+		}
+
 		if k.connectedPeers.Exists(addr) {
 			return false, false, nil
 		}
 
 		if k.waitNext.Waiting(addr) {
 			return false, false, nil
-		}
-
-		if saturated, _ := k.saturationFunc(po, k.knownPeers, k.connectedPeers); saturated {
-			return false, true, nil // Bin is saturated, skip to next bin.
 		}
 
 		select {
@@ -592,12 +594,11 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 			binCount++
 			return false, false, nil
 		}
-		if bin > shallowestUnsaturated && binCount < saturationPeers {
-			// this means we have less than saturationPeers in the previous bin
+		if bin > shallowestUnsaturated && binCount < quickSaturation {
+			// this means we have less than quickSaturation in the previous bin
 			// therefore we can return assuming that bin is the unsaturated one.
 			return true, false, nil
 		}
-		// bin > shallowestUnsaturated && binCount >= saturationPeers
 		shallowestUnsaturated = bin
 		binCount = 1
 

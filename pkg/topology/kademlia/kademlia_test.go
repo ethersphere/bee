@@ -267,45 +267,45 @@ func TestEachNeighbor(t *testing.T) {
 // in a given bin are connected (since some of them might be offline)
 func TestManage(t *testing.T) {
 	var (
-		conns int32 // how many connect calls were made to the p2p mock
-
-		saturationVal     = false
-		overSaturationVal = false
-		saturationFunc    = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
-			return saturationVal, overSaturationVal
-		}
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1, SaturationFunc: saturationFunc})
+		conns      int32 // how many connect calls were made to the p2p mock
+		saturation = *kademlia.QuickSaturation
+		// saturationVal     = false
+		// overSaturationVal = false
+		// saturationFunc    = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+		// 	return saturationVal, overSaturationVal
+		// }
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	defer kad.Close()
-	// first, saturationFunc returns always false, this means that the bin is not saturated,
-	// hence we expect that every peer we add to kademlia will be connected to
-	for i := 0; i < 50; i++ {
+
+	kad.SetRadius(6)
+
+	// first, we add peers to bin 0
+	for i := 0; i < saturation; i++ {
 		addr := test.RandomAddressAt(base, 0)
 		addOne(t, signer, kad, ab, addr)
 	}
 
-	waitCounter(t, &conns, 50)
-	saturationVal = true
+	waitCounter(t, &conns, 4)
 
-	// now since the bin is "saturated", no new connections should be made
-	for i := 0; i < 50; i++ {
+	// next, we add peers to the next bin
+	for i := 0; i < saturation; i++ {
+		addr := test.RandomAddressAt(base, 1)
+		addOne(t, signer, kad, ab, addr)
+	}
+
+	waitCounter(t, &conns, 4)
+
+	// here, we attempt to add to bin 0, but bin is saturated, so no peers are connected to
+	for i := 0; i < saturation; i++ {
 		addr := test.RandomAddressAt(base, 0)
 		addOne(t, signer, kad, ab, addr)
 	}
 
-	waitCounter(t, &conns, 0)
-
-	// check other bins just for fun
-	for i := 0; i < 16; i++ {
-		for j := 0; j < 10; j++ {
-			addr := test.RandomAddressAt(base, i)
-			addOne(t, signer, kad, ab, addr)
-		}
-	}
 	waitCounter(t, &conns, 0)
 }
 
@@ -382,20 +382,21 @@ func TestManageWithBalancing(t *testing.T) {
 // in shallower depth for the rest of the function to be executed
 func TestBinSaturation(t *testing.T) {
 	defer func(p int) {
-		*kademlia.SaturationPeers = p
-	}(*kademlia.SaturationPeers)
-	*kademlia.SaturationPeers = 2
+		*kademlia.QuickSaturation = p
+	}(*kademlia.QuickSaturation)
+	*kademlia.QuickSaturation = 2
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1})
-		peers                    []swarm.Address
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	defer kad.Close()
+
+	kad.SetRadius(6)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
@@ -404,7 +405,6 @@ func TestBinSaturation(t *testing.T) {
 		for j := 0; j < 2; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addOne(t, signer, kad, ab, addr)
-			peers = append(peers, addr)
 		}
 	}
 	waitCounter(t, &conns, 10)
@@ -430,9 +430,6 @@ func TestBinSaturation(t *testing.T) {
 
 	waitCounter(t, &conns, 1)
 
-	// this is in order to hit the `if size < 2` in the saturation func
-	removeOne(kad, peers[2])
-	waitCounter(t, &conns, 1)
 }
 
 func TestOversaturation(t *testing.T) {
