@@ -30,7 +30,6 @@ func (s *skipPeers) All() []swarm.Address {
 func (s *skipPeers) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	s.overdraftAddresses = []swarm.Address{}
 }
 
