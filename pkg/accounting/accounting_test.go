@@ -138,7 +138,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 		// inconsequential debit because originated balance is in the positive domain
 		{peer: peer1Addr, price: 100, expectedBalance: 200, originatedBalance: 100},
 		// originated credit moving the originated balance back into the negative domain, should be limited to the expectedbalance
-		{peer: peer1Addr, price: -300, expectedBalance: -100, originatedBalance: -200, originatedCredit: true},
+		{peer: peer1Addr, price: -300, expectedBalance: -100, originatedBalance: -100, originatedCredit: true},
 	}
 
 	for i, booking := range bookings {
