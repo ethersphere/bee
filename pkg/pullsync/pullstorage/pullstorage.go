@@ -61,13 +61,15 @@ type intervalFlightResult struct {
 }
 
 // IntervalChunks collects chunk for a requested interval.
-func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
+func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
 	resultC := s.intervalFlight.DoChan(subKey(bin, from, to, limit), func() (interface{}, error) {
 		// call iterator, iterate either until upper bound or limit reached
 		// return addresses, topmost is the topmost bin ID
 		var (
-			timer  *time.Timer
-			timerC <-chan time.Time
+			timer   *time.Timer
+			timerC  <-chan time.Time
+			chs     []swarm.Address
+			topmost uint64
 		)
 		ch, dbClosed, stop := s.SubscribePull(context.Background(), bin, from, to)
 		defer func(start time.Time) {
