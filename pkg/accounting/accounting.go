@@ -30,6 +30,7 @@ var (
 	// fraction of the refresh rate that is the minimum for monetary settlement
 	// this value is chosen so that tiny payments are prevented while still allowing small payments in environments with lower payment thresholds
 	minimumPaymentDivisor = int64(5)
+	zero                  = big.NewInt(0)
 )
 
 // Interface is the Accounting interface.
@@ -281,6 +282,17 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64, originated bool) e
 		nextOriginBalance := new(big.Int).Sub(originBalance, new(big.Int).SetUint64(price))
 
 		a.logger.Tracef("crediting peer %v with price %d, new originated balance is %d", peer, price, nextOriginBalance)
+
+		// only consider negative balance for limiting originated balance
+		if nextBalance.Cmp(zero) > 0 {
+			nextBalance.Set(zero)
+		}
+
+		// If originated balance is more into the negative domain, set it to balance
+		if nextOriginBalance.Cmp(nextBalance) < 0 {
+			nextOriginBalance.Set(nextBalance)
+			a.logger.Tracef("decreasing originated balance to peer %v to current balance %d", peer, nextOriginBalance)
+		}
 
 		err = a.store.Put(originatedBalanceKey(peer), nextOriginBalance)
 		if err != nil {
