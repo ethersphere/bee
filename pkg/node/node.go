@@ -367,7 +367,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			postageSyncStart = startBlock
 		}
 
-		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{})
+		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 		b.listenerCloser = eventListener
 
 		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener)
