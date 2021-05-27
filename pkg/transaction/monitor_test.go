@@ -13,8 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendsimulation"
+	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/transaction/backendsimulation"
 )
 
 func TestMonitorWatchTransaction(t *testing.T) {

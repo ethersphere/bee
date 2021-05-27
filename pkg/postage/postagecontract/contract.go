@@ -17,7 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )

@@ -11,9 +11,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	backendmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
-	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
+	"github.com/ethersphere/bee/pkg/transaction"
+	backendmock "github.com/ethersphere/bee/pkg/transaction/backendmock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
