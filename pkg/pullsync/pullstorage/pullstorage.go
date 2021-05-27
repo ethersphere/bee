@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/sync/singleflight"
+	"io"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -16,7 +17,7 @@ import (
 )
 
 var (
-	_ Storer = (*ps)(nil)
+	_ Storer = (*PullStorer)(nil)
 	// ErrDbClosed is used to signal the underlying database was closed
 	ErrDbClosed = errors.New("db closed")
 
@@ -40,20 +41,27 @@ type Storer interface {
 	Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error
 	// Has chunks.
 	Has(ctx context.Context, addr swarm.Address) (bool, error)
+
+	io.Closer
 }
 
-// ps wraps storage.Storer.
-type ps struct {
+// PullStorer wraps storage.Storer.
+type PullStorer struct {
 	storage.Storer
 	intervalFlight singleflight.Group
 	metrics        metrics
+	psCtx          context.Context
+	psCancel       context.CancelFunc
 }
 
 // New returns a new pullstorage Storer instance.
-func New(storer storage.Storer) Storer {
-	return &ps{
-		Storer:  storer,
-		metrics: newMetrics(),
+func New(storer storage.Storer) *PullStorer {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &PullStorer{
+		Storer:   storer,
+		metrics:  newMetrics(),
+		psCtx:    ctx,
+		psCancel: cancel,
 	}
 }
 
@@ -63,8 +71,9 @@ type intervalFlightResult struct {
 }
 
 // IntervalChunks collects chunk for a requested interval.
-func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
+func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
 	s.metrics.TotalSubscribePullRequests.Inc()
+	defer s.metrics.TotalSubscribePullRequestsComplete.Inc()
 	resultC := s.intervalFlight.DoChan(subKey(bin, from, to, limit), func() (interface{}, error) {
 		// call iterator, iterate either until upper bound or limit reached
 		// return addresses, topmost is the topmost bin ID
@@ -74,14 +83,14 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 			chs     []swarm.Address
 			topmost uint64
 		)
-		ch, dbClosed, stop := s.SubscribePull(context.Background(), bin, from, to)
+		s.metrics.SubscribePullsStarted.Inc()
+		ch, dbClosed, stop := s.SubscribePull(s.psCtx, bin, from, to)
 		defer func(start time.Time) {
 			stop()
 			if timer != nil {
 				timer.Stop()
 			}
-			s.metrics.SubscribePullsExecuted.Inc()
-			s.metrics.TotalSubscribePullsTime.Add(float64(time.Since(start)))
+			s.metrics.SubscribePullsComplete.Inc()
 		}(time.Now())
 
 		var nomore bool
@@ -111,6 +120,9 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 			case <-timerC:
 				// return batch if new chunks are not received after some time
 				break LOOP
+			case <-s.psCtx.Done():
+				// this is called on module shutdown, close all listeners
+				return nil, ctx.Err()
 			}
 		}
 
@@ -118,6 +130,7 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 		case <-dbClosed:
 			return nil, ErrDbClosed
 		default:
+
 		}
 
 		if nomore {
@@ -137,6 +150,11 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 			return nil, 0, r.Err
 		}
 		intervalRes := r.Val.(*intervalFlightResult)
+		if r.Shared {
+			addrsClone := make([]swarm.Address, len(intervalRes.chs))
+			copy(addrsClone, intervalRes.chs)
+			return addrsClone, intervalRes.topmost, nil
+		}
 		return intervalRes.chs, intervalRes.topmost, nil
 	}
 	return nil, 0, ctx.Err()
@@ -147,7 +165,7 @@ func subKey(bin uint8, from, to uint64, limit int) string {
 }
 
 // Cursors gets the last BinID for every bin in the local storage
-func (s *ps) Cursors(ctx context.Context) (curs []uint64, err error) {
+func (s *PullStorer) Cursors(ctx context.Context) (curs []uint64, err error) {
 	curs = make([]uint64, swarm.MaxBins)
 	for i := uint8(0); i < swarm.MaxBins; i++ {
 		binID, err := s.Storer.LastPullSubscriptionBinID(i)
@@ -160,12 +178,17 @@ func (s *ps) Cursors(ctx context.Context) (curs []uint64, err error) {
 }
 
 // Get chunks.
-func (s *ps) Get(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) ([]swarm.Chunk, error) {
+func (s *PullStorer) Get(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) ([]swarm.Chunk, error) {
 	return s.Storer.GetMulti(ctx, mode, addrs...)
 }
 
 // Put chunks.
-func (s *ps) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) error {
+func (s *PullStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) error {
 	_, err := s.Storer.Put(ctx, mode, chs...)
 	return err
+}
+
+func (s *PullStorer) Close() error {
+	s.psCancel()
+	return nil
 }

@@ -10,10 +10,11 @@ import (
 )
 
 type metrics struct {
-	TotalSubscribePullRequests prometheus.Counter
-	SubscribePullsExecuted     prometheus.Counter
-	SubscribePullsFailures     prometheus.Counter
-	TotalSubscribePullsTime    prometheus.Counter
+	TotalSubscribePullRequests         prometheus.Counter
+	TotalSubscribePullRequestsComplete prometheus.Counter
+	SubscribePullsStarted              prometheus.Counter
+	SubscribePullsComplete             prometheus.Counter
+	SubscribePullsFailures             prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -26,26 +27,32 @@ func newMetrics() metrics {
 			Name:      "subscribe_pull_requests",
 			Help:      "Total subscribe pull requests.",
 		}),
-		SubscribePullsExecuted: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSubscribePullRequestsComplete: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "subscribe_pulls_executed",
-			Help:      "Total subscribe pulls executed.",
+			Name:      "subscribe_pull_requests_complete",
+			Help:      "Total subscribe pull requests completed.",
+		}),
+		SubscribePullsStarted: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "subscribe_pulls_started",
+			Help:      "Total subscribe pulls started.",
+		}),
+		SubscribePullsComplete: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "subscribe_pulls_complete",
+			Help:      "Total subscribe pulls complete.",
 		}),
 		SubscribePullsFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "subscribe_pulls_failures",
 			Help:      "Total subscribe pulls failures.",
-		}),
-		TotalSubscribePullsTime: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "subscribe_pulls_time",
-			Help:      "Total time taken for pull subscriptions.",
 		})}
 }
 
-func (s *ps) Metrics() []prometheus.Collector {
+func (s *PullStorer) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
