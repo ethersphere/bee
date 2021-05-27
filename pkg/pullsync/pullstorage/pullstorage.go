@@ -46,12 +46,14 @@ type Storer interface {
 type ps struct {
 	storage.Storer
 	intervalFlight singleflight.Group
+	metrics        metrics
 }
 
 // New returns a new pullstorage Storer instance.
 func New(storer storage.Storer) Storer {
 	return &ps{
-		Storer: storer,
+		Storer:  storer,
+		metrics: newMetrics(),
 	}
 }
 
@@ -62,6 +64,7 @@ type intervalFlightResult struct {
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
+	s.metrics.TotalSubscribePullRequests.Inc()
 	resultC := s.intervalFlight.DoChan(subKey(bin, from, to, limit), func() (interface{}, error) {
 		// call iterator, iterate either until upper bound or limit reached
 		// return addresses, topmost is the topmost bin ID
@@ -77,6 +80,8 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 			if timer != nil {
 				timer.Stop()
 			}
+			s.metrics.SubscribePullsExecuted.Inc()
+			s.metrics.TotalSubscribePullsTime.Add(float64(time.Since(start)))
 		}(time.Now())
 
 		var nomore bool
@@ -128,6 +133,7 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 	case <-ctx.Done():
 	case r := <-resultC:
 		if r.Err != nil {
+			s.metrics.SubscribePullsFailures.Inc()
 			return nil, 0, r.Err
 		}
 		intervalRes := r.Val.(*intervalFlightResult)
