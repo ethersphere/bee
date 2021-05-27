@@ -742,7 +742,7 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 
 	// add non connectable peer, check connection and failed connection counters
-	_ = kad.AddPeers(context.Background(), nonConnPeer.Overlay)
+	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
@@ -833,7 +833,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	waitCounter(t, &failedConns, 0)
 
 	// add non connectable peer, check connection and failed connection counters
-	_ = kad.AddPeers(context.Background(), nonConnPeer.Overlay)
+	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
@@ -1269,7 +1269,7 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	_ = k.AddPeers(context.Background(), peer)
+	k.AddPeers(peer)
 }
 
 func add(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peers []swarm.Address, offset, number int) {

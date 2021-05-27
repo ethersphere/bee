@@ -69,7 +69,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	lightnodes := lightnode.NewContainer()
+	lightnodes := lightnode.NewContainer(overlay)
 
 	opts := o.libp2pOpts
 	opts.Transaction = []byte(hexutil.EncodeUint64(o.PrivateKey.Y.Uint64()))

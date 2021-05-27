@@ -16,17 +16,19 @@ import (
 // in order to reduce duplicate PO calculation which is normally known and already needed in the
 // calling context.
 type PSlice struct {
-	peers []swarm.Address // the slice of peers
-	bins  []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
+	peers     []swarm.Address // the slice of peers
+	bins      []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
+	baseBytes []byte
 
 	sync.RWMutex
 }
 
 // New creates a new PSlice.
-func New(maxBins int) *PSlice {
+func New(maxBins int, base swarm.Address) *PSlice {
 	return &PSlice{
-		peers: make([]swarm.Address, 0),
-		bins:  make([]uint, maxBins),
+		peers:     make([]swarm.Address, 0),
+		bins:      make([]uint, maxBins),
+		baseBytes: base.Bytes(),
 	}
 }
 
@@ -165,25 +167,30 @@ func (s *PSlice) exists(addr swarm.Address) (bool, int) {
 }
 
 // Add a peer at a certain PO.
-func (s *PSlice) Add(addr swarm.Address, po uint8) {
+func (s *PSlice) Add(addrs ...swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
-	if e, _ := s.exists(addr); e {
-		return
+	peers, bins := s.copy(len(addrs))
+
+	for _, addr := range addrs {
+
+		if e, _ := s.exists(addr); e {
+			return
+		}
+
+		po := swarm.Proximity(s.baseBytes, addr.Bytes())
+
+		peers = insertAddresses(peers, int(s.bins[po]), addr)
+		s.peers = peers
+
+		incDeeper(bins, po)
+		s.bins = bins
 	}
-
-	peers, bins := s.copy(1)
-
-	peers = insertAddresses(peers, int(s.bins[po]), addr)
-	s.peers = peers
-
-	incDeeper(bins, po)
-	s.bins = bins
 }
 
 // Remove a peer at a certain PO.
-func (s *PSlice) Remove(addr swarm.Address, po uint8) {
+func (s *PSlice) Remove(addr swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -197,7 +204,7 @@ func (s *PSlice) Remove(addr swarm.Address, po uint8) {
 	peers = append(peers[:i], peers[i+1:]...)
 	s.peers = peers
 
-	decDeeper(bins, po)
+	decDeeper(bins, swarm.Proximity(s.baseBytes, addr.Bytes()))
 	s.bins = bins
 }
 
