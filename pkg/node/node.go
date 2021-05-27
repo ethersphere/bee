@@ -568,8 +568,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
 
-	pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
-	b.pullerCloser = pullerService
+	var pullerService *puller.Puller
+	if o.FullNodeMode {
+		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
+		b.pullerCloser = pullerService
+	}
 
 	retrieveProtocolSpec := retrieve.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
@@ -641,7 +644,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
-		debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
+
+		if pullerService != nil {
+			debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
+		}
+
 		debugAPIService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pusherService.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
