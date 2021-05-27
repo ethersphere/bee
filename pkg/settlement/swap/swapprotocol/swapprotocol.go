@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/headerutils"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -26,6 +27,10 @@ const (
 	streamName      = "swap" // stream for cheques
 	initStreamName  = "init" // stream for handshake
 )
+
+type SendChequeFunc func(cheque *SignedCheque) error
+
+type IssueFunc func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error)
 
 // Interface is the main interface to send messages over swap protocol.
 type Interface interface {
@@ -71,6 +76,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 			{
 				Name:    streamName,
 				Handler: s.handler,
+				Headler: s.headler,
 			},
 			{
 				Name:    initStreamName,
@@ -173,8 +179,18 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	return s.swap.ReceiveCheque(ctx, p.Address, signedCheque)
 }
 
-// EmitCheque sends a signed cheque to a peer.
-func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) error {
+func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
+
+	exchange := uint64(347)
+	deductionFromPeer := uint64(300)
+
+	returnHeaders = swap.MakeSettlementHeaders(exchange, deductionFromPeer)
+
+	return
+}
+
+// InitiateCheque attempts to send a cheque to a peer.
+func (s *Service) InitiateCheque(ctx context.Context, peer swarm.Address, amount *big.Int, issue IssueFunc) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -190,16 +206,26 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, cheque *ch
 		}
 	}()
 
-	// for simplicity we use json marshaller. can be replaced by a binary encoding in the future.
-	encodedCheque, err := json.Marshal(cheque)
-	if err != nil {
-		return err
-	}
+	// exchanging header
 
-	s.logger.Tracef("sending cheque message to peer %v (%v)", peer, cheque)
+	// comparing received headers to known truth
 
-	w := protobuf.NewWriter(stream)
-	return w.WriteMsgWithContext(ctx, &pb.EmitCheque{
-		Cheque: encodedCheque,
+	// issue cheque
+
+	amount, err := issue(ctx, beneficiary, amount, func(cheque *chequebook.SignedCheque) error {
+		// for simplicity we use json marshaller. can be replaced by a binary encoding in the future.
+		encodedCheque, err := json.Marshal(cheque)
+		if err != nil {
+			return err
+		}
+
+		s.logger.Tracef("sending cheque message to peer %v (%v)", peer, cheque)
+
+		w := protobuf.NewWriter(stream)
+		return w.WriteMsgWithContext(ctx, &pb.EmitCheque{
+			Cheque: encodedCheque,
+		})
+		// sending cheque
 	})
+
 }

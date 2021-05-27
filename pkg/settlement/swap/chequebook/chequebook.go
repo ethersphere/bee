@@ -183,10 +183,10 @@ func (s *service) unreserveTotalIssued(amount *big.Int) {
 // The cheque is considered sent and saved when sendChequeFunc succeeds.
 // The available balance which is available after sending the cheque is passed
 // to the caller for it to be communicated over metrics.
-func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error) {
+func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int) (*big.Int, *SignedCheque, error) {
 	availableBalance, err := s.reserveTotalIssued(ctx, amount)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer s.unreserveTotalIssued(amount)
 
@@ -194,7 +194,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
 		if err != ErrNoCheque {
-			return nil, err
+			return nil, nil, err
 		}
 		cumulativePayout = big.NewInt(0)
 	} else {
@@ -217,21 +217,20 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		Beneficiary:      beneficiary,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// actually send the check before saving to avoid double payment
-	err = sendChequeFunc(&SignedCheque{
+	return availableBalance, &SignedCheque{
 		Cheque:    cheque,
 		Signature: sig,
-	})
-	if err != nil {
-		return nil, err
-	}
+	}, nil
+}
 
-	err = s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
+func (s *service) StoreCheque(beneficiary common.Address, cheque *SignedCheque, amount *big.Int) error {
+
+	err := s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	s.lock.Lock()
@@ -239,10 +238,10 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 
 	totalIssued, err := s.totalIssued()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	totalIssued = totalIssued.Add(totalIssued, amount)
-	return availableBalance, s.store.Put(totalIssuedKey, totalIssued)
+	return s.store.Put(totalIssuedKey, totalIssued)
 }
 
 // returns the total amount in cheques issued so far
