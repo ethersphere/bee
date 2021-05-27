@@ -63,7 +63,7 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 		topmost uint64
 	}
 
-	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func() (interface{}, error) {
+	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (interface{}, error) {
 		// call iterator, iterate either until upper bound or limit reached
 		// return addresses, topmost is the topmost bin ID
 		var (
