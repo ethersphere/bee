@@ -15,27 +15,27 @@ import (
 )
 
 type Container struct {
+	base              swarm.Address
 	connectedPeers    *pslice.PSlice
 	disconnectedPeers *pslice.PSlice
 	peerMu            sync.Mutex
 }
 
-func NewContainer() *Container {
+func NewContainer(base swarm.Address) *Container {
 	return &Container{
-		connectedPeers:    pslice.New(1),
-		disconnectedPeers: pslice.New(1),
+		base:              base,
+		connectedPeers:    pslice.New(1, base),
+		disconnectedPeers: pslice.New(1, base),
 	}
 }
-
-const defaultBin = uint8(0)
 
 func (c *Container) Connected(ctx context.Context, peer p2p.Peer) {
 	c.peerMu.Lock()
 	defer c.peerMu.Unlock()
 
 	addr := peer.Address
-	c.connectedPeers.Add(addr, defaultBin)
-	c.disconnectedPeers.Remove(addr, defaultBin)
+	c.connectedPeers.Add(addr)
+	c.disconnectedPeers.Remove(addr)
 }
 
 func (c *Container) Disconnected(peer p2p.Peer) {
@@ -44,8 +44,8 @@ func (c *Container) Disconnected(peer p2p.Peer) {
 
 	addr := peer.Address
 	if found := c.connectedPeers.Exists(addr); found {
-		c.connectedPeers.Remove(addr, defaultBin)
-		c.disconnectedPeers.Add(addr, defaultBin)
+		c.connectedPeers.Remove(addr)
+		c.disconnectedPeers.Add(addr)
 	}
 }
 
