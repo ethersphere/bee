@@ -91,6 +91,7 @@ type Bee struct {
 	pusherCloser             io.Closer
 	pullerCloser             io.Closer
 	pullSyncCloser           io.Closer
+	pullStorageCloser        io.Closer
 	pssCloser                io.Closer
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
@@ -564,6 +565,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
+	b.pullStorageCloser = pullStorage
 
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
@@ -645,6 +647,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pusherService.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pullStorage.Metrics()...)
 		debugAPIService.MustRegisterMetrics(retrieve.Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
@@ -731,6 +734,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	tryClose(b.pusherCloser, "pusher")
 	tryClose(b.pullerCloser, "puller")
 	tryClose(b.pullSyncCloser, "pull sync")
+	tryClose(b.pullStorageCloser, "pull storage")
 	tryClose(b.pssCloser, "pss")
 
 	b.p2pCancel()
