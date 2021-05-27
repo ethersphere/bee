@@ -220,7 +220,6 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		return nil, err
 	}
 
-	// actually send the check before saving to avoid double payment
 	err = sendChequeFunc(&SignedCheque{
 		Cheque:    cheque,
 		Signature: sig,
@@ -243,6 +242,24 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	}
 	totalIssued = totalIssued.Add(totalIssued, amount)
 	return availableBalance, s.store.Put(totalIssuedKey, totalIssued)
+}
+
+func (s *service) StoreCheque(beneficiary common.Address, cheque *SignedCheque, amount *big.Int) error {
+
+	err := s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
+	if err != nil {
+		return err
+	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	totalIssued, err := s.totalIssued()
+	if err != nil {
+		return err
+	}
+	totalIssued = totalIssued.Add(totalIssued, amount)
+	return s.store.Put(totalIssuedKey, totalIssued)
 }
 
 // returns the total amount in cheques issued so far
