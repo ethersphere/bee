@@ -19,7 +19,6 @@ type PSlice struct {
 	peers     []swarm.Address // the slice of peers
 	bins      []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
 	baseBytes []byte
-
 	sync.RWMutex
 }
 
@@ -179,7 +178,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 			return
 		}
 
-		po := swarm.Proximity(s.baseBytes, addr.Bytes())
+		po := s.po(addr.Bytes())
 
 		peers = insertAddresses(peers, int(s.bins[po]), addr)
 		s.peers = peers
@@ -204,8 +203,18 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	peers = append(peers[:i], peers[i+1:]...)
 	s.peers = peers
 
-	decDeeper(bins, swarm.Proximity(s.baseBytes, addr.Bytes()))
+	decDeeper(bins, s.po(addr.Bytes()))
 	s.bins = bins
+}
+
+func (s *PSlice) po(peer []byte) uint8 {
+
+	po := swarm.Proximity(s.baseBytes, peer)
+	if int(po) >= len(s.bins) {
+		return uint8(len(s.bins)) - 1
+	}
+
+	return po
 }
 
 // incDeeper increments the peers slice bin index for proximity order > po for non-empty bins only.
