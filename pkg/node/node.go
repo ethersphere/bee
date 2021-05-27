@@ -288,7 +288,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		)
 	}
 
-	lightNodes := lightnode.NewContainer()
+	lightNodes := lightnode.NewContainer(swarmAddress)
 
 	txHash, err := getTxHash(stateStore, logger, o)
 	if err != nil {
