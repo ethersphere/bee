@@ -5,6 +5,7 @@ GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER ?= $$($(GO) env GOPATH)/bin/beekeeper
 BEELOCAL_BRANCH ?= main
+BEEKEEPER_BRANCH ?= master
 
 COMMIT ?= "$(shell git describe --long --dirty --always --match "" || true)"
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
@@ -23,7 +24,9 @@ dist:
 
 .PHONY: beekeeper
 beekeeper:
-	test -f $(BEEKEEPER) || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
+	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
+	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/${BEEKEEPER_BRANCH}/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
+	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/${BEEKEEPER_BRANCH}/config/ci.yaml -o ~/.beekeeper/ci.yaml
 
 .PHONY: beelocal
 beelocal:
