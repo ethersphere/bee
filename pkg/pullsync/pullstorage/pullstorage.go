@@ -150,11 +150,6 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 			return nil, 0, r.Err
 		}
 		intervalRes := r.Val.(*intervalFlightResult)
-		if r.Shared {
-			addrsClone := make([]swarm.Address, len(intervalRes.chs))
-			copy(addrsClone, intervalRes.chs)
-			return addrsClone, intervalRes.topmost, nil
-		}
 		return intervalRes.chs, intervalRes.topmost, nil
 	}
 	return nil, 0, ctx.Err()

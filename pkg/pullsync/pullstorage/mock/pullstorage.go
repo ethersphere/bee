@@ -165,6 +165,8 @@ func (s *PullStorage) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	return true, nil
 }
 
+func (s *PullStorage) Close() error { return nil }
+
 type Option interface {
 	apply(*PullStorage)
 }
