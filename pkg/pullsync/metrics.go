@@ -17,7 +17,7 @@ type metrics struct {
 }
 
 func newMetrics() metrics {
-	subsystem := "pullstorage"
+	subsystem := "pullsync"
 
 	return metrics{
 		OfferCounter: prometheus.NewCounter(prometheus.CounterOpts{
