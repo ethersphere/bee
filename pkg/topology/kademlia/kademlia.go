@@ -294,9 +294,9 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	// The topology.EachPeerFunc doesn't return an error
 	// so we ignore the error returned from EachBinRev.
 
-	depth := k.NeighborhoodDepth()
-
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
+
+		depth := k.NeighborhoodDepth()
 
 		if po < depth {
 			return false, true, nil
