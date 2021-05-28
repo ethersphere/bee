@@ -27,6 +27,7 @@ type MockStorer struct {
 	quit            chan struct{}
 	baseAddress     []byte
 	bins            []uint64
+	subPullCalls    int
 }
 
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
@@ -220,6 +221,10 @@ func (m *MockStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 }
 
 func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (<-chan storage.Descriptor, <-chan struct{}, func()) {
+	m.mtx.Lock()
+	m.subPullCalls++
+	m.mtx.Unlock()
+
 	c := make(chan storage.Descriptor)
 	done := make(chan struct{})
 	stop := func() {
@@ -285,6 +290,12 @@ func (m *MockStorer) MorePull(d ...storage.Descriptor) {
 		m.subpull[i] = v
 	}
 	close(m.morePull)
+}
+
+func (m *MockStorer) SubscribePullCalls() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.subPullCalls
 }
 
 func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
