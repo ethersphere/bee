@@ -415,7 +415,7 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		<-sched // wait for goroutine to get scheduled
 
 		// wait till all the routines are scheduled
-		waitStacks(t, "resenje.org/singleflight/singleflight.go:68", 3, 2*time.Second)
+		waitStacks(t, "ethswarm.org/bee/pkg/pullsync/pullstorage/pullstorage.go:66", 3, 2*time.Second)
 		// cancel the first caller
 		cancel()
 		i := 0
@@ -486,7 +486,7 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		<-sched // wait for goroutine to get scheduled
 
 		// wait till all the routines are scheduled
-		waitStacks(t, "resenje.org/singleflight/singleflight.go:68", 3, 2*time.Second)
+		waitStacks(t, "ethswarm.org/bee/pkg/pullsync/pullstorage/pullstorage.go:66", 3, 2*time.Second)
 		// cancel all callers
 		cancel()
 		i := 0
