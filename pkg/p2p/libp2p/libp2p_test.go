@@ -31,6 +31,7 @@ type libp2pServiceOpts struct {
 	PrivateKey  *ecdsa.PrivateKey
 	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
+	lightNodes  *lightnode.Container
 }
 
 // newService constructs a new libp2p service.
@@ -69,14 +70,15 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	lightnodes := lightnode.NewContainer(overlay)
-
+	if o.lightNodes == nil {
+		o.lightNodes = lightnode.NewContainer(overlay)
+	}
 	opts := o.libp2pOpts
 	opts.Transaction = []byte(hexutil.EncodeUint64(o.PrivateKey.Y.Uint64()))
 
 	senderMatcher := &MockSenderMatcher{}
 
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, lightnodes, senderMatcher, o.Logger, nil, opts)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, senderMatcher, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
