@@ -864,6 +864,8 @@ var ErrShutdownInProgress error = errors.New("shutdown in progress")
 func (p *pidKiller) Shutdown(ctx context.Context) error {
 	err := p.node.Shutdown(ctx)
 	if err != nil {
+		// we need to see if a shutdown is already in progress, so we dont do a force
+		// kill here
 		if errors.Is(err, ErrShutdownInProgress) {
 			return nil
 		}
