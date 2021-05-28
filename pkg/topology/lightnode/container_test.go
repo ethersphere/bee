@@ -33,13 +33,34 @@ func TestContainer(t *testing.T) {
 	t.Run("can add peers to container", func(t *testing.T) {
 		c := lightnode.NewContainer(base)
 
-		c.Connected(context.Background(), p2p.Peer{Address: swarm.NewAddress([]byte("123"))})
-		c.Connected(context.Background(), p2p.Peer{Address: swarm.NewAddress([]byte("456"))})
+		p1 := swarm.NewAddress([]byte("123"))
+		p2 := swarm.NewAddress([]byte("456"))
+		c.Connected(context.Background(), p2p.Peer{Address: p1})
+		c.Connected(context.Background(), p2p.Peer{Address: p2})
 
 		peerCount := len(c.PeerInfo().ConnectedPeers)
 
 		if peerCount != 2 {
 			t.Errorf("expected %d connected peer, got %d", 2, peerCount)
+		}
+
+		if cc := c.Count(); cc != 2 {
+			t.Errorf("expected count 2 got %d", cc)
+		}
+		p, err := c.RandomPeer(p1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !p.Equal(p2) {
+			t.Fatalf("expected p1 but got %s", p.String())
+		}
+
+		p, err = c.RandomPeer(swarm.NewAddress([]byte("456")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !p.Equal(p1) {
+			t.Fatalf("expected p2 but got %s", p.String())
 		}
 	})
 	t.Run("empty container after peer disconnect", func(t *testing.T) {
@@ -58,6 +79,9 @@ func TestContainer(t *testing.T) {
 		connPeerCount := len(c.PeerInfo().ConnectedPeers)
 		if connPeerCount != 0 {
 			t.Errorf("expected %d connected peer, got %d", 0, connPeerCount)
+		}
+		if cc := c.Count(); cc != 0 {
+			t.Errorf("expected count 0 got %d", cc)
 		}
 	})
 }
