@@ -5,11 +5,14 @@
 package pullstorage_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
 	"io/ioutil"
 	"reflect"
+	"runtime/pprof"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -310,7 +313,7 @@ func TestIntervalChunks_IteratorShare(t *testing.T) {
 	go func() {
 		// delay is needed in order to have the iterator
 		// linger for a bit longer for more chunks.
-		<-time.After(200 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		// add chunks to subscribe pull on the storage mock
 		db.MorePull(someDescriptors(1, 3, 4)...)
 	}()
@@ -411,6 +414,8 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		}()
 		<-sched // wait for goroutine to get scheduled
 
+		// wait till all the routines are scheduled
+		waitStacks(t, "resenje.org/singleflight/singleflight.go:68", 3, 2*time.Second)
 		// cancel the first caller
 		cancel()
 		i := 0
@@ -480,6 +485,8 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		}()
 		<-sched // wait for goroutine to get scheduled
 
+		// wait till all the routines are scheduled
+		waitStacks(t, "resenje.org/singleflight/singleflight.go:68", 3, 2*time.Second)
 		// cancel all callers
 		cancel()
 		i := 0
@@ -497,7 +504,7 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		}
 
 		go func() {
-			<-time.After(time.Millisecond * 500)
+			time.Sleep(time.Millisecond * 500)
 
 			db.MorePull(someDescriptors(0, 1, 2, 3, 4)...)
 		}()
@@ -518,6 +525,25 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 			t.Fatalf("wanted 2 subscribe pull calls, got %d", c)
 		}
 	})
+}
+
+// Taken from https://github.com/janos/singleflight/blob/master/singleflight_test.go#L344
+// this is required to verify the goroutine scheduling for the tests
+func waitStacks(t *testing.T, loc string, count int, timeout time.Duration) {
+	t.Helper()
+
+	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
+		// Ensure that exact n goroutines are waiting at the desired stack trace.
+		var buf bytes.Buffer
+		if err := pprof.Lookup("goroutine").WriteTo(&buf, 2); err != nil {
+			t.Fatal(err)
+		}
+		c := strings.Count(buf.String(), loc)
+		if c == count {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.MockStorer) {
