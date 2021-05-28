@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -99,6 +100,8 @@ type Bee struct {
 	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
 }
 
 type Options struct {
@@ -697,6 +700,15 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
+
+	// if a shutdown is already in process, return here
+	b.shutdownMutex.Lock()
+	if b.shutdownInProgress {
+		b.shutdownMutex.Unlock()
+		return nil
+	}
+	b.shutdownInProgress = true
+	b.shutdownMutex.Unlock()
 
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
