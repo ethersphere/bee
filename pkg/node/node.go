@@ -103,6 +103,8 @@ type Bee struct {
 	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
 }
 
 type Options struct {
