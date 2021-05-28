@@ -336,7 +336,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if !i.FullNode {
 				s.lightNodes.Connected(ctx, peer)
 				//light node announces explicitly
-				if err := s.notifier.Announce(ctx, peer.Address); err != nil {
+				if err := s.notifier.Announce(ctx, peer.Address, i.FullNode); err != nil {
 					s.logger.Debugf("stream handler: notifier.Announce: %s: %v", peer.Address.String(), err)
 				}
 			} else if err := s.notifier.Connected(ctx, peer); err != nil { // full node announces implicitly

@@ -690,12 +690,12 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return errOverlayMismatch
 	}
 
-	return k.Announce(ctx, peer)
+	return k.Announce(ctx, peer, true)
 }
 
 // Announce a newly connected peer to our connected peers, but also
 // notify the peer about our already connected peers
-func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
+func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	addrs := []swarm.Address{}
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
@@ -712,6 +712,11 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
 
 			addrs = append(addrs, connectedPeer)
 
+			if !fullnode {
+				// we continue here so we dont gossip
+				// about lightnodes to others.
+				continue
+			}
 			k.wg.Add(1)
 			go func(connectedPeer swarm.Address) {
 				defer k.wg.Done()
@@ -784,7 +789,7 @@ connected:
 }
 
 func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
-	if err := k.Announce(ctx, addr); err != nil {
+	if err := k.Announce(ctx, addr, true); err != nil {
 		return err
 	}
 

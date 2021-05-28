@@ -744,7 +744,7 @@ func (n *notifiee) Pick(p p2p.Peer) bool {
 	return n.pick
 }
 
-func (n *notifiee) Announce(context.Context, swarm.Address) error {
+func (n *notifiee) Announce(context.Context, swarm.Address, bool) error {
 	return nil
 }
 
