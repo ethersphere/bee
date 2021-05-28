@@ -9,8 +9,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"io/ioutil"
+	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -296,6 +298,226 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 
 		})
 	}
+}
+
+// TestIntervalChunks_IteratorShare tests that two goroutines
+// with the same subscription call the SubscribePull only once
+// and that results are shared between both of them.
+func TestIntervalChunks_IteratorShare(t *testing.T) {
+	desc := someDescriptors(0, 2)
+	ps, db := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
+
+	go func() {
+		// delay is needed in order to have the iterator
+		// linger for a bit longer for more chunks.
+		<-time.After(200 * time.Millisecond)
+		// add chunks to subscribe pull on the storage mock
+		db.MorePull(someDescriptors(1, 3, 4)...)
+	}()
+
+	type result struct {
+		addrs []swarm.Address
+		top   uint64
+	}
+	sched := make(chan struct{})
+	c := make(chan result)
+
+	go func() {
+		close(sched)
+		addrs, topmost, err := ps.IntervalChunks(context.Background(), 0, 0, 5, limit)
+		if err != nil {
+			t.Errorf("internal goroutine: %v", err)
+		}
+		c <- result{addrs, topmost}
+
+	}()
+	<-sched // wait for goroutine to get scheduled
+
+	addrs, topmost, err := ps.IntervalChunks(context.Background(), 0, 0, 5, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := <-c
+
+	if l := len(addrs); l != 5 {
+		t.Fatalf("want %d addrs but got %d", 5, l)
+	}
+
+	// highest chunk we sent had BinID 5
+	exp := uint64(5)
+	if topmost != exp {
+		t.Fatalf("expected topmost %d but got %d", exp, topmost)
+	}
+	if c := db.SubscribePullCalls(); c != 1 {
+		t.Fatalf("wanted 1 subscribe pull calls, got %d", c)
+	}
+
+	// check that results point to same array
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&res.addrs))
+	sh2 := (*reflect.SliceHeader)(unsafe.Pointer(&addrs))
+
+	if sh.Data != sh2.Data {
+		t.Fatalf("results not shared between goroutines. ptr1 %d ptr2 %d", sh.Data, sh2.Data)
+	}
+}
+
+// TestIntervalChunks_IteratorShareContextCancellation
+// 1. cancel first caller tests that if one of the goroutines waiting on some
+// subscription is cancelled, the inflight request is not cancelled and the remaining
+// callers get the results of the call which is shared
+// 2. cancel all callers tests that if all the goroutines with the same subscription
+// call are canceled, the call will be exited. During this time if a new goroutines comes,
+// a fresh subscription call should be made and results should be shared
+func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
+
+	type result struct {
+		addrs []swarm.Address
+		top   uint64
+		err   error
+	}
+
+	t.Run("cancel first caller", func(t *testing.T) {
+		ps, db := newPullStorage(t, mock.WithPartialInterval(true))
+		sched := make(chan struct{})
+		c := make(chan result, 3)
+
+		defer close(sched)
+		defer close(c)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			sched <- struct{}{}
+			addrs, topmost, err := ps.IntervalChunks(ctx, 0, 0, 5, limit)
+			c <- result{addrs, topmost, err}
+
+			// add more descriptors to unblock SubscribePull call after the first
+			// caller is cancelled
+			db.MorePull(someDescriptors(0, 1, 2, 3, 4)...)
+		}()
+		<-sched // wait for goroutine to get scheduled
+
+		go func() {
+			sched <- struct{}{}
+			addrs, topmost, err := ps.IntervalChunks(context.Background(), 0, 0, 5, limit)
+			c <- result{addrs, topmost, err}
+		}()
+		<-sched // wait for goroutine to get scheduled
+
+		go func() {
+			sched <- struct{}{}
+			addrs, topmost, err := ps.IntervalChunks(context.Background(), 0, 0, 5, limit)
+			c <- result{addrs, topmost, err}
+		}()
+		<-sched // wait for goroutine to get scheduled
+
+		// cancel the first caller
+		cancel()
+		i := 0
+		var expected *result
+		for res := range c {
+			if i == 0 {
+				if res.err == nil {
+					t.Fatal("expected error for 1st attempt")
+				}
+				if !errors.Is(res.err, context.Canceled) {
+					t.Fatalf("invalid error type %v", res.err)
+				}
+				i++
+				continue
+			}
+			if expected == nil {
+				expected = &res
+			} else {
+				if res.top != expected.top || len(res.addrs) != 5 {
+					t.Fatalf("results are different expected: %v got: %v", expected, res)
+				}
+				// check that results point to same array
+				sh := (*reflect.SliceHeader)(unsafe.Pointer(&res.addrs))
+				sh2 := (*reflect.SliceHeader)(unsafe.Pointer(&expected.addrs))
+
+				if sh.Data != sh2.Data {
+					t.Fatalf("results not shared between goroutines. ptr1 %d ptr2 %d", sh.Data, sh2.Data)
+				}
+			}
+			i++
+			if i == 3 {
+				break
+			}
+		}
+
+		if c := db.SubscribePullCalls(); c != 1 {
+			t.Fatalf("wanted 1 subscribe pull calls, got %d", c)
+		}
+
+	})
+	t.Run("cancel all callers", func(t *testing.T) {
+		ps, db := newPullStorage(t, mock.WithPartialInterval(true))
+		sched := make(chan struct{})
+		c := make(chan result, 3)
+
+		defer close(sched)
+		defer close(c)
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			sched <- struct{}{}
+			addrs, topmost, err := ps.IntervalChunks(ctx, 0, 0, 5, limit)
+			c <- result{addrs, topmost, err}
+		}()
+		<-sched // wait for goroutine to get scheduled
+
+		go func() {
+			sched <- struct{}{}
+			addrs, topmost, err := ps.IntervalChunks(ctx, 0, 0, 5, limit)
+			c <- result{addrs, topmost, err}
+		}()
+		<-sched // wait for goroutine to get scheduled
+
+		go func() {
+			sched <- struct{}{}
+			addrs, topmost, err := ps.IntervalChunks(ctx, 0, 0, 5, limit)
+			c <- result{addrs, topmost, err}
+		}()
+		<-sched // wait for goroutine to get scheduled
+
+		// cancel all callers
+		cancel()
+		i := 0
+		for res := range c {
+			if res.err == nil {
+				t.Fatal("expected error for 1st attempt")
+			}
+			if !errors.Is(res.err, context.Canceled) {
+				t.Fatalf("invalid error type %v", res.err)
+			}
+			i++
+			if i == 3 {
+				break
+			}
+		}
+
+		go func() {
+			<-time.After(time.Millisecond * 500)
+
+			db.MorePull(someDescriptors(0, 1, 2, 3, 4)...)
+		}()
+
+		addrs, topmost, err := ps.IntervalChunks(context.Background(), 0, 0, 5, limit)
+		if err != nil {
+			t.Fatalf("failed getting intervals %s", err.Error())
+		}
+		if topmost != uint64(5) {
+			t.Fatalf("expected topmost %d found %d", 5, topmost)
+		}
+		if len(addrs) != 5 {
+			t.Fatalf("wanted %d addresses found %d", 5, len(addrs))
+		}
+		// after all callers are cancelled, the SubscribePullCall should exit and the
+		// next caller will issue a fresh call
+		if c := db.SubscribePullCalls(); c != 2 {
+			t.Fatalf("wanted 2 subscribe pull calls, got %d", c)
+		}
+	})
 }
 
 func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.MockStorer) {
