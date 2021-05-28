@@ -180,7 +180,9 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 		}
 
 		po := swarm.Proximity(s.baseBytes, addr.Bytes())
-
+		if po >= uint8(len(s.bins)) {
+			po = uint8(len(s.bins) - 1)
+		}
 		peers = insertAddresses(peers, int(s.bins[po]), addr)
 		s.peers = peers
 
