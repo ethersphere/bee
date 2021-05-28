@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	_ Storer = (*ps)(nil)
+	_ Storer = (*PullStorer)(nil)
 	// ErrDbClosed is used to signal the underlying database was closed
 	ErrDbClosed = errors.New("db closed")
 
@@ -42,26 +42,30 @@ type Storer interface {
 	Has(ctx context.Context, addr swarm.Address) (bool, error)
 }
 
-// ps wraps storage.Storer.
-type ps struct {
+// PullStorer wraps storage.Storer.
+type PullStorer struct {
 	storage.Storer
 	intervalsSF singleflight.Group
+	metrics     metrics
 }
 
 // New returns a new pullstorage Storer instance.
-func New(storer storage.Storer) Storer {
-	return &ps{
-		Storer: storer,
+func New(storer storage.Storer) *PullStorer {
+	return &PullStorer{
+		Storer:  storer,
+		metrics: newMetrics(),
 	}
 }
 
 // IntervalChunks collects chunk for a requested interval.
-func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
+func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
 
 	type result struct {
 		chs     []swarm.Address
 		topmost uint64
 	}
+	s.metrics.TotalSubscribePullRequests.Inc()
+	defer s.metrics.TotalSubscribePullRequestsComplete.Inc()
 
 	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (interface{}, error) {
 		// call iterator, iterate either until upper bound or limit reached
@@ -70,12 +74,14 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 			timer  *time.Timer
 			timerC <-chan time.Time
 		)
+		s.metrics.SubscribePullsStarted.Inc()
 		ch, dbClosed, stop := s.SubscribePull(ctx, bin, from, to)
 		defer func(start time.Time) {
 			stop()
 			if timer != nil {
 				timer.Stop()
 			}
+			s.metrics.SubscribePullsComplete.Inc()
 		}(time.Now())
 
 		var nomore bool
@@ -129,6 +135,7 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 	})
 
 	if err != nil {
+		s.metrics.SubscribePullsFailures.Inc()
 		return nil, 0, err
 	}
 	r := v.(*result)
@@ -136,7 +143,7 @@ func (s *ps) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, lim
 }
 
 // Cursors gets the last BinID for every bin in the local storage
-func (s *ps) Cursors(ctx context.Context) (curs []uint64, err error) {
+func (s *PullStorer) Cursors(ctx context.Context) (curs []uint64, err error) {
 	curs = make([]uint64, swarm.MaxBins)
 	for i := uint8(0); i < swarm.MaxBins; i++ {
 		binID, err := s.Storer.LastPullSubscriptionBinID(i)
@@ -149,12 +156,12 @@ func (s *ps) Cursors(ctx context.Context) (curs []uint64, err error) {
 }
 
 // Get chunks.
-func (s *ps) Get(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) ([]swarm.Chunk, error) {
+func (s *PullStorer) Get(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) ([]swarm.Chunk, error) {
 	return s.Storer.GetMulti(ctx, mode, addrs...)
 }
 
 // Put chunks.
-func (s *ps) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) error {
+func (s *PullStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) error {
 	_, err := s.Storer.Put(ctx, mode, chs...)
 	return err
 }
