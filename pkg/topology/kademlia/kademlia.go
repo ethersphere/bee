@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
-	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -84,6 +83,7 @@ type Kad struct {
 	radius            uint8         // storage area of responsibility
 	depthMu           sync.RWMutex  // protect depth changes
 	manageC           chan struct{} // trigger the manage forever loop to connect to new peers
+	waitList          waitList
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
 	logger            logging.Logger // logger
@@ -94,7 +94,6 @@ type Kad struct {
 	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
-	waitNext          *waitnext.WaitNext
 }
 
 // New returns a new Kademlia.
@@ -130,7 +129,7 @@ func New(
 		knownPeers:        pslice.New(int(swarm.MaxBins), base),
 		bootnodes:         o.Bootnodes,
 		manageC:           make(chan struct{}, 1),
-		waitNext:          waitnext.New(),
+		waitList:          waitList{},
 		logger:            logger,
 		standalone:        o.StandaloneMode,
 		bootnode:          o.BootnodeMode,
@@ -235,7 +234,7 @@ type peerConnInfo struct {
 // connectBalanced attempts to connect to the balanced peers first.
 func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
 	skipPeers := func(peer swarm.Address) bool {
-		return k.waitNext.Waiting(peer)
+		return k.waitList.isPeerBeforeExpire(peer)
 	}
 
 	for i := range k.commonBinPrefixes {
@@ -308,7 +307,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return false, false, nil
 		}
 
-		if k.waitNext.Waiting(addr) {
+		if k.waitList.isPeerBeforeExpire(addr) {
 			return false, false, nil
 		}
 
@@ -345,7 +344,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		}
 
 		remove := func(peer *peerConnInfo) {
-			k.waitNext.Remove(peer.addr)
+			k.waitList.removePeer(peer.addr)
 			k.knownPeers.Remove(peer.addr)
 			if err := k.addressBook.Remove(peer.addr); err != nil {
 				k.logger.Debugf("kademlia: could not remove peer %q from addressbook", peer.addr)
@@ -367,7 +366,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		}
 
-		k.waitNext.Set(peer.addr, time.Now().Add(shortRetry), 0)
+		k.waitList.setPeerInfo(peer.addr, time.Now().Add(shortRetry), 0)
 
 		k.connectedPeers.Add(peer.addr)
 
@@ -397,7 +396,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				case peer := <-peerConnChan:
 					addr := peer.addr.String()
 
-					if k.waitNext.Waiting(peer.addr) {
+					if k.waitList.isPeerBeforeExpire(peer.addr) {
 						wg.Done()
 						continue
 					}
@@ -673,7 +672,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
 		} else {
-			failedAttempts = k.waitNext.Attempts(peer)
+			failedAttempts = k.waitList.peerFailedConnectionAttempts(peer)
 			failedAttempts++
 		}
 
@@ -683,14 +682,14 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
 
 			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts > maxConnAttempts {
-				k.waitNext.Remove(peer)
+				k.waitList.removePeer(peer)
 				k.knownPeers.Remove(peer)
 				if err := k.addressBook.Remove(peer); err != nil {
 					k.logger.Debugf("could not remove peer from addressbook: %q", peer)
 				}
 				k.logger.Debugf("kademlia pruned peer from address book %q", peer)
 			} else {
-				k.waitNext.Set(peer, retryTime, failedAttempts)
+				k.waitList.setPeerInfo(peer, retryTime, failedAttempts)
 			}
 		})
 
@@ -807,7 +806,7 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 
 	k.collector.Record(addr, metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionInbound))
 
-	k.waitNext.Remove(addr)
+	k.waitList.removePeer(addr)
 
 	k.depthMu.Lock()
 	k.depth = recalcDepth(k.connectedPeers, k.radius)
@@ -825,7 +824,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.connectedPeers.Remove(peer.Address)
 
-	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(timeToRetry))
+	k.waitList.setPeerExpire(peer.Address, time.Now().Add(timeToRetry))
 
 	k.collector.Record(peer.Address, metrics.PeerLogOut(time.Now()))
 
