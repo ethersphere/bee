@@ -714,6 +714,14 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	// halt p2p layer from accepting new connections
 	// while shutting down other components
 	b.p2pHalter.Halt()
+	// if a shutdown is already in process, return here
+	b.shutdownMutex.Lock()
+	if b.shutdownInProgress {
+		b.shutdownMutex.Unlock()
+		return ErrShutdownInProgress
+	}
+	b.shutdownInProgress = true
+	b.shutdownMutex.Unlock()
 
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
@@ -851,9 +859,14 @@ type pidKiller struct {
 	node *Bee
 }
 
+var ErrShutdownInProgress error = errors.New("shutdown in progress")
+
 func (p *pidKiller) Shutdown(ctx context.Context) error {
 	err := p.node.Shutdown(ctx)
 	if err != nil {
+		if errors.Is(err, ErrShutdownInProgress) {
+			return nil
+		}
 		return err
 	}
 	ps, err := os.FindProcess(syscall.Getpid())
