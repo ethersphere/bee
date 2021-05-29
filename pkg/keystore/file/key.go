@@ -93,6 +93,10 @@ func decryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
 	return crypto.DecodeSecp256k1PrivateKey(d)
 }
 
+func DecryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
+	return decryptKey(data, password)
+}
+
 func encryptData(data, password []byte) (*keyCripto, error) {
 	salt := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
