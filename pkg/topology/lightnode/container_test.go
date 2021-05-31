@@ -55,7 +55,7 @@ func TestContainer(t *testing.T) {
 			t.Fatalf("expected p1 but got %s", p.String())
 		}
 
-		p, err = c.RandomPeer(swarm.NewAddress([]byte("456")))
+		p, err = c.RandomPeer(p2)
 		if err != nil {
 			t.Fatal(err)
 		}

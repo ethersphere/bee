@@ -48,7 +48,7 @@ var (
 	_ p2p.DebugService = (*Service)(nil)
 )
 
-const defaultLightnodeLimit = 100
+const defaultLightNodeLimit = 100
 
 type Service struct {
 	ctx               context.Context
@@ -88,7 +88,7 @@ type Options struct {
 	EnableQUIC     bool
 	Standalone     bool
 	FullNode       bool
-	LightnodeLimit int
+	LightNodeLimit int
 	WelcomeMessage string
 	Transaction    []byte
 }
@@ -244,10 +244,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	peerRegistry.setDisconnecter(s)
 
-	if o.LightnodeLimit == 0 {
-		s.lightNodeLimit = defaultLightnodeLimit
-	} else {
-		s.lightNodeLimit = o.LightnodeLimit
+	s.lightNodeLimit = defaultLightNodeLimit
+	if o.LightNodeLimit > 0 {
+		s.lightNodeLimit = o.LightNodeLimit
 	}
 
 	// Construct protocols.
@@ -370,6 +369,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					_ = s.Disconnect(peer.Address)
 					return
 				} else {
+					s.logger.Tracef("stream handler: kicking away light node %s to make room for %s", p.String(), peer.Address.String())
 					_ = s.Disconnect(p)
 					return
 				}

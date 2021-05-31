@@ -52,24 +52,14 @@ func (c *Container) Disconnected(peer p2p.Peer) {
 }
 
 func (c *Container) Count() int {
-	c.peerMu.Lock()
-	defer c.peerMu.Unlock()
-
-	return c.count()
-}
-func (c *Container) count() (count int) {
-	_ = c.connectedPeers.EachBinRev(func(peer swarm.Address, _ uint8) (bool, bool, error) {
-		count++
-		return false, false, nil
-	})
-	return count
+	return c.connectedPeers.Length()
 }
 
 func (c *Container) RandomPeer(not swarm.Address) (swarm.Address, error) {
 	c.peerMu.Lock()
 	defer c.peerMu.Unlock()
 	var (
-		cnt   = big.NewInt(int64(c.count()))
+		cnt   = big.NewInt(int64(c.Count()))
 		addr  = swarm.ZeroAddress
 		count = int64(0)
 	)

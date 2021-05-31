@@ -93,7 +93,7 @@ func TestLightPeerLimit(t *testing.T) {
 		container = lightnode.NewContainer(test.RandomAddress())
 		sf, _     = newService(t, 1, libp2pServiceOpts{lightNodes: container,
 			libp2pOpts: libp2p.Options{
-				LightnodeLimit: limit,
+				LightNodeLimit: limit,
 				FullNode:       true,
 			}})
 
