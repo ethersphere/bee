@@ -28,14 +28,17 @@ var (
 	// ErrWrongBeneficiary is the error returned if the cheque has the wrong beneficiary.
 	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrBouncingCheque is the error returned if the chequebook is demonstrably illiquid.
-	ErrBouncingCheque        = errors.New("bouncing cheque")
+	ErrBouncingCheque = errors.New("bouncing cheque")
+	// ErrChequeValueTooLow is the error returned if the after deduction value of a cheque did not cover 1 accounting credit
+	ErrChequeValueTooLow = errors.New("cheque value lower than acceptable")
+	//
 	lastReceivedChequePrefix = "swap_chequebook_last_received_cheque_"
 )
 
 // ChequeStore handles the verification and storage of received cheques
 type ChequeStore interface {
 	// ReceiveCheque verifies and stores a cheque. It returns the total amount earned.
-	ReceiveCheque(ctx context.Context, cheque *SignedCheque) (*big.Int, error)
+	ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error)
 	// LastCheque returns the last cheque we received from a specific chequebook.
 	LastCheque(chequebook common.Address) (*SignedCheque, error)
 	// LastCheques returns the last received cheques from every known chequebook.
@@ -92,7 +95,7 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 }
 
 // ReceiveCheque verifies and stores a cheque. It returns the totam amount earned.
-func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (*big.Int, error) {
+func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error) {
 	// verify we are the beneficiary
 	if cheque.Beneficiary != s.beneficiary {
 		return nil, ErrWrongBeneficiary
@@ -128,6 +131,12 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 
 	if amount.Cmp(big.NewInt(0)) <= 0 {
 		return nil, ErrChequeNotIncreasing
+	}
+
+	deducedAmount := new(big.Int).Sub(amount, deduction)
+
+	if deducedAmount.Cmp(exchange) < 0 {
+		return nil, ErrChequeValueTooLow
 	}
 
 	// blockchain calls below
