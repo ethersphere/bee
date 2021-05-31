@@ -28,6 +28,8 @@ var (
 	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrUnknownBeneficary is the error if a peer has never announced a beneficiary.
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
+	// ErrChequeValueTooLow is the error a peer issued a cheque not covering 1 accounting credit
+	ErrChequeValueTooLow = errors.New("cheque value too low")
 )
 
 type Interface interface {
@@ -89,11 +91,23 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		return ErrWrongChequebook
 	}
 
-	chequeAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
+	// get cheque value
+	chequeAmount := cheque.CumulativePayout
+	decreasedAmount := new(big.Int).Sub(chequeAmount, deduction)
+
+	// sanity check received amount
+	if decreasedAmount.Cmp(exchange) < 0 {
+		return ErrChequeValueTooLow
+	}
+
+	receivedAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
 	if err != nil {
 		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
 	}
+
+	decreasedAmount = new(big.Int).Sub(receivedAmount, deduction)
+	amount := new(big.Int).Div(decreasedAmount, exchange)
 
 	if !known {
 		err = s.addressbook.PutChequebook(peer, cheque.Chequebook)
@@ -101,9 +115,6 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 			return err
 		}
 	}
-
-	decreasedAmount := new(big.Int).Sub(chequeAmount, deduction)
-	amount := new(big.Int).Div(decreasedAmount, exchange)
 
 	tot, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalReceived.Add(tot)
