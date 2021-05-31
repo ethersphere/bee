@@ -36,9 +36,9 @@ var (
 	ErrHaveDeduction      = errors.New("received deduction not zero")
 )
 
-type SendChequeFunc func(cheque *chequebook.SignedCheque) error
+type SendChequeFunc chequebook.SendChequeFunc
 
-type IssueFunc func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error)
+type IssueFunc func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error)
 
 // (context.Context, common.Address, *big.Int, chequebook.SendChequeFunc) (*big.Int, error)
 

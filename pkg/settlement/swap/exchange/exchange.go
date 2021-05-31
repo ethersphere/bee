@@ -21,8 +21,8 @@ type Service interface {
 	CurrentRates() (exchange *big.Int, deduce *big.Int)
 }
 
-func New() (Service, error) {
-	return &service{}, nil
+func New() Service {
+	return &service{}
 }
 
 func (s *service) CurrentRates() (exchange *big.Int, deduce *big.Int) {
