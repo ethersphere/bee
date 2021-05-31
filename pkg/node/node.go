@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -66,6 +67,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -79,6 +81,7 @@ import (
 
 type Bee struct {
 	p2pService               io.Closer
+	p2pHalter                p2p.Halter
 	p2pCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
@@ -90,6 +93,7 @@ type Bee struct {
 	stateStoreCloser         io.Closer
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
+	topologyHalter           topology.Halter
 	pusherCloser             io.Closer
 	pullerCloser             io.Closer
 	pullSyncCloser           io.Closer
@@ -313,6 +317,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
+	b.p2pHalter = p2ps
 
 	// localstore depends on batchstore
 	var path string
@@ -439,6 +444,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
 	b.topologyCloser = kad
+	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
@@ -699,6 +705,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
+	// halt kademlia while shutting down other
+	// components.
+	b.topologyHalter.Halt()
+
+	// halt p2p layer from accepting new connections
+	// while shutting down other components
+	b.p2pHalter.Halt()
+
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {
@@ -737,15 +751,46 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	if b.recoveryHandleCleanup != nil {
 		b.recoveryHandleCleanup()
 	}
-
-	tryClose(b.pusherCloser, "pusher")
-	tryClose(b.pullerCloser, "puller")
-	tryClose(b.pullSyncCloser, "pull sync")
-	tryClose(b.pssCloser, "pss")
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		tryClose(b.pssCloser, "pss")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pusherCloser, "pusher")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pullerCloser, "puller")
+	}()
 
 	b.p2pCancel()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pullSyncCloser, "pull sync")
+	}()
+
+	wg.Wait()
+
 	tryClose(b.p2pService, "p2p server")
-	tryClose(b.transactionMonitorCloser, "transaction monitor")
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		tryClose(b.transactionMonitorCloser, "transaction monitor")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.listenerCloser, "listener")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.postageServiceCloser, "postage service")
+	}()
+
+	wg.Wait()
 
 	if c := b.ethClientCloser; c != nil {
 		c()
@@ -753,11 +798,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.tagsCloser, "tag persistence")
-	tryClose(b.listenerCloser, "listener")
-	tryClose(b.postageServiceCloser, "postage service")
+	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
-	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")
 

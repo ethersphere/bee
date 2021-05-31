@@ -422,14 +422,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 func (p *Puller) Close() error {
 	p.logger.Info("puller shutting down")
 	close(p.quit)
-	p.syncPeersMtx.Lock()
-	defer p.syncPeersMtx.Unlock()
-	for i := uint8(0); i < p.bins; i++ {
-		binPeers := p.syncPeers[i]
-		for _, peer := range binPeers {
-			peer.gone()
-		}
-	}
 	cc := make(chan struct{})
 	go func() {
 		defer close(cc)

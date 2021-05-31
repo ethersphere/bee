@@ -69,6 +69,7 @@ type Service struct {
 	logger            logging.Logger
 	tracer            *tracing.Tracer
 	ready             chan struct{}
+	halt              chan struct{}
 	lightNodes        lightnodes
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
@@ -239,6 +240,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 		ready:             make(chan struct{}),
+		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
 	}
 
@@ -270,9 +272,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 func (s *Service) handleIncoming(stream network.Stream) {
 	select {
 	case <-s.ready:
+	case <-s.halt:
+		go func() { _ = stream.Reset() }()
+		return
 	case <-s.ctx.Done():
+		go func() { _ = stream.Reset() }()
 		return
 	}
+
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := NewStream(stream)
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
@@ -695,9 +702,8 @@ func (s *Service) disconnected(address swarm.Address) {
 
 	peer := p2p.Peer{Address: address}
 	peerID, found := s.peers.peerID(address)
-	if !found {
-		s.logger.Debugf("libp2p disconnected: cannot find peerID for overlay: %s", address.String())
-	} else {
+	if found {
+		// peerID might not always be found on shutdown
 		full, found := s.peers.fullnode(peerID)
 		if found {
 			peer.FullNode = full
@@ -805,4 +811,8 @@ func (s *Service) GetWelcomeMessage() string {
 
 func (s *Service) Ready() {
 	close(s.ready)
+}
+
+func (s *Service) Halt() {
+	close(s.halt)
 }
