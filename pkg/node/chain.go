@@ -217,6 +217,7 @@ func InitSwap(
 	accounting settlement.Accounting,
 	priceOracleAddress string,
 	chainID int64,
+	transactionService transaction.Service,
 ) (*swap.Service, error) {
 
 	var currentPriceOracleAddress common.Address
@@ -230,7 +231,7 @@ func InitSwap(
 		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
 	}
 
-	exchange := exchange.New(currentPriceOracleAddress)
+	exchange := exchange.New(currentPriceOracleAddress, transactionService)
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, exchange)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 

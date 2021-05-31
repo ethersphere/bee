@@ -5,9 +5,12 @@
 package exchange
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
 
 var (
@@ -17,6 +20,7 @@ var (
 
 type service struct {
 	priceOracleAddress common.Address
+	transactionService transaction.Service
 }
 
 type Service interface {
@@ -24,10 +28,33 @@ type Service interface {
 	CurrentRates() (exchange *big.Int, deduce *big.Int)
 }
 
-func New(priceOracleAddress common.Address) Service {
+var (
+	priceOracleABI = transaction.ParseABIUnchecked(priceoracleabi.PriceOracleABIv0_1_0)
+)
+
+func New(priceOracleAddress common.Address, transactionService transaction.Service) Service {
 	return &service{
 		priceOracleAddress: priceOracleAddress,
+		transactionService: transactionService,
 	}
+}
+
+func (s *service) update(ctx context.Context) error {
+	callData, err := priceOracleABI.Pack("getPrice")
+	if err != nil {
+		return err
+	}
+	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &s.priceOracleAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return err
+	}
+
+	_ = result
+
+	return nil
 }
 
 func (s *service) CurrentRates() (exchange *big.Int, deduce *big.Int) {
