@@ -514,7 +514,7 @@ func (s *Syncer) Close() error {
 
 	select {
 	case <-cc:
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		s.logger.Warning("pull syncer shutting down with running goroutines")
 	}
 	return nil
