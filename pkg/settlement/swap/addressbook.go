@@ -35,10 +35,13 @@ type Addressbook interface {
 	PutBeneficiary(peer swarm.Address, beneficiary common.Address) error
 	// PutChequebook stores the chequebook for the given peer.
 	PutChequebook(peer swarm.Address, chequebook common.Address) error
-	//
+	// AddDeductionFor peer stores the flag indicating the peer have already issued a cheque that has been deducted
 	AddDeductionFor(peer swarm.Address) error
+	// AddDeductionFor peer stores the flag indicating the peer have already received a cheque that has been deducted
 	AddDeductionBy(peer swarm.Address) error
+	// GetDeductionFor returns whether a peer have already issued a cheque that has been deducted
 	GetDeductionFor(peer swarm.Address) (bool, error)
+	// GetDeductionBy returns whether a peer have already received a cheque that has been deducted
 	GetDeductionBy(peer swarm.Address) (bool, error)
 }
 
