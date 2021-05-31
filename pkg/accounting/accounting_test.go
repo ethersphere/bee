@@ -269,7 +269,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = acc.Credit(peer1Addr, requestPrice)
 	if err != nil {
 		t.Fatal(err)
@@ -315,7 +315,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until the expected debt exceeeds payment threshold
+	// Credit until the expected debt exceeds payment threshold
 	expectedAmount := testPaymentThreshold.Uint64() - 101
 	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
 	if err != nil {
@@ -393,7 +393,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = acc.Credit(peer1Addr, requestPrice)
 	if err != nil {
 		t.Fatal(err)
@@ -446,7 +446,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		return big.NewInt(0), 0, nil
 	})
 
-	// Credit until the expected debt exceeeds payment threshold
+	// Credit until the expected debt exceeds payment threshold
 	expectedAmount := testPaymentThreshold.Uint64()
 
 	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
@@ -510,7 +510,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = acc.Credit(peer1Addr, requestPrice)
 	if err != nil {
 		t.Fatal(err)
@@ -553,7 +553,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = acc.Credit(peer1Addr, requestPrice)
 	if err != nil {
 		t.Fatal(err)
@@ -742,7 +742,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 		t.Fatal("Unexpected error from Credit")
 	}
 	debitAction.Cleanup()
-	// samity check surplus balance
+	// sanity check surplus balance
 	val, err = acc.SurplusBalance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
@@ -765,7 +765,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 		t.Fatal("Unexpected error from Debit")
 	}
 	debitAction.Cleanup()
-	// samity check surplus balance
+	// sanity check surplus balance
 	val, err = acc.SurplusBalance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")

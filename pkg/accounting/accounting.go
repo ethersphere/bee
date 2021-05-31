@@ -59,7 +59,7 @@ type Interface interface {
 
 // Action represents an accounting action that can be applied
 type Action interface {
-	// Cleanup cleans up an action. Must be called wether it was applied or not.
+	// Cleanup cleans up an action. Must be called whether it was applied or not.
 	Cleanup()
 	// Apply applies an action
 	Apply() error
@@ -106,11 +106,11 @@ type Accounting struct {
 	earlyPayment *big.Int
 	// Limit to disconnect peer after going in debt over
 	disconnectLimit *big.Int
-	// function used for monetory settlement
+	// function used for monetary settlement
 	payFunction PayFunc
 	// function used for time settlement
 	refreshFunction RefreshFunc
-	// allowance based on time used in pseudosettle
+	// allowance based on time used in pseudo settle
 	refreshRate *big.Int
 	// lower bound for the value of issued cheques
 	minimumPayment *big.Int
@@ -290,7 +290,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
-	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment treshold.
+	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
