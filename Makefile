@@ -24,13 +24,28 @@ dist:
 
 .PHONY: beekeeper
 beekeeper:
-	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
+	echo "BEEKEEPER PATH:" $$($(GO) env GOPATH)/bin/beekeeper
+	git clone https://github.com/ethersphere/beekeeper.git && cd beekeeper && git checkout ${BEEKEEPER_BRANCH} && make binary && mkdir -p $$($(GO) env GOPATH)/bin/ && export PATH=${PATH}:$$($(GO) env GOPATH)/bin && mv dist/beekeeper $$($(GO) env GOPATH)/bin/
+#	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
 	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/${BEEKEEPER_BRANCH}/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
 	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/${BEEKEEPER_BRANCH}/config/ci.yaml -o ~/.beekeeper/ci.yaml
 
 .PHONY: beelocal
 beelocal:
 	curl -sSfL https://raw.githubusercontent.com/ethersphere/beelocal/$(BEELOCAL_BRANCH)/beelocal.sh | bash
+
+.PHONY: deploylocal
+deploylocal:
+	export PATH=${PATH}:$$($(GO) env GOPATH)/bin
+	beekeeper create bee-cluster --cluster-name local
+
+.PHONY: testlocal
+testlocal:
+	export PATH=${PATH}:$$($(GO) env GOPATH)/bin
+	beekeeper check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-settlements,ci-soc
+
+.PHONY: testlocal-all
+all: beekeeper beelocal deploylocal testlocal
 
 .PHONY: lint
 lint: linter
