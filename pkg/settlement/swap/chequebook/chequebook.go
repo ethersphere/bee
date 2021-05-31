@@ -59,6 +59,8 @@ type Service interface {
 	LastCheque(beneficiary common.Address) (*SignedCheque, error)
 	// LastCheque returns the last cheques for all beneficiaries.
 	LastCheques() (map[common.Address]*SignedCheque, error)
+	// StoreCheque stores a cheque
+	StoreCheque(beneficiary common.Address, cheque *SignedCheque, amount *big.Int) error
 }
 
 type service struct {
@@ -245,9 +247,8 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 }
 
 func (s *service) StoreCheque(beneficiary common.Address, cheque *SignedCheque, amount *big.Int) error {
-
-	err := s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
-	if err != nil {
+	chequeKey := lastIssuedChequeKey(beneficiary)
+	if err := s.store.Put(chequeKey, cheque); err != nil {
 		return err
 	}
 
