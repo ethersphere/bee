@@ -60,6 +60,7 @@ jobs:
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
       - name: Set testing cluster (DNS discovery)
         run: |
           echo -e "127.0.0.10\tregistry.localhost" | sudo tee -a /etc/hosts
