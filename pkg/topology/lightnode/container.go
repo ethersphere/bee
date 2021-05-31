@@ -6,6 +6,8 @@ package lightnode
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -47,6 +49,43 @@ func (c *Container) Disconnected(peer p2p.Peer) {
 		c.connectedPeers.Remove(addr)
 		c.disconnectedPeers.Add(addr)
 	}
+}
+
+func (c *Container) Count() int {
+	return c.connectedPeers.Length()
+}
+
+func (c *Container) RandomPeer(not swarm.Address) (swarm.Address, error) {
+	c.peerMu.Lock()
+	defer c.peerMu.Unlock()
+	var (
+		cnt   = big.NewInt(int64(c.Count()))
+		addr  = swarm.ZeroAddress
+		count = int64(0)
+	)
+
+PICKPEER:
+	i, e := rand.Int(rand.Reader, cnt)
+	if e != nil {
+		return swarm.ZeroAddress, e
+	}
+	i64 := i.Int64()
+
+	count = 0
+	_ = c.connectedPeers.EachBinRev(func(peer swarm.Address, _ uint8) (bool, bool, error) {
+		if count == i64 {
+			addr = peer
+			return true, false, nil
+		}
+		count++
+		return false, false, nil
+	})
+
+	if addr.Equal(not) {
+		goto PICKPEER
+	}
+
+	return addr, nil
 }
 
 func (c *Container) PeerInfo() topology.BinInfo {
