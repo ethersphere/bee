@@ -6,6 +6,8 @@ package exchange
 
 import (
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -14,6 +16,7 @@ var (
 )
 
 type service struct {
+	priceOracleAddress common.Address
 }
 
 type Service interface {
@@ -21,10 +24,21 @@ type Service interface {
 	CurrentRates() (exchange *big.Int, deduce *big.Int)
 }
 
-func New() Service {
-	return &service{}
+func New(priceOracleAddress common.Address) Service {
+	return &service{
+		priceOracleAddress: priceOracleAddress,
+	}
 }
 
 func (s *service) CurrentRates() (exchange *big.Int, deduce *big.Int) {
 	return rate, deduction
+}
+
+// DiscoverPriceOracleAddress returns the canonical price oracle for this chainID
+func DiscoverPriceOracleAddress(chainID int64) (priceOracleAddress common.Address, found bool) {
+	if chainID == 5 {
+		// goerli
+		return common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2"), true
+	}
+	return common.Address{}, false
 }

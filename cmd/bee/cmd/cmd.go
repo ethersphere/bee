@@ -63,6 +63,7 @@ const (
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
+	optionNamePriceOracleAddress         = "price-oracle-address"
 	optionNameBlockTime                  = "block-time"
 )
 
@@ -233,6 +234,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
+	cmd.Flags().String(optionNamePriceOracleAddress, "", "")
 	cmd.Flags().String(optionNameTransactionHash, "", "proof-of-identity transaction hash")
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
 	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")

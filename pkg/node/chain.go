@@ -215,8 +215,22 @@ func InitSwap(
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
 	accounting settlement.Accounting,
+	priceOracleAddress string,
+	chainID int64,
 ) (*swap.Service, error) {
-	exchange := exchange.New()
+
+	var currentPriceOracleAddress common.Address
+	if priceOracleAddress == "" {
+		var found bool = false
+		currentPriceOracleAddress, found = exchange.DiscoverPriceOracleAddress(chainID)
+		if !found {
+			return nil, errors.New("no known price oracle address for this network")
+		}
+	} else {
+		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
+	}
+
+	exchange := exchange.New(currentPriceOracleAddress)
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, exchange)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
