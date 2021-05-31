@@ -19,8 +19,6 @@ import (
 )
 
 var (
-	rate         = big.NewInt(100000)
-	deduction    = big.NewInt(1000000)
 	errDecodeABI = errors.New("could not decode abi data")
 )
 
@@ -28,7 +26,7 @@ type service struct {
 	logger             logging.Logger
 	priceOracleAddress common.Address
 	transactionService transaction.Service
-	rate               *big.Int
+	exchangeRate       *big.Int
 	deduction          *big.Int
 	timeDivisor        int64
 	quitC              chan struct{}
@@ -37,7 +35,7 @@ type service struct {
 type Service interface {
 	io.Closer
 	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
-	CurrentRates() (exchange *big.Int, deduce *big.Int)
+	CurrentRates() (exchange *big.Int, deduction *big.Int, err error)
 	GetPrice(ctx context.Context) (*big.Int, *big.Int, error)
 	Start()
 }
@@ -51,8 +49,8 @@ func New(logger logging.Logger, priceOracleAddress common.Address, transactionSe
 		logger:             logger,
 		priceOracleAddress: priceOracleAddress,
 		transactionService: transactionService,
-		rate:               big.NewInt(0),
-		deduction:          big.NewInt(0),
+		exchangeRate:       big.NewInt(0),
+		deduction:          nil,
 		quitC:              make(chan struct{}),
 		timeDivisor:        timeDivisor,
 	}
@@ -68,19 +66,19 @@ func (s *service) Start() {
 	go func() {
 		defer cancel()
 		for {
-			price, deduce, err := s.getPrice(ctx)
+			exchangeRate, deduction, err := s.getPrice(ctx)
 			if err != nil {
 				s.logger.Errorf("could not get price: %v", err)
 			}
 
-			s.rate = price
-			s.deduction = deduce
+			s.exchangeRate = exchangeRate
+			s.deduction = deduction
 
 			ts := time.Now().Unix()
 
 			timeUntilNextPoll := time.Duration(s.timeDivisor-ts%s.timeDivisor) * time.Second
 
-			s.logger.Tracef("updated price to %d and deduce to %d", price, deduce)
+			s.logger.Tracef("updated exchange rate to %d and deduction to %d", exchangeRate, deduction)
 
 			select {
 			case <-s.quitC:
@@ -122,16 +120,22 @@ func (s *service) getPrice(ctx context.Context) (*big.Int, *big.Int, error) {
 		return nil, nil, errDecodeABI
 	}
 
-	deduce, ok := abi.ConvertType(results[1], new(big.Int)).(*big.Int)
-	if !ok || deduce == nil {
+	deduction, ok := abi.ConvertType(results[1], new(big.Int)).(*big.Int)
+	if !ok || deduction == nil {
 		return nil, nil, errDecodeABI
 	}
 
-	return exchange, deduce, nil
+	return exchange, deduction, nil
 }
 
-func (s *service) CurrentRates() (exchange *big.Int, deduce *big.Int) {
-	return s.rate, s.deduction
+func (s *service) CurrentRates() (exchangeRate *big.Int, deduction *big.Int, err error) {
+	if s.exchangeRate.Cmp(big.NewInt(0)) == 0 {
+		return nil, nil, errors.New("exchange rate not yet available")
+	}
+	if s.deduction == nil {
+		return nil, nil, errors.New("deduction amount not yet available")
+	}
+	return s.exchangeRate, s.deduction, nil
 }
 
 func (s *service) Close() error {

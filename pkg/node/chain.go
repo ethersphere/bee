@@ -222,7 +222,7 @@ func InitSwap(
 
 	var currentPriceOracleAddress common.Address
 	if priceOracleAddress == "" {
-		var found bool = false
+		var found bool
 		currentPriceOracleAddress, found = exchange.DiscoverPriceOracleAddress(chainID)
 		if !found {
 			return nil, nil, errors.New("no known price oracle address for this network")
