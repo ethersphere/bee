@@ -157,7 +157,7 @@ func (s *server) Close() error {
 
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(1 * time.Second):
 		return errors.New("api shutting down with open websockets")
 	}
 

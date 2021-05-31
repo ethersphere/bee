@@ -6,6 +6,8 @@ package lightnode
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -15,27 +17,27 @@ import (
 )
 
 type Container struct {
+	base              swarm.Address
 	connectedPeers    *pslice.PSlice
 	disconnectedPeers *pslice.PSlice
 	peerMu            sync.Mutex
 }
 
-func NewContainer() *Container {
+func NewContainer(base swarm.Address) *Container {
 	return &Container{
-		connectedPeers:    pslice.New(1),
-		disconnectedPeers: pslice.New(1),
+		base:              base,
+		connectedPeers:    pslice.New(1, base),
+		disconnectedPeers: pslice.New(1, base),
 	}
 }
-
-const defaultBin = uint8(0)
 
 func (c *Container) Connected(ctx context.Context, peer p2p.Peer) {
 	c.peerMu.Lock()
 	defer c.peerMu.Unlock()
 
 	addr := peer.Address
-	c.connectedPeers.Add(addr, defaultBin)
-	c.disconnectedPeers.Remove(addr, defaultBin)
+	c.connectedPeers.Add(addr)
+	c.disconnectedPeers.Remove(addr)
 }
 
 func (c *Container) Disconnected(peer p2p.Peer) {
@@ -44,9 +46,46 @@ func (c *Container) Disconnected(peer p2p.Peer) {
 
 	addr := peer.Address
 	if found := c.connectedPeers.Exists(addr); found {
-		c.connectedPeers.Remove(addr, defaultBin)
-		c.disconnectedPeers.Add(addr, defaultBin)
+		c.connectedPeers.Remove(addr)
+		c.disconnectedPeers.Add(addr)
 	}
+}
+
+func (c *Container) Count() int {
+	return c.connectedPeers.Length()
+}
+
+func (c *Container) RandomPeer(not swarm.Address) (swarm.Address, error) {
+	c.peerMu.Lock()
+	defer c.peerMu.Unlock()
+	var (
+		cnt   = big.NewInt(int64(c.Count()))
+		addr  = swarm.ZeroAddress
+		count = int64(0)
+	)
+
+PICKPEER:
+	i, e := rand.Int(rand.Reader, cnt)
+	if e != nil {
+		return swarm.ZeroAddress, e
+	}
+	i64 := i.Int64()
+
+	count = 0
+	_ = c.connectedPeers.EachBinRev(func(peer swarm.Address, _ uint8) (bool, bool, error) {
+		if count == i64 {
+			addr = peer
+			return true, false, nil
+		}
+		count++
+		return false, false, nil
+	})
+
+	if addr.Equal(not) {
+		goto PICKPEER
+	}
+
+	return addr, nil
 }
 
 func (c *Container) PeerInfo() topology.BinInfo {

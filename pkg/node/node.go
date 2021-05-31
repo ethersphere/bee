@@ -18,8 +18,11 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -59,15 +62,16 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
@@ -77,6 +81,7 @@ import (
 
 type Bee struct {
 	p2pService               io.Closer
+	p2pHalter                p2p.Halter
 	p2pCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
@@ -88,6 +93,7 @@ type Bee struct {
 	stateStoreCloser         io.Closer
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
+	topologyHalter           topology.Halter
 	pusherCloser             io.Closer
 	pullerCloser             io.Closer
 	pullSyncCloser           io.Closer
@@ -288,7 +294,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		)
 	}
 
-	lightNodes := lightnode.NewContainer()
+	lightNodes := lightnode.NewContainer(swarmAddress)
 
 	txHash, err := getTxHash(stateStore, logger, o)
 	if err != nil {
@@ -311,6 +317,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
+	b.p2pHalter = p2ps
 
 	// localstore depends on batchstore
 	var path string
@@ -365,7 +372,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			postageSyncStart = startBlock
 		}
 
-		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime)
+		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 		b.listenerCloser = eventListener
 
 		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener)
@@ -437,6 +444,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, StandaloneMode: o.Standalone, BootnodeMode: o.BootnodeMode})
 	b.topologyCloser = kad
+	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
@@ -568,8 +576,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
 
-	pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
-	b.pullerCloser = pullerService
+	var pullerService *puller.Puller
+	if o.FullNodeMode {
+		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
+		b.pullerCloser = pullerService
+	}
 
 	retrieveProtocolSpec := retrieve.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
@@ -641,10 +652,15 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
-		debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
+
+		if pullerService != nil {
+			debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
+		}
+
 		debugAPIService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pusherService.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
+		debugAPIService.MustRegisterMetrics(pullStorage.Metrics()...)
 		debugAPIService.MustRegisterMetrics(retrieve.Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
@@ -689,6 +705,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
+	// halt kademlia while shutting down other
+	// components.
+	b.topologyHalter.Halt()
+
+	// halt p2p layer from accepting new connections
+	// while shutting down other components
+	b.p2pHalter.Halt()
+
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {
@@ -727,15 +751,46 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	if b.recoveryHandleCleanup != nil {
 		b.recoveryHandleCleanup()
 	}
-
-	tryClose(b.pusherCloser, "pusher")
-	tryClose(b.pullerCloser, "puller")
-	tryClose(b.pullSyncCloser, "pull sync")
-	tryClose(b.pssCloser, "pss")
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		tryClose(b.pssCloser, "pss")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pusherCloser, "pusher")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pullerCloser, "puller")
+	}()
 
 	b.p2pCancel()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pullSyncCloser, "pull sync")
+	}()
+
+	wg.Wait()
+
 	tryClose(b.p2pService, "p2p server")
-	tryClose(b.transactionMonitorCloser, "transaction monitor")
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		tryClose(b.transactionMonitorCloser, "transaction monitor")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.listenerCloser, "listener")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.postageServiceCloser, "postage service")
+	}()
+
+	wg.Wait()
 
 	if c := b.ethClientCloser; c != nil {
 		c()
@@ -743,11 +798,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.tagsCloser, "tag persistence")
-	tryClose(b.listenerCloser, "listener")
-	tryClose(b.postageServiceCloser, "postage service")
+	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
-	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")
 
@@ -783,4 +836,27 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 
 	logger.Infof("using the chequebook transaction hash %x", txHash)
 	return txHash.Bytes(), nil
+}
+
+// pidKiller is used to issue a forced shut down of the node from sub modules. The issue with using the
+// node's Shutdown method is that it only shuts down the node and does not exit the start process
+// which is waiting on the os.Signals. This is not desirable, but currently bee node cannot handle
+// rate-limiting blockchain API calls properly. We will shut down the node in this case to allow the
+// user to rectify the API issues (by adjusting limits or using a different one). There is no platform
+// agnostic way to trigger os.Signals in go unfortunately. Which is why we will use the process.Kill
+// approach which works on windows as well.
+type pidKiller struct {
+	node *Bee
+}
+
+func (p *pidKiller) Shutdown(ctx context.Context) error {
+	err := p.node.Shutdown(ctx)
+	if err != nil {
+		return err
+	}
+	ps, err := os.FindProcess(syscall.Getpid())
+	if err != nil {
+		return err
+	}
+	return ps.Kill()
 }

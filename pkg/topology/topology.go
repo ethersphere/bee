@@ -7,7 +7,6 @@
 package topology
 
 import (
-	"context"
 	"errors"
 	"io"
 	"time"
@@ -29,12 +28,13 @@ type Driver interface {
 	NeighborhoodDepth() uint8
 	SubscribePeersChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
+	Halter
 	Snapshot() *KadParams
 }
 
 type PeerAdder interface {
 	// AddPeers is called when peers are added to the topology backlog
-	AddPeers(ctx context.Context, addr ...swarm.Address) error
+	AddPeers(addr ...swarm.Address)
 }
 
 type ClosestPeerer interface {
@@ -73,7 +73,7 @@ type PeerInfo struct {
 // MetricSnapshotView represents snapshot of metrics counters in more human readable form.
 type MetricSnapshotView struct {
 	LastSeenTimestamp          int64   `json:"lastSeenTimestamp"`
-	SessionConnectionRetry     uint    `json:"sessionConnectionRetry"`
+	SessionConnectionRetry     uint64  `json:"sessionConnectionRetry"`
 	ConnectionTotalDuration    float64 `json:"connectionTotalDuration"`
 	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
@@ -130,4 +130,10 @@ type KadParams struct {
 	Depth          uint8     `json:"depth"`          // current depth
 	Bins           KadBins   `json:"bins"`           // individual bin info
 	LightNodes     BinInfo   `json:"lightNodes"`     // light nodes bin info
+}
+
+type Halter interface {
+	// Halt the topology from initiating new connections
+	// while allowing it to still run.
+	Halt()
 }
