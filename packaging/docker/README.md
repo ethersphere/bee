@@ -11,6 +11,8 @@ Set all configuration variables inside `.env`
 
 `clef` is configured with `CLEF_CHAINID=5` for goerli
 
+If you want to run node in full mode, set `BEE_FULL_NODE=true`
+
 Bee requires an Ethereum endpoint to function. Obtain a free Infura account and set:
 - `BEE_SWAP_ENDPOINT=wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 
