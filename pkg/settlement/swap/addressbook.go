@@ -17,6 +17,8 @@ var (
 	peerChequebookPrefix  = "swap_peer_chequebook_"
 	beneficiaryPeerPrefix = "swap_beneficiary_peer_"
 	peerBeneficiaryPrefix = "swap_peer_beneficiary_"
+	deductedForPeerPrefix = "swap_deducted_for_peer_"
+	deductedByPeerPrefix  = "swap_deducted_by_peer_"
 )
 
 // Addressbook maps peers to beneficaries, chequebooks and in reverse.
@@ -33,6 +35,11 @@ type Addressbook interface {
 	PutBeneficiary(peer swarm.Address, beneficiary common.Address) error
 	// PutChequebook stores the chequebook for the given peer.
 	PutChequebook(peer swarm.Address, chequebook common.Address) error
+	//
+	AddDeductionFor(peer swarm.Address) error
+	AddDeductionBy(peer swarm.Address) error
+	GetDeductionFor(peer swarm.Address) (bool, error)
+	GetDeductionBy(peer swarm.Address) (bool, error)
 }
 
 type addressbook struct {
@@ -112,6 +119,46 @@ func (a *addressbook) PutChequebook(peer swarm.Address, chequebook common.Addres
 	return a.store.Put(chequebookPeerKey(chequebook), peer)
 }
 
+func (a *addressbook) AddDeductionFor(peer swarm.Address) error {
+	err := a.store.Put(peerDeductedForKey(peer), struct{}{})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *addressbook) AddDeductionBy(peer swarm.Address) error {
+	err := a.store.Put(peerDeductedByKey(peer), struct{}{})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *addressbook) GetDeductionFor(peer swarm.Address) (bool, error) {
+	var nothing struct{}
+	err := a.store.Get(peerDeductedForKey(peer), &nothing)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			return false, err
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
+func (a *addressbook) GetDeductionBy(peer swarm.Address) (bool, error) {
+	var nothing struct{}
+	err := a.store.Get(peerDeductedByKey(peer), &nothing)
+	if err != nil {
+		if err != storage.ErrNotFound {
+			return false, err
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
 // peerKey computes the key where to store the chequebook from a peer.
 func peerKey(peer swarm.Address) string {
 	return fmt.Sprintf("%s%s", peerPrefix, peer)
@@ -130,4 +177,12 @@ func peerBeneficiaryKey(peer swarm.Address) string {
 // beneficiaryPeerKey computes the key where to store the peer for a beneficiary.
 func beneficiaryPeerKey(peer common.Address) string {
 	return fmt.Sprintf("%s%s", beneficiaryPeerPrefix, peer)
+}
+
+func peerDeductedByKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s%s", deductedByPeerPrefix, peer.String())
+}
+
+func peerDeductedForKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s%s", deductedForPeerPrefix, peer.String())
 }
