@@ -27,6 +27,5 @@ COPY --from=build /src/dist/bee /usr/local/bin/bee
 EXPOSE 1633 1634 1635
 USER bee
 WORKDIR /home/bee
-VOLUME /home/bee/.bee
 
 ENTRYPOINT ["bee"]
