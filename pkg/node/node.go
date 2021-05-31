@@ -532,6 +532,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			acc,
 			o.PriceOracleAddress,
 			chainID,
+			transactionService,
 		)
 		if err != nil {
 			return nil, err
