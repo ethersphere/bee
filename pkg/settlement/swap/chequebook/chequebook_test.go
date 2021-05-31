@@ -470,3 +470,38 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 		t.Fatalf("got wrong error. wanted %v, got %v", chequebook.ErrInsufficientFunds, err)
 	}
 }
+
+func TestStoreCheque(t *testing.T) {
+	address := common.HexToAddress("0xabcd")
+	ownerAdress := common.HexToAddress("0xfff")
+	store := storemock.NewStateStore()
+	chequebookService, _ := chequebook.New(
+		nil,
+		address,
+		ownerAdress,
+		store,
+		&chequeSignerMock{},
+		erc20mock.New(),
+	)
+
+	ten := new(big.Int).SetInt64(10)
+	cheque := new(chequebook.SignedCheque)
+	cheque.CumulativePayout = new(big.Int).SetInt64(100)
+
+	store.Put("swap_chequebook_total_issued_", new(big.Int).SetInt64(99))
+
+	_ = chequebookService.StoreCheque(address, cheque, ten)
+
+	var totalIssued *big.Int
+	var expected = new(big.Int).SetInt64(109)
+	if store.Get("swap_chequebook_total_issued_", &totalIssued); totalIssued.Cmp(expected) != 0 {
+		t.Errorf("expected %d, got %d", ten, totalIssued)
+	}
+
+	var gotCheque *chequebook.SignedCheque
+	chequeKey := "swap_chequebook_last_issued_cheque_000000000000000000000000000000000000abcd"
+	store.Get(chequeKey, &gotCheque)
+	if gotCheque.CumulativePayout.Cmp(cheque.CumulativePayout) != 0 {
+		t.Errorf("bad payout value, want %d, got %d", cheque.CumulativePayout, gotCheque.CumulativePayout)
+	}
+}
