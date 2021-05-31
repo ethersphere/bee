@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/exchange"
-	"github.com/ethersphere/bee/pkg/settlement/swap/headers"
+	swap "github.com/ethersphere/bee/pkg/settlement/swap/headers"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -205,7 +205,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
 
-	exchange, deduction := s.exchange.CurrentRates()
+	exchange, deduction, err := s.exchange.CurrentRates()
+	if err != nil {
+		return p2p.Headers{}
+	}
+
 	checkPeer, err := s.swap.GetDeductionForPeer(peerAddress)
 	if err != nil {
 		return p2p.Headers{}
@@ -260,7 +264,10 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 	}
 
 	// get current global exchange rate and deduction
-	checkExchange, checkDeduction := s.exchange.CurrentRates()
+	checkExchange, checkDeduction, err := s.exchange.CurrentRates()
+	if err != nil {
+		return nil, err
+	}
 
 	// exchange rates should match
 	if exchange.Cmp(checkExchange) != 0 {
