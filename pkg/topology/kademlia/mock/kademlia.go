@@ -182,9 +182,8 @@ func (m *Mock) ResetPeers() {
 	m.eachPeerRev = nil
 }
 
-func (m *Mock) Close() error {
-	panic("not implemented") // TODO: Implement
-}
+func (d *Mock) Halt()        {}
+func (m *Mock) Close() error { return nil }
 
 func (m *Mock) Snapshot() *topology.KadParams {
 	panic("not implemented") // TODO: Implement

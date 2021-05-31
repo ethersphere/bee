@@ -193,9 +193,8 @@ func (d *mock) Snapshot() *topology.KadParams {
 	return new(topology.KadParams)
 }
 
-func (d *mock) Close() error {
-	return nil
-}
+func (d *mock) Halt()        {}
+func (d *mock) Close() error { return nil }
 
 type Option interface {
 	apply(*mock)

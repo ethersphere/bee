@@ -26,6 +26,7 @@ type Service interface {
 	BlocklistedPeers() ([]Peer, error)
 	Addresses() ([]ma.Multiaddr, error)
 	SetPickyNotifier(PickyNotifier)
+	Halter
 }
 
 type Disconnecter interface {
@@ -33,6 +34,11 @@ type Disconnecter interface {
 	// Blocklist will disconnect a peer and put it on a blocklist (blocking in & out connections) for provided duration
 	// duration 0 is treated as an infinite duration
 	Blocklist(overlay swarm.Address, duration time.Duration) error
+}
+
+type Halter interface {
+	// Halt new incoming connections while shutting down
+	Halt()
 }
 
 // PickyNotifer can decide whether a peer should be picked

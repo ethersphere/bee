@@ -91,6 +91,7 @@ type Kad struct {
 	bootnode          bool           // indicates whether the node is working in bootnode mode
 	collector         *metrics.Collector
 	quit              chan struct{} // quit channel
+	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
@@ -135,6 +136,7 @@ func New(
 		bootnode:          o.BootnodeMode,
 		collector:         metrics.NewCollector(metricsDB),
 		quit:              make(chan struct{}),
+		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
 	}
@@ -429,6 +431,7 @@ func (k *Kad) notifyManageLoop() {
 func (k *Kad) manage() {
 	defer k.wg.Done()
 	defer close(k.done)
+	defer k.logger.Debugf("kademlia manage loop exited")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -455,6 +458,9 @@ func (k *Kad) manage() {
 			start := time.Now()
 
 			select {
+			case <-k.halt:
+				// halt stops dial-outs while shutting down
+				return
 			case <-k.quit:
 				return
 			default:
@@ -476,6 +482,11 @@ func (k *Kad) manage() {
 			)
 
 			if k.connectedPeers.Length() == 0 {
+				select {
+				case <-k.halt:
+					continue
+				default:
+				}
 				k.logger.Debug("kademlia: no connected peers, trying bootnodes")
 				k.connectBootnodes(ctx)
 			}
@@ -538,7 +549,7 @@ func (k *Kad) connectBootnodes(ctx context.Context) {
 			connected++
 			// connect to max 3 bootnodes
 			return connected >= 3, nil
-		}); err != nil {
+		}); err != nil && !errors.Is(err, context.Canceled) {
 			k.logger.Debugf("discover fail %s: %v", addr, err)
 			k.logger.Warningf("discover to bootnode %s", addr)
 			return
@@ -717,10 +728,8 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 				// about lightnodes to others.
 				continue
 			}
-			k.wg.Add(1)
 			go func(connectedPeer swarm.Address) {
-				defer k.wg.Done()
-				if err := k.discovery.BroadcastPeers(context.Background(), connectedPeer, peer); err != nil {
+				if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
 					k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, connectedPeer, err)
 				}
 			}(connectedPeer)
@@ -1170,6 +1179,13 @@ func (k *Kad) String() string {
 	return string(b)
 }
 
+// Halt stops outgoing connections from happening.
+// This is needed while we shut down, so that further topology
+// changes do not happen while we shut down.
+func (k *Kad) Halt() {
+	close(k.halt)
+}
+
 // Close shuts down kademlia.
 func (k *Kad) Close() error {
 	k.logger.Info("kademlia shutting down")
@@ -1193,6 +1209,7 @@ func (k *Kad) Close() error {
 		k.logger.Warning("kademlia manage loop did not shut down properly")
 	}
 
+	k.logger.Info("kademlia persisting peer metrics")
 	if err := k.collector.Finalize(time.Now()); err != nil {
 		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
 	}

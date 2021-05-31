@@ -252,6 +252,11 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	go func() {
 		err := listenf()
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				// context cancelled is returned on shutdown,
+				// therefore we do nothing here
+				return
+			}
 			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
 			if l.shutdowner != nil {
 				err = l.shutdowner.Shutdown(context.Background())
