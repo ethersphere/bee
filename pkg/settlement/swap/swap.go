@@ -79,7 +79,7 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 }
 
 // ReceiveCheque is called by the swap protocol if a cheque is received.
-func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) (err error) {
+func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) (err error) {
 	// check this is the same chequebook for this peer as previously
 	expectedChequebook, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		return ErrWrongChequebook
 	}
 
-	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
+	chequeAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
 	if err != nil {
 		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
@@ -101,6 +101,9 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 			return err
 		}
 	}
+
+	decreasedAmount := new(big.Int).Sub(chequeAmount, deduction)
+	amount := new(big.Int).Div(decreasedAmount, exchange)
 
 	tot, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalReceived.Add(tot)
@@ -131,7 +134,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
-	balance, err = s.proto.EmitCheque(ctx, peer, amount, s.chequebook.Issue)
+	balance, err := s.proto.EmitCheque(ctx, peer, beneficiary, amount, s.chequebook.Issue)
 	if err != nil {
 		return
 	}

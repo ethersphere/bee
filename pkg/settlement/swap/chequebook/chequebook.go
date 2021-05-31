@@ -183,10 +183,10 @@ func (s *service) unreserveTotalIssued(amount *big.Int) {
 // The cheque is considered sent and saved when sendChequeFunc succeeds.
 // The available balance which is available after sending the cheque is passed
 // to the caller for it to be communicated over metrics.
-func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int) (*big.Int, *SignedCheque, error) {
+func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error) {
 	availableBalance, err := s.reserveTotalIssued(ctx, amount)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer s.unreserveTotalIssued(amount)
 
@@ -194,7 +194,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
 		if err != ErrNoCheque {
-			return nil, nil, err
+			return nil, err
 		}
 		cumulativePayout = big.NewInt(0)
 	} else {
@@ -217,13 +217,31 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		Beneficiary:      beneficiary,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return availableBalance, &SignedCheque{
+	err = sendChequeFunc(&SignedCheque{
 		Cheque:    cheque,
 		Signature: sig,
-	}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.store.Put(lastIssuedChequeKey(beneficiary), cheque)
+	if err != nil {
+		return nil, err
+	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	totalIssued, err := s.totalIssued()
+	if err != nil {
+		return nil, err
+	}
+	totalIssued = totalIssued.Add(totalIssued, amount)
+	return availableBalance, s.store.Put(totalIssuedKey, totalIssued)
 }
 
 func (s *service) StoreCheque(beneficiary common.Address, cheque *SignedCheque, amount *big.Int) error {
