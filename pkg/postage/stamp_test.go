@@ -41,12 +41,11 @@ func TestStampMarshalling(t *testing.T) {
 // TestStampIndexMarshalling tests the idempotence of stamp index serialisation.
 func TestStampIndexMarshalling(t *testing.T) {
 	var (
-		depth     uint8  = 8
 		expBucket uint32 = 11789
 		expIndex  uint32 = 199999
 	)
-	index := postage.IndexToBytes(depth, expBucket, expIndex)
-	bucket, idx := postage.BytesToIndex(index, depth)
+	index := postage.IndexToBytes(expBucket, expIndex)
+	bucket, idx := postage.BytesToIndex(index)
 	if bucket != expBucket {
 		t.Fatalf("bucket mismatch. want %d, got %d", expBucket, bucket)
 	}

@@ -489,7 +489,7 @@ func TestModePut_sameStamp(t *testing.T) {
 	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload}
 	for _, mode1 := range modes {
 		for _, mode2 := range modes {
-			t.Run(fmt.Sprintf("chunk on same index - timestamps in order"), func(t *testing.T) {
+			t.Run("chunk on same index - timestamps in order", func(t *testing.T) {
 				db := newTestDB(t, nil)
 				// call unreserve on the batch with radius 0 so that
 				// localstore is aware of the batch and the chunk can
@@ -525,7 +525,7 @@ func TestModePut_sameStamp(t *testing.T) {
 					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
 				}
 			})
-			t.Run(fmt.Sprintf("chunk on same index - timestamps in reverse order"), func(t *testing.T) {
+			t.Run("chunk on same index - timestamps in reverse order", func(t *testing.T) {
 				db := newTestDB(t, nil)
 				// call unreserve on the batch with radius 0 so that
 				// localstore is aware of the batch and the chunk can
