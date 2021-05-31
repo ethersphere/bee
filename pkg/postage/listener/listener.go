@@ -115,8 +115,8 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.BatchId[:],
 			c.Owner.Bytes(),
 			c.NormalisedBalance,
-			c.BucketDepth,
 			c.Depth,
+			c.BucketDepth,
 			c.Immutable,
 		)
 	case batchTopupTopic:

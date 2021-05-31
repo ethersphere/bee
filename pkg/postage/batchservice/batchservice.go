@@ -35,7 +35,7 @@ func New(stateStore storage.StateStorer, storer postage.Storer, logger logging.L
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
-func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, bucketDepth, depth uint8, immutable bool) error {
+func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool) error {
 	b := &postage.Batch{
 		ID:          id,
 		Owner:       owner,

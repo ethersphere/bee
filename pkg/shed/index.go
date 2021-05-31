@@ -52,8 +52,7 @@ type Item struct {
 	BucketDepth     uint8  // postage batch bucket depth (for collision sets)
 	Depth           uint8  // postage batch depth (for size)
 	Radius          uint8  // postage batch reserve radius, po upto and excluding which chunks are unpinned
-	Immutable       uint8  // whether postage batch can be diluted and drained, and indexes overwritten - nullable bool
-
+	Immutable       bool   // whether postage batch can be diluted and drained, and indexes overwritten - nullable bool
 }
 
 // Merge is a helper method to construct a new
@@ -102,7 +101,7 @@ func (i Item) Merge(i2 Item) Item {
 	if i.Radius == 0 {
 		i.Radius = i2.Radius
 	}
-	if i.Immutable == 0 {
+	if !i.Immutable {
 		i.Immutable = i2.Immutable
 	}
 	return i
