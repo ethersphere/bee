@@ -7,7 +7,6 @@
 package topology
 
 import (
-	"context"
 	"errors"
 	"io"
 	"time"
@@ -34,7 +33,7 @@ type Driver interface {
 
 type PeerAdder interface {
 	// AddPeers is called when peers are added to the topology backlog
-	AddPeers(ctx context.Context, addr ...swarm.Address) error
+	AddPeers(addr ...swarm.Address)
 }
 
 type ClosestPeerer interface {
@@ -73,7 +72,7 @@ type PeerInfo struct {
 // MetricSnapshotView represents snapshot of metrics counters in more human readable form.
 type MetricSnapshotView struct {
 	LastSeenTimestamp          int64   `json:"lastSeenTimestamp"`
-	SessionConnectionRetry     uint    `json:"sessionConnectionRetry"`
+	SessionConnectionRetry     uint64  `json:"sessionConnectionRetry"`
 	ConnectionTotalDuration    float64 `json:"connectionTotalDuration"`
 	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`

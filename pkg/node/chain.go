@@ -21,8 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/transaction"
 )
 
 const (
@@ -31,7 +31,7 @@ const (
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
-// set up the Transacton Service to interact with it using the provided signer.
+// set up the Transaction Service to interact with it using the provided signer.
 func InitChain(
 	ctx context.Context,
 	logger logging.Logger,

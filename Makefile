@@ -4,6 +4,7 @@ GOLANGCI_LINT_VERSION ?= v1.30.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER ?= $$($(GO) env GOPATH)/bin/beekeeper
+BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
 
@@ -24,11 +25,10 @@ dist:
 
 .PHONY: beekeeper
 beekeeper:
-	echo "BEEKEEPER PATH:" $$($(GO) env GOPATH)/bin/beekeeper
-	git clone https://github.com/ethersphere/beekeeper.git && cd beekeeper && git checkout ${BEEKEEPER_BRANCH} && make binary && mkdir -p $$($(GO) env GOPATH)/bin/ && export PATH=${PATH}:$$($(GO) env GOPATH)/bin && mv dist/beekeeper $$($(GO) env GOPATH)/bin/
+	git clone https://github.com/ethersphere/beekeeper.git && cd beekeeper && git checkout $(BEEKEEPER_BRANCH) && mkdir -p $$($(GO) env GOPATH)/bin && make binary && sudo mv dist/beekeeper $(BEEKEEPER)
 #	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
-	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/${BEEKEEPER_BRANCH}/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
-	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/${BEEKEEPER_BRANCH}/config/ci.yaml -o ~/.beekeeper/ci.yaml
+	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
+	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
 
 .PHONY: beelocal
 beelocal:
@@ -36,13 +36,12 @@ beelocal:
 
 .PHONY: deploylocal
 deploylocal:
-	export PATH=${PATH}:$$($(GO) env GOPATH)/bin
-	beekeeper create bee-cluster --cluster-name local
+	$(BEEKEEPER) create bee-cluster --cluster-name $(BEEKEEPER_CLUSTER)
 
 .PHONY: testlocal
 testlocal:
 	export PATH=${PATH}:$$($(GO) env GOPATH)/bin
-	beekeeper check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-settlements,ci-soc
+	$(BEEKEEPER) check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-settlements,ci-soc
 
 .PHONY: testlocal-all
 all: beekeeper beelocal deploylocal testlocal

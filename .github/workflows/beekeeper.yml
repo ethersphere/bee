@@ -40,8 +40,8 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_BRANCH=config2
-          timeout 30m make beelocal OPTS='ci'
+          make beekeeper BEEKEEPER_BRANCH=config2 BEEKEEPER=/usr/local/bin/beekeeper
+          timeout 30m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
@@ -50,34 +50,35 @@ jobs:
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
       - name: Set local cluster
         run: |
           make beelocal ACTION=add-hosts
-          timeout 30m make deploylocal
+          timeout 30m make deploylocal BEEKEEPER_CLUSTER=local-dns BEEKEEPER=/usr/local/bin/beekeeper
       - name: Test pingpong
         id: pingpong-1
-        run: until beekeeper check --cluster-name local --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity-1
-        run: beekeeper check --cluster-name local --checks=ci-full-connectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
       - name: Test settlements
         id: settlements-1
-        run: beekeeper check --cluster-name local --checks=ci-settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Test pss
         id: pss
-        run: beekeeper check --cluster-name local --checks=ci-pss
+        run: beekeeper check --cluster-name local-dns --checks=ci-pss
       - name: Test soc
         id: soc
-        run: beekeeper check --cluster-name local --checks=ci-soc
+        run: beekeeper check --cluster-name local-dns --checks=ci-soc
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
-        run: beekeeper check --cluster-name local --checks=ci-pushsync-chunks
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
       - name: Test retrieval
         id: retrieval-1
-        run: beekeeper check --cluster-name local --checks=ci-retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
       - name: Test manifest
         id: manifest-1
-        run: beekeeper check --cluster-name local --checks=ci-manifest
+        run: beekeeper check --cluster-name local-dns --checks=ci-manifest
       - name: Destroy the cluster
         run: |
           make beelocal ACTION=uninstall
@@ -108,17 +109,17 @@ jobs:
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
       - name: Prepare testing cluster (storage incentives setup)
         run: |
-          timeout 10m make beelocal OPTS='ci'
+          timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
-          timeout 10m make deploylocal
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc BEEKEEPER=/usr/local/bin/beekeeper
       - name: Test gc
         id: gc-chunk-1
-        run: beekeeper check --cluster-name local --checks=ci-gc
+        run: beekeeper check --cluster-name local-gc --checks=ci-gc
       - name: Destroy the cluster
         run: make beelocal OPTS='ci' ACTION='destroy'
       - name: Retag Docker image and push for cache

@@ -97,7 +97,7 @@ type tree struct {
 	buffer []byte
 }
 
-// node is a reuseable segment hasher representing a node in a BMT.
+// node is a reusable segment hasher representing a node in a BMT.
 type node struct {
 	isLeft      bool      // whether it is left side of the parent double segment
 	parent      *node     // pointer to parent node in the BMT

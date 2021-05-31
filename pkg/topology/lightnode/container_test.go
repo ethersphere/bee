@@ -11,13 +11,17 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 )
 
 func TestContainer(t *testing.T) {
+
+	base := test.RandomAddress()
+
 	t.Run("new container is empty container", func(t *testing.T) {
-		c := lightnode.NewContainer()
+		c := lightnode.NewContainer(base)
 
 		var empty topology.BinInfo
 
@@ -27,7 +31,7 @@ func TestContainer(t *testing.T) {
 	})
 
 	t.Run("can add peers to container", func(t *testing.T) {
-		c := lightnode.NewContainer()
+		c := lightnode.NewContainer(base)
 
 		c.Connected(context.Background(), p2p.Peer{Address: swarm.NewAddress([]byte("123"))})
 		c.Connected(context.Background(), p2p.Peer{Address: swarm.NewAddress([]byte("456"))})
@@ -39,7 +43,7 @@ func TestContainer(t *testing.T) {
 		}
 	})
 	t.Run("empty container after peer disconnect", func(t *testing.T) {
-		c := lightnode.NewContainer()
+		c := lightnode.NewContainer(base)
 
 		peer := p2p.Peer{Address: swarm.NewAddress([]byte("123"))}
 
