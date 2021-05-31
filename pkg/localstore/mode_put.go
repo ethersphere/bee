@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -203,13 +202,12 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	}
 
 	previous, err := db.postageIndexIndex.Get(item)
-	fmt.Printf("first:%v\nsecond:%v\n", previous, item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return false, 0, err
 		}
 	} else {
-		if item.Immutable == 2 {
+		if item.Immutable {
 			return false, 0, ErrOverwrite
 		}
 		// if a chunk is found with the same postage stamp index,

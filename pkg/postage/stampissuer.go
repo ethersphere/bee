@@ -46,15 +46,15 @@ func (st *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	b := toBucket(st.bucketDepth, addr)
-	index := st.buckets[b]
-	if index == 1<<(st.batchDepth-st.bucketDepth) {
+	bucketCount := st.buckets[b]
+	if bucketCount == 1<<(st.batchDepth-st.bucketDepth) {
 		return nil, ErrBucketFull
 	}
 	st.buckets[b]++
 	if st.buckets[b] > st.maxBucketCount {
 		st.maxBucketCount = st.buckets[b]
 	}
-	return indexToBytes(st.bucketDepth, b, index), nil
+	return indexToBytes(b, bucketCount), nil
 }
 
 // toBucket calculates the index of the collision bucket for a swarm address
@@ -68,14 +68,14 @@ func toBucket(depth uint8, addr swarm.Address) uint32 {
 // - bucket depth (uint8, 1st byte, <24)
 // - bucket index (neighbourhood index, uint32 <2^depth, bytes 2-4)
 // - and the within-bucket index (uint32 <2^(batchdepth-bucketdepth), bytes 5-8)
-func indexToBytes(depth uint8, bucket, index uint32) []byte {
+func indexToBytes(bucket, index uint32) []byte {
 	buf := make([]byte, IndexSize)
 	binary.BigEndian.PutUint32(buf, bucket)
 	binary.BigEndian.PutUint32(buf[4:], index)
 	return buf
 }
 
-func bytesToIndex(buf []byte, depth uint8) (bucket, index uint32) {
+func bytesToIndex(buf []byte) (bucket, index uint32) {
 	index64 := binary.BigEndian.Uint64(buf)
 	bucket = uint32(index64 >> 32)
 	index = uint32(index64)

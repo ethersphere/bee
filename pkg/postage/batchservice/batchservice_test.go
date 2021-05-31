@@ -49,8 +49,8 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
-			testBatch.BucketDepth,
 			testBatch.Depth,
+			testBatch.BucketDepth,
 			testBatch.Immutable,
 		); err == nil {
 			t.Fatalf("expected error")
@@ -66,8 +66,8 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
-			testBatch.BucketDepth,
 			testBatch.Depth,
+			testBatch.BucketDepth,
 			testBatch.Immutable,
 		); err != nil {
 			t.Fatalf("got error %v", err)
