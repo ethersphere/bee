@@ -91,22 +91,20 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		return ErrWrongChequebook
 	}
 
-	// get cheque value
-	chequeAmount := cheque.CumulativePayout
-	decreasedAmount := new(big.Int).Sub(chequeAmount, deduction)
-
-	// sanity check received amount
-	if decreasedAmount.Cmp(exchange) < 0 {
-		return ErrChequeValueTooLow
-	}
-
-	receivedAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
+	receivedAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque, exchange, deduction)
 	if err != nil {
 		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
 	}
 
-	decreasedAmount = new(big.Int).Sub(receivedAmount, deduction)
+	if deduction.Cmp(big.NewInt(0)) > 0 {
+		err = s.addressbook.AddDeductionFor(peer)
+		if err != nil {
+			return err
+		}
+	}
+
+	decreasedAmount := new(big.Int).Sub(receivedAmount, deduction)
 	amount := new(big.Int).Div(decreasedAmount, exchange)
 
 	if !known {
@@ -116,7 +114,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		}
 	}
 
-	tot, _ := big.NewFloat(0).SetInt(amount).Float64()
+	tot, _ := big.NewFloat(0).SetInt(receivedAmount).Float64()
 	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
@@ -361,4 +359,16 @@ func (s *Service) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequ
 		return nil, chequebook.ErrNoCheque
 	}
 	return s.cashout.CashoutStatus(ctx, chequebookAddress)
+}
+
+func (s *Service) GetDeductionForPeer(peer swarm.Address) (bool, error) {
+	return s.addressbook.GetDeductionFor(peer)
+}
+
+func (s *Service) GetDeductionByPeer(peer swarm.Address) (bool, error) {
+	return s.addressbook.GetDeductionBy(peer)
+}
+
+func (s *Service) AddDeductionByPeer(peer swarm.Address) error {
+	return s.addressbook.AddDeductionBy(peer)
 }

@@ -54,6 +54,9 @@ type Swap interface {
 	ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) error
 	// Handshake is called by the swap protocol when a handshake is received.
 	Handshake(peer swarm.Address, beneficiary common.Address) error
+	GetDeductionForPeer(peer swarm.Address) (bool, error)
+	GetDeductionByPeer(peer swarm.Address) (bool, error)
+	AddDeductionByPeer(peer swarm.Address) error
 }
 
 // Service is the main implementation of the swap protocol.
@@ -203,7 +206,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
 
 	exchange, deduction := s.exchange.CurrentRates()
-	checkPeer := false
+	checkPeer, err := s.swap.GetDeductionForPeer(peerAddress)
+	if err != nil {
+		return p2p.Headers{}
+	}
 
 	if checkPeer {
 		deduction = big.NewInt(0)
@@ -243,7 +249,10 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 	// comparing received headers to known truth
 
 	// get whether peer have deducted in the past
-	checkPeer := false
+	checkPeer, err := s.swap.GetDeductionByPeer(peer)
+	if err != nil {
+		return nil, err
+	}
 
 	// if peer is not entitled for deduction but sent non zero deduction value, return with error
 	if checkPeer && deduction.Cmp(big.NewInt(0)) != 0 {
@@ -284,6 +293,11 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		})
 
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.swap.AddDeductionByPeer(peer)
 	if err != nil {
 		return nil, err
 	}
