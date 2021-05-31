@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/exchange"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -215,7 +216,8 @@ func InitSwap(
 	cashoutService chequebook.CashoutService,
 	accounting settlement.Accounting,
 ) (*swap.Service, error) {
-	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
+	exchange := exchange.New()
+	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, exchange)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
 	swapService := swap.New(
