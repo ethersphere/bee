@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # make sure mounted volumes have correct permissions
 RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
+RUN mkdir /home/bee/.bee/keys && chown 999:999 /home/bee/.bee/keys
+RUN mkdir /home/bee/.bee/localstore && chown 999:999 /home/bee/.bee/localstore
+RUN mkdir /home/bee/.bee/statestore && chown 999:999 /home/bee/.bee/statestore
 
 COPY bee /usr/local/bin/bee
 
