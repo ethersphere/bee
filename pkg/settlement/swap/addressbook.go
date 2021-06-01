@@ -123,19 +123,11 @@ func (a *addressbook) PutChequebook(peer swarm.Address, chequebook common.Addres
 }
 
 func (a *addressbook) AddDeductionFor(peer swarm.Address) error {
-	err := a.store.Put(peerDeductedForKey(peer), struct{}{})
-	if err != nil {
-		return err
-	}
-	return nil
+	return a.store.Put(peerDeductedForKey(peer), struct{}{})
 }
 
 func (a *addressbook) AddDeductionBy(peer swarm.Address) error {
-	err := a.store.Put(peerDeductedByKey(peer), struct{}{})
-	if err != nil {
-		return err
-	}
-	return nil
+	return a.store.Put(peerDeductedByKey(peer), struct{}{})
 }
 
 func (a *addressbook) GetDeductionFor(peer swarm.Address) (bool, error) {
