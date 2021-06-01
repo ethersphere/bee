@@ -7,6 +7,8 @@ package swapprotocol_test
 import (
         "bytes"
         "context"
+        "encoding/json"
+        "errors"
         "math/big"
 
         "github.com/ethereum/go-ethereum/common"
@@ -82,7 +84,7 @@ func TestInit(t *testing.T) {
         }
 }
 
-func TestEmitCheque(t *testing.T) {
+func TestEmitCheques(t *testing.T) {
         logger := logging.New(ioutil.Discard, 0)
         commonAddr := common.HexToAddress("0xab")
         swapHsReceiver := swapmock.NewSwap()
@@ -105,13 +107,13 @@ func TestEmitCheque(t *testing.T) {
                 cheque := &chequebook.SignedCheque{
                         Cheque: chequebook.Cheque{
                                 Beneficiary:      commonAddr,
-                                CumulativePayout: big.NewInt(1250),
+                                CumulativePayout: amount,
                                 Chequebook:       common.Address{},
                         },
                         Signature: []byte{},
                 }
                 _ = sendChequeFunc(cheque)
-                return big.NewInt(3750), nil
+                return big.NewInt(13750), nil
         }
 
         if _, err := swappHsInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); err != nil {
@@ -129,8 +131,6 @@ func TestEmitCheque(t *testing.T) {
                 bytes.NewReader(record.In()),
                 func() protobuf.Message { return new(pb.EmitCheque) },
         )
-        // gotCheque := messages[0].(*pb.EmitCheque)
-        // Todo comparing field values in this response
         if err != nil {
                 t.Fatal(err)
         }
@@ -138,4 +138,222 @@ func TestEmitCheque(t *testing.T) {
                 t.Fatalf("got %v messages, want %v", len(messages), 1)
         }
 
+        // Todo comparing field values in this response
+        gotCheque := messages[0].(*pb.EmitCheque)
+
+        var gotSignedCheque *chequebook.SignedCheque
+        err = json.Unmarshal(gotCheque.Cheque, &gotSignedCheque)
+        if err != nil {
+                t.Fatal(err)
+        }
+
+        if gotSignedCheque.CumulativePayout.Cmp(big.NewInt(63000)) != 0 {
+                t.Fatalf("Unexpected cheque amount, expected %v, got %v", 63000, gotSignedCheque.CumulativePayout)
+        }
+
+        ////
+
+        if _, err := swappHsInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); err != nil {
+                t.Fatalf("expected no error, got %v", err)
+        }
+        records, err = recorder.Records(peerID, "swap", "1.0.0", "swap")
+        if err != nil {
+                t.Fatal(err)
+        }
+        if l := len(records); l != 1 {
+                t.Fatalf("got %v records, want %v", l, 1)
+        }
+        record = records[1]
+        messages, err = protobuf.ReadMessages(
+                bytes.NewReader(record.In()),
+                func() protobuf.Message { return new(pb.EmitCheque) },
+        )
+        if err != nil {
+                t.Fatal(err)
+        }
+        if len(messages) != 1 {
+                t.Fatalf("got %v messages, want %v", len(messages), 1)
+        }
+
+        // Todo comparing field values in this response
+        gotCheque = messages[0].(*pb.EmitCheque)
+
+        err = json.Unmarshal(gotCheque.Cheque, &gotSignedCheque)
+        if err != nil {
+                t.Fatal(err)
+        }
+
+        if gotSignedCheque.CumulativePayout.Cmp(big.NewInt(62500)) != 0 {
+                t.Fatalf("Unexpected cheque amount, expected %v, got %v", 62500, gotSignedCheque.CumulativePayout)
+        }
+}
+
+func TestCantEmitChequeRateMismatch(t *testing.T) {
+        logger := logging.New(ioutil.Discard, 0)
+        commonAddr := common.HexToAddress("0xab")
+        swapHsReceiver := swapmock.NewSwap()
+        swapHsInitiator := swapmock.NewSwap()
+        exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
+        exchange2 := exchangemock.New(big.NewInt(52), big.NewInt(560))
+        swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+        swappHsReceiver.SetSwap(swapHsReceiver)
+        recorder := streamtest.New(
+                streamtest.WithProtocols(swappHsReceiver.Protocol()),
+        )
+        commonAddr2 := common.HexToAddress("0xdc")
+        swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
+        swappHsInitiator.SetSwap(swapHsInitiator)
+        peerID := swarm.MustParseHexAddress("9ee7add7")
+        peer := p2p.Peer{Address: peerID}
+
+        chequeAmount := big.NewInt(1250)
+
+        issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
+                cheque := &chequebook.SignedCheque{
+                        Cheque: chequebook.Cheque{
+                                Beneficiary:      commonAddr,
+                                CumulativePayout: amount,
+                                Chequebook:       common.Address{},
+                        },
+                        Signature: []byte{},
+                }
+                _ = sendChequeFunc(cheque)
+                return big.NewInt(13750), nil
+        }
+
+        if _, err := swappHsInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); !errors.Is(err, swapprotocol.ErrNegotiateRate) {
+                t.Fatalf("expected error %v, got %v", swapprotocol.ErrNegotiateRate, err)
+        }
+        records, err := recorder.Records(peerID, "swap", "1.0.0", "swap")
+        if err != nil {
+                t.Fatal(err)
+        }
+        if l := len(records); l != 1 {
+                t.Fatalf("got %v records, want %v", l, 1)
+        }
+        record := records[0]
+        messages, err := protobuf.ReadMessages(
+                bytes.NewReader(record.In()),
+                func() protobuf.Message { return new(pb.EmitCheque) },
+        )
+        if err != nil {
+                t.Fatal(err)
+        }
+        if len(messages) != 0 {
+                t.Fatalf("got %v messages, want %v", len(messages), 0)
+        }
+}
+
+func TestCantEmitChequeDeductionMismatch(t *testing.T) {
+        logger := logging.New(ioutil.Discard, 0)
+        commonAddr := common.HexToAddress("0xab")
+        swapHsReceiver := swapmock.NewSwap()
+        swapHsInitiator := swapmock.NewSwap()
+        exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
+        exchange2 := exchangemock.New(big.NewInt(50), big.NewInt(560))
+        swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+        swappHsReceiver.SetSwap(swapHsReceiver)
+        recorder := streamtest.New(
+                streamtest.WithProtocols(swappHsReceiver.Protocol()),
+        )
+        commonAddr2 := common.HexToAddress("0xdc")
+        swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
+        swappHsInitiator.SetSwap(swapHsInitiator)
+        peerID := swarm.MustParseHexAddress("9ee7add7")
+        peer := p2p.Peer{Address: peerID}
+
+        chequeAmount := big.NewInt(1250)
+
+        issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
+                cheque := &chequebook.SignedCheque{
+                        Cheque: chequebook.Cheque{
+                                Beneficiary:      commonAddr,
+                                CumulativePayout: amount,
+                                Chequebook:       common.Address{},
+                        },
+                        Signature: []byte{},
+                }
+                _ = sendChequeFunc(cheque)
+                return big.NewInt(13750), nil
+        }
+
+        if _, err := swappHsInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); !errors.Is(err, swapprotocol.ErrNegotiateDeduction) {
+                t.Fatalf("expected error %v, got %v", swapprotocol.ErrNegotiateDeduction, err)
+        }
+
+        records, err := recorder.Records(peerID, "swap", "1.0.0", "swap")
+        if err != nil {
+                t.Fatal(err)
+        }
+        if l := len(records); l != 1 {
+                t.Fatalf("got %v records, want %v", l, 1)
+        }
+        record := records[0]
+        messages, err := protobuf.ReadMessages(
+                bytes.NewReader(record.In()),
+                func() protobuf.Message { return new(pb.EmitCheque) },
+        )
+        if err != nil {
+                t.Fatal(err)
+        }
+        if len(messages) != 0 {
+                t.Fatalf("got %v messages, want %v", len(messages), 0)
+        }
+}
+
+func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
+        logger := logging.New(ioutil.Discard, 0)
+        commonAddr := common.HexToAddress("0xab")
+        swapHsReceiver := swapmock.NewSwap()
+        swapHsInitiator := swapmock.NewSwap()
+        exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
+        exchange2 := exchangemock.New(big.NewInt(50), big.NewInt(560))
+        swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+        swappHsReceiver.SetSwap(swapHsReceiver)
+        recorder := streamtest.New(
+                streamtest.WithProtocols(swappHsReceiver.Protocol()),
+        )
+        commonAddr2 := common.HexToAddress("0xdc")
+        swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
+        swappHsInitiator.SetSwap(swapHsInitiator)
+        peerID := swarm.MustParseHexAddress("9ee7add7")
+        peer := p2p.Peer{Address: peerID}
+
+        chequeAmount := big.NewInt(1250)
+
+        issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
+                cheque := &chequebook.SignedCheque{
+                        Cheque: chequebook.Cheque{
+                                Beneficiary:      commonAddr,
+                                CumulativePayout: amount,
+                                Chequebook:       common.Address{},
+                        },
+                        Signature: []byte{},
+                }
+                _ = sendChequeFunc(cheque)
+                return big.NewInt(13750), nil
+        }
+
+        if _, err := swappHsInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); !errors.Is(err, swapprotocol.ErrNegotiateDeduction) {
+                t.Fatalf("expected error %v, got %v", swapprotocol.ErrNegotiateDeduction, err)
+        }
+
+        records, err := recorder.Records(peerID, "swap", "1.0.0", "swap")
+        if err != nil {
+                t.Fatal(err)
+        }
+        if l := len(records); l != 1 {
+                t.Fatalf("got %v records, want %v", l, 1)
+        }
+        record := records[0]
+        messages, err := protobuf.ReadMessages(
+                bytes.NewReader(record.In()),
+                func() protobuf.Message { return new(pb.EmitCheque) },
+        )
+        if err != nil {
+                t.Fatal(err)
+        }
+        if len(messages) != 0 {
+                t.Fatalf("got %v messages, want %v", len(messages), 0)
+        }
 }
