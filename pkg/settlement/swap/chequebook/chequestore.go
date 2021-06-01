@@ -18,6 +18,11 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
+const (
+	// prefix for the persistence key
+	lastReceivedChequePrefix = "swap_chequebook_last_received_cheque_"
+)
+
 var (
 	// ErrNoCheque is the error returned if there is no prior cheque for a chequebook or beneficiary.
 	ErrNoCheque = errors.New("no cheque")
@@ -31,8 +36,6 @@ var (
 	ErrBouncingCheque = errors.New("bouncing cheque")
 	// ErrChequeValueTooLow is the error returned if the after deduction value of a cheque did not cover 1 accounting credit
 	ErrChequeValueTooLow = errors.New("cheque value lower than acceptable")
-	//
-	lastReceivedChequePrefix = "swap_chequebook_last_received_cheque_"
 )
 
 // ChequeStore handles the verification and storage of received cheques
