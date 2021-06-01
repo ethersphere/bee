@@ -12,3 +12,7 @@ import (
 func (s *Service) Init(ctx context.Context, p p2p.Peer) error {
 	return s.init(ctx, p)
 }
+
+func (s *Service) Handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	return s.handler(ctx, p, stream)
+}
