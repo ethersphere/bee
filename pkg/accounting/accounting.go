@@ -28,7 +28,8 @@ var (
 	balancesSurplusPrefix string    = "accounting_surplusbalance_"
 	// fraction of the refresh rate that is the minimum for monetary settlement
 	// this value is chosen so that tiny payments are prevented while still allowing small payments in environments with lower payment thresholds
-	minimumPaymentDivisor = int64(5)
+	minimumPaymentDivisor    = int64(5)
+	failedSettlementInterval = int64(10)
 )
 
 // Interface is the Accounting interface.
@@ -82,12 +83,13 @@ type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int) (*big.
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock                  sync.Mutex // lock to be held during any accounting action for this peer
-	reservedBalance       *big.Int   // amount currently reserved for active peer interaction
-	shadowReservedBalance *big.Int   // amount potentially to be debited for active peer interaction
-	paymentThreshold      *big.Int   // the threshold at which the peer expects us to pay
-	refreshTimestamp      int64      // last time we attempted time-based settlement
-	paymentOngoing        bool       // indicate if we are currently settling with the peer
+	lock                           sync.Mutex // lock to be held during any accounting action for this peer
+	reservedBalance                *big.Int   // amount currently reserved for active peer interaction
+	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
+	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
+	refreshTimestamp               int64      // last time we attempted time-based settlement
+	paymentOngoing                 bool       // indicate if we are currently settling with the peer
+	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -315,15 +317,19 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	}
 
 	if a.payFunction != nil && !balance.paymentOngoing {
-		// if there is no monetary settlement happening, check if there is something to settle
-		// compute debt excluding debt created by incoming payments
-		paymentAmount := new(big.Int).Neg(oldBalance)
-		// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
-		if paymentAmount.Cmp(a.minimumPayment) >= 0 {
-			balance.paymentOngoing = true
-			// add settled amount to shadow reserve before sending it
-			balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
-			go a.payFunction(context.Background(), peer, paymentAmount)
+		difference := now - balance.lastSettlementFailureTimestamp
+
+		if difference > failedSettlementInterval {
+			// if there is no monetary settlement happening, check if there is something to settle
+			// compute debt excluding debt created by incoming payments
+			paymentAmount := new(big.Int).Neg(oldBalance)
+			// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
+			if paymentAmount.Cmp(a.minimumPayment) >= 0 {
+				balance.paymentOngoing = true
+				// add settled amount to shadow reserve before sending it
+				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+				go a.payFunction(context.Background(), peer, paymentAmount)
+			}
 		}
 	}
 
@@ -604,6 +610,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	accountingPeer.shadowReservedBalance.Sub(accountingPeer.shadowReservedBalance, amount)
 
 	if receivedError != nil {
+		accountingPeer.lastSettlementFailureTimestamp = a.timeNow().Unix()
 		a.logger.Warningf("accounting: payment failure %v", receivedError)
 		return
 	}
