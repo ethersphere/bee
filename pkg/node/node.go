@@ -104,7 +104,7 @@ type Bee struct {
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
 	shutdownInProgress       bool
-	shutdownMutex            sync.Mutex
+	shutdowner               sync.Once
 }
 
 type Options struct {
@@ -707,112 +707,108 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
-	// halt kademlia while shutting down other
-	// components.
-	b.topologyHalter.Halt()
+	b.shutdowner.Do(func() {
+		// set shutdown in progress flag to prevent duplicate shutdown requests
+		b.shutdownInProgress = true
+		// halt kademlia while shutting down other
+		// components.
+		b.topologyHalter.Halt()
 
-	// halt p2p layer from accepting new connections
-	// while shutting down other components
-	b.p2pHalter.Halt()
-	// if a shutdown is already in process, return here
-	b.shutdownMutex.Lock()
-	if b.shutdownInProgress {
-		b.shutdownMutex.Unlock()
-		return ErrShutdownInProgress
-	}
-	b.shutdownInProgress = true
-	b.shutdownMutex.Unlock()
-
-	// tryClose is a convenient closure which decrease
-	// repetitive io.Closer tryClose procedure.
-	tryClose := func(c io.Closer, errMsg string) {
-		if c == nil {
-			return
-		}
-		if err := c.Close(); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
-		}
-	}
-
-	tryClose(b.apiCloser, "api")
-
-	var eg errgroup.Group
-	if b.apiServer != nil {
-		eg.Go(func() error {
-			if err := b.apiServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("api server: %w", err)
+		// halt p2p layer from accepting new connections
+		// while shutting down other components
+		b.p2pHalter.Halt()
+		// tryClose is a convenient closure which decrease
+		// repetitive io.Closer tryClose procedure.
+		tryClose := func(c io.Closer, errMsg string) {
+			if c == nil {
+				return
 			}
-			return nil
-		})
-	}
-	if b.debugAPIServer != nil {
-		eg.Go(func() error {
-			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("debug api server: %w", err)
+			if err := c.Close(); err != nil {
+				mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
 			}
-			return nil
-		})
-	}
+		}
 
-	if err := eg.Wait(); err != nil {
-		mErr = multierror.Append(mErr, err)
-	}
+		tryClose(b.apiCloser, "api")
 
-	if b.recoveryHandleCleanup != nil {
-		b.recoveryHandleCleanup()
-	}
-	var wg sync.WaitGroup
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		tryClose(b.pssCloser, "pss")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.pusherCloser, "pusher")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.pullerCloser, "puller")
-	}()
+		var eg errgroup.Group
+		if b.apiServer != nil {
+			eg.Go(func() error {
+				if err := b.apiServer.Shutdown(ctx); err != nil {
+					return fmt.Errorf("api server: %w", err)
+				}
+				return nil
+			})
+		}
+		if b.debugAPIServer != nil {
+			eg.Go(func() error {
+				if err := b.debugAPIServer.Shutdown(ctx); err != nil {
+					return fmt.Errorf("debug api server: %w", err)
+				}
+				return nil
+			})
+		}
 
-	b.p2pCancel()
-	go func() {
-		defer wg.Done()
-		tryClose(b.pullSyncCloser, "pull sync")
-	}()
+		if err := eg.Wait(); err != nil {
+			mErr = multierror.Append(mErr, err)
+		}
 
-	wg.Wait()
+		if b.recoveryHandleCleanup != nil {
+			b.recoveryHandleCleanup()
+		}
+		var wg sync.WaitGroup
+		wg.Add(4)
+		go func() {
+			defer wg.Done()
+			tryClose(b.pssCloser, "pss")
+		}()
+		go func() {
+			defer wg.Done()
+			tryClose(b.pusherCloser, "pusher")
+		}()
+		go func() {
+			defer wg.Done()
+			tryClose(b.pullerCloser, "puller")
+		}()
 
-	tryClose(b.p2pService, "p2p server")
+		b.p2pCancel()
+		go func() {
+			defer wg.Done()
+			tryClose(b.pullSyncCloser, "pull sync")
+		}()
 
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		tryClose(b.transactionMonitorCloser, "transaction monitor")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.listenerCloser, "listener")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.postageServiceCloser, "postage service")
-	}()
+		wg.Wait()
 
-	wg.Wait()
+		tryClose(b.p2pService, "p2p server")
 
-	if c := b.ethClientCloser; c != nil {
-		c()
-	}
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			tryClose(b.transactionMonitorCloser, "transaction monitor")
+		}()
+		go func() {
+			defer wg.Done()
+			tryClose(b.listenerCloser, "listener")
+		}()
+		go func() {
+			defer wg.Done()
+			tryClose(b.postageServiceCloser, "postage service")
+		}()
 
-	tryClose(b.tracerCloser, "tracer")
-	tryClose(b.tagsCloser, "tag persistence")
-	tryClose(b.topologyCloser, "topology driver")
-	tryClose(b.stateStoreCloser, "statestore")
-	tryClose(b.localstoreCloser, "localstore")
-	tryClose(b.errorLogWriter, "error log writer")
-	tryClose(b.resolverCloser, "resolver service")
+		wg.Wait()
+
+		if c := b.ethClientCloser; c != nil {
+			c()
+		}
+
+		tryClose(b.tracerCloser, "tracer")
+		tryClose(b.tagsCloser, "tag persistence")
+		tryClose(b.topologyCloser, "topology driver")
+		tryClose(b.stateStoreCloser, "statestore")
+		tryClose(b.localstoreCloser, "localstore")
+		tryClose(b.errorLogWriter, "error log writer")
+		tryClose(b.resolverCloser, "resolver service")
+
+	})
 
 	return mErr
 }
