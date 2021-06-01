@@ -89,18 +89,18 @@ func TestEmitCheques(t *testing.T) {
         logger := logging.New(ioutil.Discard, 0)
         commonAddr := common.HexToAddress("0xab")
         peerID := swarm.MustParseHexAddress("9ee7add7")
-        swapHsReceiver := swapmock.NewSwap()
-        swapHsInitiator := swapmock.NewSwap()
+        swapReceiver := swapmock.NewSwap()
+        swapInitiator := swapmock.NewSwap()
         exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
         swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
-        swappHsReceiver.SetSwap(swapHsReceiver)
+        swappHsReceiver.SetSwap(swapReceiver)
         recorder := streamtest.New(
                 streamtest.WithProtocols(swappHsReceiver.Protocol()),
                 streamtest.WithBaseAddr(peerID),
         )
         commonAddr2 := common.HexToAddress("0xdc")
         swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange)
-        swappHsInitiator.SetSwap(swapHsInitiator)
+        swappHsInitiator.SetSwap(swapInitiator)
         peer := p2p.Peer{Address: peerID}
 
         chequeAmount := big.NewInt(1250)
@@ -193,19 +193,19 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
         logger := logging.New(ioutil.Discard, 0)
         commonAddr := common.HexToAddress("0xab")
         peerID := swarm.MustParseHexAddress("9ee7add7")
-        swapHsReceiver := swapmock.NewSwap()
-        swapHsInitiator := swapmock.NewSwap()
+        swapReceiver := swapmock.NewSwap()
+        swapInitiator := swapmock.NewSwap()
         exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
         exchange2 := exchangemock.New(big.NewInt(52), big.NewInt(560))
         swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
-        swappHsReceiver.SetSwap(swapHsReceiver)
+        swappHsReceiver.SetSwap(swapReceiver)
         recorder := streamtest.New(
                 streamtest.WithProtocols(swappHsReceiver.Protocol()),
                 streamtest.WithBaseAddr(peerID),
         )
         commonAddr2 := common.HexToAddress("0xdc")
         swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
-        swappHsInitiator.SetSwap(swapHsInitiator)
+        swappHsInitiator.SetSwap(swapInitiator)
         peer := p2p.Peer{Address: peerID}
 
         chequeAmount := big.NewInt(1250)
@@ -250,19 +250,19 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
         logger := logging.New(ioutil.Discard, 0)
         commonAddr := common.HexToAddress("0xab")
         peerID := swarm.MustParseHexAddress("9ee7add7")
-        swapHsReceiver := swapmock.NewSwap()
-        swapHsInitiator := swapmock.NewSwap()
+        swapReceiver := swapmock.NewSwap()
+        swapInitiator := swapmock.NewSwap()
         exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
         exchange2 := exchangemock.New(big.NewInt(50), big.NewInt(560))
         swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
-        swappHsReceiver.SetSwap(swapHsReceiver)
+        swappHsReceiver.SetSwap(swapReceiver)
         recorder := streamtest.New(
                 streamtest.WithProtocols(swappHsReceiver.Protocol()),
                 streamtest.WithBaseAddr(peerID),
         )
         commonAddr2 := common.HexToAddress("0xdc")
         swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
-        swappHsInitiator.SetSwap(swapHsInitiator)
+        swappHsInitiator.SetSwap(swapInitiator)
         peer := p2p.Peer{Address: peerID}
 
         chequeAmount := big.NewInt(1250)
@@ -308,19 +308,19 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
         logger := logging.New(ioutil.Discard, 0)
         commonAddr := common.HexToAddress("0xab")
         peerID := swarm.MustParseHexAddress("9ee7add7")
-        swapHsReceiver := swapmock.NewSwap()
-        swapHsInitiator := swapmock.NewSwap()
+        swapReceiver := swapmock.NewSwap()
+        swapInitiator := swapmock.NewSwap()
         exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
         exchange2 := exchangemock.New(big.NewInt(50), big.NewInt(500))
         swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
-        swappHsReceiver.SetSwap(swapHsReceiver)
+        swappHsReceiver.SetSwap(swapReceiver)
         recorder := streamtest.New(
                 streamtest.WithProtocols(swappHsReceiver.Protocol()),
                 streamtest.WithBaseAddr(peerID),
         )
         commonAddr2 := common.HexToAddress("0xdc")
         swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
-        swappHsInitiator.SetSwap(swapHsInitiator)
+        swappHsInitiator.SetSwap(swapInitiator)
         peer := p2p.Peer{Address: peerID}
 
         chequeAmount := big.NewInt(1250)
@@ -338,7 +338,7 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
                 return big.NewInt(13750), nil
         }
 
-        err := swapHsInitiator.AddDeductionByPeer(peerID)
+        err := swapInitiator.AddDeductionByPeer(peerID)
         if err != nil {
                 t.Fatal(err)
         }
