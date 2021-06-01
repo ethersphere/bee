@@ -180,8 +180,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			_ = stream.FullClose()
 		}
 	}()
+
 	var req pb.EmitCheque
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
+		fmt.Println(err)
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 
@@ -200,6 +202,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
+	// signature validation
 	return s.swap.ReceiveCheque(ctx, p.Address, signedCheque, exchange, deduction)
 }
 
