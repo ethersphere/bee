@@ -66,9 +66,9 @@ jobs:
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Sleep for time allowance to replenish
         run: sleep 2
-      - name: Test pss
-        id: pss
-        run: beekeeper check --cluster-name local-dns --checks=ci-pss
+      # - name: Test pss
+      #   id: pss
+      #   run: beekeeper check --cluster-name local-dns --checks=ci-pss
       - name: Test soc
         id: soc
         run: beekeeper check --cluster-name local-dns --checks=ci-soc
