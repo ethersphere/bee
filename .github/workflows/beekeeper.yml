@@ -83,6 +83,7 @@ jobs:
         run: beekeeper check --cluster-name local-dns --checks=ci-manifest
       - name: Destroy the cluster
         run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
           make beelocal ACTION=uninstall
       # - name: Prepare testing cluster (Node connection and clef enabled)
       #   run: |
