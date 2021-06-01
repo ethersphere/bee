@@ -8,6 +8,7 @@ EnvironmentFile=-/etc/default/bee
 NoNewPrivileges=true
 User=bee
 Group=bee
+LimitNOFILE=infinity
 ExecStart=/usr/bin/bee start --config /etc/bee/bee.yaml
 Restart=on-failure
 RestartSec=5s
