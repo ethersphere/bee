@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -249,7 +248,6 @@ func (s *Service) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequ
 }
 
 func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) (err error) {
-	fmt.Println("I")
 	defer func() {
 		if err == nil {
 			s.deductionForPeers[peer.String()] = struct{}{}
