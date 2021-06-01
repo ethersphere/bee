@@ -1318,8 +1318,6 @@ resenje.org/jsonhttp v0.2.0/go.mod h1:EDyeguyTWj2fU3D3SCE0qNTgthzyEkHYLM1uu0uikH
 resenje.org/logging v0.1.5/go.mod h1:1IdoCm3+UwYfsplxDGV2pHCkUrLlQzlWwp4r28XfPx4=
 resenje.org/marshal v0.1.1/go.mod h1:P7Cla6Ju5CFvW4Y8JbRgWX1Hcy4L1w4qcCsyadO7G94=
 resenje.org/recovery v0.1.1/go.mod h1:3S6aCVKMJEWsSAb61oZTteaiqkIfQPTr1RdiWnRbhME=
-resenje.org/singleflight v0.1.0 h1:jrf13EkBy4eX0514qzn4cfIww46YmAWSb/PNreARPzA=
-resenje.org/singleflight v0.1.0/go.mod h1:RLR5DMmLXBtth52XGBWJuX3wrOFckksRzIKvWW08FFo=
 resenje.org/singleflight v0.2.0 h1:nJ17VAZunMiFrfrltQ4Qs4r9MIP1pZC8u+0iSUTNnvQ=
 resenje.org/singleflight v0.2.0/go.mod h1:plheHgw2rd77IH3J6aN0Lu2JvMvHXoLknDwb6vN0dsE=
 resenje.org/web v0.4.3 h1:G9vceKKGvsVg0WpyafJEEMHfstoxSO8rG/1Bo7fOkhw=
