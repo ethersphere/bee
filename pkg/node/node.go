@@ -104,7 +104,7 @@ type Bee struct {
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
 	shutdownInProgress       bool
-	shutdowner               sync.Once
+	shutdownOnce             sync.Once
 }
 
 type Options struct {
@@ -707,7 +707,21 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
-	b.shutdowner.Do(func() {
+	if b.shutdownInProgress {
+		return ErrShutdownInProgress
+	}
+	// tryClose is a convenient closure which decrease
+	// repetitive io.Closer tryClose procedure.
+	tryClose := func(c io.Closer, errMsg string) {
+		if c == nil {
+			return
+		}
+		if err := c.Close(); err != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
+		}
+	}
+
+	b.shutdownOnce.Do(func() {
 		// set shutdown in progress flag to prevent duplicate shutdown requests
 		b.shutdownInProgress = true
 		// halt kademlia while shutting down other
@@ -717,16 +731,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		// halt p2p layer from accepting new connections
 		// while shutting down other components
 		b.p2pHalter.Halt()
-		// tryClose is a convenient closure which decrease
-		// repetitive io.Closer tryClose procedure.
-		tryClose := func(c io.Closer, errMsg string) {
-			if c == nil {
-				return
-			}
-			if err := c.Close(); err != nil {
-				mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
-			}
-		}
 
 		tryClose(b.apiCloser, "api")
 
