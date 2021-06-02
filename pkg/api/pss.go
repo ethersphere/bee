@@ -37,9 +37,15 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)
-		if err != nil || len(target) > targetMaxLength {
-			s.logger.Debugf("pss send: bad targets: %v", err)
-			s.logger.Error("pss send: bad targets")
+		if err != nil {
+			s.logger.Debugf("pss send: bad target (%s): %v", target, err)
+			s.logger.Errorf("pss send: bad target (%s): %v", target, err)
+			jsonhttp.BadRequest(w, nil)
+			return
+		}
+		if len(target) > targetMaxLength {
+			s.logger.Debugf("pss send: bad target length: %d", len(target))
+			s.logger.Errorf("pss send: bad target length: %d", len(target))
 			jsonhttp.BadRequest(w, nil)
 			return
 		}
