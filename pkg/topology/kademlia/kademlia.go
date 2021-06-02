@@ -23,7 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
+	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
@@ -89,12 +89,13 @@ type Kad struct {
 	logger            logging.Logger // logger
 	standalone        bool           // indicates whether the node is working in standalone mode
 	bootnode          bool           // indicates whether the node is working in bootnode mode
-	collector         *metrics.Collector
+	collector         *im.Collector
 	quit              chan struct{} // quit channel
 	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
+	metrics           metrics
 }
 
 // New returns a new Kademlia.
@@ -134,11 +135,12 @@ func New(
 		logger:            logger,
 		standalone:        o.StandaloneMode,
 		bootnode:          o.BootnodeMode,
-		collector:         metrics.NewCollector(metricsDB),
+		collector:         im.NewCollector(metricsDB),
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
+		metrics:           newMetrics(),
 	}
 
 	if k.bitSuffixLength > 0 {
@@ -235,7 +237,11 @@ type peerConnInfo struct {
 // connectBalanced attempts to connect to the balanced peers first.
 func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
 	skipPeers := func(peer swarm.Address) bool {
-		return k.waitNext.Waiting(peer)
+		if k.waitNext.Waiting(peer) {
+			k.metrics.TotalBeforeExpireWaits.Inc()
+			return true
+		}
+		return false
 	}
 
 	for i := range k.commonBinPrefixes {
@@ -309,6 +315,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		}
 
 		if k.waitNext.Waiting(addr) {
+			k.metrics.TotalBeforeExpireWaits.Inc()
 			return false, false, nil
 		}
 
@@ -371,7 +378,8 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		k.connectedPeers.Add(peer.addr)
 
-		k.collector.Record(peer.addr, metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionOutbound))
+		k.metrics.TotalOutboundConnections.Inc()
+		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 
 		k.depthMu.Lock()
 		k.depth = recalcDepth(k.connectedPeers, k.radius)
@@ -398,6 +406,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 					addr := peer.addr.String()
 
 					if k.waitNext.Waiting(peer.addr) {
+						k.metrics.TotalBeforeExpireWaits.Inc()
 						wg.Done()
 						continue
 					}
@@ -654,6 +663,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
 
+	k.metrics.TotalOutboundConnectionAttempts.Inc()
+
 	switch i, err := k.p2p.Connect(ctx, ma); {
 	case errors.Is(err, p2p.ErrDialLightNode):
 		return errPruneEntry
@@ -677,9 +688,10 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			failedAttempts++
 		}
 
-		k.collector.Record(peer, metrics.IncSessionConnectionRetry())
+		k.metrics.TotalOutboundConnectionFailedAttempts.Inc()
+		k.collector.Record(peer, im.IncSessionConnectionRetry())
 
-		k.collector.Inspect(peer, func(ss *metrics.Snapshot) {
+		k.collector.Inspect(peer, func(ss *im.Snapshot) {
 			quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
 
 			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts > maxConnAttempts {
@@ -805,7 +817,8 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	k.knownPeers.Add(addr)
 	k.connectedPeers.Add(addr)
 
-	k.collector.Record(addr, metrics.PeerLogIn(time.Now(), metrics.PeerConnectionDirectionInbound))
+	k.metrics.TotalInboundConnections.Inc()
+	k.collector.Record(addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound))
 
 	k.waitNext.Remove(addr)
 
@@ -827,7 +840,8 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(timeToRetry))
 
-	k.collector.Record(peer.Address, metrics.PeerLogOut(time.Now()))
+	k.metrics.TotalInboundDisconnections.Inc()
+	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
 
 	k.depthMu.Lock()
 	k.depth = recalcDepth(k.connectedPeers, k.radius)
@@ -1254,7 +1268,7 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 // createMetricsSnapshotView creates new topology.MetricSnapshotView from the
 // given metrics.Snapshot and rounds all the timestamps and durations to its
 // nearest second.
-func createMetricsSnapshotView(ss *metrics.Snapshot) *topology.MetricSnapshotView {
+func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 	if ss == nil {
 		return nil
 	}
