@@ -3,8 +3,11 @@ GOLANGCI_LINT ?= $$($(GO) env GOPATH)/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v1.30.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
-BEEKEEPER ?= $$($(GO) env GOPATH)/bin/beekeeper
+BEEKEEPER_INSTALL_DIR ?= $$($(GO) env GOPATH)/bin
+BEEKEEPER_USE_SUDO ?= false
+BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
+BEEKEEPER_BRANCH ?= master
 
 COMMIT ?= "$(shell git describe --long --dirty --always --match "" || true)"
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
@@ -23,11 +26,25 @@ dist:
 
 .PHONY: beekeeper
 beekeeper:
-	test -f $(BEEKEEPER) || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/install.sh | BEEKEEPER_INSTALL_DIR=$$($(GO) env GOPATH)/bin USE_SUDO=false bash
+	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
+	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
+	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
 
 .PHONY: beelocal
 beelocal:
 	curl -sSfL https://raw.githubusercontent.com/ethersphere/beelocal/$(BEELOCAL_BRANCH)/beelocal.sh | bash
+
+.PHONY: deploylocal
+deploylocal:
+	beekeeper create bee-cluster --cluster-name $(BEEKEEPER_CLUSTER)
+
+.PHONY: testlocal
+testlocal:
+	export PATH=${PATH}:$$($(GO) env GOPATH)/bin
+	beekeeper check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-settlements,ci-soc
+
+.PHONY: testlocal-all
+all: beekeeper beelocal deploylocal testlocal
 
 .PHONY: lint
 lint: linter
