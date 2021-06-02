@@ -41,7 +41,7 @@ jobs:
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           make beekeeper BEEKEEPER_BRANCH=config2 BEEKEEPER=/usr/local/bin/beekeeper
-          timeout 30m make beelocal OPTS='ci skip-vet'
+          timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
@@ -54,7 +54,7 @@ jobs:
       - name: Set local cluster
         run: |
           make beelocal ACTION=add-hosts
-          timeout 30m make deploylocal BEEKEEPER_CLUSTER=local-dns BEEKEEPER=/usr/local/bin/beekeeper
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns BEEKEEPER=/usr/local/bin/beekeeper
       - name: Test pingpong
         id: pingpong-1
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
@@ -85,28 +85,29 @@ jobs:
         run: |
           beekeeper delete bee-cluster --cluster-name local-dns
           make beelocal ACTION=uninstall
-      # - name: Prepare testing cluster (Node connection and clef enabled)
-      #   run: |
-      #     timeout 30m ./beeinfra.sh prepare --geth --clef --k3s
-      # - name: Set kube config
-      #   run: |
-      #     mkdir -p ~/.kube
-      #     cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      # - name: Set testing cluster (Node connection and clef enabled)
-      #   run: |
-      #     timeout 30m ./beeinfra.sh install --local -r "${REPLICA}" --geth --clef --k3s --pay-threshold 1500000000000 --postage
-      # - name: Test pingpong
-      #   id: pingpong-2
-      #   run: until ./beekeeper check pingpong --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"; do echo "waiting for pingpong..."; sleep .3; done
-      # - name: Test fullconnectivity
-      #   id: fullconnectivity-2
-      #   run: ./beekeeper check fullconnectivity --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}"
-      # - name: Test settlements
-      #   id: settlements-2
-      #   run: ./beekeeper check settlements --api-scheme http --debug-api-scheme http --disable-namespace --debug-api-domain localhost --api-domain localhost --node-count "${REPLICA}" --upload-node-count "${REPLICA}" -t 1500000000000
-      # - name: Destroy the cluster
-      #   run: |
-      #     ./beeinfra.sh uninstall
+      - name: Prepare testing cluster (Node connection and clef enabled)
+        run: |
+            timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set testing cluster (Node connection and clef enabled)
+        run: |
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef BEEKEEPER=/usr/local/bin/beekeeper
+      - name: Test pingpong
+        id: pingpong-2
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity-2
+        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements-2
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-clef
+          make beelocal ACTION=uninstall
       - name: Apply patches
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
@@ -120,11 +121,12 @@ jobs:
       - name: Set testing cluster (storage incentives setup)
         run: |
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc BEEKEEPER=/usr/local/bin/beekeeper
+      - name: Test pingpong
+        id: pingpong-3
+        run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test gc
         id: gc-chunk-1
         run: beekeeper check --cluster-name local-gc --checks=ci-gc
-      - name: Destroy the cluster
-        run: make beelocal OPTS='ci' ACTION='destroy'
       - name: Retag Docker image and push for cache
         if: success()
         run: |
@@ -161,12 +163,13 @@ jobs:
           if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
           if ${{ steps.retrieval-1.outcome=='failure' }}; then FAILED=retrieval-1; fi
           if ${{ steps.manifest-1.outcome=='failure' }}; then FAILED=manifest-1; fi
-          if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
+          if ${{ steps.pingpong-3.outcome=='failure' }}; then FAILED=pingpong-3; fi
+          if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** ${{ github.head_ref }}\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
