@@ -707,13 +707,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
-	// halt kademlia while shutting down other
-	// components.
-	b.topologyHalter.Halt()
-
-	// halt p2p layer from accepting new connections
-	// while shutting down other components
-	b.p2pHalter.Halt()
 	// if a shutdown is already in process, return here
 	b.shutdownMutex.Lock()
 	if b.shutdownInProgress {
@@ -723,6 +716,13 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	b.shutdownInProgress = true
 	b.shutdownMutex.Unlock()
 
+	// halt kademlia while shutting down other
+	// components.
+	b.topologyHalter.Halt()
+
+	// halt p2p layer from accepting new connections
+	// while shutting down other components
+	b.p2pHalter.Halt()
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {
