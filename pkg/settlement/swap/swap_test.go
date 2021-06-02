@@ -144,7 +144,7 @@ func TestReceiveCheque(t *testing.T) {
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
 	amount := big.NewInt(50)
-	exchange := big.NewInt(10)
+	exchangeRate := big.NewInt(10)
 	deduction := big.NewInt(10)
 	chequebookAddress := common.HexToAddress("0xcd")
 
@@ -163,8 +163,8 @@ func TestReceiveCheque(t *testing.T) {
 			if !cheque.Equal(c) {
 				t.Fatalf("passed wrong cheque to store. wanted %v, got %v", cheque, c)
 			}
-			if exchange.Cmp(e) != 0 {
-				t.Fatalf("passed wrong exchange rate to store. wanted %v, got %v", exchange, e)
+			if exchangeRate.Cmp(e) != 0 {
+				t.Fatalf("passed wrong exchange rate to store. wanted %v, got %v", exchangeRate, e)
 			}
 			if deduction.Cmp(e) != 0 {
 				t.Fatalf("passed wrong deduction to store. wanted %v, got %v", deduction, d)
@@ -216,7 +216,7 @@ func TestReceiveCheque(t *testing.T) {
 		observer,
 	)
 
-	err := swap.ReceiveCheque(context.Background(), peer, cheque, exchange, deduction)
+	err := swap.ReceiveCheque(context.Background(), peer, cheque, exchangeRate, deduction)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestReceiveChequeReject(t *testing.T) {
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
 	chequebookAddress := common.HexToAddress("0xcd")
-	exchange := big.NewInt(10)
+	exchangeRate := big.NewInt(10)
 	deduction := big.NewInt(10)
 
 	peer := swarm.MustParseHexAddress("abcd")
@@ -290,7 +290,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		observer,
 	)
 
-	err := swap.ReceiveCheque(context.Background(), peer, cheque, exchange, deduction)
+	err := swap.ReceiveCheque(context.Background(), peer, cheque, exchangeRate, deduction)
 	if err == nil {
 		t.Fatal("accepted invalid cheque")
 	}
@@ -311,7 +311,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
 	chequebookAddress := common.HexToAddress("0xcd")
-	exchange := big.NewInt(10)
+	exchangeRate := big.NewInt(10)
 	deduction := big.NewInt(10)
 
 	peer := swarm.MustParseHexAddress("abcd")
@@ -346,7 +346,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		observer,
 	)
 
-	err := swapService.ReceiveCheque(context.Background(), peer, cheque, exchange, deduction)
+	err := swapService.ReceiveCheque(context.Background(), peer, cheque, exchangeRate, deduction)
 	if err == nil {
 		t.Fatal("accepted invalid cheque")
 	}

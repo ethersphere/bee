@@ -247,14 +247,14 @@ func (s *Service) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequ
 	return nil, nil
 }
 
-func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) (err error) {
+func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (err error) {
 	defer func() {
 		if err == nil {
 			s.deductionForPeers[peer.String()] = struct{}{}
 		}
 	}()
 	if s.receiveChequeFunc != nil {
-		return s.receiveChequeFunc(ctx, peer, cheque, exchange, deduction)
+		return s.receiveChequeFunc(ctx, peer, cheque, exchangeRate, deduction)
 	}
 
 	return nil
