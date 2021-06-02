@@ -1068,10 +1068,8 @@ func TestAccountingCallPaymentFailureRetries(t *testing.T) {
 			t.Fatal("expected refreshment")
 		}
 
-		select {
-		case <-paychan:
-			t.Fatalf("payment not expected to be sent")
-		case <-time.After(100 * time.Millisecond):
+		if acc.IsPaymentOngoing(peer1Addr) {
+			t.Fatal("unexpected ongoing payment")
 		}
 
 		acc.Release(peer1Addr, 2)
@@ -1095,7 +1093,7 @@ func TestAccountingCallPaymentFailureRetries(t *testing.T) {
 
 	select {
 	case <-paychan:
-	case <-time.After(1 * time.Second):
+	case <-time.After(500 * time.Millisecond):
 		t.Fatal("payment expected to be sent")
 	}
 
