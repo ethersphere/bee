@@ -103,7 +103,7 @@ jobs:
         run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
       - name: Test settlements
         id: settlements-2
-        run: beekeeper check --cluster-name local-clef --checks=ci-settlements
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
       - name: Destroy the cluster
         run: |
           beekeeper delete bee-cluster --cluster-name local-clef
