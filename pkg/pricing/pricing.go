@@ -36,11 +36,6 @@ type Interface interface {
 	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
 }
 
-// PriceTableObserver is used for being notified of price table updates
-type PriceTableObserver interface {
-	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
-}
-
 // PaymentThresholdObserver is used for being notified of payment threshold updates
 type PaymentThresholdObserver interface {
 	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error
