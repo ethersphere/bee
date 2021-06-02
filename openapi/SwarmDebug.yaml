@@ -596,6 +596,7 @@ paths:
           name: amount
           schema:
             type: integer
+            format: int64
           required: true
           description: amount of tokens to deposit
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
@@ -623,6 +624,7 @@ paths:
           name: amount
           schema:
             type: integer
+            format: int64
           required: true
           description: amount of tokens to withdraw
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
