@@ -40,7 +40,7 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_BRANCH=config2 BEEKEEPER=/usr/local/bin/beekeeper
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
@@ -54,7 +54,7 @@ jobs:
       - name: Set local cluster
         run: |
           make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns BEEKEEPER=/usr/local/bin/beekeeper
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
       - name: Test pingpong
         id: pingpong-1
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
@@ -94,7 +94,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef BEEKEEPER=/usr/local/bin/beekeeper
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
       - name: Test pingpong
         id: pingpong-2
         run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
@@ -120,7 +120,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc BEEKEEPER=/usr/local/bin/beekeeper
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
       - name: Test pingpong
         id: pingpong-3
         run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
