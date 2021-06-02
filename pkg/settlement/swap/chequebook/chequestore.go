@@ -41,7 +41,7 @@ var (
 // ChequeStore handles the verification and storage of received cheques
 type ChequeStore interface {
 	// ReceiveCheque verifies and stores a cheque. It returns the total amount earned.
-	ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error)
+	ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error)
 	// LastCheque returns the last cheque we received from a specific chequebook.
 	LastCheque(chequebook common.Address) (*SignedCheque, error)
 	// LastCheques returns the last received cheques from every known chequebook.
@@ -98,7 +98,7 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 }
 
 // ReceiveCheque verifies and stores a cheque. It returns the totam amount earned.
-func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error) {
+func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error) {
 	// verify we are the beneficiary
 	if cheque.Beneficiary != s.beneficiary {
 		return nil, ErrWrongBeneficiary
@@ -138,7 +138,7 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 
 	deducedAmount := new(big.Int).Sub(amount, deduction)
 
-	if deducedAmount.Cmp(exchange) < 0 {
+	if deducedAmount.Cmp(exchangeRate) < 0 {
 		return nil, ErrChequeValueTooLow
 	}
 

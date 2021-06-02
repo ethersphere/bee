@@ -17,8 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/exchange"
 	swap "github.com/ethersphere/bee/pkg/settlement/swap/headers"
+	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -51,7 +51,7 @@ type Interface interface {
 // Swap is the interface the settlement layer should implement to receive cheques.
 type Swap interface {
 	// ReceiveCheque is called by the swap protocol if a cheque is received.
-	ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) error
+	ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) error
 	// Handshake is called by the swap protocol when a handshake is received.
 	Handshake(peer swarm.Address, beneficiary common.Address) error
 	GetDeductionForPeer(peer swarm.Address) (bool, error)
@@ -64,17 +64,17 @@ type Service struct {
 	streamer    p2p.Streamer
 	logger      logging.Logger
 	swap        Swap
-	exchange    exchange.Service
+	priceOracle priceoracle.Service
 	beneficiary common.Address
 }
 
 // New creates a new swap protocol Service.
-func New(streamer p2p.Streamer, logger logging.Logger, beneficiary common.Address, exchange exchange.Service) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, beneficiary common.Address, priceOracle priceoracle.Service) *Service {
 	return &Service{
 		streamer:    streamer,
 		logger:      logger,
 		beneficiary: beneficiary,
-		exchange:    exchange,
+		priceOracle: priceOracle,
 	}
 }
 
@@ -187,7 +187,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	responseHeaders := stream.ResponseHeaders()
-	exchange, deduction, err := swap.ParseSettlementResponseHeaders(responseHeaders)
+	exchangeRate, deduction, err := swap.ParseSettlementResponseHeaders(responseHeaders)
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoDeductionHeader) {
 			return err
@@ -202,12 +202,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	// signature validation
-	return s.swap.ReceiveCheque(ctx, p.Address, signedCheque, exchange, deduction)
+	return s.swap.ReceiveCheque(ctx, p.Address, signedCheque, exchangeRate, deduction)
 }
 
 func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
 
-	exchange, deduction, err := s.exchange.CurrentRates()
+	exchangeRate, deduction, err := s.priceOracle.CurrentRates()
 	if err != nil {
 		return p2p.Headers{}
 	}
@@ -221,7 +221,7 @@ func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address
 		deduction = big.NewInt(0)
 	}
 
-	returnHeaders = swap.MakeSettlementHeaders(exchange, deduction)
+	returnHeaders = swap.MakeSettlementHeaders(exchangeRate, deduction)
 	return
 }
 
@@ -242,9 +242,9 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		}
 	}()
 
-	// reading exchanged headers
+	// reading exchangeRated headers
 	returnedHeaders := stream.Headers()
-	exchange, deduction, err := swap.ParseSettlementResponseHeaders(returnedHeaders)
+	exchangeRate, deduction, err := swap.ParseSettlementResponseHeaders(returnedHeaders)
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoDeductionHeader) {
 			return nil, err
@@ -265,14 +265,14 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		return nil, ErrHaveDeduction
 	}
 
-	// get current global exchange rate and deduction
-	checkExchange, checkDeduction, err := s.exchange.CurrentRates()
+	// get current global exchangeRate rate and deduction
+	checkExchangeRate, checkDeduction, err := s.priceOracle.CurrentRates()
 	if err != nil {
 		return nil, err
 	}
 
-	// exchange rates should match
-	if exchange.Cmp(checkExchange) != 0 {
+	// exchangeRate rates should match
+	if exchangeRate.Cmp(checkExchangeRate) != 0 {
 		return nil, ErrNegotiateRate
 	}
 
@@ -281,7 +281,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		return nil, ErrNegotiateDeduction
 	}
 
-	paymentAmount := new(big.Int).Mul(amount, exchange)
+	paymentAmount := new(big.Int).Mul(amount, exchangeRate)
 	sentAmount := new(big.Int).Add(paymentAmount, deduction)
 
 	// issue cheque call with provided callback for sending cheque to finish transaction

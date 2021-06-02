@@ -14,12 +14,12 @@ import (
 
 // Service is the mock chequeStore service.
 type Service struct {
-	receiveCheque func(ctx context.Context, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error)
+	receiveCheque func(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error)
 	lastCheque    func(chequebook common.Address) (*chequebook.SignedCheque, error)
 	lastCheques   func() (map[common.Address]*chequebook.SignedCheque, error)
 }
 
-func WithReceiveChequeFunc(f func(ctx context.Context, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error)) Option {
+func WithReceiveChequeFunc(f func(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.receiveCheque = f
 	})
@@ -46,8 +46,8 @@ func NewChequeStore(opts ...Option) chequebook.ChequeStore {
 	return mock
 }
 
-func (s *Service) ReceiveCheque(ctx context.Context, cheque *chequebook.SignedCheque, exchange *big.Int, deduction *big.Int) (*big.Int, error) {
-	return s.receiveCheque(ctx, cheque, exchange, deduction)
+func (s *Service) ReceiveCheque(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error) {
+	return s.receiveCheque(ctx, cheque, exchangeRate, deduction)
 }
 
 func (s *Service) LastCheque(chequebook common.Address) (*chequebook.SignedCheque, error) {

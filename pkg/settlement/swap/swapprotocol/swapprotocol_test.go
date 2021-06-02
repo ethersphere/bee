@@ -21,8 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	exchangemock "github.com/ethersphere/bee/pkg/settlement/swap/exchange/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
+	priceoraclemock "github.com/ethersphere/bee/pkg/settlement/swap/priceoracle/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -35,15 +35,15 @@ func TestInit(t *testing.T) {
 	peer := p2p.Peer{Address: peerID}
 	swapHsReceiver := swapmock.NewSwap()
 	swapHsInitiator := swapmock.NewSwap()
-	exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
-	swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
 	swappHsReceiver.SetSwap(swapHsReceiver)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(swappHsReceiver.Protocol()),
 		streamtest.WithBaseAddr(peerID),
 	)
 	commonAddr2 := common.HexToAddress("0xdc")
-	swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange)
+	swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, priceOracle)
 	swappHsInitiator.SetSwap(swapHsInitiator)
 
 	if err := swappHsInitiator.Init(context.Background(), peer); err != nil {
@@ -93,15 +93,15 @@ func TestEmitCheques(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
-	exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
-	swappReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
 	swappReceiver.SetSwap(swapReceiver)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(swappReceiver.Protocol()),
 		streamtest.WithBaseAddr(peerID),
 	)
 	commonAddr2 := common.HexToAddress("0xdc")
-	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange)
+	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, priceOracle)
 	swappInitiator.SetSwap(swapInitiator)
 	peer := p2p.Peer{Address: peerID}
 
@@ -195,16 +195,16 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
-	exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
-	exchange2 := exchangemock.New(big.NewInt(52), big.NewInt(560))
-	swappReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	priceOracle2 := priceoraclemock.New(big.NewInt(52), big.NewInt(560))
+	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
 	swappReceiver.SetSwap(swapReceiver)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(swappReceiver.Protocol()),
 		streamtest.WithBaseAddr(peerID),
 	)
 	commonAddr2 := common.HexToAddress("0xdc")
-	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
+	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, priceOracle2)
 	swappInitiator.SetSwap(swapInitiator)
 	peer := p2p.Peer{Address: peerID}
 
@@ -252,16 +252,16 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
-	exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
-	exchange2 := exchangemock.New(big.NewInt(50), big.NewInt(560))
-	swappReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	priceOracle2 := priceoraclemock.New(big.NewInt(50), big.NewInt(560))
+	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
 	swappReceiver.SetSwap(swapReceiver)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(swappReceiver.Protocol()),
 		streamtest.WithBaseAddr(peerID),
 	)
 	commonAddr2 := common.HexToAddress("0xdc")
-	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
+	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, priceOracle2)
 	swappInitiator.SetSwap(swapInitiator)
 	peer := p2p.Peer{Address: peerID}
 
@@ -310,16 +310,16 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
-	exchange := exchangemock.New(big.NewInt(50), big.NewInt(500))
-	exchange2 := exchangemock.New(big.NewInt(50), big.NewInt(500))
-	swappReceiver := swapprotocol.New(nil, logger, commonAddr, exchange)
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	priceOracle2 := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
 	swappReceiver.SetSwap(swapReceiver)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(swappReceiver.Protocol()),
 		streamtest.WithBaseAddr(peerID),
 	)
 	commonAddr2 := common.HexToAddress("0xdc")
-	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, exchange2)
+	swappInitiator := swapprotocol.New(recorder, logger, commonAddr2, priceOracle2)
 	swappInitiator.SetSwap(swapInitiator)
 	peer := p2p.Peer{Address: peerID}
 

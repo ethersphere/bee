@@ -20,7 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/exchange"
+	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -218,12 +218,12 @@ func InitSwap(
 	priceOracleAddress string,
 	chainID int64,
 	transactionService transaction.Service,
-) (*swap.Service, exchange.Service, error) {
+) (*swap.Service, priceoracle.Service, error) {
 
 	var currentPriceOracleAddress common.Address
 	if priceOracleAddress == "" {
 		var found bool
-		currentPriceOracleAddress, found = exchange.DiscoverPriceOracleAddress(chainID)
+		currentPriceOracleAddress, found = priceoracle.DiscoverPriceOracleAddress(chainID)
 		if !found {
 			return nil, nil, errors.New("no known price oracle address for this network")
 		}
@@ -231,9 +231,9 @@ func InitSwap(
 		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
 	}
 
-	exchange := exchange.New(logger, currentPriceOracleAddress, transactionService, 300)
-	exchange.Start()
-	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, exchange)
+	priceOracle := priceoracle.New(logger, currentPriceOracleAddress, transactionService, 300)
+	priceOracle.Start()
+	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, priceOracle)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
 	swapService := swap.New(
@@ -256,5 +256,5 @@ func InitSwap(
 		return nil, nil, err
 	}
 
-	return swapService, exchange, nil
+	return swapService, priceOracle, nil
 }
