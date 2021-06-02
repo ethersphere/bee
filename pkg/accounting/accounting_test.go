@@ -1155,7 +1155,7 @@ func TestAccountingCallPaymentFailureRetries(t *testing.T) {
 		}
 
 		select {
-		case _ = <-paychan:
+		case <-paychan:
 			t.Fatalf("payment not expected to be sent")
 		case <-time.After(100 * time.Millisecond):
 		}
@@ -1180,7 +1180,7 @@ func TestAccountingCallPaymentFailureRetries(t *testing.T) {
 	}
 
 	select {
-	case _ = <-paychan:
+	case <-paychan:
 	case <-time.After(1 * time.Second):
 		t.Fatal("payment expected to be sent")
 	}
