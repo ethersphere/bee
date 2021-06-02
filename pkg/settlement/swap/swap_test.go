@@ -84,17 +84,16 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 }
 
 type addressbookMock struct {
-	beneficiary      func(peer swarm.Address) (beneficiary common.Address, known bool, err error)
-	chequebook       func(peer swarm.Address) (chequebookAddress common.Address, known bool, err error)
-	beneficiaryPeer  func(beneficiary common.Address) (peer swarm.Address, known bool, err error)
-	chequebookPeer   func(chequebook common.Address) (peer swarm.Address, known bool, err error)
-	putBeneficiary   func(peer swarm.Address, beneficiary common.Address) error
-	putChequebook    func(peer swarm.Address, chequebook common.Address) error
-	addDeductionFor  func(peer swarm.Address) error
-	addDeductionBy   func(peer swarm.Address) error
-	getDeductionFor  func(peer swarm.Address) (bool, error)
-	getDeductionBy   func(peer swarm.Address) (bool, error)
-	peerDeductionFor map[string]struct{}
+	beneficiary     func(peer swarm.Address) (beneficiary common.Address, known bool, err error)
+	chequebook      func(peer swarm.Address) (chequebookAddress common.Address, known bool, err error)
+	beneficiaryPeer func(beneficiary common.Address) (peer swarm.Address, known bool, err error)
+	chequebookPeer  func(chequebook common.Address) (peer swarm.Address, known bool, err error)
+	putBeneficiary  func(peer swarm.Address, beneficiary common.Address) error
+	putChequebook   func(peer swarm.Address, chequebook common.Address) error
+	addDeductionFor func(peer swarm.Address) error
+	addDeductionBy  func(peer swarm.Address) error
+	getDeductionFor func(peer swarm.Address) (bool, error)
+	getDeductionBy  func(peer swarm.Address) (bool, error)
 }
 
 func (m *addressbookMock) Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error) {
@@ -116,7 +115,6 @@ func (m *addressbookMock) PutChequebook(peer swarm.Address, chequebook common.Ad
 	return m.putChequebook(peer, chequebook)
 }
 func (m *addressbookMock) AddDeductionFor(peer swarm.Address) error {
-	m.peerDeductionFor[peer.String()] = struct{}{}
 	return m.addDeductionFor(peer)
 }
 func (m *addressbookMock) AddDeductionBy(peer swarm.Address) error {
@@ -174,9 +172,11 @@ func TestReceiveCheque(t *testing.T) {
 			return amount, nil
 		}),
 	)
+
+	peerDeductionFor := false
+
 	networkID := uint64(1)
 	addressbook := &addressbookMock{
-		peerDeductionFor: make(map[string]struct{}),
 		chequebook: func(p swarm.Address) (common.Address, bool, error) {
 			if !peer.Equal(p) {
 				t.Fatal("querying chequebook for wrong peer")
@@ -193,6 +193,7 @@ func TestReceiveCheque(t *testing.T) {
 			return nil
 		},
 		addDeductionFor: func(p swarm.Address) error {
+			peerDeductionFor = true
 			if !peer.Equal(p) {
 				t.Fatal("storing deduction for wrong peer")
 			}
@@ -236,7 +237,7 @@ func TestReceiveCheque(t *testing.T) {
 		t.Fatal("expected observer to be called")
 	}
 
-	if _, ok := addressbook.peerDeductionFor[peer.String()]; !ok {
+	if !peerDeductionFor {
 		t.Fatal("add deduction for peer not called")
 	}
 
