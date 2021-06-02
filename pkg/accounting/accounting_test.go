@@ -839,13 +839,6 @@ func (p *pricingMock) AnnouncePaymentThreshold(ctx context.Context, peer swarm.A
 	return nil
 }
 
-func (p *pricingMock) AnnouncePaymentThresholdAndPriceTable(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
-	p.called = true
-	p.peer = peer
-	p.paymentThreshold = paymentThreshold
-	return nil
-}
-
 func TestAccountingConnected(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
@@ -995,4 +988,116 @@ func TestAccountingPeerDebt(t *testing.T) {
 		t.Fatalf("wrong actual debt. got %d wanted 0", actualDebt)
 	}
 
+}
+
+func TestAccountingCallPaymentFailureRetries(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refreshchan := make(chan paymentCall, 1)
+	paychan := make(chan paymentCall, 1)
+
+	ts := int64(100)
+	acc.SetTime(ts)
+
+	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
+		refreshchan <- paymentCall{peer: peer, amount: big.NewInt(1)}
+		return big.NewInt(1), ts, nil
+	})
+
+	acc.SetPayFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+		paychan <- paymentCall{peer: peer, amount: amount}
+	})
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requestPrice := testPaymentThreshold.Uint64() - 100
+
+	// Credit until near payment threshold
+	err = acc.Credit(peer1Addr, requestPrice)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = acc.Reserve(context.Background(), peer1Addr, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-refreshchan:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("expected refreshment")
+	}
+
+	var sentAmount *big.Int
+	select {
+	case call := <-paychan:
+		sentAmount = call.amount
+	case <-time.After(1 * time.Second):
+		t.Fatal("payment expected to be sent")
+
+	}
+
+	acc.Release(peer1Addr, 2)
+
+	acc.NotifyPaymentSent(peer1Addr, sentAmount, errors.New("error"))
+
+	// try another n requests 1 per second
+	for i := 0; i < 10; i++ {
+		ts++
+		acc.SetTime(ts)
+		err = acc.Reserve(context.Background(), peer1Addr, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case <-refreshchan:
+		case <-time.After(1 * time.Second):
+			t.Fatal("expected refreshment")
+		}
+
+		select {
+		case _ = <-paychan:
+			t.Fatalf("payment not expected to be sent")
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		acc.Release(peer1Addr, 2)
+	}
+
+	ts++
+	acc.SetTime(ts)
+
+	// try another request
+	err = acc.Reserve(context.Background(), peer1Addr, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-refreshchan:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("expected refreshment")
+
+	}
+
+	select {
+	case _ = <-paychan:
+	case <-time.After(1 * time.Second):
+		t.Fatal("payment expected to be sent")
+	}
+
+	acc.Release(peer1Addr, 1)
 }
