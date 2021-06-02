@@ -62,7 +62,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/exchange"
+	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -104,7 +104,7 @@ type Bee struct {
 	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
-	exchangeCloser           io.Closer
+	priceOracleCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 }
@@ -522,8 +522,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	acc.SetRefreshFunc(pseudosettleService.Pay)
 
 	if o.SwapEnable {
-		var exchange exchange.Service
-		swapService, exchange, err = InitSwap(
+		var priceOracle priceoracle.Service
+		swapService, priceOracle, err = InitSwap(
 			p2ps,
 			logger,
 			stateStore,
@@ -540,7 +540,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		if err != nil {
 			return nil, err
 		}
-		b.exchangeCloser = exchange
+		b.priceOracleCloser = priceOracle
 		acc.SetPayFunc(swapService.Pay)
 	}
 
@@ -794,7 +794,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	wg.Wait()
 
 	tryClose(b.p2pService, "p2p server")
-	tryClose(b.exchangeCloser, "exchange service")
+	tryClose(b.priceOracleCloser, "price oracle service")
 
 	wg.Add(3)
 	go func() {
