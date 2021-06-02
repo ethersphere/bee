@@ -1,0 +1,25 @@
+FROM debian:10.9-slim
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates; \
+    groupadd -r bee --gid 999; \
+    useradd -r -g bee --uid 999 --no-log-init -m bee;
+
+# make sure mounted volumes have correct permissions
+RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
+
+FROM scratch
+
+COPY bee-slim /usr/local/bin/bee
+COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
+COPY --from=0 /etc/passwd /etc/passwd
+COPY --from=0 /home /home
+
+EXPOSE 1633 1634 1635
+USER bee
+WORKDIR /home/bee
+VOLUME /home/bee/.bee
+
+ENTRYPOINT ["bee"]
