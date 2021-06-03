@@ -491,23 +491,7 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	for _, modeTc := range []struct {
-		name string
-		mode storage.ModePut
-	}{
-		{
-			mode: storage.ModePutRequest,
-			name: "ModePutRequest",
-		},
-		{
-			mode: storage.ModePutRequestPin,
-			name: "ModePutRequestPin",
-		},
-		{
-			mode: storage.ModePutSync,
-			name: "ModePutSync",
-		},
-	} {
+	for _, modeTc := range []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync} {
 		for _, tc := range []struct {
 			name         string
 			persistChunk swarm.Chunk
@@ -526,16 +510,16 @@ func TestModePut_SameStamp(t *testing.T) {
 				discardChunk: generateChunkWithTimestamp(stamp, ts-1),
 			},
 		} {
-			t.Run(modeTc.name, func(t *testing.T) {
+			t.Run(modeTc.String(), func(t *testing.T) {
 
 				db := newTestDB(t, nil)
 				unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
 
-				_, err := db.Put(ctx, modeTc.mode, tc.persistChunk)
+				_, err := db.Put(ctx, modeTc, tc.persistChunk)
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = db.Put(ctx, modeTc.mode, tc.discardChunk)
+				_, err = db.Put(ctx, modeTc, tc.discardChunk)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -557,7 +541,6 @@ func TestModePut_SameStamp(t *testing.T) {
 			})
 		}
 	}
-
 }
 
 func generateChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
