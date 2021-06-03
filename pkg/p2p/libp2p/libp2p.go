@@ -377,6 +377,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					return
 				} else {
 					s.logger.Tracef("stream handler: kicking away light node %s to make room for %s", p.String(), peer.Address.String())
+					s.metrics.KickedOutPeersCount.Inc()
 					_ = s.Disconnect(p)
 					return
 				}
