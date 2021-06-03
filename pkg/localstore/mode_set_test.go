@@ -85,7 +85,7 @@ func TestModeSetRemove_WithSync(t *testing.T) {
 			db := newTestDB(t, nil)
 			var chs []swarm.Chunk
 			for i := 0; i < tc.count; i++ {
-				ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+				ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 				err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 				if err != nil {
 					t.Fatal(err)

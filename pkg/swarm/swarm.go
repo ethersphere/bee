@@ -142,8 +142,12 @@ type Chunk interface {
 	Radius() uint8
 	// Depth returns the batch depth of the stamp - allowed batch size = 2^{depth}.
 	Depth() uint8
+	// BucketDepth returns the bucket depth of the batch of the stamp - always < depth.
+	BucketDepth() uint8
+	// Immutable returns whether the batch is immutable
+	Immutable() bool
 	// WithBatch attaches batch parameters to the chunk.
-	WithBatch(radius, depth uint8) Chunk
+	WithBatch(radius, depth, bucketDepth uint8, immutable bool) Chunk
 	// Equal checks if the chunk is equal to another.
 	Equal(Chunk) bool
 }
@@ -159,12 +163,14 @@ type Stamp interface {
 }
 
 type chunk struct {
-	addr   Address
-	sdata  []byte
-	tagID  uint32
-	stamp  Stamp
-	radius uint8
-	depth  uint8
+	addr        Address
+	sdata       []byte
+	tagID       uint32
+	stamp       Stamp
+	radius      uint8
+	depth       uint8
+	bucketDepth uint8
+	immutable   bool
 }
 
 func NewChunk(addr Address, data []byte) Chunk {
@@ -184,9 +190,11 @@ func (c *chunk) WithStamp(stamp Stamp) Chunk {
 	return c
 }
 
-func (c *chunk) WithBatch(radius, depth uint8) Chunk {
+func (c *chunk) WithBatch(radius, depth, bucketDepth uint8, immutable bool) Chunk {
 	c.radius = radius
 	c.depth = depth
+	c.bucketDepth = bucketDepth
+	c.immutable = immutable
 	return c
 }
 
@@ -212,6 +220,14 @@ func (c *chunk) Radius() uint8 {
 
 func (c *chunk) Depth() uint8 {
 	return c.depth
+}
+
+func (c *chunk) BucketDepth() uint8 {
+	return c.bucketDepth
+}
+
+func (c *chunk) Immutable() bool {
+	return c.immutable
 }
 
 func (c *chunk) String() string {
