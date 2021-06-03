@@ -24,8 +24,8 @@ const (
 var (
 	// ErrOwnerMismatch is the error given for invalid signatures.
 	ErrOwnerMismatch = errors.New("owner mismatch")
-	// ErrInvalidIndex the error given for invalid stamp index.
-	ErrInvalidIndex = errors.New("invalid index")
+	// ErrOverissuedIndex the error given for invalid stamp index.
+	ErrOverissuedIndex = errors.New("overissued index")
 	// ErrStampInvalid is the error given if stamp cannot deserialise.
 	ErrStampInvalid = errors.New("invalid stamp")
 	// ErrBucketMismatch is the error given if stamp index bucket verification fails.
@@ -158,7 +158,7 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDe
 		return ErrBucketMismatch
 	}
 	if index >= 1<<int(depth-bucketDepth) {
-		return ErrInvalidIndex
+		return ErrOverissuedIndex
 	}
 	if !bytes.Equal(signerAddr, ownerAddr) {
 		return ErrOwnerMismatch
