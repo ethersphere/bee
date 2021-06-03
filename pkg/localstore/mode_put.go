@@ -213,7 +213,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		// if a chunk is found with the same postage stamp index,
 		// replace it with the new one only if timestamp is later
 		if !later(previous, item) {
-			return false, 0, err
+			return false, 0, nil
 		}
 		gcSizeChange, err = db.setRemove(batch, previous, true)
 		if err != nil {
@@ -274,6 +274,26 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 		return true, 0, nil
 	}
 
+	previous, err := db.postageIndexIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+	} else {
+		if item.Immutable {
+			return false, 0, ErrOverwrite
+		}
+		// if a chunk is found with the same postage stamp index,
+		// replace it with the new one only if timestamp is later
+		if !later(previous, item) {
+			return false, 0, nil
+		}
+		_, err = db.setRemove(batch, previous, true)
+		if err != nil {
+			return false, 0, err
+		}
+	}
+
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -311,14 +331,22 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	if exists {
 		return true, 0, nil
 	}
+
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return false, 0, err
 		}
 	} else {
-		// if a chunk is found with the same postage stamp, replace it with the new one
-		gcSizeChange, err = db.setRemove(batch, previous, true)
+		if item.Immutable {
+			return false, 0, ErrOverwrite
+		}
+		// if a chunk is found with the same postage stamp index,
+		// replace it with the new one only if timestamp is later
+		if !later(previous, item) {
+			return false, 0, nil
+		}
+		_, err = db.setRemove(batch, previous, true)
 		if err != nil {
 			return false, 0, err
 		}

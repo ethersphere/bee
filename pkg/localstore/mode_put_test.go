@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -484,85 +485,72 @@ func TestModePut_sameChunk(t *testing.T) {
 // TestModePut_sameChunk puts the same chunk multiple times
 // and validates that all relevant indexes have only one item
 // in them.
-func TestModePut_sameStamp(t *testing.T) {
+func TestModePut_SameStamp(t *testing.T) {
+
 	ctx := context.Background()
-	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin}
-	for _, mode1 := range modes {
-		for _, mode2 := range modes {
-			t.Run("chunk on same index - timestamps in order", func(t *testing.T) {
-				db := newTestDB(t, nil)
-				// call unreserve on the batch with radius 0 so that
-				// localstore is aware of the batch and the chunk can
-				// be inserted into the database
-				first := generateTestRandomChunk()
-				second := generateTestRandomChunk()
-				stamp := first.Stamp()
-				ts := binary.BigEndian.Uint64(stamp.Timestamp())
-				buf := make([]byte, 8)
-				binary.BigEndian.PutUint64(buf, ts+1)
-				second = second.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), buf, stamp.Sig()))
-				unreserveChunkBatch(t, db, 0, first, second)
+	stamp := postagetesting.MustNewStamp()
+	ts := time.Now().Unix()
 
-				_, err := db.Put(ctx, mode1, first)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_, err = db.Put(ctx, mode2, second)
-				if err != nil {
-					t.Fatal(err)
-				}
-				newItemsCountTest(db.retrievalDataIndex, 1)(t)
-				newItemsCountTest(db.postageChunksIndex, 1)(t)
-				newItemsCountTest(db.postageRadiusIndex, 1)(t)
-				newItemsCountTest(db.postageIndexIndex, 1)(t)
-				newItemsCountTest(db.pullIndex, 1)(t)
-				_, err = db.Get(ctx, storage.ModeGetLookup, second.Address())
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
-				}
-				_, err = db.Get(ctx, storage.ModeGetLookup, first.Address())
-				if !errors.Is(storage.ErrNotFound, err) {
-					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
-				}
-			})
-			t.Run("chunk on same index - timestamps in reverse order", func(t *testing.T) {
-				db := newTestDB(t, nil)
-				// call unreserve on the batch with radius 0 so that
-				// localstore is aware of the batch and the chunk can
-				// be inserted into the database
-				first := generateTestRandomChunk()
-				second := generateTestRandomChunk()
-				stamp := first.Stamp()
-				ts := binary.BigEndian.Uint64(stamp.Timestamp())
-				buf := make([]byte, 8)
-				binary.BigEndian.PutUint64(buf, ts-1)
-				second = second.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), buf, stamp.Sig()))
-				unreserveChunkBatch(t, db, 0, first, second)
+	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync}
 
-				_, err := db.Put(ctx, mode1, first)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_, err = db.Put(ctx, mode2, second)
-				if err != nil {
-					t.Fatal(err)
-				}
-				newItemsCountTest(db.retrievalDataIndex, 1)(t)
-				newItemsCountTest(db.postageChunksIndex, 1)(t)
-				newItemsCountTest(db.postageRadiusIndex, 1)(t)
-				newItemsCountTest(db.postageIndexIndex, 1)(t)
-				newItemsCountTest(db.pullIndex, 1)(t)
-				_, err = db.Get(ctx, storage.ModeGetLookup, first.Address())
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
-				}
-				_, err = db.Get(ctx, storage.ModeGetLookup, second.Address())
-				if !errors.Is(storage.ErrNotFound, err) {
-					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
-				}
-			})
+	for _, modeTc1 := range modes {
+		for _, modeTc2 := range modes {
+			for _, tc := range []struct {
+				persistChunk swarm.Chunk
+				discardChunk swarm.Chunk
+			}{
+				{
+					persistChunk: generateChunkWithTimestamp(stamp, ts),
+					discardChunk: generateChunkWithTimestamp(stamp, ts),
+				},
+				{
+					persistChunk: generateChunkWithTimestamp(stamp, ts+1),
+					discardChunk: generateChunkWithTimestamp(stamp, ts),
+				},
+				{
+					persistChunk: generateChunkWithTimestamp(stamp, ts),
+					discardChunk: generateChunkWithTimestamp(stamp, ts-1),
+				},
+			} {
+				t.Run(modeTc1.String()+modeTc2.String(), func(t *testing.T) {
+
+					db := newTestDB(t, nil)
+					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
+
+					_, err := db.Put(ctx, modeTc1, tc.persistChunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					newItemsCountTest(db.retrievalDataIndex, 1)(t)
+					newItemsCountTest(db.postageChunksIndex, 1)(t)
+					newItemsCountTest(db.postageRadiusIndex, 1)(t)
+					newItemsCountTest(db.postageIndexIndex, 1)(t)
+					newItemsCountTest(db.pullIndex, 1)(t)
+
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
+					if err != nil {
+						t.Fatalf("expected no error, got %v", err)
+					}
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.discardChunk.Address())
+					if !errors.Is(err, storage.ErrNotFound) {
+						t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+					}
+				})
+			}
 		}
 	}
+}
+
+func generateChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
+	tsBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBuf, uint64(timestamp))
+	chunk := generateTestRandomChunk()
+	return chunk.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), tsBuf, stamp.Sig()))
 }
 
 // TestPutDuplicateChunks validates the expected behaviour for
