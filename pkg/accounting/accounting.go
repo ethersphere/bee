@@ -1037,9 +1037,24 @@ func (a *Accounting) blocklist(peer swarm.Address, multiplier int64) error {
 
 func (a *Accounting) Connect(peer swarm.Address) {
 	accountingPeer := a.getAccountingPeer(peer)
+	zero := big.NewInt(0)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
+
+	accountingPeer.shadowReservedBalance.Set(zero)
+	accountingPeer.ghostBalance.Set(zero)
+	accountingPeer.reservedBalance.Set(zero)
+
+	err := a.store.Put(peerBalanceKey(peer), zero)
+	if err != nil {
+		a.logger.Errorf("failed to persist balance: %w", err)
+	}
+
+	err = a.store.Put(peerSurplusBalanceKey(peer), zero)
+	if err != nil {
+		a.logger.Errorf("failed to persist surplus balance: %w", err)
+	}
 
 	if accountingPeer.reconnectAllowTimestamp != 0 {
 		timeNow := a.timeNow().Unix()
@@ -1101,27 +1116,8 @@ func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big
 func (a *Accounting) Disconnect(peer swarm.Address) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	zero := big.NewInt(0)
 	accountingPeer.lock.Lock()
-	defer func() {
-
-		accountingPeer.shadowReservedBalance.Set(zero)
-		accountingPeer.ghostBalance.Set(zero)
-		accountingPeer.reservedBalance.Set(zero)
-
-		err := a.store.Put(peerBalanceKey(peer), zero)
-		if err != nil {
-			a.logger.Errorf("failed to persist balance: %w", err)
-		}
-
-		err = a.store.Put(peerSurplusBalanceKey(peer), zero)
-		if err != nil {
-			a.logger.Errorf("failed to persist surplus balance: %w", err)
-		}
-
-		accountingPeer.lock.Unlock()
-
-	}()
+	defer accountingPeer.lock.Unlock()
 
 	timeNow := a.timeNow().Unix()
 
