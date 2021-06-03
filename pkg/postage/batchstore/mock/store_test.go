@@ -67,8 +67,6 @@ func TestBatchStorePutChainState(t *testing.T) {
 }
 
 func TestBatchStoreWithBatch(t *testing.T) {
-	const testCnt = 3
-
 	testBatch := postagetesting.MustNewBatch()
 	batchStore := mock.New(
 		mock.WithBatch(testBatch),

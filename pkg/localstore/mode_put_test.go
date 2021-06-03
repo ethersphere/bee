@@ -568,13 +568,13 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 				},
 				{
 					name:         "higher timestamp",
-					persistChunk: generateChunkWithTimestamp(stamp, ts),
-					discardChunk: generateChunkWithTimestamp(stamp, ts+1),
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts+1),
 				},
 				{
 					name:         "higher timestamp first",
-					persistChunk: generateChunkWithTimestamp(stamp, ts+1),
-					discardChunk: generateChunkWithTimestamp(stamp, ts),
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts+1),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts),
 				},
 			} {
 				testName := fmt.Sprintf("%s %s %s", modeTc1.String(), modeTc2.String(), tc.name)
