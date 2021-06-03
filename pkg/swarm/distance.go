@@ -21,7 +21,7 @@ func Distance(x, y []byte) (*big.Int, error) {
 	return r, nil
 }
 
-// DistanceRaw returns the distance between address x and address y in big-endian binary format using the distance metric defined in the swarm specfication.
+// DistanceRaw returns the distance between address x and address y in big-endian binary format using the distance metric defined in the swarm specification.
 // Fails if not all addresses are of equal length.
 func DistanceRaw(x, y []byte) ([]byte, error) {
 	if len(x) != len(y) {
@@ -34,7 +34,7 @@ func DistanceRaw(x, y []byte) ([]byte, error) {
 	return c, nil
 }
 
-// DistanceCmp compares x and y to a in terms of the distance metric defined in the swarm specfication.
+// DistanceCmp compares x and y to a in terms of the distance metric defined in the swarm specification.
 // it returns:
 // 	1 if x is closer to a than y
 // 	0 if x and y are equally far apart from a (this means that x and y are the same address)
