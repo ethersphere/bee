@@ -291,7 +291,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	}
 
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
-	fmt.Println(paymentAmount)
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
