@@ -311,7 +311,10 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postageIndexIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
