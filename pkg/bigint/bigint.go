@@ -15,6 +15,10 @@ type BigInt struct {
 }
 
 func (i *BigInt) MarshalJSON() ([]byte, error) {
+	if i.Int == nil {
+		return []byte("null"), nil
+	}
+
 	return []byte(fmt.Sprintf(`"%s"`, i.String())), nil
 }
 

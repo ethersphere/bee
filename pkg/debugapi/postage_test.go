@@ -38,7 +38,7 @@ func TestReserveState(t *testing.T) {
 			BatchStore: mock.New(),
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&postage.ReserveState{}),
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{}),
 		)
 	})
 }
@@ -54,7 +54,11 @@ func TestChainState(t *testing.T) {
 			BatchStore: mock.New(mock.WithChainState(cs)),
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(cs),
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{
+				Block:        123456,
+				TotalAmount:  bigint.Wrap(big.NewInt(50)),
+				CurrentPrice: bigint.Wrap(big.NewInt(5)),
+			}),
 		)
 	})
 
@@ -63,7 +67,7 @@ func TestChainState(t *testing.T) {
 			BatchStore: mock.New(),
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&postage.ChainState{}),
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{}),
 		)
 	})
 }

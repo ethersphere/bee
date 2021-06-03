@@ -18,6 +18,12 @@ type reserveStateResponse struct {
 	Inner     *bigint.BigInt `json:"inner"`
 }
 
+type chainStateResponse struct {
+	Block        uint64         `json:"block"`        // The block number of the last postage event.
+	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
+	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
+}
+
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
@@ -31,5 +37,11 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 
 // chainStateHandler returns the current chain state.
 func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
-	jsonhttp.OK(w, s.batchStore.GetChainState())
+	state := s.batchStore.GetChainState()
+
+	jsonhttp.OK(w, chainStateResponse{
+		Block:        state.Block,
+		TotalAmount:  bigint.Wrap(state.TotalAmount),
+		CurrentPrice: bigint.Wrap(state.CurrentPrice),
+	})
 }
