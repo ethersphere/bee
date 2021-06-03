@@ -85,7 +85,7 @@ func TestModeSetRemove_WithSync(t *testing.T) {
 			db := newTestDB(t, nil)
 			var chs []swarm.Chunk
 			for i := 0; i < tc.count; i++ {
-				ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+				ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 				err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 				if err != nil {
 					t.Fatal(err)
@@ -132,7 +132,7 @@ func TestModeSetRemove_WithSync(t *testing.T) {
 			}
 			t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 0))
 
-			t.Run("postage index index count", newItemsCountTest(db.postageIndexIndex, 0))
+			t.Run("postage index index count", newItemsCountTest(db.postageIndexIndex, tc.count))
 
 			t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 

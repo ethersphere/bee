@@ -250,7 +250,7 @@ func TestModePutUpload(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
-			newItemsCountTest(db.postageIndexIndex, 0)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
@@ -288,7 +288,7 @@ func TestModePutUploadPin(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, nil)(t)
 			}
-			newItemsCountTest(db.postageIndexIndex, 0)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
@@ -491,7 +491,7 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync}
+	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload, storage.ModePutUploadPin}
 
 	for _, modeTc1 := range modes {
 		for _, modeTc2 := range modes {
@@ -546,11 +546,81 @@ func TestModePut_SameStamp(t *testing.T) {
 	}
 }
 
+func TestModePut_ImmutableStamp(t *testing.T) {
+
+	ctx := context.Background()
+	stamp := postagetesting.MustNewStamp()
+	ts := time.Now().Unix()
+
+	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload, storage.ModePutUploadPin}
+
+	for _, modeTc1 := range modes {
+		for _, modeTc2 := range modes {
+			for _, tc := range []struct {
+				name         string
+				persistChunk swarm.Chunk
+				discardChunk swarm.Chunk
+			}{
+				{
+					name:         "same timestamps",
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+				},
+				{
+					name:         "higher timestamp",
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts+1),
+				},
+				{
+					name:         "higher timestamp first",
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts+1),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+				},
+			} {
+				testName := fmt.Sprintf("%s %s %s", modeTc1.String(), modeTc2.String(), tc.name)
+				t.Run(testName, func(t *testing.T) {
+
+					db := newTestDB(t, nil)
+					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
+
+					_, err := db.Put(ctx, modeTc1, tc.persistChunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
+					if !errors.Is(err, ErrOverwrite) {
+						t.Fatalf("expected overwrite error on immutable stamp got %v", err)
+					}
+
+					newItemsCountTest(db.retrievalDataIndex, 1)(t)
+					newItemsCountTest(db.postageChunksIndex, 1)(t)
+					newItemsCountTest(db.postageRadiusIndex, 1)(t)
+					newItemsCountTest(db.postageIndexIndex, 1)(t)
+					newItemsCountTest(db.pullIndex, 1)(t)
+
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
+					if err != nil {
+						t.Fatalf("expected no error, got %v", err)
+					}
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.discardChunk.Address())
+					if !errors.Is(err, storage.ErrNotFound) {
+						t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+					}
+				})
+			}
+		}
+	}
+}
+
 func generateChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
 	tsBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(tsBuf, uint64(timestamp))
 	chunk := generateTestRandomChunk()
 	return chunk.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), tsBuf, stamp.Sig()))
+}
+
+func generateImmutableChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
+	return generateChunkWithTimestamp(stamp, timestamp).WithBatch(4, 12, 8, true)
 }
 
 // TestPutDuplicateChunks validates the expected behaviour for
