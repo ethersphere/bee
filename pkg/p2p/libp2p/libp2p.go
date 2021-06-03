@@ -78,6 +78,7 @@ type Service struct {
 type lightnodes interface {
 	Connected(context.Context, p2p.Peer)
 	Disconnected(p2p.Peer)
+	KickOut(p2p.Peer)
 	Count() int
 	RandomPeer(swarm.Address) (swarm.Address, error)
 }
@@ -377,6 +378,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					return
 				} else {
 					s.logger.Tracef("stream handler: kicking away light node %s to make room for %s", p.String(), peer.Address.String())
+					s.lightNodes.KickOut(peer)
 					_ = s.Disconnect(p)
 					return
 				}

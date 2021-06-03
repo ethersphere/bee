@@ -18,9 +18,10 @@ import (
 
 type Container struct {
 	base              swarm.Address
+	peerMu            sync.Mutex // peerMu guards connectedPeers and disconnectedPeers.
 	connectedPeers    *pslice.PSlice
 	disconnectedPeers *pslice.PSlice
-	peerMu            sync.Mutex
+	metrics           metrics
 }
 
 func NewContainer(base swarm.Address) *Container {
@@ -28,6 +29,7 @@ func NewContainer(base swarm.Address) *Container {
 		base:              base,
 		connectedPeers:    pslice.New(1, base),
 		disconnectedPeers: pslice.New(1, base),
+		metrics:           newMetrics(),
 	}
 }
 
@@ -38,6 +40,9 @@ func (c *Container) Connected(ctx context.Context, peer p2p.Peer) {
 	addr := peer.Address
 	c.connectedPeers.Add(addr)
 	c.disconnectedPeers.Remove(addr)
+
+	c.metrics.CurrentlyConnectedPeers.Set(float64(c.connectedPeers.Length()))
+	c.metrics.CurrentlyDisconnectedPeers.Set(float64(c.disconnectedPeers.Length()))
 }
 
 func (c *Container) Disconnected(peer p2p.Peer) {
@@ -49,6 +54,13 @@ func (c *Container) Disconnected(peer p2p.Peer) {
 		c.connectedPeers.Remove(addr)
 		c.disconnectedPeers.Add(addr)
 	}
+
+	c.metrics.CurrentlyConnectedPeers.Set(float64(c.connectedPeers.Length()))
+	c.metrics.CurrentlyDisconnectedPeers.Set(float64(c.disconnectedPeers.Length()))
+}
+
+func (c *Container) KickOut(_ p2p.Peer) {
+	c.metrics.TotalKickedPeers.Inc()
 }
 
 func (c *Container) Count() int {
