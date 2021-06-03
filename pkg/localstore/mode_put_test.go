@@ -535,7 +535,7 @@ func TestModePut_SameStamp(t *testing.T) {
 					t.Fatalf("expected no error, got %v", err)
 				}
 				_, err = db.Get(ctx, storage.ModeGetLookup, tc.discardChunk.Address())
-				if !errors.Is(storage.ErrNotFound, err) {
+				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
 				}
 			})
