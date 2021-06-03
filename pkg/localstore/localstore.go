@@ -590,15 +590,17 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 // chunkToItem creates new Item with data provided by the Chunk.
 func chunkToItem(ch swarm.Chunk) shed.Item {
 	return shed.Item{
-		Address:   ch.Address().Bytes(),
-		Data:      ch.Data(),
-		Tag:       ch.TagID(),
-		BatchID:   ch.Stamp().BatchID(),
-		Index:     ch.Stamp().Index(),
-		Timestamp: ch.Stamp().Timestamp(),
-		Sig:       ch.Stamp().Sig(),
-		Depth:     ch.Depth(),
-		Radius:    ch.Radius(),
+		Address:     ch.Address().Bytes(),
+		Data:        ch.Data(),
+		Tag:         ch.TagID(),
+		BatchID:     ch.Stamp().BatchID(),
+		Index:       ch.Stamp().Index(),
+		Timestamp:   ch.Stamp().Timestamp(),
+		Sig:         ch.Stamp().Sig(),
+		Depth:       ch.Depth(),
+		Radius:      ch.Radius(),
+		BucketDepth: ch.BucketDepth(),
+		Immutable:   ch.Immutable(),
 	}
 }
 
