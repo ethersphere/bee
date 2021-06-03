@@ -491,8 +491,10 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	for _, modeTc1 := range []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync} {
-		for _, modeTc2 := range []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync} {
+	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync}
+
+	for _, modeTc1 := range modes {
+		for _, modeTc2 := range modes {
 			for _, tc := range []struct {
 				persistChunk swarm.Chunk
 				discardChunk swarm.Chunk
