@@ -491,99 +491,73 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	for _, tcn := range []struct {
-		name         string
-		mode         storage.ModePut
-		persistChunk swarm.Chunk
-		discardChunk swarm.Chunk
+	for _, modeTc := range []struct {
+		name string
+		mode storage.ModePut
 	}{
 		{
-			name:         "ModePutRequest - same timestamp",
-			mode:         storage.ModePutRequest,
-			persistChunk: generateChunkWithTimestamp(stamp, ts),
-			discardChunk: generateChunkWithTimestamp(stamp, ts),
+			mode: storage.ModePutRequest,
+			name: "ModePutRequest",
 		},
 		{
-			name:         "ModePutRequest - higher timestamp",
-			mode:         storage.ModePutRequest,
-			persistChunk: generateChunkWithTimestamp(stamp, ts+1),
-			discardChunk: generateChunkWithTimestamp(stamp, ts),
+			mode: storage.ModePutRequestPin,
+			name: "ModePutRequestPin",
 		},
 		{
-			name:         "ModePutRequest - lower timestamp",
-			mode:         storage.ModePutRequest,
-			persistChunk: generateChunkWithTimestamp(stamp, ts),
-			discardChunk: generateChunkWithTimestamp(stamp, ts-1),
-		},
-
-		{
-			name:         "ModePutRequestPin - same timestamp",
-			mode:         storage.ModePutRequestPin,
-			persistChunk: generateChunkWithTimestamp(stamp, ts),
-			discardChunk: generateChunkWithTimestamp(stamp, ts),
-		},
-		{
-			name:         "ModePutRequestPin - higher timestamp",
-			mode:         storage.ModePutRequestPin,
-			persistChunk: generateChunkWithTimestamp(stamp, ts+1),
-			discardChunk: generateChunkWithTimestamp(stamp, ts),
-		},
-		{
-			name:         "ModePutRequestPin - lower timestamp",
-			mode:         storage.ModePutRequestPin,
-			persistChunk: generateChunkWithTimestamp(stamp, ts),
-			discardChunk: generateChunkWithTimestamp(stamp, ts-1),
-		},
-
-		{
-			name:         "ModePutSync - same timestamp",
-			mode:         storage.ModePutSync,
-			persistChunk: generateChunkWithTimestamp(stamp, ts),
-			discardChunk: generateChunkWithTimestamp(stamp, ts),
-		},
-		{
-			name:         "ModePutSync - higher timestamp",
-			mode:         storage.ModePutSync,
-			persistChunk: generateChunkWithTimestamp(stamp, ts+1),
-			discardChunk: generateChunkWithTimestamp(stamp, ts),
-		},
-		{
-			name:         "ModePutSync - lower timestamp",
-			mode:         storage.ModePutSync,
-			persistChunk: generateChunkWithTimestamp(stamp, ts),
-			discardChunk: generateChunkWithTimestamp(stamp, ts-1),
+			mode: storage.ModePutSync,
+			name: "ModePutSync",
 		},
 	} {
-		t.Run(tcn.name, func(t *testing.T) {
+		for _, tc := range []struct {
+			name         string
+			persistChunk swarm.Chunk
+			discardChunk swarm.Chunk
+		}{
+			{
+				persistChunk: generateChunkWithTimestamp(stamp, ts),
+				discardChunk: generateChunkWithTimestamp(stamp, ts),
+			},
+			{
+				persistChunk: generateChunkWithTimestamp(stamp, ts+1),
+				discardChunk: generateChunkWithTimestamp(stamp, ts),
+			},
+			{
+				persistChunk: generateChunkWithTimestamp(stamp, ts),
+				discardChunk: generateChunkWithTimestamp(stamp, ts-1),
+			},
+		} {
+			t.Run(modeTc.name, func(t *testing.T) {
 
-			db := newTestDB(t, nil)
-			unreserveChunkBatch(t, db, 0, tcn.persistChunk, tcn.discardChunk)
+				db := newTestDB(t, nil)
+				unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
 
-			_, err := db.Put(ctx, tcn.mode, tcn.persistChunk)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = db.Put(ctx, tcn.mode, tcn.discardChunk)
-			if err != nil {
-				t.Fatal(err)
-			}
+				_, err := db.Put(ctx, modeTc.mode, tc.persistChunk)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = db.Put(ctx, modeTc.mode, tc.discardChunk)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			newItemsCountTest(db.retrievalDataIndex, 1)(t)
-			newItemsCountTest(db.postageChunksIndex, 1)(t)
-			newItemsCountTest(db.postageRadiusIndex, 1)(t)
-			newItemsCountTest(db.postageIndexIndex, 1)(t)
-			newItemsCountTest(db.pullIndex, 1)(t)
+				newItemsCountTest(db.retrievalDataIndex, 1)(t)
+				newItemsCountTest(db.postageChunksIndex, 1)(t)
+				newItemsCountTest(db.postageRadiusIndex, 1)(t)
+				newItemsCountTest(db.postageIndexIndex, 1)(t)
+				newItemsCountTest(db.pullIndex, 1)(t)
 
-			_, err = db.Get(ctx, storage.ModeGetLookup, tcn.persistChunk.Address())
-			if err != nil {
-				t.Fatalf("expected no error, got %v", err)
-			}
-			_, err = db.Get(ctx, storage.ModeGetLookup, tcn.discardChunk.Address())
-			if !errors.Is(storage.ErrNotFound, err) {
-				t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
-			}
-		})
+				_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				_, err = db.Get(ctx, storage.ModeGetLookup, tc.discardChunk.Address())
+				if !errors.Is(storage.ErrNotFound, err) {
+					t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+				}
+			})
+		}
 	}
+
 }
 
 func generateChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
