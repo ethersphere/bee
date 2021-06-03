@@ -168,7 +168,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 		var immutable bool
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string) ([]byte, error) {
 				immutable = i
 				return batchID, nil
 			}),
