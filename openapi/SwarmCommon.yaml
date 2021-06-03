@@ -259,7 +259,12 @@ components:
       type: string
 
     ProblemDetails:
-      type: string
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
 
     ReferenceResponse:
       type: object
