@@ -491,7 +491,6 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	// modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync}
 	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload, storage.ModePutUploadPin}
 
 	for _, modeTc1 := range modes {
