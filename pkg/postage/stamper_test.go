@@ -64,7 +64,7 @@ func TestStamperStamping(t *testing.T) {
 		}
 	})
 
-	// tests that Stamps returns with postage.ErrOverissuedIndex
+	// tests that Stamps returns with postage.ErrInvalidIndex
 	t.Run("invalid index", func(t *testing.T) {
 		st := newTestStampIssuer(t)
 		stamper := postage.NewStamper(st, signer)
@@ -82,8 +82,8 @@ func TestStamperStamping(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error adding last stamp: %v", err)
 		}
-		if err := stamp.Valid(chunkAddr, owner, 11, 8, true); !errors.Is(err, postage.ErrOverissuedIndex) {
-			t.Fatalf("expected ErrOverissuedIndex, got %v", err)
+		if err := stamp.Valid(chunkAddr, owner, 11, 8, true); !errors.Is(err, postage.ErrInvalidIndex) {
+			t.Fatalf("expected ErrInvalidIndex, got %v", err)
 		}
 	})
 
