@@ -70,16 +70,15 @@ func (s *service) Start() {
 			exchangeRate, deduction, err := s.getPrice(ctx)
 			if err != nil {
 				s.logger.Errorf("could not get price: %v", err)
+			} else {
+				s.logger.Tracef("updated exchange rate to %d and deduction to %d", exchangeRate, deduction)
+				s.exchangeRate = exchangeRate
+				s.deduction = deduction
 			}
-
-			s.exchangeRate = exchangeRate
-			s.deduction = deduction
 
 			ts := time.Now().Unix()
 
 			timeUntilNextPoll := time.Duration(s.timeDivisor-ts%s.timeDivisor) * time.Second
-
-			s.logger.Tracef("updated exchange rate to %d and deduction to %d", exchangeRate, deduction)
 
 			select {
 			case <-s.quitC:
