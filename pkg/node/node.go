@@ -151,8 +151,8 @@ type Options struct {
 }
 
 const (
-	refreshRate = int64(1000000000000)
-	basePrice   = 1000000000
+	refreshRate = int64(10000000)
+	basePrice   = 10000
 )
 
 func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
