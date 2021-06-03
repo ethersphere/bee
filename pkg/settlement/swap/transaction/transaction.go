@@ -176,7 +176,7 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		log.Infof("===============gasPrice==============", gasPrice)
 		// increase 20%
 		gasPrice.Div(gasPrice, big.NewInt(5))
-		gasPrice.Mul(gasPrice, big.NewInt(6))
+		gasPrice.Mul(gasPrice, big.NewInt(7))
 		log.Infof("===============gasPrice======3x========", gasPrice)
 		if err != nil {
 			return nil, err
@@ -185,7 +185,7 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		log.Infof("===============gasPrice==============", gasPrice)
 		// increase 20%
 		gasPrice.Div(gasPrice, big.NewInt(5))
-		gasPrice.Mul(gasPrice, big.NewInt(6))
+		gasPrice.Mul(gasPrice, big.NewInt(7))
 		log.Infof("===============gasPrice======3x========", gasPrice)
 	}
 
