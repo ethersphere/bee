@@ -132,7 +132,7 @@ func TestModeSetRemove_WithSync(t *testing.T) {
 			}
 			t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 0))
 
-			t.Run("postage index index count", newItemsCountTest(db.postageIndexIndex, 0))
+			t.Run("postage index index count", newItemsCountTest(db.postageIndexIndex, tc.count))
 
 			t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 

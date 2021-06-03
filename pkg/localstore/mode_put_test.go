@@ -250,7 +250,7 @@ func TestModePutUpload(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
-			newItemsCountTest(db.postageIndexIndex, 0)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
@@ -288,7 +288,7 @@ func TestModePutUploadPin(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, nil)(t)
 			}
-			newItemsCountTest(db.postageIndexIndex, 0)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
