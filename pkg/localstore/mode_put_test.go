@@ -494,7 +494,6 @@ func TestModePut_SameStamp(t *testing.T) {
 	for _, modeTc1 := range []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync} {
 		for _, modeTc2 := range []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync} {
 			for _, tc := range []struct {
-				name         string
 				persistChunk swarm.Chunk
 				discardChunk swarm.Chunk
 			}{
