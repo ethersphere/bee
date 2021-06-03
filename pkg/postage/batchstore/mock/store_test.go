@@ -65,3 +65,19 @@ func TestBatchStorePutChainState(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestBatchStoreWithBatch(t *testing.T) {
+	const testCnt = 3
+
+	testBatch := postagetesting.MustNewBatch()
+	batchStore := mock.New(
+		mock.WithBatch(testBatch),
+	)
+
+	b, err := batchStore.Get(testBatch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	postagetesting.CompareBatches(t, testBatch, b)
+}

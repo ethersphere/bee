@@ -131,7 +131,7 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 		if err = stamp.Valid(chunk.Address(), b.Owner, b.Depth, b.BucketDepth, b.Immutable); err != nil {
 			return nil, err
 		}
-		return chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth), nil
+		return chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth, b.BucketDepth, b.Immutable), nil
 	}
 }
 
@@ -140,7 +140,7 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 // - authorisation - the batch owner is the stamp signer
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
-func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, bucketDepth, depth uint8, immutable bool) error {
+func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDepth uint8, immutable bool) error {
 	toSign, err := toSignDigest(chunkAddr.Bytes(), s.batchID, s.index, s.timestamp)
 	if err != nil {
 		return err
