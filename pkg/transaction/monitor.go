@@ -162,13 +162,13 @@ type confirmedTx struct {
 	watch   *transactionWatch
 }
 
-// potentiallyConfirmedWatches returns all watches with nonce less than what was specified
+// potentiallyConfirmedWatches returns all watches with nonce less than or equal what was specified
 func (tm *transactionMonitor) potentiallyConfirmedWatches(nonce uint64) (watches []*transactionWatch) {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
 	for watch := range tm.watches {
-		if watch.nonce < nonce {
+		if watch.nonce <= nonce {
 			watches = append(watches, watch)
 		}
 	}
