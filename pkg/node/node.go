@@ -517,6 +517,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
+		p2ps,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)

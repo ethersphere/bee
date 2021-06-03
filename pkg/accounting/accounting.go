@@ -87,10 +87,12 @@ type accountingPeer struct {
 	lock                           sync.Mutex // lock to be held during any accounting action for this peer
 	reservedBalance                *big.Int   // amount currently reserved for active peer interaction
 	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
+	ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
 	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
 	refreshTimestamp               int64      // last time we attempted time-based settlement
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
-	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
+	reconnectAllowTimestamp        int64
+	lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -120,6 +122,7 @@ type Accounting struct {
 	pricing        pricing.Interface
 	metrics        metrics
 	wg             sync.WaitGroup
+	p2p            p2p.Service
 	timeNow        func() time.Time
 }
 
@@ -143,6 +146,8 @@ func NewAccounting(
 	Store storage.StateStorer,
 	Pricing pricing.Interface,
 	refreshRate *big.Int,
+	p2pService p2p.Service,
+
 ) (*Accounting, error) {
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
@@ -157,6 +162,7 @@ func NewAccounting(
 		refreshRate:      refreshRate,
 		timeNow:          time.Now,
 		minimumPayment:   new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
+		p2p:              p2pService,
 	}, nil
 }
 
@@ -485,6 +491,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 		peerData = &accountingPeer{
 			reservedBalance:       big.NewInt(0),
 			shadowReservedBalance: big.NewInt(0),
+			ghostBalance:          big.NewInt(0),
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: new(big.Int).Set(a.paymentThreshold),
 		}
@@ -627,6 +634,36 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	peerDebt := new(big.Int).Add(balance, accountingPeer.shadowReservedBalance)
 
 	if peerDebt.Cmp(zero) < 0 {
+		return zero, nil
+	}
+
+	return peerDebt, nil
+}
+
+// peerLatentDebt returns the sum of the positive part of the outstanding balance, shadow reserve and the ghost balance
+func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
+
+	accountingPeer := a.getAccountingPeer(peer)
+
+	balance := new(big.Int)
+	zero := big.NewInt(0)
+
+	err := a.store.Get(peerBalanceKey(peer), &balance)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
+		}
+		balance = big.NewInt(0)
+	}
+
+	if balance.Cmp(zero) < 0 {
+		balance.Set(zero)
+	}
+
+	peerDebt := new(big.Int).Add(balance, accountingPeer.shadowReservedBalance)
+	peerLatentDebt := new(big.Int).Add(peerDebt, accountingPeer.ghostBalance)
+
+	if peerLatentDebt.Cmp(zero) < 0 {
 		return zero, nil
 	}
 
@@ -940,7 +977,13 @@ func (d *debitAction) Apply() error {
 	if nextBalance.Cmp(a.disconnectLimit) >= 0 {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsCount.Inc()
-		return p2p.NewBlockPeerError(24*time.Hour, ErrDisconnectThresholdExceeded)
+
+		disconnectFor, err := a.blocklistUntil(d.peer, 1)
+		if err != nil {
+			return p2p.NewBlockPeerError(24*time.Hour, ErrDisconnectThresholdExceeded)
+		}
+		return p2p.NewBlockPeerError(time.Duration(disconnectFor), ErrDisconnectThresholdExceeded)
+
 	}
 
 	return nil
@@ -951,7 +994,59 @@ func (d *debitAction) Cleanup() {
 	if !d.applied {
 		d.accountingPeer.lock.Lock()
 		defer d.accountingPeer.lock.Unlock()
+		a := d.accounting
 		d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
+		d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
+		if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
+			_ = a.blocklist(d.peer, 1)
+		}
+	}
+}
+
+func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64, error) {
+
+	debt, err := a.peerLatentDebt(peer)
+	if err != nil {
+		return 0, err
+	}
+
+	if debt.Cmp(a.refreshRate) < 0 {
+		debt.Set(a.refreshRate)
+	}
+
+	multiplyDebt := new(big.Int).Mul(debt, big.NewInt(multiplier))
+
+	additionalDebt := new(big.Int).Add(multiplyDebt, a.paymentThreshold)
+
+	k := new(big.Int).Div(additionalDebt, a.refreshRate)
+
+	kInt := k.Int64()
+
+	return kInt, nil
+}
+
+func (a *Accounting) blocklist(peer swarm.Address, multiplier int64) error {
+
+	disconnectFor, err := a.blocklistUntil(peer, multiplier)
+	if err != nil {
+		return a.p2p.Blocklist(peer, 1*time.Hour)
+	}
+
+	return a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
+}
+
+func (a *Accounting) Connect(peer swarm.Address) {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
+
+	if accountingPeer.reconnectAllowTimestamp != 0 {
+		timeNow := a.timeNow().Unix()
+		if timeNow < accountingPeer.reconnectAllowTimestamp {
+			disconnectFor := accountingPeer.reconnectAllowTimestamp - timeNow
+			a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
+		}
 	}
 }
 
@@ -1001,6 +1096,42 @@ func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big
 	a.logger.Tracef("decreasing originated balance to peer %v by amount %d to current balance %d", peer, amount, newOriginatedBalance)
 
 	return nil
+}
+
+func (a *Accounting) Disconnect(peer swarm.Address) {
+	accountingPeer := a.getAccountingPeer(peer)
+
+	zero := big.NewInt(0)
+	accountingPeer.lock.Lock()
+	defer func() {
+
+		accountingPeer.shadowReservedBalance.Set(zero)
+		accountingPeer.ghostBalance.Set(zero)
+		accountingPeer.reservedBalance.Set(zero)
+
+		err := a.store.Put(peerBalanceKey(peer), zero)
+		if err != nil {
+			a.logger.Errorf("failed to persist balance: %w", err)
+		}
+
+		err = a.store.Put(peerSurplusBalanceKey(peer), zero)
+		if err != nil {
+			a.logger.Errorf("failed to persist surplus balance: %w", err)
+		}
+
+		accountingPeer.lock.Unlock()
+
+	}()
+
+	timeNow := a.timeNow().Unix()
+
+	disconnectFor, err := a.blocklistUntil(peer, 1)
+	if err != nil {
+		disconnectFor = int64(60)
+	}
+	timestamp := timeNow + disconnectFor
+
+	accountingPeer.reconnectAllowTimestamp = timestamp
 }
 
 func (a *Accounting) SetRefreshFunc(f RefreshFunc) {
