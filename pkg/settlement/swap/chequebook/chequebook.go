@@ -220,6 +220,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		return nil, err
 	}
 
+	// actually send the check before saving to avoid double payment
 	err = sendChequeFunc(&SignedCheque{
 		Cheque:    cheque,
 		Signature: sig,
