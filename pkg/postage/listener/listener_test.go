@@ -38,9 +38,7 @@ func TestListener(t *testing.T) {
 			owner:            addr[:],
 			amount:           big.NewInt(42),
 			normalisedAmount: big.NewInt(43),
-			// bucketDepth:      10,
-			depth: 100,
-			// immutable:        true,
+			depth:            100,
 		}
 
 		ev, evC := newEventUpdaterMock()

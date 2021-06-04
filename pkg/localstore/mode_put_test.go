@@ -491,10 +491,8 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload, storage.ModePutUploadPin}
-
-	for _, modeTc1 := range modes {
-		for _, modeTc2 := range modes {
+	for _, modeTc1 := range storage.PutModes {
+		for _, modeTc2 := range storage.PutModes {
 			for _, tc := range []struct {
 				persistChunk swarm.Chunk
 				discardChunk swarm.Chunk
@@ -530,7 +528,9 @@ func TestModePut_SameStamp(t *testing.T) {
 					newItemsCountTest(db.postageChunksIndex, 1)(t)
 					newItemsCountTest(db.postageRadiusIndex, 1)(t)
 					newItemsCountTest(db.postageIndexIndex, 1)(t)
-					newItemsCountTest(db.pullIndex, 1)(t)
+					if modeTc1 != storage.ModePutRequestCache {
+						newItemsCountTest(db.pullIndex, 1)(t)
+					}
 
 					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
 					if err != nil {
@@ -552,10 +552,8 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	modes := []storage.ModePut{storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutSync, storage.ModePutUpload, storage.ModePutUploadPin}
-
-	for _, modeTc1 := range modes {
-		for _, modeTc2 := range modes {
+	for _, modeTc1 := range storage.PutModes {
+		for _, modeTc2 := range storage.PutModes {
 			for _, tc := range []struct {
 				name         string
 				persistChunk swarm.Chunk
@@ -596,7 +594,9 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 					newItemsCountTest(db.postageChunksIndex, 1)(t)
 					newItemsCountTest(db.postageRadiusIndex, 1)(t)
 					newItemsCountTest(db.postageIndexIndex, 1)(t)
-					newItemsCountTest(db.pullIndex, 1)(t)
+					if modeTc1 != storage.ModePutRequestCache {
+						newItemsCountTest(db.pullIndex, 1)(t)
+					}
 
 					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
 					if err != nil {

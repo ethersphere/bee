@@ -408,7 +408,6 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e = keyItem
 			e.BatchID = make([]byte, 32)
 			copy(e.BatchID, value[:32])
 			e.Index = make([]byte, postage.IndexSize)
@@ -508,7 +507,6 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e = keyItem
 			e.Address = value[:32]
 			e.Timestamp = value[32:]
 			return e, nil

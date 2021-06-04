@@ -68,7 +68,7 @@ func (s *Stamp) Timestamp() []byte {
 }
 
 // MarshalBinary gives the byte slice serialisation of a stamp:
-// batchID[32]|index[32]|SignatureUser[65]|SignatureOwner[65].
+// batchID[32]|index[8]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, StampSize)
 	copy(buf, s.batchID)

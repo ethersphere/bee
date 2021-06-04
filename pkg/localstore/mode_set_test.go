@@ -18,7 +18,6 @@ package localstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -45,22 +44,8 @@ func TestModeSetRemove(t *testing.T) {
 			}
 
 			t.Run("retrieve indexes", func(t *testing.T) {
-				for _, ch := range chunks {
-					wantErr := leveldb.ErrNotFound
-					_, err := db.retrievalDataIndex.Get(addressToItem(ch.Address()))
-					if !errors.Is(err, wantErr) {
-						t.Errorf("got error %v, want %v", err, wantErr)
-					}
-
-					// access index should not be set
-					_, err = db.retrievalAccessIndex.Get(addressToItem(ch.Address()))
-					if !errors.Is(err, wantErr) {
-						t.Errorf("got error %v, want %v", err, wantErr)
-					}
-				}
 
 				t.Run("retrieve data index count", newItemsCountTest(db.retrievalDataIndex, 0))
-
 				t.Run("retrieve access index count", newItemsCountTest(db.retrievalAccessIndex, 0))
 			})
 
@@ -108,28 +93,11 @@ func TestModeSetRemove_WithSync(t *testing.T) {
 			}
 
 			t.Run("retrieve indexes", func(t *testing.T) {
-				for _, ch := range chs {
-					wantErr := leveldb.ErrNotFound
-					_, err := db.retrievalDataIndex.Get(addressToItem(ch.Address()))
-					if !errors.Is(err, wantErr) {
-						t.Errorf("got error %v, want %v", err, wantErr)
-					}
-
-					// access index should not be set
-					_, err = db.retrievalAccessIndex.Get(addressToItem(ch.Address()))
-					if !errors.Is(err, wantErr) {
-						t.Errorf("got error %v, want %v", err, wantErr)
-					}
-				}
 
 				t.Run("retrieve data index count", newItemsCountTest(db.retrievalDataIndex, 0))
-
 				t.Run("retrieve access index count", newItemsCountTest(db.retrievalAccessIndex, 0))
 			})
 
-			for _, ch := range chs {
-				newPullIndexTest(db, ch, 0, leveldb.ErrNotFound)(t)
-			}
 			t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 0))
 
 			t.Run("postage index index count", newItemsCountTest(db.postageIndexIndex, tc.count))
