@@ -86,7 +86,7 @@ func newMetrics() metrics {
 		KickedOutPeersCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_kickedout_peers",
+			Name:      "kickedout_peers_count",
 			Help:      "Number of total kicked-out peers.",
 		}),
 	}
