@@ -38,6 +38,11 @@ jobs:
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
@@ -47,11 +52,6 @@ jobs:
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - name: Apply patches
-        run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
-          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/listener/listener.go .github/patches/listener.patch
       - name: Set local cluster
         run: |
           make beelocal ACTION=add-hosts
