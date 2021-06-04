@@ -13,6 +13,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -148,6 +149,8 @@ LOOP:
 						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 						// only print this if there was no error while sending the chunk
 						logger.Tracef("pusher: pushed chunk %s to node %s", ch.Address().String(), storerPeer.String())
+						po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
+						s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 					} else {
 						s.metrics.TotalErrors.Inc()
 						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())

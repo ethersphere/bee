@@ -16,6 +16,8 @@ type metrics struct {
 	MarkAndSweepTime prometheus.Histogram
 	SyncTime         prometheus.Histogram
 	ErrorTime        prometheus.Histogram
+
+	ReceiptDepth *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
@@ -61,6 +63,15 @@ func newMetrics() metrics {
 			Help:      "Histogram of time spent before giving up on syncing a chunk.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
 		}),
+		ReceiptDepth: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "receipt_depth",
+				Help:      "Counter of receipts received at different depths.",
+			},
+			[]string{"depth"},
+		),
 	}
 }
 
