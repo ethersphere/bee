@@ -8,11 +8,13 @@ package steward
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"golang.org/x/sync/errgroup"
 )
@@ -55,7 +57,10 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
 			defer func() { <-sem }()
 			_, err := s.push.PushChunkToClosest(ctx, c)
 			if err != nil {
-				return err
+				if !errors.Is(err, topology.ErrWantSelf) {
+					return err
+				}
+				// swallow the error in case we are the closest node
 			}
 			return nil
 		})
