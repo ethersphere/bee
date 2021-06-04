@@ -14,6 +14,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.1.0"
+      BEEKEEPER_BRANCH: "thresholds"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
