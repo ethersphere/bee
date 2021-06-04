@@ -56,8 +56,6 @@ const (
 	ModeGetRequestPin
 )
 
-var PutModes = []ModePut{ModePutRequest, ModePutRequestPin, ModePutSync, ModePutUpload, ModePutUploadPin, ModePutRequestCache}
-
 // ModePut enumerates different Putter modes.
 type ModePut int
 

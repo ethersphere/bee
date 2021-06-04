@@ -34,6 +34,15 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+var putModes = []storage.ModePut{
+	storage.ModePutRequest,
+	storage.ModePutRequestPin,
+	storage.ModePutSync,
+	storage.ModePutUpload,
+	storage.ModePutUploadPin,
+	storage.ModePutRequestCache,
+}
+
 // TestModePutRequest validates ModePutRequest index values on the provided DB.
 func TestModePutRequest(t *testing.T) {
 	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
@@ -491,8 +500,8 @@ func TestModePut_SameStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	for _, modeTc1 := range storage.PutModes {
-		for _, modeTc2 := range storage.PutModes {
+	for _, modeTc1 := range putModes {
+		for _, modeTc2 := range putModes {
 			for _, tc := range []struct {
 				persistChunk swarm.Chunk
 				discardChunk swarm.Chunk
@@ -552,8 +561,8 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
-	for _, modeTc1 := range storage.PutModes {
-		for _, modeTc2 := range storage.PutModes {
+	for _, modeTc1 := range putModes {
+		for _, modeTc2 := range putModes {
 			for _, tc := range []struct {
 				name         string
 				persistChunk swarm.Chunk
