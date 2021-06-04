@@ -304,7 +304,7 @@ type batchCreatedEvent struct {
 	Owner             common.Address
 	Depth             uint8
 	BucketDepth       uint8
-	Immutable         bool
+	ImmutableFlag     bool
 }
 
 type batchTopUpEvent struct {
