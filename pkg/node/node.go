@@ -652,6 +652,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
+		debugAPIService.MustRegisterMetrics(kad.Metrics()...)
 
 		if pullerService != nil {
 			debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
