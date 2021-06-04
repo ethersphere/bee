@@ -108,7 +108,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 
 	txHash, err := c.transactionService.Send(ctx, request)
 	if err != nil {
-		return nil, fmt.Errorf("send: depth %d bucketDepth %d immutable %t: %w", depth, bucketDepth, immutable, err)
+		return nil, fmt.Errorf("send: depth %d bucketDepth %d immutable %t: %w", depth, BucketDepth, immutable, err)
 	}
 
 	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
