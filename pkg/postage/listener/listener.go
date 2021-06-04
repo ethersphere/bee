@@ -117,7 +117,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NormalisedBalance,
 			c.Depth,
 			c.BucketDepth,
-			c.Immutable,
+			c.ImmutableFlag,
 		)
 	case batchTopupTopic:
 		c := &batchTopUpEvent{}
