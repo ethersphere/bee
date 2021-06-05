@@ -169,7 +169,8 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 	} else {
 		gasLimit = request.GasLimit
 	}
-
+	
+	gasLimit.Mul(gasLimit, big.NewInt(3))
 	var gasPrice *big.Int
 	if request.GasPrice == nil {
 		gasPrice, err = backend.SuggestGasPrice(ctx)
@@ -179,7 +180,10 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 	} else {
 		gasPrice = request.GasPrice
 	}
-
+	gasLimit.Mul(gasLimit, big.NewInt(3))
+	gasPrice.Mul(gasPrice, big.NewInt(3))
+	
+	fmt.Sprintf("%f%f", gasLimit, gasPrice)
 	if request.To != nil {
 		return types.NewTransaction(
 			nonce,
