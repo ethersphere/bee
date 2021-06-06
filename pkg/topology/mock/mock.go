@@ -67,21 +67,16 @@ func NewTopologyDriver(opts ...Option) topology.Driver {
 	return d
 }
 
-func (d *mock) AddPeers(_ context.Context, addrs ...swarm.Address) error {
-	if d.addPeersErr != nil {
-		return d.addPeersErr
-	}
-
+func (d *mock) AddPeers(addrs ...swarm.Address) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
 	d.peers = append(d.peers, addrs...)
-
-	return nil
 }
 
 func (d *mock) Connected(ctx context.Context, addr swarm.Address) error {
-	return d.AddPeers(ctx, addr)
+	d.AddPeers(addr)
+	return nil
 }
 
 func (d *mock) Disconnected(swarm.Address) {
@@ -198,9 +193,8 @@ func (d *mock) Snapshot() *topology.KadParams {
 	return new(topology.KadParams)
 }
 
-func (d *mock) Close() error {
-	return nil
-}
+func (d *mock) Halt()        {}
+func (d *mock) Close() error { return nil }
 
 type Option interface {
 	apply(*mock)

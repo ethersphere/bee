@@ -20,7 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -47,6 +47,12 @@ type BlockHeightContractFilterer interface {
 	BlockNumber(context.Context) (uint64, error)
 }
 
+// Shutdowner interface is passed to the listener to shutdown the node if we hit
+// error while listening for blockchain events.
+type Shutdowner interface {
+	Shutdown(context.Context) error
+}
+
 type listener struct {
 	logger    logging.Logger
 	ev        BlockHeightContractFilterer
@@ -56,6 +62,7 @@ type listener struct {
 	quit                chan struct{}
 	wg                  sync.WaitGroup
 	metrics             metrics
+	shutdowner          Shutdowner
 }
 
 func New(
@@ -63,6 +70,7 @@ func New(
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
 	blockTime uint64,
+	shutdowner Shutdowner,
 ) postage.Listener {
 	return &listener{
 		logger:              logger,
@@ -71,6 +79,7 @@ func New(
 		postageStampAddress: postageStampAddress,
 		quit:                make(chan struct{}),
 		metrics:             newMetrics(),
+		shutdowner:          shutdowner,
 	}
 }
 
@@ -243,7 +252,18 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	go func() {
 		err := listenf()
 		if err != nil {
-			l.logger.Errorf("event listener sync: %v", err)
+			if errors.Is(err, context.Canceled) {
+				// context cancelled is returned on shutdown,
+				// therefore we do nothing here
+				return
+			}
+			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
+			if l.shutdowner != nil {
+				err = l.shutdowner.Shutdown(context.Background())
+				if err != nil {
+					l.logger.Errorf("failed shutting down node: %v", err)
+				}
+			}
 		}
 	}()
 

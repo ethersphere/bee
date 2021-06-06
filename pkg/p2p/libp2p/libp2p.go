@@ -48,6 +48,8 @@ var (
 	_ p2p.DebugService = (*Service)(nil)
 )
 
+const defaultLightNodeLimit = 100
+
 type Service struct {
 	ctx               context.Context
 	host              host.Host
@@ -67,13 +69,17 @@ type Service struct {
 	logger            logging.Logger
 	tracer            *tracing.Tracer
 	ready             chan struct{}
+	halt              chan struct{}
 	lightNodes        lightnodes
+	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
 }
 
 type lightnodes interface {
 	Connected(context.Context, p2p.Peer)
 	Disconnected(p2p.Peer)
+	Count() int
+	RandomPeer(swarm.Address) (swarm.Address, error)
 }
 
 type Options struct {
@@ -83,6 +89,7 @@ type Options struct {
 	EnableQUIC     bool
 	Standalone     bool
 	FullNode       bool
+	LightNodeLimit int
 	WelcomeMessage string
 	Transaction    []byte
 }
@@ -233,10 +240,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 		ready:             make(chan struct{}),
+		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
 	}
 
 	peerRegistry.setDisconnecter(s)
+
+	s.lightNodeLimit = defaultLightNodeLimit
+	if o.LightNodeLimit > 0 {
+		s.lightNodeLimit = o.LightNodeLimit
+	}
 
 	// Construct protocols.
 	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
@@ -245,126 +258,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
-	// handshake
-	s.host.SetStreamHandlerMatch(id, matcher, func(stream network.Stream) {
-		select {
-		case <-s.ready:
-		case <-s.ctx.Done():
-			return
-		}
-		peerID := stream.Conn().RemotePeer()
-		handshakeStream := NewStream(stream)
-		i, err := s.handshakeService.Handle(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
-		if err != nil {
-			s.logger.Debugf("stream handler: handshake: handle %s: %v", peerID, err)
-			s.logger.Errorf("stream handler: handshake: unable to handshake with peer id %v", peerID)
-			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
-			return
-		}
-
-		overlay := i.BzzAddress.Overlay
-
-		blocked, err := s.blocklist.Exists(overlay)
-		if err != nil {
-			s.logger.Debugf("stream handler: blocklisting: exists %s: %v", overlay, err)
-			s.logger.Errorf("stream handler: internal error while connecting with peer %s", overlay)
-			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
-			return
-		}
-
-		if blocked {
-			s.logger.Errorf("stream handler: blocked connection from blocklisted peer %s", overlay)
-			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
-			return
-		}
-
-		if s.notifier != nil {
-			if !s.notifier.Pick(p2p.Peer{Address: overlay, FullNode: i.FullNode}) {
-				s.logger.Warningf("stream handler: don't want incoming peer %s. disconnecting", overlay)
-				_ = handshakeStream.Reset()
-				_ = s.host.Network().ClosePeer(peerID)
-				return
-			}
-		}
-
-		if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
-			s.logger.Debugf("stream handler: peer %s already exists", overlay)
-			if err = handshakeStream.FullClose(); err != nil {
-				s.logger.Debugf("stream handler: could not close stream %s: %v", overlay, err)
-				s.logger.Errorf("stream handler: unable to handshake with peer %v", overlay)
-				_ = s.Disconnect(overlay)
-			}
-			return
-		}
-
-		if err = handshakeStream.FullClose(); err != nil {
-			s.logger.Debugf("stream handler: could not close stream %s: %v", overlay, err)
-			s.logger.Errorf("stream handler: unable to handshake with peer %v", overlay)
-			_ = s.Disconnect(overlay)
-			return
-		}
-
-		if i.FullNode {
-			err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
-			if err != nil {
-				s.logger.Debugf("stream handler: addressbook put error %s: %v", peerID, err)
-				s.logger.Errorf("stream handler: unable to persist peer %v", peerID)
-				_ = s.Disconnect(i.BzzAddress.Overlay)
-				return
-			}
-		}
-
-		peer := p2p.Peer{Address: overlay, FullNode: i.FullNode}
-
-		s.protocolsmu.RLock()
-		for _, tn := range s.protocols {
-			if tn.ConnectIn != nil {
-				if err := tn.ConnectIn(ctx, peer); err != nil {
-					s.logger.Debugf("stream handler: connectIn: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, overlay, err)
-					_ = s.Disconnect(overlay)
-					s.protocolsmu.RUnlock()
-					return
-				}
-			}
-		}
-		s.protocolsmu.RUnlock()
-
-		if s.notifier != nil {
-			if !i.FullNode {
-				s.lightNodes.Connected(ctx, peer)
-				//light node announces explicitly
-				if err := s.notifier.Announce(ctx, peer.Address); err != nil {
-					s.logger.Debugf("stream handler: notifier.Announce: %s: %v", peer.Address.String(), err)
-				}
-			} else if err := s.notifier.Connected(ctx, peer); err != nil { // full node announces implicitly
-				s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
-				// note: this cannot be unit tested since the node
-				// waiting on handshakeStream.FullClose() on the other side
-				// might actually get a stream reset when we disconnect here
-				// resulting in a flaky response from the Connect method on
-				// the other side.
-				// that is why the Pick method has been added to the notifier
-				// interface, in addition to the possibility of deciding whether
-				// a peer connection is wanted prior to adding the peer to the
-				// peer registry and starting the protocols.
-				_ = s.Disconnect(overlay)
-				return
-			}
-		}
-
-		s.metrics.HandledStreamCount.Inc()
-		if !s.peers.Exists(overlay) {
-			s.logger.Warningf("stream handler: inbound peer %s does not exist, disconnecting", overlay)
-			_ = s.Disconnect(overlay)
-			return
-		}
-
-		s.logger.Debugf("stream handler: successfully connected to peer %s%s (inbound)", i.BzzAddress.ShortString(), i.LightString())
-		s.logger.Infof("stream handler: successfully connected to peer %s%s (inbound)", i.BzzAddress.Overlay, i.LightString())
-	})
+	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
 		s.metrics.HandledConnectionCount.Inc()
@@ -373,6 +267,146 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry)       // update peer registry on network events
 	h.Network().Notify(s.handshakeService) // update handshake service on network events
 	return s, nil
+}
+
+func (s *Service) handleIncoming(stream network.Stream) {
+	select {
+	case <-s.ready:
+	case <-s.halt:
+		go func() { _ = stream.Reset() }()
+		return
+	case <-s.ctx.Done():
+		go func() { _ = stream.Reset() }()
+		return
+	}
+
+	peerID := stream.Conn().RemotePeer()
+	handshakeStream := NewStream(stream)
+	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
+	if err != nil {
+		s.logger.Debugf("stream handler: handshake: handle %s: %v", peerID, err)
+		s.logger.Errorf("stream handler: handshake: unable to handshake with peer id %v", peerID)
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return
+	}
+
+	overlay := i.BzzAddress.Overlay
+
+	blocked, err := s.blocklist.Exists(overlay)
+	if err != nil {
+		s.logger.Debugf("stream handler: blocklisting: exists %s: %v", overlay, err)
+		s.logger.Errorf("stream handler: internal error while connecting with peer %s", overlay)
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return
+	}
+
+	if blocked {
+		s.logger.Errorf("stream handler: blocked connection from blocklisted peer %s", overlay)
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return
+	}
+
+	if s.notifier != nil {
+		if !s.notifier.Pick(p2p.Peer{Address: overlay, FullNode: i.FullNode}) {
+			s.logger.Warningf("stream handler: don't want incoming peer %s. disconnecting", overlay)
+			_ = handshakeStream.Reset()
+			_ = s.host.Network().ClosePeer(peerID)
+			return
+		}
+	}
+
+	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
+		s.logger.Debugf("stream handler: peer %s already exists", overlay)
+		if err = handshakeStream.FullClose(); err != nil {
+			s.logger.Debugf("stream handler: could not close stream %s: %v", overlay, err)
+			s.logger.Errorf("stream handler: unable to handshake with peer %v", overlay)
+			_ = s.Disconnect(overlay)
+		}
+		return
+	}
+
+	if err = handshakeStream.FullClose(); err != nil {
+		s.logger.Debugf("stream handler: could not close stream %s: %v", overlay, err)
+		s.logger.Errorf("stream handler: unable to handshake with peer %v", overlay)
+		_ = s.Disconnect(overlay)
+		return
+	}
+
+	if i.FullNode {
+		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
+		if err != nil {
+			s.logger.Debugf("stream handler: addressbook put error %s: %v", peerID, err)
+			s.logger.Errorf("stream handler: unable to persist peer %v", peerID)
+			_ = s.Disconnect(i.BzzAddress.Overlay)
+			return
+		}
+	}
+
+	peer := p2p.Peer{Address: overlay, FullNode: i.FullNode}
+
+	s.protocolsmu.RLock()
+	for _, tn := range s.protocols {
+		if tn.ConnectIn != nil {
+			if err := tn.ConnectIn(s.ctx, peer); err != nil {
+				s.logger.Debugf("stream handler: connectIn: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, overlay, err)
+				_ = s.Disconnect(overlay)
+				s.protocolsmu.RUnlock()
+				return
+			}
+		}
+	}
+	s.protocolsmu.RUnlock()
+
+	if s.notifier != nil {
+		if !i.FullNode {
+			s.lightNodes.Connected(s.ctx, peer)
+			//light node announces explicitly
+			if err := s.notifier.Announce(s.ctx, peer.Address, i.FullNode); err != nil {
+				s.logger.Debugf("stream handler: notifier.Announce: %s: %v", peer.Address.String(), err)
+			}
+
+			if s.lightNodes.Count() > s.lightNodeLimit {
+				// kick another node to fit this one in
+				p, err := s.lightNodes.RandomPeer(peer.Address)
+				if err != nil {
+					s.logger.Debugf("stream handler: cant find a peer slot for light node: %v", err)
+					_ = s.Disconnect(peer.Address)
+					return
+				} else {
+					s.logger.Tracef("stream handler: kicking away light node %s to make room for %s", p.String(), peer.Address.String())
+					_ = s.Disconnect(p)
+					return
+				}
+			}
+		} else if err := s.notifier.Connected(s.ctx, peer); err != nil {
+			// full node announces implicitly
+			s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
+			// note: this cannot be unit tested since the node
+			// waiting on handshakeStream.FullClose() on the other side
+			// might actually get a stream reset when we disconnect here
+			// resulting in a flaky response from the Connect method on
+			// the other side.
+			// that is why the Pick method has been added to the notifier
+			// interface, in addition to the possibility of deciding whether
+			// a peer connection is wanted prior to adding the peer to the
+			// peer registry and starting the protocols.
+			_ = s.Disconnect(overlay)
+			return
+		}
+	}
+
+	s.metrics.HandledStreamCount.Inc()
+	if !s.peers.Exists(overlay) {
+		s.logger.Warningf("stream handler: inbound peer %s does not exist, disconnecting", overlay)
+		_ = s.Disconnect(overlay)
+		return
+	}
+
+	s.logger.Debugf("stream handler: successfully connected to peer %s%s (inbound)", i.BzzAddress.ShortString(), i.LightString())
+	s.logger.Infof("stream handler: successfully connected to peer %s%s (inbound)", i.BzzAddress.Overlay, i.LightString())
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -668,9 +702,8 @@ func (s *Service) disconnected(address swarm.Address) {
 
 	peer := p2p.Peer{Address: address}
 	peerID, found := s.peers.peerID(address)
-	if !found {
-		s.logger.Debugf("libp2p disconnected: cannot find peerID for overlay: %s", address.String())
-	} else {
+	if found {
+		// peerID might not always be found on shutdown
 		full, found := s.peers.fullnode(peerID)
 		if found {
 			peer.FullNode = full
@@ -778,4 +811,8 @@ func (s *Service) GetWelcomeMessage() string {
 
 func (s *Service) Ready() {
 	close(s.ready)
+}
+
+func (s *Service) Halt() {
+	close(s.halt)
 }

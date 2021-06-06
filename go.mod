@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee
 
-go 1.16
+go 1.15
 
 require (
 	github.com/btcsuite/btcd v0.21.0-beta
@@ -59,6 +59,7 @@ require (
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
 	github.com/wealdtech/go-ens/v3 v3.4.4
 	gitlab.com/nolash/go-mockbytes v0.0.7
+	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
@@ -73,5 +74,6 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
+	resenje.org/singleflight v0.2.0
 	resenje.org/web v0.4.3
 )

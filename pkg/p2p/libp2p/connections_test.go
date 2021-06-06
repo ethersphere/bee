@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p-core/mux"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
@@ -80,6 +82,46 @@ func TestConnectToLightPeer(t *testing.T) {
 
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
+}
+
+func TestLightPeerLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		limit     = 3
+		container = lightnode.NewContainer(test.RandomAddress())
+		sf, _     = newService(t, 1, libp2pServiceOpts{lightNodes: container,
+			libp2pOpts: libp2p.Options{
+				LightNodeLimit: limit,
+				FullNode:       true,
+			}})
+
+		notifier = mockNotifier(noopCf, noopDf, true)
+	)
+	sf.SetPickyNotifier(notifier)
+
+	addr := serviceUnderlayAddress(t, sf)
+
+	for i := 0; i < 5; i++ {
+		sl, _ := newService(t, 1, libp2pServiceOpts{
+			libp2pOpts: libp2p.Options{
+				FullNode: false,
+			}})
+		_, err := sl.Connect(ctx, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 20; i++ {
+		if cnt := container.Count(); cnt == limit {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatal("timed out waiting for correct number of lightnodes")
 }
 
 func TestDoubleConnect(t *testing.T) {
@@ -744,7 +786,7 @@ func (n *notifiee) Pick(p p2p.Peer) bool {
 	return n.pick
 }
 
-func (n *notifiee) Announce(context.Context, swarm.Address) error {
+func (n *notifiee) Announce(context.Context, swarm.Address, bool) error {
 	return nil
 }
 
@@ -754,3 +796,9 @@ func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
 
 type cFunc func(context.Context, p2p.Peer) error
 type dFunc func(p2p.Peer)
+
+var noopCf = func(_ context.Context, _ p2p.Peer) error {
+	return nil
+}
+
+var noopDf = func(p p2p.Peer) {}

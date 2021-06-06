@@ -12,8 +12,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 )
 
 func TestReceiveCheque(t *testing.T) {
