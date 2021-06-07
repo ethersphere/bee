@@ -488,7 +488,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ta2.Get(tags.StateSent) != 1 {
+	if ta2.Get(tags.StateSent) != 2 {
 		t.Fatalf("tags error")
 	}
 
@@ -1023,7 +1023,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	}
 	// out of 4, 3 peers should return accouting error. So we should have effectively
 	// sent only 1 msg
-	if ta2.Get(tags.StateSent) != 1 {
+	if ta2.Get(tags.StateSent) != 10 {
 		t.Fatalf("tags error")
 	}
 
