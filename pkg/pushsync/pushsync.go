@@ -454,6 +454,15 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 
 	ps.metrics.TotalSent.Inc()
 
+	// if you manage to get a tag, just increment the respective counter
+	t, err := ps.tagger.Get(ch.TagID())
+	if err == nil && t != nil {
+		err = t.Inc(tags.StateSent)
+		if err != nil {
+			return nil, true, fmt.Errorf("tag %d increment: %v", ch.TagID(), err)
+		}
+	}
+
 	var receipt pb.Receipt
 	if err := r.ReadMsgWithContext(ctx, &receipt); err != nil {
 		_ = streamer.Reset()
@@ -468,15 +477,6 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	err = ps.accounting.Credit(peer, receiptPrice, originated)
 	if err != nil {
 		return nil, true, err
-	}
-
-	// if you manage to get a tag, just increment the respective counter
-	t, err := ps.tagger.Get(ch.TagID())
-	if err == nil && t != nil {
-		err = t.Inc(tags.StateSent)
-		if err != nil {
-			return nil, true, fmt.Errorf("tag %d increment: %v", ch.TagID(), err)
-		}
 	}
 
 	return &receipt, true, nil
