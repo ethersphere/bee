@@ -15,6 +15,8 @@ type metrics struct {
 	// using reflection
 	TotalReceivedPseudoSettlements prometheus.Counter
 	TotalSentPseudoSettlements     prometheus.Counter
+	ReceivedPseudoSettlements      prometheus.Counter
+	SentPseudoSettlements          prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -25,13 +27,25 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_received_pseudosettlements",
-			Help:      "Amount of pseudotokens received from peers (income of the node)",
+			Help:      "Amount of time settlements received from peers (income of the node)",
 		}),
 		TotalSentPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_sent_pseudosettlements",
-			Help:      "Amount of pseudotokens sent to peers (costs paid by the node)",
+			Help:      "Amount of  of time settlements sent to peers (costs paid by the node)",
+		}),
+		ReceivedPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "received_pseudosettlements",
+			Help:      "Number of time settlements received from peers",
+		}),
+		SentPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sent_pseudosettlements",
+			Help:      "Number of time settlements sent to peers",
 		}),
 	}
 }

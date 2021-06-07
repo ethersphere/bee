@@ -230,6 +230,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
+	s.metrics.ReceivedPseudoSettlements.Inc()
 	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount)
 }
 
@@ -339,6 +340,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 
 	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
+	s.metrics.SentPseudoSettlements.Inc()
 
 	return acceptedAmount, lastTime.CheckTimestamp, nil
 }
