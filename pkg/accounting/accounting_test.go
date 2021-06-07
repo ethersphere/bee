@@ -559,7 +559,11 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	// Credit until the expected debt exceeds payment threshold
 	expectedAmount := testPaymentThreshold.Uint64()
 
-	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
+	ctx, cancel := context.WithCancel(context.Background())
+	// immediately cancel to simulate a timed out request
+	cancel()
+
+	err = acc.Reserve(ctx, peer1Addr, expectedAmount)
 	if !errors.Is(err, accounting.ErrOverdraft) {
 		t.Fatalf("expected overdraft, got %v", err)
 	}
@@ -580,6 +584,18 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	case <-paychan:
 		t.Fatal("pay called twice")
 	case <-time.After(1 * time.Second):
+	}
+
+	acc.SetRefreshFunc(func(c context.Context, a swarm.Address, i1, i2 *big.Int) (*big.Int, int64, error) {
+		// while time settling for the next reserve, the monetary settlement finally goes through
+		// because the refresh call happens under the accounting lock this can only process once reserve is waiting on the swap payment
+		go acc.NotifyPaymentSent(peer1Addr, notTimeSettledAmount, nil)
+		return big.NewInt(0), 0, nil
+	})
+
+	err = acc.Reserve(context.Background(), peer1Addr, expectedAmount)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
