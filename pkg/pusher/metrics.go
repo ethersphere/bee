@@ -17,7 +17,8 @@ type metrics struct {
 	SyncTime         prometheus.Histogram
 	ErrorTime        prometheus.Histogram
 
-	ReceiptDepth *prometheus.CounterVec
+	ReceiptDepth   *prometheus.CounterVec
+	ShallowRetries prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -72,6 +73,12 @@ func newMetrics() metrics {
 			},
 			[]string{"depth"},
 		),
+		ShallowRetries: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "shallow_retries",
+			Help:      "Chunks retried because receipts were too shallow",
+		}),
 	}
 }
 

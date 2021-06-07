@@ -155,8 +155,8 @@ LOOP:
 						s.metrics.TotalSynced.Inc()
 						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 						// only print this if there was no error while sending the chunk
-						logger.Tracef("pusher: pushed chunk %s to node %s", ch.Address().String(), storerPeer.String())
 						po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
+						logger.Tracef("pusher: pushed chunk %s to node %s with receipt depth %d", ch.Address().String(), storerPeer.String(), po)
 						s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 						delete(retryCounter, ch.Address().ByteString())
 					} else {
@@ -203,12 +203,13 @@ LOOP:
 					d := s.depther.NeighborhoodDepth()
 					if po < d {
 						mtx.Lock()
-						retryCounter[ch.Address().ByteString()]++
 						if retryCounter[ch.Address().ByteString()] < retryCount {
+							retryCounter[ch.Address().ByteString()]++
 							mtx.Unlock()
-							err = fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)
 							po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
-							s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+							// QUESTION: where is this error logged?
+							err = fmt.Errorf("pusher: reshallow receipt depth %d from chunk %s, want at least %d", po, ch.Address().String(), d)
+							s.metrics.ShallowRetries.Inc()
 							return
 						}
 						mtx.Unlock()
