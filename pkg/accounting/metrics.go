@@ -19,6 +19,7 @@ type metrics struct {
 	CreditEventsCount          prometheus.Counter
 	AccountingDisconnectsCount prometheus.Counter
 	AccountingBlocksCount      prometheus.Counter
+	AccountingReserveCount     prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -60,6 +61,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "accounting_blocks_count",
 			Help:      "Number of occurrences of temporarily skipping a peer to avoid crossing their disconnect thresholds",
+		}),
+		AccountingReserveCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "accounting_reserve_count",
+			Help:      "Number of reserve calls",
 		}),
 	}
 }

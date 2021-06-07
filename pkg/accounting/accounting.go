@@ -163,6 +163,8 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	a.metrics.AccountingReserveCount.Inc()
+
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
