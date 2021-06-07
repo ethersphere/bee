@@ -34,6 +34,7 @@ type Service struct {
 	networkID         uint64
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
+	depther           topology.NeighborhoodDepther
 	logger            logging.Logger
 	tag               *tags.Tags
 	tracer            *tracing.Tracer
@@ -45,15 +46,20 @@ type Service struct {
 var (
 	retryInterval  = 5 * time.Second // time interval between retries
 	concurrentJobs = 10              // how many chunks to push simultaneously
+	retryCount     = 3
 )
 
-var ErrInvalidAddress = errors.New("invalid address")
+var (
+	ErrInvalidAddress = errors.New("invalid address")
+	ErrShallowReceipt = errors.New("shallow recipt")
+)
 
-func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
 	service := &Service{
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
+		depther:           depther,
 		tag:               tagger,
 		logger:            logger,
 		tracer:            tracer,
@@ -80,6 +86,7 @@ func (s *Service) chunksWorker() {
 		mtx           sync.Mutex
 		span          opentracing.Span
 		logger        *logrus.Entry
+		retryCounter  = make(map[string]int)
 	)
 	defer timer.Stop()
 	defer close(s.chunksWorkerQuitC)
@@ -151,6 +158,7 @@ LOOP:
 						logger.Tracef("pusher: pushed chunk %s to node %s", ch.Address().String(), storerPeer.String())
 						po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
 						s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+						delete(retryCounter, ch.Address().ByteString())
 					} else {
 						s.metrics.TotalErrors.Inc()
 						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
@@ -189,6 +197,21 @@ LOOP:
 					if err != nil {
 						err = fmt.Errorf("pusher: receipt storer address: %w", err)
 						return
+					}
+
+					po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
+					d := s.depther.NeighborhoodDepth()
+					if po < d {
+						mtx.Lock()
+						retryCounter[ch.Address().ByteString()]++
+						if retryCounter[ch.Address().ByteString()] < retryCount {
+							mtx.Unlock()
+							err = fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)
+							po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
+							s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+							return
+						}
+						mtx.Unlock()
 					}
 				}
 
