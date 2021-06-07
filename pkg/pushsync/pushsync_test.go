@@ -961,7 +961,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 					if triggerCount < 9 {
 						triggerCount++
 						stream.Close()
-						return errors.New("fmt")
+						return errors.New("new error")
 					}
 
 					if err := h(ctx, peer, stream); err != nil {
