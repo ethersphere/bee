@@ -76,6 +76,6 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
-	resenje.org/singleflight v0.2.0 // indirect
+	resenje.org/singleflight v0.2.0
 	resenje.org/web v0.4.3
 )
