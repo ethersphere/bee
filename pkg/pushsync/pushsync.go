@@ -479,7 +479,7 @@ type pushResult struct {
 	attempted bool
 }
 
-const failureThreshold = 3
+const failureThreshold = 2
 
 type failedRequestCache struct {
 	mtx   sync.RWMutex
