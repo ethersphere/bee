@@ -163,6 +163,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
 		} else {
 			go stream.FullClose()
 		}
@@ -240,6 +241,12 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 	defer cancel()
 
 	var err error
+
+	defer func() {
+		if err != nil {
+			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
+		}
+	}()
 
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(peer, SettlementSentPrefix), &lastTime)

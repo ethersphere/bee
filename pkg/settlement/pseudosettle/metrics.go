@@ -13,10 +13,12 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	TotalReceivedPseudoSettlements prometheus.Counter
-	TotalSentPseudoSettlements     prometheus.Counter
-	ReceivedPseudoSettlements      prometheus.Counter
-	SentPseudoSettlements          prometheus.Counter
+	TotalReceivedPseudoSettlements  prometheus.Counter
+	TotalSentPseudoSettlements      prometheus.Counter
+	ReceivedPseudoSettlements       prometheus.Counter
+	SentPseudoSettlements           prometheus.Counter
+	ReceivedPseudoSettlementsErrors prometheus.Counter
+	SentPseudoSettlementsErrors     prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -46,6 +48,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "sent_pseudosettlements",
 			Help:      "Number of time settlements sent to peers",
+		}),
+		ReceivedPseudoSettlementsErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "received_pseudosettlements_errors",
+			Help:      "Errors of time settlements received from peers",
+		}),
+		SentPseudoSettlementsErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sent_pseudosettlements_errorss",
+			Help:      "Errors of time settlements sent to peers",
 		}),
 	}
 }
