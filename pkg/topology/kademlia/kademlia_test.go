@@ -746,12 +746,9 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
-	p, err := ab.Get(nonConnPeer.Overlay)
-	if err != nil {
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if err != addressbook.ErrNotFound {
 		t.Fatal(err)
-	}
-	if !nonConnPeer.Equal(p) {
-		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
 	addr := test.RandomAddressAt(base, 1)
@@ -761,37 +758,29 @@ func TestAddressBookPrune(t *testing.T) {
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr)
 	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 1)
+	waitCounter(t, &failedConns, 0)
 
-	p, err = ab.Get(nonConnPeer.Overlay)
-	if err != nil {
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if err != addressbook.ErrNotFound {
 		t.Fatal(err)
-	}
-
-	if !nonConnPeer.Equal(p) {
-		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
 	time.Sleep(50 * time.Millisecond)
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr1)
 	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 1)
+	waitCounter(t, &failedConns, 0)
 
-	p, err = ab.Get(nonConnPeer.Overlay)
-	if err != nil {
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if err != addressbook.ErrNotFound {
 		t.Fatal(err)
-	}
-
-	if !nonConnPeer.Equal(p) {
-		t.Fatalf("expected %+v, got %+v", nonConnPeer, p)
 	}
 
 	time.Sleep(50 * time.Millisecond)
 	// add one valid peer to initiate the retry, check connection and failed connection counters
 	addOne(t, signer, kad, ab, addr2)
 	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 1)
+	waitCounter(t, &failedConns, 0)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if err != addressbook.ErrNotFound {
