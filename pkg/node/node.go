@@ -474,6 +474,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
 	minThreshold := pricer.MostExpensive()
+	if paymentThreshold.Cmp(minThreshold) == -1 {
+		return nil, fmt.Errorf("payment threshold %d too small, need at least %d", paymentThreshold, minThreshold)
+	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
