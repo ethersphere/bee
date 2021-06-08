@@ -17,6 +17,7 @@
 package shed
 
 import (
+	"errors"
 	"fmt"
 
 	badger "github.com/dgraph-io/badger/v3"
@@ -48,6 +49,9 @@ func (db *DB) NewStringField(name string) (f StringField, err error) {
 func (f StringField) Get() (val string, err error) {
 	b, err := f.db.Get(f.key)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return "", nil
+		}
 		return "", err
 	}
 	return string(b), nil

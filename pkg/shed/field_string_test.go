@@ -32,7 +32,7 @@ func TestStringField(t *testing.T) {
 
 	t.Run("get empty", func(t *testing.T) {
 		got, err := simpleString.Get()
-		if err == nil {
+		if err != nil {
 			t.Fatal(err)
 		}
 		want := ""
@@ -74,10 +74,7 @@ func TestStringField(t *testing.T) {
 	t.Run("put in batch", func(t *testing.T) {
 		batch := db.GetBatch(true)
 		want := "simple string batch value"
-		err = simpleString.PutInBatch(batch, want)
-		if err != nil {
-			t.Fatal(err)
-		}
+		simpleString.PutInBatch(batch, want)
 		err = db.WriteBatch(batch)
 		if err != nil {
 			t.Fatal(err)
@@ -93,10 +90,7 @@ func TestStringField(t *testing.T) {
 		t.Run("overwrite", func(t *testing.T) {
 			batch := db.GetBatch(true)
 			want := "overwritten string batch value"
-			err = simpleString.PutInBatch(batch, want)
-			if err != nil {
-				t.Fatal(err)
-			}
+			simpleString.PutInBatch(batch, want)
 			err = db.WriteBatch(batch)
 			if err != nil {
 				t.Fatal(err)

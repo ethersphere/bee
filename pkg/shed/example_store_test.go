@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -162,7 +163,10 @@ func (s *Store) Get(_ context.Context, addr swarm.Address) (c swarm.Chunk, err e
 		Address: addr.Bytes(),
 	})
 	if err != nil {
-		return nil, err
+		if errors.Is(err, shed.ErrNotFound) {
+			return nil, storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("retrieval index get: %w", err)
 	}
 
 	// Get the chunk access timestamp.
@@ -278,7 +282,7 @@ func (s *Store) CollectGarbage() (err error) {
 // string from a database field.
 func (s *Store) GetSchema() (name string, err error) {
 	name, err = s.schemaName.Get()
-	if err == shed.ErrNotFound {
+	if errors.Is(err, shed.ErrNotFound) {
 		return "", nil
 	}
 	return name, err

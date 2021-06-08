@@ -409,16 +409,17 @@ func (db *DB) GetBatch(update bool) (txn *badger.Txn) {
 
 // WriteBatch commits the badger transaction after all the operations are over.
 func (db *DB) WriteBatch(txn *badger.Txn) (err error) {
-	db.metrics.WriteBatchCounter.Inc()
 	err = txn.Commit()
 	if err != nil {
 		db.metrics.WriteBatchFailCounter.Inc()
 		return err
 	}
+	db.metrics.WriteBatchCounter.Inc()
 	return nil
 }
 
 // Close shuts down the badger DB.
 func (db *DB) Close() (err error) {
+	close(db.quit)
 	return db.bdb.Close()
 }

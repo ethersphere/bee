@@ -164,15 +164,15 @@ func (f Index) ItemKey(item Item) (key []byte, err error) {
 func (f Index) Get(keyFields Item) (out Item, err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("encode key: %w", err)
 	}
 	value, err := f.db.Get(key)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("get value: %w", err)
 	}
 	out, err = f.decodeValueFunc(keyFields, value)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("decode value: %w", err)
 	}
 	return out.Merge(keyFields), nil
 }
@@ -203,7 +203,7 @@ func (f Index) Fill(items []Item) (err error) {
 			return err
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("decode value: %w", err)
 		}
 		items[i] = decodedItem.Merge(item)
 	}
@@ -216,7 +216,7 @@ func (f Index) Fill(items []Item) (err error) {
 func (f Index) Has(keyFields Item) (bool, error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("encode key: %w", err)
 	}
 	return f.db.Has(key)
 }
@@ -237,7 +237,7 @@ func (f Index) HasMulti(items ...Item) ([]bool, error) {
 	for i, keyFields := range items {
 		key, err := f.encodeKeyFunc(keyFields)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("encode key for address %x: %w", keyFields.Address, err)
 		}
 		it.Seek(key)
 
@@ -258,11 +258,11 @@ func (f Index) HasMulti(items ...Item) ([]bool, error) {
 func (f Index) Put(i Item) (err error) {
 	key, err := f.encodeKeyFunc(i)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode key: %w", err)
 	}
 	value, err := f.encodeValueFunc(i)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode value: %w", err)
 	}
 	return f.db.Put(key, value)
 }
@@ -273,11 +273,11 @@ func (f Index) Put(i Item) (err error) {
 func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 	key, err := f.encodeKeyFunc(i)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode key: %w", err)
 	}
 	value, err := f.encodeValueFunc(i)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode value: %w", err)
 	}
 	return batch.Set(key, value)
 }
@@ -287,7 +287,7 @@ func (f Index) PutInBatch(batch *badger.Txn, i Item) (err error) {
 func (f Index) Delete(keyFields Item) (err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode key: %w", err)
 	}
 	return f.db.Delete(key)
 }
@@ -297,7 +297,7 @@ func (f Index) Delete(keyFields Item) (err error) {
 func (f Index) DeleteInBatch(batch *badger.Txn, keyFields Item) (err error) {
 	key, err := f.encodeKeyFunc(keyFields)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode key: %w", err)
 	}
 	return batch.Delete(key)
 }

@@ -267,7 +267,7 @@ func (db *DB) setPin(batch *badger.Txn, item shed.Item) (gcSizeChange int64, err
 	i, err := db.pinIndex.Get(item)
 	item.PinCounter = i.PinCounter
 	if err != nil {
-		if errors.Is(err, shed.ErrNotFound) {
+		if !errors.Is(err, shed.ErrNotFound) {
 			return 0, err
 		}
 		// if this Address is not pinned yet, then

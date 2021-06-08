@@ -18,6 +18,7 @@ package shed
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	badger "github.com/dgraph-io/badger/v3"
@@ -49,7 +50,7 @@ func (db *DB) NewUint64Vector(name string) (f Uint64Vector, err error) {
 func (f Uint64Vector) Get(i uint64) (val uint64, err error) {
 	b, err := f.db.Get(f.indexKey(i))
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			return 0, nil
 		}
 		return 0, err
@@ -73,7 +74,11 @@ func (f Uint64Vector) PutInBatch(batch *badger.Txn, i, val uint64) (err error) {
 func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		return 0, err
+		if errors.Is(err, ErrNotFound) {
+			val = 0
+		} else {
+			return 0, err
+		}
 	}
 	val++
 	return val, f.Put(i, val)
@@ -85,7 +90,11 @@ func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 func (f Uint64Vector) IncInBatch(batch *badger.Txn, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		return 0, err
+		if errors.Is(err, ErrNotFound) {
+			val = 0
+		} else {
+			return 0, err
+		}
 	}
 	val++
 	err = f.PutInBatch(batch, i, val)
@@ -101,7 +110,7 @@ func (f Uint64Vector) IncInBatch(batch *badger.Txn, i uint64) (val uint64, err e
 func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			val = 0
 		} else {
 			return 0, err
@@ -120,7 +129,11 @@ func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 func (f Uint64Vector) DecInBatch(batch *badger.Txn, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
 	if err != nil {
-		return 0, err
+		if errors.Is(err, ErrNotFound) {
+			val = 0
+		} else {
+			return 0, err
+		}
 	}
 	if val != 0 {
 		val--

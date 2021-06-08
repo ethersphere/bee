@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dgraph-io/badger/v3"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
-	"github.com/syndtr/goleveldb/leveldb"
 	"go.uber.org/atomic"
 )
 
@@ -163,7 +163,7 @@ type Counters struct {
 }
 
 // flush writes the current state of in memory counters into the given db.
-func (cs *Counters) flush(db *shed.DB, batch *leveldb.Batch) error {
+func (cs *Counters) flush(db *shed.DB, batch *badger.Txn) error {
 	if cs.dirty.Load() > 1 {
 		return nil
 	}
@@ -294,7 +294,7 @@ func (c *Collector) Flush(addresses ...swarm.Address) error {
 	var (
 		mErr  error
 		dirty []string
-		batch = new(leveldb.Batch)
+		batch = c.db.GetBatch(true)
 	)
 
 	for _, addr := range addresses {
@@ -322,9 +322,6 @@ func (c *Collector) Flush(addresses ...swarm.Address) error {
 		})
 	}
 
-	if batch.Len() == 0 {
-		return mErr
-	}
 	if err := c.db.WriteBatch(batch); err != nil {
 		mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
 	}
@@ -346,7 +343,7 @@ func (c *Collector) Flush(addresses ...swarm.Address) error {
 func (c *Collector) Finalize(t time.Time) error {
 	var (
 		mErr  error
-		batch = new(leveldb.Batch)
+		batch = c.db.GetBatch(true)
 	)
 
 	c.counters.Range(func(_, val interface{}) bool {
@@ -358,10 +355,8 @@ func (c *Collector) Finalize(t time.Time) error {
 		return true
 	})
 
-	if batch.Len() > 0 {
-		if err := c.db.WriteBatch(batch); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
-		}
+	if err := c.db.WriteBatch(batch); err != nil {
+		mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
 	}
 
 	c.counters.Range(func(_, val interface{}) bool {

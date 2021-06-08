@@ -74,10 +74,7 @@ func TestUint64Field(t *testing.T) {
 	t.Run("put in batch", func(t *testing.T) {
 		batch := db.GetBatch(true)
 		var want uint64 = 42
-		err = counter.PutInBatch(batch, want)
-		if err != nil {
-			t.Fatal(err)
-		}
+		counter.PutInBatch(batch, want)
 		err = db.WriteBatch(batch)
 		if err != nil {
 			t.Fatal(err)
@@ -93,10 +90,7 @@ func TestUint64Field(t *testing.T) {
 		t.Run("overwrite", func(t *testing.T) {
 			batch := db.GetBatch(true)
 			var want uint64 = 84
-			err = counter.PutInBatch(batch, want)
-			if err != nil {
-				t.Fatal(err)
-			}
+			counter.PutInBatch(batch, want)
 			err = db.WriteBatch(batch)
 			if err != nil {
 				t.Fatal(err)
@@ -263,10 +257,7 @@ func TestUint64Field_DecInBatch(t *testing.T) {
 
 	batch2 := db.GetBatch(true)
 	want = 42
-	err = counter.PutInBatch(batch2, want)
-	if err != nil {
-		t.Fatal(err)
-	}
+	counter.PutInBatch(batch2, want)
 	err = db.WriteBatch(batch2)
 	if err != nil {
 		t.Fatal(err)

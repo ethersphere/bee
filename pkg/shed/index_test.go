@@ -214,7 +214,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		has, err = index.Has(dontWant)
-		if err != nil && err != ErrNotFound {
+		if err != nil {
 			t.Fatal(err)
 		}
 		if has {
@@ -598,8 +598,6 @@ func TestIndex_IterateReverse(t *testing.T) {
 	sort.SliceStable(items, func(i, j int) bool {
 		return bytes.Compare(items[i].Address, items[j].Address) < 0
 	})
-
-	time.Sleep(1 * time.Second)
 
 	t.Run("all", func(t *testing.T) {
 		i := len(items) - 1
