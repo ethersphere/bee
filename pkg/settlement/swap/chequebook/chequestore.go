@@ -42,8 +42,13 @@ type ChequeStore interface {
 	LastCheques() (map[common.Address]*SignedCheque, error)
 }
 
+type chequebookLock struct {
+	lock sync.Mutex
+}
+
 type chequeStore struct {
 	lock               sync.Mutex
+	locks              map[common.Address]*chequebookLock
 	store              storage.StateStorer
 	factory            Factory
 	chaindID           int64
@@ -63,6 +68,7 @@ func NewChequeStore(
 	transactionService transaction.Service,
 	recoverChequeFunc RecoverChequeFunc) ChequeStore {
 	return &chequeStore{
+		locks:              make(map[common.Address]*chequebookLock),
 		store:              store,
 		factory:            factory,
 		chaindID:           chainID,
@@ -101,7 +107,18 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque) (
 	// don't allow concurrent processing of cheques
 	// this would be sufficient on a per chequebook basis
 	s.lock.Lock()
-	defer s.lock.Unlock()
+
+	var l *chequebookLock
+	l, ok := s.locks[cheque.Chequebook]
+	if !ok {
+		l = &chequebookLock{}
+		s.locks[cheque.Chequebook] = &chequebookLock{}
+	}
+
+	s.lock.Unlock()
+
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
 	// load the lastCumulativePayout for the cheques chequebook
 	var lastCumulativePayout *big.Int
