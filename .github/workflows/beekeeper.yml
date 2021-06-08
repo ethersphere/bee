@@ -14,7 +14,6 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.1.0"
-      BEEKEEPER_BRANCH: "bigint-serialization"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,7 +46,7 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true BEEKEEPER_BRANCH=bigint-serialization
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
