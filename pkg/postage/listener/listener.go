@@ -324,8 +324,8 @@ type priceUpdateEvent struct {
 }
 
 var (
-	GoerliPostageStampContractAddress = common.HexToAddress("0xB3B7f2eD97B735893316aEeA849235de5e8972a2")
-	GoerliStartBlock                  = uint64(4818979)
+	GoerliPostageStampContractAddress = common.HexToAddress("0x621e455C4a139f5C4e4A8122Ce55Dc21630769E4")
+	GoerliStartBlock                  = uint64(4933174)
 )
 
 // DiscoverAddresses returns the canonical contracts for this chainID
