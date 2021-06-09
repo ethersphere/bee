@@ -55,7 +55,7 @@ jobs:
       - name: Set local cluster
         run: |
           make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns BEEKEEPER_BRANCH=bigint-serialization
       - name: Test pingpong
         id: pingpong-1
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
