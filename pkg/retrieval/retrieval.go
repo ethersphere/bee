@@ -52,6 +52,10 @@ type retrievalResult struct {
 	retrieved bool
 }
 
+type Verifier interface {
+	CheckAvailableChunk(ctx context.Context, addr swarm.Address) (err error)
+}
+
 type Service struct {
 	addr          swarm.Address
 	streamer      p2p.Streamer
@@ -468,4 +472,160 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 	return nil
+}
+
+//
+//
+//
+//
+
+func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (err error) {
+	sp := newSkipPeers()
+	lastTime := time.Now().Unix()
+
+	selectAttempt, requestAttempt, requested := 0, 0, 0
+
+	for requestAttempt < 5 {
+		requestAttempt++
+		for selectAttempt < 3 {
+			selectAttempt++
+			attempted, err := s.checkAvailableChunk(ctx, addr, sp)
+			if attempted {
+				requested++
+				if err == nil {
+					return nil
+				}
+			}
+		}
+
+		timeNow := time.Now().Unix()
+		if timeNow > lastTime {
+			lastTime = timeNow
+			selectAttempt = 0
+			sp.Reset()
+		} else {
+			select {
+			case <-time.After(600 * time.Millisecond):
+			case <-ctx.Done():
+				s.logger.Tracef("retrieval: failed to verify chunk %s available: %v", addr, ctx.Err())
+				return fmt.Errorf("retrieval: %w", ctx.Err())
+			}
+		}
+
+	}
+
+	return storage.ErrNotFound
+}
+
+func (s *Service) checkAvailableChunk(ctx context.Context, addr swarm.Address, sp *skipPeers) (attempt bool, err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	defer cancel()
+
+	peer, err := s.farthestPeer(addr, sp.All())
+	if err != nil {
+		return false, fmt.Errorf("get farthest for address %s: %w", addr.String(), err)
+	}
+
+	// compute the peer's price for this chunk for price header
+	chunkPrice := s.pricer.PeerPrice(peer, addr)
+
+	// Reserve to see whether we can request the chunk
+	creditAction, err := s.accounting.PrepareCredit(peer, chunkPrice, true)
+	if err != nil {
+		sp.AddOverdraft(peer)
+		return false, err
+	}
+	defer creditAction.Cleanup()
+
+	sp.Add(peer)
+
+	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	if err != nil {
+		s.metrics.TotalErrors.Inc()
+		return false, fmt.Errorf("new stream: %w", err)
+	}
+
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
+	w, r := protobuf.NewWriterAndReader(stream)
+	if err := w.WriteMsgWithContext(ctx, &pb.Request{
+		Addr: addr.Bytes(),
+	}); err != nil {
+		return false, fmt.Errorf("write request: %w peer %s", err, peer.String())
+	}
+
+	var d pb.Delivery
+	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
+		return true, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
+	}
+
+	stamp := new(postage.Stamp)
+	err = stamp.UnmarshalBinary(d.Stamp)
+	if err != nil {
+		return true, fmt.Errorf("stamp unmarshal: %w", err)
+	}
+
+	chunk := swarm.NewChunk(addr, d.Data).WithStamp(stamp)
+	if !cac.Valid(chunk) {
+		if !soc.Valid(chunk) {
+			s.metrics.InvalidChunkRetrieved.Inc()
+			s.metrics.TotalErrors.Inc()
+			return true, swarm.ErrInvalidChunk
+		}
+	}
+	// credit the peer after successful delivery
+	err = creditAction.Apply()
+	if err == nil {
+		s.metrics.ChunkPrice.Observe(float64(chunkPrice))
+	}
+
+	return true, nil
+}
+
+func (s *Service) farthestPeer(addr swarm.Address, skipPeers []swarm.Address) (swarm.Address, error) {
+	farthest := swarm.Address{}
+	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		for _, a := range skipPeers {
+			if a.Equal(peer) {
+				return false, false, nil
+			}
+		}
+
+		if farthest.IsZero() {
+			farthest = peer
+			return false, false, nil
+		}
+		dcmp, err := swarm.DistanceCmp(addr.Bytes(), farthest.Bytes(), peer.Bytes())
+		if err != nil {
+			return false, false, fmt.Errorf("distance compare error. addr %s farthest %s peer %s: %w", addr.String(), farthest.String(), peer.String(), err)
+		}
+		switch dcmp {
+		case 0:
+			// do nothing
+		case 1:
+			// current peer is farther
+			farthest = peer
+		case -1:
+			// farthest is already farther from chunk
+			// do nothing
+		}
+		return false, false, nil
+	}, topology.Filter{Reachable: true})
+	if err != nil {
+		return swarm.Address{}, err
+	}
+
+	// check if found
+	if farthest.IsZero() {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	return farthest, nil
 }
