@@ -26,6 +26,8 @@ type (
 	SwapCashoutStatusResponse         = swapCashoutStatusResponse
 	SwapCashoutStatusResult           = swapCashoutStatusResult
 	TagResponse                       = tagResponse
+	ReserveStateResponse              = reserveStateResponse
+	ChainStateResponse                = chainStateResponse
 )
 
 var (
