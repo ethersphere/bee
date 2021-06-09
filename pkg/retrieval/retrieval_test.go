@@ -437,8 +437,6 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fmt.Println("GOT ", got)
-
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}

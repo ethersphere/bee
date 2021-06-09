@@ -255,7 +255,6 @@ func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
 	return errors.New("not implemented")
 }
 func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
-	//panic("EachPeerRev")
 	return s.eachPeerRevFunc(f)
 }
 
