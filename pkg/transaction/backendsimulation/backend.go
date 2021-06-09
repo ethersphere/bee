@@ -126,9 +126,9 @@ func (m *simulatedBackend) TransactionReceipt(ctx context.Context, txHash common
 	receipt, ok := m.receipts[txHash]
 	if ok {
 		return receipt, nil
-	} else {
-		return nil, ethereum.NotFound
 	}
+
+	return nil, ethereum.NotFound
 }
 
 func (m *simulatedBackend) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
@@ -151,7 +151,7 @@ func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, 
 	nonce, ok := m.noncesAt[AccountAtKey{Account: account, BlockNumber: blockNumber.Uint64()}]
 	if ok {
 		return nonce, nil
-	} else {
-		return 0, nil
 	}
+
+	return 0, nil
 }
