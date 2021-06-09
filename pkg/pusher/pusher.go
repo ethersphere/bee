@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -35,6 +36,7 @@ type Service struct {
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	depther           topology.NeighborhoodDepther
+	retrieval         retrieval.Verifier
 	logger            logging.Logger
 	tag               *tags.Tags
 	tracer            *tracing.Tracer
@@ -54,7 +56,7 @@ var (
 	ErrShallowReceipt = errors.New("shallow recipt")
 )
 
-func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, retrieval retrieval.Verifier, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	service := &Service{
 		networkID:         networkID,
 		storer:            storer,
@@ -62,6 +64,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		depther:           depther,
 		tag:               tagger,
 		logger:            logger,
+		retrieval:         retrieval,
 		tracer:            tracer,
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -226,6 +229,11 @@ LOOP:
 					} else {
 						s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 					}
+				}
+
+				if err = s.retrieval.CheckAvailableChunk(ctx, ch.Address()); err != nil {
+					err = fmt.Errorf("independent verification of availability failed, %w", err)
+					return
 				}
 
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
