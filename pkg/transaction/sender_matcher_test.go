@@ -3,6 +3,7 @@ package transaction_test
 import (
 	"context"
 	"errors"
+	"log"
 	"math/big"
 	"testing"
 
@@ -132,4 +133,9 @@ func (*mockSigner) Hash(tx *types.Transaction) common.Hash {
 
 func (*mockSigner) Equal(types.Signer) bool {
 	return false
+}
+
+func (*mockSigner) ChainID() *big.Int {
+	log.Fatal("not implemented")
+	return &big.Int{}
 }
