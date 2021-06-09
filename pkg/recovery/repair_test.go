@@ -227,7 +227,13 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
+
+	ps0 := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+		// not calling peer iterator on server as it would cause dereference of non existing streamer
+		return nil
+	}}
+
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps0, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 		streamtest.WithBaseAddr(peerID),
@@ -249,6 +255,7 @@ func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
 	return errors.New("not implemented")
 }
 func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
+	//panic("EachPeerRev")
 	return s.eachPeerRevFunc(f)
 }
 
