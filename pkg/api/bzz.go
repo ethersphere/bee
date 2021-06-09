@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -31,6 +32,15 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
 )
+
+func mappedHTTPErr(w http.ResponseWriter, e error, defaultMsg interface{}) {
+	switch {
+	case errors.Is(e, postage.ErrBucketFull):
+		jsonhttp.PaymentRequired(w, "batch is overissued")
+	default:
+		jsonhttp.InternalServerError(w, defaultMsg)
+	}
+}
 
 func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
@@ -119,7 +129,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: file store, file %q", fileName)
-		jsonhttp.InternalServerError(w, errFileStore)
+		mappedHTTPErr(w, err, errFileStore)
 		return
 	}
 
@@ -186,7 +196,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
-		jsonhttp.InternalServerError(w, nil)
+		mappedHTTPErr(w, err, nil)
 		return
 	}
 	logger.Debugf("Manifest Reference: %s", manifestReference.String())

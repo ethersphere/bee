@@ -86,7 +86,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	if err != nil {
 		logger.Debugf("bzz upload dir: store dir err: %v", err)
 		logger.Errorf("bzz upload dir: store dir")
-		jsonhttp.InternalServerError(w, errDirectoryStore)
+		mappedHTTPErr(w, err, errDirectoryStore)
 		return
 	}
 	if created {
