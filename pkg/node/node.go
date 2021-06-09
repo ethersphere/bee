@@ -570,7 +570,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.recoveryHandleCleanup = pssService.Register(recovery.Topic, chunkRepairHandler)
 	}
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer)
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, retrieve, tagService, logger, tracer)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)

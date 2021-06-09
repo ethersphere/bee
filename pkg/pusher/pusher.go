@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -34,6 +35,7 @@ type Service struct {
 	networkID         uint64
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
+	retrieval         retrieval.Verifier
 	logger            logging.Logger
 	tag               *tags.Tags
 	tracer            *tracing.Tracer
@@ -49,13 +51,14 @@ var (
 
 var ErrInvalidAddress = errors.New("invalid address")
 
-func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
+func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, retrieval retrieval.Verifier, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
 	service := &Service{
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
 		tag:               tagger,
 		logger:            logger,
+		retrieval:         retrieval,
 		tracer:            tracer,
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -190,6 +193,11 @@ LOOP:
 						err = fmt.Errorf("pusher: receipt storer address: %w", err)
 						return
 					}
+				}
+
+				if err = s.retrieval.CheckAvailableChunk(ctx, ch.Address()); err != nil {
+					err = fmt.Errorf("independent verification of availability failed, %w", err)
+					return
 				}
 
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
