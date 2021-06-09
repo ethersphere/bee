@@ -29,7 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
-	"golang.org/x/sync/singleflight"
+	"resenje.org/singleflight"
 )
 
 type requestSourceContextKey struct{}
@@ -108,7 +108,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		flightRoute = addr.String() + originSuffix
 	}
 
-	v, err, _ := s.singleflight.Do(flightRoute, func() (interface{}, error) {
+	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 
 		maxPeers := 1
 		if origin {
