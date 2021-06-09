@@ -245,7 +245,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 	}
 
 	for i := range k.commonBinPrefixes {
-		if i < int(k.NeighborhoodDepth()) {
+		if i >= int(k.NeighborhoodDepth()) {
 			continue
 		}
 		for j := range k.commonBinPrefixes[i] {
@@ -301,8 +301,8 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 // connectNeighbours attempts to connect to the neighbours
 // which were not considered by the connectBalanced method.
-func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
-	const multiplePeerThreshold = 4
+func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan, peerConnChan2 chan<- *peerConnInfo) {
+	const multiplePeerThreshold = 8
 
 	sent := 0
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
@@ -310,6 +310,10 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 
 		if depth > po || po >= depth+multiplePeerThreshold {
 			return false, true, nil
+		}
+
+		if k.absBinSaturated(po) {
+			return false, true, nil // Bin is saturated, skip to next bin.
 		}
 
 		if k.connectedPeers.Exists(addr) {
@@ -363,7 +367,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return true, false, nil
 		default:
 			wg.Add(1)
-			peerConnChan <- &peerConnInfo{
+			peerConnChan2 <- &peerConnInfo{
 				po:   po,
 				addr: addr,
 			}
@@ -377,7 +381,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 
 // connectionAttemptsHandler handles the connection attempts
 // to peers sent by the producers to the peerConnChan.
-func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup, peerConnChan <-chan *peerConnInfo) {
+func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup, peerConnChan, peerConnChan2 <-chan *peerConnInfo) {
 	connect := func(peer *peerConnInfo) {
 		bzzAddr, err := k.addressBook.Get(peer.addr)
 		switch {
@@ -435,34 +439,38 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		inProgress   = make(map[string]bool)
 		inProgressMu sync.Mutex
 	)
-	for i := 0; i < int(swarm.MaxBins); i++ {
-		go func() {
-			for {
-				select {
-				case <-k.quit:
-					return
-				case peer := <-peerConnChan:
-					addr := peer.addr.String()
+	connAttempt := func(peerConnChan <-chan *peerConnInfo) {
+		for {
+			select {
+			case <-k.quit:
+				return
+			case peer := <-peerConnChan:
+				addr := peer.addr.String()
 
-					if k.waitNext.Waiting(peer.addr) {
-						k.metrics.TotalBeforeExpireWaits.Inc()
-						wg.Done()
-						continue
-					}
-
-					inProgressMu.Lock()
-					if !inProgress[addr] {
-						inProgress[addr] = true
-						inProgressMu.Unlock()
-						connect(peer)
-						inProgressMu.Lock()
-						delete(inProgress, addr)
-					}
-					inProgressMu.Unlock()
+				if k.waitNext.Waiting(peer.addr) {
+					k.metrics.TotalBeforeExpireWaits.Inc()
 					wg.Done()
+					continue
 				}
+
+				inProgressMu.Lock()
+				if !inProgress[addr] {
+					inProgress[addr] = true
+					inProgressMu.Unlock()
+					connect(peer)
+					inProgressMu.Lock()
+					delete(inProgress, addr)
+				}
+				inProgressMu.Unlock()
+				wg.Done()
 			}
-		}()
+		}
+	}
+	for i := 0; i < 64; i++ {
+		go connAttempt(peerConnChan)
+	}
+	for i := 0; i < 8; i++ {
+		go connAttempt(peerConnChan2)
 	}
 }
 
@@ -491,7 +499,8 @@ func (k *Kad) manage() {
 	// spun up by goroutines, to finish before we try the boot-nodes.
 	var wg sync.WaitGroup
 	var peerConnChan = make(chan *peerConnInfo)
-	go k.connectionAttemptsHandler(ctx, &wg, peerConnChan)
+	var peerConnChan2 = make(chan *peerConnInfo)
+	go k.connectionAttemptsHandler(ctx, &wg, peerConnChan, peerConnChan2)
 
 	for {
 		select {
@@ -523,8 +532,8 @@ func (k *Kad) manage() {
 			}
 
 			oldDepth := k.NeighborhoodDepth()
-			k.connectNeighbours(&wg, peerConnChan)
-			k.connectBalanced(&wg, peerConnChan)
+			k.connectNeighbours(&wg, peerConnChan, peerConnChan2)
+			k.connectBalanced(&wg, peerConnChan2)
 			wg.Wait()
 
 			k.depthMu.Lock()
@@ -651,6 +660,17 @@ func binSaturated(oversaturationAmount int) binSaturationFunc {
 
 		return size >= saturationPeers, size >= oversaturationAmount
 	}
+}
+
+func (k *Kad) absBinSaturated(bin uint8) bool {
+	size := 0
+	_ = k.connectedPeers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
+		if po == bin {
+			size++
+		}
+		return false, false, nil
+	})
+	return size >= saturationPeers
 }
 
 // recalcDepth calculates and returns the kademlia depth.
