@@ -757,7 +757,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime)
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, retrieve, validStamp, tagService, logger, tracer, warmupTime)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)

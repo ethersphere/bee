@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -43,6 +44,7 @@ type Service struct {
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
 	depther           topology.NeighborhoodDepther
+	retrieval         retrieval.Verifier
 	logger            logging.Logger
 	tag               *tags.Tags
 	metrics           metrics
@@ -68,7 +70,7 @@ var (
 
 const chunkStoreTimeout = 2 * time.Second
 
-func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, retrieval retrieval.Verifier, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	p := &Service{
 		networkID:         networkID,
 		storer:            storer,
@@ -77,6 +79,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		depther:           depther,
 		tag:               tagger,
 		logger:            logger,
+		retrieval:         retrieval,
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
@@ -111,6 +114,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
 	chunks, repeat, unsubscribe := s.storer.SubscribePush(ctx, s.inflight.set)
+
 	go func() {
 		<-s.quit
 		unsubscribe()
@@ -253,8 +257,14 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.
 		return err
 	}
 
+	if err = s.retrieval.CheckAvailableChunk(ctx, ch.Address()); err != nil {
+		err = fmt.Errorf("independent verification of availability failed, %w", err)
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+
 	if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 		return fmt.Errorf("pusher: set sync: %w", err)
 	}
