@@ -115,9 +115,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			maxPeers = maxSelects
 		}
 
-		span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
-		defer span.Finish()
-
 		sp := newSkipPeers()
 
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
@@ -136,6 +133,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		for requestAttempt < 5 {
 
 			if peerAttempt < maxSelects {
+
+				span, _, ctx := s.tracer.StartSpanFromContext(context.Background(), "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+				defer span.Finish()
+
 				peerAttempt++
 				s.metrics.PeerRequestCounter.Inc()
 				go func() {
@@ -158,7 +159,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				if res.retrieved {
 					if res.err != nil {
 						if !res.peer.IsZero() {
-							logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, res.peer, res.err)
+							s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, res.peer, res.err)
 						}
 						peersResults++
 					} else {
@@ -166,13 +167,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					}
 				}
 			case <-ctx.Done():
-				logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
+				s.logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
 				return nil, fmt.Errorf("retrieval: %w", ctx.Err())
 			}
 
 			// all results received, only successfully attempted requests are counted
 			if peersResults >= maxPeers {
-				logger.Tracef("retrieval: failed to get chunk %s", addr)
+				s.logger.Tracef("retrieval: failed to get chunk %s", addr)
 				return nil, storage.ErrNotFound
 			}
 
@@ -192,7 +193,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					select {
 					case <-time.After(600 * time.Millisecond):
 					case <-ctx.Done():
-						logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
+						s.logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
 						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
 					}
 				}
@@ -264,6 +265,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	sp.Add(peer)
 
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
+
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		s.metrics.TotalErrors.Inc()
@@ -272,6 +274,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	defer func() {
 		if err != nil {
+			fmt.Println("V", err)
 			_ = stream.Reset()
 		} else {
 			go stream.FullClose()
@@ -413,6 +416,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
+	fmt.Println("I")
 	debit := s.accounting.PrepareDebit(p.Address, chunkPrice)
 	defer debit.Cleanup()
 
@@ -420,11 +424,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		Data:  chunk.Data(),
 		Stamp: stamp,
 	}); err != nil {
+		fmt.Println("III", err)
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
-
+	fmt.Println("II")
 	// debit price from p's balance
 	return debit.Apply()
 }
