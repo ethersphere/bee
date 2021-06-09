@@ -417,7 +417,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
-	fmt.Println("I")
 	debit := s.accounting.PrepareDebit(p.Address, chunkPrice)
 	defer debit.Cleanup()
 
@@ -425,12 +424,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		Data:  chunk.Data(),
 		Stamp: stamp,
 	}); err != nil {
-		fmt.Println("III", err)
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
-	fmt.Println("II")
 	// debit price from p's balance
 	return debit.Apply()
 }
