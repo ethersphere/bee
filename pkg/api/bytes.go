@@ -70,7 +70,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
 		logger.Error("bytes upload: split write all")
-		jsonhttp.InternalServerError(w, nil)
+		mappedHTTPErr(w, err, nil)
 		return
 	}
 
