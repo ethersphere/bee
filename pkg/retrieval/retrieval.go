@@ -96,6 +96,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout          = 10 * time.Second
 	retrieveRetryIntervalDuration = 5 * time.Second
+	maxRequestRounds              = 5
 	maxSelects                    = 8
 	originSuffix                  = "_origin"
 )
@@ -130,7 +131,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		lastTime := time.Now().Unix()
 
-		for requestAttempt < 5 {
+		for requestAttempt < maxRequestRounds {
 
 			if peerAttempt < maxSelects {
 
@@ -201,7 +202,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		}
 
-		// if we have not managed to get results after 5 rounds of peer selections, give up
+		// if we have not managed to get results after 5 (maxRequestRounds) rounds of peer selections, give up
 		return nil, storage.ErrNotFound
 
 	})
