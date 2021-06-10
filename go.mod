@@ -57,6 +57,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
+	github.com/vmihailenco/msgpack/v5 v5.3.4
 	github.com/wealdtech/go-ens/v3 v3.4.4
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.opencensus.io v0.22.5 // indirect
