@@ -96,7 +96,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pss send payload: %v. topic: %s", err, topicVar)
 		s.logger.Error("pss send payload")
-		jsonhttp.InternalServerError(w, nil)
+		mappedHTTPErr(w, err, nil)
 		return
 	}
 
