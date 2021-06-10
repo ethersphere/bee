@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -119,7 +120,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: file store, file %q", fileName)
-		jsonhttp.InternalServerError(w, errFileStore)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, errFileStore)
+		}
 		return
 	}
 
@@ -186,7 +192,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
-		jsonhttp.InternalServerError(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 	logger.Debugf("Manifest Reference: %s", manifestReference.String())
