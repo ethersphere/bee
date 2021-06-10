@@ -150,7 +150,8 @@ func (tm *transactionMonitor) watchPending() {
 		}
 
 		if err := tm.checkPending(block); err != nil {
-			tm.logger.Errorf("error while checking pending transactions: %v", err)
+			tm.logger.Tracef("error while checking pending transactions: %v", err)
+			continue
 		}
 
 		lastBlock = block
