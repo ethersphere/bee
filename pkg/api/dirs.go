@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -86,7 +87,12 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	if err != nil {
 		logger.Debugf("bzz upload dir: store dir err: %v", err)
 		logger.Errorf("bzz upload dir: store dir")
-		mappedHTTPErr(w, err, errDirectoryStore)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, errDirectoryStore)
+		}
 		return
 	}
 	if created {

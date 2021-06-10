@@ -33,15 +33,6 @@ import (
 	"github.com/ethersphere/langos"
 )
 
-func mappedHTTPErr(w http.ResponseWriter, e error, defaultMsg interface{}) {
-	switch {
-	case errors.Is(e, postage.ErrBucketFull):
-		jsonhttp.PaymentRequired(w, "batch is overissued")
-	default:
-		jsonhttp.InternalServerError(w, defaultMsg)
-	}
-}
-
 func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
@@ -129,7 +120,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: file store, file %q", fileName)
-		mappedHTTPErr(w, err, errFileStore)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, errFileStore)
+		}
 		return
 	}
 
@@ -196,7 +192,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
-		mappedHTTPErr(w, err, nil)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 	logger.Debugf("Manifest Reference: %s", manifestReference.String())

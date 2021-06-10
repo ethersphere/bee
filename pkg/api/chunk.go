@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -104,7 +105,12 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
 		s.logger.Error("chunk upload: chunk write error")
-		mappedHTTPErr(w, err, "chunk write error")
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, "chunk write error")
+		}
 		return
 	} else if len(seen) > 0 && seen[0] && tag != nil {
 		err := tag.Inc(tags.StateSeen)
