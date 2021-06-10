@@ -29,6 +29,9 @@ import (
 )
 
 func TestInit(t *testing.T) {
+
+	// Testing handshake
+
 	logger := logging.New(ioutil.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
@@ -88,12 +91,18 @@ func TestInit(t *testing.T) {
 }
 
 func TestEmitCheques(t *testing.T) {
+
+	// Test negotiating / sending cheques
+
 	logger := logging.New(ioutil.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
+
+	// mocked exchange rate and deduction
 	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+
 	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
 	swappReceiver.SetSwap(swapReceiver)
 	recorder := streamtest.New(
@@ -105,6 +114,7 @@ func TestEmitCheques(t *testing.T) {
 	swappInitiator.SetSwap(swapInitiator)
 	peer := p2p.Peer{Address: peerID}
 
+	// amount in accounting credits cheque should cover
 	chequeAmount := big.NewInt(1250)
 
 	issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
@@ -120,6 +130,8 @@ func TestEmitCheques(t *testing.T) {
 		_ = sendChequeFunc(cheque)
 		return big.NewInt(13750), nil
 	}
+
+	// in this case we try to send a cheque covering amount * exchange rate + initial deduction
 
 	if _, err := swappInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -151,9 +163,13 @@ func TestEmitCheques(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// cumulative payout expected to be 50 * 1250 + 500
+
 	if gotSignedCheque.CumulativePayout.Cmp(big.NewInt(63000)) != 0 {
 		t.Fatalf("Unexpected cheque amount, expected %v, got %v", 63000, gotSignedCheque.CumulativePayout)
 	}
+
+	// attempt to send second cheque covering same amount, this time deduction is not applicable
 
 	if _, err := swappInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -184,6 +200,9 @@ func TestEmitCheques(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// cumulative payout only contains last cheque value in this case because of mocks
+	// cumulative payout expected to be 50 * 1250 + 0
+
 	if gotSignedCheque.CumulativePayout.Cmp(big.NewInt(62500)) != 0 {
 		t.Fatalf("Unexpected cheque amount, expected %v, got %v", 62500, gotSignedCheque.CumulativePayout)
 	}
@@ -195,6 +214,9 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
+
+	// mock different informations for the receiver and sender received from oracle
+
 	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
 	priceOracle2 := priceoraclemock.New(big.NewInt(52), big.NewInt(560))
 	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
@@ -223,6 +245,9 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 		return big.NewInt(13750), nil
 	}
 
+	// try to send cheque, this should fail because of the different known exchange rates on the sender and receiver
+	// expect rate negotiation error
+
 	if _, err := swappInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); !errors.Is(err, swapprotocol.ErrNegotiateRate) {
 		t.Fatalf("expected error %v, got %v", swapprotocol.ErrNegotiateRate, err)
 	}
@@ -247,11 +272,15 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 }
 
 func TestCantEmitChequeDeductionMismatch(t *testing.T) {
+
 	logger := logging.New(ioutil.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
+
+	// mock different deduction values for receiver and sender received from the oracle
+
 	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
 	priceOracle2 := priceoraclemock.New(big.NewInt(50), big.NewInt(560))
 	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
@@ -279,6 +308,8 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 		_ = sendChequeFunc(cheque)
 		return big.NewInt(13750), nil
 	}
+
+	// attempt negotiating rates, expect deduction negotiation error
 
 	if _, err := swappInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); !errors.Is(err, swapprotocol.ErrNegotiateDeduction) {
 		t.Fatalf("expected error %v, got %v", swapprotocol.ErrNegotiateDeduction, err)
@@ -310,6 +341,9 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
+
+	// mock exactly the same rates for exchange and deduction for receiver and sender
+
 	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
 	priceOracle2 := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
 	swappReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
@@ -338,10 +372,14 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
 		return big.NewInt(13750), nil
 	}
 
+	// mock that the initiator believes deduction was applied previously, but the accepting peer does not
+
 	err := swapInitiator.AddDeductionByPeer(peerID)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// attempt settling anyway, expect it to fail by ineligible deduction error
 
 	if _, err := swappInitiator.EmitCheque(context.Background(), peer.Address, commonAddr, chequeAmount, issueFunc); !errors.Is(err, swapprotocol.ErrHaveDeduction) {
 		t.Fatalf("expected error %v, got %v", swapprotocol.ErrHaveDeduction, err)

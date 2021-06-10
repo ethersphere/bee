@@ -35,8 +35,10 @@ type service struct {
 
 type Service interface {
 	io.Closer
-	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
+	// CurrentRates returns the current value of exchange rate and deduction
+	// according to the latest information from oracle
 	CurrentRates() (exchangeRate *big.Int, deduction *big.Int, err error)
+	// GetPrice retrieves latest available information from oracle
 	GetPrice(ctx context.Context) (*big.Int, *big.Int, error)
 	Start()
 }
@@ -67,7 +69,7 @@ func (s *service) Start() {
 	go func() {
 		defer cancel()
 		for {
-			exchangeRate, deduction, err := s.getPrice(ctx)
+			exchangeRate, deduction, err := s.GetPrice(ctx)
 			if err != nil {
 				s.logger.Errorf("could not get price: %v", err)
 			} else {
@@ -78,6 +80,12 @@ func (s *service) Start() {
 
 			ts := time.Now().Unix()
 
+			// We poll the oracle in every timestamp divisible by constant 300 (timeDivisor)
+			// in order to get latest version approximately at the same time on all nodes
+			// and to minimize polling frequency
+			// If the node gets newer information than what was applicable at last polling point at startup
+			// this minimizes the negative scenario to less than 5 minutes
+			// during which cheques can not be sent / accepted because of the asymmetric information
 			timeUntilNextPoll := time.Duration(s.timeDivisor-ts%s.timeDivisor) * time.Second
 
 			select {
@@ -90,10 +98,6 @@ func (s *service) Start() {
 }
 
 func (s *service) GetPrice(ctx context.Context) (*big.Int, *big.Int, error) {
-	return s.getPrice(ctx)
-}
-
-func (s *service) getPrice(ctx context.Context) (*big.Int, *big.Int, error) {
 	callData, err := priceOracleABI.Pack("getPrice")
 	if err != nil {
 		return nil, nil, err

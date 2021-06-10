@@ -21,7 +21,7 @@ var (
 	ErrFieldLength = errors.New("field length error")
 	// ErrNoExchangeHeader denotes p2p.Header lacking specified field
 	ErrNoExchangeHeader = errors.New("no exchange header")
-	// ErrNoTargetHeader denotes p2p.Header lacking specified field
+	// ErrNoDeductionHeader denotes p2p.Header lacking specified field
 	ErrNoDeductionHeader = errors.New("no deduction header")
 )
 
