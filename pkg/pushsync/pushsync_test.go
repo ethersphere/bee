@@ -804,7 +804,7 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
 	}
 
-	return pushsync.New(addr, recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil), storer, mtag
+	return pushsync.New(addr, recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, 0), storer, mtag
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

@@ -146,6 +146,7 @@ type Options struct {
 	PriceOracleAddress         string
 	BlockTime                  uint64
 	DeployGasPrice             string
+	WarmupTime                 time.Duration
 }
 
 const (
@@ -172,6 +173,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			p2pCancel()
 		}
 	}()
+
+	// light nodes have zero warmup time for pull/pushsync protocols
+	warmupTime := o.WarmupTime
+	if !o.FullNodeMode {
+		warmupTime = 0
+	}
 
 	b = &Bee{
 		p2pCancel:      p2pCancel,
@@ -559,7 +566,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer)
+	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -570,7 +577,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.recoveryHandleCleanup = pssService.Register(recovery.Topic, chunkRepairHandler)
 	}
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer)
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer, warmupTime)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
@@ -580,7 +587,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode {
-		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
+		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
