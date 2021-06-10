@@ -98,6 +98,8 @@ func (s *Service) chunksWorker() {
 		return
 	}
 
+	s.logger.Info("pusher: warmup period complete, worker starting.")
+
 LOOP:
 	for {
 		select {

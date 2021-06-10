@@ -107,6 +107,8 @@ func (p *Puller) manage() {
 		return
 	}
 
+	p.logger.Info("puller: warmup period complete, worker starting.")
+
 	for {
 		select {
 		case <-c:
