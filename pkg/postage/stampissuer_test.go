@@ -7,6 +7,7 @@ package postage_test
 import (
 	crand "crypto/rand"
 	"io"
+	"math/big"
 	"reflect"
 	"testing"
 
@@ -38,7 +39,7 @@ func newTestStampIssuer(t *testing.T) *postage.StampIssuer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st := postage.NewStampIssuer("label", "keyID", id, 16, 8)
+	st := postage.NewStampIssuer("label", "keyID", id, 16, big.NewInt(3), 8)
 	addr := make([]byte, 32)
 	for i := 0; i < 1<<8; i++ {
 		_, err := io.ReadFull(crand.Reader, addr)

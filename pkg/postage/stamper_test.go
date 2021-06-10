@@ -7,6 +7,7 @@ package postage_test
 import (
 	crand "crypto/rand"
 	"io"
+	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -71,7 +72,7 @@ func TestStamperStamping(t *testing.T) {
 			postagetesting.WithOwner(owner),
 		)
 
-		st := postage.NewStampIssuer("", "", b.ID, b.Depth, 8)
+		st := postage.NewStampIssuer("", "", b.ID, b.Depth, big.NewInt(3), 8)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)

@@ -91,8 +91,12 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type postageStampResponse struct {
-	BatchID     batchID `json:"batchID"`
-	Utilization uint32  `json:"utilization"`
+	BatchID     batchID  `json:"batchID"`
+	Utilization uint32   `json:"utilization"`
+	Label       string   `json:"label"`
+	Depth       uint8    `json:"depth"`
+	Amount      *big.Int `json:"amount"`
+	CreatedAt   int64    `json:"createdAt"`
 }
 
 type postageStampsResponse struct {
@@ -100,11 +104,16 @@ type postageStampsResponse struct {
 }
 
 func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
-	issuers := s.post.StampIssuers()
 	resp := postageStampsResponse{}
-	for _, v := range issuers {
-		issuer := postageStampResponse{BatchID: v.ID(), Utilization: v.Utilization()}
-		resp.Stamps = append(resp.Stamps, issuer)
+	for _, v := range s.post.StampIssuers() {
+		resp.Stamps = append(resp.Stamps, postageStampResponse{
+			BatchID:     v.ID(),
+			Utilization: v.Utilization(),
+			Label:       v.Label(),
+			Depth:       v.Depth(),
+			Amount:      v.Amount(),
+			CreatedAt:   v.CreatedAt(),
+		})
 	}
 	jsonhttp.OK(w, resp)
 }

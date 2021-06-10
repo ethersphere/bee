@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"testing"
 
@@ -154,7 +155,7 @@ func TestFeed_Post(t *testing.T) {
 		logger         = logging.New(ioutil.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
 		topic          = "aabbcc"
-		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, big.NewInt(3), 10)))
 		mockStorer     = mock.NewStorer()
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
