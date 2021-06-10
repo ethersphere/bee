@@ -40,6 +40,7 @@ type Service struct {
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
+	warmupTime        time.Duration
 }
 
 var (
@@ -49,7 +50,7 @@ var (
 
 var ErrInvalidAddress = errors.New("invalid address")
 
-func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
+func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	service := &Service{
 		networkID:         networkID,
 		storer:            storer,
@@ -60,6 +61,7 @@ func New(networkID uint64, storer storage.Storer, peerSuggester topology.Closest
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
+		warmupTime:        warmupTime,
 	}
 	go service.chunksWorker()
 	return service
@@ -81,12 +83,20 @@ func (s *Service) chunksWorker() {
 		span          opentracing.Span
 		logger        *logrus.Entry
 	)
+
 	defer timer.Stop()
 	defer close(s.chunksWorkerQuitC)
 	go func() {
 		<-s.quit
 		cancel()
 	}()
+
+	// wait for warmup duration to complete
+	select {
+	case <-time.After(s.warmupTime):
+	case <-s.quit:
+		return
+	}
 
 LOOP:
 	for {

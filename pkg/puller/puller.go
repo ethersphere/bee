@@ -48,9 +48,11 @@ type Puller struct {
 	wg   sync.WaitGroup
 
 	bins uint8 // how many bins do we support
+
+	warmupTime time.Duration
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -70,7 +72,8 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 		quit:      make(chan struct{}),
 		wg:        sync.WaitGroup{},
 
-		bins: bins,
+		bins:       bins,
+		warmupTime: warmupTime,
 	}
 
 	for i := uint8(0); i < bins; i++ {
@@ -96,6 +99,14 @@ func (p *Puller) manage() {
 		<-p.quit
 		cancel()
 	}()
+
+	// wait for warmup duration to complete
+	select {
+	case <-time.After(p.warmupTime):
+	case <-p.quit:
+		return
+	}
+
 	for {
 		select {
 		case <-c:
