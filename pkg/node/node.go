@@ -103,6 +103,8 @@ type Bee struct {
 	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
 }
 
 type Options struct {
@@ -652,6 +654,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
+		debugAPIService.MustRegisterMetrics(kad.Metrics()...)
 
 		if pullerService != nil {
 			debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
@@ -662,6 +665,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pullStorage.Metrics()...)
 		debugAPIService.MustRegisterMetrics(retrieve.Metrics()...)
+		debugAPIService.MustRegisterMetrics(lightNodes.Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugAPIService.MustRegisterMetrics(bs.Metrics()...)
@@ -705,6 +709,15 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
+	// if a shutdown is already in process, return here
+	b.shutdownMutex.Lock()
+	if b.shutdownInProgress {
+		b.shutdownMutex.Unlock()
+		return ErrShutdownInProgress
+	}
+	b.shutdownInProgress = true
+	b.shutdownMutex.Unlock()
+
 	// halt kademlia while shutting down other
 	// components.
 	b.topologyHalter.Halt()
@@ -712,7 +725,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	// halt p2p layer from accepting new connections
 	// while shutting down other components
 	b.p2pHalter.Halt()
-
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {
@@ -848,6 +860,8 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 type pidKiller struct {
 	node *Bee
 }
+
+var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
 func (p *pidKiller) Shutdown(ctx context.Context) error {
 	err := p.node.Shutdown(ctx)
