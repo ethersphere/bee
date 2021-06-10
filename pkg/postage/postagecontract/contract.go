@@ -190,6 +190,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				label,
 				c.owner.Hex(),
 				batchID,
+				initialBalance,
 				depth,
 				createdEvent.BucketDepth,
 				ev.BlockNumber,

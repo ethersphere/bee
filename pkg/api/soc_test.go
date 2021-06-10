@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestSOC(t *testing.T) {
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
-		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10, 1000)))
+		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000)))
 		mockStorer     = mock.NewStorer()
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,

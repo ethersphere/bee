@@ -6,6 +6,7 @@ package mock
 
 import (
 	"errors"
+	"math/big"
 
 	"github.com/ethersphere/bee/pkg/postage"
 )
@@ -54,7 +55,7 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 
 func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
 	if m.acceptAll {
-		return postage.NewStampIssuer("test fallback", "test identity", id, 24, 6, 1000), nil
+		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000), nil
 	}
 
 	if m.i != nil {

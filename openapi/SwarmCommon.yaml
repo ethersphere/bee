@@ -321,6 +321,16 @@ components:
           type: integer
         usable:
           type: boolean
+        label:
+          type: string
+        depth:
+          type: integer
+        amount:
+          $ref: "#/components/schemas/BigInt"
+        bucketDepth:
+          type: integer
+        blockNumber:
+          type: integer
 
     Settlement:
       type: object
