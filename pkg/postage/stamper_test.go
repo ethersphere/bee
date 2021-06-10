@@ -8,6 +8,7 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"io"
+	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -91,7 +92,7 @@ func TestStamperStamping(t *testing.T) {
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
 		st := newTestStampIssuer(t)
-		st = postage.NewStampIssuer("", "", st.ID(), 12, 8)
+		st = postage.NewStampIssuer("", "", st.ID(), big.NewInt(3), 12, 8)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)

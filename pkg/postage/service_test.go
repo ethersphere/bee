@@ -7,6 +7,7 @@ package postage_test
 import (
 	crand "crypto/rand"
 	"io"
+	"math/big"
 	"reflect"
 	"testing"
 
@@ -66,7 +67,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if i == 0 {
 			continue
 		}
-		ps.Add(postage.NewStampIssuer(string(id), "", id, 16, 8))
+		ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8))
 	}
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:] {

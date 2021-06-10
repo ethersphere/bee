@@ -7,6 +7,7 @@ package postage_test
 import (
 	crand "crypto/rand"
 	"io"
+	"math/big"
 	"reflect"
 	"testing"
 
@@ -37,5 +38,5 @@ func newTestStampIssuer(t *testing.T) *postage.StampIssuer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return postage.NewStampIssuer("label", "keyID", id, 12, 8)
+	return postage.NewStampIssuer("label", "keyID", id, big.NewInt(3), 16, 8)
 }

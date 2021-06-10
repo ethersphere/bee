@@ -6,53 +6,70 @@ package postage
 
 import (
 	"encoding/binary"
+	"encoding/json"
+	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// stampIssuerData groups related StampIssuer data.
+// The data are factored out in order to make
+// serialization/deserialization easier and at the same
+// time not to export the fields outside of the package.
+type stampIssuerData struct {
+	Label          string   `json:"label"`          // Label to identify the batch period/importance.
+	KeyID          string   `json:"keyID"`          // Owner identity.
+	BatchID        []byte   `json:"batchID"`        // The batch stamps are issued from.
+	BatchAmount    *big.Int `json:"BatchAmount"`    // Amount paid for the batch.
+	BatchDepth     uint8    `json:"batchDepth"`     // Batch depth: batch size = 2^{depth}.
+	BucketDepth    uint8    `json:"bucketDepth"`    // Bucket depth: the depth of collision Buckets uniformity.
+	Buckets        []uint32 `json:"buckets"`        // Collision Buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
+	MaxBucketCount uint32   `json:"maxBucketCount"` // the count of the fullest bucket
+	CreatedAt      int64    `json:"createdAt"`      // Issuer created timestamp.
+}
 
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	label          string     // Label to identify the batch period/importance.
-	keyID          string     // Owner identity.
-	batchID        []byte     // The batch stamps are issued from.
-	batchDepth     uint8      // Batch depth: batch size = 2^{depth}.
-	bucketDepth    uint8      // Bucket depth: the depth of collision buckets uniformity.
-	mu             sync.Mutex // Mutex for buckets.
-	buckets        []uint32   // Collision buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
-	maxBucketCount uint32     // the count of the fullest bucket
+	bucketMu sync.Mutex
+	stampIssuerData
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
 // upload.
 //
-// bucketDepth must always be smaller than batchDepth otherwise inc() panics.
-func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth uint8) *StampIssuer {
+// BucketDepth must always be smaller than batchDepth otherwise inc() panics.
+func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8) *StampIssuer {
 	return &StampIssuer{
-		label:       label,
-		keyID:       keyID,
-		batchID:     batchID,
-		batchDepth:  batchDepth,
-		bucketDepth: bucketDepth,
-		buckets:     make([]uint32, 1<<bucketDepth),
+		stampIssuerData: stampIssuerData{
+			Label:       label,
+			KeyID:       keyID,
+			BatchID:     batchID,
+			BatchAmount: batchAmount,
+			BatchDepth:  batchDepth,
+			BucketDepth: bucketDepth,
+			Buckets:     make([]uint32, 1<<bucketDepth),
+			CreatedAt:   time.Now().UnixNano(),
+		},
 	}
 }
 
 // inc increments the count in the correct collision bucket for a newly stamped
 // chunk with address addr.
-func (st *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	b := toBucket(st.bucketDepth, addr)
-	bucketCount := st.buckets[b]
-	if bucketCount == 1<<(st.batchDepth-st.bucketDepth) {
+func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
+	si.bucketMu.Lock()
+	defer si.bucketMu.Unlock()
+	b := toBucket(si.BucketDepth, addr)
+	bucketCount := si.Buckets[b]
+	if bucketCount == 1<<(si.BatchDepth-si.BucketDepth) {
 		return nil, ErrBucketFull
 	}
-	st.buckets[b]++
-	if st.buckets[b] > st.maxBucketCount {
-		st.maxBucketCount = st.buckets[b]
+	si.Buckets[b]++
+	if si.Buckets[b] > si.MaxBucketCount {
+		si.MaxBucketCount = si.Buckets[b]
 	}
 	return indexToBytes(b, bucketCount), nil
 }
@@ -82,69 +99,47 @@ func bytesToIndex(buf []byte) (bucket, index uint32) {
 }
 
 // Label returns the label of the issuer.
-func (st *StampIssuer) Label() string {
-	return st.label
+func (si *StampIssuer) Label() string {
+	return si.stampIssuerData.Label
 }
 
-// MarshalBinary gives the byte slice serialisation of a StampIssuer:
-// = label[32]|keyID[32]|batchID[32]|batchDepth[1]|bucketDepth[1]|size_0[4]|size_1[4]|....
-func (st *StampIssuer) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, 32+32+32+1+1+4*(1<<st.bucketDepth))
-	label := []byte(st.label)
-	copy(buf[32-len(label):32], label)
-	keyID := []byte(st.keyID)
-	copy(buf[64-len(keyID):64], keyID)
-	copy(buf[64:96], st.batchID)
-	buf[96] = st.batchDepth
-	buf[97] = st.bucketDepth
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	for i, addr := range st.buckets {
-		offset := 98 + i*4
-		binary.BigEndian.PutUint32(buf[offset:offset+4], addr)
-	}
-	return buf, nil
+// MarshalBinary implements the encoding.BinaryMarshaler interface.
+func (si *StampIssuer) MarshalBinary() ([]byte, error) {
+	return json.Marshal(si)
 }
 
-// UnmarshalBinary parses a serialised StampIssuer into the receiver struct.
-func (st *StampIssuer) UnmarshalBinary(buf []byte) error {
-	st.label = toString(buf[:32])
-	st.keyID = toString(buf[32:64])
-	st.batchID = buf[64:96]
-	st.batchDepth = buf[96]
-	st.bucketDepth = buf[97]
-	st.buckets = make([]uint32, 1<<st.bucketDepth)
-	// not using lock as unmarshal is init
-	for i := range st.buckets {
-		offset := 98 + i*4
-		st.buckets[i] = binary.BigEndian.Uint32(buf[offset : offset+4])
-	}
-	return nil
-}
-
-func toString(buf []byte) string {
-	i := 0
-	var c byte
-	for i, c = range buf {
-		if c != 0 {
-			break
-		}
-	}
-	return string(buf[i:])
+// UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
+func (si *StampIssuer) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, si)
 }
 
 // Utilization returns the batch utilization in the form of
 // an integer between 0 and 4294967295. Batch fullness can be
 // calculated with: max_bucket_value / 2 ^ (batch_depth - bucket_depth)
-func (st *StampIssuer) Utilization() uint32 {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	return st.maxBucketCount
+func (si *StampIssuer) Utilization() uint32 {
+	si.bucketMu.Lock()
+	defer si.bucketMu.Unlock()
+	return si.MaxBucketCount
 }
 
 // ID returns the BatchID for this batch.
-func (s *StampIssuer) ID() []byte {
-	id := make([]byte, len(s.batchID))
-	copy(id, s.batchID)
+func (si *StampIssuer) ID() []byte {
+	id := make([]byte, len(si.BatchID))
+	copy(id, si.BatchID)
 	return id
+}
+
+// Depth represent issued batch depth.
+func (si *StampIssuer) Depth() uint8 {
+	return si.BatchDepth
+}
+
+// Amount represent issued batch amount paid.
+func (si *StampIssuer) Amount() *big.Int {
+	return si.BatchAmount
+}
+
+// CreatedAt represents the time when this issuer was created.
+func (si *StampIssuer) CreatedAt() int64 {
+	return si.stampIssuerData.CreatedAt
 }

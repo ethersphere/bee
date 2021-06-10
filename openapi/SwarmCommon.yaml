@@ -319,6 +319,14 @@ components:
           $ref: "#/components/schemas/BatchID"
         utilization:
           type: integer
+        label:
+          type: string
+        depth:
+          type: integer
+        amount:
+          $ref: "#/components/schemas/BigInt"
+        createdAt:
+          type: integer
 
     Settlement:
       type: object

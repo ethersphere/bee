@@ -43,7 +43,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		return nil, err
 	}
 	ts := timestamp()
-	toSign, err := toSignDigest(addr.Bytes(), st.issuer.batchID, index, ts)
+	toSign, err := toSignDigest(addr.Bytes(), st.issuer.BatchID, index, ts)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStamp(st.issuer.batchID, index, ts, sig), nil
+	return NewStamp(st.issuer.BatchID, index, ts, sig), nil
 }
 
 func timestamp() []byte {

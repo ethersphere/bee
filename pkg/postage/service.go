@@ -84,7 +84,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
-		if bytes.Equal(batchID, st.batchID) {
+		if bytes.Equal(batchID, st.BatchID) {
 			return st, nil
 		}
 	}

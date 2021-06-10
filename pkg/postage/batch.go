@@ -23,7 +23,7 @@ type Batch struct {
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the
 // postage batch to a byte slice.
-// serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|bucketDepth(1)|depth(1)|immutable(1)
+// serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|BucketDepth(1)|depth(1)|immutable(1)
 func (b *Batch) MarshalBinary() ([]byte, error) {
 	out := make([]byte, 95)
 	copy(out, b.ID)
