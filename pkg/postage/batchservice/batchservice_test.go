@@ -50,6 +50,8 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.Owner,
 			testBatch.Value,
 			testBatch.Depth,
+			testBatch.BucketDepth,
+			testBatch.Immutable,
 		); err == nil {
 			t.Fatalf("expected error")
 		}
@@ -65,6 +67,8 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.Owner,
 			testBatch.Value,
 			testBatch.Depth,
+			testBatch.BucketDepth,
+			testBatch.Immutable,
 		); err != nil {
 			t.Fatalf("got error %v", err)
 		}
@@ -83,8 +87,14 @@ func TestBatchServiceCreate(t *testing.T) {
 		if got.Value.Cmp(testBatch.Value) != 0 {
 			t.Fatalf("batch value: want %v, got %v", testBatch.Value.String(), got.Value.String())
 		}
+		if got.BucketDepth != testBatch.BucketDepth {
+			t.Fatalf("bucket depth: want %v, got %v", got.BucketDepth, testBatch.BucketDepth)
+		}
 		if got.Depth != testBatch.Depth {
 			t.Fatalf("batch depth: want %v, got %v", got.Depth, testBatch.Depth)
+		}
+		if got.Immutable != testBatch.Immutable {
+			t.Fatalf("immutable: want %v, got %v", got.Immutable, testBatch.Immutable)
 		}
 		if got.Start != testChainState.Block {
 			t.Fatalf("batch start block different form chain state: want %v, got %v", got.Start, testChainState.Block)

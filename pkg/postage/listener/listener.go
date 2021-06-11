@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	postageStampABI = parseABI(postageabi.PostageStampABIv0_2_0)
+	postageStampABI = parseABI(postageabi.PostageStampABIv0_3_0)
 	// batchCreatedTopic is the postage contract's batch created event topic
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 	// batchTopupTopic is the postage contract's batch topup event topic
@@ -116,6 +116,8 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.Owner.Bytes(),
 			c.NormalisedBalance,
 			c.Depth,
+			c.BucketDepth,
+			c.ImmutableFlag,
 		)
 	case batchTopupTopic:
 		c := &batchTopUpEvent{}
@@ -301,6 +303,8 @@ type batchCreatedEvent struct {
 	NormalisedBalance *big.Int
 	Owner             common.Address
 	Depth             uint8
+	BucketDepth       uint8
+	ImmutableFlag     bool
 }
 
 type batchTopUpEvent struct {
@@ -320,8 +324,8 @@ type priceUpdateEvent struct {
 }
 
 var (
-	GoerliPostageStampContractAddress = common.HexToAddress("0xB3B7f2eD97B735893316aEeA849235de5e8972a2")
-	GoerliStartBlock                  = uint64(4818979)
+	GoerliPostageStampContractAddress = common.HexToAddress("0x621e455C4a139f5C4e4A8122Ce55Dc21630769E4")
+	GoerliStartBlock                  = uint64(4933174)
 )
 
 // DiscoverAddresses returns the canonical contracts for this chainID
