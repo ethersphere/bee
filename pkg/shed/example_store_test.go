@@ -311,13 +311,11 @@ func Example_store() {
 	ch := testing.GenerateTestRandomChunk()
 	err = s.Put(context.Background(), ch)
 	if err != nil {
-		fmt.Println("put chunk:", err)
 		return
 	}
 
 	got, err := s.Get(context.Background(), ch.Address())
 	if err != nil {
-		fmt.Println("get chunk:", err)
 		return
 	}
 

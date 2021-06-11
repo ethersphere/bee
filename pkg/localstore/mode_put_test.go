@@ -19,16 +19,29 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
+
+var putModes = []storage.ModePut{
+	storage.ModePutRequest,
+	storage.ModePutRequestPin,
+	storage.ModePutSync,
+	storage.ModePutUpload,
+	storage.ModePutUploadPin,
+	storage.ModePutRequestCache,
+}
 
 // TestModePutRequest validates ModePutRequest index values on the provided DB.
 func TestModePutRequest(t *testing.T) {
@@ -65,6 +78,7 @@ func TestModePutRequest(t *testing.T) {
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newItemsCountTest(db.pullIndex, tc.count)(t)
+				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 
@@ -85,6 +99,7 @@ func TestModePutRequest(t *testing.T) {
 
 				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newItemsCountTest(db.pullIndex, tc.count)(t)
+				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			})
 		})
@@ -118,8 +133,11 @@ func TestModePutRequestPin(t *testing.T) {
 				newPinIndexTest(db, ch, nil)(t)
 			}
 
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			// gc index should be always 0 since we're pinning
 			newItemsCountTest(db.gcIndex, 0)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }
@@ -158,7 +176,10 @@ func TestModePutRequestCache(t *testing.T) {
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
 
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newIndexGCSizeTest(db)(t)
 		})
 	}
 }
@@ -195,9 +216,10 @@ func TestModePutSync(t *testing.T) {
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				newPullIndexTest(db, ch, binIDs[po], nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
-				newItemsCountTest(db.gcIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
 			}
+			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 			newItemsCountTest(db.gcIndex, tc.count)(t)
 			newIndexGCSizeTest(db)(t)
 		})
@@ -237,6 +259,7 @@ func TestModePutUpload(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
@@ -274,6 +297,7 @@ func TestModePutUploadPin(t *testing.T) {
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, nil)(t)
 			}
+			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 		})
 	}
 }
@@ -465,6 +489,147 @@ func TestModePut_sameChunk(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestModePut_sameChunk puts the same chunk multiple times
+// and validates that all relevant indexes have only one item
+// in them.
+func TestModePut_SameStamp(t *testing.T) {
+
+	ctx := context.Background()
+	stamp := postagetesting.MustNewStamp()
+	ts := time.Now().Unix()
+
+	for _, modeTc1 := range putModes {
+		for _, modeTc2 := range putModes {
+			for _, tc := range []struct {
+				persistChunk swarm.Chunk
+				discardChunk swarm.Chunk
+			}{
+				{
+					persistChunk: generateChunkWithTimestamp(stamp, ts),
+					discardChunk: generateChunkWithTimestamp(stamp, ts),
+				},
+				{
+					persistChunk: generateChunkWithTimestamp(stamp, ts+1),
+					discardChunk: generateChunkWithTimestamp(stamp, ts),
+				},
+				{
+					persistChunk: generateChunkWithTimestamp(stamp, ts),
+					discardChunk: generateChunkWithTimestamp(stamp, ts-1),
+				},
+			} {
+				t.Run(modeTc1.String()+modeTc2.String(), func(t *testing.T) {
+
+					db := newTestDB(t, nil)
+					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
+
+					_, err := db.Put(ctx, modeTc1, tc.persistChunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					newItemsCountTest(db.retrievalDataIndex, 1)(t)
+					newItemsCountTest(db.postageChunksIndex, 1)(t)
+					newItemsCountTest(db.postageRadiusIndex, 1)(t)
+					newItemsCountTest(db.postageIndexIndex, 1)(t)
+					if modeTc1 != storage.ModePutRequestCache {
+						newItemsCountTest(db.pullIndex, 1)(t)
+					}
+
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
+					if err != nil {
+						t.Fatalf("expected no error, got %v", err)
+					}
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.discardChunk.Address())
+					if !errors.Is(err, storage.ErrNotFound) {
+						t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestModePut_ImmutableStamp(t *testing.T) {
+
+	ctx := context.Background()
+	stamp := postagetesting.MustNewStamp()
+	ts := time.Now().Unix()
+
+	for _, modeTc1 := range putModes {
+		for _, modeTc2 := range putModes {
+			for _, tc := range []struct {
+				name         string
+				persistChunk swarm.Chunk
+				discardChunk swarm.Chunk
+			}{
+				{
+					name:         "same timestamps",
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+				},
+				{
+					name:         "higher timestamp",
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts+1),
+				},
+				{
+					name:         "higher timestamp first",
+					persistChunk: generateImmutableChunkWithTimestamp(stamp, ts+1),
+					discardChunk: generateImmutableChunkWithTimestamp(stamp, ts),
+				},
+			} {
+				testName := fmt.Sprintf("%s %s %s", modeTc1.String(), modeTc2.String(), tc.name)
+				t.Run(testName, func(t *testing.T) {
+
+					db := newTestDB(t, nil)
+					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
+
+					_, err := db.Put(ctx, modeTc1, tc.persistChunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
+					if !errors.Is(err, ErrOverwrite) {
+						t.Fatalf("expected overwrite error on immutable stamp got %v", err)
+					}
+
+					newItemsCountTest(db.retrievalDataIndex, 1)(t)
+					newItemsCountTest(db.postageChunksIndex, 1)(t)
+					newItemsCountTest(db.postageRadiusIndex, 1)(t)
+					newItemsCountTest(db.postageIndexIndex, 1)(t)
+					if modeTc1 != storage.ModePutRequestCache {
+						newItemsCountTest(db.pullIndex, 1)(t)
+					}
+
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
+					if err != nil {
+						t.Fatalf("expected no error, got %v", err)
+					}
+					_, err = db.Get(ctx, storage.ModeGetLookup, tc.discardChunk.Address())
+					if !errors.Is(err, storage.ErrNotFound) {
+						t.Fatalf("expected %v, got %v", storage.ErrNotFound, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func generateChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
+	tsBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBuf, uint64(timestamp))
+	chunk := generateTestRandomChunk()
+	return chunk.WithStamp(postage.NewStamp(stamp.BatchID(), stamp.Index(), tsBuf, stamp.Sig()))
+}
+
+func generateImmutableChunkWithTimestamp(stamp *postage.Stamp, timestamp int64) swarm.Chunk {
+	return generateChunkWithTimestamp(stamp, timestamp).WithBatch(4, 12, 8, true)
 }
 
 // TestPutDuplicateChunks validates the expected behaviour for
