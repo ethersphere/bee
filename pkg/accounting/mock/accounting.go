@@ -21,7 +21,7 @@ type Service struct {
 	balances                map[string]*big.Int
 	reserveFunc             func(ctx context.Context, peer swarm.Address, price uint64) error
 	releaseFunc             func(peer swarm.Address, price uint64)
-	creditFunc              func(peer swarm.Address, price uint64) error
+	creditFunc              func(peer swarm.Address, price uint64, orig bool) error
 	prepareDebitFunc        func(peer swarm.Address, price uint64) accounting.Action
 	balanceFunc             func(swarm.Address) (*big.Int, error)
 	shadowBalanceFunc       func(swarm.Address) (*big.Int, error)
@@ -54,7 +54,7 @@ func WithReleaseFunc(f func(peer swarm.Address, price uint64)) Option {
 }
 
 // WithCreditFunc sets the mock Credit function
-func WithCreditFunc(f func(peer swarm.Address, price uint64) error) Option {
+func WithCreditFunc(f func(peer swarm.Address, price uint64, orig bool) error) Option {
 	return optionFunc(func(s *Service) {
 		s.creditFunc = f
 	})
@@ -128,9 +128,9 @@ func (s *Service) Release(peer swarm.Address, price uint64) {
 }
 
 // Credit is the mock function wrapper that calls the set implementation
-func (s *Service) Credit(peer swarm.Address, price uint64) error {
+func (s *Service) Credit(peer swarm.Address, price uint64, orig bool) error {
 	if s.creditFunc != nil {
-		return s.creditFunc(peer, price)
+		return s.creditFunc(peer, price, orig)
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
