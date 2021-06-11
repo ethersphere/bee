@@ -50,7 +50,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -77,7 +77,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 		p.syncPeers[i] = make(map[string]*syncPeer)
 	}
 	p.wg.Add(1)
-	go p.manage()
+	go p.manage(warmupTime)
 	return p
 }
 
@@ -86,7 +86,7 @@ type peer struct {
 	po   uint8
 }
 
-func (p *Puller) manage() {
+func (p *Puller) manage(warmupTime time.Duration) {
 	defer p.wg.Done()
 	c, unsubscribe := p.topology.SubscribePeersChange()
 	defer unsubscribe()
@@ -96,6 +96,16 @@ func (p *Puller) manage() {
 		<-p.quit
 		cancel()
 	}()
+
+	// wait for warmup duration to complete
+	select {
+	case <-time.After(warmupTime):
+	case <-p.quit:
+		return
+	}
+
+	p.logger.Info("puller: warmup period complete, worker starting.")
+
 	for {
 		select {
 		case <-c:

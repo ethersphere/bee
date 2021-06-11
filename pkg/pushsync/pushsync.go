@@ -45,6 +45,7 @@ const (
 var (
 	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
 	ErrNoPush                = errors.New("could not push chunk")
+	ErrWarmup                = errors.New("node warmup time not complete")
 )
 
 type PushSyncer interface {
@@ -72,13 +73,14 @@ type PushSync struct {
 	signer         crypto.Signer
 	isFullNode     bool
 	failedRequests *failedRequestCache
+	warmupPeriod   time.Time
 }
 
 var defaultTTL = 20 * time.Second                     // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
-func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
+func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		streamer:       streamer,
@@ -95,6 +97,7 @@ func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storag
 		validStamp:     validStamp,
 		signer:         signer,
 		failedRequests: newFailedRequestCache(),
+		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 	return ps
 }
@@ -197,6 +200,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
+
+			if time.Now().Before(ps.warmupPeriod) {
+				err = ErrWarmup
+				return
+			}
+
 			if !storedChunk {
 				_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 				if err != nil {

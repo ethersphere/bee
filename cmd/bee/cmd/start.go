@@ -154,6 +154,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
+				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
 			})
 			if err != nil {
 				return err
