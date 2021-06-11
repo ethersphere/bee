@@ -42,7 +42,6 @@ type booking struct {
 	expectedBalance   int64
 	originatedBalance int64
 	originatedCredit  bool
-	amount            int64
 	notifyPaymentSent bool
 	overpay           uint64
 }
