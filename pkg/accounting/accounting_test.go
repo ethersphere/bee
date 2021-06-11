@@ -21,7 +21,7 @@ import (
 
 const (
 	testPrice       = uint64(10)
-	testRefreshRate = int64(600)
+	testRefreshRate = int64(1000)
 )
 
 var (
