@@ -49,7 +49,7 @@ var (
 
 var ErrInvalidAddress = errors.New("invalid address")
 
-func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer) *Service {
+func New(networkID uint64, storer storage.Storer, peerSuggester topology.ClosestPeerer, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	service := &Service{
 		networkID:         networkID,
 		storer:            storer,
@@ -61,13 +61,13 @@ func New(networkID uint64, storer storage.Storer, peerSuggester topology.Closest
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
 	}
-	go service.chunksWorker()
+	go service.chunksWorker(warmupTime)
 	return service
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
 // and pushes them to the closest peer and get a receipt.
-func (s *Service) chunksWorker() {
+func (s *Service) chunksWorker(warmupTime time.Duration) {
 	var (
 		chunks        <-chan swarm.Chunk
 		unsubscribe   func()
@@ -81,12 +81,22 @@ func (s *Service) chunksWorker() {
 		span          opentracing.Span
 		logger        *logrus.Entry
 	)
+
 	defer timer.Stop()
 	defer close(s.chunksWorkerQuitC)
 	go func() {
 		<-s.quit
 		cancel()
 	}()
+
+	// wait for warmup duration to complete
+	select {
+	case <-time.After(warmupTime):
+	case <-s.quit:
+		return
+	}
+
+	s.logger.Info("pusher: warmup period complete, worker starting.")
 
 LOOP:
 	for {
