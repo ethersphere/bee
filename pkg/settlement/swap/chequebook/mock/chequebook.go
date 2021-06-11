@@ -21,6 +21,8 @@ type Service struct {
 	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error)
 	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
 	chequebookDepositFunc          func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	lastChequeFunc                 func(common.Address) (*chequebook.SignedCheque, error)
+	lastChequesFunc                func() (map[common.Address]*chequebook.SignedCheque, error)
 }
 
 // WithChequebook*Functions set the mock chequebook functions
@@ -57,6 +59,18 @@ func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Addr
 func WithChequebookWithdrawFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookWithdrawFunc = f
+	})
+}
+
+func WithLastChequeFunc(f func(beneficiary common.Address) (*chequebook.SignedCheque, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.lastChequeFunc = f
+	})
+}
+
+func WithLastChequesFunc(f func() (map[common.Address]*chequebook.SignedCheque, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.lastChequesFunc = f
 	})
 }
 
@@ -113,10 +127,16 @@ func (s *Service) Issue(ctx context.Context, beneficiary common.Address, amount 
 }
 
 func (s *Service) LastCheque(beneficiary common.Address) (*chequebook.SignedCheque, error) {
+	if s.lastChequeFunc != nil {
+		return s.lastChequeFunc(beneficiary)
+	}
 	return nil, errors.New("Error")
 }
 
 func (s *Service) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
+	if s.lastChequesFunc != nil {
+		return s.lastChequesFunc()
+	}
 	return nil, errors.New("Error")
 }
 
