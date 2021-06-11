@@ -347,7 +347,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
 	validStamp := postage.ValidStamp(batchStore)
-	post, err := postage.NewService(stateStore, chainID)
+	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
 	}

@@ -192,7 +192,7 @@ func TestPostageCreateStamp(t *testing.T) {
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10, 1000)))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
@@ -208,7 +208,7 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10, 1000)))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {
