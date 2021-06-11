@@ -23,13 +23,14 @@ type StampIssuer struct {
 	mu             sync.Mutex // Mutex for buckets.
 	buckets        []uint32   // Collision buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
 	maxBucketCount uint32     // the count of the fullest bucket
+	blockNumber    uint64     // blockNumber when this batch was created
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
 // upload.
 //
 // bucketDepth must always be smaller than batchDepth otherwise inc() panics.
-func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth uint8) *StampIssuer {
+func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth uint8, blockNumber uint64) *StampIssuer {
 	return &StampIssuer{
 		label:       label,
 		keyID:       keyID,
@@ -37,6 +38,7 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth
 		batchDepth:  batchDepth,
 		bucketDepth: bucketDepth,
 		buckets:     make([]uint32, 1<<bucketDepth),
+		blockNumber: blockNumber,
 	}
 }
 
@@ -87,9 +89,9 @@ func (st *StampIssuer) Label() string {
 }
 
 // MarshalBinary gives the byte slice serialisation of a StampIssuer:
-// = label[32]|keyID[32]|batchID[32]|batchDepth[1]|bucketDepth[1]|size_0[4]|size_1[4]|....
+// = label[32]|keyID[32]|batchID[32]|batchDepth[1]|bucketDepth[1]|blockNumber[8]|size_0[4]|size_1[4]|....
 func (st *StampIssuer) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, 32+32+32+1+1+4*(1<<st.bucketDepth))
+	buf := make([]byte, 32+32+32+1+1+8+4*(1<<st.bucketDepth))
 	label := []byte(st.label)
 	copy(buf[32-len(label):32], label)
 	keyID := []byte(st.keyID)
@@ -97,10 +99,11 @@ func (st *StampIssuer) MarshalBinary() ([]byte, error) {
 	copy(buf[64:96], st.batchID)
 	buf[96] = st.batchDepth
 	buf[97] = st.bucketDepth
+	binary.BigEndian.PutUint64(buf[98:106], st.blockNumber)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	for i, addr := range st.buckets {
-		offset := 98 + i*4
+		offset := 106 + i*4
 		binary.BigEndian.PutUint32(buf[offset:offset+4], addr)
 	}
 	return buf, nil
@@ -113,10 +116,11 @@ func (st *StampIssuer) UnmarshalBinary(buf []byte) error {
 	st.batchID = buf[64:96]
 	st.batchDepth = buf[96]
 	st.bucketDepth = buf[97]
+	st.blockNumber = binary.BigEndian.Uint64(buf[98:106])
 	st.buckets = make([]uint32, 1<<st.bucketDepth)
 	// not using lock as unmarshal is init
 	for i := range st.buckets {
-		offset := 98 + i*4
+		offset := 106 + i*4
 		st.buckets[i] = binary.BigEndian.Uint32(buf[offset : offset+4])
 	}
 	return nil
