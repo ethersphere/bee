@@ -42,8 +42,13 @@ func (c *command) initDeployCmd() error {
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			_ = c.config.GetString(optionNameDataDir)
-			keyDir := c.config.GetString(optionNameKeyDir)
+			var keyDir string
+			if c.config.GetString(optionNameKeyDir) == ""{
+				keyDir = c.config.GetString(optionNameDataDir)
+			} else{
+				keyDir = c.config.GetString(optionNameKeyDir)
+
+			}
 			factoryAddress := c.config.GetString(optionNameSwapFactoryAddress)
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
