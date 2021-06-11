@@ -69,6 +69,10 @@ func (m ModePut) String() string {
 		return "Upload"
 	case ModePutUploadPin:
 		return "UploadPin"
+	case ModePutRequestPin:
+		return "RequestPin"
+	case ModePutRequestCache:
+		return "RequestCache"
 	default:
 		return "Unknown"
 	}

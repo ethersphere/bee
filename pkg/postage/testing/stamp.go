@@ -27,5 +27,5 @@ func MustNewSignature() []byte {
 // MustNewStamp will generate a postage stamp with random data. Panics on
 // errors.
 func MustNewStamp() *postage.Stamp {
-	return postage.NewStamp(MustNewID(), MustNewSignature())
+	return postage.NewStamp(MustNewID(), MustNewID()[:8], MustNewID()[:8], MustNewSignature())
 }

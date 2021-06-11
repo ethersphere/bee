@@ -1,4 +1,4 @@
-25c25
+26c26
 < 	BucketDepth = uint8(16)
 ---
 > 	BucketDepth = uint8(10)

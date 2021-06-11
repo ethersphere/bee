@@ -121,6 +121,8 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
 
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
+
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
@@ -231,6 +233,8 @@ func TestPinGC(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)+pinChunksCount))
 
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)+pinChunksCount))
+
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
@@ -309,6 +313,8 @@ func TestGCAfterPin(t *testing.T) {
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, chunkCount))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(0)))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
 
 	for _, hash := range pinAddrs {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, hash)
@@ -435,6 +441,8 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 	}
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
@@ -897,6 +905,8 @@ func TestGC_NoEvictDirty(t *testing.T) {
 	}
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 

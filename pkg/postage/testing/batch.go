@@ -15,7 +15,10 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
-const defaultDepth = 16
+const (
+	defaultBucketDepth = 12
+	defaultDepth       = 16
+)
 
 // BatchOption is an optional parameter for NewBatch
 type BatchOption func(c *postage.Batch)
@@ -50,10 +53,12 @@ func NewBigInt() *big.Int {
 // be filled with random data. Panics on errors.
 func MustNewBatch(opts ...BatchOption) *postage.Batch {
 	b := &postage.Batch{
-		ID:    MustNewID(),
-		Value: NewBigInt(),
-		Start: rand.Uint64(), // skipcq: GSC-G404
-		Depth: defaultDepth,
+		ID:          MustNewID(),
+		Value:       NewBigInt(),
+		Start:       rand.Uint64(), // skipcq: GSC-G404
+		BucketDepth: defaultBucketDepth,
+		Depth:       defaultDepth,
+		Immutable:   true,
 	}
 
 	for _, opt := range opts {

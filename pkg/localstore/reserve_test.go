@@ -39,7 +39,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 	addrs := make([]swarm.Address, 0)
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
 		err := db.UnreserveBatch(ch.Stamp().BatchID(), 4)
 		if err != nil {
 			t.Fatal(err)
@@ -133,7 +133,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 	addrs := make([]swarm.Address, 0)
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
@@ -199,7 +199,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
@@ -216,7 +216,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	var po4Chs []swarm.Chunk
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 4).WithBatch(2, 3)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 4).WithBatch(2, 3, 2, false)
 		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
@@ -234,7 +234,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	var gcChs []swarm.Chunk
 	for i := 0; i < 100; i++ {
-		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
@@ -336,7 +336,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
@@ -353,7 +353,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	var gcChs []swarm.Chunk
 	for i := 0; i < 100; i++ {
-		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3)
+		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)

@@ -36,7 +36,7 @@ const (
 	// about exported data format version
 	exportVersionFilename = ".swarm-export-version"
 	// current export format version
-	currentExportVersion = "2"
+	currentExportVersion = "3"
 )
 
 // Export writes a tar structured data to the writer of
@@ -69,6 +69,12 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 			return false, err
 		}
 		if _, err := tw.Write(item.BatchID); err != nil {
+			return false, err
+		}
+		if _, err := tw.Write(item.Index); err != nil {
+			return false, err
+		}
+		if _, err := tw.Write(item.Timestamp); err != nil {
 			return false, err
 		}
 		if _, err := tw.Write(item.Sig); err != nil {

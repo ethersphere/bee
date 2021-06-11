@@ -233,7 +233,7 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 	)
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
+		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
 	}
 
 	ns := netstore.New(storer, validStamp, recoveryFunc, retrieve, logger)

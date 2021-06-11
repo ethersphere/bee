@@ -52,7 +52,7 @@ func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 	chunks = make([]swarm.Chunk, len(out))
 	for i, ch := range out {
 		chunks[i] = swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data).
-			WithStamp(postage.NewStamp(ch.BatchID, ch.Sig))
+			WithStamp(postage.NewStamp(ch.BatchID, ch.Index, ch.Timestamp, ch.Sig))
 	}
 	return chunks, nil
 }

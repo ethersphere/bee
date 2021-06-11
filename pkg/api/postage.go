@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	gasPriceHeader = "Gas-Price"
-	errBadGasPrice = "bad gas price"
+	gasPriceHeader  = "Gas-Price"
+	immutableHeader = "Immutable"
+	errBadGasPrice  = "bad gas price"
 )
 
 type batchID []byte
@@ -65,7 +66,12 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
-	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), label)
+	var immutable bool
+	if val, ok := r.Header[immutableHeader]; ok {
+		immutable, _ = strconv.ParseBool(val[0])
+	}
+
+	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			s.logger.Debugf("create batch: out of funds: %v", err)

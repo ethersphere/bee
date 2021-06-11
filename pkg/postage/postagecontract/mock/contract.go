@@ -12,11 +12,11 @@ import (
 )
 
 type contractMock struct {
-	createBatch func(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error)
+	createBatch func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
 }
 
-func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error) {
-	return c.createBatch(ctx, initialBalance, depth, label)
+func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+	return c.createBatch(ctx, initialBalance, depth, immutable, label)
 }
 
 // Option is a an option passed to New
@@ -33,7 +33,7 @@ func New(opts ...Option) postagecontract.Interface {
 	return bs
 }
 
-func WithCreateBatchFunc(f func(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error)) Option {
+func WithCreateBatchFunc(f func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)) Option {
 	return func(m *contractMock) {
 		m.createBatch = f
 	}
