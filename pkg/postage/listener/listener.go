@@ -324,17 +324,24 @@ type priceUpdateEvent struct {
 }
 
 var (
+	GoerliChainID                     = int64(5)
 	GoerliPostageStampContractAddress = common.HexToAddress("0x621e455C4a139f5C4e4A8122Ce55Dc21630769E4")
 	GoerliStartBlock                  = uint64(4933174)
+	XDaiChainID                       = int64(100)
+	XDaiPostageStampContractAddress   = common.HexToAddress("6a1a21eca3ab28be85c7ba22b2d6eae5907c900e")
+	XDaiStartBlock                    = uint64(16515648)
 )
 
 // DiscoverAddresses returns the canonical contracts for this chainID
 func DiscoverAddresses(chainID int64) (postageStamp common.Address, startBlock uint64, found bool) {
-	if chainID == 5 {
-		// goerli
+	switch chainID {
+	case GoerliChainID:
 		return GoerliPostageStampContractAddress, GoerliStartBlock, true
+	case XDaiChainID:
+		return XDaiPostageStampContractAddress, XDaiStartBlock, true
+	default:
+		return common.Address{}, 0, false
 	}
-	return common.Address{}, 0, false
 }
 
 func totalTimeMetric(metric prometheus.Counter, start time.Time) {
