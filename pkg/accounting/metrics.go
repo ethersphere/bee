@@ -40,12 +40,6 @@ func newMetrics() metrics {
 			Name:      "total_credited_amount",
 			Help:      "Amount of BZZ credited to peers (potential cost of the node)",
 		}),
-		TotalOriginatedCreditedAmount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_originated_credited_amount",
-			Help:      "Amount of BZZ credited to peers (potential cost of the node) for originated traffic",
-		}),
 		DebitEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -57,12 +51,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "credit_events_count",
 			Help:      "Number of occurrences of BZZ credit events towards peers",
-		}),
-		OriginatedCreditEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "originated_credit_events_count",
-			Help:      "Number of occurrences of BZZ credit events as originator towards peers",
 		}),
 		AccountingDisconnectsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -81,6 +69,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "accounting_reserve_count",
 			Help:      "Number of reserve calls",
+		}),
+		TotalOriginatedCreditedAmount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_originated_credited_amount",
+			Help:      "Amount of BZZ credited to peers (potential cost of the node) for originated traffic",
+		}),
+		OriginatedCreditEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "originated_credit_events_count",
+			Help:      "Number of occurrences of BZZ credit events as originator towards peers",
 		}),
 	}
 }

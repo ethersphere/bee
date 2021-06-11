@@ -24,13 +24,12 @@ import (
 
 var (
 	_                        Interface = (*Accounting)(nil)
-	balancesPrefix           string    = "accounting_balance_"
-	balancesSurplusPrefix    string    = "accounting_surplusbalance_"
-	balancesOriginatedPrefix string    = "accounting_originatedbalance_"
+	balancesPrefix                     = "accounting_balance_"
+	balancesSurplusPrefix              = "accounting_surplusbalance_"
+	balancesOriginatedPrefix           = "accounting_originatedbalance_"
 	// fraction of the refresh rate that is the minimum for monetary settlement
 	// this value is chosen so that tiny payments are prevented while still allowing small payments in environments with lower payment thresholds
 	minimumPaymentDivisor = int64(5)
-	zero                  = big.NewInt(0)
 )
 
 // Interface is the Accounting interface.
@@ -270,42 +269,39 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64, originated bool) e
 	a.metrics.TotalCreditedAmount.Add(float64(price))
 	a.metrics.CreditEventsCount.Inc()
 
-	//
-
-	if originated {
-		originBalance, err := a.OriginatedBalance(peer)
-		if err != nil {
-			if !errors.Is(err, ErrPeerNoBalance) {
-				return fmt.Errorf("failed to load originated balance: %w", err)
-			}
-		}
-
-		// Calculate next balance by decreasing current balance with the price we credit
-		nextOriginBalance := new(big.Int).Sub(originBalance, new(big.Int).SetUint64(price))
-
-		a.logger.Tracef("crediting peer %v with price %d, new originated balance is %d", peer, price, nextOriginBalance)
-
-		// only consider negative balance for limiting originated balance
-		if nextBalance.Cmp(zero) > 0 {
-			nextBalance.Set(zero)
-		}
-
-		// If originated balance is more into the negative domain, set it to balance
-		if nextOriginBalance.Cmp(nextBalance) < 0 {
-			nextOriginBalance.Set(nextBalance)
-			a.logger.Tracef("decreasing originated balance to peer %v to current balance %d", peer, nextOriginBalance)
-		}
-
-		err = a.store.Put(originatedBalanceKey(peer), nextOriginBalance)
-		if err != nil {
-			return fmt.Errorf("failed to persist originated balance: %w", err)
-		}
-
-		a.metrics.TotalOriginatedCreditedAmount.Add(float64(price))
-		a.metrics.OriginatedCreditEventsCount.Inc()
+	if !originated {
+		return nil
 	}
 
-	//
+	originBalance, err := a.OriginatedBalance(peer)
+	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
+		return fmt.Errorf("failed to load originated balance: %w", err)
+	}
+
+	// Calculate next balance by decreasing current balance with the price we credit
+	nextOriginBalance := new(big.Int).Sub(originBalance, new(big.Int).SetUint64(price))
+
+	a.logger.Tracef("crediting peer %v with price %d, new originated balance is %d", peer, price, nextOriginBalance)
+
+	zero := big.NewInt(0)
+	// only consider negative balance for limiting originated balance
+	if nextBalance.Cmp(zero) > 0 {
+		nextBalance.Set(zero)
+	}
+
+	// If originated balance is more into the negative domain, set it to balance
+	if nextOriginBalance.Cmp(nextBalance) < 0 {
+		nextOriginBalance.Set(nextBalance)
+		a.logger.Tracef("decreasing originated balance to peer %v to current balance %d", peer, nextOriginBalance)
+	}
+
+	err = a.store.Put(originatedBalanceKey(peer), nextOriginBalance)
+	if err != nil {
+		return fmt.Errorf("failed to persist originated balance: %w", err)
+	}
+
+	a.metrics.TotalOriginatedCreditedAmount.Add(float64(price))
+	a.metrics.OriginatedCreditEventsCount.Inc()
 
 	return nil
 }
@@ -357,7 +353,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		err = a.decreaseOriginatedBalanceTo(peer, oldBalance)
 		if err != nil {
-			a.logger.Warningf("settle: failed to decrease originated balance: %w", err)
+			a.logger.Warningf("settle: failed to decrease originated balance: %v", err)
 		}
 	}
 
@@ -701,7 +697,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 	err = a.decreaseOriginatedBalanceBy(peer, amount)
 	if err != nil {
-		a.logger.Warningf("accounting: notifypaymentsent failed to decrease originated balance: %w", err)
+		a.logger.Warningf("accounting: notifypaymentsent failed to decrease originated balance: %v", err)
 	}
 
 }
@@ -901,7 +897,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 
 	err = a.decreaseOriginatedBalanceTo(peer, nextBalance)
 	if err != nil {
-		a.logger.Warningf("increase balance: failed to decrease originated balance: %w", err)
+		a.logger.Warningf("increase balance: failed to decrease originated balance: %v", err)
 	}
 
 	return nextBalance, nil
@@ -955,10 +951,8 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 	toSet := new(big.Int).Set(limit)
 
 	originatedBalance, err := a.OriginatedBalance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load originated balance: %w", err)
-		}
+	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
+		return fmt.Errorf("failed to load originated balance: %w", err)
 	}
 
 	if toSet.Cmp(zero) > 0 {
@@ -981,10 +975,8 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big.Int) error {
 
 	originatedBalance, err := a.OriginatedBalance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
+	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
+		return fmt.Errorf("failed to load balance: %w", err)
 	}
 
 	// Move originated balance into the positive domain by amount
