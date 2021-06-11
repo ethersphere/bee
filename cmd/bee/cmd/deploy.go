@@ -42,12 +42,13 @@ func (c *command) initDeployCmd() error {
 				return fmt.Errorf("unknown verbosity level %q", v)
 			}
 
-			dataDir := c.config.GetString(optionNameDataDir)
+			_ = c.config.GetString(optionNameDataDir)
+			keyDir := c.config.GetString(optionNameKeyDir)
 			factoryAddress := c.config.GetString(optionNameSwapFactoryAddress)
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 
-			stateStore, err := node.InitStateStore(logger, dataDir)
+			stateStore, err := node.InitStateStore(logger, keyDir)
 			if err != nil {
 				return err
 			}

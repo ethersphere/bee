@@ -83,6 +83,7 @@ type Bee struct {
 
 type Options struct {
 	DataDir                  string
+	KeyDir                   string
 	DBCapacity               uint64
 	DBOpenFilesLimit         uint64
 	DBWriteBufferSize        uint64
@@ -174,7 +175,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.debugAPIServer = debugAPIServer
 	}
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
+	stateStore, err := InitStateStore(logger, o.KeyDir)
 	if err != nil {
 		return nil, err
 	}
