@@ -33,6 +33,7 @@ type Service interface {
 	Add(*StampIssuer)
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, error)
+	IssuerUsable(*StampIssuer) bool
 	io.Closer
 }
 
@@ -86,19 +87,26 @@ func (ps *service) StampIssuers() []*StampIssuer {
 	return ps.issuers
 }
 
-// GetStampIssuer finds a stamp issuer by batch ID.
-func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
+func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	cs := ps.postageStore.GetChainState()
 
+	// this checks atleast threshold blocks are seen on the blockchain after
+	// the batch creation, before we start using a stamp issuer. The threshold
+	// is meant to allow enough time for upstream peers to see the batch and
+	// hence validate the stamps issued
+	if cs.Block < st.blockNumber || (cs.Block-st.blockNumber) < blockThreshold {
+		return false
+	}
+	return true
+}
+
+// GetStampIssuer finds a stamp issuer by batch ID.
+func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.batchID) {
-			// this checks atleast threshold blocks are seen on the blockchain after
-			// the batch creation, before we start using a stamp issuer. The threshold
-			// is meant to allow enough time for upstream peers to see the batch and
-			// hence validate the stamps issued
-			if cs.Block < st.blockNumber || (cs.Block-st.blockNumber) < blockThreshold {
+			if !ps.IssuerUsable(st) {
 				return nil, ErrNotUsable
 			}
 			return st, nil

@@ -201,6 +201,7 @@ func TestPostageGetStamps(t *testing.T) {
 				{
 					BatchID:     batchOk,
 					Utilization: 0,
+					Usable:      true,
 				},
 			},
 		}),
@@ -216,6 +217,7 @@ func TestPostageGetStamp(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
 				BatchID:     batchOk,
 				Utilization: 0,
+				Usable:      true,
 			}),
 		)
 	})
