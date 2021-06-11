@@ -19,8 +19,7 @@ import (
 )
 
 var (
-	errDecodeABI          = errors.New("could not decode abi data")
-	goerliContractAddress = common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2")
+	errDecodeABI = errors.New("could not decode abi data")
 )
 
 type service struct {
@@ -147,11 +146,20 @@ func (s *service) Close() error {
 	return nil
 }
 
+var (
+	goerliChainID         = int64(5)
+	goerliContractAddress = common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2")
+	xdaiChainID           = int64(100)
+	xdaiContractAddress   = common.HexToAddress("0x0FDc5429C50e2a39066D8A94F3e2D2476fcc3b85")
+)
+
 // DiscoverPriceOracleAddress returns the canonical price oracle for this chainID
 func DiscoverPriceOracleAddress(chainID int64) (priceOracleAddress common.Address, found bool) {
-	if chainID == 5 {
-		// goerli
+	switch chainID {
+	case goerliChainID:
 		return goerliContractAddress, true
+	case xdaiChainID:
+		return xdaiContractAddress, true
 	}
 	return common.Address{}, false
 }

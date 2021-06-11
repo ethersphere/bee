@@ -227,13 +227,26 @@ func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
 	return *erc20Address, nil
 }
 
+var (
+	GoerliChainID              = int64(5)
+	GoerliFactoryAddress       = common.HexToAddress("0x73c412512E1cA0be3b89b77aB3466dA6A1B9d273")
+	GoerliLegacyFactoryAddress = common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474")
+	XDaiChainID                = int64(100)
+	XDaiFactoryAddress         = common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420")
+)
+
 // DiscoverFactoryAddress returns the canonical factory for this chainID
 func DiscoverFactoryAddress(chainID int64) (currentFactory common.Address, legacyFactories []common.Address, found bool) {
-	if chainID == 5 {
+	switch chainID {
+	case GoerliChainID:
 		// goerli
-		return common.HexToAddress("0x73c412512E1cA0be3b89b77aB3466dA6A1B9d273"), []common.Address{
-			common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474"),
+		return GoerliFactoryAddress, []common.Address{
+			GoerliLegacyFactoryAddress,
 		}, true
+	case XDaiChainID:
+		// xdai
+		return XDaiFactoryAddress, []common.Address{}, true
+	default:
+		return common.Address{}, nil, false
 	}
-	return common.Address{}, nil, false
 }
