@@ -306,9 +306,11 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		return nil, err
 	}
 
-	err = s.swap.AddDeductionByPeer(peer)
-	if err != nil {
-		return nil, err
+	if deduction.Cmp(big.NewInt(0)) != 0 {
+		err = s.swap.AddDeductionByPeer(peer)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return balance, nil
