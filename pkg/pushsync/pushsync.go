@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	lru "github.com/hashicorp/golang-lru"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -38,8 +37,9 @@ const (
 )
 
 const (
-	maxPeers    = 3
-	maxAttempts = 16
+	maxPeers           = 2
+	maxAttempts        = 16
+	skipPeerExpiration = time.Minute * 5
 )
 
 var (
@@ -72,8 +72,8 @@ type PushSync struct {
 	validStamp     func(swarm.Chunk, []byte) (swarm.Chunk, error)
 	signer         crypto.Signer
 	isFullNode     bool
-	failedRequests *failedRequestCache
 	warmupPeriod   time.Time
+	skipList       *peerSkipList
 }
 
 var defaultTTL = 20 * time.Second                     // request time to live
@@ -96,7 +96,7 @@ func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storag
 		tracer:         tracer,
 		validStamp:     validStamp,
 		signer:         signer,
-		failedRequests: newFailedRequestCache(),
+		skipList:       newPeerSkipList(),
 		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 	return ps
@@ -349,6 +349,13 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
+	defer ps.skipList.PruneExpired()
+
+	type pushResult struct {
+		receipt   *pb.Receipt
+		err       error
+		attempted bool
+	}
 
 	var (
 		skipPeers      []swarm.Address
@@ -371,12 +378,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
-		if !ps.failedRequests.Useful(peer, ch.Address()) {
-			skipPeers = append(skipPeers, peer)
-			ps.metrics.TotalFailedCacheHits.Inc()
+
+		skipPeers = append(skipPeers, peer)
+
+		if ps.skipList.ShouldSkip(peer) {
+			ps.metrics.TotalSkippedPeers.Inc()
 			continue
 		}
-		skipPeers = append(skipPeers, peer)
+
 		ps.metrics.TotalSendAttempts.Inc()
 
 		go func(peer swarm.Address, ch swarm.Chunk) {
@@ -403,15 +412,19 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 		select {
 		case r := <-resultC:
+			// receipt received for chunk
 			if r.receipt != nil {
-				ps.failedRequests.RecordSuccess(peer, ch.Address())
+				ps.skipList.PruneChunk(ch.Address())
 				return r.receipt, nil
 			}
 			if r.err != nil && r.attempted {
-				ps.failedRequests.RecordFailure(peer, ch.Address())
 				ps.metrics.TotalFailedSendAttempts.Inc()
+
+				// if the peer is in the neighborhood AND no other closer peer has been tried
+				if ps.topologyDriver.IsWithinDepth(peer) && !ps.skipList.HasChunk(ch.Address()) {
+					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
+				}
 			}
-			// proceed to retrying if applicable
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -482,54 +495,62 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	return &receipt, true, nil
 }
 
-type pushResult struct {
-	receipt   *pb.Receipt
-	err       error
-	attempted bool
+type peerSkipList struct {
+	sync.Mutex
+	chunks         map[string]struct{}
+	skipExpiration map[string]time.Time
 }
 
-const failureThreshold = 2
-
-type failedRequestCache struct {
-	mtx   sync.RWMutex
-	cache *lru.Cache
-}
-
-func newFailedRequestCache() *failedRequestCache {
-	// not necessary to check error here if we use constant value
-	cache, _ := lru.New(1000)
-	return &failedRequestCache{cache: cache}
-}
-
-func keyForReq(peer swarm.Address, chunk swarm.Address) string {
-	return fmt.Sprintf("%s/%s", peer, chunk)
-}
-
-func (f *failedRequestCache) RecordFailure(peer swarm.Address, chunk swarm.Address) {
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-
-	val, found := f.cache.Get(keyForReq(peer, chunk))
-	if !found {
-		f.cache.Add(keyForReq(peer, chunk), 1)
-		return
+func newPeerSkipList() *peerSkipList {
+	return &peerSkipList{
+		chunks:         make(map[string]struct{}),
+		skipExpiration: make(map[string]time.Time),
 	}
-	count := val.(int) + 1
-	f.cache.Add(keyForReq(peer, chunk), count)
 }
 
-func (f *failedRequestCache) RecordSuccess(peer swarm.Address, chunk swarm.Address) {
-	f.mtx.Lock()
-	defer f.mtx.Unlock()
-	f.cache.Remove(keyForReq(peer, chunk))
+func (l *peerSkipList) Add(peer swarm.Address, chunk swarm.Address, expire time.Duration) {
+	l.Lock()
+	defer l.Unlock()
+
+	l.skipExpiration[peer.ByteString()] = time.Now().Add(expire)
+	l.chunks[chunk.ByteString()] = struct{}{}
 }
 
-func (f *failedRequestCache) Useful(peer swarm.Address, chunk swarm.Address) bool {
-	f.mtx.RLock()
-	val, found := f.cache.Get(keyForReq(peer, chunk))
-	f.mtx.RUnlock()
-	if !found {
-		return true
+func (l *peerSkipList) ShouldSkip(peer swarm.Address) bool {
+	l.Lock()
+	defer l.Unlock()
+
+	if exp, has := l.skipExpiration[peer.ByteString()]; has {
+		return exp.After(time.Now())
 	}
-	return val.(int) < failureThreshold
+
+	return false
+}
+
+func (l *peerSkipList) HasChunk(chunk swarm.Address) bool {
+	l.Lock()
+	defer l.Unlock()
+
+	_, has := l.chunks[chunk.ByteString()]
+	return has
+}
+
+func (l *peerSkipList) PruneChunk(chunk swarm.Address) {
+	l.Lock()
+	defer l.Unlock()
+	delete(l.chunks, chunk.ByteString())
+}
+
+func (l *peerSkipList) PruneExpired() {
+	l.Lock()
+	defer l.Unlock()
+
+	now := time.Now()
+
+	for k, v := range l.skipExpiration {
+		if v.Before(now) {
+			fmt.Println("expire", k)
+			delete(l.skipExpiration, k)
+		}
+	}
 }
