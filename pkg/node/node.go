@@ -153,7 +153,7 @@ type Options struct {
 }
 
 const (
-	refreshRate = int64(10000000)
+	refreshRate = int64(6000000)
 	basePrice   = 10000
 )
 
