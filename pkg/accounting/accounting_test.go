@@ -1110,7 +1110,7 @@ func TestAccountingCallPaymentFailureRetries(t *testing.T) {
 	requestPrice := testPaymentThreshold.Uint64() - 100
 
 	// Credit until near payment threshold
-	err = acc.Credit(peer1Addr, requestPrice)
+	err = acc.Credit(peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
