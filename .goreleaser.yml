@@ -1,5 +1,8 @@
 project_name: bee
 
+release:
+  prerelease: auto
+
 builds:
   - id: linux
     main: ./cmd/bee
