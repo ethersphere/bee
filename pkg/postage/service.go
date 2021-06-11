@@ -17,8 +17,7 @@ import (
 const (
 	postagePrefix = "postage"
 	// blockThreshold is used to allow threshold no of blocks to be synced before a
-	// batch is usable. This is to allow upstream peers to see the batch before
-	// we start using it
+	// batch is usable.
 	blockThreshold = 10
 )
 
@@ -95,10 +94,10 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.batchID) {
-			// this allowes some threshold blocks to be seen on the blockchain before
-			// we start using a stamp issuer. The threshold is meant to allow enough
-			// time for upstream peers to see the batch and hence validate the stamps
-			// issued
+			// this checks atleast threshold blocks are seen on the blockchain after
+			// the batch creation, before we start using a stamp issuer. The threshold
+			// is meant to allow enough time for upstream peers to see the batch and
+			// hence validate the stamps issued
 			if cs.Block < st.blockNumber || (cs.Block-st.blockNumber) < blockThreshold {
 				return nil, ErrNotUsable
 			}
