@@ -19,3 +19,7 @@ func (s *Accounting) SetTime(k int64) {
 func (a *Accounting) IsPaymentOngoing(peer swarm.Address) bool {
 	return a.getAccountingPeer(peer).paymentOngoing
 }
+
+func (a *Accounting) MockPay() {
+	a.wg.Add(1)
+}
