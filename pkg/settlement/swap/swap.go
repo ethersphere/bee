@@ -28,6 +28,8 @@ var (
 	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrUnknownBeneficary is the error if a peer has never announced a beneficiary.
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
+	// ErrChequeValueTooLow is the error a peer issued a cheque not covering 1 accounting credit
+	ErrChequeValueTooLow = errors.New("cheque value too low")
 )
 
 type Interface interface {
@@ -79,7 +81,7 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 }
 
 // ReceiveCheque is called by the swap protocol if a cheque is received.
-func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) (err error) {
+func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (err error) {
 	// check this is the same chequebook for this peer as previously
 	expectedChequebook, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
@@ -89,11 +91,21 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		return ErrWrongChequebook
 	}
 
-	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
+	receivedAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque, exchangeRate, deduction)
 	if err != nil {
 		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
 	}
+
+	if deduction.Cmp(big.NewInt(0)) > 0 {
+		err = s.addressbook.AddDeductionFor(peer)
+		if err != nil {
+			return err
+		}
+	}
+
+	decreasedAmount := new(big.Int).Sub(receivedAmount, deduction)
+	amount := new(big.Int).Div(decreasedAmount, exchangeRate)
 
 	if !known {
 		err = s.addressbook.PutChequebook(peer, cheque.Chequebook)
@@ -102,7 +114,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		}
 	}
 
-	tot, _ := big.NewFloat(0).SetInt(amount).Float64()
+	tot, _ := big.NewFloat(0).SetInt(receivedAmount).Float64()
 	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
@@ -130,12 +142,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		err = ErrUnknownBeneficary
 		return
 	}
-	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
-		return s.proto.EmitCheque(ctx, peer, signedCheque)
-	})
+
+	balance, err := s.proto.EmitCheque(ctx, peer, beneficiary, amount, s.chequebook.Issue)
+
 	if err != nil {
 		return
 	}
+
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
 	s.accounting.NotifyPaymentSent(peer, amount, nil)
@@ -346,4 +359,16 @@ func (s *Service) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequ
 		return nil, chequebook.ErrNoCheque
 	}
 	return s.cashout.CashoutStatus(ctx, chequebookAddress)
+}
+
+func (s *Service) GetDeductionForPeer(peer swarm.Address) (bool, error) {
+	return s.addressbook.GetDeductionFor(peer)
+}
+
+func (s *Service) GetDeductionByPeer(peer swarm.Address) (bool, error) {
+	return s.addressbook.GetDeductionBy(peer)
+}
+
+func (s *Service) AddDeductionByPeer(peer swarm.Address) error {
+	return s.addressbook.AddDeductionBy(peer)
 }
