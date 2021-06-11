@@ -97,6 +97,7 @@ type Bee struct {
 	topologyHalter           topology.Halter
 	pusherCloser             io.Closer
 	pullerCloser             io.Closer
+	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	ethClientCloser          func()
@@ -520,6 +521,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
+	b.accountingCloser = acc
 
 	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
@@ -778,7 +780,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		b.recoveryHandleCleanup()
 	}
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
@@ -790,6 +792,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		tryClose(b.pullerCloser, "puller")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.accountingCloser, "accounting")
 	}()
 
 	b.p2pCancel()

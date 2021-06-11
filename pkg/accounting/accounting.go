@@ -119,6 +119,7 @@ type Accounting struct {
 	minimumPayment *big.Int
 	pricing        pricing.Interface
 	metrics        metrics
+	wg             sync.WaitGroup
 	timeNow        func() time.Time
 }
 
@@ -379,6 +380,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 				balance.paymentOngoing = true
 				// add settled amount to shadow reserve before sending it
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+				a.wg.Add(1)
 				go a.payFunction(context.Background(), peer, paymentAmount)
 			}
 		}
@@ -669,6 +671,7 @@ func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, 
 
 // NotifyPaymentSent is triggered by async monetary settlement to update our balance and remove it's price from the shadow reserve
 func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error) {
+	defer a.wg.Done()
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
@@ -1005,4 +1008,10 @@ func (a *Accounting) SetRefreshFunc(f RefreshFunc) {
 
 func (a *Accounting) SetPayFunc(f PayFunc) {
 	a.payFunction = f
+}
+
+// Close hangs up running websockets on shutdown.
+func (a *Accounting) Close() error {
+	a.wg.Wait()
+	return nil
 }
