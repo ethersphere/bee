@@ -106,12 +106,23 @@ type DB struct {
 	// field that stores number of intems in gc index
 	gcSize shed.Uint64Field
 
+	// field that stores the size of the reserve
+	reserveSize shed.Uint64Field
+
 	// garbage collection is triggered when gcSize exceeds
 	// the cacheCapacity value
 	cacheCapacity uint64
 
+	// the size of the reserve in chunks
+	reserveCapacity uint64
+
+	unreserveFunc func(postage.UnreserveIteratorFn) error
+
 	// triggers garbage collection event loop
 	collectGarbageTrigger chan struct{}
+
+	// triggers reserve eviction event loop
+	reserveEvictionTrigger chan struct{}
 
 	// a buffered channel acting as a semaphore
 	// to limit the maximal number of goroutines
@@ -142,7 +153,8 @@ type DB struct {
 	// protect Close method from exiting before
 	// garbage collection and gc size write workers
 	// are done
-	collectGarbageWorkerDone chan struct{}
+	collectGarbageWorkerDone  chan struct{}
+	reserveEvictionWorkerDone chan struct{}
 
 	// wait for all subscriptions to finish before closing
 	// underlaying leveldb to prevent possible panics from
@@ -159,6 +171,11 @@ type Options struct {
 	// Capacity is a limit that triggers garbage collection when
 	// number of items in gcIndex equals or exceeds it.
 	Capacity uint64
+	// ReserveCapacity is the capacity of the reserve.
+	ReserveCapacity uint64
+	// UnreserveFunc is an iterator needed to facilitate reserve
+	// eviction once ReserveCapacity is reached.
+	UnreserveFunc func(postage.UnreserveIteratorFn) error
 	// OpenFilesLimit defines the upper bound of open files that the
 	// the localstore should maintain at any point of time. It is
 	// passed on to the shed constructor.
@@ -184,24 +201,29 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	if o == nil {
 		// default options
 		o = &Options{
-			Capacity: defaultCacheCapacity,
+			Capacity:        defaultCacheCapacity,
+			ReserveCapacity: uint64(batchstore.Capacity),
 		}
 	}
 
 	db = &DB{
-		stateStore:    ss,
-		cacheCapacity: o.Capacity,
-		baseKey:       baseKey,
-		tags:          o.Tags,
+		stateStore:      ss,
+		cacheCapacity:   o.Capacity,
+		reserveCapacity: o.ReserveCapacity,
+		unreserveFunc:   o.UnreserveFunc,
+		baseKey:         baseKey,
+		tags:            o.Tags,
 		// channel collectGarbageTrigger
 		// needs to be buffered with the size of 1
 		// to signal another event if it
 		// is triggered during already running function
-		collectGarbageTrigger:    make(chan struct{}, 1),
-		close:                    make(chan struct{}),
-		collectGarbageWorkerDone: make(chan struct{}),
-		metrics:                  newMetrics(),
-		logger:                   logger,
+		collectGarbageTrigger:     make(chan struct{}, 1),
+		reserveEvictionTrigger:    make(chan struct{}, 1),
+		close:                     make(chan struct{}),
+		collectGarbageWorkerDone:  make(chan struct{}),
+		reserveEvictionWorkerDone: make(chan struct{}),
+		metrics:                   newMetrics(),
+		logger:                    logger,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity
@@ -260,6 +282,12 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// Persist gc size.
 	db.gcSize, err = db.shed.NewUint64Field("gc-size")
+	if err != nil {
+		return nil, err
+	}
+
+	// reserve size
+	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
 	if err != nil {
 		return nil, err
 	}
@@ -523,6 +551,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// start garbage collection worker
 	go db.collectGarbageWorker()
+	go db.reserveEvictionWorker()
 	return db, nil
 }
 
@@ -538,6 +567,7 @@ func (db *DB) Close() (err error) {
 		// wait for gc worker to
 		// return before closing the shed
 		<-db.collectGarbageWorkerDone
+		<-db.reserveEvictionWorkerDone
 		close(done)
 	}()
 	select {

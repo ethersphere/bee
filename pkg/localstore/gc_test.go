@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -279,7 +280,8 @@ func TestGCAfterPin(t *testing.T) {
 	chunkCount := 50
 
 	db := newTestDB(t, &Options{
-		Capacity: 100,
+		Capacity:        100,
+		ReserveCapacity: 100,
 	})
 
 	pinAddrs := make([]swarm.Address, 0)
@@ -596,7 +598,8 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 func TestPinAfterMultiGC(t *testing.T) {
 	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, &Options{
-		Capacity: 10,
+		Capacity:        10,
+		ReserveCapacity: 10,
 	})
 
 	pinnedChunks := make([]swarm.Address, 0)
@@ -715,7 +718,8 @@ func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 		}
 	}))
 	db := newTestDB(t, &Options{
-		Capacity: 10,
+		Capacity:        10,
+		ReserveCapacity: 100,
 	})
 	closed = db.close
 
@@ -959,9 +963,119 @@ func setTestHookGCIteratorDone(h func()) (reset func()) {
 func unreserveChunkBatch(t *testing.T, db *DB, radius uint8, chs ...swarm.Chunk) {
 	t.Helper()
 	for _, ch := range chs {
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), radius)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), radius)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+}
+
+func setTestHookEviction(h func(count uint64)) (reset func()) {
+	current := testHookEviction
+	reset = func() { testHookEviction = current }
+	testHookEviction = h
+	return reset
+}
+
+func TestReserveEvictionWorker(t *testing.T) {
+	var (
+		chunkCount = 10
+		batchIDs   [][]byte
+		db         *DB
+		addrs      []swarm.Address
+		closed     chan struct{}
+		mtx        sync.Mutex
+	)
+	testHookEvictionChan := make(chan uint64)
+	t.Cleanup(setTestHookEviction(func(count uint64) {
+		if count == 0 {
+			return
+		}
+		select {
+		case testHookEvictionChan <- count:
+		case <-closed:
+		}
+	}))
+
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
+	unres := func(f postage.UnreserveIteratorFn) error {
+		mtx.Lock()
+		defer mtx.Unlock()
+		for i := 0; i < len(batchIDs); i++ {
+			// pop an element from batchIDs, call the Unreserve
+			item := batchIDs[i]
+			// here we mock the behavior of the batchstore
+			// that would call the localstore back with the
+			// batch IDs and the radiuses from the FIFO queue
+			stop, err := f(item, 4)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+		}
+		return nil
+	}
+	db = newTestDB(t, &Options{
+		Capacity:        10,
+		ReserveCapacity: 10,
+		UnreserveFunc:   unres,
+	})
+
+	// insert 10 chunks that fall into the reserve, then
+	// expect 5 first to be evicted
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		mtx.Lock()
+		addrs = append(addrs, ch.Address())
+		batchIDs = append(batchIDs, ch.Stamp().BatchID())
+		mtx.Unlock()
+	}
+
+	evictTarget := db.reserveEvictionTarget()
+
+	for {
+		select {
+		case <-testHookEvictionChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("eviction timeout")
+		}
+		reserveSize, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reserveSize == evictTarget {
+			break
+		}
+	}
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 5))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	// the first synced chunk should be removed
+	t.Run("all chunks should be accessible", func(t *testing.T) {
+		for _, a := range addrs {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, a)
+			if errors.Is(err, storage.ErrNotFound) {
+				t.Errorf("got error %v, want none", err)
+			}
+		}
+	})
 }
