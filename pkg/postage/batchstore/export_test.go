@@ -41,3 +41,8 @@ func GetReserve(si postage.Storer) (*big.Int, uint8) {
 func (s *store) String() string {
 	return fmt.Sprintf("inner=%d,outer=%d", s.rs.Inner.Uint64(), s.rs.Outer.Uint64())
 }
+
+func SetUnreserveFunc(s postage.Storer, f func([]byte, uint8) error) {
+	st := s.(*store)
+	st.unreserveFn = f
+}

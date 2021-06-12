@@ -331,6 +331,11 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
+	batchStore, err := batchstore.New(stateStore, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
 	// localstore depends on batchstore
 	var path string
 
@@ -340,6 +345,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        uint64(batchstore.Capacity),
+		UnreserveFunc:          batchStore.Unreserve,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
@@ -352,10 +359,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.localstoreCloser = storer
 
-	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
+	storer.SetUnreserveFunc(batchStore.Unreserve)
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, chainID)
 	if err != nil {

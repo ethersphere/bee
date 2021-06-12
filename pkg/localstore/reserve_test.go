@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -40,7 +41,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), 4)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 4)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +135,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +201,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +218,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	var po4Chs []swarm.Chunk
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 4).WithBatch(2, 3, 2, false)
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -235,7 +236,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	var gcChs []swarm.Chunk
 	for i := 0; i < 100; i++ {
 		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
+		_, err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -253,7 +254,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// radius increases from 2 to 3, chunk is in PO 2, therefore it should be
 	// GCd
 	for _, ch := range gcChs {
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), 3)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -319,8 +320,9 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 // swarm.MaxPO+1 results in the correct behaviour.
 func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	chunkCount := 150
-
+	var gcChs []swarm.Chunk
 	var closed chan struct{}
+
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		select {
@@ -328,16 +330,35 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		case <-closed:
 		}
 	}))
+	unres := func(f postage.UnreserveIteratorFn) error {
+		for i := 0; i < len(gcChs); i++ {
+			// pop an element from batchIDs, call the Unreserve
+			item := gcChs[i]
+			// here we mock the behavior of the batchstore
+			// that would call the localstore back with the
+			// batch IDs and the radiuses from the FIFO queue
+			stop, err := f(item.Stamp().BatchID(), swarm.MaxPO+1)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+		}
+		return nil
+	}
 
 	db := newTestDB(t, &Options{
-		Capacity: 100,
+		Capacity:        100,
+		ReserveCapacity: 100,
+		UnreserveFunc:   unres,
 	})
 	closed = db.close
 
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -351,10 +372,9 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		}
 	}
 
-	var gcChs []swarm.Chunk
 	for i := 0; i < 100; i++ {
 		gcch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
+		_, err := db.UnreserveBatch(gcch.Stamp().BatchID(), 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -367,13 +387,6 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			t.Fatal(err)
 		}
 		gcChs = append(gcChs, gcch)
-	}
-
-	for _, ch := range gcChs {
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), swarm.MaxPO+1)
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
 
 	gcTarget := db.gcTarget()
