@@ -32,6 +32,7 @@ type Storer interface {
 	GetChainState() *ChainState
 	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
+	Unreserve() error
 
 	Reset() error
 }

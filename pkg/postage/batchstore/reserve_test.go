@@ -5,6 +5,7 @@
 package batchstore_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -43,145 +44,6 @@ func newValue(price, value *big.Int) *big.Int {
 	period := rand.Intn(100) + 1000
 	v := new(big.Int).Mul(price, big.NewInt(int64(period)))
 	return v.Add(v, value)
-}
-
-// TestBatchStoreUnreserve is testing the correct behaviour of the reserve.
-// the following assumptions are tested on each modification of the batches (top up, depth increase, price change)
-// - reserve exceeds capacity
-// - value-consistency of unreserved POs
-func TestBatchStoreUnreserveEvents(t *testing.T) {
-	defer func(i int64, d uint8) {
-		batchstore.Capacity = i
-		batchstore.DefaultDepth = d
-	}(batchstore.Capacity, batchstore.DefaultDepth)
-	batchstore.DefaultDepth = 5
-	batchstore.Capacity = batchstore.Exp2(16)
-
-	bStore, unreserved := setupBatchStore(t)
-	bStore.SetRadiusSetter(noopRadiusSetter{})
-	batches := make(map[string]*postage.Batch)
-
-	t.Run("new batches only", func(t *testing.T) {
-		// iterate starting from batchstore.DefaultDepth to maxPO
-		_, radius := batchstore.GetReserve(bStore)
-		for step := 0; radius < swarm.MaxPO; step++ {
-			cs, err := nextChainState(bStore)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var b *postage.Batch
-			if b, err = createBatch(bStore, cs, radius); err != nil {
-				t.Fatal(err)
-			}
-			batches[string(b.ID)] = b
-			if radius, err = checkReserve(bStore, unreserved); err != nil {
-				t.Fatal(err)
-			}
-		}
-	})
-	t.Run("top up batches", func(t *testing.T) {
-		n := 0
-		for id := range batches {
-			b, err := bStore.Get([]byte(id))
-			if err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					continue
-				}
-				t.Fatal(err)
-			}
-			cs, err := nextChainState(bStore)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = topUp(bStore, cs, b); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = checkReserve(bStore, unreserved); err != nil {
-				t.Fatal(err)
-			}
-			n++
-			if n > len(batches)/5 {
-				break
-			}
-		}
-	})
-	t.Run("dilute batches", func(t *testing.T) {
-		n := 0
-		for id := range batches {
-			b, err := bStore.Get([]byte(id))
-			if err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					continue
-				}
-				t.Fatal(err)
-			}
-			cs, err := nextChainState(bStore)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = increaseDepth(bStore, cs, b); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = checkReserve(bStore, unreserved); err != nil {
-				t.Fatal(err)
-			}
-			n++
-			if n > len(batches)/5 {
-				break
-			}
-		}
-	})
-}
-
-func TestBatchStoreUnreserveAll(t *testing.T) {
-	defer func(i int64, d uint8) {
-		batchstore.Capacity = i
-		batchstore.DefaultDepth = d
-	}(batchstore.Capacity, batchstore.DefaultDepth)
-	batchstore.DefaultDepth = 5
-	batchstore.Capacity = batchstore.Exp2(16)
-
-	bStore, unreserved := setupBatchStore(t)
-	bStore.SetRadiusSetter(noopRadiusSetter{})
-	var batches [][]byte
-	// iterate starting from batchstore.DefaultDepth to maxPO
-	_, depth := batchstore.GetReserve(bStore)
-	for step := 0; depth < swarm.MaxPO; step++ {
-		cs, err := nextChainState(bStore)
-		if err != nil {
-			t.Fatal(err)
-		}
-		event := rand.Intn(6)
-		//  0:  dilute, 1: topup, 2,3,4,5: create
-		var b *postage.Batch
-		if event < 2 && len(batches) > 10 {
-			for {
-				n := rand.Intn(len(batches))
-				b, err = bStore.Get(batches[n])
-				if err != nil {
-					if errors.Is(err, storage.ErrNotFound) {
-						continue
-					}
-					t.Fatal(err)
-				}
-				break
-			}
-			if event == 0 {
-				if err = increaseDepth(bStore, cs, b); err != nil {
-					t.Fatal(err)
-				}
-			} else if err = topUp(bStore, cs, b); err != nil {
-				t.Fatal(err)
-			}
-		} else if b, err = createBatch(bStore, cs, depth); err != nil {
-			t.Fatal(err)
-		} else {
-			batches = append(batches, b.ID)
-		}
-		if depth, err = checkReserve(bStore, unreserved); err != nil {
-			t.Fatal(err)
-		}
-	}
 }
 
 func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
@@ -550,10 +412,14 @@ func TestBatchStore_Unreserve(t *testing.T) {
 				depthValue(initBatchDepth, 6),
 			)
 
+			_ = store.Unreserve()
+
 			checkUnreserved(t, unreserved, batches, 4)
 
 			b := addBatch(t, store, tc.add...)
 			batches = append(batches, b...)
+
+			_ = store.Unreserve()
 
 			for _, v := range tc.exp {
 				b := []*postage.Batch{batches[v.batchIndex]}
@@ -671,6 +537,8 @@ func TestBatchStore_Topup(t *testing.T) {
 			)
 
 			topupBatch(t, store, batches, tc.topup...)
+
+			_ = store.Unreserve()
 
 			for _, v := range tc.exp {
 				b := []*postage.Batch{batches[v.batchIndex]}
@@ -796,6 +664,8 @@ func TestBatchStore_Dilution(t *testing.T) {
 			topupBatch(t, store, batches, tc.topup...)
 			diluteBatch(t, store, batches, tc.dilute...)
 
+			_ = store.Unreserve()
+
 			for _, v := range tc.exp {
 				b := []*postage.Batch{batches[v.batchIndex]}
 				checkUnreserved(t, unreserved, b, v.expDepth)
@@ -829,7 +699,7 @@ func TestBatchStore_EvictExpired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	_ = store.Unreserve()
 	// expect the 5 to be preserved and the rest to be unreserved
 	checkUnreserved(t, unreserved, batches[:3], swarm.MaxPO+1)
 	checkUnreserved(t, unreserved, batches[3:], 4)
@@ -943,5 +813,127 @@ func checkUnreserved(t *testing.T, unreserved map[string]uint8, batches []*posta
 		if v != exp {
 			t.Fatalf("batch %x expected unreserve radius %d but got %d", b.ID, exp, v)
 		}
+	}
+}
+
+func TestUnreserveItemMarshaling(t *testing.T) {
+	v1 := batchstore.UnreserveItem{BatchID: make([]byte, 32), Radius: 5}
+	_, err := rand.Read(v1.BatchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := v1.MarshalBinary()
+	v2 := &batchstore.UnreserveItem{}
+	err = v2.UnmarshalBinary(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(v1.BatchID, v2.BatchID) {
+		t.Fatalf("batch ID not equal got %x want %x", v2.BatchID, v1.BatchID)
+	}
+	if v1.Radius != v2.Radius {
+		t.Fatalf("radius mismatch got %d want %d", v2.Radius, v1.Radius)
+	}
+}
+
+func TestUnreserveItemSequence(t *testing.T) {
+	defer func(i int64, d uint8) {
+		batchstore.Capacity = i
+		batchstore.DefaultDepth = d
+	}(batchstore.Capacity, batchstore.DefaultDepth)
+	batchstore.DefaultDepth = 5
+	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
+	initBatchDepth := uint8(8)
+
+	dir, err := ioutil.TempDir("", "batchstore_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	})
+	logger := logging.New(ioutil.Discard, 0)
+	stateStore, err := leveldb.NewStateStore(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := stateStore.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// set mock unreserve call
+	unreserved := []batchstore.UnreserveItem{}
+	unreserveFunc := func(batchID []byte, radius uint8) error {
+		v := batchstore.UnreserveItem{BatchID: batchID, Radius: radius}
+		unreserved = append(unreserved, v)
+		return nil
+	}
+	bStore, _ := batchstore.New(stateStore, unreserveFunc)
+	bStore.SetRadiusSetter(noopRadiusSetter{})
+
+	// initialise chainstate
+	err = bStore.PutChainState(&postage.ChainState{
+		Block:        0,
+		TotalAmount:  big.NewInt(0),
+		CurrentPrice: big.NewInt(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batches := addBatch(t, bStore,
+		depthValue(initBatchDepth, 2),
+		depthValue(initBatchDepth, 3),
+		depthValue(initBatchDepth, 4),
+		depthValue(initBatchDepth, 5),
+	)
+
+	batch2 := addBatch(t, bStore,
+		depthValue(initBatchDepth, 8),
+	)
+
+	err = bStore.Unreserve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(unreserved); l != 7 {
+		t.Fatalf("expected 7 unreserve events got %d", l)
+	}
+
+	// check the initial unreserve calls
+	for i, batch := range batches {
+		ur := unreserved[i]
+		if !bytes.Equal(batch.ID, ur.BatchID) {
+			t.Fatalf("wrong batchID in sequence %d, got %x want %x", i, ur.BatchID, batch.ID)
+		}
+		if ur.Radius != 4 {
+			t.Fatalf("wrong radius in sequence %d got %d want %d", i, ur.Radius, 4)
+		}
+	}
+
+	// next event is the new batch
+	if !bytes.Equal(unreserved[4].BatchID, batch2[0].ID) {
+		t.Fatal("batch mismatch")
+	}
+	if unreserved[4].Radius != 4 {
+		t.Fatal("radius mismatch")
+	}
+
+	// now the 2 cheapest batches with higher radius
+	if !bytes.Equal(unreserved[5].BatchID, batches[0].ID) {
+		t.Fatal("batch mismatch")
+	}
+	if unreserved[5].Radius != 5 {
+		t.Fatal("radius mismatch")
+	}
+	if !bytes.Equal(unreserved[6].BatchID, batches[1].ID) {
+		t.Fatal("batch mismatch")
+	}
+	if unreserved[6].Radius != 5 {
+		t.Fatal("radius mismatch")
 	}
 }

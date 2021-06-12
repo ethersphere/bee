@@ -28,11 +28,14 @@ package batchstore
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -45,6 +48,8 @@ var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging t
 // Capacity is the number of chunks in reserve. `2^22` (4194304) was chosen to remain
 // relatively near the current 5M chunks ~25GB.
 var Capacity = exp2(22)
+
+const unreservePage = 50 // how many entries to ask for deletion
 
 var big1 = big.NewInt(1)
 
@@ -61,9 +66,57 @@ type reserveState struct {
 }
 
 // unreserve is called when the batchstore decides not to reserve a batch on a PO
-// i.e. chunk of the batch in bins [0 upto PO] (closed  interval) are unreserved
+// i.e. chunk of the batch in bins [0 upto PO] (closed  interval) are unreserved.
+// this adds the batch at the mentioned PO to the unreserve fifo queue, that can be
+// dequeued by the localstore once the storage fills up.
 func (s *store) unreserve(b *postage.Batch, radius uint8) error {
-	return s.unreserveFunc(b.ID, radius)
+	c, err := s.getQueueCardinality()
+	if err != nil {
+		return err
+	}
+	c++
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint64(v, c)
+	i := &UnreserveItem{BatchID: b.ID, Radius: radius}
+	if err := s.store.Put(fmt.Sprintf("%s_%s", unreserveQueueKey, string(v)), i); err != nil {
+		return err
+	}
+
+	return s.putQueueCardinality(c)
+}
+
+func (s *store) Unreserve() error {
+	entries := make([]string, unreservePage) // entries to clean up
+	i := 0
+	err := s.store.Iterate(unreserveQueueKey, func(key, val []byte) (bool, error) {
+		if !strings.HasPrefix(string(key), unreserveQueueKey) {
+			return true, nil
+		}
+		v := &UnreserveItem{}
+		err := v.UnmarshalBinary(val)
+		if err != nil {
+			return true, err
+		}
+		err = s.unreserveFunc(v.BatchID, v.Radius)
+		if err != nil {
+			return true, err
+		}
+		entries[i] = string(key)
+		i++
+		if i == unreservePage {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, v := range entries {
+		if err := s.store.Delete(v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // evictExpired is called when PutChainState is called (and there is 'settlement')
@@ -308,6 +361,41 @@ func (s *store) evictOuter(last *postage.Batch) error {
 		return s.evictOuter(last)
 	}
 	return s.store.Put(reserveStateKey, s.rs)
+}
+
+func (s *store) getQueueCardinality() (val uint64, err error) {
+
+	err = s.store.Get(ureserveQueueCardinalityKey, &val)
+	if errors.Is(err, storage.ErrNotFound) {
+		return 0, nil
+	}
+	return val, err
+}
+
+func (s *store) putQueueCardinality(val uint64) error {
+	return s.store.Put(ureserveQueueCardinalityKey, val)
+}
+
+type UnreserveItem struct {
+	BatchID []byte
+	Radius  uint8
+}
+
+func (u *UnreserveItem) MarshalBinary() ([]byte, error) {
+	out := make([]byte, 32+1) // 32 byte batch ID + 1 byte uint8 radius
+	copy(out, u.BatchID)
+	out[32] = u.Radius
+	return out, nil
+}
+
+func (u *UnreserveItem) UnmarshalBinary(b []byte) error {
+	if len(b) != 33 {
+		return errors.New("invalid unreserve item length")
+	}
+	u.BatchID = make([]byte, 32)
+	copy(u.BatchID, b[:32])
+	u.Radius = b[32]
+	return nil
 }
 
 // exp2 returns the e-th power of 2

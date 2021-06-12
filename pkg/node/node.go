@@ -340,6 +340,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        batchstore.Capacity,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
@@ -356,6 +357,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
+
+	storer.SetUnreserveFunc(batchStore.Unreserve)
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, chainID)
 	if err != nil {

@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	batchKeyPrefix  = "batchstore_batch_"
-	valueKeyPrefix  = "batchstore_value_"
-	chainStateKey   = "batchstore_chainstate"
-	reserveStateKey = "batchstore_reservestate"
+	batchKeyPrefix              = "batchstore_batch_"
+	valueKeyPrefix              = "batchstore_value_"
+	chainStateKey               = "batchstore_chainstate"
+	reserveStateKey             = "batchstore_reservestate"
+	unreserveQueueKey           = "batchstore_unreserve_queue_"
+	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
 )
 
 type unreserveFn func(batchID []byte, radius uint8) error
@@ -63,6 +65,7 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 			Available: Capacity,
 		}
 	}
+
 	s := &store{
 		store:         st,
 		cs:            cs,

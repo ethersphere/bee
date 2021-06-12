@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -540,6 +541,13 @@ func setWithinRadiusFunc(h func(*DB, shed.Item) bool) (reset func()) {
 	return reset
 }
 
+func setUnreserveFunc(h func()) (reset func()) {
+	current := unreserveFn
+	reset = func() { unreserveFn = current }
+	unreserveFn = h
+	return reset
+}
+
 // TestSetTestHookCollectGarbage tests if setTestHookCollectGarbage changes
 // testHookCollectGarbage function correctly and if its reset function
 // resets the original function.
@@ -964,4 +972,120 @@ func unreserveChunkBatch(t *testing.T, db *DB, radius uint8, chs ...swarm.Chunk)
 			t.Fatal(err)
 		}
 	}
+}
+
+func setTestHookEviction(h func(count uint64)) (reset func()) {
+	current := testHookEviction
+	reset = func() { testHookEviction = current }
+	testHookEviction = h
+	return reset
+}
+
+func TestReserveEvictionWorker(t *testing.T) {
+	chunkCount := 10
+	var batchIDs [][]byte
+
+	var closed chan struct{}
+	testHookEvictionChan := make(chan uint64)
+	t.Cleanup(setTestHookEviction(func(count uint64) {
+		if count == 0 {
+			return
+		}
+		select {
+		case testHookEvictionChan <- count:
+		case <-closed:
+		}
+	}))
+	var db *DB
+	var addrs []swarm.Address
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
+	unres := func() error {
+		// pop an element from batchIDs, call the Unreserve
+		item := batchIDs[0]
+		// here we mock the behavior of the batchstore
+		// that would call the localstore back with the
+		// batch IDs and the radiuses from the FIFO queue
+		db.UnreserveBatch(item, 4)
+		batchIDs = batchIDs[1:]
+		return nil
+	}
+	db = newTestDB(t, &Options{
+		Capacity:        1,
+		ReserveCapacity: 10,
+	})
+	db.SetUnreserveFunc(unres)
+	fmt.Println(1)
+
+	// insert 10 chunks that fall into the reserve, then
+	// expect 5 first to be evicted
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
+		err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		addrs = append(addrs, ch.Address())
+		batchIDs = append(batchIDs, ch.Stamp().BatchID())
+	}
+
+	evictTarget := db.reserveEvictionTarget()
+
+	for {
+		select {
+		case <-testHookEvictionChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("eviction timeout")
+		}
+		reserveSize, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reserveSize == evictTarget {
+			break
+		}
+	}
+
+	return
+	gcTarget := 0
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	// the first synced chunk should be removed
+	t.Run("get the first synced chunk", func(t *testing.T) {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
+		}
+	})
+
+	t.Run("only first inserted chunks should be removed", func(t *testing.T) {
+		for i := 0; i < (chunkCount - int(gcTarget)); i++ {
+			_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[i])
+			if !errors.Is(err, storage.ErrNotFound) {
+				t.Errorf("got error %v, want %v", err, storage.ErrNotFound)
+			}
+		}
+	})
+
+	// last synced chunk should not be removed
+	t.Run("get most recent synced chunk", func(t *testing.T) {
+		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[len(addrs)-1])
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 }

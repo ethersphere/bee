@@ -17,13 +17,12 @@ import (
 // Unpinning will result in all chunks with pincounter 0 to be put in the gc index
 // so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able.
 func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
 	var (
 		item = shed.Item{
 			BatchID: id,
 		}
-		batch = new(leveldb.Batch)
+		batch   = new(leveldb.Batch)
+		evicted = int64(0)
 	)
 
 	i, err := db.postageRadiusIndex.Get(item)
@@ -53,6 +52,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 		}
 
 		gcSizeChange += c
+		evicted += c
 		return false, nil
 	}
 
@@ -86,6 +86,18 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
 		return err
 	}
+
+	reserveSize, err := db.reserveSize.Get()
+	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+		return err
+	}
+	if evicted > 0 {
+		reserveSize -= uint64(evicted)
+		if err := db.reserveSize.Put(reserveSize); err != nil {
+			return err
+		}
+	}
+
 	// trigger garbage collection if we reached the capacity
 	if gcSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()

@@ -219,6 +219,20 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		if err != nil {
 			return false, 0, err
 		}
+		radius, err := db.postageRadiusIndex.Get(item)
+		if err != nil {
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return false, 0, err
+			}
+			// not sure what to do here....
+		} else {
+			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
+				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
+					return false, 0, err
+				}
+			}
+		}
+
 	}
 
 	item.StoreTimestamp = now()
@@ -353,6 +367,19 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		if err != nil {
 			return false, 0, err
 		}
+		radius, err := db.postageRadiusIndex.Get(item)
+		if err != nil {
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return false, 0, err
+			}
+			// not sure what to do here....
+		} else {
+			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
+				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
+					return false, 0, err
+				}
+			}
+		}
 	}
 
 	item.StoreTimestamp = now()
@@ -402,6 +429,11 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 		item.Radius = item2.Radius
 	}
 	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
+		if !forcePin {
+			if err := db.incReserveSizeInBatch(batch, 1); err != nil {
+				return 0, err
+			}
+		}
 		return db.setPin(batch, item)
 	}
 
