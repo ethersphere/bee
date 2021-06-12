@@ -13,12 +13,10 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// UnreserveBatch atomically unpins chunks of a batch in proximity order upto and including po.
+// unreserveBatch atomically unpins chunks of a batch in proximity order upto and including po.
 // Unpinning will result in all chunks with pincounter 0 to be put in the gc index
 // so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able.
-func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
+func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error) {
 	var (
 		item = shed.Item{
 			BatchID: id,
@@ -29,14 +27,15 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	i, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return err
+			return 0, err
 		}
 		item.Radius = radius
 		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return err
+			return 0, err
 		}
-		return db.shed.WriteBatch(batch)
+		return 0, db.shed.WriteBatch(batch)
 	}
+
 	oldRadius := i.Radius
 	var gcSizeChange int64 // number to add or subtract from gcSize
 	unpin := func(item shed.Item) (stop bool, err error) {
@@ -53,6 +52,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 		}
 
 		gcSizeChange += c
+		evicted += uint64(c)
 		return false, nil
 	}
 
@@ -60,23 +60,23 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 	for bin := oldRadius; bin < radius; bin++ {
 		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
 		if err != nil {
-			return err
+			return 0, err
 		}
 		// adjust gcSize
 		if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
-			return err
+			return 0, err
 		}
 		item.Radius = bin
 		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return err
+			return 0, err
 		}
 		if bin == swarm.MaxPO {
 			if err := db.postageRadiusIndex.DeleteInBatch(batch, item); err != nil {
-				return err
+				return 0, err
 			}
 		}
 		if err := db.shed.WriteBatch(batch); err != nil {
-			return err
+			return 0, err
 		}
 		batch = new(leveldb.Batch)
 		gcSizeChange = 0
@@ -84,14 +84,27 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) error {
 
 	gcSize, err := db.gcSize.Get()
 	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-		return err
+		return 0, err
 	}
+
+	reserveSize, err := db.reserveSize.Get()
+	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+		return 0, err
+	}
+	if evicted > 0 {
+		reserveSize -= evicted
+		if err := db.reserveSize.Put(reserveSize); err != nil {
+			return 0, err
+		}
+		db.metrics.ReserveSize.Set(float64(reserveSize))
+	}
+
 	// trigger garbage collection if we reached the capacity
 	if gcSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()
 	}
 
-	return nil
+	return evicted, nil
 }
 
 func withinRadius(db *DB, item shed.Item) bool {

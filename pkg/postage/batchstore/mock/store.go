@@ -140,7 +140,9 @@ func (bs *BatchStore) GetReserveState() *postage.ReserveState {
 	}
 	return rs
 }
-
+func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {
+	panic("not implemented")
+}
 func (bs *BatchStore) SetRadiusSetter(r postage.RadiusSetter) {
 	panic("not implemented")
 }
