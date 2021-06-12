@@ -11,33 +11,37 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const (
-	batchKeyPrefix  = "batchstore_batch_"
-	valueKeyPrefix  = "batchstore_value_"
-	chainStateKey   = "batchstore_chainstate"
-	reserveStateKey = "batchstore_reservestate"
+	batchKeyPrefix              = "batchstore_batch_"
+	valueKeyPrefix              = "batchstore_value_"
+	chainStateKey               = "batchstore_chainstate"
+	reserveStateKey             = "batchstore_reservestate"
+	unreserveQueueKey           = "batchstore_unreserve_queue_"
+	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
 )
 
 type unreserveFn func(batchID []byte, radius uint8) error
 
 // store implements postage.Storer
 type store struct {
-	store         storage.StateStorer // State store backend to persist batches.
-	cs            *postage.ChainState // the chain state
-	rs            *reserveState       // the reserve state
-	unreserveFunc unreserveFn         // unreserve function
-	metrics       metrics             // metrics
+	store       storage.StateStorer // State store backend to persist batches.
+	cs          *postage.ChainState // the chain state
+	rs          *reserveState       // the reserve state
+	unreserveFn unreserveFn         // unreserve function
+	metrics     metrics             // metrics
+	logger      logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store
-func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, error) {
+func New(st storage.StateStorer, logger logging.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -63,13 +67,16 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 			Available: Capacity,
 		}
 	}
+
 	s := &store{
-		store:         st,
-		cs:            cs,
-		rs:            rs,
-		unreserveFunc: unreserveFunc,
-		metrics:       newMetrics(),
+		store:   st,
+		cs:      cs,
+		rs:      rs,
+		metrics: newMetrics(),
+		logger:  logger,
 	}
+
+	s.unreserveFn = s.unreserve
 
 	return s, nil
 }
