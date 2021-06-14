@@ -1014,11 +1014,11 @@ func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64
 		debt.Set(a.refreshRate)
 	}
 
-	multiplyDebt := new(big.Int).Mul(debt, big.NewInt(multiplier))
+	additionalDebt := new(big.Int).Add(debt, a.paymentThreshold)
 
-	additionalDebt := new(big.Int).Add(multiplyDebt, a.paymentThreshold)
+	multiplyDebt := new(big.Int).Mul(additionalDebt, big.NewInt(multiplier))
 
-	k := new(big.Int).Div(additionalDebt, a.refreshRate)
+	k := new(big.Int).Div(multiplyDebt, a.refreshRate)
 
 	kInt := k.Int64()
 
