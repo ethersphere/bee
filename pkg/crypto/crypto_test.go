@@ -38,7 +38,7 @@ func TestNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := crypto.NewOverlayAddress(k.PublicKey, 1)
+	a, err := crypto.NewOverlayAddress(k.PublicKey, 1, []byte{'0'})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -86,6 +86,10 @@ func (m *simulatedBackend) advanceBlock() {
 	}
 }
 
+func (m *simulatedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *simulatedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }

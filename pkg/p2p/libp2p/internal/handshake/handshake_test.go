@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -63,21 +64,24 @@ func TestHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	trxHash := common.HexToHash("0x1").Bytes()
+	blockhash := common.HexToHash("0x2").Bytes()
+
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 	signer2 := crypto.NewDefaultSigner(privateKey2)
-	addr, err := crypto.NewOverlayAddress(privateKey1.PublicKey, networkID)
+	addr, err := crypto.NewOverlayAddress(privateKey1.PublicKey, networkID, blockhash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	node1BzzAddress, err := bzz.NewAddress(signer1, node1ma, addr, networkID)
+	node1BzzAddress, err := bzz.NewAddress(signer1, node1ma, addr, networkID, trxHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr2, err := crypto.NewOverlayAddress(privateKey2.PublicKey, networkID)
+	addr2, err := crypto.NewOverlayAddress(privateKey2.PublicKey, networkID, blockhash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	node2BzzAddress, err := bzz.NewAddress(signer2, node2ma, addr2, networkID)
+	node2BzzAddress, err := bzz.NewAddress(signer2, node2ma, addr2, networkID, trxHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +96,10 @@ func TestHandshake(t *testing.T) {
 	}
 
 	aaddresser := &AdvertisableAddresserMock{}
-	senderMatcher := &MockSenderMatcher{v: true}
 
-	handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, nil, testWelcomeMessage, logger)
+	senderMatcher := &MockSenderMatcher{v: true, blockHash: blockhash}
+
+	handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, trxHash, testWelcomeMessage, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +123,7 @@ func TestHandshake(t *testing.T) {
 				},
 				NetworkID:      networkID,
 				FullNode:       true,
+				Transaction:    trxHash,
 				WelcomeMessage: testWelcomeMessage,
 			},
 		}); err != nil {
@@ -370,7 +376,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, nil, "", logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,8 +398,9 @@ func TestHandshake(t *testing.T) {
 				Overlay:   node2BzzAddress.Overlay.Bytes(),
 				Signature: node2BzzAddress.Signature,
 			},
-			NetworkID: networkID,
-			FullNode:  true,
+			NetworkID:   networkID,
+			Transaction: trxHash,
+			FullNode:    true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -415,7 +422,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("got bad syn")
 		}
 
-		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.Transaction, blockhash, got.Ack.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -541,7 +548,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, nil, "", logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -563,8 +570,9 @@ func TestHandshake(t *testing.T) {
 				Overlay:   node2BzzAddress.Overlay.Bytes(),
 				Signature: node2BzzAddress.Signature,
 			},
-			NetworkID: networkID,
-			FullNode:  true,
+			NetworkID:   networkID,
+			Transaction: trxHash,
+			FullNode:    true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -585,8 +593,7 @@ func TestHandshake(t *testing.T) {
 		if !bytes.Equal(got.Syn.ObservedUnderlay, node2maBinary) {
 			t.Fatalf("got bad syn")
 		}
-
-		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.Transaction, blockhash, got.Ack.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -638,9 +645,9 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - transaction is not on the blockchain", func(t *testing.T) {
-		sbMock := &MockSenderMatcher{v: false}
+		sbMock := &MockSenderMatcher{v: false, blockHash: blockhash}
 
-		handshakeService, err := handshake.New(signer1, aaddresser, sbMock, node1Info.BzzAddress.Overlay, networkID, true, []byte("0xff"), "", logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, sbMock, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -662,8 +669,9 @@ func TestHandshake(t *testing.T) {
 				Overlay:   node2BzzAddress.Overlay.Bytes(),
 				Signature: node2BzzAddress.Signature,
 			},
-			NetworkID: networkID,
-			FullNode:  true,
+			NetworkID:   networkID,
+			FullNode:    true,
+			Transaction: trxHash,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -734,9 +742,15 @@ func (a *AdvertisableAddresserMock) Resolve(observedAdddress ma.Multiaddr) (ma.M
 }
 
 type MockSenderMatcher struct {
-	v bool
+	v         bool
+	blockHash []byte
 }
 
-func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address) (bool, error) {
-	return m.v, nil
+func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address) ([]byte, error) {
+
+	if m.v {
+		return m.blockHash, nil
+	}
+
+	return nil, errors.New("")
 }
