@@ -61,7 +61,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		return fmt.Errorf("put: %w", err)
 	}
 
-	if bytes.Equal(svc.owner, owner) {
+	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
 		svc.batchListener.Handle(b)
 	}
 
