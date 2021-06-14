@@ -81,6 +81,9 @@ func TestGetStampIssuer(t *testing.T) {
 			ps.Add(postage.NewStampIssuer(string(id), "", id, 16, 8, validBlockNumber+uint64(i)))
 		}
 	}
+	b := postagetesting.MustNewBatch()
+	b.Start = validBlockNumber
+	ps.Handle(b)
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:4] {
 			st, err := ps.GetStampIssuer(id)
@@ -104,6 +107,15 @@ func TestGetStampIssuer(t *testing.T) {
 			if err != postage.ErrNotUsable {
 				t.Fatalf("expected ErrNotUsable, got %v", err)
 			}
+		}
+	})
+	t.Run("recovered", func(t *testing.T) {
+		st, err := ps.GetStampIssuer(b.ID)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if st.Label() != "recovered" {
+			t.Fatal("wrong issuer returned")
 		}
 	})
 }
