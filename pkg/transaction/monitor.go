@@ -116,9 +116,11 @@ func (tm *transactionMonitor) watchPending() {
 		}
 	}()
 
-	var lastBlock uint64 = 0
+	var (
+		lastBlock uint64 = 0
+		added     bool   // flag if this iteration was triggered by the watchAdded channel
+	)
 
-	var added bool // flag if this iteration was triggered by the watchAdded channel
 	for {
 		added = false
 		select {
@@ -153,7 +155,6 @@ func (tm *transactionMonitor) watchPending() {
 			tm.logger.Tracef("error while checking pending transactions: %v", err)
 			continue
 		}
-
 		lastBlock = block
 	}
 }
