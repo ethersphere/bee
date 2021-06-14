@@ -20,24 +20,34 @@ import (
 // RecoverFunc is a function to recover the public key from a signature
 type RecoverFunc func(signature, data []byte) (*ecdsa.PublicKey, error)
 
+var ErrEmptyBlockHash = errors.New("empty block hash")
+
 const (
 	AddressSize = 20
 )
 
 // NewOverlayAddress constructs a Swarm Address from ECDSA public key.
-func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64) (swarm.Address, error) {
+func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64, blockHash []byte) (swarm.Address, error) {
+
 	ethAddr, err := NewEthereumAddress(p)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	return NewOverlayFromEthereumAddress(ethAddr, networkID), nil
+
+	if blockHash == nil {
+		return swarm.ZeroAddress, ErrEmptyBlockHash
+	}
+
+	return NewOverlayFromEthereumAddress(ethAddr, networkID, blockHash), nil
 }
 
 // NewOverlayFromEthereumAddress constructs a Swarm Address for an Ethereum address.
-func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64) swarm.Address {
+func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64, blockHash []byte) swarm.Address {
 	netIDBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(netIDBytes, networkID)
-	h := sha3.Sum256(append(ethAddr, netIDBytes...))
+	data := append(ethAddr, netIDBytes...)
+	data = append(data, blockHash...)
+	h := sha3.Sum256(data)
 	return swarm.NewAddress(h[:])
 }
 
