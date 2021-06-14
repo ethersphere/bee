@@ -667,7 +667,7 @@ func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
 		return zero, nil
 	}
 
-	return peerDebt, nil
+	return peerLatentDebt, nil
 }
 
 // shadowBalance returns the current debt reduced by any potentially debitable amount stored in shadowReservedBalance
@@ -980,7 +980,7 @@ func (d *debitAction) Apply() error {
 
 		disconnectFor, err := a.blocklistUntil(d.peer, 1)
 		if err != nil {
-			return p2p.NewBlockPeerError(24*time.Hour, ErrDisconnectThresholdExceeded)
+			return p2p.NewBlockPeerError(1*time.Minute, ErrDisconnectThresholdExceeded)
 		}
 		return p2p.NewBlockPeerError(time.Duration(disconnectFor), ErrDisconnectThresholdExceeded)
 
@@ -1029,7 +1029,7 @@ func (a *Accounting) blocklist(peer swarm.Address, multiplier int64) error {
 
 	disconnectFor, err := a.blocklistUntil(peer, multiplier)
 	if err != nil {
-		return a.p2p.Blocklist(peer, 1*time.Hour)
+		return a.p2p.Blocklist(peer, 1*time.Minute)
 	}
 
 	return a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)

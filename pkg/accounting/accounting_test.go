@@ -1211,3 +1211,62 @@ func TestAccountingCallPaymentFailureRetries(t *testing.T) {
 
 	acc.Release(peer1Addr, 1)
 }
+
+func TestAccountingReconnectBlocklistOverdraft(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	var blocklistTime int64
+
+	paymentThresholdInRefreshmentSeconds := new(big.Int).Div(testPaymentThreshold, big.NewInt(testRefreshRate)).Uint64()
+
+	f := func(s swarm.Address, t time.Duration) error {
+		blocklistTime = int64(t.Seconds())
+		return nil
+	}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New(p2pmock.WithBlocklistFunc(f)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := int64(1000)
+	acc.SetTime(ts)
+
+	peer, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requestPrice := testPaymentThreshold.Uint64()
+
+	debitActionNormal := acc.PrepareDebit(peer, requestPrice)
+	err = debitActionNormal.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
+	debitActionNormal.Cleanup()
+
+	// debit ghost balance
+	debitActionGhost := acc.PrepareDebit(peer, requestPrice)
+	debitActionGhost.Cleanup()
+
+	// increase shadow reserve
+	debitActionShadow := acc.PrepareDebit(peer, requestPrice)
+	_ = debitActionShadow
+
+	if blocklistTime != 0 {
+		t.Fatal("unexpected blocklist")
+	}
+
+	// ghost overdraft triggering blocklist
+	debitAction4 := acc.PrepareDebit(peer, requestPrice)
+	debitAction4.Cleanup()
+
+	if blocklistTime != int64(5*paymentThresholdInRefreshmentSeconds) {
+		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 5*paymentThresholdInRefreshmentSeconds)
+	}
+
+}
