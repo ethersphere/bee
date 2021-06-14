@@ -1333,7 +1333,7 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
 	}
 
-	// 30 seconds pass, check whether we blocklist for the correct leftover time
+	// 30 seconds pass, check whether we blocklist for the correct leftover time after a later connect attempt
 
 	ts = int64(1030)
 	acc.SetTime(ts)
