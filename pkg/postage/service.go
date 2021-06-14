@@ -86,8 +86,7 @@ func (ps *service) Add(st *StampIssuer) {
 // issuer was not created initially, we will create it here.
 func (ps *service) Handle(b *Batch) {
 	_, err := ps.GetStampIssuer(b.ID)
-	switch {
-	case errors.Is(err, ErrNotFound):
+	if errors.Is(err, ErrNotFound) {
 		ps.Add(NewStampIssuer(
 			"recovered",
 			string(b.Owner),
