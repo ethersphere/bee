@@ -15,7 +15,7 @@ import (
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
 func TestStampIssuerMarshalling(t *testing.T) {
-	st := newTestStampIssuer(t)
+	st := newTestStampIssuer(t, 1000)
 	buf, err := st.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
@@ -30,12 +30,12 @@ func TestStampIssuerMarshalling(t *testing.T) {
 	}
 }
 
-func newTestStampIssuer(t *testing.T) *postage.StampIssuer {
+func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	t.Helper()
 	id := make([]byte, 32)
 	_, err := io.ReadFull(crand.Reader, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return postage.NewStampIssuer("label", "keyID", id, 12, 8)
+	return postage.NewStampIssuer("label", "keyID", id, 12, 8, block)
 }

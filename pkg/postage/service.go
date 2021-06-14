@@ -16,11 +16,16 @@ import (
 
 const (
 	postagePrefix = "postage"
+	// blockThreshold is used to allow threshold no of blocks to be synced before a
+	// batch is usable.
+	blockThreshold = 10
 )
 
 var (
 	// ErrNotFound is the error returned when issuer with given batch ID does not exist.
 	ErrNotFound = errors.New("not found")
+	// ErrNotUsable is the error returned when issuer with given batch ID is not usable.
+	ErrNotUsable = errors.New("not usable")
 )
 
 // Service is the postage service interface.
@@ -28,23 +33,26 @@ type Service interface {
 	Add(*StampIssuer)
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, error)
+	IssuerUsable(*StampIssuer) bool
 	io.Closer
 }
 
 // service handles postage batches
 // stores the active batches.
 type service struct {
-	lock    sync.Mutex
-	store   storage.StateStorer
-	chainID int64
-	issuers []*StampIssuer
+	lock         sync.Mutex
+	store        storage.StateStorer
+	postageStore Storer
+	chainID      int64
+	issuers      []*StampIssuer
 }
 
 // NewService constructs a new Service.
-func NewService(store storage.StateStorer, chainID int64) (Service, error) {
+func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (Service, error) {
 	s := &service{
-		store:   store,
-		chainID: chainID,
+		store:        store,
+		postageStore: postageStore,
+		chainID:      chainID,
 	}
 
 	n := 0
@@ -79,12 +87,28 @@ func (ps *service) StampIssuers() []*StampIssuer {
 	return ps.issuers
 }
 
+func (ps *service) IssuerUsable(st *StampIssuer) bool {
+	cs := ps.postageStore.GetChainState()
+
+	// this checks atleast threshold blocks are seen on the blockchain after
+	// the batch creation, before we start using a stamp issuer. The threshold
+	// is meant to allow enough time for upstream peers to see the batch and
+	// hence validate the stamps issued
+	if cs.Block < st.blockNumber || (cs.Block-st.blockNumber) < blockThreshold {
+		return false
+	}
+	return true
+}
+
 // GetStampIssuer finds a stamp issuer by batch ID.
 func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.batchID) {
+			if !ps.IssuerUsable(st) {
+				return nil, ErrNotUsable
+			}
 			return st, nil
 		}
 	}
