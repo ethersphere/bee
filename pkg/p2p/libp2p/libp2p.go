@@ -272,6 +272,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 func (s *Service) handleIncoming(stream network.Stream) {
 	select {
 	case <-s.ready:
+		go func() { _ = stream.Reset() }()
 	case <-s.halt:
 		go func() { _ = stream.Reset() }()
 		return
