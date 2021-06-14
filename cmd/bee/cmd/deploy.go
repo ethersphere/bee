@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +35,7 @@ func (c *command) initDeployCmd() error {
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
+			networkID := c.config.GetUint64(optionNameNetworkID)
 
 			stateStore, err := node.InitStateStore(logger, dataDir)
 			if err != nil {
@@ -47,11 +49,6 @@ func (c *command) initDeployCmd() error {
 				return err
 			}
 			signer := signerConfig.signer
-
-			err = node.CheckOverlayWithStore(signerConfig.address, stateStore)
-			if err != nil {
-				return err
-			}
 
 			ctx := cmd.Context()
 
@@ -94,6 +91,28 @@ func (c *command) initDeployCmd() error {
 				swapInitialDeposit,
 				deployGasPrice,
 			)
+			if err != nil {
+				return err
+			}
+
+			txHash, err := node.GetTxHash(stateStore, logger, c.config.GetString(optionNameTransactionHash))
+			if err != nil {
+				return fmt.Errorf("invalid transaction hash: %w", err)
+			}
+
+			blockHash, err := node.GetTrxNextBlock(ctx, txHash, stateStore, swapBackend, transactionMonitor)
+			if err != nil {
+				return err
+			}
+
+			pubKey, err := signer.PublicKey()
+			if err != nil {
+				return err
+			}
+
+			swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+
+			err = node.CheckOverlayWithStore(swarmAddress, stateStore)
 
 			return err
 		},

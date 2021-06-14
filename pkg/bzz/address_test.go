@@ -7,6 +7,7 @@ package bzz_test
 import (
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 
@@ -19,23 +20,26 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	trxHash := common.HexToHash("0x1").Bytes()
+	blockHash := common.HexToHash("0x2").Bytes()
+
 	privateKey1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	overlay, err := crypto.NewOverlayAddress(privateKey1.PublicKey, 3)
+	overlay, err := crypto.NewOverlayAddress(privateKey1.PublicKey, 3, blockHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 
-	bzzAddress, err := bzz.NewAddress(signer1, node1ma, overlay, 3)
+	bzzAddress, err := bzz.NewAddress(signer1, node1ma, overlay, 3, trxHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, 3)
+	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, 3, trxHash, blockHash)
 	if err != nil {
 		t.Fatal(err)
 	}

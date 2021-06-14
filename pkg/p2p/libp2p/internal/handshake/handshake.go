@@ -63,7 +63,7 @@ type AdvertisableAddressResolver interface {
 }
 
 type SenderMatcher interface {
-	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) (bool, error)
+	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) (bool, []byte, error)
 }
 
 // Service can perform initiate or handle a handshake between peers.
@@ -147,11 +147,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack)
-	if err != nil {
-		return nil, err
-	}
-
 	observedUnderlay, err := ma.NewMultiaddrBytes(resp.Syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
@@ -162,7 +157,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.transaction)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +181,20 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		WelcomeMessage: welcomeMessage,
 	}); err != nil {
 		return nil, fmt.Errorf("write ack message: %w", err)
+	}
+
+	matchesSender, blockHash, err := s.senderMatcher.Matches(ctx, resp.Ack.Transaction, s.networkID, swarm.NewAddress(resp.Ack.Address.Overlay))
+	if err != nil {
+		return nil, err
+	}
+
+	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, blockHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if !matchesSender {
+		return nil, fmt.Errorf("given address is not registered on Ethereum: %v: %w", remoteBzzAddress.Overlay, ErrAddressNotFound)
 	}
 
 	s.logger.Tracef("handshake finished for peer (outbound) %s", remoteBzzAddress.Overlay.String())
@@ -238,7 +247,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.transaction)
 	if err != nil {
 		return nil, err
 	}
@@ -274,23 +283,23 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(&ack)
+	matchesSender, blockHash, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, swarm.NewAddress(ack.Address.Overlay))
 	if err != nil {
 		return nil, err
 	}
 
-	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
-	if len(ack.WelcomeMessage) > 0 {
-		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
-	}
-
-	matchesSender, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, remoteBzzAddress.Overlay)
+	remoteBzzAddress, err := s.parseCheckAck(&ack, blockHash)
 	if err != nil {
 		return nil, err
 	}
 
 	if !matchesSender {
 		return nil, fmt.Errorf("given address is not registered on Ethereum: %v: %w", remoteBzzAddress.Overlay, ErrAddressNotFound)
+	}
+
+	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
+	if len(ack.WelcomeMessage) > 0 {
+		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
 	}
 
 	return &Info{
@@ -324,12 +333,12 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.Pretty()))
 }
 
-func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
+func (s *Service) parseCheckAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
 	if ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, s.networkID)
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, s.networkID, ack.Transaction, blockHash)
 	if err != nil {
 		return nil, ErrInvalidAck
 	}

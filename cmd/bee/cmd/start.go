@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
@@ -116,7 +115,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return errors.New("boot node must be started as a full node")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -247,7 +246,6 @@ func (p *program) Stop(s service.Service) error {
 
 type signerConfig struct {
 	signer           crypto.Signer
-	address          swarm.Address
 	publicKey        *ecdsa.PublicKey
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
@@ -279,7 +277,6 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}
 
 	var signer crypto.Signer
-	var address swarm.Address
 	var password string
 	var publicKey *ecdsa.PublicKey
 	if p := c.config.GetString(optionNamePassword); p != "" {
@@ -347,32 +344,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		if err != nil {
 			return nil, err
 		}
-
-		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
-		if err != nil {
-			return nil, err
-		}
-
-		logger.Infof("using swarm network address through clef: %s", address)
 	} else {
 		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
-		swarmPrivateKey, created, err := keystore.Key("swarm", password)
+		swarmPrivateKey, _, err := keystore.Key("swarm", password)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
 		}
 		signer = crypto.NewDefaultSigner(swarmPrivateKey)
 		publicKey = &swarmPrivateKey.PublicKey
-
-		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
-		if err != nil {
-			return nil, err
-		}
-
-		if created {
-			logger.Infof("new swarm network address created: %s", address)
-		} else {
-			logger.Infof("using existing swarm network address: %s", address)
-		}
 	}
 
 	logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
@@ -408,7 +387,6 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 
 	return &signerConfig{
 		signer:           signer,
-		address:          address,
 		publicKey:        publicKey,
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,

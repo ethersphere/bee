@@ -29,6 +29,7 @@ type Monitor interface {
 	io.Closer
 	// WatchTransaction watches the transaction until either there is 1 confirmation or a competing transaction with cancellationDepth confirmations.
 	WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
+	WaitBlock(ctx context.Context, block *big.Int) (*types.Block, error)
 }
 type transactionMonitor struct {
 	lock       sync.Mutex
@@ -104,6 +105,30 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 	return receiptC, errC, nil
 }
 
+func (tm *transactionMonitor) WaitBlock(ctx context.Context, block *big.Int) (*types.Block, error) {
+	tm.lock.Lock()
+	defer tm.lock.Unlock()
+
+	for {
+
+		block, err := tm.backend.BlockByNumber(ctx, block)
+		if err != nil {
+			if !errors.Is(err, ethereum.NotFound) {
+				return nil, err
+			}
+		} else {
+			return block, nil
+		}
+
+		select {
+		case <-time.After(tm.pollingInterval):
+		// if the main context is cancelled terminate
+		case <-tm.ctx.Done():
+			return nil, errors.New("context timeout")
+		}
+	}
+}
+
 // main watch loop
 func (tm *transactionMonitor) watchPending() {
 	defer tm.wg.Done()
@@ -116,9 +141,11 @@ func (tm *transactionMonitor) watchPending() {
 		}
 	}()
 
-	var lastBlock uint64 = 0
+	var (
+		lastBlock uint64 = 0
+		added     bool   // flag if this iteration was triggered by the watchAdded channel
+	)
 
-	var added bool // flag if this iteration was triggered by the watchAdded channel
 	for {
 		added = false
 		select {
@@ -153,7 +180,6 @@ func (tm *transactionMonitor) watchPending() {
 			tm.logger.Tracef("error while checking pending transactions: %v", err)
 			continue
 		}
-
 		lastBlock = block
 	}
 }

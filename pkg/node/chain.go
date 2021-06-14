@@ -6,9 +6,11 @@ package node
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -29,6 +31,7 @@ import (
 const (
 	maxDelay          = 1 * time.Minute
 	cancellationDepth = 6
+	nextBlockHashKey  = chequebook.ChequebookDeploymentKey + "_next_block_hash"
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
@@ -256,4 +259,65 @@ func InitSwap(
 	}
 
 	return swapService, priceOracle, nil
+}
+
+func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString string) ([]byte, error) {
+
+	if trxString != "" {
+		txHashTrimmed := strings.TrimPrefix(trxString, "0x")
+		if len(txHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		txHash, err := hex.DecodeString(txHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided transaction hash %x", txHash)
+		return txHash, nil
+	}
+
+	var txHash common.Hash
+	key := chequebook.ChequebookDeploymentKey
+	if err := stateStore.Get(key, &txHash); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, errors.New("chequebook deployment transaction hash not found, please specify the transaction hash manually")
+		}
+		return nil, err
+	}
+
+	logger.Infof("using the chequebook transaction hash %x", txHash)
+	return txHash.Bytes(), nil
+}
+
+func GetTrxNextBlock(ctx context.Context, trx []byte, stateStore storage.StateStorer, backend transaction.Backend, monitor transaction.Monitor) ([]byte, error) {
+
+	// check statestore first
+	var hash common.Hash
+	if err := stateStore.Get(nextBlockHashKey, &hash); err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
+		}
+	} else {
+		return hash.Bytes(), nil
+	}
+
+	// if not found in statestore, fetch from chain
+	tx, err := backend.TransactionReceipt(ctx, common.BytesToHash(trx))
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := monitor.WaitBlock(ctx, big.NewInt(0).Add(tx.BlockNumber, big.NewInt(1)))
+	if err != nil {
+		return nil, err
+	}
+
+	hash = block.Hash()
+
+	err = stateStore.Put(nextBlockHashKey, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	return hash.Bytes(), nil
 }

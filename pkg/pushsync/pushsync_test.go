@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -38,6 +39,8 @@ import (
 const (
 	fixedPrice = uint64(10)
 )
+
+var blockHash = common.HexToHash("0x1")
 
 type pricerParameters struct {
 	price     uint64
@@ -776,6 +779,10 @@ func TestSignsReceipt(t *testing.T) {
 	if !bytes.Equal([]byte{1}, receipt.Signature) {
 		t.Fatal("receipt signature is not present")
 	}
+
+	if !bytes.Equal(blockHash.Bytes(), receipt.BlockHash) {
+		t.Fatal("receipt block hash do not match")
+	}
 }
 
 func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags, accounting.Interface) {
@@ -804,7 +811,7 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
 	}
 
-	return pushsync.New(addr, recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, 0), storer, mtag
+	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, 0), storer, mtag
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

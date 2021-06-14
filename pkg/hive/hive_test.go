@@ -63,11 +63,11 @@ func TestHandlerRateLimit(t *testing.T) {
 			t.Fatal(err)
 		}
 		signer := crypto.NewDefaultSigner(pk)
-		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID)
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,11 +125,11 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 		signer := crypto.NewDefaultSigner(pk)
-		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID)
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

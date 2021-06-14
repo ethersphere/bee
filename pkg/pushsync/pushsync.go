@@ -55,10 +55,12 @@ type PushSyncer interface {
 type Receipt struct {
 	Address   swarm.Address
 	Signature []byte
+	BlockHash []byte
 }
 
 type PushSync struct {
 	address        swarm.Address
+	blockHash      []byte
 	streamer       p2p.StreamerDisconnecter
 	storer         storage.Putter
 	topologyDriver topology.Driver
@@ -80,9 +82,10 @@ var defaultTTL = 20 * time.Second                     // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
-func New(address swarm.Address, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
+		blockHash:      blockHash,
 		streamer:       streamer,
 		storer:         storer,
 		topologyDriver: topology,
@@ -174,7 +177,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				if err != nil {
 					return fmt.Errorf("receipt signature: %w", err)
 				}
-				receipt := pb.Receipt{Address: bytes, Signature: signature}
+				receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
 				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 				}
@@ -317,7 +320,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 			defer debit.Cleanup()
 
-			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
+			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature, BlockHash: ps.blockHash}
 			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
@@ -352,7 +355,8 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}
 	return &Receipt{
 		Address:   swarm.NewAddress(r.Address),
-		Signature: r.Signature}, nil
+		Signature: r.Signature,
+		BlockHash: r.BlockHash}, nil
 }
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool) (*pb.Receipt, error) {
