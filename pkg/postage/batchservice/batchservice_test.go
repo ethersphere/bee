@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -71,28 +72,8 @@ func TestBatchServiceCreate(t *testing.T) {
 		}
 	})
 
-	t.Run("passes", func(t *testing.T) {
-		svc, batchStore, _ := newTestStoreAndServiceWithListener(
-			testBatch.Owner,
-			testBatchListener,
-			mock.WithChainState(testChainState),
-		)
-
-		if err := svc.Create(
-			testBatch.ID,
-			testBatch.Owner,
-			testBatch.Value,
-			testBatch.Depth,
-			testBatch.BucketDepth,
-			testBatch.Immutable,
-		); err != nil {
-			t.Fatalf("got error %v", err)
-		}
-		if testBatchListener.count != 1 {
-			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.count)
-		}
-
-		got, err := batchStore.Get(testBatch.ID)
+	validateBatch := func(t *testing.T, b *postage.Batch, st *mock.BatchStore) {
+		got, err := st.Get(testBatch.ID)
 		if err != nil {
 			t.Fatalf("batch store get: %v", err)
 		}
@@ -118,8 +99,59 @@ func TestBatchServiceCreate(t *testing.T) {
 		if got.Start != testChainState.Block {
 			t.Fatalf("batch start block different form chain state: want %v, got %v", got.Start, testChainState.Block)
 		}
+	}
+
+	t.Run("passes", func(t *testing.T) {
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			testBatch.Owner,
+			testBatchListener,
+			mock.WithChainState(testChainState),
+		)
+
+		if err := svc.Create(
+			testBatch.ID,
+			testBatch.Owner,
+			testBatch.Value,
+			testBatch.Depth,
+			testBatch.BucketDepth,
+			testBatch.Immutable,
+		); err != nil {
+			t.Fatalf("got error %v", err)
+		}
+		if testBatchListener.count != 1 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.count)
+		}
+
+		validateBatch(t, testBatch, batchStore)
 	})
 
+	t.Run("passes without recovery", func(t *testing.T) {
+		// create a owner different from the batch owner
+		owner := make([]byte, 32)
+		rand.Read(owner)
+
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			owner,
+			testBatchListener,
+			mock.WithChainState(testChainState),
+		)
+
+		if err := svc.Create(
+			testBatch.ID,
+			testBatch.Owner,
+			testBatch.Value,
+			testBatch.Depth,
+			testBatch.BucketDepth,
+			testBatch.Immutable,
+		); err != nil {
+			t.Fatalf("got error %v", err)
+		}
+		if testBatchListener.count != 1 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.count)
+		}
+
+		validateBatch(t, testBatch, batchStore)
+	})
 }
 
 func TestBatchServiceTopUp(t *testing.T) {
