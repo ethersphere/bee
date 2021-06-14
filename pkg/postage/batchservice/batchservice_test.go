@@ -355,9 +355,7 @@ func newTestStoreAndServiceWithListener(
 }
 
 func newTestStoreAndService(opts ...mock.Option) (postage.EventUpdater, *mock.BatchStore, storage.StateStorer) {
-	testBatchListener := &mockBatchCreationHandler{}
-	testBatchOwner := []byte{}
-	return newTestStoreAndServiceWithListener(testBatchOwner, testBatchListener, opts...)
+	return newTestStoreAndServiceWithListener(nil, nil, opts...)
 }
 
 func putBatch(t *testing.T, store postage.Storer, b *postage.Batch) {
