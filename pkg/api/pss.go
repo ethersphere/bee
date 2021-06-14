@@ -88,7 +88,14 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pss: postage batch issuer: %v", err)
 		s.logger.Error("pss: postage batch issue")
-		jsonhttp.BadRequest(w, "postage stamp issuer")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, "postage stamp issuer")
+		}
 		return
 	}
 	stamper := postage.NewStamper(i, s.signer)

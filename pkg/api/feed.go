@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -152,7 +153,14 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("feed put: putter: %v", err)
 		s.logger.Error("feed put: putter")
-		jsonhttp.BadRequest(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
 		return
 	}
 
@@ -185,7 +193,12 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("feed post: store manifest: %v", err)
 		s.logger.Error("feed post: store manifest")
-		jsonhttp.InternalServerError(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 

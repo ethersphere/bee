@@ -319,6 +319,8 @@ components:
           $ref: "#/components/schemas/BatchID"
         utilization:
           type: integer
+        usable:
+          type: boolean
 
     Settlement:
       type: object

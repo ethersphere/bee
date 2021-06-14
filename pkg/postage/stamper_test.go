@@ -44,7 +44,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests a valid stamp
 	t.Run("valid stamp", func(t *testing.T) {
-		st := newTestStampIssuer(t)
+		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); err != nil {
@@ -54,7 +54,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests that Stamps returns with postage.ErrBucketMismatch
 	t.Run("bucket mismatch", func(t *testing.T) {
-		st := newTestStampIssuer(t)
+		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		a := chunkAddr.Bytes()
@@ -66,7 +66,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests that Stamps returns with postage.ErrInvalidIndex
 	t.Run("invalid index", func(t *testing.T) {
-		st := newTestStampIssuer(t)
+		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
@@ -90,8 +90,8 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrBucketFull iff
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
-		st := newTestStampIssuer(t)
-		st = postage.NewStampIssuer("", "", st.ID(), 12, 8)
+		st := newTestStampIssuer(t, 1000)
+		st = postage.NewStampIssuer("", "", st.ID(), 12, 8, 1000)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
@@ -112,7 +112,7 @@ func TestStamperStamping(t *testing.T) {
 	// tests return with ErrOwnerMismatch
 	t.Run("owner mismatch", func(t *testing.T) {
 		owner[0] ^= 0xff // bitflip the owner first byte, this case must come last!
-		st := newTestStampIssuer(t)
+		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); !errors.Is(err, postage.ErrOwnerMismatch) {

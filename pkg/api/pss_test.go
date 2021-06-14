@@ -185,7 +185,7 @@ func TestPssSend(t *testing.T) {
 			mtx.Unlock()
 			return err
 		}
-		mp           = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+		mp           = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10, 1000)))
 		p            = newMockPss(sendFn)
 		client, _, _ = newTestServer(t, testServerOptions{
 			Pss:    p,

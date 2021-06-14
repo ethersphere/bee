@@ -139,7 +139,14 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("soc upload: postage batch issuer: %v", err)
 		s.logger.Error("soc upload: postage batch issue")
-		jsonhttp.BadRequest(w, "postage stamp issuer")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, "postage stamp issuer")
+		}
 		return
 	}
 	stamper := postage.NewStamper(i, s.signer)
@@ -147,7 +154,12 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("soc upload: stamp: %v", err)
 		s.logger.Error("soc upload: stamp error")
-		jsonhttp.InternalServerError(w, "stamp error")
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, "stamp error")
+		}
 		return
 	}
 	sch = sch.WithStamp(stamp)
