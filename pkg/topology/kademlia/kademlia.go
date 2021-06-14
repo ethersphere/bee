@@ -602,11 +602,6 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			k.metrics.TotalBootNodesConnectionAttempts.Inc()
 
 			if err != nil {
-				if errors.Is(err, p2p.ErrDialLightNode) {
-					k.logger.Debugf("connect fail %s: %v", addr, err)
-					k.logger.Warningf("connect to bootnode %s", addr)
-					return false, err
-				}
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
 					k.logger.Debugf("connect fail %s: %v", addr, err)
 					k.logger.Warningf("connect to bootnode %s", addr)

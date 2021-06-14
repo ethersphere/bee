@@ -57,7 +57,14 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload: putter: %v", err)
 		logger.Error("bzz upload: putter")
-		jsonhttp.BadRequest(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
 		return
 	}
 
