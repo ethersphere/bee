@@ -45,11 +45,11 @@ func (m *mockBatchCreationHandler) Handle(b *postage.Batch) {
 }
 
 func TestBatchServiceCreate(t *testing.T) {
-	testBatch := postagetesting.MustNewBatch()
 	testChainState := postagetesting.NewChainState()
-	testBatchListener := &mockBatchCreationHandler{}
 
 	t.Run("expect put create put error", func(t *testing.T) {
+		testBatch := postagetesting.MustNewBatch()
+		testBatchListener := &mockBatchCreationHandler{}
 		svc, _, _ := newTestStoreAndServiceWithListener(
 			testBatch.Owner,
 			testBatchListener,
@@ -72,7 +72,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		}
 	})
 
-	validateBatch := func(t *testing.T, b *postage.Batch, st *mock.BatchStore) {
+	validateBatch := func(t *testing.T, testBatch *postage.Batch, st *mock.BatchStore) {
 		got, err := st.Get(testBatch.ID)
 		if err != nil {
 			t.Fatalf("batch store get: %v", err)
@@ -102,6 +102,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	}
 
 	t.Run("passes", func(t *testing.T) {
+		testBatch := postagetesting.MustNewBatch()
+		testBatchListener := &mockBatchCreationHandler{}
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			testBatch.Owner,
 			testBatchListener,
@@ -126,6 +128,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	})
 
 	t.Run("passes without recovery", func(t *testing.T) {
+		testBatch := postagetesting.MustNewBatch()
+		testBatchListener := &mockBatchCreationHandler{}
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
 		rand.Read(owner)
@@ -146,7 +150,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		); err != nil {
 			t.Fatalf("got error %v", err)
 		}
-		if testBatchListener.count != 1 {
+		if testBatchListener.count != 0 {
 			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.count)
 		}
 
