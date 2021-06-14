@@ -1325,9 +1325,85 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 		t.Fatal("unexpected blocklist")
 	}
 
+	//peer attempts to reconnect immediately
+
 	acc.Connect(peer)
 
 	if blocklistTime != int64(4*paymentThresholdInRefreshmentSeconds) {
 		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
+	}
+
+	// 30 seconds pass, check whether we blocklist for the correct leftover time
+
+	ts = int64(1030)
+	acc.SetTime(ts)
+
+	acc.Connect(peer)
+
+	if blocklistTime != int64(paymentThresholdInRefreshmentSeconds) {
+		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, paymentThresholdInRefreshmentSeconds)
+	}
+}
+
+func TestAccountingReconnectAfterAllowed(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	var blocklistTime int64
+
+	f := func(s swarm.Address, t time.Duration) error {
+		blocklistTime = int64(t.Seconds())
+		return nil
+	}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New(p2pmock.WithBlocklistFunc(f)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := int64(1000)
+	acc.SetTime(ts)
+
+	peer, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requestPrice := testPaymentThreshold.Uint64()
+
+	debitActionNormal := acc.PrepareDebit(peer, requestPrice)
+	err = debitActionNormal.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
+	debitActionNormal.Cleanup()
+
+	// debit ghost balance
+	debitActionGhost := acc.PrepareDebit(peer, requestPrice)
+	debitActionGhost.Cleanup()
+
+	// increase shadow reserve
+	debitActionShadow := acc.PrepareDebit(peer, requestPrice)
+	_ = debitActionShadow
+
+	if blocklistTime != 0 {
+		t.Fatal("unexpected blocklist")
+	}
+
+	acc.Disconnect(peer)
+
+	if blocklistTime != 0 {
+		t.Fatal("unexpected blocklist")
+	}
+
+	ts = int64(1040)
+	acc.SetTime(ts)
+
+	acc.Connect(peer)
+
+	if blocklistTime != 0 {
+		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 0)
 	}
 }
