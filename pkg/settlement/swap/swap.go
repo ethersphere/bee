@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
@@ -58,13 +57,12 @@ type Service struct {
 	chequebook  chequebook.Service
 	chequeStore chequebook.ChequeStore
 	cashout     chequebook.CashoutService
-	p2pService  p2p.Service
 	addressbook Addressbook
 	networkID   uint64
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service, accounting settlement.Accounting) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting) *Service {
 	return &Service{
 		proto:       proto,
 		logger:      logger,
@@ -75,7 +73,6 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 		addressbook: addressbook,
 		networkID:   networkID,
 		cashout:     cashout,
-		p2pService:  p2pService,
 		accounting:  accounting,
 	}
 }
@@ -134,11 +131,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 	if !known {
-		s.logger.Warningf("disconnecting non-swap peer %v", peer)
-		err = s.p2pService.Disconnect(peer)
-		if err != nil {
-			return
-		}
 		err = ErrUnknownBeneficary
 		return
 	}
