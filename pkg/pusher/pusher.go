@@ -206,22 +206,27 @@ LOOP:
 					err = fmt.Errorf("pusher: set sync: %w", err)
 					return
 				}
-
-				t, err = s.tag.Get(ch.TagID())
-				if err == nil && t != nil {
-					err = t.Inc(tags.StateSynced)
-					if err != nil {
-						err = fmt.Errorf("pusher: increment synced: %v", err)
-						return
-					}
-					if wantSelf {
-						err = t.Inc(tags.StateSent)
+				if ch.TagID() > 0 {
+					// for individual chunks uploaded using the
+					// /chunks api endpoint the tag will be missing
+					// by default, unless the api consumer specifies one
+					t, err = s.tag.Get(ch.TagID())
+					if err == nil && t != nil {
+						err = t.Inc(tags.StateSynced)
 						if err != nil {
-							err = fmt.Errorf("pusher: increment sent: %w", err)
+							err = fmt.Errorf("pusher: increment synced: %v", err)
 							return
+						}
+						if wantSelf {
+							err = t.Inc(tags.StateSent)
+							if err != nil {
+								err = fmt.Errorf("pusher: increment sent: %w", err)
+								return
+							}
 						}
 					}
 				}
+
 			}(ctx, ch)
 		case <-timer.C:
 			// initially timer is set to go off as well as every time we hit the end of push index
