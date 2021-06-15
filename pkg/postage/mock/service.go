@@ -69,6 +69,8 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
 
+func (m *mockPostage) Handle(_ *postage.Batch) {}
+
 func (m *mockPostage) Close() error {
 	return nil
 }
