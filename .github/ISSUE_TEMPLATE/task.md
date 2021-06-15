@@ -8,6 +8,7 @@ labels: ''
 assignees: ''
 
 ---
+⚠️ Requests for support in an issue-format will be closed immediately. For support questions, we welcome you to our [Discord](https://discord.gg/XGNBEKktkD).
 
 <!-- A (draft) PR always references the task it belongs to. -->
 # Task
