@@ -56,7 +56,8 @@ type reserveState struct {
 	// Radius is the radius of responsibility,
 	// it defines the proximity order of chunks which we
 	// would like to guarantee that all chunks are stored
-	Radius uint8 `json:"radius"`
+	Radius        uint8 `json:"radius"`
+	StorageRadius uint8 `json:"storageRadius"`
 	// Available capacity of the reserve which can still be used.
 	Available int64    `json:"available"`
 	Outer     *big.Int `json:"outer"` // lower value limit for outer layer = the further half of chunks
@@ -105,6 +106,12 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		stop, err := cb(v.BatchID, v.Radius)
 		if err != nil {
 			return true, err
+		}
+		if v.Radius != swarm.MaxPO+1 && s.rs.StorageRadius+1 < v.Radius {
+			s.rs.StorageRadius = v.Radius - 1
+			if err = s.store.Put(reserveStateKey, s.rs); err != nil {
+				return true, err
+			}
 		}
 		if stop {
 			return true, nil
@@ -164,10 +171,11 @@ func (s *store) evictExpired() error {
 		}
 
 		// unreserve batch fully
-		err = s.unreserveFn(b.ID, swarm.MaxPO+1)
+		err = s.evictFn(b.ID)
 		if err != nil {
 			return true, err
 		}
+
 		s.rs.Available += multiplier * exp2(b.Radius-s.rs.Radius-1)
 
 		// if batch has no value then delete it

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -26,14 +27,17 @@ const (
 )
 
 type unreserveFn func(batchID []byte, radius uint8) error
+type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
 type store struct {
 	store       storage.StateStorer // State store backend to persist batches.
 	cs          *postage.ChainState // the chain state
-	rs          *reserveState       // the reserve state
-	unreserveFn unreserveFn         // unreserve function
-	metrics     metrics             // metrics
+	mtx         sync.Mutex
+	rs          *reserveState // the reserve state
+	unreserveFn unreserveFn   // unreserve function
+	evictFn     evictFn       // evict function
+	metrics     metrics       // metrics
 	logger      logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
@@ -41,7 +45,7 @@ type store struct {
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store
-func New(st storage.StateStorer, logger logging.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -72,6 +76,7 @@ func New(st storage.StateStorer, logger logging.Logger) (postage.Storer, error) 
 		store:   st,
 		cs:      cs,
 		rs:      rs,
+		evictFn: ev,
 		metrics: newMetrics(),
 		logger:  logger,
 	}
@@ -82,6 +87,8 @@ func New(st storage.StateStorer, logger logging.Logger) (postage.Storer, error) 
 }
 
 func (s *store) GetReserveState() *postage.ReserveState {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	return &postage.ReserveState{
 		Radius:    s.rs.Radius,
 		Available: s.rs.Available,
@@ -97,7 +104,11 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
-	b.Radius = s.rs.radius(s.rs.tier(b.Value))
+	if s.rs.StorageRadius < s.rs.Radius {
+		b.Radius = s.rs.StorageRadius
+	} else {
+		b.Radius = s.rs.radius(s.rs.tier(b.Value))
+	}
 	return b, nil
 }
 
