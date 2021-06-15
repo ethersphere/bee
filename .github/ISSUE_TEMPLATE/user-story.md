@@ -4,8 +4,8 @@ about: Use this template to create a new user story for in the sprint backlog
 title: Describe the user-story in a few key words
 labels: ''
 assignees: ''
-
 ---
+⚠️ Requests for support in an issue-format will be closed immediately. For support questions, we welcome you to our [Discord](https://discord.gg/XGNBEKktkD).
 
 # User story
 <!--  
