@@ -977,6 +977,7 @@ func setTestHookEviction(h func(count uint64)) (reset func()) {
 	return reset
 }
 
+//
 func TestReserveEvictionWorker(t *testing.T) {
 	var (
 		chunkCount = 10
@@ -1007,7 +1008,14 @@ func TestReserveEvictionWorker(t *testing.T) {
 			// here we mock the behavior of the batchstore
 			// that would call the localstore back with the
 			// batch IDs and the radiuses from the FIFO queue
-			stop, err := f(item, 4)
+			stop, err := f(item, 2)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+			stop, err = f(item, 4)
 			if err != nil {
 				return err
 			}
@@ -1015,6 +1023,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 				return nil
 			}
 		}
+		batchIDs = nil
 		return nil
 	}
 	db = newTestDB(t, &Options{
@@ -1026,12 +1035,8 @@ func TestReserveEvictionWorker(t *testing.T) {
 	// insert 10 chunks that fall into the reserve, then
 	// expect 5 first to be evicted
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1064,6 +1069,8 @@ func TestReserveEvictionWorker(t *testing.T) {
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
 
 	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
+
+	t.Run("postage radius count", newItemsCountTest(db.postageRadiusIndex, 5))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 5))
 

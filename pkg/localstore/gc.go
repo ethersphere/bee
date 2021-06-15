@@ -320,6 +320,7 @@ func (db *DB) reserveEvictionWorker() {
 			if err != nil {
 				db.logger.Errorf("localstore: evict reserve: %v", err)
 			}
+
 			if !done {
 				db.triggerReserveEviction()
 			}
