@@ -94,7 +94,7 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	// the batch creation, before we start using a stamp issuer. The threshold
 	// is meant to allow enough time for upstream peers to see the batch and
 	// hence validate the stamps issued
-	if cs.Block < st.blockNumber || (cs.Block-st.blockNumber) < blockThreshold {
+	if cs.Block < st.data.BlockNumber || (cs.Block-st.data.BlockNumber) < blockThreshold {
 		return false
 	}
 	return true
@@ -105,7 +105,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
-		if bytes.Equal(batchID, st.batchID) {
+		if bytes.Equal(batchID, st.data.BatchID) {
 			if !ps.IssuerUsable(st) {
 				return nil, ErrNotUsable
 			}

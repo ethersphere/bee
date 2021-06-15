@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -97,25 +98,35 @@ func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type postageStampResponse struct {
-	BatchID     batchID `json:"batchID"`
-	Utilization uint32  `json:"utilization"`
-	Usable      bool    `json:"usable"`
+	BatchID       batchID        `json:"batchID"`
+	Utilization   uint32         `json:"utilization"`
+	Usable        bool           `json:"usable"`
+	Label         string         `json:"label"`
+	Depth         uint8          `json:"depth"`
+	Amount        *bigint.BigInt `json:"amount"`
+	BucketDepth   uint8          `json:"bucketDepth"`
+	BlockNumber   uint64         `json:"blockNumber"`
+	ImmutableFlag bool           `json:"immutableFlag"`
 }
 
 type postageStampsResponse struct {
 	Stamps []postageStampResponse `json:"stamps"`
 }
 
-func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
-	issuers := s.post.StampIssuers()
+func (s *server) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request) {
 	resp := postageStampsResponse{}
-	for _, v := range issuers {
-		issuer := postageStampResponse{
-			BatchID:     v.ID(),
-			Utilization: v.Utilization(),
-			Usable:      s.post.IssuerUsable(v),
-		}
-		resp.Stamps = append(resp.Stamps, issuer)
+	for _, v := range s.post.StampIssuers() {
+		resp.Stamps = append(resp.Stamps, postageStampResponse{
+			BatchID:       v.ID(),
+			Utilization:   v.Utilization(),
+			Usable:        s.post.IssuerUsable(v),
+			Label:         v.Label(),
+			Depth:         v.Depth(),
+			Amount:        bigint.Wrap(v.Amount()),
+			BucketDepth:   v.BucketDepth(),
+			BlockNumber:   v.BlockNumber(),
+			ImmutableFlag: v.ImmutableFlag(),
+		})
 	}
 	jsonhttp.OK(w, resp)
 }
@@ -143,9 +154,15 @@ func (s *server) postageGetStampHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	resp := postageStampResponse{
-		BatchID:     id,
-		Utilization: issuer.Utilization(),
-		Usable:      s.post.IssuerUsable(issuer),
+		BatchID:       id,
+		Utilization:   issuer.Utilization(),
+		Usable:        s.post.IssuerUsable(issuer),
+		Label:         issuer.Label(),
+		Depth:         issuer.Depth(),
+		Amount:        bigint.Wrap(issuer.Amount()),
+		BucketDepth:   issuer.BucketDepth(),
+		BlockNumber:   issuer.BlockNumber(),
+		ImmutableFlag: issuer.ImmutableFlag(),
 	}
 	jsonhttp.OK(w, &resp)
 }

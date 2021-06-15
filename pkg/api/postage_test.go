@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -192,16 +193,23 @@ func TestPostageCreateStamp(t *testing.T) {
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10, 1000)))
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 			Stamps: []api.PostageStampResponse{
 				{
-					BatchID:     batchOk,
-					Utilization: 0,
-					Usable:      true,
+					BatchID:       batchOk,
+					Utilization:   si.Utilization(),
+					Usable:        true,
+					Label:         si.Label(),
+					Depth:         si.Depth(),
+					Amount:        bigint.Wrap(si.Amount()),
+					BucketDepth:   si.BucketDepth(),
+					BlockNumber:   si.BlockNumber(),
+					ImmutableFlag: si.ImmutableFlag(),
 				},
 			},
 		}),
@@ -209,15 +217,22 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10, 1000)))
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:     batchOk,
-				Utilization: 0,
-				Usable:      true,
+				BatchID:       batchOk,
+				Utilization:   si.Utilization(),
+				Usable:        true,
+				Label:         si.Label(),
+				Depth:         si.Depth(),
+				Amount:        bigint.Wrap(si.Amount()),
+				BucketDepth:   si.BucketDepth(),
+				BlockNumber:   si.BlockNumber(),
+				ImmutableFlag: si.ImmutableFlag(),
 			}),
 		)
 	})
