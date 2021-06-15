@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
+	retrievalmock "github.com/ethersphere/bee/pkg/retrieval/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -432,6 +433,8 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		t.Fatal(err)
 	}
 
+	retrievalService := retrievalmock.New(nil)
+
 	mockStatestore := statestore.NewStateStore()
 	mtags := tags.NewTags(mockStatestore, logger)
 	pusherStorer := &Store{
@@ -442,7 +445,7 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, mtags, logger, nil, 0)
+	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, retrievalService, mtags, logger, nil, 0)
 	return mtags, pusherService, pusherStorer
 }
 

@@ -497,7 +497,7 @@ func (s *Service) checkAvailableChunk(ctx context.Context, addr swarm.Address, s
 
 	peer, err := s.farthestPeer(addr, sp.All())
 	if err != nil {
-		return false, fmt.Errorf("get farthest for address %s, allow upstream %v: %w", addr.String(), err)
+		return false, fmt.Errorf("get farthest for address %s: %w", addr.String(), err)
 	}
 
 	// compute the peer's price for this chunk for price header
@@ -555,7 +555,7 @@ func (s *Service) checkAvailableChunk(ctx context.Context, addr swarm.Address, s
 	}
 
 	// credit the peer after successful delivery
-	_ = s.accounting.Credit(peer, chunkPrice)
+	_ = s.accounting.Credit(peer, chunkPrice, true)
 
 	return true, nil
 }
