@@ -91,9 +91,11 @@ func (ps *service) Handle(b *Batch) {
 			"recovered",
 			string(b.Owner),
 			b.ID,
+			b.Value,
 			b.Depth,
 			b.BucketDepth,
 			b.Start,
+			b.Immutable,
 		))
 	}
 }
