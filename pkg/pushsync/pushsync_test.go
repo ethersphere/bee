@@ -933,10 +933,8 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	)
 	defer storerPeer4.Close()
 
-	var (
-		fail = true
-		lock sync.Mutex
-	)
+	triggerCount := 0
+	var lock sync.Mutex
 
 	recorder := streamtest.New(
 		streamtest.WithPeerProtocols(
@@ -947,15 +945,25 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 				peer4.String(): psPeer4.Protocol(),
 			},
 		),
-		streamtest.WithStreamError(
-			func(addr swarm.Address, _, _, _ string) error {
-				lock.Lock()
-				defer lock.Unlock()
-				if fail && addr.String() != peer4.String() {
-					return errors.New("peer not reachable")
-				}
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+					lock.Lock()
+					defer lock.Unlock()
 
-				return nil
+					if triggerCount < 9 {
+						triggerCount++
+						stream.Close()
+						return errors.New("new error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
 			},
 		),
 		streamtest.WithBaseAddr(pivotNode),
@@ -1008,7 +1016,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	}
 	// out of 4, 3 peers should return accouting error. So we should have effectively
 	// sent only 1 msg
-	if ta2.Get(tags.StateSent) != 1 {
+	if ta2.Get(tags.StateSent) != 10 {
 		t.Fatalf("tags error")
 	}
 
