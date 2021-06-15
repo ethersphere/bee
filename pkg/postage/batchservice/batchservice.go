@@ -5,6 +5,7 @@
 package batchservice
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,10 +19,12 @@ import (
 const dirtyDBKey = "batchservice_dirty_db"
 
 type batchService struct {
-	stateStore storage.StateStorer
-	storer     postage.Storer
-	logger     logging.Logger
-	listener   postage.Listener
+	stateStore    storage.StateStorer
+	storer        postage.Storer
+	logger        logging.Logger
+	listener      postage.Listener
+	owner         []byte
+	batchListener postage.BatchCreationListener
 }
 
 type Interface interface {
@@ -29,8 +32,15 @@ type Interface interface {
 }
 
 // New will create a new BatchService.
-func New(stateStore storage.StateStorer, storer postage.Storer, logger logging.Logger, listener postage.Listener) Interface {
-	return &batchService{stateStore, storer, logger, listener}
+func New(
+	stateStore storage.StateStorer,
+	storer postage.Storer,
+	logger logging.Logger,
+	listener postage.Listener,
+	owner []byte,
+	batchListener postage.BatchCreationListener,
+) Interface {
+	return &batchService{stateStore, storer, logger, listener, owner, batchListener}
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -49,6 +59,10 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 	err := svc.storer.Put(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
+	}
+
+	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
+		svc.batchListener.Handle(b)
 	}
 
 	svc.logger.Debugf("batch service: created batch id %s", hex.EncodeToString(b.ID))

@@ -97,7 +97,14 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("chunk upload: putter:%v", err)
 		s.logger.Error("chunk upload: putter")
-		jsonhttp.BadRequest(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
 		return
 	}
 
