@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -30,21 +31,19 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 		case <-closed:
 		}
 	}))
+	t.Cleanup(setWithinRadiusFunc(func(*DB, shed.Item) bool { return false }))
 
 	db := newTestDB(t, &Options{
-		Capacity: 100,
+		Capacity:        100,
+		ReserveCapacity: 200,
 	})
 	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 4)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(5, 3, 2, false)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +78,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	// postageRadiusIndex gets removed only when the batches are called with evict on MaxPO+1
 	// therefore, the expected index count here is larger than one would expect.
-	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount))
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
@@ -154,11 +153,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -181,7 +176,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount))
 
-	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount))
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 0))
 
@@ -260,11 +255,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// the cache. gc of the cache is still not triggered
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -300,11 +291,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	for i := 0; i < 50; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -432,11 +419,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -473,11 +456,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	for i := 0; i < 50; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -534,12 +513,4 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			}
 		}
 	})
-	//t.Run("batches for the all evicted batches should be evicted", func(t *testing.T) {
-	//for _, ch := range gcChs {
-	//item := shed.Item{BatchID: ch.Stamp().BatchID()}
-	//if _, err := db.postageRadiusIndex.Get(item); !errors.Is(err, leveldb.ErrNotFound) {
-	//t.Fatalf("wanted ErrNotFound but got %v", err)
-	//}
-	//}
-	//})
 }

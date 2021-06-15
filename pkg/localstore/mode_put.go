@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -420,15 +421,9 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 // preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
 // (the retrieval access index and the gc index)
 func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, forceCache bool) (gcSizeChange int64, err error) {
-	// item needs to be populated with Radius
-	item2, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		// if there's an error, assume the chunk needs to be GCd
-		forceCache = true
-	} else {
-		item.Radius = item2.Radius
-	}
+	fmt.Println("preserveOrCache")
 	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
+		fmt.Println("preserve")
 		if !forcePin {
 			if err := db.incReserveSizeInBatch(batch, 1); err != nil {
 				return 0, err

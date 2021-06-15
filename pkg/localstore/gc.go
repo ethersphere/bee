@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -304,6 +305,7 @@ func (db *DB) incReserveSizeInBatch(batch *leveldb.Batch, change int64) (err err
 	}
 	db.reserveSize.PutInBatch(batch, newSize)
 	db.metrics.ReserveSize.Set(float64(newSize))
+	fmt.Println("reserve size increment", newSize, db.reserveCapacity)
 	// trigger garbage collection if we reached the capacity
 	if newSize >= db.reserveCapacity {
 		db.triggerReserveEviction()

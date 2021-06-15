@@ -18,12 +18,14 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
+var noopEvictFn = func([]byte) error { return nil }
+
 func TestBatchStoreGet(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, logging.New(ioutil.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(ioutil.Discard, 0))
 
 	stateStorePut(t, stateStore, key, testBatch)
 	got := batchStoreGetBatch(t, batchStore, testBatch.ID)
@@ -35,7 +37,7 @@ func TestBatchStorePut(t *testing.T) {
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, logging.New(ioutil.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(ioutil.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 	batchStorePutBatch(t, batchStore, testBatch)
 
@@ -48,7 +50,7 @@ func TestBatchStoreGetChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, logging.New(ioutil.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(ioutil.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err := batchStore.PutChainState(testChainState)
@@ -63,7 +65,7 @@ func TestBatchStorePutChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, logging.New(ioutil.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(ioutil.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	batchStorePutChainState(t, batchStore, testChainState)
@@ -88,7 +90,7 @@ func TestBatchStoreReset(t *testing.T) {
 	}
 	defer stateStore.Close()
 
-	batchStore, _ := batchstore.New(stateStore, logger)
+	batchStore, _ := batchstore.New(stateStore, noopEvictFn, logger)
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 	err = batchStore.Put(testBatch, big.NewInt(15), 8)
 	if err != nil {

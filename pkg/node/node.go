@@ -331,7 +331,13 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	batchStore, err := batchstore.New(stateStore, logger)
+	var unreserveFn func([]byte, uint8) (uint64, error)
+	var evictFn = func(b []byte) error {
+		_, err := unreserveFn(b, swarm.MaxPO+1)
+		return err
+	}
+
+	batchStore, err := batchstore.New(stateStore, evictFn, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -358,8 +364,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
+	unreserveFn = storer.UnreserveBatch
 
-	storer.SetUnreserveFunc(batchStore.Unreserve)
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
