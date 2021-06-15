@@ -6,6 +6,7 @@ labels: ''
 assignees: ''
 
 ---
+⚠️ Requests for support in an issue-format will be closed immediately. For support questions, we welcome you to our [Discord](https://discord.gg/XGNBEKktkD).
 
 # Epic
 <!--  
