@@ -5,8 +5,6 @@
 package pricer
 
 import (
-	"math/big"
-
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -40,11 +38,4 @@ func (pricer *FixedPricer) PeerPrice(peer, chunk swarm.Address) uint64 {
 // Price implements Pricer.
 func (pricer *FixedPricer) Price(chunk swarm.Address) uint64 {
 	return pricer.PeerPrice(pricer.overlay, chunk)
-}
-
-func (pricer *FixedPricer) MostExpensive() *big.Int {
-	poPrice := new(big.Int).SetUint64(pricer.poPrice)
-	maxPO := new(big.Int).SetUint64(uint64(swarm.MaxPO))
-	tenTimesMaxPO := new(big.Int).Mul(big.NewInt(10), maxPO)
-	return new(big.Int).Mul(tenTimesMaxPO, poPrice)
 }
