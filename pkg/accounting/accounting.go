@@ -46,7 +46,7 @@ type Interface interface {
 	// Credit increases the balance the peer has with us (we "pay" the peer).
 	Credit(peer swarm.Address, price uint64, originated bool) error
 	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing a possibly credited part of reserve on the other side.
-	PrepareDebit(peer swarm.Address, price uint64) Action
+	PrepareDebit(peer swarm.Address, price uint64) (Action, error)
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (*big.Int, error)
 	// SurplusBalance returns the current surplus balance for the given peer.
@@ -93,6 +93,7 @@ type accountingPeer struct {
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
 	reconnectAllowTimestamp        int64
 	lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
+	connected                      bool
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -171,6 +172,11 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
+
+	if !accountingPeer.connected {
+		return fmt.Errorf("connection not initialized yet")
+	}
+
 	defer accountingPeer.lock.Unlock()
 
 	a.metrics.AccountingReserveCount.Inc()
@@ -494,6 +500,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 			ghostBalance:          big.NewInt(0),
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: new(big.Int).Set(a.paymentThreshold),
+			connected:        false,
 		}
 		a.accountingPeers[peer.String()] = peerData
 	}
@@ -864,11 +871,15 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 }
 
 // PrepareDebit prepares a debit operation by increasing the shadowReservedBalance
-func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
+func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) (Action, error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
+
+	if !accountingPeer.connected {
+		return nil, fmt.Errorf("connection not initialized yet")
+	}
 
 	bigPrice := new(big.Int).SetUint64(price)
 
@@ -880,7 +891,7 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) Action {
 		peer:           peer,
 		accountingPeer: accountingPeer,
 		applied:        false,
-	}
+	}, nil
 }
 
 func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *accountingPeer, price *big.Int) (*big.Int, error) {
@@ -1042,6 +1053,7 @@ func (a *Accounting) Connect(peer swarm.Address) {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	accountingPeer.connected = true
 	accountingPeer.shadowReservedBalance.Set(zero)
 	accountingPeer.ghostBalance.Set(zero)
 	accountingPeer.reservedBalance.Set(zero)
@@ -1126,7 +1138,7 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 		disconnectFor = int64(60)
 	}
 	timestamp := timeNow + disconnectFor
-
+	accountingPeer.connected = false
 	accountingPeer.reconnectAllowTimestamp = timestamp
 }
 
