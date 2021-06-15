@@ -873,14 +873,8 @@ func TestFailureRequestCache(t *testing.T) {
 		}
 
 		cache.RecordFailure(peer, chunk)
-		if !cache.Useful(peer, chunk) {
-			t.Fatal("incorrect cache state after 2nd failure")
-		}
-
-		cache.RecordFailure(peer, chunk)
-
 		if cache.Useful(peer, chunk) {
-			t.Fatal("peer should no longer be useful")
+			t.Fatal("incorrect cache state after 2nd failure")
 		}
 	})
 
@@ -900,7 +894,6 @@ func TestFailureRequestCache(t *testing.T) {
 		// success should remove the peer from failed cache. We should have swallowed
 		// the previous failed request and the peer should still be useful after
 		// more failures
-		cache.RecordFailure(peer, chunk)
 		cache.RecordFailure(peer, chunk)
 
 		if !cache.Useful(peer, chunk) {
@@ -986,7 +979,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 		t.Fatalf("tags initialization error")
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
 		if err == nil {
 			t.Fatal("expected error while pushing")

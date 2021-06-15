@@ -14,6 +14,7 @@ import (
 
 type mock struct {
 	peers           []swarm.Address
+	depth           uint8
 	closestPeer     swarm.Address
 	closestPeerErr  error
 	peersErr        error
@@ -32,6 +33,12 @@ func WithPeers(peers ...swarm.Address) Option {
 func WithAddPeersErr(err error) Option {
 	return optionFunc(func(d *mock) {
 		d.addPeersErr = err
+	})
+}
+
+func WithNeighborhoodDepth(dd uint8) Option {
+	return optionFunc(func(d *mock) {
+		d.depth = dd
 	})
 }
 
@@ -136,8 +143,8 @@ func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 
-func (*mock) NeighborhoodDepth() uint8 {
-	return 0
+func (m *mock) NeighborhoodDepth() uint8 {
+	return m.depth
 }
 
 func (m *mock) IsWithinDepth(addr swarm.Address) bool {

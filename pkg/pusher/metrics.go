@@ -17,7 +17,8 @@ type metrics struct {
 	SyncTime         prometheus.Histogram
 	ErrorTime        prometheus.Histogram
 
-	ReceiptDepth *prometheus.CounterVec
+	ReceiptDepth        *prometheus.CounterVec
+	ShallowReceiptDepth *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
@@ -69,6 +70,15 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "receipt_depth",
 				Help:      "Counter of receipts received at different depths.",
+			},
+			[]string{"depth"},
+		),
+		ShallowReceiptDepth: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "shallow_receipt_depth",
+				Help:      "Counter of shallow receipts received at different depths.",
 			},
 			[]string{"depth"},
 		),
