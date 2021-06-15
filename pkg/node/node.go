@@ -476,6 +476,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		<-syncedChan
 
 	}
+
+	minThreshold := big.NewInt(2 * refreshRate)
+
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
@@ -483,7 +486,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	minThreshold := pricer.MostExpensive()
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
