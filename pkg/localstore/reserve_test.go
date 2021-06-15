@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -30,21 +31,19 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 		case <-closed:
 		}
 	}))
+	t.Cleanup(setWithinRadiusFunc(func(*DB, shed.Item) bool { return false }))
 
 	db := newTestDB(t, &Options{
-		Capacity: 100,
+		Capacity:        100,
+		ReserveCapacity: 200,
 	})
 	closed = db.close
 
 	addrs := make([]swarm.Address, 0)
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(3, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 4)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(5, 3, 2, false)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +78,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	// postageRadiusIndex gets removed only when the batches are called with evict on MaxPO+1
 	// therefore, the expected index count here is larger than one would expect.
-	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount))
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
@@ -124,8 +123,15 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 		case <-closed:
 		}
 	}))
-	var batchIDs [][]byte
+	var (
+		batchIDs        [][]byte
+		unreserveCalled bool
+		mtx             sync.Mutex
+	)
 	unres := func(f postage.UnreserveIteratorFn) error {
+		mtx.Lock()
+		defer mtx.Unlock()
+		unreserveCalled = true
 		for i := 0; i < len(batchIDs); i++ {
 			// pop an element from batchIDs, call the Unreserve
 			item := batchIDs[i]
@@ -154,11 +160,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,9 +168,10 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
+		mtx.Lock()
 		addrs = append(addrs, ch.Address())
 		batchIDs = append(batchIDs, ch.Stamp().BatchID())
+		mtx.Unlock()
 	}
 
 	select {
@@ -181,7 +184,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount))
 
-	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount))
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 0))
 
@@ -195,13 +198,18 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 			}
 		}
 	})
+	mtx.Lock()
+	defer mtx.Unlock()
+	if unreserveCalled {
+		t.Fatal("unreserveCalled but should not have")
+	}
 }
 
 // TestDB_ReserveGC_Unreserve tests that after calling UnreserveBatch
 // with a certain radius change, the correct chunks get put into the
 // GC index and eventually get garbage collected.
 func TestDB_ReserveGC_Unreserve(t *testing.T) {
-	chunkCount := 150
+	chunkCount := 100
 
 	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
@@ -234,7 +242,14 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			// here we mock the behavior of the batchstore
 			// that would call the localstore back with the
 			// batch IDs and the radiuses from the FIFO queue
-			stop, err := f(item, 4)
+			stop, err := f(item, 2)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+			stop, err = f(item, 4)
 			if err != nil {
 				return err
 			}
@@ -250,7 +265,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		Capacity: 100,
 		// once reaching 150 in the reserve, we will evict
 		// half the size of the cache from the reserve, so 50 chunks
-		ReserveCapacity: 150,
+		ReserveCapacity: 100,
 		UnreserveFunc:   unres,
 	})
 	closed = db.close
@@ -260,11 +275,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// the cache. gc of the cache is still not triggered
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -298,13 +309,10 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		}
 	}
 
+	// insert another 50, this will trigger gc
 	for i := 0; i < 50; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -316,6 +324,21 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		batchIDs = append(batchIDs, ch.Stamp().BatchID())
 		addrs = append(addrs, ch.Address())
 		mtx.Unlock()
+	}
+
+	for {
+		select {
+		case <-testHookEvictChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("collect garbage timeout")
+		}
+		resSize, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resSize == evictTarget {
+			break
+		}
 	}
 
 	gcTarget := db.gcTarget()
@@ -340,7 +363,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	// postageRadiusIndex gets removed only when the batches are called with evict on MaxPO+1
 	// therefore, the expected index count here is larger than one would expect.
-	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount+50))
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
 
@@ -373,7 +396,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		mtx        sync.Mutex
 		batchIDs   [][]byte
 		addrs      []swarm.Address
-		chunkCount = 150
+		chunkCount = 100
 
 		testHookCollectGarbageChan = make(chan uint64)
 		testHookEvictChan          = make(chan uint64)
@@ -401,13 +424,22 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	unres := func(f postage.UnreserveIteratorFn) error {
 		mtx.Lock()
 		defer mtx.Unlock()
-		for i := 0; i < len(batchIDs); i++ {
+		i := 0
+		defer func() { batchIDs = batchIDs[i:] }()
+		for i = 0; i < len(batchIDs); i++ {
 			// pop an element from batchIDs, call the Unreserve
 			item := batchIDs[i]
 			// here we mock the behavior of the batchstore
 			// that would call the localstore back with the
 			// batch IDs and the radiuses from the FIFO queue
-			stop, err := f(item, swarm.MaxPO+1)
+			stop, err := f(item, 2)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+			stop, err = f(item, swarm.MaxPO+1)
 			if err != nil {
 				return err
 			}
@@ -415,15 +447,14 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 				return nil
 			}
 		}
-		batchIDs = nil
 		return nil
 	}
 
 	db := newTestDB(t, &Options{
 		Capacity: 100,
-		// once reaching 150 in the reserve, we will evict
+		// once reaching 100 in the reserve, we will evict
 		// half the size of the cache from the reserve, so 50 chunks
-		ReserveCapacity: 150,
+		ReserveCapacity: 100,
 		UnreserveFunc:   unres,
 	})
 
@@ -432,11 +463,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -471,13 +498,18 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		}
 	}
 
+	// this is zero because we call eviction with max PO on the first 50 batches
+	// but the next 50 batches were not called with unreserve yet. this means that
+	// although the next 50 chunks exist in the store, their according batch radius
+	// still isn't persisted, since the localstore still is not aware of their
+	// batch radiuses. the same goes for the check after the gc actually evicts the
+	// ten chunks out of the cache (we still expect a zero for postage radius for the
+	// same reason)
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
+
 	for i := 0; i < 50; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +543,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount-10+50))
 
-	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, chunkCount-50+50))
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
 
@@ -534,12 +566,4 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			}
 		}
 	})
-	//t.Run("batches for the all evicted batches should be evicted", func(t *testing.T) {
-	//for _, ch := range gcChs {
-	//item := shed.Item{BatchID: ch.Stamp().BatchID()}
-	//if _, err := db.postageRadiusIndex.Get(item); !errors.Is(err, leveldb.ErrNotFound) {
-	//t.Fatalf("wanted ErrNotFound but got %v", err)
-	//}
-	//}
-	//})
 }
