@@ -438,7 +438,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, true, fmt.Errorf("new stream for peer %s: %w", peer, err)
+		return nil, false, fmt.Errorf("new stream for peer %s: %w", peer, err)
 	}
 	defer streamer.Close()
 
@@ -449,7 +449,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		Stamp:   stamp,
 	}); err != nil {
 		_ = streamer.Reset()
-		return nil, true, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address(), peer, err)
+		return nil, false, fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address(), peer, err)
 	}
 
 	ps.metrics.TotalSent.Inc()
