@@ -951,7 +951,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 					lock.Lock()
 					defer lock.Unlock()
 
-					if triggerCount < 9 {
+					if triggerCount < 6 {
 						triggerCount++
 						stream.Close()
 						return errors.New("new error")
@@ -1016,7 +1016,7 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	}
 	// out of 4, 3 peers should return accouting error. So we should have effectively
 	// sent only 1 msg
-	if ta2.Get(tags.StateSent) != 10 {
+	if ta2.Get(tags.StateSent) != 7 {
 		t.Fatalf("tags error")
 	}
 
