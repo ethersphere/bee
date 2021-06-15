@@ -482,6 +482,9 @@ func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (
 		} else {
 			select {
 			case <-time.After(600 * time.Millisecond):
+			case <-ctx.Done():
+				s.logger.Tracef("retrieval: failed to verify chunk %s available: %v", addr, ctx.Err())
+				return fmt.Errorf("retrieval: %w", ctx.Err())
 			}
 		}
 
