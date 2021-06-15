@@ -53,7 +53,12 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 		unreserved[hex.EncodeToString(batchID)] = radius
 		return nil
 	}
-	bStore, _ := batchstore.New(stateStore, logger)
+
+	evictFn := func(b []byte) error {
+		return unreserveFunc(b, swarm.MaxPO+1)
+	}
+
+	bStore, _ := batchstore.New(stateStore, evictFn, logger)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 	batchstore.SetUnreserveFunc(bStore, unreserveFunc)
 
@@ -760,7 +765,10 @@ func TestUnreserveItemSequence(t *testing.T) {
 		unreserved = append(unreserved, v)
 		return nil
 	}
-	bStore, _ := batchstore.New(stateStore, logger)
+	evictFn := func(b []byte) error {
+		return unreserveFunc(b, swarm.MaxPO+1)
+	}
+	bStore, _ := batchstore.New(stateStore, evictFn, logger)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 	batchstore.SetUnreserveFunc(bStore, unreserveFunc)
 
