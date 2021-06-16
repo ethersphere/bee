@@ -163,7 +163,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					return fmt.Errorf("chunk store: %w", err)
 				}
 
-				debit := ps.accounting.PrepareDebit(p.Address, price)
+				debit, err := ps.accounting.PrepareDebit(p.Address, price)
+				if err != nil {
+					return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+				}
 				defer debit.Cleanup()
 
 				// return back receipt
@@ -308,7 +311,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 
 			// return back receipt
-			debit := ps.accounting.PrepareDebit(p.Address, price)
+			debit, err := ps.accounting.PrepareDebit(p.Address, price)
+			if err != nil {
+				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+			}
 			defer debit.Cleanup()
 
 			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature}
@@ -322,7 +328,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	}
 
-	debit := ps.accounting.PrepareDebit(p.Address, price)
+	debit, err := ps.accounting.PrepareDebit(p.Address, price)
+	if err != nil {
+		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+	}
 	defer debit.Cleanup()
 
 	// pass back the receipt

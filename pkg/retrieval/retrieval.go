@@ -429,7 +429,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
-	debit := s.accounting.PrepareDebit(p.Address, chunkPrice)
+	debit, err := s.accounting.PrepareDebit(p.Address, chunkPrice)
+	if err != nil {
+		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+	}
 	defer debit.Cleanup()
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
