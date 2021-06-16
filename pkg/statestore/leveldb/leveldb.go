@@ -64,6 +64,16 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		_ = s.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	del := []string{}
+	s.Iterate("addressbook_entry_", func(k, _ []byte) (bool, error) {
+		del = append(del, string(k))
+		return false, nil
+	})
+	del = append(del, "overlay")
+
+	for _, v := range del {
+		_ = s.Delete(v)
+	}
 
 	return s, nil
 }
