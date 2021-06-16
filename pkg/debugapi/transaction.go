@@ -6,12 +6,12 @@ package debugapi
 
 import (
 	"errors"
-	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/gorilla/mux"
@@ -28,12 +28,12 @@ type transactionInfo struct {
 	TransactionHash common.Hash     `json:"transactionHash"`
 	To              *common.Address `json:"to"`
 	Nonce           uint64          `json:"nonce"`
-	GasPrice        *big.Int        `json:"gasPrice"`
+	GasPrice        *bigint.BigInt  `json:"gasPrice"`
 	GasLimit        uint64          `json:"gasLimit"`
 	Data            string          `json:"data"`
 	Created         time.Time       `json:"created"`
 	Description     string          `json:"description"`
-	Value           *big.Int        `json:"value"`
+	Value           *bigint.BigInt  `json:"value"`
 }
 
 type transactionPendingList struct {
@@ -63,12 +63,12 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 			TransactionHash: txHash,
 			To:              storedTransaction.To,
 			Nonce:           storedTransaction.Nonce,
-			GasPrice:        storedTransaction.GasPrice,
+			GasPrice:        bigint.Wrap(storedTransaction.GasPrice),
 			GasLimit:        storedTransaction.GasLimit,
 			Data:            hexutil.Encode(storedTransaction.Data),
 			Created:         time.Unix(storedTransaction.Created, 0),
 			Description:     storedTransaction.Description,
-			Value:           storedTransaction.Value,
+			Value:           bigint.Wrap(storedTransaction.Value),
 		})
 
 	}
@@ -98,12 +98,12 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		TransactionHash: txHash,
 		To:              storedTransaction.To,
 		Nonce:           storedTransaction.Nonce,
-		GasPrice:        storedTransaction.GasPrice,
+		GasPrice:        bigint.Wrap(storedTransaction.GasPrice),
 		GasLimit:        storedTransaction.GasLimit,
 		Data:            hexutil.Encode(storedTransaction.Data),
 		Created:         time.Unix(storedTransaction.Created, 0),
 		Description:     storedTransaction.Description,
-		Value:           storedTransaction.Value,
+		Value:           bigint.Wrap(storedTransaction.Value),
 	})
 }
 
