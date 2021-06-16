@@ -32,4 +32,6 @@ type Accounting interface {
 	NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error
 	NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error)
 	NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error
+	Connect(peer swarm.Address)
+	Disconnect(peer swarm.Address)
 }

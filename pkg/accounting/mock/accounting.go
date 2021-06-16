@@ -22,7 +22,7 @@ type Service struct {
 	reserveFunc             func(ctx context.Context, peer swarm.Address, price uint64) error
 	releaseFunc             func(peer swarm.Address, price uint64)
 	creditFunc              func(peer swarm.Address, price uint64, orig bool) error
-	prepareDebitFunc        func(peer swarm.Address, price uint64) accounting.Action
+	prepareDebitFunc        func(peer swarm.Address, price uint64) (accounting.Action, error)
 	balanceFunc             func(swarm.Address) (*big.Int, error)
 	shadowBalanceFunc       func(swarm.Address) (*big.Int, error)
 	balancesFunc            func() (map[string]*big.Int, error)
@@ -61,7 +61,7 @@ func WithCreditFunc(f func(peer swarm.Address, price uint64, orig bool) error) O
 }
 
 // WithDebitFunc sets the mock Debit function
-func WithPrepareDebitFunc(f func(peer swarm.Address, price uint64) accounting.Action) Option {
+func WithPrepareDebitFunc(f func(peer swarm.Address, price uint64) (accounting.Action, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.prepareDebitFunc = f
 	})
@@ -144,7 +144,7 @@ func (s *Service) Credit(peer swarm.Address, price uint64, orig bool) error {
 }
 
 // Debit is the mock function wrapper that calls the set implementation
-func (s *Service) PrepareDebit(peer swarm.Address, price uint64) accounting.Action {
+func (s *Service) PrepareDebit(peer swarm.Address, price uint64) (accounting.Action, error) {
 	if s.prepareDebitFunc != nil {
 		return s.prepareDebitFunc(peer, price)
 	}
@@ -155,7 +155,7 @@ func (s *Service) PrepareDebit(peer swarm.Address, price uint64) accounting.Acti
 		price:      bigPrice,
 		peer:       peer,
 		applied:    false,
-	}
+	}, nil
 
 }
 
@@ -225,6 +225,14 @@ func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 		return s.compensatedBalancesFunc()
 	}
 	return s.balances, nil
+}
+
+func (s *Service) Connect(peer swarm.Address) {
+
+}
+
+func (s *Service) Disconnect(peer swarm.Address) {
+
 }
 
 //

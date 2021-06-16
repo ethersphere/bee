@@ -61,6 +61,14 @@ func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	return nil, errors.New("Peer not listed")
 }
 
+func (t *testObserver) Connect(peer swarm.Address) {
+
+}
+
+func (t *testObserver) Disconnect(peer swarm.Address) {
+
+}
+
 func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
 	t.receivedCalled <- notifyPaymentReceivedCall{
 		peer:   peer,
