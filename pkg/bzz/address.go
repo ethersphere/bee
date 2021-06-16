@@ -28,10 +28,11 @@ var ErrInvalidAddress = errors.New("invalid address")
 // It consists of a peers underlay (physical) address, overlay (topology) address and signature.
 // Signature is used to verify the `Overlay/Underlay` pair, as it is based on `underlay|networkID`, signed with the public key of Overlay address
 type Address struct {
-	Underlay    ma.Multiaddr
-	Overlay     swarm.Address
-	Signature   []byte
-	Transaction []byte
+	Underlay        ma.Multiaddr
+	Overlay         swarm.Address
+	Signature       []byte
+	Transaction     []byte
+	EthereumAddress []byte
 }
 
 type addressJSON struct {
@@ -79,11 +80,17 @@ func ParseAddress(underlay, overlay, signature []byte, networkID uint64, trxHash
 		return nil, ErrInvalidAddress
 	}
 
+	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
+	if err != nil {
+		return nil, fmt.Errorf("extract ethereum address: %w", ErrInvalidAddress)
+	}
+
 	return &Address{
-		Underlay:    multiUnderlay,
-		Overlay:     swarm.NewAddress(overlay),
-		Signature:   signature,
-		Transaction: trxHash,
+		Underlay:        multiUnderlay,
+		Overlay:         swarm.NewAddress(overlay),
+		Signature:       signature,
+		Transaction:     trxHash,
+		EthereumAddress: ethAddress,
 	}, nil
 }
 
