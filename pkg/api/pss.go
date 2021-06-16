@@ -77,7 +77,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
-	batch, err := requestPostageBatchId(r)
+	batch, err := s.requestPostageBatchId(r)
 	if err != nil {
 		s.logger.Debugf("pss: postage batch id: %v", err)
 		s.logger.Error("pss: postage batch id")

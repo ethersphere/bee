@@ -147,6 +147,7 @@ type Options struct {
 	FullNodeMode               bool
 	Transaction                string
 	PostageContractAddress     string
+	DefaultPostageBatchId      string
 	PriceOracleAddress         string
 	BlockTime                  uint64
 	DeployGasPrice             string

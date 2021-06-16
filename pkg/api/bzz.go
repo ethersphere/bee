@@ -45,7 +45,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batch, err := requestPostageBatchId(r)
+	batch, err := s.requestPostageBatchId(r)
 	if err != nil {
 		logger.Debugf("bzz upload: postage batch id: %v", err)
 		logger.Error("bzz upload: postage batch id")

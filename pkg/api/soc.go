@@ -127,7 +127,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.Conflict(w, "chunk already exists")
 		return
 	}
-	batch, err := requestPostageBatchId(r)
+	batch, err := s.requestPostageBatchId(r)
 	if err != nil {
 		s.logger.Debugf("soc upload: postage batch id: %v", err)
 		s.logger.Error("soc upload: postage batch id")

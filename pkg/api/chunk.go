@@ -85,7 +85,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batch, err := requestPostageBatchId(r)
+	batch, err := s.requestPostageBatchId(r)
 	if err != nil {
 		s.logger.Debugf("chunk upload: postage batch id: %v", err)
 		s.logger.Error("chunk upload: postage batch id")

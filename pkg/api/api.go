@@ -108,9 +108,10 @@ type server struct {
 }
 
 type Options struct {
-	CORSAllowedOrigins []string
-	GatewayMode        bool
-	WsPingPeriod       time.Duration
+	CORSAllowedOrigins    []string
+	GatewayMode           bool
+	WsPingPeriod          time.Duration
+	DefaultPostageBatchId string
 }
 
 const (
@@ -225,8 +226,19 @@ func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
 }
 
-func requestPostageBatchId(r *http.Request) ([]byte, error) {
+func (s *server) requestPostageBatchId(r *http.Request) ([]byte, error) {
 	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
+		if len(h) != 64 {
+			return nil, errInvalidPostageBatch
+		}
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, errInvalidPostageBatch
+		}
+		return b, nil
+	}
+
+	if h := strings.ToLower(s.DefaultPostageBatchId); h != "" {
 		if len(h) != 64 {
 			return nil, errInvalidPostageBatch
 		}

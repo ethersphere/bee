@@ -51,7 +51,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 
-	batch, err := requestPostageBatchId(r)
+	batch, err := s.requestPostageBatchId(r)
 	if err != nil {
 		logger.Debugf("bytes upload: postage batch id:%v", err)
 		logger.Error("bytes upload: postage batch id")
