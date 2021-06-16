@@ -353,6 +353,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
+			_ = a.blocklist(peer, 1)
 			return fmt.Errorf("refresh failure: %w", err)
 		}
 
