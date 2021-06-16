@@ -92,6 +92,7 @@ type Bee struct {
 	tracerCloser             io.Closer
 	tagsCloser               io.Closer
 	stateStoreCloser         io.Closer
+	accountingStoreCloser    io.Closer
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
 	topologyHalter           topology.Halter
@@ -139,6 +140,7 @@ type Options struct {
 	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
 	GatewayMode                bool
 	BootnodeMode               bool
+	SeparateAccountingStore    bool
 	SwapEndpoint               string
 	SwapFactoryAddress         string
 	SwapLegacyFactoryAddresses []string
@@ -229,7 +231,18 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.stateStoreCloser = stateStore
 
-	err = CheckOverlayWithStore(swarmAddress, stateStore)
+	var accountingStore storage.StateStorer
+	if o.SeparateAccountingStore {
+		accountingStore, err = InitAccountingStore(logger, o.DataDir)
+		if err != nil {
+			return nil, err
+		}
+		b.accountingStoreCloser = stateStore
+	} else {
+		accountingStore = stateStore
+	}
+
+	err = CheckOverlayWithStore(swarmAddress, accountingStore)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +264,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 			p2pCtx,
 			logger,
-			stateStore,
+			accountingStore,
 			o.SwapEndpoint,
 			signer,
 			o.BlockTime,
@@ -284,7 +297,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		chequebookService, err = InitChequebookService(
 			p2pCtx,
 			logger,
-			stateStore,
+			accountingStore,
 			signer,
 			chainID,
 			swapBackend,
@@ -299,7 +312,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		chequeStore, cashoutService = initChequeStoreCashout(
-			stateStore,
+			accountingStore,
 			swapBackend,
 			chequebookFactory,
 			chainID,
@@ -310,7 +323,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	txHash, err := getTxHash(stateStore, logger, o)
+	txHash, err := getTxHash(accountingStore, logger, o)
 	if err != nil {
 		return nil, fmt.Errorf("invalid transaction hash: %w", err)
 	}
@@ -521,7 +534,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		paymentTolerance,
 		paymentEarly,
 		logger,
-		stateStore,
+		accountingStore,
 		pricing,
 		big.NewInt(refreshRate),
 		p2ps,
@@ -531,7 +544,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	b.accountingCloser = acc
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
+	pseudosettleService := pseudosettle.New(p2ps, logger, accountingStore, acc, big.NewInt(refreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
@@ -543,7 +556,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		swapService, priceOracle, err = InitSwap(
 			p2ps,
 			logger,
-			stateStore,
+			accountingStore,
 			networkID,
 			overlayEthAddress,
 			chequebookService,
@@ -842,6 +855,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.stateStoreCloser, "statestore")
+	tryClose(b.accountingCloser, "accountingstore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")
@@ -849,7 +863,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	return mErr
 }
 
-func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
+func getTxHash(accountingStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
 	if o.Standalone {
 		return nil, nil // in standalone mode tx hash is not used
 	}
@@ -869,7 +883,7 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 
 	var txHash common.Hash
 	key := chequebook.ChequebookDeploymentKey
-	if err := stateStore.Get(key, &txHash); err != nil {
+	if err := accountingStore.Get(key, &txHash); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, errors.New("chequebook deployment transaction hash not found. Please specify the transaction hash manually.")
 		}

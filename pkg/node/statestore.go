@@ -28,6 +28,18 @@ func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer
 	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
 }
 
+// InitAccountingStore will initialize the accountingStore with the given path to the
+// data directory. When given an empty directory path, the function will instead
+// initialize an in-memory state store that will not be persisted.
+func InitAccountingStore(log logging.Logger, dataDir string) (ret storage.StateStorer, err error) {
+	if dataDir == "" {
+		ret = mock.NewStateStore()
+		log.Warning("using in-mem accounting store, no node state will be persisted")
+		return ret, nil
+	}
+	return leveldb.NewStateStore(filepath.Join(dataDir, "accountingstore"), log)
+}
+
 const overlayKey = "overlay"
 
 // CheckOverlayWithStore checks the overlay is the same as stored in the statestore

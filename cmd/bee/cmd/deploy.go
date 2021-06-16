@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/node"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -35,12 +36,20 @@ func (c *command) initDeployCmd() error {
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
 
-			stateStore, err := node.InitStateStore(logger, dataDir)
-			if err != nil {
-				return err
+			var accountingStore storage.StateStorer
+			if c.config.GetBool(optionNameSeparateAccountingStore) {
+				accountingStore, err = node.InitAccountingStore(logger, dataDir)
+				if err != nil {
+					return err
+				}
+			} else {
+				accountingStore, err = node.InitStateStore(logger, dataDir)
+				if err != nil {
+					return err
+				}
 			}
 
-			defer stateStore.Close()
+			defer accountingStore.Close()
 
 			signerConfig, err := c.configureSigner(cmd, logger)
 			if err != nil {
@@ -48,7 +57,7 @@ func (c *command) initDeployCmd() error {
 			}
 			signer := signerConfig.signer
 
-			err = node.CheckOverlayWithStore(signerConfig.address, stateStore)
+			err = node.CheckOverlayWithStore(signerConfig.address, accountingStore)
 			if err != nil {
 				return err
 			}
@@ -58,7 +67,7 @@ func (c *command) initDeployCmd() error {
 			swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := node.InitChain(
 				ctx,
 				logger,
-				stateStore,
+				accountingStore,
 				swapEndpoint,
 				signer,
 				blocktime,
@@ -84,7 +93,7 @@ func (c *command) initDeployCmd() error {
 			_, err = node.InitChequebookService(
 				ctx,
 				logger,
-				stateStore,
+				accountingStore,
 				signer,
 				chainID,
 				swapBackend,

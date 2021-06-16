@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/node"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -32,14 +33,22 @@ func (c *command) initInitCmd() (err error) {
 			}
 
 			dataDir := c.config.GetString(optionNameDataDir)
-			stateStore, err := node.InitStateStore(logger, dataDir)
-			if err != nil {
-				return err
+			var accountingStore storage.StateStorer
+			if c.config.GetBool(optionNameSeparateAccountingStore) {
+				accountingStore, err = node.InitAccountingStore(logger, dataDir)
+				if err != nil {
+					return err
+				}
+			} else {
+				accountingStore, err = node.InitStateStore(logger, dataDir)
+				if err != nil {
+					return err
+				}
 			}
 
-			defer stateStore.Close()
+			defer accountingStore.Close()
 
-			return node.CheckOverlayWithStore(signerConfig.address, stateStore)
+			return node.CheckOverlayWithStore(signerConfig.address, accountingStore)
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())

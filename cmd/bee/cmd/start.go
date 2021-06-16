@@ -156,6 +156,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
+				SeparateAccountingStore:    c.config.GetBool(optionNameSeparateAccountingStore),
 			})
 			if err != nil {
 				return err
