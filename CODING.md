@@ -63,3 +63,8 @@ Debug log messages are meant for developers to identify the problem that has hap
 ### Trace
 
 Trace log messages are meant to inform developers about expected successful operations that are not relevant for regular users, but may be useful for understanding states in which application is going through. The form should be the same as Debug log messages.
+
+
+### Commit Messages
+
+For commit messages, follow [this guideline](https://www.conventionalcommits.org/en/v1.0.0/). Use reasonable length for the subject and body, ideally no longer than 72 characters.
