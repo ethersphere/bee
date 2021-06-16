@@ -7,7 +7,7 @@ BEEKEEPER_INSTALL_DIR ?= $$($(GO) env GOPATH)/bin
 BEEKEEPER_USE_SUDO ?= false
 BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
-BEEKEEPER_BRANCH ?= master
+BEEKEEPER_BRANCH ?= postage-tests
 
 COMMIT ?= "$(shell git describe --long --dirty --always --match "" || true)"
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commit="$(COMMIT)"
