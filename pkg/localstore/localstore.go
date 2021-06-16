@@ -241,7 +241,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	}
 	if schemaName == "" {
 		// initial new localstore run
-		err := db.schemaName.Put(DbSchemaCurrent)
+		err := db.schemaName.Put(DBSchemaCurrent)
 		if err != nil {
 			return nil, err
 		}
