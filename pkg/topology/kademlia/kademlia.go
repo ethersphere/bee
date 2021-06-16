@@ -9,7 +9,6 @@ import (
 	random "crypto/rand"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 	"math/bits"
@@ -570,12 +569,25 @@ func (k *Kad) Start(_ context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
-	addresses, err := k.addressBook.Overlays()
-	if err != nil {
-		return fmt.Errorf("addressbook overlays: %w", err)
-	}
+	go func() {
+		select {
+		case <-k.halt:
+			return
+		case <-k.quit:
+			return
+		default:
+		}
 
-	k.AddPeers(addresses...)
+		start := time.Now()
+		addresses, err := k.addressBook.Overlays()
+		if err != nil {
+			k.logger.Errorf("addressbook overlays: %w", err)
+			return
+		}
+		k.AddPeers(addresses...)
+		k.metrics.StartAddAddressBookOverlaysTime.Observe(float64(time.Since(start).Nanoseconds()))
+	}()
+
 	return nil
 }
 
