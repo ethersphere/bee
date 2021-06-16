@@ -326,7 +326,7 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 		To:       &s.address,
 		Data:     callData,
 		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 0,
+		GasLimit: 95000,
 		Value:    big.NewInt(0),
 	}
 
