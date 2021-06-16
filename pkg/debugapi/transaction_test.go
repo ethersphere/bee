@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -57,9 +58,9 @@ func TestTransactionStoredTransaction(t *testing.T) {
 				Created:         time.Unix(created, 0),
 				Data:            "0x" + dataStr,
 				To:              &recipient,
-				GasPrice:        gasPrice,
+				GasPrice:        bigint.Wrap(gasPrice),
 				GasLimit:        gasLimit,
-				Value:           value,
+				Value:           bigint.Wrap(value),
 				Nonce:           nonce,
 				Description:     description,
 			}),
@@ -145,9 +146,9 @@ func TestTransactionList(t *testing.T) {
 					Created:         time.Unix(storedTransactions[txHash1].Created, 0),
 					Data:            hexutil.Encode(storedTransactions[txHash1].Data),
 					To:              storedTransactions[txHash1].To,
-					GasPrice:        storedTransactions[txHash1].GasPrice,
+					GasPrice:        bigint.Wrap(storedTransactions[txHash1].GasPrice),
 					GasLimit:        storedTransactions[txHash1].GasLimit,
-					Value:           storedTransactions[txHash1].Value,
+					Value:           bigint.Wrap(storedTransactions[txHash1].Value),
 					Nonce:           storedTransactions[txHash1].Nonce,
 					Description:     storedTransactions[txHash1].Description,
 				},
@@ -156,9 +157,9 @@ func TestTransactionList(t *testing.T) {
 					Created:         time.Unix(storedTransactions[txHash2].Created, 0),
 					Data:            hexutil.Encode(storedTransactions[txHash2].Data),
 					To:              storedTransactions[txHash2].To,
-					GasPrice:        storedTransactions[txHash2].GasPrice,
+					GasPrice:        bigint.Wrap(storedTransactions[txHash2].GasPrice),
 					GasLimit:        storedTransactions[txHash2].GasLimit,
-					Value:           storedTransactions[txHash2].Value,
+					Value:           bigint.Wrap(storedTransactions[txHash2].Value),
 					Nonce:           storedTransactions[txHash2].Nonce,
 					Description:     storedTransactions[txHash2].Description,
 				},
