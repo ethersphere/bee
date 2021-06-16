@@ -79,11 +79,12 @@ func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHard
 	}
 
 	request := &transaction.TxRequest{
-		To:       &c.address,
-		Data:     callData,
-		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 175000,
-		Value:    big.NewInt(0),
+		To:          &c.address,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    175000,
+		Value:       big.NewInt(0),
+		Description: "chequebook deployment",
 	}
 
 	txHash, err := c.transactionService.Send(ctx, request)

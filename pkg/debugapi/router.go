@@ -169,6 +169,14 @@ func (s *Service) newRouter() *mux.Router {
 			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
 			"POST": http.HandlerFunc(s.swapCashoutHandler),
 		})
+
+		router.Handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		router.Handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":  http.HandlerFunc(s.transactionDetailHandler),
+			"POST": http.HandlerFunc(s.transactionResendHandler),
+		})
 	}
 
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{

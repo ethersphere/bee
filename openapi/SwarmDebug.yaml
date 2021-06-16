@@ -669,3 +669,70 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+
+  "/transaction":
+    get:
+      summary: Get list of pending transactions      
+      tags:
+        - Transaction
+      responses:
+        "200":
+          description: List of pending transactions
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PendingTransactionReponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/transaction/{txHash}":
+    get:
+      summary: Get information about a sent transaction
+      parameters:
+        - in: path
+          name: txHash
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
+          required: true
+          description: Hash of the transaction
+      tags:
+        - Transaction
+      responses:
+        "200":
+          description: Get info about transaction
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionInfoResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    post:
+      summary: Rebroadcast existing transaction
+      parameters:
+        - in: path
+          name: txHash
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
+          required: true
+          description: Hash of the transaction
+      tags:
+        - Transaction
+      responses:
+        "200":
+          description: Hash of the transaction
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
