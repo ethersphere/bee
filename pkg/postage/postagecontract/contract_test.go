@@ -24,7 +24,7 @@ func TestCreateBatch(t *testing.T) {
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
-	postagecontract.BucketDepth = 10
+	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	label := "label"
 	postageStampAddress := common.HexToAddress("ffff")
