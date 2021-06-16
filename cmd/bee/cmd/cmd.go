@@ -242,7 +242,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
 	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*10, "time to warmup the node before pull/push protocols can be kicked off.")
-	cmd.Flags().Bool(optionNameSeparateAccountingStore, true, "separate statestore for accounting purposes")
+	cmd.Flags().Bool(optionNameSeparateAccountingStore, false, "separate statestore for accounting purposes")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
