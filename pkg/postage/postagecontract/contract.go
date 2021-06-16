@@ -72,7 +72,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		To:       &c.bzzTokenAddress,
 		Data:     callData,
 		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 0,
+		GasLimit: 65000,
 		Value:    big.NewInt(0),
 	})
 	if err != nil {
@@ -102,7 +102,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 		To:       &c.postageContractAddress,
 		Data:     callData,
 		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 0,
+		GasLimit: 160000,
 		Value:    big.NewInt(0),
 	}
 
