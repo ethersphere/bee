@@ -7,8 +7,8 @@ CLEF_CHAINID=5
 
 ### BEE
 
-## HTTP API listen address (default :1633)
-# BEE_API_ADDR=:1633
+## HTTP API listen address (default 127.0.0.1:1633)
+# BEE_API_ADDR=127.0.0.1:1633
 ## chain block time (default 15)
 # BEE_BLOCK_TIME=15
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
@@ -35,8 +35,8 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_DB_WRITE_BUFFER_SIZE=33554432
 ## disables db compactions triggered by seeks
 # BEE_DB_DISABLE_SEEKS_COMPACTION=false
-## debug HTTP API listen address (default :1635)
-# BEE_DEBUG_API_ADDR=:1635
+## debug HTTP API listen address (default 127.0.0.1:1635)
+# BEE_DEBUG_API_ADDR=127.0.0.1:1635
 ## enable debug HTTP API
 # BEE_DEBUG_API_ENABLE=false
 ## disable a set of sensitive features in the api

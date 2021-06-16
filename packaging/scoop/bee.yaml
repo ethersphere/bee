@@ -1,7 +1,7 @@
 ## Bee configuration - https://gateway.ethswarm.org/bzz/docs.swarm.eth/docs/installation/configuration/
 
-## HTTP API listen address (default ":1633")
-# api-addr: :1633
+## HTTP API listen address (default "127.0.0.1:1633")
+# api-addr: 127.0.0.1:1633
 ## chain block time (default 15)
 # block-time: 15
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
@@ -18,7 +18,7 @@ config: ./bee.yaml
 data-dir: ./data
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: 1000000
-## debug HTTP API listen address (default ":1635")
+## debug HTTP API listen address (default "127.0.0.1:1635")
 # debug-api-addr: 127.0.0.1:1635
 ## enable debug HTTP API
 # debug-api-enable: false

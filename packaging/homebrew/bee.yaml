@@ -1,7 +1,7 @@
 ## Bee configuration - https://gateway.ethswarm.org/bzz/docs.swarm.eth/docs/installation/configuration/
 
-## HTTP API listen address (default ":1633")
-# api-addr: :1633
+## HTTP API listen address (default "127.0.0.1:1633")
+# api-addr: 127.0.0.1:1633
 ## chain block time (default 15)
 # block-time: 15
 ## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
@@ -28,7 +28,7 @@ data-dir: /usr/local/var/lib/swarm-bee
 # db-write-buffer-size: 33554432
 ## disables db compactions triggered by seeks
 # db-disable-seeks-compaction: false
-## debug HTTP API listen address (default ":1635")
+## debug HTTP API listen address (default "127.0.0.1:1635")
 debug-api-addr: 127.0.0.1:1635
 ## enable debug HTTP API
 debug-api-enable: true
