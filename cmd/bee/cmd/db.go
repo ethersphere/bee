@@ -58,7 +58,7 @@ func dbExportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, logger)
+			storer, err := localstore.New(path, nil, nil, nil, logger)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -118,7 +118,7 @@ func dbImportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, logger)
+			storer, err := localstore.New(path, nil, nil, nil, logger)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
