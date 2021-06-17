@@ -167,6 +167,31 @@ func NewAccounting(
 	}, nil
 }
 
+func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer *accountingPeer, bigPrice *big.Int) (*big.Int, *big.Int, error) {
+	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
+
+	currentBalance, err := a.Balance(peer)
+	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
+		return nil, nil, fmt.Errorf("failed to load balance: %w", err)
+	}
+	currentDebt := new(big.Int).Neg(currentBalance)
+	if currentDebt.Cmp(big.NewInt(0)) < 0 {
+		currentDebt.SetInt64(0)
+	}
+
+	// debt if all reserved operations are successfully credited excluding debt created by surplus balance
+	expectedDebt := new(big.Int).Add(currentDebt, nextReserved)
+
+	// additionalDebt is debt created by incoming payments which we don't consider debt for monetary settlement purposes
+	additionalDebt, err := a.SurplusBalance(peer)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load surplus balance: %w", err)
+	}
+
+	// debt if all reserved operations are successfully credited including debt created by surplus balance
+	return new(big.Int).Add(expectedDebt, additionalDebt), currentBalance, nil
+}
+
 // Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
 func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
 	accountingPeer := a.getAccountingPeer(peer)
@@ -180,23 +205,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	defer accountingPeer.lock.Unlock()
 
 	a.metrics.AccountingReserveCount.Inc()
-
-	currentBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
-	}
-	currentDebt := new(big.Int).Neg(currentBalance)
-	if currentDebt.Cmp(big.NewInt(0)) < 0 {
-		currentDebt.SetInt64(0)
-	}
-
 	bigPrice := new(big.Int).SetUint64(price)
-	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
-
-	// debt if all reserved operations are successfully credited excluding debt created by surplus balance
-	expectedDebt := new(big.Int).Add(currentDebt, nextReserved)
 
 	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
 	if threshold.Cmp(a.earlyPayment) > 0 {
@@ -205,14 +214,11 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		threshold.SetInt64(0)
 	}
 
-	// additionalDebt is debt created by incoming payments which we don't consider debt for monetary settlement purposes
-	additionalDebt, err := a.SurplusBalance(peer)
-	if err != nil {
-		return fmt.Errorf("failed to load surplus balance: %w", err)
-	}
-
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
-	increasedExpectedDebt := new(big.Int).Add(expectedDebt, additionalDebt)
+	increasedExpectedDebt, currentBalance, err := a.getIncreasedExpectedDebt(peer, accountingPeer, bigPrice)
+	if err != nil {
+		return err
+	}
 	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
 	// in other words this the debt the other node sees if everything pending is successful
 	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, accountingPeer.shadowReservedBalance)
@@ -222,10 +228,14 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
-
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
+		}
+
+		increasedExpectedDebt, _, err = a.getIncreasedExpectedDebt(peer, accountingPeer, bigPrice)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -236,7 +246,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 		return ErrOverdraft
 	}
 
-	accountingPeer.reservedBalance = nextReserved
+	accountingPeer.reservedBalance = new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 	return nil
 }
 
