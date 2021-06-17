@@ -88,7 +88,7 @@ func (s *store) unreserve(b []byte, radius uint8) error {
 }
 
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
-	entries := []string{} // entries to clean up
+	var entries []string // entries to clean up
 	defer func() {
 		for _, v := range entries {
 			if err := s.store.Delete(v); err != nil {
@@ -119,10 +119,10 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 				return true, err
 			}
 		}
+		entries = append(entries, string(key))
 		if stop {
 			return true, nil
 		}
-		entries = append(entries, string(key))
 		return false, nil
 	})
 	if err != nil {

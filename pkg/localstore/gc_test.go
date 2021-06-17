@@ -977,7 +977,10 @@ func setTestHookEviction(h func(count uint64)) (reset func()) {
 	return reset
 }
 
-//
+// TestReserveEvictionWorker tests that the reserve
+// eviction works correctly once the reserve hits the
+// capacity. The necessary items are then moved into the
+// gc index.
 func TestReserveEvictionWorker(t *testing.T) {
 	var (
 		chunkCount = 10
@@ -1076,11 +1079,9 @@ func TestReserveEvictionWorker(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	// the first synced chunk should be removed
 	t.Run("all chunks should be accessible", func(t *testing.T) {
 		for _, a := range addrs {
-			_, err := db.Get(context.Background(), storage.ModeGetRequest, a)
-			if errors.Is(err, storage.ErrNotFound) {
+			if _, err := db.Get(context.Background(), storage.ModeGetRequest, a); err != nil {
 				t.Errorf("got error %v, want none", err)
 			}
 		}
