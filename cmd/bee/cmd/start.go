@@ -150,6 +150,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				SwapEnable:                 c.config.GetBool(optionNameSwapEnable),
 				FullNodeMode:               fullNode,
 				Transaction:                c.config.GetString(optionNameTransactionHash),
+				BlockHash:                  c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
 				BlockTime:                  c.config.GetUint64(optionNameBlockTime),

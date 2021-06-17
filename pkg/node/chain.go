@@ -289,7 +289,20 @@ func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString 
 	return txHash.Bytes(), nil
 }
 
-func GetTrxNextBlock(ctx context.Context, trx []byte, stateStore storage.StateStorer, backend transaction.Backend, monitor transaction.Monitor) ([]byte, error) {
+func GetTrxNextBlock(ctx context.Context, logger logging.Logger, stateStore storage.StateStorer, backend transaction.Backend, monitor transaction.Monitor, trx []byte, blockHash string) ([]byte, error) {
+
+	if blockHash != "" {
+		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
+		if len(blockHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		blockHash, err := hex.DecodeString(blockHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided block hash %x", blockHash)
+		return blockHash, nil
+	}
 
 	// check statestore first
 	var hash common.Hash

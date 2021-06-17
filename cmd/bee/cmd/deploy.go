@@ -95,12 +95,15 @@ func (c *command) initDeployCmd() error {
 				return err
 			}
 
-			txHash, err := node.GetTxHash(stateStore, logger, c.config.GetString(optionNameTransactionHash))
+			optionTrxHash := c.config.GetString(optionNameTransactionHash)
+			optionBlockHash := c.config.GetString(optionNameBlockHash)
+
+			txHash, err := node.GetTxHash(stateStore, logger, optionTrxHash)
 			if err != nil {
 				return fmt.Errorf("invalid transaction hash: %w", err)
 			}
 
-			blockHash, err := node.GetTrxNextBlock(ctx, txHash, stateStore, swapBackend, transactionMonitor)
+			blockHash, err := node.GetTrxNextBlock(ctx, logger, stateStore, swapBackend, transactionMonitor, txHash, optionBlockHash)
 			if err != nil {
 				return err
 			}

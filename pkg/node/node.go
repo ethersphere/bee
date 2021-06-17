@@ -143,6 +143,7 @@ type Options struct {
 	SwapEnable                 bool
 	FullNodeMode               bool
 	Transaction                string
+	BlockHash                  string
 	PostageContractAddress     string
 	PriceOracleAddress         string
 	BlockTime                  uint64
@@ -272,16 +273,18 @@ func NewBee(addr string, publicKey ecdsa.PublicKey, signer crypto.Signer, networ
 		return nil, err
 	}
 
-	var blockHash []byte
-
+	var (
+		blockHash []byte
+		txHash    []byte
+	)
 	if !o.Standalone {
 
-		txHash, err := GetTxHash(stateStore, logger, o.Transaction)
+		txHash, err = GetTxHash(stateStore, logger, o.Transaction)
 		if err != nil {
 			return nil, fmt.Errorf("invalid transaction hash: %w", err)
 		}
 
-		blockHash, err = GetTrxNextBlock(p2pCtx, txHash, stateStore, swapBackend, transactionMonitor)
+		blockHash, err = GetTrxNextBlock(p2pCtx, logger, stateStore, swapBackend, transactionMonitor, txHash, o.BlockHash)
 		if err != nil {
 			return nil, err
 		}
@@ -339,7 +342,7 @@ func NewBee(addr string, publicKey ecdsa.PublicKey, signer crypto.Signer, networ
 		Standalone:     o.Standalone,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       o.FullNodeMode,
-		Transaction:    blockHash,
+		Transaction:    txHash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
