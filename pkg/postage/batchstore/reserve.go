@@ -56,7 +56,10 @@ type reserveState struct {
 	// Radius is the radius of responsibility,
 	// it defines the proximity order of chunks which we
 	// would like to guarantee that all chunks are stored
-	Radius        uint8 `json:"radius"`
+	Radius uint8 `json:"radius"`
+	// StorageRadius is the de-facto storage radius tracked
+	// by monitoring the events communicated to the localstore
+	// reserve eviction worker.
 	StorageRadius uint8 `json:"storageRadius"`
 	// Available capacity of the reserve which can still be used.
 	Available int64    `json:"available"`
@@ -69,10 +72,7 @@ type reserveState struct {
 // this adds the batch at the mentioned PO to the unreserve fifo queue, that can be
 // dequeued by the localstore once the storage fills up.
 func (s *store) unreserve(b []byte, radius uint8) error {
-	c, err := s.getQueueCardinality()
-	if err != nil {
-		return err
-	}
+	c := s.queueIdx
 	c++
 	v := make([]byte, 8)
 	binary.BigEndian.PutUint64(v, c)
@@ -80,8 +80,11 @@ func (s *store) unreserve(b []byte, radius uint8) error {
 	if err := s.store.Put(fmt.Sprintf("%s_%s", unreserveQueueKey, string(v)), i); err != nil {
 		return err
 	}
-
-	return s.putQueueCardinality(c)
+	if err := s.putQueueCardinality(c); err != nil {
+		return err
+	}
+	s.queueIdx = c
+	return nil
 }
 
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
@@ -107,7 +110,10 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		if err != nil {
 			return true, err
 		}
-		if v.Radius != swarm.MaxPO+1 && s.rs.StorageRadius+1 < v.Radius {
+		s.rsMtx.Lock()
+		defer s.rsMtx.Unlock()
+
+		if s.rs.StorageRadius+1 < v.Radius {
 			s.rs.StorageRadius = v.Radius - 1
 			if err = s.store.Put(reserveStateKey, s.rs); err != nil {
 				return true, err
