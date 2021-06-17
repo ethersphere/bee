@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/pkg/shed"
@@ -61,6 +62,9 @@ var (
 type DB struct {
 	shed *shed.DB
 	tags *tags.Tags
+
+	// stateStore is needed to access the pinning Service.Pins() method.
+	stateStore storage.StateStorer
 
 	// schema name of loaded data
 	schemaName shed.StringField
@@ -176,7 +180,7 @@ type Options struct {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB, err error) {
+func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger logging.Logger) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -185,6 +189,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	}
 
 	db = &DB{
+		stateStore:    ss,
 		cacheCapacity: o.Capacity,
 		baseKey:       baseKey,
 		tags:          o.Tags,
@@ -241,7 +246,7 @@ func New(path string, baseKey []byte, o *Options, logger logging.Logger) (db *DB
 	}
 	if schemaName == "" {
 		// initial new localstore run
-		err := db.schemaName.Put(DbSchemaCurrent)
+		err := db.schemaName.Put(DBSchemaCurrent)
 		if err != nil {
 			return nil, err
 		}
@@ -583,6 +588,16 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 	indexInfo["gcSize"] = int(val)
 
 	return indexInfo, err
+}
+
+// stateStoreHasPins returns true if the state-store
+// contains any pins, otherwise false is returned.
+func (db *DB) stateStoreHasPins() (bool, error) {
+	pins, err := pinning.NewService(nil, db.stateStore, nil).Pins()
+	if err != nil {
+		return false, err
+	}
+	return len(pins) > 0, nil
 }
 
 // chunkToItem creates new Item with data provided by the Chunk.

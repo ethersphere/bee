@@ -562,7 +562,7 @@ func newTestDB(t testing.TB, o *localstore.Options) (baseKey []byte, db *localst
 	}
 
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := localstore.New("", baseKey, o, logger)
+	db, err := localstore.New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
