@@ -125,7 +125,7 @@ jobs:
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
       - name: Test pingpong
         id: pingpong-3
-        run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: SECONDS=0; until [ $SECONDS -gt 200 ] ; do beekeeper check --cluster-name local-gc --checks ci-pingpong; [ $? -eq 0 ] && SECONDS=201 || echo "waiting for pingpong..."; sleep .3; done
       - name: Test gc
         id: gc-chunk-1
         run: beekeeper check --cluster-name local-gc --checks=ci-gc
