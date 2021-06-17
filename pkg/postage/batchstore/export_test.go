@@ -23,7 +23,7 @@ func (s *store) String() string {
 	return fmt.Sprintf("inner=%d,outer=%d", s.rs.Inner.Uint64(), s.rs.Outer.Uint64())
 }
 
-func SetUnreserveFunc(s postage.Storer, f func([]byte, uint8) error) {
+func SetUnreserveFunc(s postage.Storer, fn func([]byte, uint8) error) {
 	st := s.(*store)
-	st.unreserveFn = f
+	st.unreserveFn = fn
 }

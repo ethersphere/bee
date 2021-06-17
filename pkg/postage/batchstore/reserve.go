@@ -97,7 +97,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			}
 		}
 	}()
-	err := s.store.Iterate(unreserveQueueKey, func(key, val []byte) (bool, error) {
+	return s.store.Iterate(unreserveQueueKey, func(key, val []byte) (bool, error) {
 		if !strings.HasPrefix(string(key), unreserveQueueKey) {
 			return true, nil
 		}
@@ -125,10 +125,6 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		}
 		return false, nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // evictExpired is called when PutChainState is called (and there is 'settlement')
