@@ -31,12 +31,14 @@ type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
 type store struct {
-	store       storage.StateStorer // State store backend to persist batches.
-	cs          *postage.ChainState // the chain state
-	mtx         sync.Mutex
+	store storage.StateStorer // State store backend to persist batches.
+	cs    *postage.ChainState // the chain state
+
+	rsMtx       sync.Mutex
 	rs          *reserveState // the reserve state
 	unreserveFn unreserveFn   // unreserve function
 	evictFn     evictFn       // evict function
+	queueIdx    uint64        // unreserve queue cardinality
 	metrics     metrics       // metrics
 	logger      logging.Logger
 
@@ -82,13 +84,16 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 	}
 
 	s.unreserveFn = s.unreserve
+	if s.queueIdx, err = s.getQueueCardinality(); err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
 
 func (s *store) GetReserveState() *postage.ReserveState {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	s.rsMtx.Lock()
+	defer s.rsMtx.Unlock()
 	return &postage.ReserveState{
 		Radius:    s.rs.Radius,
 		Available: s.rs.Available,
@@ -104,6 +109,10 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
+
+	s.rsMtx.Lock()
+	defer s.rsMtx.Unlock()
+
 	if s.rs.StorageRadius < s.rs.Radius {
 		b.Radius = s.rs.StorageRadius
 	} else {
@@ -132,7 +141,9 @@ func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 	}
 
 	if s.radiusSetter != nil {
+		s.rsMtx.Lock()
 		s.radiusSetter.SetRadius(s.rs.Radius)
+		s.rsMtx.Unlock()
 	}
 	return s.store.Put(batchKey(b.ID), b)
 }
@@ -168,7 +179,9 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	// this needs to be improved, since we can miss some calls on
 	// startup. the same goes for the other call to radiusSetter
 	if s.radiusSetter != nil {
+		s.rsMtx.Lock()
 		s.radiusSetter.SetRadius(s.rs.Radius)
+		s.rsMtx.Unlock()
 	}
 
 	return s.store.Put(chainStateKey, cs)
