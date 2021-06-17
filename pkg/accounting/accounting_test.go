@@ -1087,11 +1087,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	}
 
 	err = acc.Reserve(context.Background(), peer1Addr, lowerThreshold)
-	if err == nil {
-		t.Fatal(err)
-	}
-
-	if !errors.Is(err, accounting.ErrOverdraft) {
+	if err != nil {
 		t.Fatal(err)
 	}
 
