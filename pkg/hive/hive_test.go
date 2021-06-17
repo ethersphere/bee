@@ -39,8 +39,6 @@ var (
 
 func TestHandlerRateLimit(t *testing.T) {
 
-	t.Skip("skip until stream recoder Close and FullClose mock libp2p properly.")
-
 	logger := logging.New(ioutil.Discard, 0)
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)

@@ -34,7 +34,7 @@ const (
 	protocolVersion = "1.0.0"
 	peersStreamName = "peers"
 	messageTimeout  = 1 * time.Minute // maximum allowed time for a message to be read or written.
-	maxBatchSize    = 25
+	maxBatchSize    = 30
 )
 
 var (
