@@ -106,11 +106,7 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 }
 
 func (tm *transactionMonitor) WaitBlock(ctx context.Context, block *big.Int) (*types.Block, error) {
-	tm.lock.Lock()
-	defer tm.lock.Unlock()
-
 	for {
-
 		block, err := tm.backend.BlockByNumber(ctx, block)
 		if err != nil {
 			if !errors.Is(err, ethereum.NotFound) {
@@ -122,7 +118,6 @@ func (tm *transactionMonitor) WaitBlock(ctx context.Context, block *big.Int) (*t
 
 		select {
 		case <-time.After(tm.pollingInterval):
-		// if the main context is cancelled terminate
 		case <-tm.ctx.Done():
 			return nil, errors.New("context timeout")
 		}
