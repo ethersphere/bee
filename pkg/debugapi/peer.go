@@ -63,13 +63,19 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	jsonhttp.OK(w, nil)
 }
 
+// Peer holds information about a Peer.
+type PeerDTO struct {
+	Address  swarm.Address `json:"address"`
+	FullNode bool          `json:"fullNode"`
+}
+
 type peersResponse struct {
-	Peers []p2p.Peer `json:"peers"`
+	Peers []PeerDTO `json:"peers"`
 }
 
 func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, peersResponse{
-		Peers: s.p2p.Peers(),
+		Peers: toDTOs(s.p2p.Peers()),
 	})
 }
 
@@ -82,6 +88,16 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, peersResponse{
-		Peers: peers,
+		Peers: toDTOs(peers),
 	})
+}
+
+func toDTOs(peers []p2p.Peer) (peerDTOs []PeerDTO) {
+	for _, peer := range peers {
+		peerDTOs = append(peerDTOs, PeerDTO{
+			Address:  peer.Address,
+			FullNode: peer.FullNode,
+		})
+	}
+	return
 }
