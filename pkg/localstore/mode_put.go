@@ -224,7 +224,6 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 			if !errors.Is(err, leveldb.ErrNotFound) {
 				return false, 0, err
 			}
-			// not sure what to do here....
 		} else {
 			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
 				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
@@ -372,7 +371,6 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 			if !errors.Is(err, leveldb.ErrNotFound) {
 				return false, 0, err
 			}
-			// not sure what to do here....
 		} else {
 			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
 				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
