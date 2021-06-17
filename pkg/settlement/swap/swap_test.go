@@ -618,6 +618,40 @@ func TestHandshakeNewPeer(t *testing.T) {
 	}
 }
 
+func TestMigratePeer(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	store := mockstore.NewStateStore()
+
+	beneficiary := common.HexToAddress("0xcd")
+	trx := common.HexToHash("0x1")
+	networkID := uint64(1)
+	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+
+	swapService := swap.New(
+		&swapProtocolMock{},
+		logger,
+		store,
+		mockchequebook.NewChequebook(),
+		mockchequestore.NewChequeStore(),
+		&addressbookMock{
+			beneficiaryPeer: func(beneficiary common.Address) (swarm.Address, bool, error) {
+				return swarm.MustParseHexAddress("00112233"), true, nil
+			},
+			migratePeer: func(old, new swarm.Address) error {
+				return nil
+			},
+		},
+		networkID,
+		&cashoutMock{},
+		nil,
+	)
+
+	err := swapService.Handshake(peer, beneficiary)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCashout(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
