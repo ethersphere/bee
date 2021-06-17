@@ -107,7 +107,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 	// Check is the chunk is set as synced in the DB.
 	for i := 0; i < noOfRetries; i++ {
 		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 
 		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
 		if err == nil {
