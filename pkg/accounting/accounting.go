@@ -297,6 +297,7 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64, originated bool) e
 	a.metrics.CreditEventsCount.Inc()
 
 	if !originated {
+		a.logger.Errorf("NOT ORIGINATED %s %d", peer, price)
 		return nil
 	}
 
@@ -386,7 +387,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	}
 
 	if a.payFunction != nil && !balance.paymentOngoing {
-
 		difference := now - balance.lastSettlementFailureTimestamp
 		if difference > failedSettlementInterval {
 
@@ -401,7 +401,9 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 			paymentAmount := new(big.Int).Neg(originatedBalance)
 			// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
+			a.logger.Errorf("considering payment for %s, %d > %d", peer, paymentAmount, a.minimumPayment)
 			if paymentAmount.Cmp(a.minimumPayment) >= 0 {
+				a.logger.Errorf("doing it %s", peer)
 				balance.paymentOngoing = true
 				// add settled amount to shadow reserve before sending it
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
