@@ -277,17 +277,15 @@ func NewBee(addr string, publicKey ecdsa.PublicKey, signer crypto.Signer, networ
 		blockHash []byte
 		txHash    []byte
 	)
-	if !o.Standalone {
 
-		txHash, err = GetTxHash(stateStore, logger, o.Transaction)
-		if err != nil {
-			return nil, fmt.Errorf("invalid transaction hash: %w", err)
-		}
+	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
+	if err != nil {
+		return nil, fmt.Errorf("invalid transaction hash: %w", err)
+	}
 
-		blockHash, err = GetTrxNextBlock(p2pCtx, logger, stateStore, swapBackend, transactionMonitor, txHash, o.BlockHash)
-		if err != nil {
-			return nil, err
-		}
+	blockHash, err = GetTrxNextBlock(p2pCtx, logger, stateStore, swapBackend, transactionMonitor, txHash, o.BlockHash)
+	if err != nil {
+		return nil, err
 	}
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
