@@ -308,7 +308,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 						return true, false, nil
 					}
 					count++
-					ps.replicatePeer(peer, ch)
+					go ps.pushToNeighbour(peer, ch)
 					return false, false, nil
 				})
 				return nil, err
@@ -432,76 +432,71 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	return &receipt, true, nil
 }
 
-// replicatePeer handles in-neighborhood replication for a single peer.
-func (ps *PushSync) replicatePeer(peer swarm.Address, ch swarm.Chunk) {
-	go func(peer swarm.Address) {
-
-		var err error
-		defer func() {
-			if err != nil {
-				ps.logger.Tracef("pushsync replication: %v", err)
-				ps.metrics.TotalReplicatedError.Inc()
-			} else {
-				ps.metrics.TotalReplicated.Inc()
-			}
-		}()
-
-		// price for neighborhood replication
-		receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
-
-		ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
-		defer cancel()
-
-		err = ps.accounting.Reserve(ctx, peer, receiptPrice)
+// pushToNeighbour handles in-neighborhood replication for a single peer.
+func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk) {
+	var err error
+	defer func() {
 		if err != nil {
-			err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
-			return
+			ps.logger.Tracef("pushsync replication: %v", err)
+			ps.metrics.TotalReplicatedError.Inc()
+		} else {
+			ps.metrics.TotalReplicated.Inc()
 		}
-		defer ps.accounting.Release(peer, receiptPrice)
+	}()
 
-		streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	// price for neighborhood replication
+	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+	defer cancel()
+
+	err = ps.accounting.Reserve(ctx, peer, receiptPrice)
+	if err != nil {
+		err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
+		return
+	}
+	defer ps.accounting.Release(peer, receiptPrice)
+
+	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	if err != nil {
+		err = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
+		return
+	}
+
+	defer func() {
 		if err != nil {
-			err = fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
-			return
+			ps.metrics.TotalErrors.Inc()
+			_ = streamer.Reset()
+		} else {
+			_ = streamer.FullClose()
 		}
+	}()
 
-		defer func() {
-			if err != nil {
-				ps.metrics.TotalErrors.Inc()
-				_ = streamer.Reset()
-			} else {
-				_ = streamer.FullClose()
-			}
-		}()
+	w, r := protobuf.NewWriterAndReader(streamer)
+	stamp, err := ch.Stamp().MarshalBinary()
+	if err != nil {
+		return
+	}
+	err = w.WriteMsgWithContext(ctx, &pb.Delivery{
+		Address: ch.Address().Bytes(),
+		Data:    ch.Data(),
+		Stamp:   stamp,
+	})
+	if err != nil {
+		return
+	}
 
-		w, r := protobuf.NewWriterAndReader(streamer)
-		stamp, err := ch.Stamp().MarshalBinary()
-		if err != nil {
-			return
-		}
-		err = w.WriteMsgWithContext(ctx, &pb.Delivery{
-			Address: ch.Address().Bytes(),
-			Data:    ch.Data(),
-			Stamp:   stamp,
-		})
-		if err != nil {
-			return
-		}
+	var receipt pb.Receipt
+	if err = r.ReadMsgWithContext(ctx, &receipt); err != nil {
+		return
+	}
 
-		var receipt pb.Receipt
-		if err = r.ReadMsgWithContext(ctx, &receipt); err != nil {
-			return
-		}
+	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
+		// if the receipt is invalid, give up
+		return
+	}
 
-		if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
-			// if the receipt is invalid, give up
-			return
-		}
-
-		err = ps.accounting.Credit(peer, receiptPrice, false)
-
-	}(peer)
-
+	err = ps.accounting.Credit(peer, receiptPrice, false)
 }
 
 type peerSkipList struct {
