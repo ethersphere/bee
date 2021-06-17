@@ -100,8 +100,8 @@ type StreamSpec struct {
 
 // Peer holds information about a Peer.
 type Peer struct {
-	Address         swarm.Address `json:"address"`
-	FullNode        bool          `json:"fullNode"`
+	Address         swarm.Address
+	FullNode        bool
 	EthereumAddress []byte
 }
 
