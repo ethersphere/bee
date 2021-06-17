@@ -34,7 +34,7 @@ const (
 	protocolVersion = "1.0.0"
 	peersStreamName = "peers"
 	messageTimeout  = 1 * time.Minute // maximum allowed time for a message to be read or written.
-	maxBatchSize    = 30
+	maxBatchSize    = 25
 )
 
 var (
@@ -115,7 +115,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		} else {
 			go func() {
 				// we added this because Recorder (unit test) emits an unnecessary EOF when Close is called
-				time.Sleep(time.Millisecond * 50)
+				time.Sleep(time.Millisecond * 100)
 				_ = stream.Close()
 			}()
 		}
