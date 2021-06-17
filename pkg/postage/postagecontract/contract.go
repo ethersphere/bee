@@ -72,7 +72,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		To:       &c.bzzTokenAddress,
 		Data:     callData,
 		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 0,
+		GasLimit: 65000,
 		Value:    big.NewInt(0),
 	})
 	if err != nil {
@@ -102,7 +102,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 		To:       &c.postageContractAddress,
 		Data:     callData,
 		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 0,
+		GasLimit: 160000,
 		Value:    big.NewInt(0),
 	}
 
@@ -146,7 +146,7 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
 
-	if depth < BucketDepth {
+	if depth <= BucketDepth {
 		return nil, ErrInvalidDepth
 	}
 
@@ -190,9 +190,11 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				label,
 				c.owner.Hex(),
 				batchID,
-				depth,
+				initialBalance,
+				createdEvent.Depth,
 				createdEvent.BucketDepth,
 				ev.BlockNumber,
+				createdEvent.ImmutableFlag,
 			))
 
 			return createdEvent.BatchId[:], nil

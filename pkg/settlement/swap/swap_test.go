@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
-	mockp2p "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
@@ -81,6 +80,14 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 		amount: amount,
 		err:    err,
 	}
+}
+
+func (t *testObserver) Connect(peer swarm.Address) {
+
+}
+
+func (t *testObserver) Disconnect(peer swarm.Address) {
+
 }
 
 type addressbookMock struct {
@@ -212,7 +219,6 @@ func TestReceiveCheque(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		observer,
 	)
 
@@ -286,7 +292,6 @@ func TestReceiveChequeReject(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		observer,
 	)
 
@@ -342,7 +347,6 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		observer,
 	)
 
@@ -406,7 +410,6 @@ func TestPay(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		observer,
 	)
 
@@ -449,7 +452,6 @@ func TestPayIssueError(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		nil,
 	)
 
@@ -491,7 +493,6 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 
 	observer := newTestObserver()
 
-	var disconnectCalled bool
 	swapService := swap.New(
 		&swapProtocolMock{},
 		logger,
@@ -501,15 +502,6 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		addressbook,
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(
-			mockp2p.WithDisconnectFunc(func(disconnectPeer swarm.Address) error {
-				if !peer.Equal(disconnectPeer) {
-					t.Fatalf("disconnecting wrong peer. wanted %v, got %v", peer, disconnectPeer)
-				}
-				disconnectCalled = true
-				return nil
-			}),
-		),
 		observer,
 	)
 
@@ -517,7 +509,6 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 
 	select {
 	case call := <-observer.sentCalled:
-
 		if !call.peer.Equal(peer) {
 			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peer)
 		}
@@ -527,10 +518,6 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 
 	case <-time.After(time.Second):
 		t.Fatal("expected observer to be called")
-	}
-
-	if !disconnectCalled {
-		t.Fatal("disconnect was not called")
 	}
 }
 
@@ -560,7 +547,6 @@ func TestHandshake(t *testing.T) {
 		},
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		nil,
 	)
 
@@ -600,7 +586,6 @@ func TestHandshakeNewPeer(t *testing.T) {
 		},
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		nil,
 	)
 
@@ -631,7 +616,6 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		&addressbookMock{},
 		networkID,
 		&cashoutMock{},
-		mockp2p.New(),
 		nil,
 	)
 
@@ -681,7 +665,6 @@ func TestCashout(t *testing.T) {
 				return txHash, nil
 			},
 		},
-		mockp2p.New(),
 		nil,
 	)
 
@@ -728,7 +711,6 @@ func TestCashoutStatus(t *testing.T) {
 				return expectedStatus, nil
 			},
 		},
-		mockp2p.New(),
 		nil,
 	)
 

@@ -22,6 +22,9 @@ type transactionServiceMock struct {
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
+	pendingTransactions  func() ([]common.Hash, error)
+	resendTransaction    func(txHash common.Hash) error
+	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
@@ -52,6 +55,31 @@ func (m *transactionServiceMock) Call(ctx context.Context, request *transaction.
 	return nil, errors.New("not implemented")
 }
 
+func (m *transactionServiceMock) PendingTransactions() ([]common.Hash, error) {
+	if m.pendingTransactions != nil {
+		return m.pendingTransactions()
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) ResendTransaction(txHash common.Hash) error {
+	if m.resendTransaction != nil {
+		return m.resendTransaction(txHash)
+	}
+	return errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) StoredTransaction(txHash common.Hash) (*transaction.StoredTransaction, error) {
+	if m.storedTransaction != nil {
+		return m.storedTransaction(txHash)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) Close() error {
+	return nil
+}
+
 // Option is the option passed to the mock Chequebook service
 type Option interface {
 	apply(*transactionServiceMock)
@@ -76,6 +104,24 @@ func WithWaitForReceiptFunc(f func(ctx context.Context, txHash common.Hash) (rec
 func WithCallFunc(f func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.call = f
+	})
+}
+
+func WithStoredTransactionFunc(f func(txHash common.Hash) (*transaction.StoredTransaction, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.storedTransaction = f
+	})
+}
+
+func WithPendingTransactionsFunc(f func() ([]common.Hash, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.pendingTransactions = f
+	})
+}
+
+func WithResendTransactionFunc(f func(txHash common.Hash) error) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.resendTransaction = f
 	})
 }
 

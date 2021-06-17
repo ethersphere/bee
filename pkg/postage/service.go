@@ -34,6 +34,7 @@ type Service interface {
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, error)
 	IssuerUsable(*StampIssuer) bool
+	BatchCreationListener
 	io.Closer
 }
 
@@ -80,6 +81,25 @@ func (ps *service) Add(st *StampIssuer) {
 	ps.issuers = append(ps.issuers, st)
 }
 
+// Handle implements the BatchCreationListener interface. This is fired on receiving
+// a batch creation event from the blockchain listener to ensure that if a stamp
+// issuer was not created initially, we will create it here.
+func (ps *service) Handle(b *Batch) {
+	_, err := ps.GetStampIssuer(b.ID)
+	if errors.Is(err, ErrNotFound) {
+		ps.Add(NewStampIssuer(
+			"recovered",
+			string(b.Owner),
+			b.ID,
+			b.Value,
+			b.Depth,
+			b.BucketDepth,
+			b.Start,
+			b.Immutable,
+		))
+	}
+}
+
 // StampIssuers returns the currently active stamp issuers.
 func (ps *service) StampIssuers() []*StampIssuer {
 	ps.lock.Lock()
@@ -94,7 +114,7 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	// the batch creation, before we start using a stamp issuer. The threshold
 	// is meant to allow enough time for upstream peers to see the batch and
 	// hence validate the stamps issued
-	if cs.Block < st.blockNumber || (cs.Block-st.blockNumber) < blockThreshold {
+	if cs.Block < st.data.BlockNumber || (cs.Block-st.data.BlockNumber) < blockThreshold {
 		return false
 	}
 	return true
@@ -105,7 +125,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
-		if bytes.Equal(batchID, st.batchID) {
+		if bytes.Equal(batchID, st.data.BatchID) {
 			if !ps.IssuerUsable(st) {
 				return nil, ErrNotUsable
 			}

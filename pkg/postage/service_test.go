@@ -7,6 +7,7 @@ package postage_test
 import (
 	crand "crypto/rand"
 	"io"
+	"math/big"
 	"reflect"
 	"testing"
 
@@ -75,12 +76,16 @@ func TestGetStampIssuer(t *testing.T) {
 		if i == 0 {
 			continue
 		}
-		if i < 4 {
-			ps.Add(postage.NewStampIssuer(string(id), "", id, 16, 8, validBlockNumber))
-		} else {
-			ps.Add(postage.NewStampIssuer(string(id), "", id, 16, 8, validBlockNumber+uint64(i)))
+
+		var shift uint64 = 0
+		if i > 3 {
+			shift = uint64(i)
 		}
+		ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8, validBlockNumber+shift, true))
 	}
+	b := postagetesting.MustNewBatch()
+	b.Start = validBlockNumber
+	ps.Handle(b)
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:4] {
 			st, err := ps.GetStampIssuer(id)
@@ -104,6 +109,15 @@ func TestGetStampIssuer(t *testing.T) {
 			if err != postage.ErrNotUsable {
 				t.Fatalf("expected ErrNotUsable, got %v", err)
 			}
+		}
+	})
+	t.Run("recovered", func(t *testing.T) {
+		st, err := ps.GetStampIssuer(b.ID)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if st.Label() != "recovered" {
+			t.Fatal("wrong issuer returned")
 		}
 	})
 }

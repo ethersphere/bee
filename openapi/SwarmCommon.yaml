@@ -321,6 +321,18 @@ components:
           type: integer
         usable:
           type: boolean
+        label:
+          type: string
+        depth:
+          type: integer
+        amount:
+          $ref: "#/components/schemas/BigInt"
+        bucketDepth:
+          type: integer
+        blockNumber:
+          type: integer
+        immutableFlag:
+          type: boolean
 
     Settlement:
       type: object
@@ -426,6 +438,37 @@ components:
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
+    
+    TransactionInfoResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"
+        to:
+          $ref: "#/components/schemas/EthereumAddress"
+        nonce:
+          type: integer
+        gasPrice:
+          type: "#/components/schemas/BigInt"
+        gasLimit:
+          type: integer
+        data:
+          type: string
+        created:
+          type: "#/components/schemas/DateTime"
+        description:
+          type: string
+        value:
+          type: "#/components/schemas/BigInt"
+
+    PendingTransactionReponse:
+      type: object
+      properties:
+        pendingTransactions:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/TransactionHash"
 
     Uid:
       type: integer
