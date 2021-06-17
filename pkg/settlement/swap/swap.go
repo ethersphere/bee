@@ -239,6 +239,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return err
 	}
 	if known && !peer.Equal(oldPeer) {
+		s.logger.Debug("migrating swap addresses from peer %s to %s", oldPeer, peer)
 		return s.addressbook.MigratePeer(oldPeer, peer)
 	}
 

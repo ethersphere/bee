@@ -102,7 +102,7 @@ type StreamSpec struct {
 type Peer struct {
 	Address         swarm.Address `json:"address"`
 	FullNode        bool          `json:"fullNode"`
-	EthereumAddress []byte        `json:"ethereumAddress"`
+	EthereumAddress []byte
 }
 
 // HandlerFunc handles a received Stream from a Peer.
