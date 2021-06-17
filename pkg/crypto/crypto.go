@@ -20,7 +20,7 @@ import (
 // RecoverFunc is a function to recover the public key from a signature
 type RecoverFunc func(signature, data []byte) (*ecdsa.PublicKey, error)
 
-var ErrEmptyBlockHash = errors.New("empty block hash")
+var ErrBadHashLength = errors.New("wrong block hash length")
 
 const (
 	AddressSize = 20
@@ -34,8 +34,8 @@ func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64, blockHash []byte) (s
 		return swarm.ZeroAddress, err
 	}
 
-	if blockHash == nil {
-		return swarm.ZeroAddress, ErrEmptyBlockHash
+	if len(blockHash) != 32 {
+		return swarm.ZeroAddress, ErrBadHashLength
 	}
 
 	return NewOverlayFromEthereumAddress(ethAddr, networkID, blockHash), nil

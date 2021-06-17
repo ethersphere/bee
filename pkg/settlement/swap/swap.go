@@ -237,9 +237,6 @@ func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
 
-	// TODO: beneficiary check is removed here,
-	// and the beneficiary will be derived from the public eth key of the peer
-
 	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err

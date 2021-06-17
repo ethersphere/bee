@@ -10,6 +10,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 )
 
@@ -39,7 +40,7 @@ func TestNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := crypto.NewOverlayAddress(k.PublicKey, 1, []byte{'0'})
+	a, err := crypto.NewOverlayAddress(k.PublicKey, 1, common.HexToHash("0x1").Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +49,8 @@ func TestNewAddress(t *testing.T) {
 	}
 
 	_, err = crypto.NewOverlayAddress(k.PublicKey, 1, nil)
-	if !errors.Is(err, crypto.ErrEmptyBlockHash) {
-		t.Fatalf("expected %v, got %v", crypto.ErrEmptyBlockHash, err)
+	if !errors.Is(err, crypto.ErrBadHashLength) {
+		t.Fatalf("expected %v, got %v", crypto.ErrBadHashLength, err)
 	}
 }
 
