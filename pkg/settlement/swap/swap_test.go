@@ -91,6 +91,7 @@ func (t *testObserver) Disconnect(peer swarm.Address) {
 }
 
 type addressbookMock struct {
+	migratePeer     func(old, new swarm.Address) error
 	beneficiary     func(peer swarm.Address) (beneficiary common.Address, known bool, err error)
 	chequebook      func(peer swarm.Address) (chequebookAddress common.Address, known bool, err error)
 	beneficiaryPeer func(beneficiary common.Address) (peer swarm.Address, known bool, err error)
@@ -103,6 +104,9 @@ type addressbookMock struct {
 	getDeductionBy  func(peer swarm.Address) (bool, error)
 }
 
+func (m *addressbookMock) MigratePeer(old, new swarm.Address) error {
+	return m.migratePeer(old, new)
+}
 func (m *addressbookMock) Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error) {
 	return m.beneficiary(peer)
 }
@@ -542,6 +546,12 @@ func TestHandshake(t *testing.T) {
 			beneficiary: func(p swarm.Address) (common.Address, bool, error) {
 				return beneficiary, true, nil
 			},
+			beneficiaryPeer: func(common.Address) (peer swarm.Address, known bool, err error) {
+				return peer, true, nil
+			},
+			migratePeer: func(old, new swarm.Address) error {
+				return nil
+			},
 			putBeneficiary: func(p swarm.Address, b common.Address) error {
 				putCalled = true
 				return nil
@@ -582,6 +592,12 @@ func TestHandshakeNewPeer(t *testing.T) {
 			beneficiary: func(p swarm.Address) (common.Address, bool, error) {
 				return beneficiary, false, nil
 			},
+			beneficiaryPeer: func(beneficiary common.Address) (swarm.Address, bool, error) {
+				return peer, true, nil
+			},
+			migratePeer: func(old, new swarm.Address) error {
+				return nil
+			},
 			putBeneficiary: func(p swarm.Address, b common.Address) error {
 				putCalled = true
 				return nil
@@ -602,16 +618,14 @@ func TestHandshakeNewPeer(t *testing.T) {
 	}
 }
 
-func TestHandshakeWrongBeneficiary(t *testing.T) {
-
-	t.Skip()
-
+func TestMigratePeer(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 	store := mockstore.NewStateStore()
 
 	beneficiary := common.HexToAddress("0xcd")
-	peer := swarm.MustParseHexAddress("abcd")
+	trx := common.HexToHash("0x1")
 	networkID := uint64(1)
+	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
 
 	swapService := swap.New(
 		&swapProtocolMock{},
@@ -619,15 +633,22 @@ func TestHandshakeWrongBeneficiary(t *testing.T) {
 		store,
 		mockchequebook.NewChequebook(),
 		mockchequestore.NewChequeStore(),
-		&addressbookMock{},
+		&addressbookMock{
+			beneficiaryPeer: func(beneficiary common.Address) (swarm.Address, bool, error) {
+				return swarm.MustParseHexAddress("00112233"), true, nil
+			},
+			migratePeer: func(old, new swarm.Address) error {
+				return nil
+			},
+		},
 		networkID,
 		&cashoutMock{},
 		nil,
 	)
 
 	err := swapService.Handshake(peer, beneficiary)
-	if !errors.Is(err, swap.ErrWrongBeneficiary) {
-		t.Fatalf("wrong error. wanted %v, got %v", swap.ErrWrongBeneficiary, err)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

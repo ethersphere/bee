@@ -5,6 +5,7 @@
 package swap
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -43,6 +44,8 @@ type Addressbook interface {
 	GetDeductionFor(peer swarm.Address) (bool, error)
 	// GetDeductionBy returns whether a peer have already received a cheque that has been deducted
 	GetDeductionBy(peer swarm.Address) (bool, error)
+	// MigratePeer returns whether a peer have already received a cheque that has been deducted
+	MigratePeer(old, new swarm.Address) error
 }
 
 type addressbook struct {
@@ -54,6 +57,40 @@ func NewAddressbook(store storage.StateStorer) Addressbook {
 	return &addressbook{
 		store: store,
 	}
+}
+
+func (a *addressbook) MigratePeer(old, new swarm.Address) error {
+	ba, known, err := a.Beneficiary(old)
+	if err != nil {
+		return err
+	}
+	if !known {
+		return errors.New("old beneficiary not known")
+	}
+
+	cb, known, err := a.Chequebook(old)
+	if err != nil {
+		return err
+	}
+
+	if err := a.PutBeneficiary(new, ba); err != nil {
+		return err
+	}
+
+	if err := a.store.Delete(peerBeneficiaryKey(old)); err != nil {
+		return err
+	}
+
+	if known {
+		if err := a.PutChequebook(new, cb); err != nil {
+			return err
+		}
+		if err := a.store.Delete(peerKey(old)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Beneficiary returns the beneficiary for the given peer.
