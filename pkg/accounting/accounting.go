@@ -171,10 +171,8 @@ func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer
 	nextReserved := new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
 
 	currentBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return nil, nil, fmt.Errorf("failed to load balance: %w", err)
-		}
+	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
+		return nil, nil, fmt.Errorf("failed to load balance: %w", err)
 	}
 	currentDebt := new(big.Int).Neg(currentBalance)
 	if currentDebt.Cmp(big.NewInt(0)) < 0 {
