@@ -158,7 +158,7 @@ func newTestDB(t testing.TB, o *Options) *DB {
 		t.Fatal(err)
 	}
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := New("", baseKey, o, logger)
+	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
