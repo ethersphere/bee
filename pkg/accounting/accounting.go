@@ -197,12 +197,11 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
+	defer accountingPeer.lock.Unlock()
 
 	if !accountingPeer.connected {
 		return fmt.Errorf("connection not initialized yet")
 	}
-
-	defer accountingPeer.lock.Unlock()
 
 	a.metrics.AccountingReserveCount.Inc()
 	bigPrice := new(big.Int).SetUint64(price)
