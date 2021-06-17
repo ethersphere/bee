@@ -22,8 +22,6 @@ import (
 var (
 	// ErrWrongChequebook is the error if a peer uses a different chequebook from before.
 	ErrWrongChequebook = errors.New("wrong chequebook")
-	// ErrWrongBeneficiary is the error if a peer uses a different beneficiary than expected.
-	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrUnknownBeneficary is the error if a peer has never announced a beneficiary.
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 	// ErrChequeValueTooLow is the error a peer issued a cheque not covering 1 accounting credit
@@ -236,11 +234,15 @@ func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
+	oldPeer, known, err := s.addressbook.BeneficiaryPeer(beneficiary)
+	if err != nil {
+		return err
+	}
+	if known && !peer.Equal(oldPeer) {
+		return s.addressbook.MigratePeer(oldPeer, peer)
+	}
 
-	// TODO: beneficiary check is removed here,
-	// and the beneficiary will be derived from the public eth key of the peer
-
-	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
+	_, known, err = s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
 	}
@@ -248,9 +250,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		s.logger.Tracef("initial swap handshake peer: %v beneficiary: %x", peer, beneficiary)
 		return s.addressbook.PutBeneficiary(peer, beneficiary)
 	}
-	if storedBeneficiary != beneficiary {
-		return ErrWrongBeneficiary
-	}
+
 	return nil
 }
 
