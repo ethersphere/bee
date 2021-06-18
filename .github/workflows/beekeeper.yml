@@ -40,6 +40,7 @@ jobs:
           #key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Apply patches
         run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           patch pkg/postage/listener/listener.go .github/patches/listener.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
