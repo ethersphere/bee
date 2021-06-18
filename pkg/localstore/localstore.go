@@ -75,7 +75,7 @@ type DB struct {
 	// push syncing index
 	pushIndex shed.Index
 	// push syncing subscriptions triggers
-	pushTriggers   []chan<- struct{}
+	pushTriggers   []chan<- bool
 	pushTriggersMu sync.RWMutex
 
 	// pull syncing index
@@ -159,7 +159,7 @@ type DB struct {
 	// wait for all subscriptions to finish before closing
 	// underlaying leveldb to prevent possible panics from
 	// iterators
-	subscritionsWG sync.WaitGroup
+	subscriptionsWG sync.WaitGroup
 
 	metrics metrics
 
@@ -418,7 +418,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 	// create a push syncing triggers used by SubscribePush function
-	db.pushTriggers = make([]chan<- struct{}, 0)
+	db.pushTriggers = make([]chan<- bool, 0)
 	// gc index for removable chunk ordered by ascending last access time
 	db.gcIndex, err = db.shed.NewIndex("AccessTimestamp|BinID|Hash->BatchID|BatchIndex", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
@@ -563,7 +563,6 @@ func (db *DB) Close() (err error) {
 	done := make(chan struct{})
 	go func() {
 		db.updateGCWG.Wait()
-		db.subscritionsWG.Wait()
 		// wait for gc worker to
 		// return before closing the shed
 		<-db.collectGarbageWorkerDone
