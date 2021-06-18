@@ -262,124 +262,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	}
 }
 
-func TestPusherClose(t *testing.T) {
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-
-	var (
-		goFuncStartedC    = make(chan struct{})
-		pusherClosedC     = make(chan struct{})
-		goFuncAfterCloseC = make(chan struct{})
-	)
-
-	defer func() {
-		close(goFuncStartedC)
-		close(pusherClosedC)
-		close(goFuncAfterCloseC)
-	}()
-
-	key, _ := crypto.GenerateSecp256k1Key()
-	signer := crypto.NewDefaultSigner(key)
-
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		goFuncStartedC <- struct{}{}
-		<-goFuncAfterCloseC
-		signature, _ := signer.Sign(chunk.Address().Bytes())
-		receipt := &pushsync.Receipt{
-			Address:   swarm.NewAddress(chunk.Address().Bytes()),
-			Signature: signature,
-			BlockHash: block,
-		}
-		return receipt, nil
-	})
-
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-
-	chunk := testingc.GenerateTestRandomChunk()
-
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	storer.modeSetMu.Lock()
-	if storer.closed == true {
-		t.Fatal("store should not be closed")
-	}
-	if storer.setBeforeCloseCount != 0 {
-		t.Fatalf("store 'Set' called %d times before close, expected 0", storer.setBeforeCloseCount)
-	}
-	if storer.setAfterCloseCount != 0 {
-		t.Fatalf("store 'Set' called %d times after close, expected 0", storer.setAfterCloseCount)
-	}
-	storer.modeSetMu.Unlock()
-
-	select {
-	case <-goFuncStartedC:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting to start worker job")
-	}
-
-	// close in the background
-	go func() {
-		p.Close()
-		storer.Close()
-		pusherClosedC <- struct{}{}
-	}()
-
-	select {
-	case <-pusherClosedC:
-	case <-time.After(2 * time.Second):
-		// internal 5 second timeout that waits for all pending push operations to terminate
-	}
-
-	storer.modeSetMu.Lock()
-	if storer.setBeforeCloseCount != 0 {
-		t.Fatalf("store 'Set' called %d times before close, expected 0", storer.setBeforeCloseCount)
-	}
-	if storer.setAfterCloseCount != 0 {
-		t.Fatalf("store 'Set' called %d times after close, expected 0", storer.setAfterCloseCount)
-	}
-	storer.modeSetMu.Unlock()
-
-	select {
-	case goFuncAfterCloseC <- struct{}{}:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for chunk")
-	}
-
-	// we need this to allow some goroutines to complete
-	time.Sleep(100 * time.Millisecond)
-
-	storer.modeSetMu.Lock()
-	if storer.closed != true {
-		t.Fatal("store should be closed")
-	}
-	if storer.setBeforeCloseCount != 1 {
-		t.Fatalf("store 'Set' called %d times before close, expected 1", storer.setBeforeCloseCount)
-	}
-	if storer.setAfterCloseCount != 0 {
-		t.Fatalf("store 'Set' called %d times after close, expected 0", storer.setAfterCloseCount)
-	}
-	storer.modeSetMu.Unlock()
-
-	// should be closed by now
-	select {
-	case <-pusherClosedC:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timed out waiting to close pusher")
-	}
-}
-
 func TestPusherRetryShallow(t *testing.T) {
-	defer func(d time.Duration, retryCount int) {
-		*pusher.RetryInterval = d
-		*pusher.RetryCount = retryCount
-	}(*pusher.RetryInterval, *pusher.RetryCount)
-	*pusher.RetryInterval = 500 * time.Millisecond
-	*pusher.RetryCount = 3
-
 	var (
 		pivotPeer   = swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 		closestPeer = swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
@@ -416,16 +299,16 @@ func TestPusherRetryShallow(t *testing.T) {
 	c := 0
 	for i := 0; i < 5; i++ {
 		c = int(atomic.LoadInt32(&callCount))
-		if c == *pusher.RetryCount {
+		if c == 3 {
 			return
 		}
-		if c > *pusher.RetryCount {
-			t.Fatalf("too many retries. got %d want %d", c, *pusher.RetryCount)
+		if c > 3 {
+			t.Fatalf("too many retries. got %d want %d", c, 3)
 		}
 		time.Sleep(1 * time.Second)
 	}
 
-	t.Fatalf("timed out waiting for retries. got %d want %d", c, *pusher.RetryCount)
+	t.Fatalf("timed out waiting for retries. got %d want %d", c, 3)
 }
 
 // TestChunkWithInvalidStampSkipped tests that chunks with invalid stamps are skipped in pusher
