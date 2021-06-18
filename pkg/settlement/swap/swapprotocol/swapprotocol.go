@@ -167,7 +167,6 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	}
 
 	beneficiary := common.BytesToAddress(req.Beneficiary)
-
 	return s.swap.Handshake(p.Address, beneficiary)
 }
 

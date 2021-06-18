@@ -51,7 +51,7 @@ func TestAddresses(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/addresses", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
-				Overlay:      overlay,
+				Overlay:      &overlay,
 				Underlay:     addresses,
 				Ethereum:     ethereumAddress,
 				PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&privateKey.PublicKey)),

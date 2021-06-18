@@ -17,4 +17,5 @@ message Delivery {
 message Receipt {
   bytes Address = 1;
   bytes Signature = 2;
+  bytes BlockHash = 3;
 }

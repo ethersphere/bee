@@ -205,7 +205,7 @@ LOOP:
 						return
 					}
 
-					storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID)
+					storerPeer, err = crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.BlockHash)
 					if err != nil {
 						err = fmt.Errorf("pusher: receipt storer address: %w", err)
 						return

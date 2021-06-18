@@ -5,7 +5,9 @@
 package monitormock
 
 import (
+	"context"
 	"errors"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -14,6 +16,7 @@ import (
 
 type transactionMonitorMock struct {
 	watchTransaction func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
+	waitBlock        func(ctx context.Context, block *big.Int) (*types.Block, error)
 }
 
 func (m *transactionMonitorMock) WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
@@ -21,6 +24,13 @@ func (m *transactionMonitorMock) WatchTransaction(txHash common.Hash, nonce uint
 		return m.watchTransaction(txHash, nonce)
 	}
 	return nil, nil, errors.New("not implemented")
+}
+
+func (m *transactionMonitorMock) WaitBlock(ctx context.Context, block *big.Int) (*types.Block, error) {
+	if m.watchTransaction != nil {
+		return m.waitBlock(ctx, block)
+	}
+	return nil, errors.New("not implemented")
 }
 
 func (m *transactionMonitorMock) Close() error {
@@ -39,6 +49,12 @@ func (f optionFunc) apply(r *transactionMonitorMock) { f(r) }
 func WithWatchTransactionFunc(f func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)) Option {
 	return optionFunc(func(s *transactionMonitorMock) {
 		s.watchTransaction = f
+	})
+}
+
+func WithWaitBlockFunc(f func(ctx context.Context, block *big.Int) (*types.Block, error)) Option {
+	return optionFunc(func(s *transactionMonitorMock) {
+		s.waitBlock = f
 	})
 }
 

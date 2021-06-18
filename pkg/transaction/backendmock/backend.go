@@ -24,6 +24,7 @@ type backendMock struct {
 	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
 	transactionByHash  func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 	blockNumber        func(ctx context.Context) (uint64, error)
+	blockByNumber      func(ctx context.Context, number *big.Int) (*types.Block, error)
 	headerByNumber     func(ctx context.Context, number *big.Int) (*types.Header, error)
 	balanceAt          func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	nonceAt            func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
@@ -101,6 +102,13 @@ func (m *backendMock) BlockNumber(ctx context.Context) (uint64, error) {
 	return 0, errors.New("not implemented")
 }
 
+func (m *backendMock) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	if m.blockNumber != nil {
+		return m.blockByNumber(ctx, number)
+	}
+	return nil, errors.New("not implemented")
+}
+
 func (m *backendMock) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	if m.headerByNumber != nil {
 		return m.headerByNumber(ctx, number)
@@ -171,6 +179,12 @@ func WithTransactionReceiptFunc(f func(ctx context.Context, txHash common.Hash) 
 func WithTransactionByHashFunc(f func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.transactionByHash = f
+	})
+}
+
+func WithBlockByNumberFunc(f func(ctx context.Context, number *big.Int) (*types.Block, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.blockByNumber = f
 	})
 }
 

@@ -10,7 +10,6 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +19,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -66,7 +64,6 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
@@ -146,6 +143,7 @@ type Options struct {
 	SwapEnable                 bool
 	FullNodeMode               bool
 	Transaction                string
+	BlockHash                  string
 	PostageContractAddress     string
 	PriceOracleAddress         string
 	BlockTime                  uint64
@@ -158,7 +156,7 @@ const (
 	basePrice   = 10000
 )
 
-func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
+func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -190,6 +188,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		tracerCloser:   tracerCloser,
 	}
 
+	stateStore, err := InitStateStore(logger, o.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	b.stateStoreCloser = stateStore
+
+	addressbook := addressbook.New(stateStore)
+
 	var debugAPIService *debugapi.Service
 	if o.DebugAPIAddr != "" {
 		overlayEthAddress, err := signer.EthereumAddress()
@@ -197,7 +203,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, fmt.Errorf("eth address: %w", err)
 		}
 		// set up basic debug api endpoints for debugging and /health endpoint
-		debugAPIService = debugapi.New(swarmAddress, publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins)
+		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins)
 
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 		if err != nil {
@@ -223,19 +229,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.debugAPIServer = debugAPIServer
 	}
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
-	if err != nil {
-		return nil, err
-	}
-	b.stateStoreCloser = stateStore
-
-	err = CheckOverlayWithStore(swarmAddress, stateStore)
-	if err != nil {
-		return nil, err
-	}
-
-	addressbook := addressbook.New(stateStore)
-
 	var (
 		swapBackend        *ethclient.Client
 		overlayEthAddress  common.Address
@@ -246,6 +239,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		chequebookService  chequebook.Service
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
+		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 	if !o.Standalone {
 		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
@@ -254,7 +248,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			stateStore,
 			o.SwapEndpoint,
 			signer,
-			o.BlockTime,
+			pollingInterval,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("init chain: %w", err)
@@ -308,12 +302,34 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		)
 	}
 
-	lightNodes := lightnode.NewContainer(swarmAddress)
+	pubKey, _ := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
 
-	txHash, err := getTxHash(stateStore, logger, o)
+	var (
+		blockHash []byte
+		txHash    []byte
+	)
+
+	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
 	if err != nil {
 		return nil, fmt.Errorf("invalid transaction hash: %w", err)
 	}
+
+	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid block hash: %w", err)
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+
+	err = CheckOverlayWithStore(swarmAddress, stateStore)
+	if err != nil {
+		return nil, err
+	}
+
+	lightNodes := lightnode.NewContainer(swarmAddress)
 
 	senderMatcher := transaction.NewMatcher(swapBackend, types.NewEIP155Signer(big.NewInt(chainID)))
 
@@ -583,7 +599,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -719,7 +735,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, transactionService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, transactionService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
@@ -847,37 +863,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr
-}
-
-func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
-	if o.Standalone {
-		return nil, nil // in standalone mode tx hash is not used
-	}
-
-	if o.Transaction != "" {
-		txHashTrimmed := strings.TrimPrefix(o.Transaction, "0x")
-		if len(txHashTrimmed) != 64 {
-			return nil, errors.New("invalid length")
-		}
-		txHash, err := hex.DecodeString(txHashTrimmed)
-		if err != nil {
-			return nil, err
-		}
-		logger.Infof("using the provided transaction hash %x", txHash)
-		return txHash, nil
-	}
-
-	var txHash common.Hash
-	key := chequebook.ChequebookDeploymentKey
-	if err := stateStore.Get(key, &txHash); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, errors.New("chequebook deployment transaction hash not found. Please specify the transaction hash manually.")
-		}
-		return nil, err
-	}
-
-	logger.Infof("using the chequebook transaction hash %x", txHash)
-	return txHash.Bytes(), nil
 }
 
 // pidKiller is used to issue a forced shut down of the node from sub modules. The issue with using the

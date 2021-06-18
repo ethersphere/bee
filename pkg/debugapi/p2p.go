@@ -16,7 +16,7 @@ import (
 )
 
 type addressesResponse struct {
-	Overlay      swarm.Address         `json:"overlay"`
+	Overlay      *swarm.Address        `json:"overlay"`
 	Underlay     []multiaddr.Multiaddr `json:"underlay"`
 	Ethereum     common.Address        `json:"ethereum"`
 	PublicKey    string                `json:"publicKey"`
