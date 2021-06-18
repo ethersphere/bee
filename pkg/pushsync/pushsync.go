@@ -308,7 +308,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 						return true, false, nil
 					}
 					count++
-					go ps.pushToNeighbour(peer, ch)
+					go ps.pushToNeighbour(peer, ch, retryAllowed)
 					return false, false, nil
 				})
 				return nil, err
@@ -433,7 +433,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 }
 
 // pushToNeighbour handles in-neighborhood replication for a single peer.
-func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk) {
+func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk, origin bool) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -496,7 +496,7 @@ func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk) {
 		return
 	}
 
-	err = ps.accounting.Credit(peer, receiptPrice, false)
+	err = ps.accounting.Credit(peer, receiptPrice, origin)
 }
 
 type peerSkipList struct {
