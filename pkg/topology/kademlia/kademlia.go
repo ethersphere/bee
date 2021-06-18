@@ -95,17 +95,21 @@ type Kad struct {
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
-	connectMuMap      map[string]sync.Mutex
+	connectMuMap      map[string]*connectPeer
 	connectMapMu      sync.Mutex
 }
 
-func (k *Kad) getPeerMutex(peer string) sync.Mutex {
+type connectPeer struct {
+	lock sync.Mutex
+}
+
+func (k *Kad) getPeerMutex(peer string) *connectPeer {
 	k.connectMapMu.Lock()
 	defer k.connectMapMu.Unlock()
 
 	peerMu, ok := k.connectMuMap[peer]
 	if !ok {
-		var peerMu sync.Mutex
+		peerMu = &connectPeer{}
 		k.connectMuMap[peer] = peerMu
 	}
 
@@ -154,7 +158,7 @@ func New(
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
-		connectMuMap:      make(map[string]sync.Mutex),
+		connectMuMap:      make(map[string]*connectPeer),
 		metrics:           newMetrics(),
 	}
 
@@ -473,9 +477,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 					inProgress[addr] = true
 					inProgressMu.Unlock()
 					peerMu := k.getPeerMutex(addr)
-					peerMu.Lock()
+					peerMu.lock.Lock()
 					connect(peer)
-					peerMu.Unlock()
+					peerMu.lock.Unlock()
 					inProgressMu.Lock()
 					delete(inProgress, addr)
 				}

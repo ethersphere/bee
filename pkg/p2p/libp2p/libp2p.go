@@ -73,8 +73,12 @@ type Service struct {
 	lightNodes        lightnodes
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
-	connectMuMap      map[string]sync.Mutex
+	connectMuMap      map[string]*connectPeer
 	connectMapMu      sync.Mutex
+}
+
+type connectPeer struct {
+	lock sync.Mutex
 }
 
 type lightnodes interface {
@@ -96,13 +100,13 @@ type Options struct {
 	Transaction    []byte
 }
 
-func (s *Service) getPeerMutex(peer string) sync.Mutex {
+func (s *Service) getPeerMutex(peer string) *connectPeer {
 	s.connectMapMu.Lock()
 	defer s.connectMapMu.Unlock()
 
 	peerMu, ok := s.connectMuMap[peer]
 	if !ok {
-		var peerMu sync.Mutex
+		peerMu = &connectPeer{}
 		s.connectMuMap[peer] = peerMu
 	}
 
@@ -256,7 +260,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 		ready:             make(chan struct{}),
 		halt:              make(chan struct{}),
-		connectMuMap:      make(map[string]sync.Mutex),
+		connectMuMap:      make(map[string]*connectPeer),
 		lightNodes:        lightNodes,
 	}
 
@@ -570,8 +574,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	peerMu := s.getPeerMutex(info.ID.String())
-	peerMu.Lock()
-	defer peerMu.Unlock()
+	peerMu.lock.Lock()
+	defer peerMu.lock.Unlock()
 
 	hostAddr, err := buildHostAddress(info.ID)
 	if err != nil {
@@ -690,8 +694,8 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	found, full, peerID := s.peers.remove(overlay)
 
 	peerMu := s.getPeerMutex(peerID.String())
-	peerMu.Lock()
-	defer peerMu.Unlock()
+	peerMu.lock.Lock()
+	defer peerMu.lock.Unlock()
 
 	_ = s.host.Network().ClosePeer(peerID)
 
@@ -736,8 +740,8 @@ func (s *Service) disconnected(address swarm.Address) {
 	}
 
 	peerMu := s.getPeerMutex(peerID.String())
-	peerMu.Lock()
-	defer peerMu.Unlock()
+	peerMu.lock.Lock()
+	defer peerMu.lock.Unlock()
 
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
