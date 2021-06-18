@@ -505,7 +505,7 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
-		case <-time.After(30 * time.Second):
+		case <-time.After(15 * time.Second):
 			start := time.Now()
 			if err := k.collector.Flush(); err != nil {
 				k.metrics.InternalMetricsFlushTotalErrors.Inc()
@@ -587,6 +587,10 @@ func (k *Kad) Start(_ context.Context) error {
 		k.AddPeers(addresses...)
 		k.metrics.StartAddAddressBookOverlaysTime.Observe(float64(time.Since(start).Nanoseconds()))
 	}()
+
+	// trigger the first manage loop immediately so that
+	// we can start connecting to the bootnode quickly
+	k.notifyManageLoop()
 
 	return nil
 }
