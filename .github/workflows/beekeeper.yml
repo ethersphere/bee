@@ -57,13 +57,13 @@ jobs:
       - name: Set testing cluster (storage incentives setup)
         run: |
           make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
       - name: Test pingpong
         id: pingpong-3
-        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test gc
         id: gc-chunk-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-gc
+        run: beekeeper check --cluster-name local-gc --checks=ci-gc
       - name: Retag Docker image and push for cache
         if: success()
         run: |
