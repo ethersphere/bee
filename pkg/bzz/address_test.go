@@ -5,6 +5,8 @@
 package bzz_test
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -13,6 +15,13 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+func Test1(t *testing.T) {
+	err := errors.New("incorrect format")
+	tt := fmt.Errorf("extract ethereum address: %v: %w", err, bzz.ErrInvalidAddress)
+	b := errors.Is(tt, bzz.ErrInvalidAddress)
+	t.Log(b, tt)
+}
 
 func TestBzzAddress(t *testing.T) {
 	node1ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
