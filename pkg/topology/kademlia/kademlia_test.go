@@ -1107,6 +1107,7 @@ func TestStart(t *testing.T) {
 	}
 
 	t.Run("non-empty addressbook", func(t *testing.T) {
+		t.Skip("test flakes")
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
 		defer kad.Close()
