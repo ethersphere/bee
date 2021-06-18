@@ -95,6 +95,21 @@ type Kad struct {
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
+	connectMuMap      map[string]sync.Mutex
+	connectMapMu      sync.Mutex
+}
+
+func (k *Kad) getPeerMutex(peer string) sync.Mutex {
+	k.connectMapMu.Lock()
+	defer k.connectMapMu.Unlock()
+
+	peerMu, ok := k.connectMuMap[peer]
+	if !ok {
+		var peerMu sync.Mutex
+		k.connectMuMap[peer] = peerMu
+	}
+
+	return peerMu
 }
 
 // New returns a new Kademlia.
@@ -139,6 +154,7 @@ func New(
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
+		connectMuMap:      make(map[string]sync.Mutex),
 		metrics:           newMetrics(),
 	}
 
@@ -456,7 +472,10 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				if !inProgress[addr] {
 					inProgress[addr] = true
 					inProgressMu.Unlock()
+					peerMu := k.getPeerMutex(addr)
+					peerMu.Lock()
 					connect(peer)
+					peerMu.Unlock()
 					inProgressMu.Lock()
 					delete(inProgress, addr)
 				}

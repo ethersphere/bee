@@ -73,6 +73,8 @@ type Service struct {
 	lightNodes        lightnodes
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
+	connectMuMap      map[string]sync.Mutex
+	connectMapMu      sync.Mutex
 }
 
 type lightnodes interface {
@@ -92,6 +94,19 @@ type Options struct {
 	LightNodeLimit int
 	WelcomeMessage string
 	Transaction    []byte
+}
+
+func (s *Service) getPeerMutex(peer string) sync.Mutex {
+	s.connectMapMu.Lock()
+	defer s.connectMapMu.Unlock()
+
+	peerMu, ok := s.connectMuMap[peer]
+	if !ok {
+		var peerMu sync.Mutex
+		s.connectMuMap[peer] = peerMu
+	}
+
+	return peerMu
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, swapBackend handshake.SenderMatcher, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -241,6 +256,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 		ready:             make(chan struct{}),
 		halt:              make(chan struct{}),
+		connectMuMap:      make(map[string]sync.Mutex),
 		lightNodes:        lightNodes,
 	}
 
@@ -553,6 +569,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("addr from p2p: %w", err)
 	}
 
+	peerMu := s.getPeerMutex(info.ID.String())
+	peerMu.Lock()
+	defer peerMu.Unlock()
+
 	hostAddr, err := buildHostAddress(info.ID)
 	if err != nil {
 		return nil, fmt.Errorf("build host address: %w", err)
@@ -669,6 +689,10 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	// found is checked at the bottom of the function
 	found, full, peerID := s.peers.remove(overlay)
 
+	peerMu := s.getPeerMutex(peerID.String())
+	peerMu.Lock()
+	defer peerMu.Unlock()
+
 	_ = s.host.Network().ClosePeer(peerID)
 
 	peer := p2p.Peer{Address: overlay, FullNode: full}
@@ -710,6 +734,11 @@ func (s *Service) disconnected(address swarm.Address) {
 			peer.FullNode = full
 		}
 	}
+
+	peerMu := s.getPeerMutex(peerID.String())
+	peerMu.Lock()
+	defer peerMu.Unlock()
+
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.DisconnectIn != nil {

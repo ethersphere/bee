@@ -7,6 +7,7 @@ package libp2p
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -61,6 +62,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	// remove only the related connection,
 	// not eventusally newly created one for the same peer
 	if _, ok := r.connections[peerID][c]; !ok {
+		fmt.Println("removing on one channel only:", peerID)
 		r.mu.Unlock()
 		return
 	}
@@ -68,6 +70,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	// if there are multiple libp2p connections, consider the node disconnected only when the last connection is disconnected
 	delete(r.connections[peerID], c)
 	if len(r.connections[peerID]) > 0 {
+		fmt.Println("removed peer not on every channel yet:", peerID)
 		r.mu.Unlock()
 		return
 	}

@@ -136,6 +136,7 @@ LOOP:
 			case sem <- struct{}{}:
 			case <-s.quit:
 				if unsubscribe != nil {
+					fmt.Println("\\\\\\|||///\\\\\\|||/// Unsubscribe at", time.Now().Unix())
 					unsubscribe()
 				}
 				if span != nil {
@@ -260,6 +261,7 @@ LOOP:
 
 			// if subscribe was running, stop it
 			if unsubscribe != nil {
+				fmt.Println("\\\\\\|||///\\\\\\|||///\\\\\\|||/// Unsubscribe at", time.Now().Unix())
 				unsubscribe()
 			}
 
@@ -267,6 +269,7 @@ LOOP:
 
 			// and start iterating on Push index from the beginning
 			chunks, unsubscribe = s.storer.SubscribePush(ctx)
+			fmt.Println("\\\\\\|||///\\\\\\|||///\\\\\\|||/// Subscribe at", time.Now().Unix())
 
 			// reset timer to go off after retryInterval
 			timer.Reset(retryInterval)
@@ -279,6 +282,7 @@ LOOP:
 
 		case <-s.quit:
 			if unsubscribe != nil {
+				fmt.Println("\\\\\\|||/// Unsubscribe at", time.Now().Unix())
 				unsubscribe()
 			}
 			if span != nil {
