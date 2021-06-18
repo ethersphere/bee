@@ -1405,37 +1405,21 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 
 	acc.Disconnect(peer)
 
-	if blocklistTime != 0 {
-		t.Fatal("unexpected blocklist")
-	}
-
-	//peer attempts to reconnect immediately
-
-	acc.Connect(peer)
-
 	if blocklistTime != int64(4*paymentThresholdInRefreshmentSeconds) {
 		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
 	}
 
-	// 30 seconds pass, check whether we blocklist for the correct leftover time after a later connect attempt
-
-	ts = int64(1030)
-	acc.SetTime(ts)
-
-	acc.Connect(peer)
-
-	if blocklistTime != int64(paymentThresholdInRefreshmentSeconds) {
-		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, paymentThresholdInRefreshmentSeconds)
-	}
 }
 
-func TestAccountingReconnectAfterAllowed(t *testing.T) {
+func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 	logger := logging.New(ioutil.Discard, 0)
 
 	store := mock.NewStateStore()
 	defer store.Close()
 
 	var blocklistTime int64
+
+	paymentThresholdInRefreshmentSeconds := new(big.Int).Div(testPaymentThreshold, big.NewInt(testRefreshRate)).Uint64()
 
 	f := func(s swarm.Address, t time.Duration) error {
 		blocklistTime = int64(t.Seconds())
@@ -1488,16 +1472,28 @@ func TestAccountingReconnectAfterAllowed(t *testing.T) {
 
 	acc.Disconnect(peer)
 
-	if blocklistTime != 0 {
-		t.Fatal("unexpected blocklist")
+	if blocklistTime != int64(4*paymentThresholdInRefreshmentSeconds) {
+		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
 	}
-
-	ts = int64(1040)
-	acc.SetTime(ts)
 
 	acc.Connect(peer)
 
-	if blocklistTime != 0 {
-		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 0)
+	balance, err := acc.Balance(peer)
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	if balance.Int64() != 0 {
+		t.Fatalf("balance for peer %v not as expected got %d, wanted 0", peer.String(), balance)
+	}
+
+	surplusBalance, err := acc.SurplusBalance(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if surplusBalance.Int64() != 0 {
+		t.Fatalf("surplus balance for peer %v not as expected got %d, wanted 0", peer.String(), balance)
+	}
+
 }
