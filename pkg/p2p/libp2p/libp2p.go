@@ -41,6 +41,7 @@ import (
 	ws "github.com/libp2p/go-ws-transport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
+	"resenje.org/multex"
 )
 
 var (
@@ -73,6 +74,7 @@ type Service struct {
 	lightNodes        lightnodes
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
+	peerMul           *multex.Multex
 }
 
 type lightnodes interface {
@@ -242,6 +244,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		ready:             make(chan struct{}),
 		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
+		peerMul:           multex.New(),
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -553,6 +556,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("addr from p2p: %w", err)
 	}
 
+	s.peerMul.Lock(info.ID.String())
+	defer s.peerMul.Unlock(info.ID.String())
+
 	hostAddr, err := buildHostAddress(info.ID)
 	if err != nil {
 		return nil, fmt.Errorf("build host address: %w", err)
@@ -616,7 +622,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		if err := handshakeStream.FullClose(); err != nil {
-			_ = s.Disconnect(overlay)
+			_, _, _ = s.peers.remove(overlay)
+			_ = s.host.Network().ClosePeer(info.ID)
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
@@ -624,14 +631,16 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	if err := handshakeStream.FullClose(); err != nil {
-		_ = s.Disconnect(overlay)
+		_, _, _ = s.peers.remove(overlay)
+		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
 	if i.FullNode {
 		err = s.addressbook.Put(overlay, *i.BzzAddress)
 		if err != nil {
-			_ = s.Disconnect(overlay)
+			_, _, _ = s.peers.remove(overlay)
+			_ = s.host.Network().ClosePeer(info.ID)
 			return nil, fmt.Errorf("storing bzz address: %w", err)
 		}
 	}
@@ -641,7 +650,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		if tn.ConnectOut != nil {
 			if err := tn.ConnectOut(ctx, p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}); err != nil {
 				s.logger.Debugf("connectOut: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, overlay, err)
-				_ = s.Disconnect(overlay)
+				_, _, _ = s.peers.remove(overlay)
+				_ = s.host.Network().ClosePeer(info.ID)
 				s.protocolsmu.RUnlock()
 				return nil, fmt.Errorf("connectOut: protocol: %s, version:%s: %w", tn.Name, tn.Version, err)
 			}
@@ -650,7 +660,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	s.protocolsmu.RUnlock()
 
 	if !s.peers.Exists(overlay) {
-		_ = s.Disconnect(overlay)
+		_, _, _ = s.peers.remove(overlay)
+		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("libp2p connect: peer %s does not exist %w", overlay, p2p.ErrPeerNotFound)
 	}
 
@@ -668,6 +679,9 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 
 	// found is checked at the bottom of the function
 	found, full, peerID := s.peers.remove(overlay)
+
+	s.peerMul.Lock(peerID.String())
+	defer s.peerMul.Unlock(peerID.String())
 
 	_ = s.host.Network().ClosePeer(peerID)
 
@@ -710,6 +724,10 @@ func (s *Service) disconnected(address swarm.Address) {
 			peer.FullNode = full
 		}
 	}
+
+	s.peerMul.Lock(peerID.String())
+	defer s.peerMul.Unlock(peerID.String())
+
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.DisconnectIn != nil {
