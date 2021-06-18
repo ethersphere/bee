@@ -1083,7 +1083,7 @@ func (a *Accounting) Connect(peer swarm.Address) {
 	if accountingPeer.reconnectAllowTimestamp != 0 {
 		timeNow := a.timeNow().Unix()
 		if timeNow < accountingPeer.reconnectAllowTimestamp {
-			disconnectFor := accountingPeer.reconnectAllowTimestamp - timeNow
+			// disconnectFor := accountingPeer.reconnectAllowTimestamp - timeNow
 			a.metrics.AccountingDisconnectsReconnectCount.Inc()
 			// _ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
 		}
