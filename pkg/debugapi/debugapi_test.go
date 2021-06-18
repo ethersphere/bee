@@ -162,7 +162,6 @@ func TestServer_Configure(t *testing.T) {
 	)
 	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
-			Overlay:      swarm.ZeroAddress,
 			Underlay:     make([]multiaddr.Multiaddr, 0),
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
@@ -181,7 +180,7 @@ func TestServer_Configure(t *testing.T) {
 	)
 	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
-			Overlay:      o.Overlay,
+			Overlay:      &o.Overlay,
 			Underlay:     addresses,
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),

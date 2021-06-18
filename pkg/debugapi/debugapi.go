@@ -33,7 +33,7 @@ import (
 
 // Service implements http.Handler interface to be used in HTTP server.
 type Service struct {
-	overlay            swarm.Address
+	overlay            *swarm.Address
 	publicKey          ecdsa.PublicKey
 	pssPublicKey       ecdsa.PublicKey
 	ethereumAddress    common.Address
@@ -95,7 +95,7 @@ func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpon
 	s.batchStore = batchStore
 	s.pseudosettle = pseudosettle
 	s.transaction = transaction
-	s.overlay = overlay
+	s.overlay = &overlay
 
 	s.setRouter(s.newRouter())
 }
