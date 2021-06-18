@@ -75,7 +75,7 @@ type peersResponse struct {
 
 func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, peersResponse{
-		Peers: toDTOs(s.p2p.Peers()),
+		Peers: mapPeers(s.p2p.Peers()),
 	})
 }
 
@@ -88,11 +88,11 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, peersResponse{
-		Peers: toDTOs(peers),
+		Peers: mapPeers(peers),
 	})
 }
 
-func toDTOs(peers []p2p.Peer) (out []Peer) {
+func mapPeers(peers []p2p.Peer) (out []Peer) {
 	for _, peer := range peers {
 		out = append(out, Peer{
 			Address:  peer.Address,

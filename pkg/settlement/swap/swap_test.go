@@ -91,7 +91,7 @@ func (t *testObserver) Disconnect(peer swarm.Address) {
 }
 
 type addressbookMock struct {
-	migratePeer     func(old, new swarm.Address) error
+	migratePeer     func(oldPeer, newPeer swarm.Address) error
 	beneficiary     func(peer swarm.Address) (beneficiary common.Address, known bool, err error)
 	chequebook      func(peer swarm.Address) (chequebookAddress common.Address, known bool, err error)
 	beneficiaryPeer func(beneficiary common.Address) (peer swarm.Address, known bool, err error)
@@ -104,8 +104,8 @@ type addressbookMock struct {
 	getDeductionBy  func(peer swarm.Address) (bool, error)
 }
 
-func (m *addressbookMock) MigratePeer(old, new swarm.Address) error {
-	return m.migratePeer(old, new)
+func (m *addressbookMock) MigratePeer(oldPeer, newPeer swarm.Address) error {
+	return m.migratePeer(oldPeer, newPeer)
 }
 func (m *addressbookMock) Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error) {
 	return m.beneficiary(peer)
@@ -549,7 +549,7 @@ func TestHandshake(t *testing.T) {
 			beneficiaryPeer: func(common.Address) (peer swarm.Address, known bool, err error) {
 				return peer, true, nil
 			},
-			migratePeer: func(old, new swarm.Address) error {
+			migratePeer: func(oldPeer, newPeer swarm.Address) error {
 				return nil
 			},
 			putBeneficiary: func(p swarm.Address, b common.Address) error {
@@ -595,7 +595,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 			beneficiaryPeer: func(beneficiary common.Address) (swarm.Address, bool, error) {
 				return peer, true, nil
 			},
-			migratePeer: func(old, new swarm.Address) error {
+			migratePeer: func(oldPeer, newPeer swarm.Address) error {
 				return nil
 			},
 			putBeneficiary: func(p swarm.Address, b common.Address) error {
@@ -637,7 +637,7 @@ func TestMigratePeer(t *testing.T) {
 			beneficiaryPeer: func(beneficiary common.Address) (swarm.Address, bool, error) {
 				return swarm.MustParseHexAddress("00112233"), true, nil
 			},
-			migratePeer: func(old, new swarm.Address) error {
+			migratePeer: func(oldPeer, newPeer swarm.Address) error {
 				return nil
 			},
 		},
