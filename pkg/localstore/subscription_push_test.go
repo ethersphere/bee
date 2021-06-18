@@ -70,7 +70,7 @@ func TestDB_SubscribePush(t *testing.T) {
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	ch, stop := db.SubscribePush(ctx)
+	ch, _, stop := db.SubscribePush(ctx, func(_ []byte) bool { return false })
 	defer stop()
 
 	// receive and validate addresses from the subscription
@@ -183,7 +183,7 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 	// start a number of subscriptions
 	// that all of them will write every addresses error to errChan
 	for j := 0; j < subsCount; j++ {
-		ch, stop := db.SubscribePush(ctx)
+		ch, _, stop := db.SubscribePush(ctx, func(_ []byte) bool { return false })
 		defer stop()
 
 		// receive and validate addresses from the subscription

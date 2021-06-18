@@ -146,7 +146,7 @@ type Storer interface {
 	Setter
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	PullSubscriber
-	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
+	SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func())
 	io.Closer
 }
 
