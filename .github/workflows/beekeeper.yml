@@ -53,10 +53,10 @@ jobs:
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      #- name: Set local cluster
-        #run: |
-          #make beelocal ACTION=add-hosts
-          #timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
       #- name: Test pingpong
         #id: pingpong-1
         #run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
@@ -83,10 +83,10 @@ jobs:
       #- name: Test manifest
         #id: manifest-1
         #run: beekeeper check --cluster-name local-dns --checks=ci-manifest
-      #- name: Destroy the cluster
-        #run: |
-          #beekeeper delete bee-cluster --cluster-name local-dns
-          #make beelocal ACTION=uninstall
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
       #- name: Prepare testing cluster (Node connection and clef enabled)
         #run: |
             #timeout 10m make beelocal OPTS='ci skip-vet'
@@ -113,13 +113,13 @@ jobs:
       - name: Apply patches
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
-      #- name: Prepare testing cluster (storage incentives setup)
-        #run: |
-          #timeout 10m make beelocal OPTS='ci skip-vet'
-      #- name: Set kube config
-        #run: |
-          #mkdir -p ~/.kube
-          #cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Prepare testing cluster (storage incentives setup)
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
           make beelocal ACTION=add-hosts
