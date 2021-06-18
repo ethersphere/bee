@@ -28,68 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestInit(t *testing.T) {
-
-	// Testing handshake
-
-	logger := logging.New(ioutil.Discard, 0)
-	commonAddr := common.HexToAddress("0xab")
-	peerID := swarm.MustParseHexAddress("9ee7add7")
-	peer := p2p.Peer{Address: peerID}
-	swapHsReceiver := swapmock.NewSwap()
-	swapHsInitiator := swapmock.NewSwap()
-	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
-	swappHsReceiver := swapprotocol.New(nil, logger, commonAddr, priceOracle)
-	swappHsReceiver.SetSwap(swapHsReceiver)
-	recorder := streamtest.New(
-		streamtest.WithProtocols(swappHsReceiver.Protocol()),
-		streamtest.WithBaseAddr(peerID),
-	)
-	commonAddr2 := common.HexToAddress("0xdc")
-	swappHsInitiator := swapprotocol.New(recorder, logger, commonAddr2, priceOracle)
-	swappHsInitiator.SetSwap(swapHsInitiator)
-
-	if err := swappHsInitiator.Init(context.Background(), peer); err != nil {
-		t.Fatal("bad")
-	}
-	records, err := recorder.Records(peerID, "swap", "1.0.0", "init")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if l := len(records); l != 1 {
-		t.Fatalf("got %v records, want %v", l, 1)
-	}
-	record := records[0]
-	messages, err := protobuf.ReadMessages(
-		bytes.NewReader(record.In()),
-		func() protobuf.Message { return new(pb.Handshake) },
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gotBeneficiary := messages[0].(*pb.Handshake).Beneficiary
-	if !bytes.Equal(gotBeneficiary, commonAddr2.Bytes()) {
-		t.Fatalf("got %v bytes, want %v bytes", gotBeneficiary, commonAddr2.Bytes())
-	}
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
-	}
-	messages, err = protobuf.ReadMessages(
-		bytes.NewReader(record.Out()),
-		func() protobuf.Message { return new(pb.Handshake) },
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gotBeneficiary = messages[0].(*pb.Handshake).Beneficiary
-	if !bytes.Equal(gotBeneficiary, commonAddr.Bytes()) {
-		t.Fatalf("got %v bytes, want %v bytes", gotBeneficiary, commonAddr.Bytes())
-	}
-	if len(messages) != 1 {
-		t.Fatalf("got %v messages, want %v", len(messages), 1)
-	}
-}
-
 func TestEmitCheques(t *testing.T) {
 
 	// Test negotiating / sending cheques
