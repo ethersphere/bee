@@ -91,8 +91,7 @@ type accountingPeer struct {
 	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
 	refreshTimestamp               int64      // last time we attempted time-based settlement
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
-	reconnectAllowTimestamp        int64
-	lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
+	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
 	connected                      bool
 }
 
