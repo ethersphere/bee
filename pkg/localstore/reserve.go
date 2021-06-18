@@ -101,6 +101,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		if err := db.reserveSize.Put(reserveSize); err != nil {
 			return 0, err
 		}
+		db.logger.Debugf("localstore: unreserve batch reserve size: %d, evicted %d", reserveSize, evicted)
 		db.metrics.ReserveSize.Set(float64(reserveSize))
 	}
 
