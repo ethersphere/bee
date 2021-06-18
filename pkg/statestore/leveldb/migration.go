@@ -56,16 +56,35 @@ var schemaMigrations = []migration{
 
 func migrateStamp(s *store) error {
 	var collectedKeys []string
-	err := s.Iterate("postage", func(k, v []byte) (bool, error) {
+	if err := s.Iterate("postage", func(k, v []byte) (bool, error) {
 		stk := string(k)
 		if strings.HasPrefix(stk, "postage") {
 			collectedKeys = append(collectedKeys, stk)
 		}
 
 		return false, nil
-	})
+	}); err != nil {
+		return err
+	}
 
-	if err != nil {
+	if err := s.Iterate("batchstore", func(k, v []byte) (bool, error) {
+		stk := string(k)
+		if strings.HasPrefix(stk, "batchstore") {
+			collectedKeys = append(collectedKeys, stk)
+		}
+
+		return false, nil
+	}); err != nil {
+		return err
+	}
+	if err := s.Iterate("addressbook", func(k, v []byte) (bool, error) {
+		stk := string(k)
+		if strings.HasPrefix(stk, "batchstore") {
+			collectedKeys = append(collectedKeys, stk)
+		}
+
+		return false, nil
+	}); err != nil {
 		return err
 	}
 
