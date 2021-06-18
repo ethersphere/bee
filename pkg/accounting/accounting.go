@@ -1085,7 +1085,7 @@ func (a *Accounting) Connect(peer swarm.Address) {
 		if timeNow < accountingPeer.reconnectAllowTimestamp {
 			disconnectFor := accountingPeer.reconnectAllowTimestamp - timeNow
 			a.metrics.AccountingDisconnectsReconnectCount.Inc()
-			_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
+			// _ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
 		}
 	}
 }
