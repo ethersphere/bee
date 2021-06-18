@@ -56,16 +56,18 @@ var schemaMigrations = []migration{
 
 func migrateStamp(s *store) error {
 	var collectedKeys []string
-	mgfn := func(k, v []byte) (bool, error) {
+	err := s.Iterate("postage", func(k, v []byte) (bool, error) {
 		stk := string(k)
 		if strings.HasPrefix(stk, "postage") {
 			collectedKeys = append(collectedKeys, stk)
 		}
 
 		return false, nil
-	}
+	})
 
-	_ = s.Iterate("", mgfn)
+	if err != nil {
+		return err
+	}
 
 	for _, v := range collectedKeys {
 		err := s.Delete(v)
