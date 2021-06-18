@@ -95,10 +95,11 @@ func (s *store) GetReserveState() *postage.ReserveState {
 	s.rsMtx.Lock()
 	defer s.rsMtx.Unlock()
 	return &postage.ReserveState{
-		Radius:    s.rs.Radius,
-		Available: s.rs.Available,
-		Outer:     new(big.Int).Set(s.rs.Outer),
-		Inner:     new(big.Int).Set(s.rs.Inner),
+		Radius:        s.rs.Radius,
+		StorageRadius: s.rs.StorageRadius,
+		Available:     s.rs.Available,
+		Outer:         new(big.Int).Set(s.rs.Outer),
+		Inner:         new(big.Int).Set(s.rs.Inner),
 	}
 }
 
