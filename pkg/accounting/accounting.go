@@ -1079,15 +1079,6 @@ func (a *Accounting) Connect(peer swarm.Address) {
 	if err != nil {
 		a.logger.Errorf("failed to persist surplus balance: %w", err)
 	}
-
-	if accountingPeer.reconnectAllowTimestamp != 0 {
-		timeNow := a.timeNow().Unix()
-		if timeNow < accountingPeer.reconnectAllowTimestamp {
-			disconnectFor := accountingPeer.reconnectAllowTimestamp - timeNow
-			a.metrics.AccountingDisconnectsReconnectCount.Inc()
-			_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
-		}
-	}
 }
 
 // decreaseOriginatedBalanceTo decreases the originated balance to provided limit or 0 if limit is positive
@@ -1144,15 +1135,14 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	timeNow := a.timeNow().Unix()
-
-	disconnectFor, err := a.blocklistUntil(peer, 1)
-	if err != nil {
-		disconnectFor = int64(60)
+	if accountingPeer.connected {
+		disconnectFor, err := a.blocklistUntil(peer, 1)
+		if err != nil {
+			disconnectFor = int64(60)
+		}
+		accountingPeer.connected = false
+		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
 	}
-	timestamp := timeNow + disconnectFor
-	accountingPeer.connected = false
-	accountingPeer.reconnectAllowTimestamp = timestamp
 }
 
 func (a *Accounting) SetRefreshFunc(f RefreshFunc) {
