@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
+	"resenje.org/multex"
 )
 
 const (
@@ -433,10 +434,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 	}
 
 	var (
-		// The inProgress helps to avoid making a connection
+		// The mul helps to avoid making a connection
 		// to a peer who has the connection already in progress.
-		inProgress   = make(map[string]bool)
-		inProgressMu sync.Mutex
+		mul = multex.New()
 	)
 	connAttempt := func(peerConnChan <-chan *peerConnInfo) {
 		for {
@@ -452,15 +452,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 					continue
 				}
 
-				inProgressMu.Lock()
-				if !inProgress[addr] {
-					inProgress[addr] = true
-					inProgressMu.Unlock()
-					connect(peer)
-					inProgressMu.Lock()
-					delete(inProgress, addr)
-				}
-				inProgressMu.Unlock()
+				mul.Lock(addr)
+				connect(peer)
+				mul.Unlock(addr)
 				wg.Done()
 			}
 		}
