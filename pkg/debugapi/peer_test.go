@@ -170,7 +170,7 @@ func TestPeer(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/peers", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(debugapi.PeersResponse{
-				Peers: []p2p.Peer{{Address: overlay}},
+				Peers: []debugapi.Peer{{Address: overlay}},
 			}),
 		)
 	})
@@ -195,7 +195,7 @@ func TestBlocklistedPeers(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/blocklist", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.PeersResponse{
-			Peers: []p2p.Peer{{Address: overlay}},
+			Peers: []debugapi.Peer{{Address: overlay}},
 		}),
 	)
 }
