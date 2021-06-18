@@ -224,7 +224,7 @@ func (db *DB) gcTarget() (target uint64) {
 func (db *DB) reserveEvictionTarget() (target uint64) {
 	targetCache := db.reserveCapacity - uint64(float64(db.cacheCapacity)*reserveCollectionRatio)
 	targetCeiling := db.reserveCapacity - uint64(float64(db.reserveCapacity)*maxPurgeablePercentageOfReserve)
-	if targetCeiling < targetCache {
+	if targetCeiling > targetCache {
 		return targetCeiling
 	}
 	return targetCache
