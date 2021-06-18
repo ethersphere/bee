@@ -33,11 +33,11 @@ jobs:
           path: |
             /tmp/k3s-v1.19.5+k3s2
           key: k3s-v1.19.5+k3s2
-      - name: Cache Go modules
-        uses: actions/cache@v2
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      #- name: Cache Go modules
+        #uses: actions/cache@v2
+        #with:
+          #path: ~/go/pkg/mod
+          #key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Apply patches
         run: |
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
