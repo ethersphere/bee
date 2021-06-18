@@ -45,7 +45,7 @@ type Addressbook interface {
 	// GetDeductionBy returns whether a peer have already received a cheque that has been deducted
 	GetDeductionBy(peer swarm.Address) (bool, error)
 	// MigratePeer returns whether a peer have already received a cheque that has been deducted
-	MigratePeer(old, new swarm.Address) error
+	MigratePeer(oldPeer, newPeer swarm.Address) error
 }
 
 type addressbook struct {
@@ -59,8 +59,8 @@ func NewAddressbook(store storage.StateStorer) Addressbook {
 	}
 }
 
-func (a *addressbook) MigratePeer(old, new swarm.Address) error {
-	ba, known, err := a.Beneficiary(old)
+func (a *addressbook) MigratePeer(oldPeer, newPeer swarm.Address) error {
+	ba, known, err := a.Beneficiary(oldPeer)
 	if err != nil {
 		return err
 	}
@@ -68,24 +68,24 @@ func (a *addressbook) MigratePeer(old, new swarm.Address) error {
 		return errors.New("old beneficiary not known")
 	}
 
-	cb, known, err := a.Chequebook(old)
+	cb, known, err := a.Chequebook(oldPeer)
 	if err != nil {
 		return err
 	}
 
-	if err := a.PutBeneficiary(new, ba); err != nil {
+	if err := a.PutBeneficiary(newPeer, ba); err != nil {
 		return err
 	}
 
-	if err := a.store.Delete(peerBeneficiaryKey(old)); err != nil {
+	if err := a.store.Delete(peerBeneficiaryKey(oldPeer)); err != nil {
 		return err
 	}
 
 	if known {
-		if err := a.PutChequebook(new, cb); err != nil {
+		if err := a.PutChequebook(newPeer, cb); err != nil {
 			return err
 		}
-		if err := a.store.Delete(peerKey(old)); err != nil {
+		if err := a.store.Delete(peerKey(oldPeer)); err != nil {
 			return err
 		}
 	}
