@@ -119,7 +119,11 @@ func TestTransactionSend(t *testing.T) {
 			signerMockForTransaction(signedTx, sender, chainID, t),
 			store,
 			chainID,
-			monitormock.New(),
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					return nil, nil, nil
+				}),
+			),
 		)
 		if err != nil {
 			t.Fatal(err)
