@@ -118,7 +118,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, true, err
 	}
 	db.metrics.GCSize.Set(float64(gcSize))
-
+	defer func() { db.logger.Debugf("gc collected %d, target %d, startSize %d", collectedCount, target, gcSize) }()
 	done = true
 	first := true
 	start := time.Now()
