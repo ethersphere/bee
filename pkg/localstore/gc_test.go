@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -119,6 +120,8 @@ func testDBCollectGarbageWorker(t *testing.T) {
 	}
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
@@ -230,6 +233,8 @@ func TestPinGC(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)+pinChunksCount))
 
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)+pinChunksCount))
+
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
@@ -274,7 +279,8 @@ func TestGCAfterPin(t *testing.T) {
 	chunkCount := 50
 
 	db := newTestDB(t, &Options{
-		Capacity: 100,
+		Capacity:        100,
+		ReserveCapacity: 100,
 	})
 
 	pinAddrs := make([]swarm.Address, 0)
@@ -308,6 +314,8 @@ func TestGCAfterPin(t *testing.T) {
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, chunkCount))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(0)))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
 
 	for _, hash := range pinAddrs {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, hash)
@@ -435,6 +443,8 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
 
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
+
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
@@ -477,7 +487,7 @@ func TestDB_gcSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := New(dir, baseKey, nil, logger)
+	db, err := New(dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +515,7 @@ func TestDB_gcSize(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err = New(dir, baseKey, nil, logger)
+	db, err = New(dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +597,8 @@ func TestSetTestHookCollectGarbage(t *testing.T) {
 func TestPinAfterMultiGC(t *testing.T) {
 	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
 	db := newTestDB(t, &Options{
-		Capacity: 10,
+		Capacity:        10,
+		ReserveCapacity: 10,
 	})
 
 	pinnedChunks := make([]swarm.Address, 0)
@@ -706,7 +717,8 @@ func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 		}
 	}))
 	db := newTestDB(t, &Options{
-		Capacity: 10,
+		Capacity:        10,
+		ReserveCapacity: 100,
 	})
 	closed = db.close
 
@@ -897,6 +909,8 @@ func TestGC_NoEvictDirty(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
 
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
+
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
@@ -948,9 +962,202 @@ func setTestHookGCIteratorDone(h func()) (reset func()) {
 func unreserveChunkBatch(t *testing.T, db *DB, radius uint8, chs ...swarm.Chunk) {
 	t.Helper()
 	for _, ch := range chs {
-		err := db.UnreserveBatch(ch.Stamp().BatchID(), radius)
+		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), radius)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+}
+
+func setTestHookEviction(h func(count uint64)) (reset func()) {
+	current := testHookEviction
+	reset = func() { testHookEviction = current }
+	testHookEviction = h
+	return reset
+}
+
+// TestReserveEvictionWorker tests that the reserve
+// eviction works correctly once the reserve hits the
+// capacity. The necessary items are then moved into the
+// gc index.
+func TestReserveEvictionWorker(t *testing.T) {
+	var (
+		chunkCount = 10
+		batchIDs   [][]byte
+		db         *DB
+		addrs      []swarm.Address
+		closed     chan struct{}
+		mtx        sync.Mutex
+	)
+	testHookEvictionChan := make(chan uint64)
+	t.Cleanup(setTestHookEviction(func(count uint64) {
+		if count == 0 {
+			return
+		}
+		select {
+		case testHookEvictionChan <- count:
+		case <-closed:
+		}
+	}))
+
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
+	unres := func(f postage.UnreserveIteratorFn) error {
+		mtx.Lock()
+		defer mtx.Unlock()
+		for i := 0; i < len(batchIDs); i++ {
+			// pop an element from batchIDs, call the Unreserve
+			item := batchIDs[i]
+			// here we mock the behavior of the batchstore
+			// that would call the localstore back with the
+			// batch IDs and the radiuses from the FIFO queue
+			stop, err := f(item, 2)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+			stop, err = f(item, 4)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+		}
+		batchIDs = nil
+		return nil
+	}
+
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		// don't trigger if we haven't collected anything - this may
+		// result in a race condition when we inspect the gcsize below,
+		// causing the database to shut down while the cleanup to happen
+		// before the correct signal has been communicated here.
+		if collectedCount == 0 {
+			return
+		}
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-db.close:
+		}
+	}))
+
+	db = newTestDB(t, &Options{
+		Capacity:        10,
+		ReserveCapacity: 10,
+		UnreserveFunc:   unres,
+	})
+
+	// insert 10 chunks that fall into the reserve, then
+	// expect first one to be evicted
+	for i := 0; i < chunkCount; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		mtx.Lock()
+		addrs = append(addrs, ch.Address())
+		batchIDs = append(batchIDs, ch.Stamp().BatchID())
+		mtx.Unlock()
+	}
+
+	evictTarget := db.reserveEvictionTarget()
+
+	for {
+		select {
+		case <-testHookEvictionChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("eviction timeout")
+		}
+		reserveSize, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reserveSize == evictTarget {
+			break
+		}
+	}
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
+
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
+
+	t.Run("postage radius count", newItemsCountTest(db.postageRadiusIndex, 1))
+
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 1))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+
+	t.Run("all chunks should be accessible", func(t *testing.T) {
+		for _, a := range addrs {
+			if _, err := db.Get(context.Background(), storage.ModeGetRequest, a); err != nil {
+				t.Errorf("got error %v, want none", err)
+			}
+		}
+	})
+
+	for i := 0; i < chunkCount-1; i++ {
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 3).WithBatch(2, 3, 2, false)
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		mtx.Lock()
+		addrs = append(addrs, ch.Address())
+		batchIDs = append(batchIDs, ch.Stamp().BatchID())
+		mtx.Unlock()
+	}
+
+	for {
+		select {
+		case <-testHookEvictionChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("eviction timeout")
+		}
+		reserveSize, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reserveSize == evictTarget {
+			break
+		}
+	}
+	gcTarget := db.gcTarget()
+	for {
+		select {
+		case <-testHookCollectGarbageChan:
+		case <-time.After(10 * time.Second):
+			t.Error("collect garbage timeout")
+		}
+		gcSize, err := db.gcSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gcSize == gcTarget {
+			break
+		}
+	}
+
+	t.Run("9/10 of the first chunks should be accessible", func(t *testing.T) {
+		has := 0
+		for _, a := range addrs[:10] {
+			if _, err := db.Get(context.Background(), storage.ModeGetRequest, a); err == nil {
+				has++
+			}
+		}
+		if has != 9 {
+			t.Errorf("got %d chunks, want 9", has)
+		}
+	})
+
 }

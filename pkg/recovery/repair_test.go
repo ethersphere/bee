@@ -227,13 +227,20 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 		_, _, _ = f(peerID, 0)
 		return nil
 	}}
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps, logger, serverMockAccounting, pricerMock, nil)
+
+	ps0 := mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
+		// not calling peer iterator on server as it would cause dereference of non existing streamer
+		return nil
+	}}
+
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps0, logger, serverMockAccounting, pricerMock, nil)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithBaseAddr(peerID),
 	)
 	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil)
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-		return ch.WithStamp(postage.NewStamp(nil, nil)), nil
+		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
 	}
 
 	ns := netstore.New(storer, validStamp, recoveryFunc, retrieve, logger)

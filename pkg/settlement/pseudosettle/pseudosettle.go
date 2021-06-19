@@ -102,6 +102,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 		s.peers[p.Address.String()] = peerData
 	}
 
+	go s.accounting.Connect(p.Address)
 	return nil
 }
 
@@ -110,6 +111,8 @@ func (s *Service) terminate(p p2p.Peer) error {
 	defer s.peersMu.Unlock()
 
 	delete(s.peers, p.Address.String())
+
+	go s.accounting.Disconnect(p.Address)
 	return nil
 }
 
@@ -163,6 +166,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
 		} else {
 			go stream.FullClose()
 		}
@@ -230,6 +234,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
+	s.metrics.ReceivedPseudoSettlements.Inc()
 	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount)
 }
 
@@ -239,6 +244,12 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 	defer cancel()
 
 	var err error
+
+	defer func() {
+		if err != nil {
+			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
+		}
+	}()
 
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(peer, SettlementSentPrefix), &lastTime)
@@ -291,7 +302,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
-		err = fmt.Errorf("pseudosettle other peer %v accepted payment larger than expected", peer)
+		err = fmt.Errorf("pseudosettle peer %v accepted payment larger than expected", peer)
 		return nil, 0, err
 	}
 
@@ -322,10 +333,8 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 
 	if expectedAllowance.Cmp(acceptedAmount) > 0 {
 		// disconnect peer
-		err = s.p2pService.Blocklist(peer, 1*time.Hour)
-		if err != nil {
-			return nil, 0, err
-		}
+		err = fmt.Errorf("pseudosettle peer %v accepted lower payment than expected", peer)
+		return nil, 0, err
 	}
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
@@ -339,6 +348,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int, 
 
 	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
+	s.metrics.SentPseudoSettlements.Inc()
 
 	return acceptedAmount, lastTime.CheckTimestamp, nil
 }

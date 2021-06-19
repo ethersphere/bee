@@ -6,11 +6,13 @@ package transaction
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -23,6 +25,7 @@ type Backend interface {
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 	BlockNumber(ctx context.Context) (uint64, error)
+	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
@@ -66,6 +69,25 @@ func WaitSynced(ctx context.Context, backend Backend, maxDelay time.Duration) er
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
+func WaitBlock(ctx context.Context, backend Backend, pollingInterval time.Duration, block *big.Int) (*types.Block, error) {
+	for {
+		block, err := backend.BlockByNumber(ctx, block)
+		if err != nil {
+			if !errors.Is(err, ethereum.NotFound) {
+				return nil, err
+			}
+		} else {
+			return block, nil
+		}
+
+		select {
+		case <-time.After(pollingInterval):
+		case <-ctx.Done():
+			return nil, errors.New("context timeout")
 		}
 	}
 }

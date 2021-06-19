@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -34,7 +35,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
 					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
@@ -60,7 +61,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("with-custom-gas", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
 					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
@@ -90,7 +91,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("with-error", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
 				return nil, errors.New("err")
 			}),
 		)
@@ -108,7 +109,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("out-of-funds", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
 				return nil, postagecontract.ErrInsufficientFunds
 			}),
 		)
@@ -137,7 +138,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("depth less than bucket depth", func(t *testing.T) {
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
 				return nil, postagecontract.ErrInvalidDepth
 			}),
 		)
@@ -163,18 +164,52 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("immutable header", func(t *testing.T) {
+
+		var immutable bool
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string) ([]byte, error) {
+				immutable = i
+				return batchID, nil
+			}),
+		)
+		client, _, _ := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
+			jsonhttptest.WithRequestHeader("Immutable", "true"),
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
+				BatchID: batchID,
+			}),
+		)
+
+		if !immutable {
+			t.Fatalf("want true, got %v", immutable)
+		}
+
+	})
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 			Stamps: []api.PostageStampResponse{
 				{
-					BatchID:     batchOk,
-					Utilization: 0,
+					BatchID:       batchOk,
+					Utilization:   si.Utilization(),
+					Usable:        true,
+					Label:         si.Label(),
+					Depth:         si.Depth(),
+					Amount:        bigint.Wrap(si.Amount()),
+					BucketDepth:   si.BucketDepth(),
+					BlockNumber:   si.BlockNumber(),
+					ImmutableFlag: si.ImmutableFlag(),
 				},
 			},
 		}),
@@ -182,14 +217,22 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
 	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:     batchOk,
-				Utilization: 0,
+				BatchID:       batchOk,
+				Utilization:   si.Utilization(),
+				Usable:        true,
+				Label:         si.Label(),
+				Depth:         si.Depth(),
+				Amount:        bigint.Wrap(si.Amount()),
+				BucketDepth:   si.BucketDepth(),
+				BlockNumber:   si.BlockNumber(),
+				ImmutableFlag: si.ImmutableFlag(),
 			}),
 		)
 	})

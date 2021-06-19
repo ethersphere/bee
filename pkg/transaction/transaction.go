@@ -7,8 +7,11 @@ package transaction
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,37 +23,44 @@ import (
 )
 
 const (
-	noncePrefix             = "transaction_nonce_"
-	storedTransactionPrefix = "transaction_stored_"
+	noncePrefix              = "transaction_nonce_"
+	storedTransactionPrefix  = "transaction_stored_"
+	pendingTransactionPrefix = "transaction_pending_"
 )
 
 var (
 	// ErrTransactionReverted denotes that the sent transaction has been
 	// reverted.
 	ErrTransactionReverted = errors.New("transaction reverted")
+	ErrUnknownTransaction  = errors.New("unknown transaction")
+	ErrAlreadyImported     = errors.New("already imported")
 )
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
-	To       *common.Address // recipient of the transaction
-	Data     []byte          // transaction data
-	GasPrice *big.Int        // gas price or nil if suggested gas price should be used
-	GasLimit uint64          // gas limit or 0 if it should be estimated
-	Value    *big.Int        // amount of wei to send
+	To          *common.Address // recipient of the transaction
+	Data        []byte          // transaction data
+	GasPrice    *big.Int        // gas price or nil if suggested gas price should be used
+	GasLimit    uint64          // gas limit or 0 if it should be estimated
+	Value       *big.Int        // amount of wei to send
+	Description string          // optional description
 }
 
-type storedTransaction struct {
-	To       *common.Address // recipient of the transaction
-	Data     []byte          // transaction data
-	GasPrice *big.Int        // used gas price
-	GasLimit uint64          // used gas limit
-	Value    *big.Int        // amount of wei to send
-	Nonce    uint64          // used nonce
+type StoredTransaction struct {
+	To          *common.Address // recipient of the transaction
+	Data        []byte          // transaction data
+	GasPrice    *big.Int        // used gas price
+	GasLimit    uint64          // used gas limit
+	Value       *big.Int        // amount of wei to send
+	Nonce       uint64          // used nonce
+	Created     int64           // creation timestamp
+	Description string          // description
 }
 
 // Service is the service to send transactions. It takes care of gas price, gas
 // limit and nonce management.
 type Service interface {
+	io.Closer
 	// Send creates a transaction based on the request and sends it.
 	Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error)
 	// Call simulate a transaction based on the request.
@@ -62,10 +72,20 @@ type Service interface {
 	// This wraps the monitors watch function by loading the correct nonce from the store.
 	// This is only valid for transaction sent by this service.
 	WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error)
+	// StoredTransaction retrieves the stored information for the transaction
+	StoredTransaction(txHash common.Hash) (*StoredTransaction, error)
+	// PendingTransactions retrieves the list of all pending transaction hashes
+	PendingTransactions() ([]common.Hash, error)
+	// Resend resends a previously sent transaction
+	// This operation can be useful if for some reason the transaction vanished from the eth networks pending pool
+	ResendTransaction(txHash common.Hash) error
 }
 
 type transactionService struct {
-	lock sync.Mutex
+	wg     sync.WaitGroup
+	lock   sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	logger  logging.Logger
 	backend Backend
@@ -83,7 +103,11 @@ func NewService(logger logging.Logger, backend Backend, signer crypto.Signer, st
 		return nil, err
 	}
 
-	return &transactionService{
+	ctx, cancel := context.WithCancel(context.Background())
+
+	t := &transactionService{
+		ctx:     ctx,
+		cancel:  cancel,
 		logger:  logger,
 		backend: backend,
 		signer:  signer,
@@ -91,7 +115,17 @@ func NewService(logger logging.Logger, backend Backend, signer crypto.Signer, st
 		store:   store,
 		chainID: chainID,
 		monitor: monitor,
-	}, nil
+	}
+
+	pendingTxs, err := t.PendingTransactions()
+	if err != nil {
+		return nil, err
+	}
+	for _, txHash := range pendingTxs {
+		t.waitForPendingTx(txHash)
+	}
+
+	return t, nil
 }
 
 // Send creates and signs a transaction based on the request and sends it.
@@ -128,19 +162,50 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 
 	txHash = signedTx.Hash()
 
-	err = t.store.Put(storedTransactionKey(txHash), storedTransaction{
-		To:       signedTx.To(),
-		Data:     signedTx.Data(),
-		GasPrice: signedTx.GasPrice(),
-		GasLimit: signedTx.Gas(),
-		Value:    signedTx.Value(),
-		Nonce:    signedTx.Nonce(),
+	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
+		To:          signedTx.To(),
+		Data:        signedTx.Data(),
+		GasPrice:    signedTx.GasPrice(),
+		GasLimit:    signedTx.Gas(),
+		Value:       signedTx.Value(),
+		Nonce:       signedTx.Nonce(),
+		Created:     time.Now().Unix(),
+		Description: request.Description,
 	})
 	if err != nil {
 		return common.Hash{}, err
 	}
 
+	err = t.store.Put(pendingTransactionKey(txHash), struct{}{})
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	t.waitForPendingTx(txHash)
+
 	return signedTx.Hash(), nil
+}
+
+func (t *transactionService) waitForPendingTx(txHash common.Hash) {
+	t.wg.Add(1)
+	go func() {
+		defer t.wg.Done()
+		_, err := t.WaitForReceipt(t.ctx, txHash)
+		if err != nil {
+			if !errors.Is(err, ErrTransactionCancelled) {
+				t.logger.Errorf("error while waiting for pending transaction %x: %v", txHash, err)
+				return
+			}
+			t.logger.Warningf("pending transaction %x cancelled", txHash)
+		} else {
+			t.logger.Tracef("pending transaction %x confirmed", txHash)
+		}
+
+		err = t.store.Delete(pendingTransactionKey(txHash))
+		if err != nil {
+			t.logger.Errorf("error while unregistering transaction as pending %x: %v", txHash, err)
+		}
+	}()
 }
 
 func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]byte, error) {
@@ -160,10 +225,13 @@ func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]by
 	return data, nil
 }
 
-func (t *transactionService) getStoredTransaction(txHash common.Hash) (*storedTransaction, error) {
-	var tx storedTransaction
+func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTransaction, error) {
+	var tx StoredTransaction
 	err := t.store.Get(storedTransactionKey(txHash), &tx)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, ErrUnknownTransaction
+		}
 		return nil, err
 	}
 	return &tx, nil
@@ -226,6 +294,10 @@ func storedTransactionKey(txHash common.Hash) string {
 	return fmt.Sprintf("%s%x", storedTransactionPrefix, txHash)
 }
 
+func pendingTransactionKey(txHash common.Hash) string {
+	return fmt.Sprintf("%s%x", pendingTransactionPrefix, txHash)
+}
+
 func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 	onchainNonce, err := t.backend.PendingNonceAt(ctx, t.sender)
 	if err != nil {
@@ -278,10 +350,73 @@ func (t *transactionService) WatchSentTransaction(txHash common.Hash) (<-chan ty
 
 	// loading the tx here guarantees it was in fact sent from this transaction service
 	// also it allows us to avoid having to load the transaction during the watch loop
-	storedTransaction, err := t.getStoredTransaction(txHash)
+	storedTransaction, err := t.StoredTransaction(txHash)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return t.monitor.WatchTransaction(txHash, storedTransaction.Nonce)
+}
+
+func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
+	var txHashes []common.Hash = make([]common.Hash, 0)
+	err := t.store.Iterate(pendingTransactionPrefix, func(key, value []byte) (stop bool, err error) {
+		txHash := common.HexToHash(strings.TrimPrefix(string(key), pendingTransactionPrefix))
+		txHashes = append(txHashes, txHash)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return txHashes, nil
+}
+
+func (t *transactionService) ResendTransaction(txHash common.Hash) error {
+	storedTransaction, err := t.StoredTransaction(txHash)
+	if err != nil {
+		return err
+	}
+
+	var tx *types.Transaction
+	if storedTransaction.To != nil {
+		tx = types.NewTransaction(
+			storedTransaction.Nonce,
+			*storedTransaction.To,
+			storedTransaction.Value,
+			storedTransaction.GasLimit,
+			storedTransaction.GasPrice,
+			storedTransaction.Data,
+		)
+	} else {
+		tx = types.NewContractCreation(
+			storedTransaction.Nonce,
+			storedTransaction.Value,
+			storedTransaction.GasLimit,
+			storedTransaction.GasPrice,
+			storedTransaction.Data,
+		)
+	}
+
+	signedTx, err := t.signer.SignTx(tx, t.chainID)
+	if err != nil {
+		return err
+	}
+
+	if signedTx.Hash() != txHash {
+		return errors.New("transaction hash changed")
+	}
+
+	err = t.backend.SendTransaction(t.ctx, signedTx)
+	if err != nil {
+		if strings.Contains(err.Error(), "already imported") {
+			return ErrAlreadyImported
+		}
+	}
+	return nil
+}
+
+func (t *transactionService) Close() error {
+	t.cancel()
+	t.wg.Wait()
+	return nil
 }

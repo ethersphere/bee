@@ -18,6 +18,7 @@ package localstore
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"time"
 
@@ -25,6 +26,10 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+var (
+	ErrOverwrite = errors.New("index already exists - double issuance on immutable batch")
 )
 
 // Put stores Chunks to database and depending
@@ -196,6 +201,39 @@ func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.I
 		return true, 0, nil
 	}
 
+	previous, err := db.postageIndexIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+	} else {
+		if item.Immutable {
+			return false, 0, ErrOverwrite
+		}
+		// if a chunk is found with the same postage stamp index,
+		// replace it with the new one only if timestamp is later
+		if !later(previous, item) {
+			return false, 0, nil
+		}
+		gcSizeChange, err = db.setRemove(batch, previous, true)
+		if err != nil {
+			return false, 0, err
+		}
+		radius, err := db.postageRadiusIndex.Get(item)
+		if err != nil {
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return false, 0, err
+			}
+		} else {
+			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
+				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
+					return false, 0, err
+				}
+			}
+		}
+
+	}
+
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -209,14 +247,17 @@ func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.I
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postageIndexIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
 
-	gcSizeChange, err = db.preserveOrCache(batch, item, forcePin, forceCache)
+	gcSizeChangeNew, err := db.preserveOrCache(batch, item, forcePin, forceCache)
 	if err != nil {
 		return false, 0, err
 	}
@@ -230,7 +271,7 @@ func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.I
 		}
 	}
 
-	return false, gcSizeChange, nil
+	return false, gcSizeChange + gcSizeChangeNew, nil
 }
 
 // putUpload adds an Item to the batch by updating required indexes:
@@ -244,6 +285,26 @@ func (db *DB) putUpload(batch *badger.Txn, binIDs map[uint8]uint64, item shed.It
 	}
 	if exists {
 		return true, 0, nil
+	}
+
+	previous, err := db.postageIndexIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+	} else {
+		if item.Immutable {
+			return false, 0, ErrOverwrite
+		}
+		// if a chunk is found with the same postage stamp index,
+		// replace it with the new one only if timestamp is later
+		if !later(previous, item) {
+			return false, 0, nil
+		}
+		_, err = db.setRemove(batch, previous, true)
+		if err != nil {
+			return false, 0, err
+		}
 	}
 
 	item.StoreTimestamp = now()
@@ -263,7 +324,10 @@ func (db *DB) putUpload(batch *badger.Txn, binIDs map[uint8]uint64, item shed.It
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postageIndexIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
@@ -284,6 +348,38 @@ func (db *DB) putSync(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item
 		return true, 0, nil
 	}
 
+	previous, err := db.postageIndexIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+	} else {
+		if item.Immutable {
+			return false, 0, ErrOverwrite
+		}
+		// if a chunk is found with the same postage stamp index,
+		// replace it with the new one only if timestamp is later
+		if !later(previous, item) {
+			return false, 0, nil
+		}
+		_, err = db.setRemove(batch, previous, true)
+		if err != nil {
+			return false, 0, err
+		}
+		radius, err := db.postageRadiusIndex.Get(item)
+		if err != nil {
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return false, 0, err
+			}
+		} else {
+			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
+				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
+					return false, 0, err
+				}
+			}
+		}
+	}
+
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
@@ -301,34 +397,33 @@ func (db *DB) putSync(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item
 	if err != nil {
 		return false, 0, err
 	}
-
+	err = db.postageIndexIndex.PutInBatch(batch, item)
+	if err != nil {
+		return false, 0, err
+	}
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
 		return false, 0, err
 	}
 
-	gcSizeChange, err = db.preserveOrCache(batch, item, false, false)
+	gcSizeChangeNew, err := db.preserveOrCache(batch, item, false, false)
 	if err != nil {
 		return false, 0, err
 	}
 
-	return false, gcSizeChange, nil
+	return false, gcSizeChange + gcSizeChangeNew, nil
 }
 
 // preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
 // (the retrieval access index and the gc index)
 func (db *DB) preserveOrCache(batch *badger.Txn, item shed.Item, forcePin, forceCache bool) (gcSizeChange int64, err error) {
-	// item needs to be populated with Radius
-	item2, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		// if there's an error, assume the chunk needs to be GCd
-		forceCache = true
-	} else {
-		item.Radius = item2.Radius
-	}
-
 	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
+		if !forcePin {
+			if err := db.incReserveSizeInBatch(batch, 1); err != nil {
+				return 0, err
+			}
+		}
 		return db.setPin(batch, item)
 	}
 
@@ -379,4 +474,10 @@ func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 		}
 	}
 	return false
+}
+
+func later(previous, current shed.Item) bool {
+	pts := binary.BigEndian.Uint64(previous.Timestamp)
+	cts := binary.BigEndian.Uint64(current.Timestamp)
+	return cts > pts
 }

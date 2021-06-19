@@ -59,6 +59,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -153,6 +155,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/Status"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -216,6 +220,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -589,6 +595,8 @@ paths:
           description: Subscribed to topic
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -650,6 +658,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -692,6 +702,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:

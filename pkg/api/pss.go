@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -37,9 +38,15 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)
-		if err != nil || len(target) > targetMaxLength {
-			s.logger.Debugf("pss send: bad targets: %v", err)
-			s.logger.Error("pss send: bad targets")
+		if err != nil {
+			s.logger.Debugf("pss send: bad target (%s): %v", target, err)
+			s.logger.Errorf("pss send: bad target (%s): %v", target, err)
+			jsonhttp.BadRequest(w, nil)
+			return
+		}
+		if len(target) > targetMaxLength {
+			s.logger.Debugf("pss send: bad target length: %d", len(target))
+			s.logger.Errorf("pss send: bad target length: %d", len(target))
 			jsonhttp.BadRequest(w, nil)
 			return
 		}
@@ -81,7 +88,14 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pss: postage batch issuer: %v", err)
 		s.logger.Error("pss: postage batch issue")
-		jsonhttp.BadRequest(w, "postage stamp issuer")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, "postage stamp issuer")
+		}
 		return
 	}
 	stamper := postage.NewStamper(i, s.signer)
@@ -90,7 +104,12 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pss send payload: %v. topic: %s", err, topicVar)
 		s.logger.Error("pss send payload")
-		jsonhttp.InternalServerError(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 

@@ -10,7 +10,6 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +19,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -62,6 +60,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -96,13 +95,18 @@ type Bee struct {
 	topologyHalter           topology.Halter
 	pusherCloser             io.Closer
 	pullerCloser             io.Closer
+	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
+	transactionCloser        io.Closer
 	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
+	priceOracleCloser        io.Closer
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
 }
 
 type Options struct {
@@ -140,18 +144,20 @@ type Options struct {
 	SwapEnable                 bool
 	FullNodeMode               bool
 	Transaction                string
+	BlockHash                  string
 	PostageContractAddress     string
 	PriceOracleAddress         string
 	BlockTime                  uint64
 	DeployGasPrice             string
+	WarmupTime                 time.Duration
 }
 
 const (
-	refreshRate = int64(1000000000000)
-	basePrice   = 1000000000
+	refreshRate = int64(4500000)
+	basePrice   = 10000
 )
 
-func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o Options) (b *Bee, err error) {
+func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -171,11 +177,25 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 	}()
 
+	// light nodes have zero warmup time for pull/pushsync protocols
+	warmupTime := o.WarmupTime
+	if !o.FullNodeMode {
+		warmupTime = 0
+	}
+
 	b = &Bee{
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
 	}
+
+	stateStore, err := InitStateStore(logger, o.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	b.stateStoreCloser = stateStore
+
+	addressbook := addressbook.New(stateStore)
 
 	var debugAPIService *debugapi.Service
 	if o.DebugAPIAddr != "" {
@@ -184,7 +204,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			return nil, fmt.Errorf("eth address: %w", err)
 		}
 		// set up basic debug api endpoints for debugging and /health endpoint
-		debugAPIService = debugapi.New(swarmAddress, publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins)
+		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins)
 
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 		if err != nil {
@@ -210,19 +230,6 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.debugAPIServer = debugAPIServer
 	}
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
-	if err != nil {
-		return nil, err
-	}
-	b.stateStoreCloser = stateStore
-
-	err = CheckOverlayWithStore(swarmAddress, stateStore)
-	if err != nil {
-		return nil, err
-	}
-
-	addressbook := addressbook.New(stateStore)
-
 	var (
 		swapBackend        *ethclient.Client
 		overlayEthAddress  common.Address
@@ -233,6 +240,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		chequebookService  chequebook.Service
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
+		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 	if !o.Standalone {
 		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
@@ -241,12 +249,13 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			stateStore,
 			o.SwapEndpoint,
 			signer,
-			o.BlockTime,
+			pollingInterval,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("init chain: %w", err)
 		}
 		b.ethClientCloser = swapBackend.Close
+		b.transactionCloser = tracerCloser
 		b.transactionMonitorCloser = transactionMonitor
 	}
 
@@ -294,12 +303,34 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		)
 	}
 
-	lightNodes := lightnode.NewContainer(swarmAddress)
+	pubKey, _ := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
 
-	txHash, err := getTxHash(stateStore, logger, o)
+	var (
+		blockHash []byte
+		txHash    []byte
+	)
+
+	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
 	if err != nil {
 		return nil, fmt.Errorf("invalid transaction hash: %w", err)
 	}
+
+	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid block hash: %w", err)
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+
+	err = CheckOverlayWithStore(swarmAddress, stateStore)
+	if err != nil {
+		return nil, err
+	}
+
+	lightNodes := lightnode.NewContainer(swarmAddress)
 
 	senderMatcher := transaction.NewMatcher(swapBackend, types.NewEIP155Signer(big.NewInt(chainID)))
 
@@ -319,6 +350,17 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
+	var unreserveFn func([]byte, uint8) (uint64, error)
+	var evictFn = func(b []byte) error {
+		_, err := unreserveFn(b, swarm.MaxPO+1)
+		return err
+	}
+
+	batchStore, err := batchstore.New(stateStore, evictFn, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
 	// localstore depends on batchstore
 	var path string
 
@@ -328,24 +370,23 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	}
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        uint64(batchstore.Capacity),
+		UnreserveFunc:          batchStore.Unreserve,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 	}
 
-	storer, err := localstore.New(path, swarmAddress.Bytes(), lo, logger)
+	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
+	unreserveFn = storer.UnreserveBatch
 
-	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
 	validStamp := postage.ValidStamp(batchStore)
-	post, err := postage.NewService(stateStore, chainID)
+	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
 	}
@@ -375,7 +416,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 		b.listenerCloser = eventListener
 
-		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener)
+		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post)
 
 		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {
@@ -464,6 +505,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		<-syncedChan
 
 	}
+
+	minThreshold := big.NewInt(2 * refreshRate)
+
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
@@ -471,7 +515,9 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	minThreshold := pricer.MostExpensive()
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
@@ -505,10 +551,12 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
+		p2ps,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
 	}
+	b.accountingCloser = acc
 
 	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
@@ -518,7 +566,8 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 	acc.SetRefreshFunc(pseudosettleService.Pay)
 
 	if o.SwapEnable {
-		swapService, err = InitSwap(
+		var priceOracle priceoracle.Service
+		swapService, priceOracle, err = InitSwap(
 			p2ps,
 			logger,
 			stateStore,
@@ -528,10 +577,14 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 			chequeStore,
 			cashoutService,
 			acc,
+			o.PriceOracleAddress,
+			chainID,
+			transactionService,
 		)
 		if err != nil {
 			return nil, err
 		}
+		b.priceOracleCloser = priceOracle
 		acc.SetPayFunc(swapService.Pay)
 	}
 
@@ -557,7 +610,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer)
+	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -568,7 +621,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		b.recoveryHandleCleanup = pssService.Register(recovery.Topic, chunkRepairHandler)
 	}
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer)
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, tagService, logger, tracer, warmupTime)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
@@ -578,7 +631,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode {
-		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{})
+		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
@@ -652,6 +705,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
+		debugAPIService.MustRegisterMetrics(kad.Metrics()...)
 
 		if pullerService != nil {
 			debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
@@ -662,6 +716,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		debugAPIService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
 		debugAPIService.MustRegisterMetrics(pullStorage.Metrics()...)
 		debugAPIService.MustRegisterMetrics(retrieve.Metrics()...)
+		debugAPIService.MustRegisterMetrics(lightNodes.Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugAPIService.MustRegisterMetrics(bs.Metrics()...)
@@ -691,7 +746,7 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, transactionService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
@@ -705,6 +760,15 @@ func NewBee(addr string, swarmAddress swarm.Address, publicKey ecdsa.PublicKey, 
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
+	// if a shutdown is already in process, return here
+	b.shutdownMutex.Lock()
+	if b.shutdownInProgress {
+		b.shutdownMutex.Unlock()
+		return ErrShutdownInProgress
+	}
+	b.shutdownInProgress = true
+	b.shutdownMutex.Unlock()
+
 	// halt kademlia while shutting down other
 	// components.
 	b.topologyHalter.Halt()
@@ -712,7 +776,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	// halt p2p layer from accepting new connections
 	// while shutting down other components
 	b.p2pHalter.Halt()
-
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {
@@ -752,7 +815,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		b.recoveryHandleCleanup()
 	}
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
@@ -765,6 +828,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		defer wg.Done()
 		tryClose(b.pullerCloser, "puller")
 	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.accountingCloser, "accounting")
+	}()
 
 	b.p2pCancel()
 	go func() {
@@ -775,11 +842,13 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	wg.Wait()
 
 	tryClose(b.p2pService, "p2p server")
+	tryClose(b.priceOracleCloser, "price oracle service")
 
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		tryClose(b.transactionMonitorCloser, "transaction monitor")
+		tryClose(b.transactionCloser, "transaction")
 	}()
 	go func() {
 		defer wg.Done()
@@ -807,37 +876,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	return mErr
 }
 
-func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options) ([]byte, error) {
-	if o.Standalone {
-		return nil, nil // in standalone mode tx hash is not used
-	}
-
-	if o.Transaction != "" {
-		txHashTrimmed := strings.TrimPrefix(o.Transaction, "0x")
-		if len(txHashTrimmed) != 64 {
-			return nil, errors.New("invalid length")
-		}
-		txHash, err := hex.DecodeString(txHashTrimmed)
-		if err != nil {
-			return nil, err
-		}
-		logger.Infof("using the provided transaction hash %x", txHash)
-		return txHash, nil
-	}
-
-	var txHash common.Hash
-	key := chequebook.ChequebookDeploymentKey
-	if err := stateStore.Get(key, &txHash); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, errors.New("chequebook deployment transaction hash not found. Please specify the transaction hash manually.")
-		}
-		return nil, err
-	}
-
-	logger.Infof("using the chequebook transaction hash %x", txHash)
-	return txHash.Bytes(), nil
-}
-
 // pidKiller is used to issue a forced shut down of the node from sub modules. The issue with using the
 // node's Shutdown method is that it only shuts down the node and does not exit the start process
 // which is waiting on the os.Signals. This is not desirable, but currently bee node cannot handle
@@ -848,6 +886,8 @@ func getTxHash(stateStore storage.StateStorer, logger logging.Logger, o Options)
 type pidKiller struct {
 	node *Bee
 }
+
+var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
 func (p *pidKiller) Shutdown(ctx context.Context) error {
 	err := p.node.Shutdown(ctx)

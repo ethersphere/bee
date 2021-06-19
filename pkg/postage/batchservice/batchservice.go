@@ -5,6 +5,7 @@
 package batchservice
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,10 +19,12 @@ import (
 const dirtyDBKey = "batchservice_dirty_db"
 
 type batchService struct {
-	stateStore storage.StateStorer
-	storer     postage.Storer
-	logger     logging.Logger
-	listener   postage.Listener
+	stateStore    storage.StateStorer
+	storer        postage.Storer
+	logger        logging.Logger
+	listener      postage.Listener
+	owner         []byte
+	batchListener postage.BatchCreationListener
 }
 
 type Interface interface {
@@ -29,24 +32,37 @@ type Interface interface {
 }
 
 // New will create a new BatchService.
-func New(stateStore storage.StateStorer, storer postage.Storer, logger logging.Logger, listener postage.Listener) Interface {
-	return &batchService{stateStore, storer, logger, listener}
+func New(
+	stateStore storage.StateStorer,
+	storer postage.Storer,
+	logger logging.Logger,
+	listener postage.Listener,
+	owner []byte,
+	batchListener postage.BatchCreationListener,
+) Interface {
+	return &batchService{stateStore, storer, logger, listener, owner, batchListener}
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
-func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, depth uint8) error {
+func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool) error {
 	b := &postage.Batch{
-		ID:    id,
-		Owner: owner,
-		Value: big.NewInt(0),
-		Start: svc.storer.GetChainState().Block,
-		Depth: depth,
+		ID:          id,
+		Owner:       owner,
+		Value:       big.NewInt(0),
+		Start:       svc.storer.GetChainState().Block,
+		Depth:       depth,
+		BucketDepth: bucketDepth,
+		Immutable:   immutable,
 	}
 
 	err := svc.storer.Put(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
+	}
+
+	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
+		svc.batchListener.Handle(b)
 	}
 
 	svc.logger.Debugf("batch service: created batch id %s", hex.EncodeToString(b.ID))

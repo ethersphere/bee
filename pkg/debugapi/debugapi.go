@@ -27,12 +27,13 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Service implements http.Handler interface to be used in HTTP server.
 type Service struct {
-	overlay            swarm.Address
+	overlay            *swarm.Address
 	publicKey          ecdsa.PublicKey
 	pssPublicKey       ecdsa.PublicKey
 	ethereumAddress    common.Address
@@ -49,6 +50,7 @@ type Service struct {
 	chequebook         chequebook.Service
 	swap               swap.Interface
 	batchStore         postage.Storer
+	transaction        transaction.Service
 	corsAllowedOrigins []string
 	metricsRegistry    *prometheus.Registry
 	lightNodes         *lightnode.Container
@@ -61,9 +63,8 @@ type Service struct {
 // to expose /addresses, /health endpoints, Go metrics and pprof. It is useful to expose
 // these endpoints before all dependencies are configured and injected to have
 // access to basic debugging tools and /health endpoint.
-func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string) *Service {
 	s := new(Service)
-	s.overlay = overlay
 	s.publicKey = publicKey
 	s.pssPublicKey = pssPublicKey
 	s.ethereumAddress = ethereumAddress
@@ -80,7 +81,7 @@ func New(overlay swarm.Address, publicKey, pssPublicKey ecdsa.PublicKey, ethereu
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer) {
+func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, transaction transaction.Service) {
 	s.p2p = p2p
 	s.pingpong = pingpong
 	s.topologyDriver = topologyDriver
@@ -93,6 +94,8 @@ func (s *Service) Configure(p2p p2p.DebugService, pingpong pingpong.Interface, t
 	s.lightNodes = lightNodes
 	s.batchStore = batchStore
 	s.pseudosettle = pseudosettle
+	s.transaction = transaction
+	s.overlay = &overlay
 
 	s.setRouter(s.newRouter())
 }

@@ -6,9 +6,11 @@ package node
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -38,7 +41,7 @@ func InitChain(
 	stateStore storage.StateStorer,
 	endpoint string,
 	signer crypto.Signer,
-	blocktime uint64,
+	pollingInterval time.Duration,
 ) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend, err := ethclient.Dial(endpoint)
 	if err != nil {
@@ -51,7 +54,6 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
 	}
 
-	pollingInterval := time.Duration(blocktime) * time.Second
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
@@ -214,8 +216,25 @@ func InitSwap(
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
 	accounting settlement.Accounting,
-) (*swap.Service, error) {
-	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
+	priceOracleAddress string,
+	chainID int64,
+	transactionService transaction.Service,
+) (*swap.Service, priceoracle.Service, error) {
+
+	var currentPriceOracleAddress common.Address
+	if priceOracleAddress == "" {
+		var found bool
+		currentPriceOracleAddress, found = priceoracle.DiscoverPriceOracleAddress(chainID)
+		if !found {
+			return nil, nil, errors.New("no known price oracle address for this network")
+		}
+	} else {
+		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
+	}
+
+	priceOracle := priceoracle.New(logger, currentPriceOracleAddress, transactionService, 300)
+	priceOracle.Start()
+	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, priceOracle)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
 	swapService := swap.New(
@@ -227,7 +246,6 @@ func InitSwap(
 		swapAddressBook,
 		networkID,
 		cashoutService,
-		p2ps,
 		accounting,
 	)
 
@@ -235,8 +253,70 @@ func InitSwap(
 
 	err := p2ps.AddProtocol(swapProtocol.Protocol())
 	if err != nil {
+		return nil, nil, err
+	}
+
+	return swapService, priceOracle, nil
+}
+
+func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString string) ([]byte, error) {
+
+	if trxString != "" {
+		txHashTrimmed := strings.TrimPrefix(trxString, "0x")
+		if len(txHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		txHash, err := hex.DecodeString(txHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided transaction hash %x", txHash)
+		return txHash, nil
+	}
+
+	var txHash common.Hash
+	key := chequebook.ChequebookDeploymentKey
+	if err := stateStore.Get(key, &txHash); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, errors.New("chequebook deployment transaction hash not found, please specify the transaction hash manually")
+		}
 		return nil, err
 	}
 
-	return swapService, nil
+	logger.Infof("using the chequebook transaction hash %x", txHash)
+	return txHash.Bytes(), nil
+}
+
+func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transaction.Backend, monitor transaction.Monitor, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
+
+	if blockHash != "" {
+		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
+		if len(blockHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		blockHash, err := hex.DecodeString(blockHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided block hash %x", blockHash)
+		return blockHash, nil
+	}
+
+	// if not found in statestore, fetch from chain
+	tx, err := backend.TransactionReceipt(ctx, common.BytesToHash(trx))
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := transaction.WaitBlock(ctx, backend, duration, big.NewInt(0).Add(tx.BlockNumber, big.NewInt(1)))
+	if err != nil {
+		return nil, err
+	}
+
+	hash := block.Hash()
+	hashBytes := hash.Bytes()
+
+	logger.Infof("using the next block hash from the blockchain %x", hashBytes)
+
+	return hashBytes, nil
 }

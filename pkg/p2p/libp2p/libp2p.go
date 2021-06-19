@@ -345,7 +345,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		}
 	}
 
-	peer := p2p.Peer{Address: overlay, FullNode: i.FullNode}
+	peer := p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}
 
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
@@ -377,6 +377,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					return
 				} else {
 					s.logger.Tracef("stream handler: kicking away light node %s to make room for %s", p.String(), peer.Address.String())
+					s.metrics.KickedOutPeersCount.Inc()
 					_ = s.Disconnect(p)
 					return
 				}
@@ -638,7 +639,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.ConnectOut != nil {
-			if err := tn.ConnectOut(ctx, p2p.Peer{Address: overlay, FullNode: i.FullNode}); err != nil {
+			if err := tn.ConnectOut(ctx, p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}); err != nil {
 				s.logger.Debugf("connectOut: protocol: %s, version:%s, peer: %s: %v", tn.Name, tn.Version, overlay, err)
 				_ = s.Disconnect(overlay)
 				s.protocolsmu.RUnlock()

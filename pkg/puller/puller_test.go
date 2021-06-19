@@ -597,7 +597,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	return puller.New(s, kad, ps, logger, o), s, kad, ps
+	return puller.New(s, kad, ps, logger, o, 0), s, kad, ps
 }
 
 type c struct {

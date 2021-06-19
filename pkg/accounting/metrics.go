@@ -13,12 +13,18 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	TotalDebitedAmount         prometheus.Counter
-	TotalCreditedAmount        prometheus.Counter
-	DebitEventsCount           prometheus.Counter
-	CreditEventsCount          prometheus.Counter
-	AccountingDisconnectsCount prometheus.Counter
-	AccountingBlocksCount      prometheus.Counter
+	TotalDebitedAmount                       prometheus.Counter
+	TotalCreditedAmount                      prometheus.Counter
+	DebitEventsCount                         prometheus.Counter
+	CreditEventsCount                        prometheus.Counter
+	AccountingDisconnectsEnforceRefreshCount prometheus.Counter
+	AccountingDisconnectsOverdrawCount       prometheus.Counter
+	AccountingDisconnectsGhostOverdrawCount  prometheus.Counter
+	AccountingDisconnectsReconnectCount      prometheus.Counter
+	AccountingBlocksCount                    prometheus.Counter
+	AccountingReserveCount                   prometheus.Counter
+	TotalOriginatedCreditedAmount            prometheus.Counter
+	OriginatedCreditEventsCount              prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -49,17 +55,54 @@ func newMetrics() metrics {
 			Name:      "credit_events_count",
 			Help:      "Number of occurrences of BZZ credit events towards peers",
 		}),
-		AccountingDisconnectsCount: prometheus.NewCounter(prometheus.CounterOpts{
+		AccountingDisconnectsEnforceRefreshCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "accounting_disconnects_count",
+			Name:      "disconnects_enforce_refresh_count",
+			Help:      "Number of occurrences of peers disconnected based on failed refreshment attempts",
+		}),
+		AccountingDisconnectsOverdrawCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "disconnects_overdraw_count",
 			Help:      "Number of occurrences of peers disconnected based on payment thresholds",
 		}),
+		AccountingDisconnectsGhostOverdrawCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "disconnects_ghost_overdraw_count",
+			Help:      "Number of occurrences of peers disconnected based on undebitable requests thresholds",
+		}),
+		AccountingDisconnectsReconnectCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "disconnects_reconnect_count",
+			Help:      "Number of occurrences of peers disconnected based on early attempt to reconnect",
+		}),
+
 		AccountingBlocksCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "accounting_blocks_count",
 			Help:      "Number of occurrences of temporarily skipping a peer to avoid crossing their disconnect thresholds",
+		}),
+		AccountingReserveCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "accounting_reserve_count",
+			Help:      "Number of reserve calls",
+		}),
+		TotalOriginatedCreditedAmount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_originated_credited_amount",
+			Help:      "Amount of BZZ credited to peers (potential cost of the node) for originated traffic",
+		}),
+		OriginatedCreditEventsCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "originated_credit_events_count",
+			Help:      "Number of occurrences of BZZ credit events as originator towards peers",
 		}),
 	}
 }

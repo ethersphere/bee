@@ -12,7 +12,7 @@ import (
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
-	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth uint8) error
+	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool) error
 	TopUp(id []byte, normalisedBalance *big.Int) error
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
 	UpdatePrice(price *big.Int) error
@@ -23,6 +23,8 @@ type EventUpdater interface {
 	TransactionEnd() error
 }
 
+type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
+
 // Storer represents the persistence layer for batches on the current (highest
 // available) block.
 type Storer interface {
@@ -32,6 +34,7 @@ type Storer interface {
 	GetChainState() *ChainState
 	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
+	Unreserve(UnreserveIteratorFn) error
 
 	Reset() error
 }
@@ -44,4 +47,8 @@ type RadiusSetter interface {
 type Listener interface {
 	io.Closer
 	Listen(from uint64, updater EventUpdater) <-chan struct{}
+}
+
+type BatchCreationListener interface {
+	Handle(*Batch)
 }

@@ -7,7 +7,9 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +36,7 @@ func (c *command) initDeployCmd() error {
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
+			networkID := c.config.GetUint64(optionNameNetworkID)
 
 			stateStore, err := node.InitStateStore(logger, dataDir)
 			if err != nil {
@@ -47,11 +50,6 @@ func (c *command) initDeployCmd() error {
 				return err
 			}
 			signer := signerConfig.signer
-
-			err = node.CheckOverlayWithStore(signerConfig.address, stateStore)
-			if err != nil {
-				return err
-			}
 
 			ctx := cmd.Context()
 
@@ -94,6 +92,33 @@ func (c *command) initDeployCmd() error {
 				swapInitialDeposit,
 				deployGasPrice,
 			)
+			if err != nil {
+				return err
+			}
+
+			optionTrxHash := c.config.GetString(optionNameTransactionHash)
+			optionBlockHash := c.config.GetString(optionNameBlockHash)
+
+			txHash, err := node.GetTxHash(stateStore, logger, optionTrxHash)
+			if err != nil {
+				return fmt.Errorf("invalid transaction hash: %w", err)
+			}
+
+			blockTime := time.Duration(c.config.GetUint64(optionNameBlockTime)) * time.Second
+
+			blockHash, err := node.GetTxNextBlock(ctx, logger, swapBackend, transactionMonitor, blockTime, txHash, optionBlockHash)
+			if err != nil {
+				return err
+			}
+
+			pubKey, err := signer.PublicKey()
+			if err != nil {
+				return err
+			}
+
+			swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+
+			err = node.CheckOverlayWithStore(swarmAddress, stateStore)
 
 			return err
 		},

@@ -34,6 +34,11 @@ components:
         pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
+    BigInt:
+      description: Numeric string that represents integer which might exceeds `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      type: string
+      example: "1000000000000000000"
+
     ReserveState:
       type: object
       properties:
@@ -42,9 +47,9 @@ components:
         available:
           type: integer
         outer:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         inner:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChainState:
       type: object
@@ -62,7 +67,7 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         balance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     Balances:
       type: object
@@ -109,7 +114,7 @@ components:
         chequebook:
           $ref: "#/components/schemas/EthereumAddress"
         payout:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChequeAllPeersResponse:
       type: object
@@ -134,9 +139,9 @@ components:
       type: object
       properties:
         totalBalance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         availableBalance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChequebookAddress:
       type: object
@@ -159,7 +164,7 @@ components:
       type: string
       pattern: "^[A-Fa-f0-9]{40}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
-      
+
     FileName:
       type: string
 
@@ -259,7 +264,12 @@ components:
       type: string
 
     ProblemDetails:
-      type: string
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
 
     ReferenceResponse:
       type: object
@@ -309,6 +319,20 @@ components:
           $ref: "#/components/schemas/BatchID"
         utilization:
           type: integer
+        usable:
+          type: boolean
+        label:
+          type: string
+        depth:
+          type: integer
+        amount:
+          $ref: "#/components/schemas/BigInt"
+        bucketDepth:
+          type: integer
+        blockNumber:
+          type: integer
+        immutableFlag:
+          type: boolean
 
     Settlement:
       type: object
@@ -383,7 +407,7 @@ components:
         recipient:
           $ref: "#/components/schemas/EthereumAddress"
         lastPayout:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         bounced:
           type: boolean
 
@@ -399,7 +423,7 @@ components:
         result:
           $ref: "#/components/schemas/SwapCashoutResult"
         uncashedAmount:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     TagName:
       type: string
@@ -414,6 +438,37 @@ components:
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
+    
+    TransactionInfoResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"
+        to:
+          $ref: "#/components/schemas/EthereumAddress"
+        nonce:
+          type: integer
+        gasPrice:
+          type: "#/components/schemas/BigInt"
+        gasLimit:
+          type: integer
+        data:
+          type: string
+        created:
+          type: "#/components/schemas/DateTime"
+        description:
+          type: string
+        value:
+          type: "#/components/schemas/BigInt"
+
+    PendingTransactionReponse:
+      type: object
+      properties:
+        pendingTransactions:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/TransactionHash"
 
     Uid:
       type: integer
@@ -561,6 +616,12 @@ components:
             $ref: "#/components/schemas/ProblemDetails"
     "401":
       description: Unauthorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    "402":
+      description: Payment Required
       content:
         application/problem+json:
           schema:

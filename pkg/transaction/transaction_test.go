@@ -119,11 +119,16 @@ func TestTransactionSend(t *testing.T) {
 			signerMockForTransaction(signedTx, sender, chainID, t),
 			store,
 			chainID,
-			monitormock.New(),
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					return nil, nil, nil
+				}),
+			),
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer transactionService.Close()
 
 		txHash, err := transactionService.Send(context.Background(), request)
 		if err != nil {
@@ -141,6 +146,47 @@ func TestTransactionSend(t *testing.T) {
 		}
 		if storedNonce != nonce+1 {
 			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.To == nil || *storedTransaction.To != recipient {
+			t.Fatalf("got wrong recipient in stored transaction. wanted %x, got %x", recipient, storedTransaction.To)
+		}
+
+		if !bytes.Equal(storedTransaction.Data, request.Data) {
+			t.Fatalf("got wrong data in stored transaction. wanted %x, got %x", request.Data, storedTransaction.Data)
+		}
+
+		if storedTransaction.Description != request.Description {
+			t.Fatalf("got wrong description in stored transaction. wanted %x, got %x", request.Description, storedTransaction.Description)
+		}
+
+		if storedTransaction.GasLimit != estimatedGasLimit {
+			t.Fatalf("got wrong gas limit in stored transaction. wanted %d, got %d", estimatedGasLimit, storedTransaction.GasLimit)
+		}
+
+		if suggestedGasPrice.Cmp(storedTransaction.GasPrice) != 0 {
+			t.Fatalf("got wrong gas price in stored transaction. wanted %d, got %d", suggestedGasPrice, storedTransaction.GasPrice)
+		}
+
+		if storedTransaction.Nonce != nonce {
+			t.Fatalf("got wrong nonce in stored transaction. wanted %d, got %d", nonce, storedTransaction.Nonce)
+		}
+
+		pending, err := transactionService.PendingTransactions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) != 1 {
+			t.Fatalf("expected one pending transaction, got %d", len(pending))
+		}
+
+		if pending[0] != txHash {
+			t.Fatalf("got wrong pending transaction. wanted %x, got %x", txHash, pending[0])
 		}
 	})
 
@@ -185,6 +231,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer transactionService.Close()
 
 		txHash, err := transactionService.Send(context.Background(), request)
 		if err != nil {
@@ -311,6 +358,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer transactionService.Close()
 
 		txHash, err := transactionService.Send(context.Background(), request)
 		if err != nil {
@@ -369,6 +417,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer transactionService.Close()
 
 	receipt, err := transactionService.WaitForReceipt(context.Background(), txHash)
 	if err != nil {
@@ -377,5 +426,57 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 
 	if receipt.TxHash != txHash {
 		t.Fatal("got wrong receipt")
+	}
+}
+
+func TestTransactionResend(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	recipient := common.HexToAddress("0xbbbddd")
+	chainID := big.NewInt(5)
+	nonce := uint64(10)
+	data := []byte{1, 2, 3, 4}
+	gasPrice := big.NewInt(0)
+	gasLimit := uint64(100000)
+	value := big.NewInt(0)
+
+	store := storemock.NewStateStore()
+	defer store.Close()
+
+	signedTx := types.NewTransaction(nonce, recipient, value, gasLimit, gasPrice, data)
+
+	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
+		Nonce:    nonce,
+		To:       &recipient,
+		Data:     data,
+		GasPrice: gasPrice,
+		GasLimit: gasLimit,
+		Value:    value,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	transactionService, err := transaction.NewService(logger,
+		backendmock.New(
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				if tx != signedTx {
+					t.Fatal("not sending signed transaction")
+				}
+				return nil
+			}),
+		),
+		signerMockForTransaction(signedTx, recipient, chainID, t),
+		store,
+		chainID,
+		monitormock.New(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transactionService.Close()
+
+	err = transactionService.ResendTransaction(signedTx.Hash())
+	if err != nil {
+		t.Fatal(err)
 	}
 }

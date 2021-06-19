@@ -19,7 +19,6 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/dgraph-io/badger/v3"
@@ -147,6 +146,8 @@ func (db *DB) setSync(batch *badger.Txn, addr swarm.Address) (gcSizeChange int64
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 	item.BatchID = i.BatchID
+	item.Index = i.Index
+	item.Timestamp = i.Timestamp
 
 	i, err = db.pushIndex.Get(item)
 	if err != nil {
@@ -191,12 +192,6 @@ func (db *DB) setSync(batch *badger.Txn, addr swarm.Address) (gcSizeChange int64
 	} else {
 		item.AccessTimestamp = i1.AccessTimestamp
 	}
-	// item needs to be populated with Radius
-	item2, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		return 0, fmt.Errorf("postage chunks index: %w", err)
-	}
-	item.Radius = item2.Radius
 	return db.preserveOrCache(batch, item, false, false)
 }
 
@@ -240,6 +235,7 @@ func (db *DB) setRemove(batch *badger.Txn, item shed.Item, check bool) (gcSizeCh
 	if err != nil {
 		return 0, err
 	}
+
 	// unless called by GC which iterates through the gcIndex
 	// a check is needed for decrementing gcSize
 	// as delete is not reporting if the key/value pair is deleted or not
