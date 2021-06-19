@@ -64,6 +64,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
@@ -349,6 +350,17 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
+	var unreserveFn func([]byte, uint8) (uint64, error)
+	var evictFn = func(b []byte) error {
+		_, err := unreserveFn(b, swarm.MaxPO+1)
+		return err
+	}
+
+	batchStore, err := batchstore.New(stateStore, evictFn, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
 	// localstore depends on batchstore
 	var path string
 
@@ -358,6 +370,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        uint64(batchstore.Capacity),
+		UnreserveFunc:          batchStore.Unreserve,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
@@ -369,11 +383,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
+	unreserveFn = storer.UnreserveBatch
 
-	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
