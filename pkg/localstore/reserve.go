@@ -82,7 +82,6 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return 0, err
 		}
-		db.logger.Debugf("unreserveBatch gc change %d reserve size change %d", gcSizeChange, reserveSizeChange)
 		batch = new(leveldb.Batch)
 		gcSizeChange = 0
 	}
