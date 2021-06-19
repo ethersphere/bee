@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/elgamal"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -214,51 +215,48 @@ func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, erro
 	}
 	initnonce := make([]byte, 32)
 	for i := 0; i < 8; i++ {
-		binary.LittleEndian.PutUint32(initnonce[i*4:i*4+4], seeds[i])
+		binary.BigEndian.PutUint32(initnonce[i*4:i*4+4], seeds[i])
 	}
 	if odd {
 		initnonce[28] |= 0x01
 	} else {
 		initnonce[28] &= 0xfe
 	}
-	seeds[7] = binary.LittleEndian.Uint32(initnonce[28:32])
+	seeds[7] = binary.BigEndian.Uint32(initnonce[28:32])
 
-	quit := make(chan struct{})
 	// make both  errs  and result channels buffered so they never block
+	eg, ctx := errgroup.WithContext(ctx)
 	result := make(chan swarm.Chunk, 8)
-	errs := make(chan error, 8)
 	for i := 0; i < 8; i++ {
-		go func(j int) {
+		j := i
+		eg.Go(func() error {
 			nonce := make([]byte, 32)
 			copy(nonce, initnonce)
-			for seed := seeds[j]; ; seed++ {
-				binary.LittleEndian.PutUint32(nonce[j*4:j*4+4], seed)
+			for seed := seeds[j]; ; seed += 2 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				binary.BigEndian.PutUint32(nonce[j*4:j*4+4], seed)
 				res, err := f(nonce)
 				if err != nil {
-					errs <- err
-					return
+					return err
 				}
 				if res != nil {
 					result <- res
-					return
-				}
-				select {
-				case <-quit:
-					return
-				default:
+					return errors.New("found")
 				}
 			}
-		}(i)
+		})
 	}
-	defer close(quit)
+	err := eg.Wait()
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errs:
-		return nil, err
 	case res := <-result:
 		return res, nil
+	default:
 	}
+	return nil, err
 }
 
 // extracts ephemeral public key from the chunk data to use with el-Gamal
