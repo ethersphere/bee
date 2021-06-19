@@ -203,7 +203,7 @@ func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.I
 
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+		if !errors.Is(err, shed.ErrNotFound) {
 			return false, 0, err
 		}
 	} else {
@@ -221,7 +221,7 @@ func (db *DB) putRequest(batch *badger.Txn, binIDs map[uint8]uint64, item shed.I
 		}
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
-			if !errors.Is(err, leveldb.ErrNotFound) {
+			if !errors.Is(err, shed.ErrNotFound) {
 				return false, 0, err
 			}
 		} else {
@@ -289,7 +289,7 @@ func (db *DB) putUpload(batch *badger.Txn, binIDs map[uint8]uint64, item shed.It
 
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+		if !errors.Is(err, shed.ErrNotFound) {
 			return false, 0, err
 		}
 	} else {
@@ -350,7 +350,7 @@ func (db *DB) putSync(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item
 
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+		if !errors.Is(err, shed.ErrNotFound) {
 			return false, 0, err
 		}
 	} else {
@@ -368,7 +368,7 @@ func (db *DB) putSync(batch *badger.Txn, binIDs map[uint8]uint64, item shed.Item
 		}
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
-			if !errors.Is(err, leveldb.ErrNotFound) {
+			if !errors.Is(err, shed.ErrNotFound) {
 				return false, 0, err
 			}
 		} else {

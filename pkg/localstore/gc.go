@@ -291,12 +291,12 @@ func (db *DB) incGCSizeInBatch(batch *badger.Txn, change int64) (err error) {
 // incReserveSizeInBatch changes reserveSize field value
 // by change which can be negative. This function
 // must be called under batchMu lock.
-func (db *DB) incReserveSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
+func (db *DB) incReserveSizeInBatch(batch *badger.Txn, change int64) (err error) {
 	if change == 0 {
 		return nil
 	}
 	reserveSize, err := db.reserveSize.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+	if err != nil && !errors.Is(err, shed.ErrNotFound) {
 		return err
 	}
 

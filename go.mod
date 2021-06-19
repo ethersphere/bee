@@ -13,7 +13,6 @@ require (
 	github.com/ethersphere/go-storage-incentives-abi v0.3.0
 	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
-	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/google/go-cmp v0.5.4
@@ -40,7 +39,6 @@ require (
 	github.com/libp2p/go-ws-transport v0.4.0
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/mitchellh/mapstructure v1.3.2 // indirect
-	github.com/mmcloughlin/avo v0.0.0-20201105074841-5d2f697d268f // indirect
 	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multistream v0.2.0
@@ -57,7 +55,6 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.7.0
 	github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca
-	github.com/twitchyliquid64/golang-asm v0.15.0 // indirect
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.4

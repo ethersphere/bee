@@ -101,7 +101,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 	}
 
 	if reserveSizeChange > 0 {
-		batch = new(leveldb.Batch)
+		batch = db.shed.GetBatch(true)
 		if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
 			return 0, err
 		}

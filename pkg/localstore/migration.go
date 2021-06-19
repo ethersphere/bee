@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/shed"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var errMissingCurrentSchema = errors.New("could not find current db schema")
@@ -122,7 +121,7 @@ func truncateIndex(db *DB, idx shed.Index) (n int, err error) {
 			if err != nil {
 				return true, err
 			}
-			batch.Reset()
+			batch.Discard()
 		}
 
 		return false, nil
