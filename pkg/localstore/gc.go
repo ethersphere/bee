@@ -117,6 +117,9 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	if err != nil {
 		return 0, true, err
 	}
+	if gcSize == target {
+		return 0, true, nil
+	}
 	db.metrics.GCSize.Set(float64(gcSize))
 	defer func() { db.logger.Debugf("gc collected %d, target %d, startSize %d", collectedCount, target, gcSize) }()
 	done = true
@@ -275,6 +278,7 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 		}
 		newSize = gcSize - c
 	}
+	db.logger.Debugf("inc gc size %d change %d", gcSize, change)
 	db.gcSize.PutInBatch(batch, newSize)
 	db.metrics.GCSize.Set(float64(newSize))
 
@@ -310,6 +314,7 @@ func (db *DB) incReserveSizeInBatch(batch *leveldb.Batch, change int64) (err err
 		}
 		newSize = reserveSize - c
 	}
+	db.logger.Debugf("inc reserve size in batch %d old %d change %d", newSize, reserveSize, change)
 	db.reserveSize.PutInBatch(batch, newSize)
 	db.metrics.ReserveSize.Set(float64(newSize))
 	// trigger garbage collection if we reached the capacity
@@ -395,6 +400,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		// round
 		done = true
 	}
+	db.logger.Debugf("reserve evicted %d done %t size %d callbacks %d", totalEvicted, done, reserveSizeStart, totalCallbacks)
 
 	return totalEvicted, done, nil
 }
