@@ -23,6 +23,8 @@ type EventUpdater interface {
 	TransactionEnd() error
 }
 
+type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
+
 // Storer represents the persistence layer for batches on the current (highest
 // available) block.
 type Storer interface {
@@ -32,6 +34,7 @@ type Storer interface {
 	GetChainState() *ChainState
 	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
+	Unreserve(UnreserveIteratorFn) error
 
 	Reset() error
 }

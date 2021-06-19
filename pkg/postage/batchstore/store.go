@@ -10,34 +10,44 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 
+	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const (
-	batchKeyPrefix  = "batchstore_batch_"
-	valueKeyPrefix  = "batchstore_value_"
-	chainStateKey   = "batchstore_chainstate"
-	reserveStateKey = "batchstore_reservestate"
+	batchKeyPrefix              = "batchstore_batch_"
+	valueKeyPrefix              = "batchstore_value_"
+	chainStateKey               = "batchstore_chainstate"
+	reserveStateKey             = "batchstore_reservestate"
+	unreserveQueueKey           = "batchstore_unreserve_queue_"
+	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
 )
 
 type unreserveFn func(batchID []byte, radius uint8) error
+type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
 type store struct {
-	store         storage.StateStorer // State store backend to persist batches.
-	cs            *postage.ChainState // the chain state
-	rs            *reserveState       // the reserve state
-	unreserveFunc unreserveFn         // unreserve function
-	metrics       metrics             // metrics
+	store storage.StateStorer // State store backend to persist batches.
+	cs    *postage.ChainState // the chain state
+
+	rsMtx       sync.Mutex
+	rs          *reserveState // the reserve state
+	unreserveFn unreserveFn   // unreserve function
+	evictFn     evictFn       // evict function
+	queueIdx    uint64        // unreserve queue cardinality
+	metrics     metrics       // metrics
+	logger      logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store
-func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -63,23 +73,33 @@ func New(st storage.StateStorer, unreserveFunc unreserveFn) (postage.Storer, err
 			Available: Capacity,
 		}
 	}
+
 	s := &store{
-		store:         st,
-		cs:            cs,
-		rs:            rs,
-		unreserveFunc: unreserveFunc,
-		metrics:       newMetrics(),
+		store:   st,
+		cs:      cs,
+		rs:      rs,
+		evictFn: ev,
+		metrics: newMetrics(),
+		logger:  logger,
+	}
+
+	s.unreserveFn = s.unreserve
+	if s.queueIdx, err = s.getQueueCardinality(); err != nil {
+		return nil, err
 	}
 
 	return s, nil
 }
 
 func (s *store) GetReserveState() *postage.ReserveState {
+	s.rsMtx.Lock()
+	defer s.rsMtx.Unlock()
 	return &postage.ReserveState{
-		Radius:    s.rs.Radius,
-		Available: s.rs.Available,
-		Outer:     new(big.Int).Set(s.rs.Outer),
-		Inner:     new(big.Int).Set(s.rs.Inner),
+		Radius:        s.rs.Radius,
+		StorageRadius: s.rs.StorageRadius,
+		Available:     s.rs.Available,
+		Outer:         new(big.Int).Set(s.rs.Outer),
+		Inner:         new(big.Int).Set(s.rs.Inner),
 	}
 }
 
@@ -90,7 +110,15 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
-	b.Radius = s.rs.radius(s.rs.tier(b.Value))
+
+	s.rsMtx.Lock()
+	defer s.rsMtx.Unlock()
+
+	if s.rs.StorageRadius < s.rs.Radius {
+		b.Radius = s.rs.StorageRadius
+	} else {
+		b.Radius = s.rs.radius(s.rs.tier(b.Value))
+	}
 	return b, nil
 }
 
@@ -114,7 +142,9 @@ func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 	}
 
 	if s.radiusSetter != nil {
+		s.rsMtx.Lock()
 		s.radiusSetter.SetRadius(s.rs.Radius)
+		s.rsMtx.Unlock()
 	}
 	return s.store.Put(batchKey(b.ID), b)
 }
@@ -150,7 +180,9 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	// this needs to be improved, since we can miss some calls on
 	// startup. the same goes for the other call to radiusSetter
 	if s.radiusSetter != nil {
+		s.rsMtx.Lock()
 		s.radiusSetter.SetRadius(s.rs.Radius)
+		s.rsMtx.Unlock()
 	}
 
 	return s.store.Put(chainStateKey, cs)

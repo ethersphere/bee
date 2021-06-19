@@ -19,7 +19,6 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -193,12 +192,6 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 	} else {
 		item.AccessTimestamp = i1.AccessTimestamp
 	}
-	// item needs to be populated with Radius
-	item2, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		return 0, fmt.Errorf("postage chunks index: %w", err)
-	}
-	item.Radius = item2.Radius
 	return db.preserveOrCache(batch, item, false, false)
 }
 

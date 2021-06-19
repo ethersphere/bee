@@ -12,10 +12,11 @@ import (
 )
 
 type reserveStateResponse struct {
-	Radius    uint8          `json:"radius"`
-	Available int64          `json:"available"`
-	Outer     *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner     *bigint.BigInt `json:"inner"`
+	Radius        uint8          `json:"radius"`
+	StorageRadius uint8          `json:"storageRadius"`
+	Available     int64          `json:"available"`
+	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
+	Inner         *bigint.BigInt `json:"inner"`
 }
 
 type chainStateResponse struct {
