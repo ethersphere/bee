@@ -16,10 +16,11 @@ Please read the [coding guidelines](CODING.md).
 
 [Install instructions](https://docs.ethswarm.org/docs/installation/quick-start)
 
+## Get in touch
+[Only official website](https://www.ethswarm.org)
+
+
 ## License
 
 This library is distributed under the BSD-style license found in the [LICENSE](LICENSE) file.
-
-## More information and get in touch
-[Only official website](https://www.ethswarm.org)
 
