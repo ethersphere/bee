@@ -271,7 +271,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	closed = db.close
 
 	// put chunksCount chunks within radius. this
-	// will cause reserve eviction of 50 chunks into
+	// will cause reserve eviction of 10 chunks into
 	// the cache. gc of the cache is still not triggered
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
@@ -309,8 +309,8 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		}
 	}
 
-	// insert another 50, this will trigger gc
-	for i := 0; i < 50; i++ {
+	// insert another 90, this will trigger gc
+	for i := 0; i < 90; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -357,9 +357,9 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount-10+50))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90-10))
 
-	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount-10+50))
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90-10))
 
 	// postageRadiusIndex gets removed only when the batches are called with evict on MaxPO+1
 	// therefore, the expected index count here is larger than one would expect.
@@ -475,7 +475,6 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		batchIDs = append(batchIDs, ch.Stamp().BatchID())
 		addrs = append(addrs, ch.Address())
 		mtx.Unlock()
-
 	}
 
 	// wait for the first eviction to finish, otherwise
@@ -498,16 +497,16 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		}
 	}
 
-	// this is zero because we call eviction with max PO on the first 50 batches
-	// but the next 50 batches were not called with unreserve yet. this means that
-	// although the next 50 chunks exist in the store, their according batch radius
+	// this is zero because we call eviction with max PO on the first 10 batches
+	// but the next 90 batches were not called with unreserve yet. this means that
+	// although the next 90 chunks exist in the store, their according batch radius
 	// still isn't persisted, since the localstore still is not aware of their
 	// batch radiuses. the same goes for the check after the gc actually evicts the
 	// ten chunks out of the cache (we still expect a zero for postage radius for the
 	// same reason)
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 90; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
@@ -521,6 +520,20 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		batchIDs = append(batchIDs, ch.Stamp().BatchID())
 		addrs = append(addrs, ch.Address())
 		mtx.Unlock()
+	}
+	for {
+		select {
+		case <-testHookEvictChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("collect garbage timeout")
+		}
+		resSize, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resSize == evictTarget {
+			break
+		}
 	}
 
 	gcTarget := db.gcTarget()
@@ -539,9 +552,9 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount-10+50))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90-10))
 
-	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount-10+50))
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90-10))
 
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 

@@ -310,7 +310,6 @@ func (db *DB) incReserveSizeInBatch(batch *leveldb.Batch, change int64) (err err
 		}
 		newSize = reserveSize - c
 	}
-	db.logger.Debugf("inc reserve size value %d change %d newsize %d", reserveSize, change, newSize)
 	db.reserveSize.PutInBatch(batch, newSize)
 	db.metrics.ReserveSize.Set(float64(newSize))
 	// trigger garbage collection if we reached the capacity
@@ -350,7 +349,6 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		if err != nil {
 			db.metrics.EvictReserveErrorCounter.Inc()
 		}
-		db.logger.Debugf("localstore: evict reserve evicted %d, target %d", totalEvicted, target)
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
 	target = db.reserveEvictionTarget()
@@ -359,6 +357,9 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	reserveSizeStart, err := db.reserveSize.Get()
 	if err != nil {
 		return 0, false, err
+	}
+	if reserveSizeStart == target {
+		return 0, true, nil
 	}
 
 	// if we dont get any entries at all then there's no use

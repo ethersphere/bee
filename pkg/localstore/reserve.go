@@ -32,8 +32,10 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 	} else {
 		oldRadius = i.Radius
 	}
-
-	var gcSizeChange int64 // number to add or subtract from gcSize
+	var (
+		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
+		reserveSizeChange uint64
+	)
 	unpin := func(item shed.Item) (stop bool, err error) {
 		addr := swarm.NewAddress(item.Address)
 		c, err := db.setUnpin(batch, addr)
@@ -45,12 +47,19 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 				// a dirty shutdown
 				db.logger.Tracef("unreserve set unpin chunk %s: %v", addr.String(), err)
 			}
+		} else {
+			// we need to do this because a user might pin a chunk on top of
+			// the reserve pinning. when we unpin due to an unreserve call, then
+			// we should logically deduct the chunk anyway from the reserve size
+			// otherwise the reserve size leaks, since c returned from setUnpin
+			// will be zero.
+			reserveSizeChange++
 		}
 
 		gcSizeChange += c
-		evicted += uint64(c)
 		return false, nil
 	}
+
 	// iterate over chunk in bins
 	for bin := oldRadius; bin < radius; bin++ {
 		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
@@ -92,17 +101,14 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		return 0, err
 	}
 
-	reserveSize, err := db.reserveSize.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-		return 0, err
-	}
-	if evicted > 0 {
-		reserveSize -= evicted
-		if err := db.reserveSize.Put(reserveSize); err != nil {
+	if reserveSizeChange > 0 {
+		batch = new(leveldb.Batch)
+		if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
 			return 0, err
 		}
-		db.logger.Debugf("localstore: unreserve batch reserve size: %d, evicted %d", reserveSize, evicted)
-		db.metrics.ReserveSize.Set(float64(reserveSize))
+		if err := db.shed.WriteBatch(batch); err != nil {
+			return 0, err
+		}
 	}
 
 	// trigger garbage collection if we reached the capacity
@@ -110,7 +116,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		db.triggerGarbageCollection()
 	}
 
-	return evicted, nil
+	return reserveSizeChange, nil
 }
 
 func withinRadius(db *DB, item shed.Item) bool {
