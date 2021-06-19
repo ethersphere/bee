@@ -45,10 +45,11 @@ func TestDB_pullIndex(t *testing.T) {
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
 
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
+		/*_, err := */
+		db.Put(context.Background(), storage.ModePutUpload, ch)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
 
 		chunks[i] = testIndexChunk{
 			Chunk: ch,

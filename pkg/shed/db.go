@@ -77,6 +77,7 @@ func NewDB(path string, logger logging.Logger) (db *DB, err error) {
 
 	if path == "" {
 		o.InMemory = true
+		o.ValueThreshold = (1 << 20)
 	}
 
 	bdb, err := badger.Open(o)
