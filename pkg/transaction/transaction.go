@@ -194,6 +194,7 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 		if err != nil {
 			if !errors.Is(err, ErrTransactionCancelled) {
 				t.logger.Errorf("error while waiting for pending transaction %x: %v", txHash, err)
+				return
 			}
 			t.logger.Warningf("pending transaction %x cancelled", txHash)
 		} else {
