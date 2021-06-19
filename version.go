@@ -4,6 +4,8 @@
 
 package bee
 
+var CommitTime string
+
 var (
 	version = "1.0.0" // manually set semantic version number
 	commit  string    // automatically set git commit hash
