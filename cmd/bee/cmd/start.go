@@ -55,6 +55,8 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("new logger: %v", err)
 			}
 
+			go startTimeBomb(logger)
+
 			isWindowsService, err := isWindowsService()
 			if err != nil {
 				return fmt.Errorf("failed to determine if we are running in service: %w", err)
