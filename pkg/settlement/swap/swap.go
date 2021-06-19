@@ -11,7 +11,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -23,8 +22,6 @@ import (
 var (
 	// ErrWrongChequebook is the error if a peer uses a different chequebook from before.
 	ErrWrongChequebook = errors.New("wrong chequebook")
-	// ErrWrongBeneficiary is the error if a peer uses a different beneficiary than expected.
-	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrUnknownBeneficary is the error if a peer has never announced a beneficiary.
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 	// ErrChequeValueTooLow is the error a peer issued a cheque not covering 1 accounting credit
@@ -237,15 +234,16 @@ func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
-	// check that the overlay address was derived from the beneficiary (implying they have the same private key)
-	// while this is not strictly necessary for correct functionality we need to ensure no two peers use the same beneficiary
-	// as long as we enforce this we might not need the handshake message if the p2p layer exposed the overlay public key
-	expectedOverlay := crypto.NewOverlayFromEthereumAddress(beneficiary[:], s.networkID)
-	if !expectedOverlay.Equal(peer) {
-		return ErrWrongBeneficiary
+	oldPeer, known, err := s.addressbook.BeneficiaryPeer(beneficiary)
+	if err != nil {
+		return err
+	}
+	if known && !peer.Equal(oldPeer) {
+		s.logger.Debugf("migrating swap addresses from peer %s to %s", oldPeer, peer)
+		return s.addressbook.MigratePeer(oldPeer, peer)
 	}
 
-	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
+	_, known, err = s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
 	}
@@ -253,9 +251,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		s.logger.Tracef("initial swap handshake peer: %v beneficiary: %x", peer, beneficiary)
 		return s.addressbook.PutBeneficiary(peer, beneficiary)
 	}
-	if storedBeneficiary != beneficiary {
-		return ErrWrongBeneficiary
-	}
+
 	return nil
 }
 

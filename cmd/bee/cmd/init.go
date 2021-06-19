@@ -26,7 +26,7 @@ func (c *command) initInitCmd() (err error) {
 			if err != nil {
 				return fmt.Errorf("new logger: %v", err)
 			}
-			signerConfig, err := c.configureSigner(cmd, logger)
+			_, err = c.configureSigner(cmd, logger)
 			if err != nil {
 				return err
 			}
@@ -39,7 +39,7 @@ func (c *command) initInitCmd() (err error) {
 
 			defer stateStore.Close()
 
-			return node.CheckOverlayWithStore(signerConfig.address, stateStore)
+			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())
