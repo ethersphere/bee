@@ -77,9 +77,9 @@ func migrateStamp(s *store) error {
 	}); err != nil {
 		return err
 	}
-	if err := s.Iterate("addressbook", func(k, v []byte) (bool, error) {
+	if err := s.Iterate("addressbook_entry_", func(k, v []byte) (bool, error) {
 		stk := string(k)
-		if strings.HasPrefix(stk, "batchstore") {
+		if strings.HasPrefix(stk, "addressbook_entry_") {
 			collectedKeys = append(collectedKeys, stk)
 		}
 
