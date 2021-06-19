@@ -356,8 +356,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return err
 	}
 
-	fmt.Println("starting bee...")
-
 	batchStore, err := batchstore.New(stateStore, evictFn, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
