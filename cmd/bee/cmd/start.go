@@ -104,7 +104,7 @@ It is your responsibility to read and understand how Swarm works and the implica
 The usage of Bee involves various risks, including, but not limited to:
 damage to hardware or loss of funds associated with the Ethereum account connected to your node.
 No developers or entity involved will be liable for any claims and damages whatsoever associated with your use,
-inabibility to use, or your interaction with other nodes or the software.
+inability to use, or your interaction with other nodes or the software.
 
 `)
 
