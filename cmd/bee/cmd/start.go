@@ -82,34 +82,31 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			beeASCII := `
-            Welcome to Swarm.... Bzzz Bzzzz Bzzzz
-                            \     /
-                        \    o ^ o    /
-                          \ (     ) /
-               ____________(%%%%%%%)____________
-              (     /   /  )%%%%%%%(  \   \     )
-              (___/___/__/           \__\___\___)
-                 (     /  /(%%%%%%%)\  \     )
-                  (__/___/ (%%%%%%%) \___\__)
-                          /(       )\
-                        /   (%%%%%)   \
-                             (%%%)
-                               !                   `
+Welcome to Swarm.... Bzzz Bzzzz Bzzzz
+                \     /
+            \    o ^ o    /
+              \ (     ) /
+   ____________(%%%%%%%)____________
+  (     /   /  )%%%%%%%(  \   \     )
+  (___/___/__/           \__\___\___)
+     (     /  /(%%%%%%%)\  \     )
+      (__/___/ (%%%%%%%) \___\__)
+              /(       )\
+            /   (%%%%%)   \
+                 (%%%)
+                   !                   `
 
 			fmt.Println(beeASCII)
 			fmt.Print(`
-
 DISCLAIMER:
 This software is provided to you "as is", use at your own risk and without warranties of any kind.
 It is your responsibility to read and understand how Swarm works and the implications of running this software.
 The usage of Bee involves various risks, including, but not limited to:
 damage to hardware or loss of funds associated with the Ethereum account connected to your node.
 No developers or entity involved will be liable for any claims and damages associated with your use,
-inability to use, or your interaction with other nodes or the software.
+inability to use, or your interaction with other nodes or the software.`)
 
-`)
-
-			logger.Infof("version: %v", bee.Version)
+			fmt.Printf("\n\nversion: %v - supported until %v\n\n", bee.Version, endSupportDate())
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
@@ -120,6 +117,8 @@ inability to use, or your interaction with other nodes or the software.
 			if err != nil {
 				return err
 			}
+
+			logger.Infof("version: %v", bee.Version)
 
 			bootNode := c.config.GetBool(optionNameBootnodeMode)
 			fullNode := c.config.GetBool(optionNameFullNode)

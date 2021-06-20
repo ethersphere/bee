@@ -36,3 +36,7 @@ func startTimeBomb(logger logging.Logger) {
 		<-time.After(sleepFor)
 	}
 }
+
+func endSupportDate() string {
+	return versionReleased.AddDate(0, 0, limitDays).Format("2 January 2006")
+}
