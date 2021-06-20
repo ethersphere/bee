@@ -34,11 +34,11 @@ const (
 	dbSchemaDrain         = "drain"
 	dbSchemaCleanInterval = "clean-interval"
 	dbSchemaNoStamp       = "no-stamp"
-	dbSchemaIdk           = "idk"
+	dbSchemaFlushBlock    = "flushblock"
 )
 
 var (
-	dbSchemaCurrent = dbSchemaIdk
+	dbSchemaCurrent = dbSchemaFlushBlock
 )
 
 type migration struct {
@@ -53,10 +53,10 @@ var schemaMigrations = []migration{
 	{name: dbSchemaDrain, fn: migrateGrace},
 	{name: dbSchemaCleanInterval, fn: migrateGrace},
 	{name: dbSchemaNoStamp, fn: migrateStamp},
-	{name: dbSchemaIdk, fn: migrateIdk},
+	{name: dbSchemaFlushBlock, fn: migrateFB},
 }
 
-func migrateIdk(s *store) error {
+func migrateFB(s *store) error {
 	collectedKeys, err := collectKeys(s, "blocklist-")
 	if err != nil {
 		return err
