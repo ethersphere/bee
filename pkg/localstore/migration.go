@@ -121,7 +121,8 @@ func truncateIndex(db *DB, idx shed.Index) (n int, err error) {
 			if err != nil {
 				return true, err
 			}
-			batch.Discard()
+
+			batch = db.shed.GetBatch(true)
 		}
 
 		return false, nil
