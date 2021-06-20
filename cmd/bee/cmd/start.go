@@ -115,7 +115,16 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return errors.New("boot node must be started as a full node")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			mainnet := c.config.GetBool(optionNameMainNet)
+			testnet := c.config.GetBool(optionNameTestNet)
+
+			networkID := c.config.GetUint64(optionNameNetworkID)
+			networkID, err = parseNet(mainnet, testnet, networkID)
+			if err != nil {
+				return err
+			}
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -392,4 +401,21 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
 	}, nil
+}
+
+func parseNet(main, test bool, networkID uint64) (uint64, error) {
+	switch {
+	case main && test:
+		return 0, errors.New("please provide either mainnet or testnet option")
+	case main && networkID != 1:
+		return 0, errors.New("provided network ID does not match mainnet")
+	case test && networkID != 10:
+		return 0, errors.New("provided network ID does not match testnet")
+	case main:
+		return 1, nil
+	case test:
+		return 10, nil
+	default:
+		return networkID, nil
+	}
 }
