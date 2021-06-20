@@ -58,11 +58,10 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	err := m.storage.Get(peerOverlayKey(senderOverlay), &val)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
-	} else {
+	} else if val.verified {
 		// add cache invalidation
-		if val.verified {
-			return val.nextBlockHash, nil
-		}
+		return val.nextBlockHash, nil
+
 	}
 
 	incomingTx := common.BytesToHash(tx)
