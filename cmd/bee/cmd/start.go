@@ -119,10 +119,13 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 			testnet := c.config.GetBool(optionNameTestNet)
 
 			networkID := c.config.GetUint64(optionNameNetworkID)
-			networkID, err = parseNet(mainnet, testnet, networkID)
+			networkID, err = parseNetworks(mainnet, testnet, networkID)
 			if err != nil {
 				return err
 			}
+
+			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
+			bootnodes = parseBootnodes(mainnet, testnet, bootnodes)
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -138,7 +141,7 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                  c.config.GetStringSlice(optionNameBootnodes),
+				Bootnodes:                  bootnodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
 				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
@@ -403,7 +406,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}, nil
 }
 
-func parseNet(main, test bool, networkID uint64) (uint64, error) {
+func parseNetworks(main, test bool, networkID uint64) (uint64, error) {
 	switch {
 	case main && test:
 		return 0, errors.New("please provide either mainnet or testnet option")
@@ -417,5 +420,18 @@ func parseNet(main, test bool, networkID uint64) (uint64, error) {
 		return 10, nil
 	default:
 		return networkID, nil
+	}
+}
+
+func parseBootnodes(main, test bool, bootnodes []string) []string {
+	switch {
+	case len(bootnodes) > 0: // use the user provided values
+		return bootnodes
+	case main:
+		return []string{"/dnsaddr/mainnet.ethswarm.org"}
+	case test:
+		return []string{"/dnsaddr/testnet.ethswarm.org"}
+	default:
+		return []string{"/dnsaddr/bootnode.ethswarm.org"}
 	}
 }
