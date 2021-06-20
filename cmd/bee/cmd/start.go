@@ -96,6 +96,18 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 	
 		   `
 			fmt.Println(beeASCII)
+			fmt.Print(`
+
+DISCLAIMER:
+This software is provided to you "as is", use at your own risk and without warranties of any kind.
+It is your responsibility to read and understand how Swarm works and the implications of running this software.
+The usage of Bee involves various risks, including, but not limited to:
+damage to hardware or loss of funds associated with the Ethereum account connected to your node.
+No developers or entity involved will be liable for any claims and damages whatsoever associated with your use,
+inability to use, or your interaction with other nodes or the software.
+
+`)
+
 			logger.Infof("version: %v", bee.Version)
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
