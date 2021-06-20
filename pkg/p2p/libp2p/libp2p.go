@@ -281,17 +281,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerID := stream.Conn().RemotePeer()
-	handshakeStream := NewStream(stream)
-	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
-	if err != nil {
-		s.logger.Debugf("stream handler: handshake: handle %s: %v", peerID, err)
-		s.logger.Errorf("stream handler: handshake: unable to handshake with peer id %v", peerID)
-		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
-		return
-	}
-
-	overlay := i.BzzAddress.Overlay
 
 	blocked, err := s.blocklist.Exists(overlay)
 	if err != nil {
@@ -317,6 +306,18 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			return
 		}
 	}
+
+	handshakeStream := NewStream(stream)
+	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
+	if err != nil {
+		s.logger.Debugf("stream handler: handshake: handle %s: %v", peerID, err)
+		s.logger.Errorf("stream handler: handshake: unable to handshake with peer id %v", peerID)
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return
+	}
+
+	overlay := i.BzzAddress.Overlay
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		s.logger.Debugf("stream handler: peer %s already exists", overlay)
