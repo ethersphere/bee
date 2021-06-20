@@ -60,8 +60,10 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 
 	var val overlayVerification
 	err := m.storage.Get(peerOverlayKey(senderOverlay, incomingTx), &val)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
+		}
 	} else if val.Verified {
 		// add cache invalidation
 		return val.NextBlockHash, nil
