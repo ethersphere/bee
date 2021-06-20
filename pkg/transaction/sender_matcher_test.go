@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
@@ -30,7 +31,7 @@ func TestMatchesSender(t *testing.T) {
 			return nil, false, errors.New("transaction not found by hash")
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil)
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
@@ -43,7 +44,7 @@ func TestMatchesSender(t *testing.T) {
 			return nil, true, nil
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil)
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
 		if !errors.Is(err, transaction.ErrTransactionPending) {
@@ -59,7 +60,7 @@ func TestMatchesSender(t *testing.T) {
 		signer := &mockSigner{
 			err: errors.New("can not sign"),
 		}
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), signer)
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), signer, statestore.NewStateStore())
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
 		if !errors.Is(err, transaction.ErrTransactionSenderInvalid) {
@@ -93,7 +94,7 @@ func TestMatchesSender(t *testing.T) {
 			}, nil
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash, trxReceipt, headerByNum), signer)
+		matcher := transaction.NewMatcher(backendmock.New(txByHash, trxReceipt, headerByNum), signer, statestore.NewStateStore())
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
 		if err == nil {
@@ -127,7 +128,7 @@ func TestMatchesSender(t *testing.T) {
 			addr: common.HexToAddress("0xff"),
 		}
 
-		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer)
+		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore())
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
