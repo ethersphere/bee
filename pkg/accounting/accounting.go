@@ -1003,7 +1003,7 @@ func (d *debitAction) Apply() error {
 		if err != nil {
 			return p2p.NewBlockPeerError(1*time.Minute, ErrDisconnectThresholdExceeded)
 		}
-		return p2p.NewBlockPeerError(time.Duration(disconnectFor), ErrDisconnectThresholdExceeded)
+		return p2p.NewBlockPeerError(time.Duration(disconnectFor)*time.Second, ErrDisconnectThresholdExceeded)
 
 	}
 
