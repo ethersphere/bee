@@ -106,7 +106,7 @@ damage to hardware or loss of funds associated with the Ethereum account connect
 No developers or entity involved will be liable for any claims and damages associated with your use,
 inability to use, or your interaction with other nodes or the software.`)
 
-			fmt.Printf("\n\nversion: %v - supported until %v\n\n", bee.Version, endSupportDate())
+			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow http://ethswarm.org/\n\n", bee.Version, endSupportDate())
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
