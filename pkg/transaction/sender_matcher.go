@@ -111,5 +111,9 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		nextBlockHash: nextBlockHash,
 	})
 
+	err != nil {
+		return nil, err
+	}
+
 	return nextBlockHash, nil
 }
