@@ -136,7 +136,10 @@ inability to use, or your interaction with other nodes or the software.
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
-			bootnodes = parseBootnodes(mainnet, testnet, bootnodes)
+			bootnodes, err = parseBootnodes(mainnet, testnet, bootnodes)
+			if err != nil {
+				return err
+			}
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -434,15 +437,15 @@ func parseNetworks(main, test bool, networkID uint64) (uint64, error) {
 	}
 }
 
-func parseBootnodes(main, test bool, bootnodes []string) []string {
+func parseBootnodes(main, test bool, bootnodes []string) ([]string, error) {
 	switch {
 	case len(bootnodes) > 0: // use the user provided values
-		return bootnodes
+		return bootnodes, nil
 	case main:
-		return []string{"/dnsaddr/mainnet.ethswarm.org"}
+		return []string{"/dnsaddr/mainnet.ethswarm.org"}, nil
 	case test:
-		return []string{"/dnsaddr/testnet.ethswarm.org"}
+		return []string{"/dnsaddr/testnet.ethswarm.org"}, nil
 	default:
-		return []string{"/dnsaddr/bootnode.ethswarm.org"}
+		return nil, errors.New("bootnode required when not connecting to the official main or test networks")
 	}
 }
