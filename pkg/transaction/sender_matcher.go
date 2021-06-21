@@ -68,7 +68,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		// add cache invalidation
 		return val.NextBlockHash, nil
 	} else if val.TimeStamp.Add(5 * time.Minute).After(m.timeNow()) {
-		return nil, ErrGreylisted
+		return nil, fmt.Errorf("%w until %s", ErrGreylisted, val.TimeStamp.Add(5*time.Minute))
 	}
 
 	err = m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
