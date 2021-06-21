@@ -128,16 +128,14 @@ inability to use, or your interaction with other nodes or the software.`)
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
-			testnet := c.config.GetBool(optionNameTestNet)
-
 			networkID := c.config.GetUint64(optionNameNetworkID)
-			networkID, err = parseNetworks(mainnet, testnet, networkID)
+			networkID, err = parseNetworks(mainnet, networkID)
 			if err != nil {
 				return err
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
-			bootnodes = parseBootnodes(logger, mainnet, testnet, bootnodes)
+			bootnodes = parseBootnodes(logger, mainnet, bootnodes)
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -418,33 +416,21 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}, nil
 }
 
-func parseNetworks(main, test bool, networkID uint64) (uint64, error) {
-	switch {
-	case main && test:
-		return 0, errors.New("please provide either mainnet or testnet option")
-	case main && networkID != 1:
+func parseNetworks(main bool, networkID uint64) (uint64, error) {
+	if main && networkID != 1 {
 		return 0, errors.New("provided network ID does not match mainnet")
-	case test && networkID != 10:
-		return 0, errors.New("provided network ID does not match testnet")
-	case main:
-		return 1, nil
-	case test:
-		return 10, nil
-	default:
-		return networkID, nil
 	}
+
+	return networkID, nil
 }
 
-func parseBootnodes(logger logging.Logger, main, test bool, bootnodes []string) []string {
+func parseBootnodes(logger logging.Logger, main bool, bootnodes []string) []string {
 	switch {
 	case len(bootnodes) > 0: // use the user provided values
-		return bootnodes
 	case main:
 		return []string{"/dnsaddr/mainnet.ethswarm.org"}
-	case test:
-		return []string{"/dnsaddr/testnet.ethswarm.org"}
 	default:
-		logger.Warning("network nor bootnodes have been provided")
+		return []string{"/dnsaddr/testnet.ethswarm.org"}
 	}
 
 	return bootnodes
