@@ -282,6 +282,10 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 
+	if ack.NetworkID != s.networkID {
+		return nil, ErrNetworkIDIncompatible
+	}
+
 	overlay := swarm.NewAddress(ack.Address.Overlay)
 
 	blockHash, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, overlay)
