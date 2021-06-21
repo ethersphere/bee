@@ -137,6 +137,83 @@ func TestMatchesSender(t *testing.T) {
 			t.Fatalf("expected match")
 		}
 	})
+
+	t.Run("cached", func(t *testing.T) {
+
+		trxBlock := common.HexToHash("0x2")
+		nextBlockHeader := &types.Header{
+			ParentHash: trxBlock,
+		}
+
+		calls := 0
+
+		trxReceipt := backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+			calls++
+			return &types.Receipt{
+				BlockNumber: big.NewInt(0),
+				BlockHash:   trxBlock,
+			}, nil
+		})
+
+		headerByNum := backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+			calls++
+			return nextBlockHeader, nil
+		})
+
+		txByHash := backendmock.WithTransactionByHashFunc(func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
+			calls++
+			return signedTx, false, nil
+		})
+
+		signer := &mockSigner{
+			addr: common.HexToAddress("0xff"),
+		}
+
+		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore())
+
+		senderOverlay := crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
+
+		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		if err != nil {
+			t.Fatalf("expected match")
+		}
+
+		_, err = matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		if err != nil {
+			t.Fatalf("expected match")
+		}
+
+		if calls != 3 {
+			t.Fatal("too many calls")
+		}
+	})
+
+	t.Run("greylisted", func(t *testing.T) {
+		txByHash := backendmock.WithTransactionByHashFunc(func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
+			return nil, false, errors.New("transaction not found by hash")
+		})
+
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
+		matcher.SetTime(0)
+
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		if !errors.Is(err, transaction.ErrTransactionNotFound) {
+			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
+		}
+
+		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		if !errors.Is(err, transaction.ErrGreylisted) {
+			t.Fatalf("bad error type, want %v, got %v", transaction.ErrGreylisted, err)
+		}
+
+		// greylist expires
+		matcher.SetTime(5 * 60)
+
+		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		if !errors.Is(err, transaction.ErrTransactionNotFound) {
+			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
+		}
+	})
 }
 
 type mockSigner struct {
