@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime/debug"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -59,6 +60,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	incomingTx := common.BytesToHash(tx)
 
 	fmt.Printf("!!! query %s %x using key %s\n", senderOverlay, incomingTx, peerOverlayKey(senderOverlay, incomingTx))
+	debug.PrintStack()
 
 	var val overlayVerification
 	err := m.storage.Get(peerOverlayKey(senderOverlay, incomingTx), &val)
