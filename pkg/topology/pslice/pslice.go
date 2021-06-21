@@ -175,7 +175,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	for _, addr := range addrs {
 
 		if e, _ := s.exists(addr); e {
-			continue
+			return
 		}
 
 		po := s.po(addr.Bytes())
