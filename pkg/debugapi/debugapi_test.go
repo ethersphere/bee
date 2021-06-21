@@ -6,6 +6,7 @@ package debugapi_test
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"encoding/hex"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +25,8 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/postage"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/resolver"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
@@ -36,6 +39,17 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
 )
+
+var (
+	batchOk    = make([]byte, 32)
+	batchOkStr string
+)
+
+func init() {
+	_, _ = rand.Read(batchOk)
+
+	batchOkStr = hex.EncodeToString(batchOk)
+}
 
 type testServerOptions struct {
 	Overlay            swarm.Address
@@ -55,6 +69,8 @@ type testServerOptions struct {
 	SwapOpts           []swapmock.Option
 	BatchStore         postage.Storer
 	TransactionOpts    []transactionmock.Option
+	PostageContract    postagecontract.Interface
+	Post               postage.Service
 }
 
 type testServer struct {
@@ -71,7 +87,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	transaction := transactionmock.New(o.TransactionOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins)
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, transaction)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, transaction, o.Post, o.PostageContract)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -169,7 +185,7 @@ func TestServer_Configure(t *testing.T) {
 		}),
 	)
 
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, transaction)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, transaction, mockpost.New(), nil)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,
