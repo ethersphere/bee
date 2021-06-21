@@ -363,7 +363,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if s.notifier != nil {
 		if !i.FullNode {
 			s.lightNodes.Connected(s.ctx, peer)
-			//light node announces explicitly
+			// light node announces explicitly
 			if err := s.notifier.Announce(s.ctx, peer.Address, i.FullNode); err != nil {
 				s.logger.Debugf("stream handler: notifier.Announce: %s: %v", peer.Address.String(), err)
 			}
@@ -382,7 +382,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					return
 				}
 			}
-		} else if err := s.notifier.Connected(s.ctx, peer); err != nil {
+		} else if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
 			// full node announces implicitly
 			s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
 			// note: this cannot be unit tested since the node
@@ -700,7 +700,6 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 
 // disconnected is a registered peer registry event
 func (s *Service) disconnected(address swarm.Address) {
-
 	peer := p2p.Peer{Address: address}
 	peerID, found := s.peers.peerID(address)
 	if found {
