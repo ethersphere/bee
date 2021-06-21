@@ -71,35 +71,62 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, ErrGreylisted
 	}
 
-	err = m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
-		TimeStamp: m.timeNow(),
-		Verified:  false,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	nTx, isPending, err := m.backend.TransactionByHash(ctx, incomingTx)
 	if err != nil {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, fmt.Errorf("%v: %w", err, ErrTransactionNotFound)
 	}
 
 	if isPending {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, ErrTransactionPending
 	}
 
 	sender, err := types.Sender(m.signer, nTx)
 	if err != nil {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
 	}
 
 	receipt, err := m.backend.TransactionReceipt(ctx, incomingTx)
 	if err != nil {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, err
 	}
 
 	nextBlock, err := m.backend.HeaderByNumber(ctx, big.NewInt(0).Add(receipt.BlockNumber, big.NewInt(1)))
 	if err != nil {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, err
 	}
 
@@ -108,12 +135,26 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	nextBlockHash := nextBlock.Hash().Bytes()
 
 	if !bytes.Equal(receiptBlockHash, nextBlockParentHash) {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID, nextBlockHash)
 
 	if !expectedRemoteBzzAddress.Equal(senderOverlay) {
+		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+			TimeStamp: m.timeNow(),
+			Verified:  false,
+		})
+		if err2 != nil {
+			return nil, err2
+		}
 		return nil, ErrOverlayMismatch
 	}
 
