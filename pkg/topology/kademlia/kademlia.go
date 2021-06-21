@@ -527,6 +527,10 @@ func (k *Kad) manage() {
 			default:
 			}
 
+			if k.bootnode {
+				continue
+			}
+
 			oldDepth := k.NeighborhoodDepth()
 			k.connectNeighbours(&wg, peerConnChan, peerConnChan2)
 			k.connectBalanced(&wg, peerConnChan2)
