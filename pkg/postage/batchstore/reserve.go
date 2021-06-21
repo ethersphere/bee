@@ -115,6 +115,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
 		if s.rs.StorageRadius+1 < v.Radius {
 			s.rs.StorageRadius = v.Radius - 1
+			s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 			if err = s.store.Put(reserveStateKey, s.rs); err != nil {
 				return true, err
 			}
