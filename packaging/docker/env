@@ -95,3 +95,5 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_VERBOSITY=info
 ## send a welcome message string during handshakes
 # BEE_WELCOME_MESSAGE=
+## triggers connection to main network
+# BEE_MAINNET=

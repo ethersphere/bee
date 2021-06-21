@@ -78,3 +78,5 @@ password-file: ./password
 # verbosity: info
 ## send a welcome message string during handshakes
 # welcome-message: ""
+## triggers connection to main network
+# bee-mainnet: false

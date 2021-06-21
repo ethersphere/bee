@@ -58,6 +58,7 @@ services:
       - BEE_TRANSACTION
       - BEE_VERBOSITY
       - BEE_WELCOME_MESSAGE
+      - BEE_MAINNET
     ports:
       - "${API_ADDR:-1633}${BEE_API_ADDR:-:1633}"
       - "${P2P_ADDR:-1634}${BEE_P2P_ADDR:-:1634}"
