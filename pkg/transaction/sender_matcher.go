@@ -58,6 +58,8 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 
 	incomingTx := common.BytesToHash(tx)
 
+	fmt.Printf("query %s %s using key %s\n", senderOverlay, incomingTx, peerOverlayKey(senderOverlay, incomingTx))
+
 	var val overlayVerification
 	err := m.storage.Get(peerOverlayKey(senderOverlay, incomingTx), &val)
 	if err != nil {
@@ -70,6 +72,8 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	} else if val.TimeStamp.Add(5 * time.Minute).After(m.timeNow()) {
 		return nil, fmt.Errorf("%w until %s", ErrGreylisted, val.TimeStamp.Add(5*time.Minute))
 	}
+
+	fmt.Printf("past if for %s\n", senderOverlay.String())
 
 	err = m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 		TimeStamp: m.timeNow(),
