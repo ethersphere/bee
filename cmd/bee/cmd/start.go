@@ -127,7 +127,18 @@ inability to use, or your interaction with other nodes or the software.`)
 				return errors.New("boot node must be started as a full node")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			mainnet := c.config.GetBool(optionNameMainNet)
+
+			networkID := c.config.GetUint64(optionNameNetworkID)
+			networkID, err = parseNetworks(mainnet, networkID)
+			if err != nil {
+				return err
+			}
+
+			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
+			bootnodes = parseBootnodes(logger, mainnet, networkID, bootnodes)
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -141,7 +152,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                  c.config.GetStringSlice(optionNameBootnodes),
+				Bootnodes:                  bootnodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
 				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
@@ -404,4 +415,30 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
 	}, nil
+}
+
+func parseNetworks(main bool, networkID uint64) (uint64, error) {
+	if main && networkID != 1 {
+		return 0, errors.New("provided network ID does not match mainnet")
+	}
+
+	return networkID, nil
+}
+
+func parseBootnodes(log logging.Logger, main bool, networkID uint64, bootnodes []string) []string {
+	if len(bootnodes) > 0 {
+		return bootnodes // use provided values
+	}
+
+	if main {
+		return []string{"/dnsaddr/mainnet.ethswarm.org"}
+	}
+
+	if networkID == 10 {
+		return []string{"/dnsaddr/testnet.ethswarm.org"}
+	}
+
+	log.Warning("no bootnodes defined for network ID", networkID)
+
+	return bootnodes
 }
