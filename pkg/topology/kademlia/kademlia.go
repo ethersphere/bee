@@ -34,6 +34,8 @@ const (
 	maxBootNodeAttempts    = 3 // how many attempts to dial to boot-nodes before giving up
 	defaultBitSuffixLength = 3 // the number of bits used to create pseudo addresses for balancing
 
+	addPeerBatchSize = 500
+
 	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
 )
 
@@ -577,9 +579,19 @@ func (k *Kad) Start(_ context.Context) error {
 			return
 		default:
 		}
+		var (
+			start     = time.Now()
+			addresses []swarm.Address
+		)
 
-		start := time.Now()
-		addresses, err := k.addressBook.Overlays()
+		err := k.addressBook.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
+			addresses = append(addresses, addr)
+			if len(addresses) == addPeerBatchSize {
+				k.AddPeers(addresses...)
+				addresses = nil
+			}
+			return false, nil
+		})
 		if err != nil {
 			k.logger.Errorf("addressbook overlays: %w", err)
 			return

@@ -26,6 +26,8 @@ type Interface interface {
 	Remover
 	// Overlays returns a list of all overlay addresses saved in addressbook.
 	Overlays() ([]swarm.Address, error)
+	// IterateOverlays exposes overlays in a form of an iterator.
+	IterateOverlays(func(swarm.Address) (bool, error)) error
 	// Addresses returns a list of all bzz.Address-es saved in addressbook.
 	Addresses() ([]bzz.Address, error)
 }
@@ -84,8 +86,8 @@ func (s *store) Remove(overlay swarm.Address) error {
 	return s.store.Delete(keyPrefix + overlay.String())
 }
 
-func (s *store) Overlays() (overlays []swarm.Address, err error) {
-	err = s.store.Iterate(keyPrefix, func(key, _ []byte) (stop bool, err error) {
+func (s *store) IterateOverlays(cb func(swarm.Address) (bool, error)) error {
+	return s.store.Iterate(keyPrefix, func(key, _ []byte) (stop bool, err error) {
 		k := string(key)
 		if !strings.HasPrefix(k, keyPrefix) {
 			return true, nil
@@ -98,6 +100,19 @@ func (s *store) Overlays() (overlays []swarm.Address, err error) {
 		if err != nil {
 			return true, err
 		}
+		stop, err = cb(addr)
+		if err != nil {
+			return true, err
+		}
+		if stop {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
+func (s *store) Overlays() (overlays []swarm.Address, err error) {
+	err = s.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
 		overlays = append(overlays, addr)
 		return false, nil
 	})
