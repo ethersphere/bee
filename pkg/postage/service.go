@@ -34,6 +34,8 @@ type Service interface {
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, error)
 	IssuerUsable(*StampIssuer) bool
+	SetDefaultIssuer([]byte) error
+	DefaultIssuer() *StampIssuer
 	BatchCreationListener
 	io.Closer
 }
@@ -41,11 +43,12 @@ type Service interface {
 // service handles postage batches
 // stores the active batches.
 type service struct {
-	lock         sync.Mutex
-	store        storage.StateStorer
-	postageStore Storer
-	chainID      int64
-	issuers      []*StampIssuer
+	lock               sync.Mutex
+	store              storage.StateStorer
+	postageStore       Storer
+	chainID            int64
+	issuers            []*StampIssuer
+	defaultStampIssuer *StampIssuer
 }
 
 // NewService constructs a new Service.
@@ -85,6 +88,24 @@ func (ps *service) Add(st *StampIssuer) {
 		}
 	}
 	ps.issuers = append(ps.issuers, st)
+}
+
+// SetDefaultIssuer sets the default stamps issuer.
+func (ps *service) SetDefaultIssuer(id []byte) error {
+	si, err := ps.GetStampIssuer(id)
+	if err != nil {
+		return err
+	}
+
+	ps.lock.Lock()
+	ps.defaultStampIssuer = si
+	ps.lock.Unlock()
+	return nil
+}
+
+// DefaultIssuer returns the default stamps issuer.
+func (ps *service) DefaultIssuer() *StampIssuer {
+	return ps.defaultStampIssuer
 }
 
 // Handle implements the BatchCreationListener interface. This is fired on receiving

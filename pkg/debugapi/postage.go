@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/gorilla/mux"
@@ -159,6 +160,32 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		ImmutableFlag: issuer.ImmutableFlag(),
 	}
 	jsonhttp.OK(w, &resp)
+}
+
+// postageSetDefaultStampIssuerHandler sets the default postage stamps issuer..
+func (s *Service) postageSetDefaultStampIssuerHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	if idStr == "" || len(idStr) != 64 {
+		s.logger.Error("get stamp issuer: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+
+	id, err := hex.DecodeString(idStr)
+	if err != nil {
+		s.logger.Error("set stamp issuer: invalid batchID: %v", err)
+		s.logger.Error("set stamp issuer: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+
+	switch err := s.post.SetDefaultIssuer(id); {
+	case errors.Is(err, postage.ErrNotFound):
+		jsonhttp.NotFound(w, nil)
+	case err != nil:
+		s.logger.Debugf("debug api: set default stamp issuer: %v", err)
+		jsonhttp.InternalServerError(w, err)
+	}
 }
 
 type reserveStateResponse struct {

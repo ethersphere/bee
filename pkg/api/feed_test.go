@@ -214,7 +214,7 @@ func TestFeed_Post(t *testing.T) {
 		})
 		t.Run("bad request - batch empty", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchEmpty)
-			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusCreated,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			)
 		})
