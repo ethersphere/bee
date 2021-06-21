@@ -27,7 +27,7 @@ const (
 )
 
 func peerOverlayKey(peer swarm.Address, txHash common.Hash) string {
-	return fmt.Sprintf("%s%s_%s", overlayPrefix, peer.String(), txHash.String())
+	return fmt.Sprintf("%s%s_%s", overlayPrefix, peer.ByteString(), txHash.String())
 }
 
 var (
