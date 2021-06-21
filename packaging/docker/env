@@ -97,5 +97,3 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_WELCOME_MESSAGE=
 ## triggers connection to main network
 # BEE_MAINNET=
-## triggers connection to test network
-# BEE_TESTNET=

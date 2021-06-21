@@ -128,6 +128,7 @@ inability to use, or your interaction with other nodes or the software.`)
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
+
 			networkID := c.config.GetUint64(optionNameNetworkID)
 			networkID, err = parseNetworks(mainnet, networkID)
 			if err != nil {
@@ -135,7 +136,7 @@ inability to use, or your interaction with other nodes or the software.`)
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
-			bootnodes = parseBootnodes(logger, mainnet, bootnodes)
+			bootnodes = parseBootnodes(mainnet, bootnodes)
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -424,14 +425,15 @@ func parseNetworks(main bool, networkID uint64) (uint64, error) {
 	return networkID, nil
 }
 
-func parseBootnodes(logger logging.Logger, main bool, bootnodes []string) []string {
-	switch {
-	case len(bootnodes) > 0: // use the user provided values
-	case main:
-		return []string{"/dnsaddr/mainnet.ethswarm.org"}
-	default:
-		return []string{"/dnsaddr/testnet.ethswarm.org"}
+func parseBootnodes(main bool, bootnodes []string) []string {
+	if len(bootnodes) > 0 {
+		return bootnodes // use provided values
 	}
 
-	return bootnodes
+	if main {
+		return []string{"/dnsaddr/mainnet.ethswarm.org"}
+
+	}
+
+	return []string{"/dnsaddr/testnet.ethswarm.org"}
 }

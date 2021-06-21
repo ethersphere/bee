@@ -90,5 +90,3 @@ password-file: /var/lib/bee/password
 # welcome-message: ""
 ## triggers connection to main network
 # bee-mainnet: false
-## triggers connection to test network
-# bee-testnet: false
