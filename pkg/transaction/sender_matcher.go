@@ -58,7 +58,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 
 	incomingTx := common.BytesToHash(tx)
 
-	fmt.Printf("query %s %s using key %s\n", senderOverlay, incomingTx, peerOverlayKey(senderOverlay, incomingTx))
+	fmt.Printf("!!! query %s %x using key %s\n", senderOverlay, incomingTx, peerOverlayKey(senderOverlay, incomingTx))
 
 	var val overlayVerification
 	err := m.storage.Get(peerOverlayKey(senderOverlay, incomingTx), &val)
@@ -73,7 +73,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, fmt.Errorf("%w until %s", ErrGreylisted, val.TimeStamp.Add(5*time.Minute))
 	}
 
-	fmt.Printf("past if for %s\n", senderOverlay.String())
+	fmt.Printf("!!! past if for %s\n", senderOverlay.String())
 
 	err = m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 		TimeStamp: m.timeNow(),
@@ -116,14 +116,14 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	nextBlockHash := nextBlock.Hash().Bytes()
 
 	if !bytes.Equal(receiptBlockHash, nextBlockParentHash) {
-		fmt.Printf("mismatch1\n")
+		fmt.Printf("!!! mismatch1\n")
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID, nextBlockHash)
 
 	if !expectedRemoteBzzAddress.Equal(senderOverlay) {
-		fmt.Printf("mismatch2\n")
+		fmt.Printf("!!! mismatch2\n")
 		return nil, ErrOverlayMismatch
 	}
 
@@ -132,6 +132,8 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		Verified:      true,
 		NextBlockHash: nextBlockHash,
 	})
+
+	fmt.Printf("!!! verification success for %s %x\n", senderOverlay.String(), incomingTx)
 
 	if err != nil {
 		return nil, err
