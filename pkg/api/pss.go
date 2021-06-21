@@ -78,7 +78,10 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	batch, err := requestPostageBatchId(r)
-	if err != nil {
+	switch {
+	case errors.Is(err, errSwarmPostageBatchIDHeaderNotFound) && s.post.DefaultIssuer() != nil:
+		batch = s.post.DefaultIssuer().ID()
+	case err != nil:
 		s.logger.Debugf("pss: postage batch id: %v", err)
 		s.logger.Error("pss: postage batch id")
 		jsonhttp.BadRequest(w, "invalid postage batch id")

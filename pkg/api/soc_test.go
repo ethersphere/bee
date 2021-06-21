@@ -161,10 +161,10 @@ func TestSOC(t *testing.T) {
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			)
 		})
-		t.Run("err - batch empty", func(t *testing.T) {
+		t.Run("ok - batch empty", func(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchEmpty)
-			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusBadRequest,
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			)
