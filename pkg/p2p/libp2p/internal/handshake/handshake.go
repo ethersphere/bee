@@ -166,6 +166,10 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	overlay := swarm.NewAddress(resp.Ack.Address.Overlay)
 
+	if resp.Ack.NetworkID != s.networkID {
+		return nil, ErrNetworkIDIncompatible
+	}
+
 	blockHash, err := s.senderMatcher.Matches(ctx, resp.Ack.Transaction, s.networkID, overlay)
 	if err != nil {
 		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
@@ -327,10 +331,6 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
-	if ack.NetworkID != s.networkID {
-		return nil, ErrNetworkIDIncompatible
-	}
-
 	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Transaction, blockHash, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
