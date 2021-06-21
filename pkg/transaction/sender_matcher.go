@@ -81,6 +81,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 
 	nTx, isPending, err := m.backend.TransactionByHash(ctx, incomingTx)
 	if err != nil {
+		panic("hash not found")
 		return nil, fmt.Errorf("%v: %w", err, ErrTransactionNotFound)
 	}
 
@@ -90,16 +91,19 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 
 	sender, err := types.Sender(m.signer, nTx)
 	if err != nil {
+		panic("sender not found")
 		return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
 	}
 
 	receipt, err := m.backend.TransactionReceipt(ctx, incomingTx)
 	if err != nil {
+		panic("receipt not found")
 		return nil, err
 	}
 
 	nextBlock, err := m.backend.HeaderByNumber(ctx, big.NewInt(0).Add(receipt.BlockNumber, big.NewInt(1)))
 	if err != nil {
+		panic("nextBlock not found")
 		return nil, err
 	}
 
@@ -108,12 +112,14 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	nextBlockHash := nextBlock.Hash().Bytes()
 
 	if !bytes.Equal(receiptBlockHash, nextBlockParentHash) {
+		panic("mismatch1")
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
 	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID, nextBlockHash)
 
 	if !expectedRemoteBzzAddress.Equal(senderOverlay) {
+		panic("mismatch2")
 		return nil, ErrOverlayMismatch
 	}
 
