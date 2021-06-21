@@ -31,6 +31,9 @@ type (
 	TagResponse                       = tagResponse
 	ReserveStateResponse              = reserveStateResponse
 	ChainStateResponse                = chainStateResponse
+	PostageCreateResponse             = postageCreateResponse
+	PostageStampResponse              = postageStampResponse
+	PostageStampsResponse             = postageStampsResponse
 )
 
 var (

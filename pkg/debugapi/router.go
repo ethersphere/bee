@@ -183,6 +183,24 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.getTagHandler),
 	})
 
+	router.Handle("/stamps", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+		})),
+	)
+
+	router.Handle("/stamps/{id}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
+		})),
+	)
+
+	router.Handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageCreateHandler),
+		})),
+	)
+
 	return router
 }
 
