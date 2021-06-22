@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	commitTime, _   = strconv.ParseInt(bee.CommitTime, 10, 64)
+	commitTime, _   = strconv.ParseInt(bee.CommitTime(), 10, 64)
 	versionReleased = time.Unix(commitTime, 0)
 )
 
