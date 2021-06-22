@@ -47,8 +47,8 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_FULL_NODE=false
 ## NAT exposed address
 # BEE_NAT_ADDR=
-## ID of the Swarm network (default 1)
-# BEE_NETWORK_ID=1
+## ID of the Swarm network (default 10)
+# BEE_NETWORK_ID=10
 ## P2P listen address (default :1634)
 # BEE_P2P_ADDR=:1634
 ## enable P2P QUIC protocol

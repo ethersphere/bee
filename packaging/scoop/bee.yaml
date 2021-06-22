@@ -30,8 +30,8 @@ data-dir: ./data
 # full-node: false
 ## NAT exposed address
 # nat-addr: ""
-## ID of the Swarm network (default 1)
-# network-id: 1
+## ID of the Swarm network (default 10)
+# network-id: 10
 ## P2P listen address (default ":1634")
 # p2p-addr: :1634
 ## enable P2P QUIC protocol
