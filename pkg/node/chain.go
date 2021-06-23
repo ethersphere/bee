@@ -66,18 +66,6 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
 
-	// Sync the with the given Ethereum backend:
-	isSynced, err := transaction.IsSynced(ctx, backend, maxDelay)
-	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
-		err := transaction.WaitSynced(ctx, backend, maxDelay)
-		if err != nil {
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("waiting backend sync: %w", err)
-		}
-	}
 	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
 }
 
