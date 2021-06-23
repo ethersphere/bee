@@ -24,7 +24,7 @@ The node's output was:
     *)
         ETH_ADDRESS=$(echo "$RESP" | grep ethereum | cut -d' ' -f6 | tr -d '"')
         echo "
-Please make sure there is sufficient native tokens and BZZ available on the node's Ethereum address at the APPROPRIATE BLOCKCHAIN: $ETH_ADDRESS.
+Please make sure there is sufficient native tokens and BZZ available on the node's Ethereum address at the APPROPRIATE BLOCKCHAIN: 0x$ETH_ADDRESS.
 
 Learn how to fund your node by visiting our docs at at https://docs.ethswarm.org/docs/installation/fund-your-node
 
