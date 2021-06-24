@@ -736,6 +736,31 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+    delete:
+      summary: Cancel existing transaction
+      parameters:
+        - in: path
+          name: txHash
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
+          required: true
+          description: Hash of the transaction
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+      tags:
+        - Transaction
+      responses:
+        "200":
+          description: Hash of the transaction
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
 
   "/stamps":
     get:

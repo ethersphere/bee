@@ -7,6 +7,7 @@ package transaction_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -18,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	signermock "github.com/ethersphere/bee/pkg/crypto/mock"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/sctx"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
@@ -475,8 +477,154 @@ func TestTransactionResend(t *testing.T) {
 	}
 	defer transactionService.Close()
 
-	err = transactionService.ResendTransaction(signedTx.Hash())
+	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestTransactionCancel(t *testing.T) {
+	logger := logging.New(ioutil.Discard, 0)
+	recipient := common.HexToAddress("0xbbbddd")
+	chainID := big.NewInt(5)
+	nonce := uint64(10)
+	data := []byte{1, 2, 3, 4}
+	gasPrice := big.NewInt(1)
+	gasLimit := uint64(100000)
+	value := big.NewInt(0)
+
+	store := storemock.NewStateStore()
+	defer store.Close()
+
+	signedTx := types.NewTransaction(nonce, recipient, value, gasLimit, gasPrice, data)
+	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
+		Nonce:    nonce,
+		To:       &recipient,
+		Data:     data,
+		GasPrice: gasPrice,
+		GasLimit: gasLimit,
+		Value:    value,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		cancelTx := types.NewTransaction(
+			nonce,
+			recipient,
+			big.NewInt(0),
+			21000,
+			new(big.Int).Add(gasPrice, big.NewInt(1)),
+			[]byte{},
+		)
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != cancelTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+			),
+			signerMockForTransaction(cancelTx, recipient, chainID, t),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transactionService.Close()
+
+		cancelTxHash, err := transactionService.CancelTransaction(context.Background(), signedTx.Hash())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cancelTx.Hash() != cancelTxHash {
+			t.Fatalf("returned wrong hash. wanted %v, got %v", cancelTx.Hash(), cancelTxHash)
+		}
+	})
+
+	t.Run("custom gas price", func(t *testing.T) {
+		customGasPrice := big.NewInt(5)
+
+		cancelTx := types.NewTransaction(
+			nonce,
+			recipient,
+			big.NewInt(0),
+			21000,
+			customGasPrice,
+			[]byte{},
+		)
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != cancelTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+			),
+			signerMockForTransaction(cancelTx, recipient, chainID, t),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transactionService.Close()
+
+		ctx := sctx.SetGasPrice(context.Background(), customGasPrice)
+		cancelTxHash, err := transactionService.CancelTransaction(ctx, signedTx.Hash())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cancelTx.Hash() != cancelTxHash {
+			t.Fatalf("returned wrong hash. wanted %v, got %v", cancelTx.Hash(), cancelTxHash)
+		}
+	})
+
+	t.Run("too low gas price", func(t *testing.T) {
+		customGasPrice := big.NewInt(0)
+
+		cancelTx := types.NewTransaction(
+			nonce,
+			recipient,
+			big.NewInt(0),
+			21000,
+			customGasPrice,
+			[]byte{},
+		)
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != cancelTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+			),
+			signerMockForTransaction(cancelTx, recipient, chainID, t),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transactionService.Close()
+
+		ctx := sctx.SetGasPrice(context.Background(), customGasPrice)
+		_, err = transactionService.CancelTransaction(ctx, signedTx.Hash())
+		if !errors.Is(err, transaction.ErrGasPriceTooLow) {
+			t.Fatalf("returned wrong error. wanted %v, got %v", transaction.ErrGasPriceTooLow, err)
+		}
+	})
 }
