@@ -11,7 +11,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -30,7 +30,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -51,7 +51,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -66,7 +66,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
