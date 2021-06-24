@@ -86,8 +86,8 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	swapserv := swapmock.New(o.SwapOpts...)
 	transaction := transactionmock.New(o.TransactionOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins)
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, transaction, o.Post, o.PostageContract)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins, transaction)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -154,7 +154,7 @@ func TestServer_Configure(t *testing.T) {
 	swapserv := swapmock.New(o.SwapOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	transaction := transactionmock.New(o.TransactionOpts...)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil, transaction)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -185,7 +185,7 @@ func TestServer_Configure(t *testing.T) {
 		}),
 	)
 
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, transaction, mockpost.New(), nil)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, mockpost.New(), nil)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,

@@ -59,6 +59,17 @@ func (s *Service) newBasicRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
+	if s.transaction != nil {
+		router.Handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		router.Handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
+	}
+
 	return router
 }
 
@@ -170,15 +181,6 @@ func (s *Service) newRouter() *mux.Router {
 			"POST": http.HandlerFunc(s.swapCashoutHandler),
 		})
 	}
-
-	router.Handle("/transactions", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.transactionListHandler),
-	})
-	router.Handle("/transactions/{hash}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.transactionDetailHandler),
-		"POST":   http.HandlerFunc(s.transactionResendHandler),
-		"DELETE": http.HandlerFunc(s.transactionCancelHandler),
-	})
 
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTagHandler),

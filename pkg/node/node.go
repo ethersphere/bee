@@ -197,39 +197,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	addressbook := addressbook.New(stateStore)
 
-	var debugAPIService *debugapi.Service
-	if o.DebugAPIAddr != "" {
-		overlayEthAddress, err := signer.EthereumAddress()
-		if err != nil {
-			return nil, fmt.Errorf("eth address: %w", err)
-		}
-		// set up basic debug api endpoints for debugging and /health endpoint
-		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins)
-
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugAPIService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
-
 	var (
 		swapBackend        *ethclient.Client
 		overlayEthAddress  common.Address
@@ -257,6 +224,55 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		b.ethClientCloser = swapBackend.Close
 		b.transactionCloser = tracerCloser
 		b.transactionMonitorCloser = transactionMonitor
+	}
+
+	var debugAPIService *debugapi.Service
+	if o.DebugAPIAddr != "" {
+		overlayEthAddress, err := signer.EthereumAddress()
+		if err != nil {
+			return nil, fmt.Errorf("eth address: %w", err)
+		}
+		// set up basic debug api endpoints for debugging and /health endpoint
+		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, transactionService)
+
+		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("debug api listener: %w", err)
+		}
+
+		debugAPIServer := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           debugAPIService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		go func() {
+			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+
+			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+				logger.Debugf("debug api server: %v", err)
+				logger.Error("unable to serve debug api")
+			}
+		}()
+
+		b.debugAPIServer = debugAPIServer
+	}
+
+	if !o.Standalone {
+		// Sync the with the given Ethereum backend:
+		isSynced, _, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
+		if err != nil {
+			return nil, fmt.Errorf("is synced: %w", err)
+		}
+		if !isSynced {
+			logger.Infof("waiting to sync with the Ethereum backend")
+
+			err := transaction.WaitSynced(logger, p2pCtx, swapBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("waiting backend sync: %w", err)
+			}
+		}
 	}
 
 	if o.SwapEnable {
@@ -751,7 +767,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, transactionService, post, postageContractService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, post, postageContractService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
