@@ -136,7 +136,7 @@ func (c *clefSigner) SignTx(transaction *types.Transaction, chainID *big.Int) (*
 	}
 
 	if chainID.Cmp(tx.ChainId()) != 0 {
-		return nil, fmt.Errorf("misconfigured signer. wrong chain id %d, wanted %d", tx.ChainId(), chainID)
+		return nil, fmt.Errorf("misconfigured signer: wrong chain id %d; wanted %d", tx.ChainId(), chainID)
 	}
 
 	return tx, nil
