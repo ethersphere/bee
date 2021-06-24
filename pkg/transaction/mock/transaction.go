@@ -23,8 +23,9 @@ type transactionServiceMock struct {
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
 	pendingTransactions  func() ([]common.Hash, error)
-	resendTransaction    func(txHash common.Hash) error
+	resendTransaction    func(ctx context.Context, txHash common.Hash) error
 	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
+	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
@@ -62,9 +63,9 @@ func (m *transactionServiceMock) PendingTransactions() ([]common.Hash, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *transactionServiceMock) ResendTransaction(txHash common.Hash) error {
+func (m *transactionServiceMock) ResendTransaction(ctx context.Context, txHash common.Hash) error {
 	if m.resendTransaction != nil {
-		return m.resendTransaction(txHash)
+		return m.resendTransaction(ctx, txHash)
 	}
 	return errors.New("not implemented")
 }
@@ -74,6 +75,13 @@ func (m *transactionServiceMock) StoredTransaction(txHash common.Hash) (*transac
 		return m.storedTransaction(txHash)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+	if m.send != nil {
+		return m.cancelTransaction(ctx, originalTxHash)
+	}
+	return common.Hash{}, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) Close() error {
@@ -119,7 +127,7 @@ func WithPendingTransactionsFunc(f func() ([]common.Hash, error)) Option {
 	})
 }
 
-func WithResendTransactionFunc(f func(txHash common.Hash) error) Option {
+func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash) error) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.resendTransaction = f
 	})

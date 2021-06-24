@@ -6,6 +6,7 @@ package debugapi
 
 import (
 	"errors"
+	"math/big"
 	"net/http"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/gorilla/mux"
 )
@@ -115,10 +117,44 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 	hash := mux.Vars(r)["hash"]
 	txHash := common.HexToHash(hash)
 
-	err := s.transaction.ResendTransaction(txHash)
+	err := s.transaction.ResendTransaction(r.Context(), txHash)
 	if err != nil {
 		s.logger.Debugf("debug api: transactions: resend %x: %v", txHash, err)
 		s.logger.Errorf("debug api: transactions: can't resend transaction %x", txHash)
+		if errors.Is(err, transaction.ErrUnknownTransaction) {
+			jsonhttp.NotFound(w, errUnknownTransaction)
+		} else if errors.Is(err, transaction.ErrAlreadyImported) {
+			jsonhttp.BadRequest(w, errAlreadyImported)
+		} else {
+			jsonhttp.InternalServerError(w, errCantResendTransaction)
+		}
+		return
+	}
+
+	jsonhttp.OK(w, transactionHashResponse{
+		TransactionHash: txHash,
+	})
+}
+
+func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Request) {
+	hash := mux.Vars(r)["hash"]
+	txHash := common.HexToHash(hash)
+
+	ctx := r.Context()
+	if price, ok := r.Header[gasPriceHeader]; ok {
+		p, ok := big.NewInt(0).SetString(price[0], 10)
+		if !ok {
+			s.logger.Error("debug api: transactions: cancel: bad gas price")
+			jsonhttp.BadRequest(w, errBadGasPrice)
+			return
+		}
+		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	txHash, err := s.transaction.CancelTransaction(ctx, txHash)
+	if err != nil {
+		s.logger.Debugf("debug api: transactions: cancel %x: %v", txHash, err)
+		s.logger.Errorf("debug api: transactions: can't cancel transaction %x", txHash)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
