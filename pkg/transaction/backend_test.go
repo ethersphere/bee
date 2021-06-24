@@ -19,7 +19,7 @@ func TestIsSynced(t *testing.T) {
 	blockNumber := uint64(100)
 
 	t.Run("synced", func(t *testing.T) {
-		synced, err := transaction.IsSynced(
+		synced, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
 				backendmock.WithBlockNumberFunc(func(c context.Context) (uint64, error) {
@@ -45,7 +45,7 @@ func TestIsSynced(t *testing.T) {
 	})
 
 	t.Run("not synced", func(t *testing.T) {
-		synced, err := transaction.IsSynced(
+		synced, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
 				backendmock.WithBlockNumberFunc(func(c context.Context) (uint64, error) {
@@ -72,7 +72,7 @@ func TestIsSynced(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		expectedErr := errors.New("err")
-		_, err := transaction.IsSynced(
+		_, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
 				backendmock.WithBlockNumberFunc(func(c context.Context) (uint64, error) {
