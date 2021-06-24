@@ -128,10 +128,7 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	batch, err := requestPostageBatchId(r)
-	switch {
-	case errors.Is(err, errSwarmPostageBatchIDHeaderNotFound) && s.post.DefaultIssuer() != nil:
-		batch = s.post.DefaultIssuer().ID()
-	case err != nil:
+	if err != nil {
 		s.logger.Debugf("soc upload: postage batch id: %v", err)
 		s.logger.Error("soc upload: postage batch id")
 		jsonhttp.BadRequest(w, "invalid postage batch id")

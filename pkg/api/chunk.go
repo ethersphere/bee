@@ -86,10 +86,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	batch, err := requestPostageBatchId(r)
-	switch {
-	case errors.Is(err, errSwarmPostageBatchIDHeaderNotFound) && s.post.DefaultIssuer() != nil:
-		batch = s.post.DefaultIssuer().ID()
-	case err != nil:
+	if err != nil {
 		s.logger.Debugf("chunk upload: postage batch id: %v", err)
 		s.logger.Error("chunk upload: postage batch id")
 		jsonhttp.BadRequest(w, "invalid postage batch id")

@@ -52,10 +52,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := sctx.SetTag(r.Context(), tag)
 
 	batch, err := requestPostageBatchId(r)
-	switch {
-	case errors.Is(err, errSwarmPostageBatchIDHeaderNotFound) && s.post.DefaultIssuer() != nil:
-		batch = s.post.DefaultIssuer().ID()
-	case err != nil:
+	if err != nil {
 		logger.Debugf("bytes upload: postage batch id:%v", err)
 		logger.Error("bytes upload: postage batch id")
 		jsonhttp.BadRequest(w, nil)

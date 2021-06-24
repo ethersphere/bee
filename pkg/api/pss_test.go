@@ -235,9 +235,9 @@ func TestPssSend(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 		)
 	})
-	t.Run("ok batch - batch empty", func(t *testing.T) {
+	t.Run("bad request - batch empty", func(t *testing.T) {
 		hexbatch := hex.EncodeToString(batchEmpty)
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 		)

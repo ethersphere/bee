@@ -201,12 +201,6 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
-	router.Handle("/stamps/default/{id}", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"PUT": http.HandlerFunc(s.postageSetDefaultStampIssuerHandler),
-		})),
-	)
-
 	return router
 }
 
