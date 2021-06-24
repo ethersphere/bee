@@ -138,6 +138,9 @@ inability to use, or your interaction with other nodes or the software.`)
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
 			bootnodes = parseBootnodes(logger, mainnet, networkID, bootnodes)
 
+			blockTime := c.config.GetUint64(optionNameBlockTime)
+			blockTime = parseBlockTime(mainnet, blockTime)
+
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
@@ -176,7 +179,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				BlockHash:                  c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
-				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
+				BlockTime:                  blockTime,
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
 			})
@@ -441,4 +444,12 @@ func parseBootnodes(log logging.Logger, main bool, networkID uint64, bootnodes [
 	log.Warning("no bootnodes defined for network ID", networkID)
 
 	return bootnodes
+}
+
+func parseBlockTime(main bool, blockTime uint64) uint64 {
+	if main {
+		return uint64(5 * time.Second)
+	}
+
+	return blockTime
 }
