@@ -47,6 +47,7 @@ func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (boo
 	}
 
 	blockTime := time.Unix(int64(header.Time), 0)
+	fmt.Println("blocknumber", number, blockTime)
 
 	return blockTime.After(time.Now().UTC().Add(-maxDelay)), nil
 }

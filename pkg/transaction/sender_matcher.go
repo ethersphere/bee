@@ -54,12 +54,17 @@ func NewMatcher(backend Backend, signer types.Signer, storage storage.StateStore
 	}
 }
 
-func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) ([]byte, error) {
-
+func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) (b []byte, err error) {
+	fmt.Printf("matcher tx %x, network %d, overlay %s\n", tx, networkID, senderOverlay.String())
+	defer func() {
+		if err != nil {
+			fmt.Printf("matcher err: %v\n", err)
+		}
+	}()
 	incomingTx := common.BytesToHash(tx)
 
 	var val overlayVerification
-	err := m.storage.Get(peerOverlayKey(senderOverlay, incomingTx), &val)
+	err = m.storage.Get(peerOverlayKey(senderOverlay, incomingTx), &val)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
@@ -68,6 +73,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		// add cache invalidation
 		return val.NextBlockHash, nil
 	} else if val.TimeStamp.Add(5 * time.Minute).After(m.timeNow()) {
+		fmt.Printf("greylisted, ttl %s\n", val.TimeStamp.Add(5*time.Minute).Sub(m.timeNow()))
 		return nil, ErrGreylisted
 	}
 

@@ -154,6 +154,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
+	fmt.Printf("outgoing handshake: new bzz address %s %x %d %x\n", advertisableUnderlay, s.overlay, s.networkID, s.transaction)
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.transaction)
 	if err != nil {
 		return nil, err
@@ -246,6 +247,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
+	fmt.Printf("incoming handshake: new bzz address %s %x %d %x\n", advertisableUnderlay, s.overlay, s.networkID, s.transaction)
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.transaction)
 	if err != nil {
 		return nil, err
