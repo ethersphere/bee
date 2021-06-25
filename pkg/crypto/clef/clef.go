@@ -7,6 +7,7 @@ package clef
 import (
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -129,7 +130,16 @@ func (c *clefSigner) Sign(data []byte) ([]byte, error) {
 // SignTx signs an ethereum transaction.
 func (c *clefSigner) SignTx(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	// chainId is nil here because it is set on the clef side
-	return c.clef.SignTx(c.account, transaction, nil)
+	tx, err := c.clef.SignTx(c.account, transaction, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if chainID.Cmp(tx.ChainId()) != 0 {
+		return nil, fmt.Errorf("misconfigured signer: wrong chain id %d; wanted %d", tx.ChainId(), chainID)
+	}
+
+	return tx, nil
 }
 
 // EthereumAddress returns the ethereum address this signer uses.
