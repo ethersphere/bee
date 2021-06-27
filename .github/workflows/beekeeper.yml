@@ -110,25 +110,6 @@ jobs:
         run: |
           beekeeper delete bee-cluster --cluster-name local-clef
           make beelocal ACTION=uninstall
-      - name: Apply patches
-        run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
-      - name: Prepare testing cluster (storage incentives setup)
-        run: |
-          timeout 10m make beelocal OPTS='ci skip-vet'
-      - name: Set kube config
-        run: |
-          mkdir -p ~/.kube
-          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - name: Set testing cluster (storage incentives setup)
-        run: |
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
-      - name: Test pingpong
-        id: pingpong-3
-        run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
-      - name: Test gc
-        id: gc-chunk-1
-        run: beekeeper check --cluster-name local-gc --checks=ci-gc
       - name: Retag Docker image and push for cache
         if: success()
         run: |
@@ -170,8 +151,6 @@ jobs:
           if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
-          if ${{ steps.pingpong-3.outcome=='failure' }}; then FAILED=pingpong-3; fi
-          if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** ${{ github.head_ref }}\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"

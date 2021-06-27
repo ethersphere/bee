@@ -34,6 +34,8 @@ const (
 	maxBootNodeAttempts    = 3 // how many attempts to dial to boot-nodes before giving up
 	defaultBitSuffixLength = 3 // the number of bits used to create pseudo addresses for balancing
 
+	addPeerBatchSize = 500
+
 	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
 )
 
@@ -53,8 +55,10 @@ var (
 	errEmptyBin        = errors.New("empty bin")
 )
 
-type binSaturationFunc func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
-type sanctionedPeerFunc func(peer swarm.Address) bool
+type (
+	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
+	sanctionedPeerFunc func(peer swarm.Address) bool
+)
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 
@@ -209,7 +213,6 @@ func (k *Kad) generateCommonBinPrefixes() {
 			}
 		}
 	}
-
 }
 
 // Clears the bit at pos in n.
@@ -497,8 +500,8 @@ func (k *Kad) manage() {
 	// The wg makes sure that we wait for all the connection attempts,
 	// spun up by goroutines, to finish before we try the boot-nodes.
 	var wg sync.WaitGroup
-	var peerConnChan = make(chan *peerConnInfo)
-	var peerConnChan2 = make(chan *peerConnInfo)
+	peerConnChan := make(chan *peerConnInfo)
+	peerConnChan2 := make(chan *peerConnInfo)
 	go k.connectionAttemptsHandler(ctx, &wg, peerConnChan, peerConnChan2)
 
 	for {
@@ -577,9 +580,19 @@ func (k *Kad) Start(_ context.Context) error {
 			return
 		default:
 		}
+		var (
+			start     = time.Now()
+			addresses []swarm.Address
+		)
 
-		start := time.Now()
-		addresses, err := k.addressBook.Overlays()
+		err := k.addressBook.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
+			addresses = append(addresses, addr)
+			if len(addresses) == addPeerBatchSize {
+				k.AddPeers(addresses...)
+				addresses = nil
+			}
+			return false, nil
+		})
 		if err != nil {
 			k.logger.Errorf("addressbook overlays: %w", err)
 			return
@@ -597,7 +610,7 @@ func (k *Kad) Start(_ context.Context) error {
 
 func (k *Kad) connectBootNodes(ctx context.Context) {
 	var attempts, connected int
-	var totalAttempts = maxBootNodeAttempts * len(k.bootnodes)
+	totalAttempts := maxBootNodeAttempts * len(k.bootnodes)
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -862,7 +875,8 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 }
 
 // Connected is called when a peer has dialed in.
-func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
+// If forceConnection is true `overSaturated` is ignored for non-bootnodes.
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) error {
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
@@ -875,7 +889,9 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
 			_ = k.p2p.Disconnect(randPeer)
 			return k.connected(ctx, address)
 		}
-		return topology.ErrOversaturated
+		if !forceConnection {
+			return topology.ErrOversaturated
+		}
 	}
 
 	return k.connected(ctx, address)
@@ -901,12 +917,10 @@ func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
 	k.notifyManageLoop()
 	k.notifyPeerSig()
 	return nil
-
 }
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(peer p2p.Peer) {
-
 	k.logger.Debugf("kademlia: disconnected peer %s", peer.Address)
 
 	k.connectedPeers.Remove(peer.Address)
@@ -995,7 +1009,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 
 	peers := k.p2p.Peers()
 	var peersToDisconnect []swarm.Address
-	var closest = swarm.ZeroAddress
+	closest := swarm.ZeroAddress
 
 	if includeSelf {
 		closest = k.base
@@ -1039,7 +1053,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 		return swarm.Address{}, err
 	}
 
-	if closest.IsZero() { //no peers
+	if closest.IsZero() { // no peers
 		return swarm.Address{}, topology.ErrNotFound // only for light nodes
 	}
 
@@ -1305,7 +1319,6 @@ func (k *Kad) Close() error {
 }
 
 func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
-
 	if count >= len(addrs) {
 		return addrs, nil
 	}
@@ -1323,7 +1336,6 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 }
 
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
-
 	peers := k.connectedPeers.BinPeers(bin)
 
 	if len(peers) == 0 {

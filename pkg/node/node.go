@@ -64,6 +64,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
@@ -152,7 +153,7 @@ type Options struct {
 }
 
 const (
-	refreshRate = int64(6000000)
+	refreshRate = int64(4500000)
 	basePrice   = 10000
 )
 
@@ -196,39 +197,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	addressbook := addressbook.New(stateStore)
 
-	var debugAPIService *debugapi.Service
-	if o.DebugAPIAddr != "" {
-		overlayEthAddress, err := signer.EthereumAddress()
-		if err != nil {
-			return nil, fmt.Errorf("eth address: %w", err)
-		}
-		// set up basic debug api endpoints for debugging and /health endpoint
-		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins)
-
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugAPIService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
-
 	var (
 		swapBackend        *ethclient.Client
 		overlayEthAddress  common.Address
@@ -256,6 +224,55 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		b.ethClientCloser = swapBackend.Close
 		b.transactionCloser = tracerCloser
 		b.transactionMonitorCloser = transactionMonitor
+	}
+
+	var debugAPIService *debugapi.Service
+	if o.DebugAPIAddr != "" {
+		overlayEthAddress, err := signer.EthereumAddress()
+		if err != nil {
+			return nil, fmt.Errorf("eth address: %w", err)
+		}
+		// set up basic debug api endpoints for debugging and /health endpoint
+		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, transactionService)
+
+		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("debug api listener: %w", err)
+		}
+
+		debugAPIServer := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           debugAPIService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		go func() {
+			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+
+			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+				logger.Debugf("debug api server: %v", err)
+				logger.Error("unable to serve debug api")
+			}
+		}()
+
+		b.debugAPIServer = debugAPIServer
+	}
+
+	if !o.Standalone {
+		// Sync the with the given Ethereum backend:
+		isSynced, _, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
+		if err != nil {
+			return nil, fmt.Errorf("is synced: %w", err)
+		}
+		if !isSynced {
+			logger.Infof("waiting to sync with the Ethereum backend")
+
+			err := transaction.WaitSynced(logger, p2pCtx, swapBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("waiting backend sync: %w", err)
+			}
+		}
 	}
 
 	if o.SwapEnable {
@@ -331,7 +348,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	senderMatcher := transaction.NewMatcher(swapBackend, types.NewEIP155Signer(big.NewInt(chainID)))
+	senderMatcher := transaction.NewMatcher(swapBackend, types.NewEIP155Signer(big.NewInt(chainID)), stateStore)
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
@@ -349,6 +366,17 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
+	var unreserveFn func([]byte, uint8) (uint64, error)
+	var evictFn = func(b []byte) error {
+		_, err := unreserveFn(b, swarm.MaxPO+1)
+		return err
+	}
+
+	batchStore, err := batchstore.New(stateStore, evictFn, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
 	// localstore depends on batchstore
 	var path string
 
@@ -358,6 +386,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        uint64(batchstore.Capacity),
+		UnreserveFunc:          batchStore.Unreserve,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
@@ -369,11 +399,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
+	unreserveFn = storer.UnreserveBatch
 
-	batchStore, err := batchstore.New(stateStore, storer.UnreserveBatch)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
@@ -496,6 +523,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	minThreshold := big.NewInt(2 * refreshRate)
+	maxThreshold := big.NewInt(24 * refreshRate)
 
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {
@@ -506,6 +534,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	if paymentThreshold.Cmp(minThreshold) < 0 {
 		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
+
+	if paymentThreshold.Cmp(maxThreshold) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
 	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
@@ -735,7 +767,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, transactionService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, post, postageContractService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {

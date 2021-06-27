@@ -11,7 +11,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -30,7 +30,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -51,7 +51,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -66,7 +66,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -381,17 +381,12 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
   - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}-{{ .Prerelease }}
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64
-  - ethersphere/bee:{{ .Version }}-armv7
-  - ethersphere/bee:{{ .Version }}-arm64v8
 - name_template: ethersphere/bee:latest
   image_templates:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
   - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:beta
+- name_template: ethersphere/bee:stable
   image_templates:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
@@ -411,17 +406,12 @@ docker_manifests:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64
   - quay.io/ethersphere/bee:{{ .Version }}-armv7
   - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}-{{ .Prerelease }}
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
 - name_template: quay.io/ethersphere/bee:latest
   image_templates:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64
   - quay.io/ethersphere/bee:{{ .Version }}-armv7
   - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: quay.io/ethersphere/bee:beta
+- name_template: quay.io/ethersphere/bee:stable
   image_templates:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64
   - quay.io/ethersphere/bee:{{ .Version }}-armv7
@@ -441,17 +431,12 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-amd64-slim
   - ethersphere/bee:{{ .Version }}-armv7-slim
   - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}-{{ .Prerelease }}-slim
-  image_templates:
-  - ethersphere/bee:{{ .Version }}-amd64-slim
-  - ethersphere/bee:{{ .Version }}-armv7-slim
-  - ethersphere/bee:{{ .Version }}-arm64v8
 - name_template: ethersphere/bee:latest-slim
   image_templates:
   - ethersphere/bee:{{ .Version }}-amd64-slim
   - ethersphere/bee:{{ .Version }}-armv7-slim
   - ethersphere/bee:{{ .Version }}-arm64v8-slim
-- name_template: ethersphere/bee:beta-slim
+- name_template: ethersphere/bee:stable-slim
   image_templates:
   - ethersphere/bee:{{ .Version }}-amd64-slim
   - ethersphere/bee:{{ .Version }}-armv7-slim
@@ -471,17 +456,12 @@ docker_manifests:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
   - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
   - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
-- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}-{{ .Prerelease }}-slim
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
 - name_template: quay.io/ethersphere/bee:latest-slim
   image_templates:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
   - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
   - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
-- name_template: quay.io/ethersphere/bee:beta-slim
+- name_template: quay.io/ethersphere/bee:stable-slim
   image_templates:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
   - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
