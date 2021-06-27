@@ -65,17 +65,6 @@ func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
 	return nil, errors.New("stampissuer not found")
 }
 
-// SetDefaultIssuer sets the default stamps issuer.
-func (m *mockPostage) SetDefaultIssuer([]byte) error {
-	// Noop, the default is m.i.
-	return nil
-}
-
-// DefaultIssuer returns the default stamps issuer.
-func (m *mockPostage) DefaultIssuer() *postage.StampIssuer {
-	return m.i
-}
-
 func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
