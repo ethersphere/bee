@@ -46,10 +46,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	batch, err := requestPostageBatchId(r)
-	switch {
-	case errors.Is(err, errSwarmPostageBatchIDHeaderNotFound) && s.post.DefaultIssuer() != nil:
-		batch = s.post.DefaultIssuer().ID()
-	case err != nil:
+	if err != nil {
 		logger.Debugf("bzz upload: postage batch id: %v", err)
 		logger.Error("bzz upload: postage batch id")
 		jsonhttp.BadRequest(w, "invalid postage batch id")

@@ -69,14 +69,13 @@ const (
 )
 
 var (
-	errInvalidNameOrAddress              = errors.New("invalid name or bzz address")
-	errNoResolver                        = errors.New("no resolver connected")
-	errInvalidRequest                    = errors.New("could not validate request")
-	errInvalidContentType                = errors.New("invalid content-type")
-	errDirectoryStore                    = errors.New("could not store directory")
-	errFileStore                         = errors.New("could not store file")
-	errInvalidPostageBatch               = errors.New("invalid postage batch id")
-	errSwarmPostageBatchIDHeaderNotFound = fmt.Errorf("header %s not found", SwarmPostageBatchIdHeader)
+	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
+	errNoResolver           = errors.New("no resolver connected")
+	errInvalidRequest       = errors.New("could not validate request")
+	errInvalidContentType   = errors.New("invalid content-type")
+	errDirectoryStore       = errors.New("could not store directory")
+	errFileStore            = errors.New("could not store file")
+	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 )
 
 // Service is the API service interface.
@@ -238,7 +237,7 @@ func requestPostageBatchId(r *http.Request) ([]byte, error) {
 		return b, nil
 	}
 
-	return nil, errSwarmPostageBatchIDHeaderNotFound
+	return nil, errInvalidPostageBatch
 }
 
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
