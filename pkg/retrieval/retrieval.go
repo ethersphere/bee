@@ -64,9 +64,10 @@ type Service struct {
 	metrics       metrics
 	pricer        pricer.Interface
 	tracer        *tracing.Tracer
+	caching       bool
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -77,6 +78,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		pricer:        pricer,
 		metrics:       newMetrics(),
 		tracer:        tracer,
+		caching:       forwarderCaching,
 	}
 }
 
@@ -410,6 +412,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	addr := swarm.NewAddress(req.Addr)
+
+	stored := false
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -421,11 +425,20 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		} else {
 			return fmt.Errorf("get from store: %w", err)
 		}
+	} else {
+		stored = true
 	}
 
 	stamp, err := chunk.Stamp().MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("stamp marshal: %w", err)
+	}
+
+	if s.caching && !stored {
+		_, err = s.storer.Put(ctx, storage.ModePutRequestCache, chunk)
+		if err != nil {
+			s.logger.Debugf("chunk store cache fail: %w", err)
+		}
 	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
