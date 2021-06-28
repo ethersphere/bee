@@ -16,6 +16,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const uploadPingTimout = time.Second * 4
+
+var successWsMsg = []byte("successful")
+
 func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx, tag, putter, err := s.processUploadRequest(r)
@@ -77,7 +81,10 @@ func (s *server) handleUploadStream(
 
 	// default handlers for ping/pong
 	conn.SetPingHandler(nil)
-	conn.SetPongHandler(nil)
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(readDeadline))
+		return nil
+	})
 
 	sendMsg := func(msgType int, buf []byte) error {
 		err := conn.SetWriteDeadline(time.Now().Add(writeDeadline))
@@ -91,15 +98,19 @@ func (s *server) handleUploadStream(
 		return nil
 	}
 
-	sendErrorAndClose := func(errmsg string) error {
-		return sendMsg(websocket.CloseMessage, []byte(errmsg))
+	sendErrorClose := func(code int, errmsg string) error {
+		return conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, errmsg),
+			time.Now().Add(writeDeadline),
+		)
 	}
 
 	for {
 		select {
 		case <-s.quit:
 			// shutdown
-			err = sendErrorAndClose("node shutting down")
+			err := sendErrorClose(websocket.CloseGoingAway, "node shutting down")
 			if err != nil {
 				s.logger.Debugf("failed sending close message: %v", err)
 			}
@@ -131,7 +142,7 @@ func (s *server) handleUploadStream(
 
 		if mt != websocket.BinaryMessage {
 			s.logger.Debug("unexpected message received from client", mt)
-			sendErrorAndClose("invalid message")
+			sendErrorClose(websocket.CloseUnsupportedData, "invalid message")
 			return
 		}
 
@@ -151,16 +162,16 @@ func (s *server) handleUploadStream(
 			s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
 			switch {
 			case errors.Is(err, postage.ErrBucketFull):
-				sendErrorAndClose("batch is overissued")
+				sendErrorClose(websocket.CloseInternalServerErr, "batch is overissued")
 			default:
-				sendErrorAndClose("chunk write error")
+				sendErrorClose(websocket.CloseInternalServerErr, "chunk write error")
 			}
 			return
 		} else if len(seen) > 0 && seen[0] && tag != nil {
 			err := tag.Inc(tags.StateSeen)
 			if err != nil {
 				s.logger.Debugf("chunk upload: increment tag", err)
-				sendErrorAndClose("failed incrementing tag")
+				sendErrorClose(websocket.CloseInternalServerErr, "failed incrementing tag")
 				return
 			}
 		}
@@ -170,7 +181,7 @@ func (s *server) handleUploadStream(
 			err = tag.Inc(tags.StateStored)
 			if err != nil {
 				s.logger.Debugf("chunk upload: increment tag", err)
-				sendErrorAndClose("failed incrementing tag")
+				sendErrorClose(websocket.CloseInternalServerErr, "failed incrementing tag")
 				return
 			}
 		}
@@ -178,12 +189,12 @@ func (s *server) handleUploadStream(
 		if pin {
 			if err := s.pinning.CreatePin(ctx, chunk.Address(), false); err != nil {
 				s.logger.Debugf("chunk upload: creation of pin for %q failed: %v", chunk.Address(), err)
-				sendErrorAndClose("failed creating pin")
+				sendErrorClose(websocket.CloseInternalServerErr, "failed creating pin")
 				return
 			}
 		}
 
-		err = sendMsg(websocket.TextMessage, []byte("success"))
+		err = sendMsg(websocket.TextMessage, successWsMsg)
 		if err != nil {
 			s.logger.Debugf("failed sending success msg: %v", err)
 			return
