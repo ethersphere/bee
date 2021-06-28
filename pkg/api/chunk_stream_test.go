@@ -87,14 +87,6 @@ func TestChunkUploadStream(t *testing.T) {
 	})
 
 	t.Run("close on incorrect msg", func(t *testing.T) {
-		serverClosed := make(chan struct{})
-		var errResponse string
-		wsConn.SetCloseHandler(func(code int, msg string) error {
-			errResponse = msg
-			close(serverClosed)
-			return nil
-		})
-
 		err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))
 		if err != nil {
 			t.Fatal(err)
@@ -114,13 +106,11 @@ func TestChunkUploadStream(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected failure on read")
 		}
-
-		select {
-		case <-time.After(time.Second * 5):
-			t.Fatal("waited 5 secs for server to close on error")
-		case <-serverClosed:
-			if errResponse != "invalid message" {
-				t.Fatalf("incorrect response on error, exp: (invalid message) got (%s)", errResponse)
+		if cerr, ok := err.(*websocket.CloseError); !ok {
+			t.Fatal("invalid error on read")
+		} else {
+			if cerr.Text != "invalid message" {
+				t.Fatalf("incorrect response on error, exp: (invalid message) got (%s)", cerr.Text)
 			}
 		}
 	})
