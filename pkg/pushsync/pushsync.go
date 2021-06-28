@@ -144,13 +144,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	stamp := new(postage.Stamp)
 	err = stamp.UnmarshalBinary(ch.Stamp)
 	if err != nil {
-		return err
+		return fmt.Errorf("pushsync stamp unmarshall: %w", err)
 	}
 	chunk.WithStamp(stamp)
-
-	if err != nil {
-		return fmt.Errorf("...: %w", err)
-	}
 
 	if cac.Valid(chunk) {
 		if ps.unwrap != nil {
