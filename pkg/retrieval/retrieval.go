@@ -122,8 +122,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		sp := newSkipPeers()
 
+		// set countdown for preemptive retry
+
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
 		defer ticker.Stop()
+
+		// create results channel and attempt number tracking variables
 
 		var (
 			peerAttempt  int
@@ -135,6 +139,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		lastTime := time.Now().Unix()
 
+		// before each round of requests, the overdraft-blocked entries in the skiplist are pruned
+		// round of request attempts
 		for requestAttempt < maxRequestRounds {
 
 			if peerAttempt < maxSelects {
@@ -413,7 +419,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	addr := swarm.NewAddress(req.Addr)
 
-	stored := false
+	forwarded := false
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -422,19 +428,17 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			if err != nil {
 				return fmt.Errorf("retrieve chunk: %w", err)
 			}
+			forwarded = true
 		} else {
 			return fmt.Errorf("get from store: %w", err)
 		}
-	} else {
-		stored = true
 	}
-
 	stamp, err := chunk.Stamp().MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("stamp marshal: %w", err)
 	}
 
-	if s.caching && !stored {
+	if s.caching && forwarded {
 		_, err = s.storer.Put(ctx, storage.ModePutRequestCache, chunk)
 		if err != nil {
 			s.logger.Debugf("chunk store cache fail: %w", err)
