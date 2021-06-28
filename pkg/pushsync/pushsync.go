@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -71,7 +72,7 @@ type PushSync struct {
 	pricer         pricer.Interface
 	metrics        metrics
 	tracer         *tracing.Tracer
-	validStamp     func(swarm.Chunk, []byte) (swarm.Chunk, error)
+	validStamp     func(swarm.Chunk) (swarm.Chunk, error)
 	signer         crypto.Signer
 	isFullNode     bool
 	warmupPeriod   time.Time
@@ -82,7 +83,7 @@ var defaultTTL = 20 * time.Second                     // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
-func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		blockHash:      blockHash,
@@ -139,8 +140,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	ps.metrics.TotalReceived.Inc()
 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
-	if chunk, err = ps.validStamp(chunk, ch.Stamp); err != nil {
-		return fmt.Errorf("pushsync valid stamp: %w", err)
+	chunkAddress := chunk.Address()
+	stamp := new(postage.Stamp)
+	err = stamp.UnmarshalBinary(ch.Stamp)
+	if err != nil {
+		return err
+	}
+	chunk.WithStamp(stamp)
+
+	if err != nil {
+		return fmt.Errorf("...: %w", err)
 	}
 
 	if cac.Valid(chunk) {
@@ -151,15 +160,20 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return swarm.ErrInvalidChunk
 	}
 
-	price := ps.pricer.Price(chunk.Address())
+	price := ps.pricer.Price(chunkAddress)
 
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
-		bytes := chunk.Address().Bytes()
+		bytes := chunkAddress.Bytes()
 		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+			if ps.topologyDriver.IsWithinDepth(chunkAddress) {
 				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
 				defer canceld()
+
+				chunk, err := ps.validateStamp(chunk)
+				if err != nil {
+					return err
+				}
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 				if err != nil {
@@ -191,7 +205,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// forwarding replication
 	storedChunk := false
-	if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+	if ps.topologyDriver.IsWithinDepth(chunkAddress) {
+
+		chunk, err := ps.validateStamp(chunk)
+		if err != nil {
+			return err
+		}
+
 		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 		if err != nil {
 			ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
@@ -200,13 +220,19 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 	}
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
 	receipt, err := ps.pushToClosest(ctx, chunk, false, p.Address)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			if !storedChunk {
+
+				chunk, err := ps.validateStamp(chunk)
+				if err != nil {
+					return err
+				}
+
 				_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 				if err != nil {
 					return fmt.Errorf("chunk store: %w", err)
@@ -225,7 +251,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 			defer debit.Cleanup()
 
-			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature, BlockHash: ps.blockHash}
+			receipt := pb.Receipt{Address: chunkAddress.Bytes(), Signature: signature, BlockHash: ps.blockHash}
 			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
@@ -248,6 +274,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	return debit.Apply()
+}
+
+func (ps *PushSync) validateStamp(ch swarm.Chunk) (swarm.Chunk, error) {
+	chunk, err := ps.validStamp(ch)
+	if err != nil {
+		return nil, fmt.Errorf("pushsync valid stamp: %w", err)
+	}
+	return chunk, nil
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for

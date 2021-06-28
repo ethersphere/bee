@@ -113,8 +113,8 @@ func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
-func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
+// ValidStampBytes returns a stampvalidator function passed to protocols with chunk entrypoints.
+func ValidStampBytes(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
 	return func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
 		stamp := new(Stamp)
 		err := stamp.UnmarshalBinary(stampBytes)
@@ -132,6 +132,25 @@ func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (s
 			return nil, err
 		}
 		return chunk.WithStamp(stamp).WithBatch(b.Radius, b.Depth, b.BucketDepth, b.Immutable), nil
+	}
+}
+
+// ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
+func ValidStamp(batchStore Storer) func(chunk swarm.Chunk) (swarm.Chunk, error) {
+	return func(chunk swarm.Chunk) (swarm.Chunk, error) {
+		stamp := chunk.Stamp()
+		postageStamp := NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
+		b, err := batchStore.Get(stamp.BatchID())
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, fmt.Errorf("batchstore get: %v, %w", err, ErrNotFound)
+			}
+			return nil, err
+		}
+		if err = postageStamp.Valid(chunk.Address(), b.Owner, b.Depth, b.BucketDepth, b.Immutable); err != nil {
+			return nil, err
+		}
+		return chunk.WithBatch(b.Radius, b.Depth, b.BucketDepth, b.Immutable), nil
 	}
 }
 

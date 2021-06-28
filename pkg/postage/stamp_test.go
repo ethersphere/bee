@@ -61,7 +61,7 @@ func TestStampIndexMarshalling(t *testing.T) {
 	}
 }
 
-func TestValidStamp(t *testing.T) {
+func TestValidStampBytes(t *testing.T) {
 
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
@@ -96,7 +96,58 @@ func TestValidStamp(t *testing.T) {
 		t.Fatal("expected chunk to not have correct depth and bucket depth at start")
 	}
 
-	ch, err = postage.ValidStamp(bs)(ch, stBytes)
+	ch, err = postage.ValidStampBytes(bs)(ch, stBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compareStamps(t, st, ch.Stamp().(*postage.Stamp))
+
+	if ch.Depth() != b.Depth {
+		t.Fatalf("invalid batch depth added on chunk exp %d got %d", b.Depth, ch.Depth())
+	}
+	if ch.BucketDepth() != b.BucketDepth {
+		t.Fatalf("invalid bucket depth added on chunk exp %d got %d", b.BucketDepth, ch.BucketDepth())
+	}
+	if ch.Immutable() != b.Immutable {
+		t.Fatalf("invalid batch immutablility added on chunk exp %t got %t", b.Immutable, ch.Immutable())
+	}
+}
+
+func TestValidStamp(t *testing.T) {
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	owner, err := crypto.NewEthereumAddress(privKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := postagetesting.MustNewBatch(postagetesting.WithOwner(owner))
+	bs := mock.New(mock.WithBatch(b))
+	signer := crypto.NewDefaultSigner(privKey)
+	issuer := postage.NewStampIssuer("label", "keyID", b.ID, big.NewInt(3), b.Depth, b.BucketDepth, 1000, true)
+	stamper := postage.NewStamper(issuer, signer)
+
+	// this creates a chunk with a mocked stamp. ValidStamp will override this
+	// stamp on execution
+	ch := chunktesting.GenerateTestRandomChunk()
+
+	st, err := stamper.Stamp(ch.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ch.WithStamp(st)
+
+	// ensure the chunk doesnt have the batch details filled before we validate stamp
+	if ch.Depth() == b.Depth || ch.BucketDepth() == b.BucketDepth {
+		t.Fatal("expected chunk to not have correct depth and bucket depth at start")
+	}
+
+	ch, err = postage.ValidStamp(bs)(ch)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -402,6 +402,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	unreserveFn = storer.UnreserveBatch
 
 	validStamp := postage.ValidStamp(batchStore)
+	validStampBytes := postage.ValidStampBytes(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
@@ -622,9 +623,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if o.GlobalPinningEnabled {
 		// create recovery callback for content repair
 		recoverFunc := recovery.NewCallback(pssService)
-		ns = netstore.New(storer, validStamp, recoverFunc, retrieve, logger)
+		ns = netstore.New(storer, validStampBytes, recoverFunc, retrieve, logger)
 	} else {
-		ns = netstore.New(storer, validStamp, nil, retrieve, logger)
+		ns = netstore.New(storer, validStampBytes, nil, retrieve, logger)
 	}
 
 	traversalService := traversal.New(ns)
@@ -647,7 +648,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
+	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStampBytes, logger)
 	b.pullSyncCloser = pullSyncProtocol
 
 	var pullerService *puller.Puller
