@@ -122,12 +122,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		sp := newSkipPeers()
 
-		// set countdown for preemptive retry
-
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
 		defer ticker.Stop()
-
-		// create results channel and attempt number tracking variables
 
 		var (
 			peerAttempt  int
@@ -139,8 +135,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		lastTime := time.Now().Unix()
 
-		// before each round of requests, the overdraft-blocked entries in the skiplist are pruned
-		// round of request attempts
 		for requestAttempt < maxRequestRounds {
 
 			if peerAttempt < maxSelects {
