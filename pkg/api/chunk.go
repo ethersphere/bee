@@ -6,6 +6,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,27 +30,67 @@ type chunkAddressResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		tag *tags.Tag
-		ctx = r.Context()
-		err error
-	)
+func (s *server) processUploadRequest(
+	r *http.Request,
+) (ctx context.Context, tag *tags.Tag, putter storage.Putter, err error) {
 
 	if h := r.Header.Get(SwarmTagHeader); h != "" {
 		tag, err = s.getTag(h)
 		if err != nil {
 			s.logger.Debugf("chunk upload: get tag: %v", err)
 			s.logger.Error("chunk upload: get tag")
-			jsonhttp.BadRequest(w, "cannot get tag")
-			return
-
+			return nil, nil, nil, errors.New("cannot get tag")
 		}
 
 		// add the tag to the context if it exists
 		ctx = sctx.SetTag(r.Context(), tag)
 
 		// increment the StateSplit here since we dont have a splitter for the file upload
+		err = tag.Inc(tags.StateSplit)
+		if err != nil {
+			s.logger.Debugf("chunk upload: increment tag: %v", err)
+			s.logger.Error("chunk upload: increment tag")
+			return nil, nil, nil, errors.New("cannot increment tag")
+		}
+	} else {
+		ctx = r.Context()
+	}
+
+	batch, err := requestPostageBatchId(r)
+	switch {
+	case errors.Is(err, errSwarmPostageBatchIDHeaderNotFound) && s.post.DefaultIssuer() != nil:
+		batch = s.post.DefaultIssuer().ID()
+	case err != nil:
+		s.logger.Debugf("chunk upload: postage batch id: %v", err)
+		s.logger.Error("chunk upload: postage batch id")
+		return nil, nil, nil, errors.New("invalid postage batch id")
+	}
+
+	putter, err = newStamperPutter(s.storer, s.post, s.signer, batch)
+	if err != nil {
+		s.logger.Debugf("chunk upload: putter:%v", err)
+		s.logger.Error("chunk upload: putter")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			return nil, nil, nil, errors.New("batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			return nil, nil, nil, errors.New("batch not usable")
+		}
+		return nil, nil, nil, errors.New("")
+	}
+
+	return ctx, tag, putter, nil
+}
+
+func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("handling")
+	ctx, tag, putter, err := s.processUploadRequest(r)
+	if err != nil {
+		jsonhttp.BadRequest(w, err.Error())
+		return
+	}
+
+	if tag != nil {
 		err = tag.Inc(tags.StateSplit)
 		if err != nil {
 			s.logger.Debugf("chunk upload: increment tag: %v", err)
