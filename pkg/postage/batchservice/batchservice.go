@@ -46,13 +46,17 @@ func New(
 	listener postage.Listener,
 	owner []byte,
 	batchListener postage.BatchCreationListener,
+	checksumFunc func() hash.Hash,
 ) (Interface, error) {
+	if checksumFunc == nil {
+		checksumFunc = sha3.New256
+	}
 	var (
 		b   string
-		sum = sha3.New256()
+		sum = checksumFunc()
 	)
 
-	if err := stateStore.Get(checkDBKey, &b); err == nil {
+	if err := stateStore.Get(checksumDBKey, &b); err == nil {
 		s, err := hex.DecodeString(b)
 		if err != nil {
 			return nil, err
@@ -66,7 +70,7 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum}
+	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -95,7 +99,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: created batch id %s, checksum %x", hex.EncodeToString(b.ID), cs)
+	svc.logger.Debugf("batch service: created batch id %s, tx %x, checksum %x", hex.EncodeToString(b.ID), txhash, cs)
 	return nil
 }
 
@@ -116,7 +120,7 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txhash []b
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: topped up batch id %s from %v to %v, checksum %x", hex.EncodeToString(b.ID), b.Value, normalisedBalance, cs)
+	svc.logger.Debugf("batch service: topped up batch id %s from %v to %v, tx %x, checksum %x", hex.EncodeToString(b.ID), b.Value, normalisedBalance, txhash, cs)
 	return nil
 }
 
@@ -136,7 +140,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: updated depth of batch id %s from %d to %d, checksum %x", hex.EncodeToString(b.ID), b.Depth, depth, cs)
+	svc.logger.Debugf("batch service: updated depth of batch id %s from %d to %d, tx %x, checksum %x", hex.EncodeToString(b.ID), b.Depth, depth, txhash, cs)
 	return nil
 }
 
@@ -149,12 +153,12 @@ func (svc *batchService) UpdatePrice(price *big.Int, txhash []byte) error {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	cs, err := svc.updateChecksum(txhash)
+	sum, err := svc.updateChecksum(txhash)
 	if err != nil {
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: updated chain price to %s, checksum %x", price, cs)
+	svc.logger.Debugf("batch service: updated chain price to %s, tx %x, checksum %x", price, txhash, sum)
 	return nil
 }
 
@@ -211,22 +215,22 @@ func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
 func (svc *batchService) updateChecksum(txhash []byte) ([]byte, error) {
 	n, err := svc.checksum.Write(txhash)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if l := len(txhash); l != n {
-		return fmt.Errorf("update checksum wrote %d bytes but want %d bytes", n, l)
+		return nil, fmt.Errorf("update checksum wrote %d bytes but want %d bytes", n, l)
 	}
 	s := svc.checksum.Sum(nil)
 	svc.checksum.Reset()
 	n, err = svc.checksum.Write(s)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if l := len(s); l != n {
-		return fmt.Errorf("swap checksum wrote %d bytes but want %d bytes", n, l)
+		return nil, fmt.Errorf("swap checksum wrote %d bytes but want %d bytes", n, l)
 	}
 
 	b := hex.EncodeToString(s)
 
-	return s, svc.stateStore.Put(checkDBKey, b)
+	return s, svc.stateStore.Put(checksumDBKey, b)
 }
