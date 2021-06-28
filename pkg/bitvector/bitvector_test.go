@@ -20,6 +20,7 @@ import "testing"
 
 // TestBitvectorNew checks that enforcements of argument length works in the constructors
 func TestBitvectorNew(t *testing.T) {
+
 	_, err := New(0)
 	if err != errInvalidLength {
 		t.Errorf("expected err %v, got %v", errInvalidLength, err)
