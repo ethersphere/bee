@@ -182,6 +182,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				BlockTime:                  blockTime,
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
+				RetrievalCaching:           c.config.GetBool(optionNameRetrievalCaching),
 			})
 			if err != nil {
 				return err
