@@ -365,7 +365,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				ps.metrics.TotalFailedSendAttempts.Inc()
 
 				// if the node has warmed up AND no other closer peer has been tried
-				if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) {
+				if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && ps.topologyDriver.IsWithinDepth(ch.Address()) {
 					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
 				}
 			}
