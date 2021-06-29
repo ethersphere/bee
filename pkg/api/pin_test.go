@@ -31,46 +31,46 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string) {
 	const pinsBasePath = "/pins"
 
 	var (
-		pinsAddressPath        = pinsBasePath + "/" + rootHash
-		pinsInvalidAddressPath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2zzz"
-		pinsUnknownAddressPath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2ccc"
+		pinsReferencePath        = pinsBasePath + "/" + rootHash
+		pinsInvalidReferencePath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2zzz"
+		pinsUnknownReferencePath = pinsBasePath + "/" + "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2ccc"
 	)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsInvalidAddressPath, http.StatusBadRequest)
+	jsonhttptest.Request(t, client, http.MethodGet, pinsInvalidReferencePath, http.StatusBadRequest)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsUnknownAddressPath, http.StatusNotFound,
+	jsonhttptest.Request(t, client, http.MethodGet, pinsUnknownReferencePath, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusNotFound),
 			Code:    http.StatusNotFound,
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodPost, pinsAddressPath, http.StatusOK,
+	jsonhttptest.Request(t, client, http.MethodPost, pinsReferencePath, http.StatusCreated,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
+			Message: http.StatusText(http.StatusCreated),
+			Code:    http.StatusCreated,
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsAddressPath, http.StatusOK,
+	jsonhttptest.Request(t, client, http.MethodGet, pinsReferencePath, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(struct {
-			Address swarm.Address `json:"address"`
+			Reference swarm.Address `json:"reference"`
 		}{
-			Address: swarm.MustParseHexAddress(rootHash),
+			Reference: swarm.MustParseHexAddress(rootHash),
 		}),
 	)
 
 	jsonhttptest.Request(t, client, http.MethodGet, pinsBasePath, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(struct {
-			Addresses []swarm.Address `json:"addresses"`
+			References []swarm.Address `json:"references"`
 		}{
-			Addresses: []swarm.Address{swarm.MustParseHexAddress(rootHash)},
+			References: []swarm.Address{swarm.MustParseHexAddress(rootHash)},
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodDelete, pinsAddressPath, http.StatusOK)
+	jsonhttptest.Request(t, client, http.MethodDelete, pinsReferencePath, http.StatusOK)
 
-	jsonhttptest.Request(t, client, http.MethodGet, pinsAddressPath, http.StatusNotFound,
+	jsonhttptest.Request(t, client, http.MethodGet, pinsReferencePath, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: http.StatusText(http.StatusNotFound),
 			Code:    http.StatusNotFound,
@@ -83,7 +83,7 @@ func TestPinHandlers(t *testing.T) {
 		storerMock   = mock.NewStorer()
 		client, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,
-			Traversal: traversal.NewService(storerMock),
+			Traversal: traversal.New(storerMock),
 			Tags:      tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
 			Pinning:   pinning.NewServiceMock(),
 			Logger:    logging.New(ioutil.Discard, 5),
@@ -93,7 +93,7 @@ func TestPinHandlers(t *testing.T) {
 
 	t.Run("bytes", func(t *testing.T) {
 		const rootHash = "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2aeb"
-		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader("this is a simple text")),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -110,7 +110,7 @@ func TestPinHandlers(t *testing.T) {
 			dir:  "",
 		}})
 		rootHash := "9e178dbd1ed4b748379e25144e28dfb29c07a4b5114896ef454480115a56b237"
-		jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -122,7 +122,7 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash)
 
 		rootHash = "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
-		jsonhttptest.Request(t, client, http.MethodPost, "/bzz?name=somefile.txt", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/bzz?name=somefile.txt", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader("Content-Type", "text/plain"),
 			jsonhttptest.WithRequestBody(strings.NewReader("this is a simple text")),
@@ -138,7 +138,7 @@ func TestPinHandlers(t *testing.T) {
 			chunk    = testingc.GenerateTestRandomChunk()
 			rootHash = chunk.Address().String()
 		)
-		jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{

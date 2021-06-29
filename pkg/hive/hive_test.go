@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	ma "github.com/multiformats/go-multiaddr"
 
 	ab "github.com/ethersphere/bee/pkg/addressbook"
@@ -27,7 +28,80 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
+
+var (
+	tx    = common.HexToHash("0x2").Bytes()
+	block = common.HexToHash("0x1").Bytes()
+)
+
+func TestHandlerRateLimit(t *testing.T) {
+
+	logger := logging.New(ioutil.Discard, 0)
+	statestore := mock.NewStateStore()
+	addressbook := ab.New(statestore)
+	networkID := uint64(1)
+
+	addressbookclean := ab.New(mock.NewStateStore())
+
+	// create a hive server that handles the incoming stream
+	server := hive.New(nil, addressbookclean, networkID, logger)
+
+	serverAddress := test.RandomAddress()
+
+	// setup the stream recorder to record stream data
+	serverRecorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
+		streamtest.WithBaseAddr(serverAddress),
+	)
+
+	peers := make([]swarm.Address, hive.LimitBurst+1)
+	for i := range peers {
+
+		underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pk, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(pk)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, block)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, tx)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		peers[i] = bzzAddr.Overlay
+	}
+
+	// create a hive client that will do broadcast
+	client := hive.New(serverRecorder, addressbook, networkID, logger)
+	err := client.BroadcastPeers(context.Background(), serverAddress, peers...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := serverRecorder.Records(serverAddress, "hive", "1.0.0", "peers")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lastRec := rec[len(rec)-1]
+
+	if lastRec.Err() != nil {
+		t.Fatal("want nil error")
+	}
+}
 
 func TestBroadcastPeers(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
@@ -56,11 +130,11 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 		signer := crypto.NewDefaultSigner(pk)
-		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, block)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID)
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, tx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,9 +147,10 @@ func TestBroadcastPeers(t *testing.T) {
 		}
 
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
-			Overlay:   bzzAddresses[i].Overlay.Bytes(),
-			Underlay:  bzzAddresses[i].Underlay.Bytes(),
-			Signature: bzzAddresses[i].Signature,
+			Overlay:     bzzAddresses[i].Overlay.Bytes(),
+			Underlay:    bzzAddresses[i].Underlay.Bytes(),
+			Signature:   bzzAddresses[i].Signature,
+			Transaction: tx,
 		})
 	}
 

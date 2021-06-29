@@ -1,5 +1,8 @@
 project_name: bee
 
+release:
+  prerelease: auto
+
 builds:
   - id: linux
     main: ./cmd/bee
@@ -8,7 +11,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -20,6 +23,27 @@ builds:
       - arm
     goarm:
       - 7
+  - id: linux-slim
+    main: ./cmd/bee
+    binary: bee-slim
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 7
+    hooks:
+      post:
+       - upx --best "{{ .Path }}"
   - id: windows
     main: ./cmd/bee
     binary: bee
@@ -27,7 +51,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -42,7 +66,7 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}}
+      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commit={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -78,6 +102,10 @@ archives:
   -
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format: binary
+    builds:
+    - linux
+    - windows
+    - darwin
   -
     id: homebrew
     builds:
@@ -174,7 +202,8 @@ scoop:
     - "(Get-Content -path $persist_dir\\bee.yaml -Raw) -replace './password',\"$persist_dir\\password\" | Set-Content -Path $persist_dir\\bee.yaml"
     - "if(!(Test-Path $persist_dir\\password)){[System.Web.Security.Membership]::GeneratePassword(32,5) | Set-Content -Path $persist_dir\\password}"
     - "if(sc.exe query SwarmBeeSvc | Select-String FAILED){sc.exe create SwarmBeeSvc binPath= \"$dir\\bee.exe start --config=$persist_dir\\bee.yaml\" type= share start= auto displayName= \"Bee\"; sc.exe description SwarmBeeSvc \"Swarm client implemented in Go.\"}"
-    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.\nYou can get both goerli eth and goerli bzz from https://bzz.ethswarm.org/?transaction=buy&amount=10&slippage=30&receiver=0x$ETH_ADDRESS\""
+    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.\nLearn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node\""
+    - "Write-Host \"Obtain a free Infura account and set: swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx inside $persist_dir\\bee.yaml\""
     - "Write-Host \"After the initial fund deploy Bee chequebook with [sudo] $dir\\bee.exe deploy --config=$persist_dir\\bee.yaml\""
     - "Write-Host 'Start Bee service with [sudo] sc.exe start SwarmBeeSvc'" 
 
@@ -195,7 +224,9 @@ brews:
         Logs:   #{var}/log/swarm-bee/bee.log
         Config: #{etc}/swarm-bee/bee.yaml
 
-        Bee has SWAP enabled and by default is using slock.it goerli ethereum endpoint.
+        Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
+        If needed obtain a free Infura account and set:
+        `swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         It is recommended to use external signer with bee.
         Check documentation for more info:
         - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
@@ -288,6 +319,52 @@ dockers:
   - "--label=org.opencontainers.image.title={{.ProjectName}}"
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
+- image_templates:
+  - "ethersphere/bee:{{ .Version }}-amd64-slim"
+  - "quay.io/ethersphere/bee:{{ .Version }}-amd64-slim"
+  use_buildx: true
+  ids:
+    - linux-slim
+  goarch: amd64
+  dockerfile: Dockerfile.scratch
+  build_flag_templates:
+  - "--platform=linux/amd64"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}-slim"
+- image_templates:
+  - "ethersphere/bee:{{ .Version }}-armv7-slim"
+  - "quay.io/ethersphere/bee:{{ .Version }}-armv7-slim"
+  use_buildx: true
+  ids:
+    - linux-slim
+  goarch: arm
+  goarm: 7
+  dockerfile: Dockerfile.scratch
+  build_flag_templates:
+  - "--platform=linux/arm/v7"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}-slim"
+- image_templates:
+  - "ethersphere/bee:{{ .Version }}-arm64v8-slim"
+  - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim"
+  use_buildx: true
+  ids:
+    - linux-slim
+  goarch: arm64
+  dockerfile: Dockerfile.scratch
+  build_flag_templates:
+  - "--platform=linux/arm64/v8"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}-slim"
 docker_manifests:
 - name_template: ethersphere/bee:{{ .Major }}
   image_templates:
@@ -309,7 +386,7 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
   - ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: ethersphere/bee:beta
+- name_template: ethersphere/bee:stable
   image_templates:
   - ethersphere/bee:{{ .Version }}-amd64
   - ethersphere/bee:{{ .Version }}-armv7
@@ -334,8 +411,58 @@ docker_manifests:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64
   - quay.io/ethersphere/bee:{{ .Version }}-armv7
   - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: quay.io/ethersphere/bee:beta
+- name_template: quay.io/ethersphere/bee:stable
   image_templates:
   - quay.io/ethersphere/bee:{{ .Version }}-amd64
   - quay.io/ethersphere/bee:{{ .Version }}-armv7
   - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:{{ .Major }}-slim
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64-slim
+  - ethersphere/bee:{{ .Version }}-armv7-slim
+  - ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}-slim
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64-slim
+  - ethersphere/bee:{{ .Version }}-armv7-slim
+  - ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}-slim
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64-slim
+  - ethersphere/bee:{{ .Version }}-armv7-slim
+  - ethersphere/bee:{{ .Version }}-arm64v8
+- name_template: ethersphere/bee:latest-slim
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64-slim
+  - ethersphere/bee:{{ .Version }}-armv7-slim
+  - ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: ethersphere/bee:stable-slim
+  image_templates:
+  - ethersphere/bee:{{ .Version }}-amd64-slim
+  - ethersphere/bee:{{ .Version }}-armv7-slim
+  - ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/bee:{{ .Major }}-slim
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}-slim
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}-slim
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/bee:latest-slim
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/bee:stable-slim
+  image_templates:
+  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim

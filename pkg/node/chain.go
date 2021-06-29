@@ -6,9 +6,11 @@ package node
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -16,27 +18,30 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/transaction"
 )
 
 const (
 	maxDelay          = 1 * time.Minute
-	pollingInterval   = 15 * time.Second
 	cancellationDepth = 6
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
-// set up the Transacton Service to interact with it using the provided signer.
+// set up the Transaction Service to interact with it using the provided signer.
 func InitChain(
 	ctx context.Context,
 	logger logging.Logger,
 	stateStore storage.StateStorer,
 	endpoint string,
 	signer crypto.Signer,
+	pollingInterval time.Duration,
 ) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend, err := ethclient.Dial(endpoint)
 	if err != nil {
@@ -61,18 +66,6 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
 
-	// Sync the with the given Ethereum backend:
-	isSynced, err := transaction.IsSynced(ctx, backend, maxDelay)
-	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
-		err := transaction.WaitSynced(ctx, backend, maxDelay)
-		if err != nil {
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("waiting backend sync: %w", err)
-		}
-	}
 	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
 }
 
@@ -84,26 +77,43 @@ func InitChequebookFactory(
 	chainID int64,
 	transactionService transaction.Service,
 	factoryAddress string,
+	legacyFactoryAddresses []string,
 ) (chequebook.Factory, error) {
-	var addr common.Address
+	var currentFactory common.Address
+	var legacyFactories []common.Address
+
+	foundFactory, foundLegacyFactories, found := chequebook.DiscoverFactoryAddress(chainID)
 	if factoryAddress == "" {
-		var found bool
-		addr, found = chequebook.DiscoverFactoryAddress(chainID)
 		if !found {
-			return nil, errors.New("no known factory address for this network")
+			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
 		}
-		logger.Infof("using default factory address for chain id %d: %x", chainID, addr)
+		currentFactory = foundFactory
+		logger.Infof("using default factory address for chain id %d: %x", chainID, currentFactory)
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
-		addr = common.HexToAddress(factoryAddress)
-		logger.Infof("using custom factory address: %x", addr)
+		currentFactory = common.HexToAddress(factoryAddress)
+		logger.Infof("using custom factory address: %x", currentFactory)
+	}
+
+	if len(legacyFactoryAddresses) == 0 {
+		if found {
+			legacyFactories = foundLegacyFactories
+		}
+	} else {
+		for _, legacyAddress := range legacyFactoryAddresses {
+			if !common.IsHexAddress(legacyAddress) {
+				return nil, errors.New("malformed factory address")
+			}
+			legacyFactories = append(legacyFactories, common.HexToAddress(legacyAddress))
+		}
 	}
 
 	return chequebook.NewFactory(
 		backend,
 		transactionService,
-		addr,
+		currentFactory,
+		legacyFactories,
 	), nil
 }
 
@@ -120,12 +130,21 @@ func InitChequebookService(
 	transactionService transaction.Service,
 	chequebookFactory chequebook.Factory,
 	initialDeposit string,
+	deployGasPrice string,
 ) (chequebook.Service, error) {
 	chequeSigner := chequebook.NewChequeSigner(signer, chainID)
 
 	deposit, ok := new(big.Int).SetString(initialDeposit, 10)
 	if !ok {
 		return nil, fmt.Errorf("initial swap deposit \"%s\" cannot be parsed", initialDeposit)
+	}
+
+	if deployGasPrice != "" {
+		gasPrice, ok := new(big.Int).SetString(deployGasPrice, 10)
+		if !ok {
+			return nil, fmt.Errorf("deploy gas price \"%s\" cannot be parsed", deployGasPrice)
+		}
+		ctx = sctx.SetGasPrice(ctx, gasPrice)
 	}
 
 	chequebookService, err := chequebook.Init(
@@ -184,8 +203,26 @@ func InitSwap(
 	chequebookService chequebook.Service,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
-) (*swap.Service, error) {
-	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress)
+	accounting settlement.Accounting,
+	priceOracleAddress string,
+	chainID int64,
+	transactionService transaction.Service,
+) (*swap.Service, priceoracle.Service, error) {
+
+	var currentPriceOracleAddress common.Address
+	if priceOracleAddress == "" {
+		var found bool
+		currentPriceOracleAddress, found = priceoracle.DiscoverPriceOracleAddress(chainID)
+		if !found {
+			return nil, nil, errors.New("no known price oracle address for this network")
+		}
+	} else {
+		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
+	}
+
+	priceOracle := priceoracle.New(logger, currentPriceOracleAddress, transactionService, 300)
+	priceOracle.Start()
+	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, priceOracle)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
 	swapService := swap.New(
@@ -197,15 +234,77 @@ func InitSwap(
 		swapAddressBook,
 		networkID,
 		cashoutService,
-		p2ps,
+		accounting,
 	)
 
 	swapProtocol.SetSwap(swapService)
 
 	err := p2ps.AddProtocol(swapProtocol.Protocol())
 	if err != nil {
+		return nil, nil, err
+	}
+
+	return swapService, priceOracle, nil
+}
+
+func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString string) ([]byte, error) {
+
+	if trxString != "" {
+		txHashTrimmed := strings.TrimPrefix(trxString, "0x")
+		if len(txHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		txHash, err := hex.DecodeString(txHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided transaction hash %x", txHash)
+		return txHash, nil
+	}
+
+	var txHash common.Hash
+	key := chequebook.ChequebookDeploymentKey
+	if err := stateStore.Get(key, &txHash); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, errors.New("chequebook deployment transaction hash not found, please specify the transaction hash manually")
+		}
 		return nil, err
 	}
 
-	return swapService, nil
+	logger.Infof("using the chequebook transaction hash %x", txHash)
+	return txHash.Bytes(), nil
+}
+
+func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transaction.Backend, monitor transaction.Monitor, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
+
+	if blockHash != "" {
+		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
+		if len(blockHashTrimmed) != 64 {
+			return nil, errors.New("invalid length")
+		}
+		blockHash, err := hex.DecodeString(blockHashTrimmed)
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("using the provided block hash %x", blockHash)
+		return blockHash, nil
+	}
+
+	// if not found in statestore, fetch from chain
+	tx, err := backend.TransactionReceipt(ctx, common.BytesToHash(trx))
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := transaction.WaitBlock(ctx, backend, duration, big.NewInt(0).Add(tx.BlockNumber, big.NewInt(1)))
+	if err != nil {
+		return nil, err
+	}
+
+	hash := block.Hash()
+	hashBytes := hash.Bytes()
+
+	logger.Infof("using the next block hash from the blockchain %x", hashBytes)
+
+	return hashBytes, nil
 }

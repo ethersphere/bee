@@ -32,7 +32,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rtt, err := s.pingpong.Ping(ctx, address, "hey", "there", ",", "how are", "you", "?")
+	rtt, err := s.pingpong.Ping(ctx, address, "ping")
 	if err != nil {
 		logger.Debugf("pingpong: ping %s: %v", peerID, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {

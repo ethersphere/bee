@@ -5,11 +5,13 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -66,11 +68,16 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := requestPipelineFn(putter, r)
-	address, err := p(ctx, r.Body, r.ContentLength)
+	address, err := p(ctx, r.Body)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
 		logger.Error("bytes upload: split write all")
-		jsonhttp.InternalServerError(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 
@@ -95,7 +102,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, bytesPostResponse{
+	jsonhttp.Created(w, bytesPostResponse{
 		Reference: address,
 	})
 }

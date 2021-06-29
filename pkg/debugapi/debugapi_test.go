@@ -6,6 +6,7 @@ package debugapi_test
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"encoding/hex"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +25,8 @@ import (
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/postage"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/resolver"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
@@ -32,9 +35,21 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
 )
+
+var (
+	batchOk    = make([]byte, 32)
+	batchOkStr string
+)
+
+func init() {
+	_, _ = rand.Read(batchOk)
+
+	batchOkStr = hex.EncodeToString(batchOk)
+}
 
 type testServerOptions struct {
 	Overlay            swarm.Address
@@ -53,6 +68,9 @@ type testServerOptions struct {
 	ChequebookOpts     []chequebookmock.Option
 	SwapOpts           []swapmock.Option
 	BatchStore         postage.Storer
+	TransactionOpts    []transactionmock.Option
+	PostageContract    postagecontract.Interface
+	Post               postage.Service
 }
 
 type testServer struct {
@@ -65,10 +83,11 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
-	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	ln := lightnode.NewContainer()
-	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins)
-	s.Configure(o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore)
+	swapserv := swapmock.New(o.SwapOpts...)
+	transaction := transactionmock.New(o.TransactionOpts...)
+	ln := lightnode.NewContainer(o.Overlay)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins, transaction)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -132,9 +151,10 @@ func TestServer_Configure(t *testing.T) {
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := swapmock.New(o.SettlementOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
-	swapserv := swapmock.NewApiInterface(o.SwapOpts...)
-	ln := lightnode.NewContainer()
-	s := debugapi.New(o.Overlay, o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil)
+	swapserv := swapmock.New(o.SwapOpts...)
+	ln := lightnode.NewContainer(o.Overlay)
+	transaction := transactionmock.New(o.TransactionOpts...)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, nil, transaction)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -158,7 +178,6 @@ func TestServer_Configure(t *testing.T) {
 	)
 	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
-			Overlay:      o.Overlay,
 			Underlay:     make([]multiaddr.Multiaddr, 0),
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
@@ -166,7 +185,7 @@ func TestServer_Configure(t *testing.T) {
 		}),
 	)
 
-	s.Configure(o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, mockpost.New(), nil)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,
@@ -177,7 +196,7 @@ func TestServer_Configure(t *testing.T) {
 	)
 	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.AddressesResponse{
-			Overlay:      o.Overlay,
+			Overlay:      &o.Overlay,
 			Underlay:     addresses,
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),

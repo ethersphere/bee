@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee
 
-go 1.14
+go 1.15
 
 require (
 	github.com/btcsuite/btcd v0.21.0-beta
@@ -8,12 +8,13 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/ethereum/go-ethereum v1.9.23
-	github.com/ethersphere/go-storage-incentives-abi v0.1.0
-	github.com/ethersphere/go-sw3-abi v0.3.2
+	github.com/ethersphere/go-price-oracle-abi v0.1.0
+	github.com/ethersphere/go-storage-incentives-abi v0.3.0
+	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
-	github.com/foxcpp/go-mockdns v0.0.0-20201212160233-ede2f9158d15
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
+	github.com/google/go-cmp v0.5.0
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.1.4 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
@@ -55,23 +56,25 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
+	github.com/vmihailenco/msgpack/v5 v5.3.4
 	github.com/wealdtech/go-ens/v3 v3.4.4
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.opencensus.io v0.22.5 // indirect
+	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
-	golang.org/x/mod v0.3.0 // indirect
 	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 	golang.org/x/sys v0.0.0-20210108172913-0df2131ae363
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 	golang.org/x/text v0.3.4 // indirect
-	golang.org/x/tools v0.0.0-20200626171337-aa94e735be7f // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
+	resenje.org/singleflight v0.2.0
 	resenje.org/web v0.4.3
 )

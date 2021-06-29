@@ -26,6 +26,7 @@ type Service interface {
 	BlocklistedPeers() ([]Peer, error)
 	Addresses() ([]ma.Multiaddr, error)
 	SetPickyNotifier(PickyNotifier)
+	Halter
 }
 
 type Disconnecter interface {
@@ -35,16 +36,21 @@ type Disconnecter interface {
 	Blocklist(overlay swarm.Address, duration time.Duration) error
 }
 
-// PickyNotifer can decide whether a peer should be picked
+type Halter interface {
+	// Halt new incoming connections while shutting down
+	Halt()
+}
+
+// PickyNotifier can decide whether a peer should be picked
 type PickyNotifier interface {
 	Pick(Peer) bool
 	Notifier
 }
 
 type Notifier interface {
-	Connected(context.Context, Peer) error
+	Connected(context.Context, Peer, bool) error
 	Disconnected(Peer)
-	Announce(context.Context, swarm.Address) error
+	Announce(context.Context, swarm.Address, bool) error
 }
 
 // DebugService extends the Service with method used for debugging.
@@ -94,7 +100,9 @@ type StreamSpec struct {
 
 // Peer holds information about a Peer.
 type Peer struct {
-	Address swarm.Address `json:"address"`
+	Address         swarm.Address
+	FullNode        bool
+	EthereumAddress []byte
 }
 
 // HandlerFunc handles a received Stream from a Peer.

@@ -11,9 +11,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
@@ -24,13 +22,14 @@ import (
 var (
 	// ErrWrongChequebook is the error if a peer uses a different chequebook from before.
 	ErrWrongChequebook = errors.New("wrong chequebook")
-	// ErrWrongBeneficiary is the error if a peer uses a different beneficiary than expected.
-	ErrWrongBeneficiary = errors.New("wrong beneficiary")
 	// ErrUnknownBeneficary is the error if a peer has never announced a beneficiary.
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
+	// ErrChequeValueTooLow is the error a peer issued a cheque not covering 1 accounting credit
+	ErrChequeValueTooLow = errors.New("cheque value too low")
 )
 
-type ApiInterface interface {
+type Interface interface {
+	settlement.Interface
 	// LastSentCheque returns the last sent cheque for the peer
 	LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error)
 	// LastSentCheques returns the list of last sent cheques for all peers
@@ -47,21 +46,20 @@ type ApiInterface interface {
 
 // Service is the implementation of the swap settlement layer.
 type Service struct {
-	proto             swapprotocol.Interface
-	logger            logging.Logger
-	store             storage.StateStorer
-	notifyPaymentFunc settlement.NotifyPaymentFunc
-	metrics           metrics
-	chequebook        chequebook.Service
-	chequeStore       chequebook.ChequeStore
-	cashout           chequebook.CashoutService
-	p2pService        p2p.Service
-	addressbook       Addressbook
-	networkID         uint64
+	proto       swapprotocol.Interface
+	logger      logging.Logger
+	store       storage.StateStorer
+	accounting  settlement.Accounting
+	metrics     metrics
+	chequebook  chequebook.Service
+	chequeStore chequebook.ChequeStore
+	cashout     chequebook.CashoutService
+	addressbook Addressbook
+	networkID   uint64
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, p2pService p2p.Service) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting) *Service {
 	return &Service{
 		proto:       proto,
 		logger:      logger,
@@ -72,12 +70,12 @@ func New(proto swapprotocol.Interface, logger logging.Logger, store storage.Stat
 		addressbook: addressbook,
 		networkID:   networkID,
 		cashout:     cashout,
-		p2pService:  p2pService,
+		accounting:  accounting,
 	}
 }
 
 // ReceiveCheque is called by the swap protocol if a cheque is received.
-func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque) (err error) {
+func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (err error) {
 	// check this is the same chequebook for this peer as previously
 	expectedChequebook, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
@@ -87,11 +85,21 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		return ErrWrongChequebook
 	}
 
-	amount, err := s.chequeStore.ReceiveCheque(ctx, cheque)
+	receivedAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque, exchangeRate, deduction)
 	if err != nil {
 		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
 	}
+
+	if deduction.Cmp(big.NewInt(0)) > 0 {
+		err = s.addressbook.AddDeductionFor(peer)
+		if err != nil {
+			return err
+		}
+	}
+
+	decreasedAmount := new(big.Int).Sub(receivedAmount, deduction)
+	amount := new(big.Int).Div(decreasedAmount, exchangeRate)
 
 	if !known {
 		err = s.addressbook.PutChequebook(peer, cheque.Chequebook)
@@ -100,43 +108,46 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 		}
 	}
 
-	s.metrics.TotalReceived.Add(float64(amount.Uint64()))
+	tot, _ := big.NewFloat(0).SetInt(receivedAmount).Float64()
+	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
-	return s.notifyPaymentFunc(peer, amount)
+	return s.accounting.NotifyPaymentReceived(peer, amount)
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) error {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) {
+	var err error
+	defer func() {
+		if err != nil {
+			s.accounting.NotifyPaymentSent(peer, amount, err)
+		}
+	}()
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
-		return err
+		return
 	}
 	if !known {
-		s.logger.Warningf("disconnecting non-swap peer %v", peer)
-		err = s.p2pService.Disconnect(peer)
-		if err != nil {
-			return err
-		}
-		return ErrUnknownBeneficary
+		err = ErrUnknownBeneficary
+		return
 	}
-	balance, err := s.chequebook.Issue(ctx, beneficiary, amount, func(signedCheque *chequebook.SignedCheque) error {
-		return s.proto.EmitCheque(ctx, peer, signedCheque)
-	})
+
+	balance, err := s.proto.EmitCheque(ctx, peer, beneficiary, amount, s.chequebook.Issue)
+
 	if err != nil {
-		return err
+		return
 	}
+
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
+	s.accounting.NotifyPaymentSent(peer, amount, nil)
 	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalSent.Add(amountFloat)
 	s.metrics.ChequesSent.Inc()
-	return nil
 }
 
-// SetNotifyPaymentFunc sets the NotifyPaymentFunc to notify
-func (s *Service) SetNotifyPaymentFunc(notifyPaymentFunc settlement.NotifyPaymentFunc) {
-	s.notifyPaymentFunc = notifyPaymentFunc
+func (s *Service) SetAccounting(accounting settlement.Accounting) {
+	s.accounting = accounting
 }
 
 // TotalSent returns the total amount sent to a peer
@@ -223,15 +234,16 @@ func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
-	// check that the overlay address was derived from the beneficiary (implying they have the same private key)
-	// while this is not strictly necessary for correct functionality we need to ensure no two peers use the same beneficiary
-	// as long as we enforce this we might not need the handshake message if the p2p layer exposed the overlay public key
-	expectedOverlay := crypto.NewOverlayFromEthereumAddress(beneficiary[:], s.networkID)
-	if !expectedOverlay.Equal(peer) {
-		return ErrWrongBeneficiary
+	oldPeer, known, err := s.addressbook.BeneficiaryPeer(beneficiary)
+	if err != nil {
+		return err
+	}
+	if known && !peer.Equal(oldPeer) {
+		s.logger.Debugf("migrating swap addresses from peer %s to %s", oldPeer, peer)
+		return s.addressbook.MigratePeer(oldPeer, peer)
 	}
 
-	storedBeneficiary, known, err := s.addressbook.Beneficiary(peer)
+	_, known, err = s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return err
 	}
@@ -239,9 +251,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		s.logger.Tracef("initial swap handshake peer: %v beneficiary: %x", peer, beneficiary)
 		return s.addressbook.PutBeneficiary(peer, beneficiary)
 	}
-	if storedBeneficiary != beneficiary {
-		return ErrWrongBeneficiary
-	}
+
 	return nil
 }
 
@@ -337,4 +347,16 @@ func (s *Service) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequ
 		return nil, chequebook.ErrNoCheque
 	}
 	return s.cashout.CashoutStatus(ctx, chequebookAddress)
+}
+
+func (s *Service) GetDeductionForPeer(peer swarm.Address) (bool, error) {
+	return s.addressbook.GetDeductionFor(peer)
+}
+
+func (s *Service) GetDeductionByPeer(peer swarm.Address) (bool, error) {
+	return s.addressbook.GetDeductionBy(peer)
+}
+
+func (s *Service) AddDeductionByPeer(peer swarm.Address) error {
+	return s.addressbook.AddDeductionBy(peer)
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -72,7 +73,6 @@ var (
 	errNoResolver           = errors.New("no resolver connected")
 	errInvalidRequest       = errors.New("could not validate request")
 	errInvalidContentType   = errors.New("invalid content-type")
-	errInvalidContentLength = errors.New("invalid content-length")
 	errDirectoryStore       = errors.New("could not store directory")
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
@@ -92,6 +92,7 @@ type server struct {
 	pss             pss.Interface
 	traversal       traversal.Traverser
 	pinning         pinning.Interface
+	steward         steward.Reuploader
 	logger          logging.Logger
 	tracer          *tracing.Tracer
 	feedFactory     feeds.Factory
@@ -118,7 +119,7 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Reuploader, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
 		tags:            tags,
 		storer:          storer,
@@ -129,6 +130,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		feedFactory:     feedFactory,
 		post:            post,
 		postageContract: postageContract,
+		steward:         steward,
 		signer:          signer,
 		Options:         o,
 		logger:          logger,
@@ -155,7 +157,7 @@ func (s *server) Close() error {
 
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(1 * time.Second):
 		return errors.New("api shutting down with open websockets")
 	}
 
@@ -327,25 +329,48 @@ func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Sign
 	return &stamperPutter{Storer: s, stamper: stamper}, nil
 }
 
-func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
+func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
+	var (
+		ctp []swarm.Chunk
+		idx []int
+	)
+	exists = make([]bool, len(chs))
+
 	for i, c := range chs {
+		has, err := p.Storer.Has(ctx, c.Address())
+		if err != nil {
+			return nil, err
+		}
+		if has || containsChunk(c.Address(), chs[:i]...) {
+			exists[i] = true
+			continue
+		}
 		stamp, err := p.stamper.Stamp(c.Address())
 		if err != nil {
 			return nil, err
 		}
 		chs[i] = c.WithStamp(stamp)
+		ctp = append(ctp, chs[i])
+		idx = append(idx, i)
 	}
 
-	return p.Storer.Put(ctx, mode, chs...)
+	exists2, err := p.Storer.Put(ctx, mode, ctp...)
+	if err != nil {
+		return nil, err
+	}
+	for i, v := range idx {
+		exists[v] = exists2[i]
+	}
+	return exists, nil
 }
 
-type pipelineFunc func(context.Context, io.Reader, int64) (swarm.Address, error)
+type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
 func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 	mode, encrypt := requestModePut(r), requestEncrypt(r)
-	return func(ctx context.Context, r io.Reader, l int64) (swarm.Address, error) {
+	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
-		return builder.FeedPipeline(ctx, pipe, r, l)
+		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
@@ -377,4 +402,15 @@ func requestCalculateNumberOfChunks(r *http.Request) int64 {
 		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
 	}
 	return 0
+}
+
+// containsChunk returns true if the chunk with a specific address
+// is present in the provided chunk slice.
+func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
+	for _, c := range chs {
+		if addr.Equal(c.Address()) {
+			return true
+		}
+	}
+	return false
 }

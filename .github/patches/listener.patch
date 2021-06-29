@@ -1,0 +1,4 @@
+168c168
+< 	chainUpdateInterval := (time.Duration(l.blockTime) * time.Second) / 2
+---
+> 	chainUpdateInterval := (time.Duration(l.blockTime) * time.Second) / 5

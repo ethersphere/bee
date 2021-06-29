@@ -35,6 +35,14 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
+		_ = s.p2p.Disconnect(bzzAddr.Overlay)
+		s.logger.Debugf("debug api: peer connect handler %s: %v", addr, err)
+		s.logger.Errorf("unable to connect to peer %s", addr)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
 	jsonhttp.OK(w, peerConnectResponse{
 		Address: bzzAddr.Overlay.String(),
 	})
@@ -63,13 +71,19 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	jsonhttp.OK(w, nil)
 }
 
+// Peer holds information about a Peer.
+type Peer struct {
+	Address  swarm.Address `json:"address"`
+	FullNode bool          `json:"fullNode"`
+}
+
 type peersResponse struct {
-	Peers []p2p.Peer `json:"peers"`
+	Peers []Peer `json:"peers"`
 }
 
 func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, peersResponse{
-		Peers: s.p2p.Peers(),
+		Peers: mapPeers(s.p2p.Peers()),
 	})
 }
 
@@ -82,6 +96,16 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonhttp.OK(w, peersResponse{
-		Peers: peers,
+		Peers: mapPeers(peers),
 	})
+}
+
+func mapPeers(peers []p2p.Peer) (out []Peer) {
+	for _, peer := range peers {
+		out = append(out, Peer{
+			Address:  peer.Address,
+			FullNode: peer.FullNode,
+		})
+	}
+	return
 }

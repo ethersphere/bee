@@ -58,13 +58,13 @@ func init() {
 	}
 }
 
-func TestDBCapacity(t *testing.T) {
+func TestCacheCapacity(t *testing.T) {
 	lo := Options{
 		Capacity: 500,
 	}
 	db := newTestDB(t, &lo)
-	if db.capacity != 500 {
-		t.Fatal("could not set db capacity")
+	if db.cacheCapacity != 500 {
+		t.Fatal("could not set cache capacity")
 	}
 }
 
@@ -158,7 +158,7 @@ func newTestDB(t testing.TB, o *Options) *DB {
 		t.Fatal(err)
 	}
 	logger := logging.New(ioutil.Discard, 0)
-	db, err := New("", baseKey, o, logger)
+	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func newPullIndexTest(db *DB, ch swarm.Chunk, binID uint64, wantError error) fun
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, ch.Address().Bytes(), nil, 0, 0, postage.NewStamp(ch.Stamp().BatchID(), nil))
+			validateItem(t, item, ch.Address().Bytes(), nil, 0, 0, postage.NewStamp(ch.Stamp().BatchID(), nil, nil, nil))
 		}
 	}
 }
@@ -318,7 +318,7 @@ func newPushIndexTest(db *DB, ch swarm.Chunk, storeTimestamp int64, wantError er
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, ch.Address().Bytes(), nil, storeTimestamp, 0, postage.NewStamp(nil, nil))
+			validateItem(t, item, ch.Address().Bytes(), nil, storeTimestamp, 0, postage.NewStamp(nil, nil, nil, nil))
 		}
 	}
 }
@@ -356,7 +356,7 @@ func newPinIndexTest(db *DB, chunk swarm.Chunk, wantError error) func(t *testing
 			t.Errorf("got error %v, want %v", err, wantError)
 		}
 		if err == nil {
-			validateItem(t, item, chunk.Address().Bytes(), nil, 0, 0, postage.NewStamp(nil, nil))
+			validateItem(t, item, chunk.Address().Bytes(), nil, 0, 0, postage.NewStamp(nil, nil, nil, nil))
 		}
 	}
 }

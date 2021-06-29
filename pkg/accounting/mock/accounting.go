@@ -21,14 +21,22 @@ type Service struct {
 	balances                map[string]*big.Int
 	reserveFunc             func(ctx context.Context, peer swarm.Address, price uint64) error
 	releaseFunc             func(peer swarm.Address, price uint64)
-	creditFunc              func(peer swarm.Address, price uint64) error
-	debitFunc               func(peer swarm.Address, price uint64) error
+	creditFunc              func(peer swarm.Address, price uint64, orig bool) error
+	prepareDebitFunc        func(peer swarm.Address, price uint64) (accounting.Action, error)
 	balanceFunc             func(swarm.Address) (*big.Int, error)
+	shadowBalanceFunc       func(swarm.Address) (*big.Int, error)
 	balancesFunc            func() (map[string]*big.Int, error)
 	compensatedBalanceFunc  func(swarm.Address) (*big.Int, error)
 	compensatedBalancesFunc func() (map[string]*big.Int, error)
 
 	balanceSurplusFunc func(swarm.Address) (*big.Int, error)
+}
+
+type debitAction struct {
+	accounting *Service
+	price      *big.Int
+	peer       swarm.Address
+	applied    bool
 }
 
 // WithReserveFunc sets the mock Reserve function
@@ -46,16 +54,16 @@ func WithReleaseFunc(f func(peer swarm.Address, price uint64)) Option {
 }
 
 // WithCreditFunc sets the mock Credit function
-func WithCreditFunc(f func(peer swarm.Address, price uint64) error) Option {
+func WithCreditFunc(f func(peer swarm.Address, price uint64, orig bool) error) Option {
 	return optionFunc(func(s *Service) {
 		s.creditFunc = f
 	})
 }
 
 // WithDebitFunc sets the mock Debit function
-func WithDebitFunc(f func(peer swarm.Address, price uint64) error) Option {
+func WithPrepareDebitFunc(f func(peer swarm.Address, price uint64) (accounting.Action, error)) Option {
 	return optionFunc(func(s *Service) {
-		s.debitFunc = f
+		s.prepareDebitFunc = f
 	})
 }
 
@@ -120,9 +128,9 @@ func (s *Service) Release(peer swarm.Address, price uint64) {
 }
 
 // Credit is the mock function wrapper that calls the set implementation
-func (s *Service) Credit(peer swarm.Address, price uint64) error {
+func (s *Service) Credit(peer swarm.Address, price uint64, orig bool) error {
 	if s.creditFunc != nil {
-		return s.creditFunc(peer, price)
+		return s.creditFunc(peer, price, orig)
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -136,20 +144,35 @@ func (s *Service) Credit(peer swarm.Address, price uint64) error {
 }
 
 // Debit is the mock function wrapper that calls the set implementation
-func (s *Service) Debit(peer swarm.Address, price uint64) error {
-	if s.debitFunc != nil {
-		return s.debitFunc(peer, price)
+func (s *Service) PrepareDebit(peer swarm.Address, price uint64) (accounting.Action, error) {
+	if s.prepareDebitFunc != nil {
+		return s.prepareDebitFunc(peer, price)
 	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
 
-	if bal, ok := s.balances[peer.String()]; ok {
-		s.balances[peer.String()] = new(big.Int).Add(bal, new(big.Int).SetUint64(price))
+	bigPrice := new(big.Int).SetUint64(price)
+	return &debitAction{
+		accounting: s,
+		price:      bigPrice,
+		peer:       peer,
+		applied:    false,
+	}, nil
+
+}
+
+func (a *debitAction) Apply() error {
+	a.accounting.lock.Lock()
+	defer a.accounting.lock.Unlock()
+
+	if bal, ok := a.accounting.balances[a.peer.String()]; ok {
+		a.accounting.balances[a.peer.String()] = new(big.Int).Add(bal, new(big.Int).Set(a.price))
 	} else {
-		s.balances[peer.String()] = new(big.Int).SetUint64(price)
+		a.accounting.balances[a.peer.String()] = new(big.Int).Set(a.price)
 	}
+
 	return nil
 }
+
+func (a *debitAction) Cleanup() {}
 
 // Balance is the mock function wrapper that calls the set implementation
 func (s *Service) Balance(peer swarm.Address) (*big.Int, error) {
@@ -160,6 +183,19 @@ func (s *Service) Balance(peer swarm.Address) (*big.Int, error) {
 	defer s.lock.Unlock()
 	if bal, ok := s.balances[peer.String()]; ok {
 		return bal, nil
+	} else {
+		return big.NewInt(0), nil
+	}
+}
+
+func (s *Service) ShadowBalance(peer swarm.Address) (*big.Int, error) {
+	if s.shadowBalanceFunc != nil {
+		return s.shadowBalanceFunc(peer)
+	}
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if bal, ok := s.balances[peer.String()]; ok {
+		return new(big.Int).Neg(bal), nil
 	} else {
 		return big.NewInt(0), nil
 	}
@@ -189,6 +225,14 @@ func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 		return s.compensatedBalancesFunc()
 	}
 	return s.balances, nil
+}
+
+func (s *Service) Connect(peer swarm.Address) {
+
+}
+
+func (s *Service) Disconnect(peer swarm.Address) {
+
 }
 
 //

@@ -228,7 +228,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			return 0, ru.Ruid, err
+			s.logger.Debugf("unverified chunk: %w", err)
+			continue
 		}
 
 		if cac.Valid(chunk) {
@@ -260,7 +261,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 // handler handles an incoming request to sync an interval
 func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	w, r := protobuf.NewWriterAndReader(stream)
+	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -310,6 +311,11 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
+
+	// recreate the reader to allow the first one to be garbage collected
+	// before the makeOffer function call, to reduce the total memory allocated
+	// while makeOffer is executing (waiting for the new chunks)
+	w, r := protobuf.NewWriterAndReader(stream)
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
 		return fmt.Errorf("write offer: %w", err)
@@ -499,9 +505,17 @@ func (s *Syncer) Close() error {
 		defer close(cc)
 		s.wg.Wait()
 	}()
+
+	// cancel all contexts
+	s.ruidMtx.Lock()
+	for _, c := range s.ruidCtx {
+		c()
+	}
+	s.ruidMtx.Unlock()
+
 	select {
 	case <-cc:
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		s.logger.Warning("pull syncer shutting down with running goroutines")
 	}
 	return nil

@@ -13,10 +13,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	chequestoremock "github.com/ethersphere/bee/pkg/settlement/swap/chequestore/mock"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction/backendmock"
-	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
@@ -256,7 +256,7 @@ func TestCashoutStatusReverted(t *testing.T) {
 		),
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
-			transactionmock.WithABICall(&chequebookABI, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+			transactionmock.WithABICall(&chequebookABI, chequebookAddress, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 		),
 		chequestoremock.NewChequeStore(
 			chequestoremock.WithLastChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {

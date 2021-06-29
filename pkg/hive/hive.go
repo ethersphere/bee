@@ -12,7 +12,9 @@ package hive
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -21,7 +23,9 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/ratelimit"
 	"github.com/ethersphere/bee/pkg/swarm"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const (
@@ -32,13 +36,23 @@ const (
 	maxBatchSize    = 30
 )
 
+var (
+	limitBurst = 4 * int(swarm.MaxBins)
+	limitRate  = time.Minute
+
+	ErrRateLimitExceeded = errors.New("rate limit exceeded")
+)
+
 type Service struct {
 	streamer        p2p.Streamer
 	addressBook     addressbook.GetPutter
-	addPeersHandler func(context.Context, ...swarm.Address) error
+	addPeersHandler func(...swarm.Address)
 	networkID       uint64
 	logger          logging.Logger
 	metrics         metrics
+	inLimiter       *ratelimit.Limiter
+	outLimiter      *ratelimit.Limiter
+	clearMtx        sync.Mutex
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
@@ -48,6 +62,8 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		addressBook: addressbook,
 		networkID:   networkID,
 		metrics:     newMetrics(),
+		inLimiter:   ratelimit.New(limitRate, limitBurst),
+		outLimiter:  ratelimit.New(limitRate, limitBurst),
 	}
 }
 
@@ -61,6 +77,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.peersHandler,
 			},
 		},
+		DisconnectIn:  s.disconnect,
+		DisconnectOut: s.disconnect,
 	}
 }
 
@@ -73,6 +91,12 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		if max > len(peers) {
 			max = len(peers)
 		}
+
+		// If broadcasting limit is exceeded, return early
+		if !s.outLimiter.Allow(addressee.ByteString(), max) {
+			return nil
+		}
+
 		if err := s.sendPeers(ctx, addressee, peers[:max]); err != nil {
 			return err
 		}
@@ -83,7 +107,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	return nil
 }
 
-func (s *Service) SetAddPeersHandler(h func(ctx context.Context, addr ...swarm.Address) error) {
+func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 	s.addPeersHandler = h
 }
 
@@ -97,7 +121,9 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			// added this because Recorder (unit test) emits an unnecessary EOF when Close is called
+			time.Sleep(time.Millisecond * 50)
+			_ = stream.Close()
 		}
 	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
@@ -113,9 +139,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
-			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  addr.Underlay.Bytes(),
-			Signature: addr.Signature,
+			Overlay:     addr.Overlay.Bytes(),
+			Underlay:    addr.Underlay.Bytes(),
+			Signature:   addr.Signature,
+			Transaction: addr.Transaction,
 		})
 	}
 
@@ -139,6 +166,11 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
+	if !s.inLimiter.Allow(peer.Address.ByteString(), len(peersReq.Peers)) {
+		_ = stream.Reset()
+		return ErrRateLimitExceeded
+	}
+
 	// close the stream before processing in order to unblock the sending side
 	// fullclose is called async because there is no need to wait for confirmation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
@@ -146,13 +178,21 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	var peers []swarm.Address
 	for _, newPeer := range peersReq.Peers {
-		bzzAddress, err := bzz.ParseAddress(newPeer.Underlay, newPeer.Overlay, newPeer.Signature, s.networkID)
+
+		multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
 		if err != nil {
-			s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
+			s.logger.Errorf("hive: multi address underlay err: %v", err)
 			continue
 		}
 
-		err = s.addressBook.Put(bzzAddress.Overlay, *bzzAddress)
+		bzzAddress := bzz.Address{
+			Overlay:     swarm.NewAddress(newPeer.Overlay),
+			Underlay:    multiUnderlay,
+			Signature:   newPeer.Signature,
+			Transaction: newPeer.Transaction,
+		}
+
+		err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
 		if err != nil {
 			s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
 			continue
@@ -162,10 +202,19 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	}
 
 	if s.addPeersHandler != nil {
-		if err := s.addPeersHandler(ctx, peers...); err != nil {
-			return err
-		}
+		s.addPeersHandler(peers...)
 	}
+
+	return nil
+}
+
+func (s *Service) disconnect(peer p2p.Peer) error {
+
+	s.clearMtx.Lock()
+	defer s.clearMtx.Unlock()
+
+	s.inLimiter.Clear(peer.Address.ByteString())
+	s.outLimiter.Clear(peer.Address.ByteString())
 
 	return nil
 }

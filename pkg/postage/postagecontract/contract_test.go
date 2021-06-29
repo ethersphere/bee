@@ -16,15 +16,15 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	postageMock "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	transactionMock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
+	"github.com/ethersphere/bee/pkg/transaction"
+	transactionMock "github.com/ethersphere/bee/pkg/transaction/mock"
 )
 
 func TestCreateBatch(t *testing.T) {
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
-	postagecontract.BucketDepth = 10
+	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	label := "label"
 	postageStampAddress := common.HexToAddress("ffff")
@@ -33,6 +33,7 @@ func TestCreateBatch(t *testing.T) {
 	initialBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
+
 		depth := uint8(10)
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
@@ -40,7 +41,7 @@ func TestCreateBatch(t *testing.T) {
 		batchID := common.HexToHash("dddd")
 		postageMock := postageMock.New()
 
-		expectedCallData, err := postagecontract.PostageStampABI.Pack("createBatch", owner, initialBalance, depth, common.Hash{})
+		expectedCallData, err := postagecontract.PostageStampABI.Pack("createBatch", owner, initialBalance, depth, postagecontract.BucketDepth, common.Hash{}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +87,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock,
 		)
 
-		returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, label)
+		returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +117,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock.New(),
 		)
 
-		_, err := contract.CreateBatch(ctx, initialBalance, depth, label)
+		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
 		if !errors.Is(err, postagecontract.ErrInvalidDepth) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInvalidDepth, err)
 		}
@@ -141,7 +142,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock.New(),
 		)
 
-		_, err := contract.CreateBatch(ctx, initialBalance, depth, label)
+		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
 		if !errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 		}
@@ -154,6 +155,8 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 		big.NewInt(0),
 		common.Address{},
 		uint8(1),
+		uint8(2),
+		false,
 	)
 	if err != nil {
 		panic(err)

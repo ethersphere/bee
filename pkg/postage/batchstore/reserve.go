@@ -28,11 +28,14 @@ package batchstore
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -42,10 +45,9 @@ var ErrBatchNotFound = errors.New("postage batch not found or expired")
 // DefaultDepth is the initial depth for the reserve
 var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging to master
 
-// Capacity is the number of chunks in reserve. `2^23` (8388608) was chosen to remain
+// Capacity is the number of chunks in reserve. `2^22` (4194304) was chosen to remain
 // relatively near the current 5M chunks ~25GB.
-// Utilization is estimated at 50%-60%, which should result in about 4~5mil chunks in reserve.
-var Capacity = exp2(23)
+var Capacity = exp2(22)
 
 var big1 = big.NewInt(1)
 
@@ -55,6 +57,10 @@ type reserveState struct {
 	// it defines the proximity order of chunks which we
 	// would like to guarantee that all chunks are stored
 	Radius uint8 `json:"radius"`
+	// StorageRadius is the de-facto storage radius tracked
+	// by monitoring the events communicated to the localstore
+	// reserve eviction worker.
+	StorageRadius uint8 `json:"storageRadius"`
 	// Available capacity of the reserve which can still be used.
 	Available int64    `json:"available"`
 	Outer     *big.Int `json:"outer"` // lower value limit for outer layer = the further half of chunks
@@ -62,9 +68,64 @@ type reserveState struct {
 }
 
 // unreserve is called when the batchstore decides not to reserve a batch on a PO
-// i.e. chunk of the batch in bins [0 upto PO] (closed  interval) are unreserved
-func (s *store) unreserve(b *postage.Batch, radius uint8) error {
-	return s.unreserveFunc(b.ID, radius)
+// i.e. chunk of the batch in bins [0 upto PO] (closed  interval) are unreserved.
+// this adds the batch at the mentioned PO to the unreserve fifo queue, that can be
+// dequeued by the localstore once the storage fills up.
+func (s *store) unreserve(b []byte, radius uint8) error {
+	c := s.queueIdx
+	c++
+	v := make([]byte, 8)
+	binary.BigEndian.PutUint64(v, c)
+	i := &UnreserveItem{BatchID: b, Radius: radius}
+	if err := s.store.Put(fmt.Sprintf("%s_%s", unreserveQueueKey, string(v)), i); err != nil {
+		return err
+	}
+	if err := s.putQueueCardinality(c); err != nil {
+		return err
+	}
+	s.queueIdx = c
+	return nil
+}
+
+func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
+	var entries []string // entries to clean up
+	defer func() {
+		for _, v := range entries {
+			if err := s.store.Delete(v); err != nil {
+				s.logger.Errorf("batchstore: unreserve entry delete: %v", err)
+				return
+			}
+		}
+	}()
+	return s.store.Iterate(unreserveQueueKey, func(key, val []byte) (bool, error) {
+		if !strings.HasPrefix(string(key), unreserveQueueKey) {
+			return true, nil
+		}
+		v := &UnreserveItem{}
+		err := v.UnmarshalBinary(val)
+		if err != nil {
+			return true, err
+		}
+		stop, err := cb(v.BatchID, v.Radius)
+		if err != nil {
+			return true, err
+		}
+		s.rsMtx.Lock()
+		defer s.rsMtx.Unlock()
+
+		if s.rs.StorageRadius+1 < v.Radius {
+			s.rs.StorageRadius = v.Radius - 1
+			s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+			if err = s.store.Put(reserveStateKey, s.rs); err != nil {
+				return true, err
+			}
+		}
+		entries = append(entries, string(key))
+		if stop {
+			return true, nil
+		}
+		return false, nil
+	})
 }
 
 // evictExpired is called when PutChainState is called (and there is 'settlement')
@@ -75,9 +136,9 @@ func (s *store) evictExpired() error {
 	until := new(big.Int)
 
 	// if inner > 0 && total >= inner
-	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.Total.Cmp(s.rs.Inner) >= 0 {
+	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.TotalAmount.Cmp(s.rs.Inner) >= 0 {
 		// collect until total+1
-		until.Add(s.cs.Total, big1)
+		until.Add(s.cs.TotalAmount, big1)
 	} else {
 		// collect until inner (collect all outer ones)
 		until.Set(s.rs.Inner)
@@ -113,14 +174,15 @@ func (s *store) evictExpired() error {
 		}
 
 		// unreserve batch fully
-		err = s.unreserve(b, swarm.MaxPO+1)
+		err = s.evictFn(b.ID)
 		if err != nil {
 			return true, err
 		}
+
 		s.rs.Available += multiplier * exp2(b.Radius-s.rs.Radius-1)
 
 		// if batch has no value then delete it
-		if b.Value.Cmp(s.cs.Total) <= 0 {
+		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
 			toDelete = append(toDelete, b.ID)
 		}
 		return false, nil
@@ -251,7 +313,7 @@ func (s *store) update(b *postage.Batch, oldDepth uint8, oldValue *big.Int) erro
 	capacityChange, reserveRadius := s.rs.change(oldValue, newValue, oldDepth, newDepth)
 	s.rs.Available += capacityChange
 
-	if err := s.unreserve(b, reserveRadius); err != nil {
+	if err := s.unreserveFn(b.ID, reserveRadius); err != nil {
 		return err
 	}
 	err := s.evictOuter(b)
@@ -294,7 +356,7 @@ func (s *store) evictOuter(last *postage.Batch) error {
 		// unreserve outer PO of the lowest priority batch  until capacity is back to positive
 		s.rs.Available += exp2(b.Depth - s.rs.Radius - 1)
 		s.rs.Outer.Set(b.Value)
-		return false, s.unreserve(b, s.rs.Radius)
+		return false, s.unreserveFn(b.ID, s.rs.Radius)
 	})
 	if err != nil {
 		return err
@@ -309,6 +371,41 @@ func (s *store) evictOuter(last *postage.Batch) error {
 		return s.evictOuter(last)
 	}
 	return s.store.Put(reserveStateKey, s.rs)
+}
+
+func (s *store) getQueueCardinality() (val uint64, err error) {
+
+	err = s.store.Get(ureserveQueueCardinalityKey, &val)
+	if errors.Is(err, storage.ErrNotFound) {
+		return 0, nil
+	}
+	return val, err
+}
+
+func (s *store) putQueueCardinality(val uint64) error {
+	return s.store.Put(ureserveQueueCardinalityKey, val)
+}
+
+type UnreserveItem struct {
+	BatchID []byte
+	Radius  uint8
+}
+
+func (u *UnreserveItem) MarshalBinary() ([]byte, error) {
+	out := make([]byte, 32+1) // 32 byte batch ID + 1 byte uint8 radius
+	copy(out, u.BatchID)
+	out[32] = u.Radius
+	return out, nil
+}
+
+func (u *UnreserveItem) UnmarshalBinary(b []byte) error {
+	if len(b) != 33 {
+		return errors.New("invalid unreserve item length")
+	}
+	u.BatchID = make([]byte, 32)
+	copy(u.BatchID, b[:32])
+	u.Radius = b[32]
+	return nil
 }
 
 // exp2 returns the e-th power of 2

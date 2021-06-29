@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p-core/mux"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
@@ -39,8 +41,9 @@ func TestConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -61,12 +64,76 @@ func TestConnectDisconnect(t *testing.T) {
 	expectPeersEventually(t, s1)
 }
 
+func TestConnectToLightPeer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: false,
+	}})
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	_, err := s2.Connect(ctx, addr)
+	if err != p2p.ErrDialLightNode {
+		t.Fatalf("expected err %v, got %v", p2p.ErrDialLightNode, err)
+	}
+
+	expectPeers(t, s2)
+	expectPeersEventually(t, s1)
+}
+
+func TestLightPeerLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		limit     = 3
+		container = lightnode.NewContainer(test.RandomAddress())
+		sf, _     = newService(t, 1, libp2pServiceOpts{
+			lightNodes: container,
+			libp2pOpts: libp2p.Options{
+				LightNodeLimit: limit,
+				FullNode:       true,
+			},
+		})
+
+		notifier = mockNotifier(noopCf, noopDf, true)
+	)
+	sf.SetPickyNotifier(notifier)
+
+	addr := serviceUnderlayAddress(t, sf)
+
+	for i := 0; i < 5; i++ {
+		sl, _ := newService(t, 1, libp2pServiceOpts{
+			libp2pOpts: libp2p.Options{
+				FullNode: false,
+			},
+		})
+		_, err := sl.Connect(ctx, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 20; i++ {
+		if cnt := container.Count(); cnt == limit {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatal("timed out waiting for correct number of lightnodes")
+}
+
 func TestDoubleConnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -90,8 +157,9 @@ func TestDoubleDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -123,7 +191,9 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
@@ -164,7 +234,9 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
@@ -194,17 +266,16 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
-
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
 		// creating new remote host for each address
-		s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-			FullNode: true,
-		}})
+		s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 		if _, err := s2.Connect(ctx, addr); err != nil {
 			t.Fatal(err)
@@ -236,7 +307,6 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	defer cancel()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
-
 	s2, _ := newService(t, 2, libp2pServiceOpts{})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -284,8 +354,11 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+
 	addr := serviceUnderlayAddress(t, s1)
 
 	_, err := s2.Connect(ctx, addr)
@@ -315,13 +388,14 @@ func TestConnectRepeatHandshake(t *testing.T) {
 }
 
 func TestBlocklisting(t *testing.T) {
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	addr1 := serviceUnderlayAddress(t, s1)
 	addr2 := serviceUnderlayAddress(t, s2)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err := s2.Connect(context.Background(), addr1)
 	if err != nil {
 		t.Fatal(err)
@@ -337,7 +411,6 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err = s2.Connect(context.Background(), addr1)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
@@ -346,14 +419,13 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err = s1.Connect(context.Background(), addr2)
 	if err == nil {
 		t.Fatal("expected error during connection, got nil")
 	}
 
-	expectPeers(t, s1)
-	expectPeersEventually(t, s2)
+	expectPeersEventually(t, s1)
+	expectPeers(t, s2)
 }
 
 func TestTopologyNotifier(t *testing.T) {
@@ -368,10 +440,11 @@ func TestTopologyNotifier(t *testing.T) {
 		n2connectedPeer    p2p.Peer
 		n2disconnectedPeer p2p.Peer
 
-		n1c = func(_ context.Context, p p2p.Peer) error {
+		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
+			expectFullNode(t, p)
 			n1connectedPeer = p
 			return nil
 		}
@@ -381,11 +454,12 @@ func TestTopologyNotifier(t *testing.T) {
 			n1disconnectedPeer = p
 		}
 
-		n2c = func(_ context.Context, p p2p.Peer) error {
+		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
 			n2connectedPeer = p
+			expectFullNode(t, p)
 			return nil
 		}
 		n2d = func(p p2p.Peer) {
@@ -482,7 +556,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 		n2connectedPeer    p2p.Peer
 		n2disconnectedPeer p2p.Peer
 
-		n1c = func(_ context.Context, p p2p.Peer) error {
+		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
@@ -491,7 +565,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 		}
 		n1d = func(p p2p.Peer) {}
 
-		n2c = func(_ context.Context, p p2p.Peer) error {
+		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
@@ -504,9 +578,11 @@ func TestTopologyOverSaturated(t *testing.T) {
 			n2disconnectedPeer = p
 		}
 	)
-	//this notifier will not pick the peer
+	// this notifier will not pick the peer
 	notifier1 := mockNotifier(n1c, n1d, false)
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1, libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s1.SetPickyNotifier(notifier1)
 
 	notifier2 := mockNotifier(n2c, n2d, false)
@@ -531,7 +607,9 @@ func TestWithDisconnectStreams(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	testSpec := p2p.ProtocolSpec{
@@ -575,7 +653,9 @@ func TestWithBlocklistStreams(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
 	testSpec := p2p.ProtocolSpec{
@@ -647,6 +727,13 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 	}
 }
 
+func expectFullNode(t *testing.T, p p2p.Peer) {
+	t.Helper()
+	if !p.FullNode {
+		t.Fatal("expected peer to be a full node")
+	}
+}
+
 func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
 	t.Helper()
 	for i, a := range addrs {
@@ -686,13 +773,13 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 }
 
 type notifiee struct {
-	connected    func(context.Context, p2p.Peer) error
+	connected    func(context.Context, p2p.Peer, bool) error
 	disconnected func(p2p.Peer)
 	pick         bool
 }
 
-func (n *notifiee) Connected(c context.Context, p p2p.Peer) error {
-	return n.connected(c, p)
+func (n *notifiee) Connected(c context.Context, p p2p.Peer, f bool) error {
+	return n.connected(c, p, f)
 }
 
 func (n *notifiee) Disconnected(p p2p.Peer) {
@@ -703,7 +790,7 @@ func (n *notifiee) Pick(p p2p.Peer) bool {
 	return n.pick
 }
 
-func (n *notifiee) Announce(context.Context, swarm.Address) error {
+func (n *notifiee) Announce(context.Context, swarm.Address, bool) error {
 	return nil
 }
 
@@ -711,5 +798,13 @@ func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
 	return &notifiee{connected: c, disconnected: d, pick: pick}
 }
 
-type cFunc func(context.Context, p2p.Peer) error
-type dFunc func(p2p.Peer)
+type (
+	cFunc func(context.Context, p2p.Peer, bool) error
+	dFunc func(p2p.Peer)
+)
+
+var noopCf = func(_ context.Context, _ p2p.Peer, _ bool) error {
+	return nil
+}
+
+var noopDf = func(p p2p.Peer) {}

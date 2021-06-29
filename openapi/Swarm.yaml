@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 0.5.3
+  version: 0.6.0
   title: Swarm API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -19,7 +19,7 @@ servers:
         default: "localhost"
         description: Base address of the local bee node main API
       port:
-        default: 1633
+        default: "1633"
         description: Service port provided in bee node config
   - url: "http://{apiRoot}:{port}"
     variables:
@@ -27,7 +27,7 @@ servers:
         default: "localhost"
         description: Base address of the local bee node main API
       port:
-        default: 1633
+        default: "1633"
         description: Service port provided in bee node config
 
 paths:
@@ -40,6 +40,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       requestBody:
         content:
           application/octet-stream:
@@ -47,7 +48,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "201":
           description: Ok
           headers:
             "swarm-tag":
@@ -56,6 +57,10 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -131,6 +136,7 @@ paths:
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       requestBody:
         content:
           application/octet-stream:
@@ -138,7 +144,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "201":
           description: Ok
           headers:
             "swarm-tag":
@@ -149,6 +155,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/Status"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -179,6 +187,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCollection"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       requestBody:
         content:
           multipart/form-data:
@@ -198,7 +207,7 @@ paths:
               type: string
               format: binary
       responses:
-        "200":
+        "201":
           description: Ok
           headers:
             "swarm-tag":
@@ -211,6 +220,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -219,6 +230,25 @@ paths:
           description: Default response
 
   "/bzz/{reference}":
+    patch:
+      summary: "Reupload a root hash to the network"
+      tags:
+        - Reupload file
+        - Reupload collection
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+          required: true
+          description: Root hash of content
+      responses:
+        "200":
+          description: Ok
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
     get:
       summary: "Get file or index document from a collection of files"
       tags:
@@ -375,7 +405,9 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/403"    
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -438,21 +470,27 @@ paths:
         default:
           description: Default response
 
-  "/pins/{address}":
+  "/pins/{reference}":
     parameters:
       - in: path
-        name: address
+        name: reference
         schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
         required: true
-        description: Swarm address of the root hash
+        description: Swarm reference of the root hash
     post:
-      summary: Pin root hash with given address
+      summary: Pin the root hash with the given reference
       tags:
         - Root hash pinning
       responses:
         "200":
-          description: Pinning root hash with address
+          description: Pin already exists, so no operation
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "201":
+          description: New pin with root reference was created
           content:
             application/json:
               schema:
@@ -463,15 +501,17 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     delete:
-      summary: Unpin root hash with given address
+      summary: Unpin the root hash with the given reference
       tags:
         - Root hash pinning
       responses:
         "200":
-          description: Unpinning root hash with address
+          description: Unpinning root hash with reference
           content:
             application/json:
               schema:
@@ -480,23 +520,27 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     get:
-      summary: Get pinning status of root hash with given address
+      summary: Get pinning status of the root hash with the given reference
       tags:
         - Root hash pinning
       responses:
         "200":
-          description: Address of pinned root hash
+          description: Reference of the pinned root hash
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PinningState"
+                $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -504,16 +548,16 @@ paths:
 
   "/pins":
     get:
-      summary: Get list of pinned root hashes addresses
+      summary: Get the list of pinned root hash references
       tags:
         - Root hash pinning
       responses:
         "200":
-          description: List of pinned root hashes addresses
+          description: List of pinned root hash references
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/BzzChunksPinned"
+                $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReferencesList"
         "403":
           $ref: "SwarmCommon.yaml#/components/responses/403"
         "500":
@@ -545,11 +589,14 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/PssRecipient"
           required: false
           description: Recipient publickey
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       responses:
-        "200":
+        "201":
           description: Subscribed to topic
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -559,7 +606,7 @@ paths:
     get:
       summary: Subscribe for messages on the given topic.
       tags:
-        - Pss subscribe
+        - Postal Service for Swarm
       parameters:
         - in: path
           name: topic
@@ -611,6 +658,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -641,6 +690,7 @@ paths:
           required: false
           description: "Feed indexing scheme (default: sequence)"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       responses:
         "201":
           description: Created
@@ -652,6 +702,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -705,72 +757,3 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-
-  "/stamps":
-    get:
-      summary: Get all available stamps for this node
-      tags:
-        - Get stamp batches
-      responses:
-        "200":
-          description: Returns an array of all available postage batches.
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchesResponse"
-
-        default:
-          description: Default response
-
-  "/stamps/{id}":
-    get:
-      summary: Get an individual postage batch status
-      tags:
-        - Get stamp batch
-      responses:
-        "200":
-          description: Returns an individual postage batch state
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        default:
-          description: Default response
-
-  "/stamps/{amount}/{depth}":
-    get:
-      summary: Buy a new postage batch
-      tags:
-        - Buy stamp batch
-      parameters:
-        - in: path
-          name: amount
-          type: integer
-          required: true
-          description: Amount added to the balance
-        - in: path
-          name: depth
-          type: integer
-          required: true
-          description: Batch depth. Must be higher than default bucket depth (16)
-        - in: query
-          name: label
-          type: string
-          required: false
-          description: An optional label for this batch
-      responses:
-        "200":
-          description: Returns the newly created postage batch ID
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/BatchIDResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-         default:
-          description: Default response
-

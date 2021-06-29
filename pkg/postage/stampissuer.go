@@ -6,129 +6,151 @@ package postage
 
 import (
 	"encoding/binary"
+	"math/big"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/vmihailenco/msgpack/v5"
 )
+
+// stampIssuerData groups related StampIssuer data.
+// The data are factored out in order to make
+// serialization/deserialization easier and at the same
+// time not to export the fields outside of the package.
+type stampIssuerData struct {
+	Label          string   `msgpack:"label"`          // Label to identify the batch period/importance.
+	KeyID          string   `msgpack:"keyID"`          // Owner identity.
+	BatchID        []byte   `msgpack:"batchID"`        // The batch stamps are issued from.
+	BatchAmount    *big.Int `msgpack:"batchAmount"`    // Amount paid for the batch.
+	BatchDepth     uint8    `msgpack:"batchDepth"`     // Batch depth: batch size = 2^{depth}.
+	BucketDepth    uint8    `msgpack:"bucketDepth"`    // Bucket depth: the depth of collision Buckets uniformity.
+	Buckets        []uint32 `msgpack:"buckets"`        // Collision Buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
+	MaxBucketCount uint32   `msgpack:"maxBucketCount"` // the count of the fullest bucket
+	BlockNumber    uint64   `msgpack:"blockNumber"`    // BlockNumber when this batch was created
+	ImmutableFlag  bool     `msgpack:"immutableFlag"`  // Specifies immutability of the created batch.
+}
 
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	label       string     // Label to identify the batch period/importance.
-	keyID       string     // Owner identity.
-	batchID     []byte     // The batch stamps are issued from.
-	batchDepth  uint8      // Batch depth: batch size = 2^{depth}.
-	bucketDepth uint8      // Bucket depth: the depth of collision buckets uniformity.
-	mu          sync.Mutex // Mutex for buckets.
-	buckets     []uint32   // Collision buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
+	bucketMu sync.Mutex
+	data     stampIssuerData
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
 // upload.
 //
-// bucketDepth must always be smaller than batchDepth otherwise inc() panics.
-func NewStampIssuer(label, keyID string, batchID []byte, batchDepth, bucketDepth uint8) *StampIssuer {
+// BucketDepth must always be smaller than batchDepth otherwise inc() panics.
+func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
 	return &StampIssuer{
-		label:       label,
-		keyID:       keyID,
-		batchID:     batchID,
-		batchDepth:  batchDepth,
-		bucketDepth: bucketDepth,
-		buckets:     make([]uint32, 1<<bucketDepth),
+		data: stampIssuerData{
+			Label:         label,
+			KeyID:         keyID,
+			BatchID:       batchID,
+			BatchAmount:   batchAmount,
+			BatchDepth:    batchDepth,
+			BucketDepth:   bucketDepth,
+			Buckets:       make([]uint32, 1<<bucketDepth),
+			BlockNumber:   blockNumber,
+			ImmutableFlag: immutableFlag,
+		},
 	}
 }
 
 // inc increments the count in the correct collision bucket for a newly stamped
 // chunk with address addr.
-func (st *StampIssuer) inc(addr swarm.Address) error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	b := toBucket(st.bucketDepth, addr)
-	if st.buckets[b] == 1<<(st.batchDepth-st.bucketDepth) {
-		return ErrBucketFull
+func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
+	si.bucketMu.Lock()
+	defer si.bucketMu.Unlock()
+	b := toBucket(si.BucketDepth(), addr)
+	bucketCount := si.data.Buckets[b]
+	if bucketCount == 1<<(si.Depth()-si.BucketDepth()) {
+		return nil, ErrBucketFull
 	}
-	st.buckets[b]++
-	return nil
+	si.data.Buckets[b]++
+	if si.data.Buckets[b] > si.data.MaxBucketCount {
+		si.data.MaxBucketCount = si.data.Buckets[b]
+	}
+	return indexToBytes(b, bucketCount), nil
 }
 
 // toBucket calculates the index of the collision bucket for a swarm address
-// using depth as collision bucket depth
+// bucket index := collision bucket depth number of bits as bigendian uint32
 func toBucket(depth uint8, addr swarm.Address) uint32 {
 	i := binary.BigEndian.Uint32(addr.Bytes()[:4])
 	return i >> (32 - depth)
 }
 
+// indexToBytes creates an uint64 index from
+// - bucket index (neighbourhood index, uint32 <2^depth, bytes 2-4)
+// - and the within-bucket index (uint32 <2^(batchdepth-bucketdepth), bytes 5-8)
+func indexToBytes(bucket, index uint32) []byte {
+	buf := make([]byte, IndexSize)
+	binary.BigEndian.PutUint32(buf, bucket)
+	binary.BigEndian.PutUint32(buf[4:], index)
+	return buf
+}
+
+func bytesToIndex(buf []byte) (bucket, index uint32) {
+	index64 := binary.BigEndian.Uint64(buf)
+	bucket = uint32(index64 >> 32)
+	index = uint32(index64)
+	return bucket, index
+}
+
 // Label returns the label of the issuer.
-func (st *StampIssuer) Label() string {
-	return st.label
+func (si *StampIssuer) Label() string {
+	return si.data.Label
 }
 
-// MarshalBinary gives the byte slice serialisation of a StampIssuer:
-// = label[32]|keyID[32]|batchID[32]|batchDepth[1]|bucketDepth[1]|size_0[4]|size_1[4]|....
-func (st *StampIssuer) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, 32+32+32+1+1+(1<<(st.bucketDepth+2)))
-	label := []byte(st.label)
-	copy(buf[32-len(label):32], label)
-	keyID := []byte(st.keyID)
-	copy(buf[64-len(keyID):64], keyID)
-	copy(buf[64:96], st.batchID)
-	buf[96] = st.batchDepth
-	buf[97] = st.bucketDepth
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	for i, addr := range st.buckets {
-		offset := 98 + i*4
-		binary.BigEndian.PutUint32(buf[offset:offset+4], addr)
-	}
-	return buf, nil
+// MarshalBinary implements the encoding.BinaryMarshaler interface.
+func (si *StampIssuer) MarshalBinary() ([]byte, error) {
+	return msgpack.Marshal(si.data)
 }
 
-// UnmarshalBinary parses a serialised StampIssuer into the receiver struct.
-func (st *StampIssuer) UnmarshalBinary(buf []byte) error {
-	st.label = toString(buf[:32])
-	st.keyID = toString(buf[32:64])
-	st.batchID = buf[64:96]
-	st.batchDepth = buf[96]
-	st.bucketDepth = buf[97]
-	st.buckets = make([]uint32, 1<<st.bucketDepth)
-	// not using lock as unmarshal is init
-	for i := range st.buckets {
-		offset := 98 + i*4
-		st.buckets[i] = binary.BigEndian.Uint32(buf[offset : offset+4])
-	}
-	return nil
-}
-
-func toString(buf []byte) string {
-	i := 0
-	var c byte
-	for i, c = range buf {
-		if c != 0 {
-			break
-		}
-	}
-	return string(buf[i:])
+// UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
+func (si *StampIssuer) UnmarshalBinary(data []byte) error {
+	return msgpack.Unmarshal(data, &si.data)
 }
 
 // Utilization returns the batch utilization in the form of
 // an integer between 0 and 4294967295. Batch fullness can be
 // calculated with: max_bucket_value / 2 ^ (batch_depth - bucket_depth)
-func (st *StampIssuer) Utilization() uint32 {
-	top := uint32(0)
-
-	for _, v := range st.buckets {
-		if v > top {
-			top = v
-		}
-	}
-
-	return top
+func (si *StampIssuer) Utilization() uint32 {
+	si.bucketMu.Lock()
+	defer si.bucketMu.Unlock()
+	return si.data.MaxBucketCount
 }
 
 // ID returns the BatchID for this batch.
-func (s *StampIssuer) ID() []byte {
-	id := make([]byte, len(s.batchID))
-	copy(id, s.batchID)
+func (si *StampIssuer) ID() []byte {
+	id := make([]byte, len(si.data.BatchID))
+	copy(id, si.data.BatchID)
 	return id
+}
+
+// Depth represent issued batch depth.
+func (si *StampIssuer) Depth() uint8 {
+	return si.data.BatchDepth
+}
+
+// Amount represent issued batch amount paid.
+func (si *StampIssuer) Amount() *big.Int {
+	return si.data.BatchAmount
+}
+
+// BucketDepth the depth of collision Buckets uniformity.
+func (si *StampIssuer) BucketDepth() uint8 {
+	return si.data.BucketDepth
+}
+
+// BlockNumber when this batch was created.
+func (si *StampIssuer) BlockNumber() uint64 {
+	return si.data.BlockNumber
+}
+
+// ImmutableFlag immutability of the created batch.
+func (si *StampIssuer) ImmutableFlag() bool {
+	return si.data.ImmutableFlag
 }

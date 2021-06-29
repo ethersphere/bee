@@ -10,12 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime"
 	"net/http"
-	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -59,7 +57,14 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bzz upload: putter: %v", err)
 		logger.Error("bzz upload: putter")
-		jsonhttp.BadRequest(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
 		return
 	}
 
@@ -81,9 +86,8 @@ type bzzUploadResponse struct {
 func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
-		reader                  io.Reader
-		fileName, contentLength string
-		fileSize                uint64
+		reader   io.Reader
+		fileName string
 	)
 
 	// Content-Type has already been validated by this time
@@ -114,53 +118,21 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	ctx := sctx.SetTag(r.Context(), tag)
 
 	fileName = r.URL.Query().Get("name")
-	contentLength = r.Header.Get("Content-Length")
 	reader = r.Body
-
-	if contentLength != "" {
-		fileSize, err = strconv.ParseUint(contentLength, 10, 64)
-		if err != nil {
-			logger.Debugf("bzz upload file: content length, file %q: %v", fileName, err)
-			logger.Errorf("bzz upload file: content length, file %q", fileName)
-			jsonhttp.BadRequest(w, errInvalidContentLength)
-			return
-		}
-	} else {
-		// copy the part to a tmp file to get its size
-		tmp, err := ioutil.TempFile("", "bee-multipart")
-		if err != nil {
-			logger.Debugf("bzz upload file: create temporary file: %v", err)
-			logger.Errorf("bzz upload file: create temporary file")
-			jsonhttp.InternalServerError(w, nil)
-			return
-		}
-		defer os.Remove(tmp.Name())
-		defer tmp.Close()
-		n, err := io.Copy(tmp, reader)
-		if err != nil {
-			logger.Debugf("bzz upload file: write temporary file: %v", err)
-			logger.Error("bzz upload file: write temporary file")
-			jsonhttp.InternalServerError(w, nil)
-			return
-		}
-		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-			logger.Debugf("bzz upload file: seek to beginning of temporary file: %v", err)
-			logger.Error("bzz upload file: seek to beginning of temporary file")
-			jsonhttp.InternalServerError(w, nil)
-			return
-		}
-		fileSize = uint64(n)
-		reader = tmp
-	}
 
 	p := requestPipelineFn(storer, r)
 
 	// first store the file and get its reference
-	fr, err := p(ctx, reader, int64(fileSize))
+	fr, err := p(ctx, reader)
 	if err != nil {
 		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: file store, file %q", fileName)
-		jsonhttp.InternalServerError(w, errFileStore)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, errFileStore)
+		}
 		return
 	}
 
@@ -227,7 +199,12 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
-		jsonhttp.InternalServerError(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 	logger.Debugf("Manifest Reference: %s", manifestReference.String())
@@ -254,7 +231,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, bzzUploadResponse{
+	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: manifestReference,
 	})
 }
@@ -543,4 +520,23 @@ func (s *server) manifestFeed(
 	}
 	f := feeds.New(topic, common.BytesToAddress(owner))
 	return s.feedFactory.NewLookup(*t, f)
+}
+
+func (s *server) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
+	nameOrHex := mux.Vars(r)["address"]
+	address, err := s.resolveNameOrAddress(nameOrHex)
+	if err != nil {
+		s.logger.Debugf("bzz patch: parse address %s: %v", nameOrHex, err)
+		s.logger.Error("bzz patch: parse address")
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+	err = s.steward.Reupload(r.Context(), address)
+	if err != nil {
+		s.logger.Debugf("bzz patch: reupload %s: %v", address.String(), err)
+		s.logger.Error("bzz patch: reupload")
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
+	jsonhttp.OK(w, nil)
 }

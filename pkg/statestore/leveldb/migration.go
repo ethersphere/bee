@@ -19,19 +19,26 @@ package leveldb
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
-var errMissingCurrentSchema = errors.New("could not find current db schema")
-var errMissingTargetSchema = errors.New("could not find target db schema")
+var (
+	errMissingCurrentSchema = errors.New("could not find current db schema")
+	errMissingTargetSchema  = errors.New("could not find target db schema")
+)
 
 const (
 	dbSchemaKey = "statestore_schema"
 
-	dbSchemaGrace = "grace"
+	dbSchemaGrace         = "grace"
+	dbSchemaDrain         = "drain"
+	dbSchemaCleanInterval = "clean-interval"
+	dbSchemaNoStamp       = "no-stamp"
+	dbSchemaFlushBlock    = "flushblock"
 )
 
 var (
-	dbSchemaCurrent = dbSchemaGrace
+	dbSchemaCurrent = dbSchemaFlushBlock
 )
 
 type migration struct {
@@ -43,6 +50,62 @@ type migration struct {
 // in order to run data migrations in the correct sequence
 var schemaMigrations = []migration{
 	{name: dbSchemaGrace, fn: func(s *store) error { return nil }},
+	{name: dbSchemaDrain, fn: migrateGrace},
+	{name: dbSchemaCleanInterval, fn: migrateGrace},
+	{name: dbSchemaNoStamp, fn: migrateStamp},
+	{name: dbSchemaFlushBlock, fn: migrateFB},
+}
+
+func migrateFB(s *store) error {
+	collectedKeys, err := collectKeys(s, "blocklist-")
+	if err != nil {
+		return err
+	}
+	return deleteKeys(s, collectedKeys)
+}
+
+func migrateStamp(s *store) error {
+	for _, pfx := range []string{"postage", "batchstore", "addressbook_entry_"} {
+		collectedKeys, err := collectKeys(s, pfx)
+		if err != nil {
+			return err
+		}
+		if err := deleteKeys(s, collectedKeys); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func migrateGrace(s *store) error {
+	var collectedKeys []string
+	mgfn := func(k, v []byte) (bool, error) {
+		stk := string(k)
+		if strings.Contains(stk, "|") &&
+			len(k) > 32 &&
+			!strings.Contains(stk, "swap") &&
+			!strings.Contains(stk, "peer") {
+			s.logger.Debugf("found key designated to deletion %s", k)
+			collectedKeys = append(collectedKeys, stk)
+		}
+
+		return false, nil
+	}
+
+	_ = s.Iterate("", mgfn)
+
+	for _, v := range collectedKeys {
+		err := s.Delete(v)
+		if err != nil {
+			s.logger.Debugf("error deleting key %s", v)
+			continue
+		}
+		s.logger.Debugf("deleted key %s", v)
+	}
+	s.logger.Debugf("deleted keys: %d", len(collectedKeys))
+
+	return nil
 }
 
 func (s *store) migrate(schemaName string) error {
@@ -56,7 +119,7 @@ func (s *store) migrate(schemaName string) error {
 		return nil
 	}
 
-	s.logger.Infof("statestore: need to run %d data migrations to schema %s", len(migrations), schemaName)
+	s.logger.Debugf("statestore: need to run %d data migrations to schema %s", len(migrations), schemaName)
 	for i := 0; i < len(migrations); i++ {
 		err := migrations[i].fn(s)
 		if err != nil {
@@ -70,7 +133,7 @@ func (s *store) migrate(schemaName string) error {
 		if err != nil {
 			return err
 		}
-		s.logger.Infof("statestore: successfully ran migration: id %d current schema: %s", i, schemaName)
+		s.logger.Debugf("statestore: successfully ran migration: id %d current schema: %s", i, schemaName)
 	}
 	return nil
 }
@@ -91,7 +154,7 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 				return nil, errors.New("found schema name for the second time when looking for migrations")
 			}
 			foundCurrent = true
-			store.logger.Infof("statestore migration: found current schema %s, migrate to %s, total migrations %d", currentSchema, dbSchemaCurrent, len(allSchemeMigrations)-i)
+			store.logger.Debugf("statestore migration: found current schema %s, migrate to %s, total migrations %d", currentSchema, dbSchemaCurrent, len(allSchemeMigrations)-i)
 			continue // current schema migration should not be executed (already has been when schema was migrated to)
 		case targetSchema:
 			foundTarget = true
@@ -107,4 +170,29 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 		return nil, errMissingTargetSchema
 	}
 	return migrations, nil
+}
+
+func collectKeys(s *store, prefix string) (keys []string, err error) {
+	if err := s.Iterate(prefix, func(k, v []byte) (bool, error) {
+		stk := string(k)
+		if strings.HasPrefix(stk, prefix) {
+			keys = append(keys, stk)
+		}
+		return false, nil
+	}); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func deleteKeys(s *store, keys []string) error {
+	for _, v := range keys {
+		err := s.Delete(v)
+		if err != nil {
+			return fmt.Errorf("error deleting key %s: %w", v, err)
+		}
+		s.logger.Debugf("deleted key %s", v)
+	}
+	s.logger.Debugf("deleted keys: %d", len(keys))
+	return nil
 }

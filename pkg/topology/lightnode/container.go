@@ -6,6 +6,8 @@ package lightnode
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -15,27 +17,32 @@ import (
 )
 
 type Container struct {
+	base              swarm.Address
+	peerMu            sync.Mutex // peerMu guards connectedPeers and disconnectedPeers.
 	connectedPeers    *pslice.PSlice
 	disconnectedPeers *pslice.PSlice
-	peerMu            sync.Mutex
+	metrics           metrics
 }
 
-func NewContainer() *Container {
+func NewContainer(base swarm.Address) *Container {
 	return &Container{
-		connectedPeers:    pslice.New(1),
-		disconnectedPeers: pslice.New(1),
+		base:              base,
+		connectedPeers:    pslice.New(1, base),
+		disconnectedPeers: pslice.New(1, base),
+		metrics:           newMetrics(),
 	}
 }
-
-const defaultBin = uint8(0)
 
 func (c *Container) Connected(ctx context.Context, peer p2p.Peer) {
 	c.peerMu.Lock()
 	defer c.peerMu.Unlock()
 
 	addr := peer.Address
-	c.connectedPeers.Add(addr, defaultBin)
-	c.disconnectedPeers.Remove(addr, defaultBin)
+	c.connectedPeers.Add(addr)
+	c.disconnectedPeers.Remove(addr)
+
+	c.metrics.CurrentlyConnectedPeers.Set(float64(c.connectedPeers.Length()))
+	c.metrics.CurrentlyDisconnectedPeers.Set(float64(c.disconnectedPeers.Length()))
 }
 
 func (c *Container) Disconnected(peer p2p.Peer) {
@@ -44,25 +51,68 @@ func (c *Container) Disconnected(peer p2p.Peer) {
 
 	addr := peer.Address
 	if found := c.connectedPeers.Exists(addr); found {
-		c.connectedPeers.Remove(addr, defaultBin)
-		c.disconnectedPeers.Add(addr, defaultBin)
+		c.connectedPeers.Remove(addr)
+		c.disconnectedPeers.Add(addr)
 	}
+
+	c.metrics.CurrentlyConnectedPeers.Set(float64(c.connectedPeers.Length()))
+	c.metrics.CurrentlyDisconnectedPeers.Set(float64(c.disconnectedPeers.Length()))
+}
+
+func (c *Container) Count() int {
+	return c.connectedPeers.Length()
+}
+
+func (c *Container) RandomPeer(not swarm.Address) (swarm.Address, error) {
+	c.peerMu.Lock()
+	defer c.peerMu.Unlock()
+	var (
+		cnt   = big.NewInt(int64(c.Count()))
+		addr  = swarm.ZeroAddress
+		count = int64(0)
+	)
+
+PICKPEER:
+	i, e := rand.Int(rand.Reader, cnt)
+	if e != nil {
+		return swarm.ZeroAddress, e
+	}
+	i64 := i.Int64()
+
+	count = 0
+	_ = c.connectedPeers.EachBinRev(func(peer swarm.Address, _ uint8) (bool, bool, error) {
+		if count == i64 {
+			addr = peer
+			return true, false, nil
+		}
+		count++
+		return false, false, nil
+	})
+
+	if addr.Equal(not) {
+		goto PICKPEER
+	}
+
+	return addr, nil
 }
 
 func (c *Container) PeerInfo() topology.BinInfo {
 	return topology.BinInfo{
 		BinPopulation:     uint(c.connectedPeers.Length()),
 		BinConnected:      uint(c.connectedPeers.Length()),
-		DisconnectedPeers: toAddrs(c.disconnectedPeers),
-		ConnectedPeers:    toAddrs(c.connectedPeers),
+		DisconnectedPeers: peersInfo(c.disconnectedPeers),
+		ConnectedPeers:    peersInfo(c.connectedPeers),
 	}
 }
 
-func toAddrs(s *pslice.PSlice) (addrs []string) {
+func peersInfo(s *pslice.PSlice) []*topology.PeerInfo {
+	if s.Length() == 0 {
+		return nil
+	}
+	peers := make([]*topology.PeerInfo, 0, s.Length())
 	_ = s.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		addrs = append(addrs, addr.String())
+		peers = append(peers, &topology.PeerInfo{Address: addr})
 		return false, false, nil
 	})
-
-	return
+	return peers
 }

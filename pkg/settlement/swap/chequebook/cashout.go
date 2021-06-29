@@ -15,8 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/transaction"
 )
 
 var (
@@ -146,11 +146,12 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		lim = 300000
 	}
 	request := &transaction.TxRequest{
-		To:       &chequebook,
-		Data:     callData,
-		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: lim,
-		Value:    big.NewInt(0),
+		To:          &chequebook,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    lim,
+		Value:       big.NewInt(0),
+		Description: "cheque cashout",
 	}
 
 	txHash, err := s.transactionService.Send(ctx, request)

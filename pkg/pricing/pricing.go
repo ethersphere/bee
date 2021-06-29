@@ -6,6 +6,7 @@ package pricing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -23,16 +24,16 @@ const (
 	streamName      = "pricing"
 )
 
+var (
+	// ErrThresholdTooLow says that the proposed payment threshold is too low for even a single reserve.
+	ErrThresholdTooLow = errors.New("threshold too low")
+)
+
 var _ Interface = (*Service)(nil)
 
 // Interface is the main interface of the pricing protocol
 type Interface interface {
 	AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
-}
-
-// PriceTableObserver is used for being notified of price table updates
-type PriceTableObserver interface {
-	NotifyPriceTable(peer swarm.Address, priceTable []uint64) error
 }
 
 // PaymentThresholdObserver is used for being notified of payment threshold updates
@@ -44,14 +45,16 @@ type Service struct {
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
+	minPaymentThreshold      *big.Int
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int, minThreshold *big.Int) *Service {
 	return &Service{
-		streamer:         streamer,
-		logger:           logger,
-		paymentThreshold: paymentThreshold,
+		streamer:            streamer,
+		logger:              logger,
+		paymentThreshold:    paymentThreshold,
+		minPaymentThreshold: minThreshold,
 	}
 }
 
@@ -88,6 +91,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
 	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
+
+	if paymentThreshold.Cmp(s.minPaymentThreshold) < 0 {
+		s.logger.Tracef("payment threshold from peer %v of %d too small, need at least %d", p.Address, paymentThreshold, s.minPaymentThreshold)
+		return p2p.NewDisconnectError(ErrThresholdTooLow)
+	}
 
 	if paymentThreshold.Cmp(big.NewInt(0)) == 0 {
 		return err

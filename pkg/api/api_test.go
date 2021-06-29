@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -30,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -68,6 +70,7 @@ type testServerOptions struct {
 	CORSAllowedOrigins []string
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
+	Steward            steward.Reuploader
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string) {
@@ -87,7 +90,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.Post == nil {
 		o.Post = mockpost.New()
 	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, signer, o.Logger, nil, api.Options{
+	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Logger, nil, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
@@ -206,7 +209,7 @@ func TestParseName(t *testing.T) {
 		signer := crypto.NewDefaultSigner(pk)
 		mockPostage := mockpost.New()
 
-		s := api.New(nil, nil, tC.res, nil, nil, nil, nil, mockPostage, nil, signer, log, nil, api.Options{}).(*api.Server)
+		s := api.New(nil, nil, tC.res, nil, nil, nil, nil, mockPostage, nil, nil, signer, log, nil, api.Options{}).(*api.Server)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
@@ -265,7 +268,7 @@ func TestPostageHeaderError(t *testing.T) {
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
 		logger         = logging.New(ioutil.Discard, 5)
-		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
@@ -290,7 +293,7 @@ func TestPostageHeaderError(t *testing.T) {
 		})
 		t.Run(endpoint+": ok batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchOk)
-			expCode := http.StatusOK
+			expCode := http.StatusCreated
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),

@@ -15,9 +15,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
-	transactionmock "github.com/ethersphere/bee/pkg/settlement/swap/transaction/mock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/transaction"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 )
 
 func TestChequebookAddress(t *testing.T) {
@@ -46,7 +46,7 @@ func TestChequebookBalance(t *testing.T) {
 	balance := big.NewInt(10)
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
-			transactionmock.WithABICall(&chequebookABI, balance.FillBytes(make([]byte, 32)), "balance"),
+			transactionmock.WithABICall(&chequebookABI, address, balance.FillBytes(make([]byte, 32)), "balance"),
 		),
 		address,
 		ownerAdress,
@@ -191,12 +191,12 @@ func TestChequebookIssue(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 			),
 		),
 		address,
@@ -377,8 +377,8 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 			),
 		),
 		address,
@@ -416,8 +416,8 @@ func TestChequebookWithdraw(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, balance.FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, balance.FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 			),
 			transactionmock.WithABISend(&chequebookABI, txHash, address, big.NewInt(0), "withdraw", withdrawAmount),
 		),
@@ -451,8 +451,8 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, address, big.NewInt(0), "withdraw", withdrawAmount),
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 			),
 		),
 		address,

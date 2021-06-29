@@ -28,7 +28,10 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        fetch-depth: 1
+        fetch-depth: 0
+    - name: Commit linting
+      if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
+      uses: wagoid/commitlint-github-action@v2
     - name: Cache Go modules
       uses: actions/cache@v1
       with:
@@ -63,6 +66,13 @@ jobs:
         ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
       env:
         DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+    - name: Coveralls
+      if: matrix.os == 'ubuntu-latest'
+      uses: shogo82148/actions-goveralls@v1
+      with:
+        path-to-profile: cover.out
+      env:
+        COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
     - name: Trigger Beekeeper
       if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
       uses: peter-evans/repository-dispatch@v1

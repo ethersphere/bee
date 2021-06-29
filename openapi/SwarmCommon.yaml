@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.5.3
+  version: 0.6.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -29,10 +29,37 @@ components:
             $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
           $ref: "#/components/schemas/EthereumAddress"
-        public_key:
+        publicKey:
           $ref: "#/components/schemas/PublicKey"
-        pss_public_key:
+        pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
+
+    BigInt:
+      description: Numeric string that represents integer which might exceeds `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      type: string
+      example: "1000000000000000000"
+
+    ReserveState:
+      type: object
+      properties:
+        radius:
+          type: integer
+        available:
+          type: integer
+        outer:
+          $ref: "#/components/schemas/BigInt"
+        inner:
+          $ref: "#/components/schemas/BigInt"
+
+    ChainState:
+      type: object
+      properties:
+        block:
+          type: integer
+        totalAmount:
+          type: integer
+        currentPrice:
+          type: integer
 
     Balance:
       type: object
@@ -40,7 +67,7 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         balance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     Balances:
       type: object
@@ -49,19 +76,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Balance"
-
-    BzzChunksPinned:
-      type: object
-      properties:
-        chunks:
-          type: array
-          items:
-            type: object
-            properties:
-              address:
-                type: string
-              pinCounter:
-                type: integer
 
     BzzTopology:
       type: object
@@ -100,13 +114,14 @@ components:
         chequebook:
           $ref: "#/components/schemas/EthereumAddress"
         payout:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChequeAllPeersResponse:
       type: object
       properties:
         lastcheques:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/ChequePeerResponse"
 
@@ -124,14 +139,14 @@ components:
       type: object
       properties:
         totalBalance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         availableBalance:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     ChequebookAddress:
       type: object
       properties:
-        chequebookaddress:
+        chequebookAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
     DateTime:
@@ -222,6 +237,7 @@ components:
       properties:
         tags:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/NewTagResponse"
 
@@ -234,16 +250,9 @@ components:
       properties:
         peers:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Address"
-
-    PinningState:
-      type: object
-      properties:
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-        pinCounter:
-          type: integer
 
     PssRecipient:
       type: string
@@ -255,7 +264,12 @@ components:
       type: string
 
     ProblemDetails:
-      type: string
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
 
     ReferenceResponse:
       type: object
@@ -263,22 +277,20 @@ components:
         reference:
           $ref: "#/components/schemas/SwarmReference"
 
-    PostageBatchResponse:
-      type: object
-      properties:
-        $ref: "#/components/schemas/PostageBatch"
-
     PostageBatchesResponse:
       type: object
       properties:
         stamps:
-          $ref: "#/components/schemas/PostageBatches"
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PostageBatch"
 
     BatchIDResponse:
       type: object
       properties:
         batchID:
-          $ref: "#/components/schemas/SwarmAddress"
+          $ref: "#/components/schemas/BatchID"
 
     Response:
       type: object
@@ -304,15 +316,23 @@ components:
       type: object
       properties:
         batchID:
-          $ref: "#/components/schemas/SwarmAddress"
+          $ref: "#/components/schemas/BatchID"
         utilization:
           type: integer
-
-    PostageBatches:
-      type: array
-      items:
-        $ref: "#/components/schemas/PostageBatch"
-
+        usable:
+          type: boolean
+        label:
+          type: string
+        depth:
+          type: integer
+        amount:
+          $ref: "#/components/schemas/BigInt"
+        bucketDepth:
+          type: integer
+        blockNumber:
+          type: integer
+        immutableFlag:
+          type: boolean
 
     Settlement:
       type: object
@@ -327,12 +347,13 @@ components:
     Settlements:
       type: object
       properties:
-        totalreceived:
+        totalReceived:
           type: integer
-        totalsent:
+        totalSent:
           type: integer
         settlements:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Settlement"
 
@@ -356,10 +377,23 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
+    BatchID:
+      pattern: "^[A-Fa-f0-9]{64}$"
+      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
+
+    SwarmOnlyReferencesList:
+      type: object
+      properties:
+        addresses:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/SwarmOnlyReference"
 
     SwarmReference:
       oneOf:
@@ -373,7 +407,7 @@ components:
         recipient:
           $ref: "#/components/schemas/EthereumAddress"
         lastPayout:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         bounced:
           type: boolean
 
@@ -389,7 +423,7 @@ components:
         result:
           $ref: "#/components/schemas/SwapCashoutResult"
         uncashedAmount:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     TagName:
       type: string
@@ -404,6 +438,37 @@ components:
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
+    
+    TransactionInfoResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"
+        to:
+          $ref: "#/components/schemas/EthereumAddress"
+        nonce:
+          type: integer
+        gasPrice:
+          type: "#/components/schemas/BigInt"
+        gasLimit:
+          type: integer
+        data:
+          type: string
+        created:
+          type: "#/components/schemas/DateTime"
+        description:
+          type: string
+        value:
+          type: "#/components/schemas/BigInt"
+
+    PendingTransactionReponse:
+      type: object
+      properties:
+        pendingTransactions:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/TransactionHash"
 
     Uid:
       type: integer
@@ -411,7 +476,7 @@ components:
     WelcomeMessage:
       type: object
       properties:
-        welcome_message:
+        welcomeMessage:
           type: string
 
     FeedType:
@@ -532,6 +597,14 @@ components:
       required: false
       description: Upload file/files as a collection
 
+    SwarmPostageBatchId:
+      in: header
+      name: swarm-postage-batch-id
+      description: "ID of Postage Batch that is used to upload data with"
+      required: true
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+
   responses:
     "204":
       description: The resource was deleted successfully.
@@ -543,6 +616,12 @@ components:
             $ref: "#/components/schemas/ProblemDetails"
     "401":
       description: Unauthorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    "402":
+      description: Payment Required
       content:
         application/problem+json:
           schema:

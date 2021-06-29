@@ -7,10 +7,14 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/spf13/cobra"
 )
+
+const blocktime = 15
 
 func (c *command) initDeployCmd() error {
 	cmd := &cobra.Command{
@@ -31,6 +35,8 @@ func (c *command) initDeployCmd() error {
 			factoryAddress := c.config.GetString(optionNameSwapFactoryAddress)
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
+			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
+			networkID := c.config.GetUint64(optionNameNetworkID)
 
 			stateStore, err := node.InitStateStore(logger, dataDir)
 			if err != nil {
@@ -45,11 +51,6 @@ func (c *command) initDeployCmd() error {
 			}
 			signer := signerConfig.signer
 
-			err = node.CheckOverlayWithStore(signerConfig.address, stateStore)
-			if err != nil {
-				return err
-			}
-
 			ctx := cmd.Context()
 
 			swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := node.InitChain(
@@ -58,6 +59,7 @@ func (c *command) initDeployCmd() error {
 				stateStore,
 				swapEndpoint,
 				signer,
+				blocktime,
 			)
 			if err != nil {
 				return err
@@ -71,6 +73,7 @@ func (c *command) initDeployCmd() error {
 				chainID,
 				transactionService,
 				factoryAddress,
+				nil,
 			)
 			if err != nil {
 				return err
@@ -87,7 +90,35 @@ func (c *command) initDeployCmd() error {
 				transactionService,
 				chequebookFactory,
 				swapInitialDeposit,
+				deployGasPrice,
 			)
+			if err != nil {
+				return err
+			}
+
+			optionTrxHash := c.config.GetString(optionNameTransactionHash)
+			optionBlockHash := c.config.GetString(optionNameBlockHash)
+
+			txHash, err := node.GetTxHash(stateStore, logger, optionTrxHash)
+			if err != nil {
+				return fmt.Errorf("invalid transaction hash: %w", err)
+			}
+
+			blockTime := time.Duration(c.config.GetUint64(optionNameBlockTime)) * time.Second
+
+			blockHash, err := node.GetTxNextBlock(ctx, logger, swapBackend, transactionMonitor, blockTime, txHash, optionBlockHash)
+			if err != nil {
+				return err
+			}
+
+			pubKey, err := signer.PublicKey()
+			if err != nil {
+				return err
+			}
+
+			swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+
+			err = node.CheckOverlayWithStore(swarmAddress, stateStore)
 
 			return err
 		},

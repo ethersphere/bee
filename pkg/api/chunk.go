@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -96,7 +97,14 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("chunk upload: putter:%v", err)
 		s.logger.Error("chunk upload: putter")
-		jsonhttp.BadRequest(w, nil)
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.BadRequest(w, "batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
 		return
 	}
 
@@ -104,7 +112,12 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
 		s.logger.Error("chunk upload: chunk write error")
-		jsonhttp.BadRequest(w, "chunk write error")
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, "chunk write error")
+		}
 		return
 	} else if len(seen) > 0 && seen[0] && tag != nil {
 		err := tag.Inc(tags.StateSeen)
@@ -138,7 +151,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.OK(w, chunkAddressResponse{Reference: chunk.Address()})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
 }
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {

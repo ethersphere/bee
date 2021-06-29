@@ -404,7 +404,7 @@ func TestDirs(t *testing.T) {
 				}
 
 				// verify directory tar upload response
-				jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
+				jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusCreated, options...)
 
 				if resp.Reference.String() == "" {
 					t.Fatalf("expected file reference, did not got any")
@@ -437,7 +437,7 @@ func TestDirs(t *testing.T) {
 					}
 
 					// verify directory tar upload response
-					jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusOK, options...)
+					jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusCreated, options...)
 
 					if resp.Reference.String() == "" {
 						t.Fatalf("expected file reference, did not got any")

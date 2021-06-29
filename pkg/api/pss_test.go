@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/url"
 	"sync"
@@ -185,7 +186,7 @@ func TestPssSend(t *testing.T) {
 			mtx.Unlock()
 			return err
 		}
-		mp           = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, 11, 10)))
+		mp           = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		p            = newMockPss(sendFn)
 		client, _, _ = newTestServer(t, testServerOptions{
 			Pss:    p,
@@ -229,7 +230,7 @@ func TestPssSend(t *testing.T) {
 
 	t.Run("ok batch", func(t *testing.T) {
 		hexbatch := hex.EncodeToString(batchOk)
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 		)
@@ -243,12 +244,12 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12?recipient="+recipient, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12?recipient="+recipient, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "OK",
-				Code:    http.StatusOK,
+				Message: "Created",
+				Code:    http.StatusCreated,
 			}),
 		)
 		waitDone(t, &mtx, &done)
@@ -264,12 +265,12 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("without recipient", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "OK",
-				Code:    http.StatusOK,
+				Message: "Created",
+				Code:    http.StatusCreated,
 			}),
 		)
 		waitDone(t, &mtx, &done)

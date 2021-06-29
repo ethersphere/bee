@@ -16,7 +16,7 @@ var _ postage.Storer = (*BatchStore)(nil)
 
 // BatchStore is a mock BatchStorer
 type BatchStore struct {
-	rs             *postage.Reservestate
+	rs             *postage.ReserveState
 	cs             *postage.ChainState
 	id             []byte
 	batch          *postage.Batch
@@ -24,6 +24,7 @@ type BatchStore struct {
 	getErrDelayCnt int
 	putErr         error
 	putErrDelayCnt int
+	resetCallCount int
 }
 
 // Option is a an option passed to New
@@ -40,8 +41,8 @@ func New(opts ...Option) *BatchStore {
 	return bs
 }
 
-// WithChainState will set the initial chainstate in the ChainStore mock.
-func WithReserveState(rs *postage.Reservestate) Option {
+// WithReserveState will set the initial reservestate in the ChainStore mock.
+func WithReserveState(rs *postage.ReserveState) Option {
 	return func(bs *BatchStore) {
 		bs.rs = rs
 	}
@@ -71,6 +72,15 @@ func WithPutErr(err error, delayCnt int) Option {
 	return func(bs *BatchStore) {
 		bs.putErr = err
 		bs.putErrDelayCnt = delayCnt
+	}
+}
+
+// WithBatch will set batch to the one provided by user. This will be returned in
+// the next Get
+func WithBatch(b *postage.Batch) Option {
+	return func(bs *BatchStore) {
+		bs.batch = b
+		bs.id = b.ID
 	}
 }
 
@@ -120,10 +130,28 @@ func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 	return nil
 }
 
-func (bs *BatchStore) GetReserveState() *postage.Reservestate {
-	return bs.rs
+func (bs *BatchStore) GetReserveState() *postage.ReserveState {
+	rs := new(postage.ReserveState)
+	if bs.rs != nil {
+		rs.Radius = bs.rs.Radius
+		rs.Available = bs.rs.Available
+		rs.Outer = bs.rs.Outer
+		rs.Inner = bs.rs.Inner
+	}
+	return rs
 }
-
+func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {
+	panic("not implemented")
+}
 func (bs *BatchStore) SetRadiusSetter(r postage.RadiusSetter) {
 	panic("not implemented")
+}
+
+func (bs *BatchStore) Reset() error {
+	bs.resetCallCount++
+	return nil
+}
+
+func (bs *BatchStore) ResetCalls() int {
+	return bs.resetCallCount
 }

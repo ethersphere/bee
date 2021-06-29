@@ -14,9 +14,9 @@ import (
 // NewChainState will create a new ChainState with random values.
 func NewChainState() *postage.ChainState {
 	return &postage.ChainState{
-		Block: rand.Uint64(), // skipcq: GSC-G404
-		Price: NewBigInt(),
-		Total: NewBigInt(),
+		Block:        rand.Uint64(), // skipcq: GSC-G404
+		CurrentPrice: NewBigInt(),
+		TotalAmount:  NewBigInt(),
 	}
 }
 
@@ -29,10 +29,10 @@ func CompareChainState(t *testing.T, want, got *postage.ChainState) {
 	if want.Block != got.Block {
 		t.Fatalf("block: want %v, got %v", want.Block, got.Block)
 	}
-	if want.Price.Cmp(got.Price) != 0 {
-		t.Fatalf("price: want %v, got %v", want.Price, got.Price)
+	if want.CurrentPrice.Cmp(got.CurrentPrice) != 0 {
+		t.Fatalf("price: want %v, got %v", want.CurrentPrice, got.CurrentPrice)
 	}
-	if want.Total.Cmp(got.Total) != 0 {
-		t.Fatalf("total: want %v, got %v", want.Total, got.Total)
+	if want.TotalAmount.Cmp(got.TotalAmount) != 0 {
+		t.Fatalf("total: want %v, got %v", want.TotalAmount, got.TotalAmount)
 	}
 }

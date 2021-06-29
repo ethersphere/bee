@@ -92,6 +92,7 @@ func (ts *Tags) Get(uid uint32) (*Tag, error) {
 		// if yes, load it in to the memory
 		ta, err := ts.getTagFromStore(uid)
 		if err != nil {
+			ts.logger.Debugf("tags: Get: %d not found: %v", uid, err)
 			return nil, ErrNotFound
 		}
 		ts.tags.LoadOrStore(ta.Uid, ta)

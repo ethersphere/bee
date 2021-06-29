@@ -46,9 +46,13 @@ type Item struct {
 	PinCounter      uint64 // maintains the no of time a chunk is pinned
 	Tag             uint32
 	BatchID         []byte // postage batch ID
-	Sig             []byte // postage stamp
-	Depth           uint8  // postage batch depth
+	Index           []byte // postage stamp within-batch: index
+	Timestamp       []byte // postage stamp validity
+	Sig             []byte // postage stamp signature
+	BucketDepth     uint8  // postage batch bucket depth (for collision sets)
+	Depth           uint8  // postage batch depth (for size)
 	Radius          uint8  // postage batch reserve radius, po upto and excluding which chunks are unpinned
+	Immutable       bool   // whether postage batch can be diluted and drained, and indexes overwritten - nullable bool
 }
 
 // Merge is a helper method to construct a new
@@ -76,17 +80,29 @@ func (i Item) Merge(i2 Item) Item {
 	if i.Tag == 0 {
 		i.Tag = i2.Tag
 	}
+	if len(i.BatchID) == 0 {
+		i.BatchID = i2.BatchID
+	}
+	if len(i.Index) == 0 {
+		i.Index = i2.Index
+	}
+	if len(i.Timestamp) == 0 {
+		i.Timestamp = i2.Timestamp
+	}
 	if len(i.Sig) == 0 {
 		i.Sig = i2.Sig
 	}
-	if len(i.BatchID) == 0 {
-		i.BatchID = i2.BatchID
+	if i.BucketDepth == 0 {
+		i.BucketDepth = i2.BucketDepth
 	}
 	if i.Depth == 0 {
 		i.Depth = i2.Depth
 	}
 	if i.Radius == 0 {
 		i.Radius = i2.Radius
+	}
+	if !i.Immutable {
+		i.Immutable = i2.Immutable
 	}
 	return i
 }

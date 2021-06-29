@@ -1,6 +1,6 @@
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.package storage
+// license that can be found in the LICENSE file.
 
 package mock
 
@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var _ storage.StateStorer = (*store)(nil)
@@ -96,6 +97,11 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 			return nil
 		}
 	}
+	return nil
+}
+
+// DB implements StateStorer.DB method.
+func (s *store) DB() *leveldb.DB {
 	return nil
 }
 

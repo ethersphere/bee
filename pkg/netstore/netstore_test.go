@@ -200,7 +200,7 @@ type retrievalMock struct {
 	addr      swarm.Address
 }
 
-func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
+func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address, orig bool) (chunk swarm.Chunk, err error) {
 	if r.failure {
 		return nil, fmt.Errorf("chunk not found")
 	}
@@ -219,7 +219,7 @@ func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets
 	mr.callbackC <- true
 }
 
-func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address) (chunk swarm.Chunk, err error) {
+func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address, orig bool) (chunk swarm.Chunk, err error) {
 	return nil, fmt.Errorf("chunk not found")
 }
 

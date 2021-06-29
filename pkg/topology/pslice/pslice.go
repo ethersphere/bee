@@ -16,17 +16,18 @@ import (
 // in order to reduce duplicate PO calculation which is normally known and already needed in the
 // calling context.
 type PSlice struct {
-	peers []swarm.Address // the slice of peers
-	bins  []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
-
+	peers     []swarm.Address // the slice of peers
+	bins      []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
+	baseBytes []byte
 	sync.RWMutex
 }
 
 // New creates a new PSlice.
-func New(maxBins int) *PSlice {
+func New(maxBins int, base swarm.Address) *PSlice {
 	return &PSlice{
-		peers: make([]swarm.Address, 0),
-		bins:  make([]uint, maxBins),
+		peers:     make([]swarm.Address, 0),
+		bins:      make([]uint, maxBins),
+		baseBytes: base.Bytes(),
 	}
 }
 
@@ -95,6 +96,28 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	return nil
 }
 
+func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
+	s.RLock()
+	defer s.RUnlock()
+
+	b := int(bin)
+	if b >= len(s.bins) {
+		return nil
+	}
+
+	var bEnd int
+	if b == len(s.bins)-1 {
+		bEnd = len(s.peers)
+	} else {
+		bEnd = int(s.bins[b+1])
+	}
+
+	ret := make([]swarm.Address, bEnd-int(s.bins[b]))
+	copy(ret, s.peers[s.bins[b]:bEnd])
+
+	return ret
+}
+
 func (s *PSlice) Length() int {
 	s.RLock()
 	defer s.RUnlock()
@@ -143,28 +166,30 @@ func (s *PSlice) exists(addr swarm.Address) (bool, int) {
 }
 
 // Add a peer at a certain PO.
-func (s *PSlice) Add(addr swarm.Address, po uint8) {
+func (s *PSlice) Add(addrs ...swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
-	if e, _ := s.exists(addr); e {
-		return
+	peers, bins := s.copy(len(addrs))
+
+	for _, addr := range addrs {
+
+		if e, _ := s.exists(addr); e {
+			return
+		}
+
+		po := s.po(addr.Bytes())
+
+		peers = insertAddresses(peers, int(s.bins[po]), addr)
+		s.peers = peers
+
+		incDeeper(bins, po)
+		s.bins = bins
 	}
-
-	peers, bins := s.copy()
-
-	head := peers[:s.bins[po]]
-	tail := append([]swarm.Address{addr}, peers[s.bins[po]:]...)
-
-	peers = append(head, tail...)
-	s.peers = peers
-
-	incDeeper(bins, po)
-	s.bins = bins
 }
 
 // Remove a peer at a certain PO.
-func (s *PSlice) Remove(addr swarm.Address, po uint8) {
+func (s *PSlice) Remove(addr swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -173,13 +198,23 @@ func (s *PSlice) Remove(addr swarm.Address, po uint8) {
 		return
 	}
 
-	peers, bins := s.copy()
+	peers, bins := s.copy(0)
 
 	peers = append(peers[:i], peers[i+1:]...)
 	s.peers = peers
 
-	decDeeper(bins, po)
+	decDeeper(bins, s.po(addr.Bytes()))
 	s.bins = bins
+}
+
+func (s *PSlice) po(peer []byte) uint8 {
+
+	po := swarm.Proximity(s.baseBytes, peer)
+	if int(po) >= len(s.bins) {
+		return uint8(len(s.bins)) - 1
+	}
+
+	return po
 }
 
 // incDeeper increments the peers slice bin index for proximity order > po for non-empty bins only.
@@ -209,10 +244,29 @@ func decDeeper(bins []uint, po uint8) {
 	}
 }
 
-func (s *PSlice) copy() (peers []swarm.Address, bins []uint) {
-	peers = make([]swarm.Address, len(s.peers))
+// copy makes copies of peers and bins with a possibility of adding peers
+// additional capacity if it is know that a number of new addresses will be
+// inserted.
+func (s *PSlice) copy(peersExtraCap int) (peers []swarm.Address, bins []uint) {
+	peers = make([]swarm.Address, len(s.peers), len(s.peers)+peersExtraCap)
 	copy(peers, s.peers)
 	bins = make([]uint, len(s.bins))
 	copy(bins, s.bins)
 	return peers, bins
+}
+
+// insertAddresses is based on the optimized implementation from
+// https://github.com/golang/go/wiki/SliceTricks#insertvector
+func insertAddresses(s []swarm.Address, pos int, vs ...swarm.Address) []swarm.Address {
+	if n := len(s) + len(vs); n <= cap(s) {
+		s2 := s[:n]
+		copy(s2[pos+len(vs):], s[pos:])
+		copy(s2[pos:], vs)
+		return s2
+	}
+	s2 := make([]swarm.Address, len(s)+len(vs))
+	copy(s2, s[:pos])
+	copy(s2[pos:], vs)
+	copy(s2[pos+len(vs):], s[pos:])
+	return s2
 }

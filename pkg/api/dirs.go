@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -86,7 +87,12 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	if err != nil {
 		logger.Debugf("bzz upload dir: store dir err: %v", err)
 		logger.Errorf("bzz upload dir: store dir")
-		jsonhttp.InternalServerError(w, errDirectoryStore)
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		default:
+			jsonhttp.InternalServerError(w, errDirectoryStore)
+		}
 		return
 	}
 	if created {
@@ -109,7 +115,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	}
 
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
-	jsonhttp.OK(w, bzzUploadResponse{
+	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: reference,
 	})
 }
@@ -161,7 +167,7 @@ func storeDir(
 			}
 		}
 
-		fileReference, err := p(ctx, fileInfo.Reader, fileInfo.Size)
+		fileReference, err := p(ctx, fileInfo.Reader)
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}

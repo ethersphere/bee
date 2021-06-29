@@ -8,12 +8,14 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
 type mock struct {
 	peers           []swarm.Address
+	depth           uint8
 	closestPeer     swarm.Address
 	closestPeerErr  error
 	peersErr        error
@@ -32,6 +34,12 @@ func WithPeers(peers ...swarm.Address) Option {
 func WithAddPeersErr(err error) Option {
 	return optionFunc(func(d *mock) {
 		d.addPeersErr = err
+	})
+}
+
+func WithNeighborhoodDepth(dd uint8) Option {
+	return optionFunc(func(d *mock) {
+		d.depth = dd
 	})
 }
 
@@ -67,25 +75,32 @@ func NewTopologyDriver(opts ...Option) topology.Driver {
 	return d
 }
 
-func (d *mock) AddPeers(_ context.Context, addrs ...swarm.Address) error {
-	if d.addPeersErr != nil {
-		return d.addPeersErr
-	}
-
+func (d *mock) AddPeers(addrs ...swarm.Address) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
 	d.peers = append(d.peers, addrs...)
+}
 
+func (d *mock) Connected(ctx context.Context, peer p2p.Peer, _ bool) error {
+	d.AddPeers(peer.Address)
 	return nil
 }
 
-func (d *mock) Connected(ctx context.Context, addr swarm.Address) error {
-	return d.AddPeers(ctx, addr)
+func (d *mock) Disconnected(peer p2p.Peer) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	for i, addr := range d.peers {
+		if addr.Equal(peer.Address) {
+			d.peers = append(d.peers[:i], d.peers[i+1:]...)
+			break
+		}
+	}
 }
 
-func (d *mock) Disconnected(swarm.Address) {
-	panic("todo")
+func (d *mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
+	return nil
 }
 
 func (d *mock) Peers() []swarm.Address {
@@ -141,8 +156,8 @@ func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 
-func (*mock) NeighborhoodDepth() uint8 {
-	return 0
+func (m *mock) NeighborhoodDepth() uint8 {
+	return m.depth
 }
 
 func (m *mock) IsWithinDepth(addr swarm.Address) bool {
@@ -198,9 +213,8 @@ func (d *mock) Snapshot() *topology.KadParams {
 	return new(topology.KadParams)
 }
 
-func (d *mock) Close() error {
-	return nil
-}
+func (d *mock) Halt()        {}
+func (d *mock) Close() error { return nil }
 
 type Option interface {
 	apply(*mock)

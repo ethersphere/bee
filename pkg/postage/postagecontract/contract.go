@@ -16,7 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/settlement/swap/transaction"
+	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
@@ -24,7 +25,7 @@ import (
 var (
 	BucketDepth = uint8(16)
 
-	postageStampABI   = parseABI(postageabi.PostageStampABIv0_1_0)
+	postageStampABI   = parseABI(postageabi.PostageStampABIv0_3_0)
 	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 
@@ -34,7 +35,7 @@ var (
 )
 
 type Interface interface {
-	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error)
+	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
 }
 
 type postageContract struct {
@@ -70,8 +71,8 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 	txHash, err := c.transactionService.Send(ctx, &transaction.TxRequest{
 		To:       &c.bzzTokenAddress,
 		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
+		GasPrice: sctx.GetGasPrice(ctx),
+		GasLimit: 65000,
 		Value:    big.NewInt(0),
 	})
 	if err != nil {
@@ -90,8 +91,9 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 	return receipt, nil
 }
 
-func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner common.Address, initialBalance *big.Int, depth uint8, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := postageStampABI.Pack("createBatch", owner, initialBalance, depth, nonce)
+func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner common.Address, initialBalance *big.Int, depth uint8, nonce common.Hash, immutable bool) (*types.Receipt, error) {
+
+	callData, err := postageStampABI.Pack("createBatch", owner, initialBalance, depth, BucketDepth, nonce, immutable)
 	if err != nil {
 		return nil, err
 	}
@@ -99,14 +101,14 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 	request := &transaction.TxRequest{
 		To:       &c.postageContractAddress,
 		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
+		GasPrice: sctx.GetGasPrice(ctx),
+		GasLimit: 160000,
 		Value:    big.NewInt(0),
 	}
 
 	txHash, err := c.transactionService.Send(ctx, request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("send: depth %d bucketDepth %d immutable %t: %w", depth, BucketDepth, immutable, err)
 	}
 
 	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
@@ -142,9 +144,9 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, label string) ([]byte, error) {
+func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
 
-	if depth < BucketDepth {
+	if depth <= BucketDepth {
 		return nil, ErrInvalidDepth
 	}
 
@@ -169,7 +171,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 		return nil, err
 	}
 
-	receipt, err := c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce))
+	receipt, err := c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce), immutable)
 	if err != nil {
 		return nil, err
 	}
@@ -188,8 +190,11 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				label,
 				c.owner.Hex(),
 				batchID,
-				depth,
-				BucketDepth,
+				initialBalance,
+				createdEvent.Depth,
+				createdEvent.BucketDepth,
+				ev.BlockNumber,
+				createdEvent.ImmutableFlag,
 			))
 
 			return createdEvent.BatchId[:], nil
@@ -205,6 +210,8 @@ type batchCreatedEvent struct {
 	NormalisedBalance *big.Int
 	Owner             common.Address
 	Depth             uint8
+	BucketDepth       uint8
+	ImmutableFlag     bool
 }
 
 func parseABI(json string) abi.ABI {

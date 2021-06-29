@@ -59,6 +59,17 @@ func (s *Service) newBasicRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
+	if s.transaction != nil {
+		router.Handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		router.Handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
+	}
+
 	return router
 }
 
@@ -79,6 +90,10 @@ func (s *Service) newRouter() *mux.Router {
 
 	router.Handle("/reservestate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.reserveStateHandler),
+	})
+
+	router.Handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
@@ -125,15 +140,18 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
-	router.Handle("/settlements", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.settlementsHandler),
-	})
-
-	router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peerSettlementsHandler),
+	router.Handle("/timesettlements", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
 	if s.chequebookEnabled {
+		router.Handle("/settlements", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.settlementsHandler),
+		})
+		router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+		})
+
 		router.Handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})
@@ -167,6 +185,24 @@ func (s *Service) newRouter() *mux.Router {
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getTagHandler),
 	})
+
+	router.Handle("/stamps", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+		})),
+	)
+
+	router.Handle("/stamps/{id}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
+		})),
+	)
+
+	router.Handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageCreateHandler),
+		})),
+	)
 
 	return router
 }

@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +54,8 @@ func (c *command) initStartCmd() (err error) {
 			if err != nil {
 				return fmt.Errorf("new logger: %v", err)
 			}
+
+			go startTimeBomb(logger)
 
 			isWindowsService, err := isWindowsService()
 			if err != nil {
@@ -81,7 +82,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			beeASCII := `
-Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
+Welcome to Swarm.... Bzzz Bzzzz Bzzzz
                 \     /
             \    o ^ o    /
               \ (     ) /
@@ -96,7 +97,16 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
                    !                   `
 
 			fmt.Println(beeASCII)
-			logger.Infof("version: %v", bee.Version)
+			fmt.Print(`
+DISCLAIMER:
+This software is provided to you "as is", use at your own risk and without warranties of any kind.
+It is your responsibility to read and understand how Swarm works and the implications of running this software.
+The usage of Bee involves various risks, including, but not limited to:
+damage to hardware or loss of funds associated with the Ethereum account connected to your node.
+No developers or entity involved will be liable for any claims and damages associated with your use,
+inability to use, or your interaction with other nodes or the software.`)
+
+			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow http://ethswarm.org/\n\n", bee.Version, endSupportDate())
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
@@ -108,6 +118,8 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return err
 			}
 
+			logger.Infof("version: %v", bee.Version)
+
 			bootNode := c.config.GetBool(optionNameBootnodeMode)
 			fullNode := c.config.GetBool(optionNameFullNode)
 
@@ -115,41 +127,61 @@ Welcome to the Swarm.... Bzzz Bzzzz Bzzzz
 				return errors.New("boot node must be started as a full node")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.address, *signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, node.Options{
-				DataDir:                  c.config.GetString(optionNameDataDir),
-				DBCapacity:               c.config.GetUint64(optionNameDBCapacity),
-				DBOpenFilesLimit:         c.config.GetUint64(optionNameDBOpenFilesLimit),
-				DBBlockCacheCapacity:     c.config.GetUint64(optionNameDBBlockCacheCapacity),
-				DBWriteBufferSize:        c.config.GetUint64(optionNameDBWriteBufferSize),
-				DBDisableSeeksCompaction: c.config.GetBool(optionNameDBDisableSeeksCompaction),
-				APIAddr:                  c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:             debugAPIAddr,
-				Addr:                     c.config.GetString(optionNameP2PAddr),
-				NATAddr:                  c.config.GetString(optionNameNATAddr),
-				EnableWS:                 c.config.GetBool(optionNameP2PWSEnable),
-				EnableQUIC:               c.config.GetBool(optionNameP2PQUICEnable),
-				WelcomeMessage:           c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                c.config.GetStringSlice(optionNameBootnodes),
-				CORSAllowedOrigins:       c.config.GetStringSlice(optionCORSAllowedOrigins),
-				Standalone:               c.config.GetBool(optionNameStandalone),
-				TracingEnabled:           c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:          c.config.GetString(optionNameTracingEndpoint),
-				TracingServiceName:       c.config.GetString(optionNameTracingServiceName),
-				Logger:                   logger,
-				GlobalPinningEnabled:     c.config.GetBool(optionNameGlobalPinningEnabled),
-				PaymentThreshold:         c.config.GetString(optionNamePaymentThreshold),
-				PaymentTolerance:         c.config.GetString(optionNamePaymentTolerance),
-				PaymentEarly:             c.config.GetString(optionNamePaymentEarly),
-				ResolverConnectionCfgs:   resolverCfgs,
-				GatewayMode:              c.config.GetBool(optionNameGatewayMode),
-				BootnodeMode:             bootNode,
-				SwapEndpoint:             c.config.GetString(optionNameSwapEndpoint),
-				SwapFactoryAddress:       c.config.GetString(optionNameSwapFactoryAddress),
-				SwapInitialDeposit:       c.config.GetString(optionNameSwapInitialDeposit),
-				SwapEnable:               c.config.GetBool(optionNameSwapEnable),
-				FullNodeMode:             fullNode,
-				PostageContractAddress:   c.config.GetString(optionNamePostageContractAddress),
-				PriceOracleAddress:       c.config.GetString(optionNamePriceOracleAddress),
+			mainnet := c.config.GetBool(optionNameMainNet)
+
+			networkID := c.config.GetUint64(optionNameNetworkID)
+			networkID, err = parseNetworks(mainnet, networkID)
+			if err != nil {
+				return err
+			}
+
+			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
+			bootnodes = parseBootnodes(logger, mainnet, networkID, bootnodes)
+
+			blockTime := c.config.GetUint64(optionNameBlockTime)
+			blockTime = parseBlockTime(mainnet, blockTime)
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+				DataDir:                    c.config.GetString(optionNameDataDir),
+				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
+				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
+				DBBlockCacheCapacity:       c.config.GetUint64(optionNameDBBlockCacheCapacity),
+				DBWriteBufferSize:          c.config.GetUint64(optionNameDBWriteBufferSize),
+				DBDisableSeeksCompaction:   c.config.GetBool(optionNameDBDisableSeeksCompaction),
+				APIAddr:                    c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:               debugAPIAddr,
+				Addr:                       c.config.GetString(optionNameP2PAddr),
+				NATAddr:                    c.config.GetString(optionNameNATAddr),
+				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
+				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
+				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
+				Bootnodes:                  bootnodes,
+				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
+				Standalone:                 c.config.GetBool(optionNameStandalone),
+				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
+				TracingEndpoint:            c.config.GetString(optionNameTracingEndpoint),
+				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
+				Logger:                     logger,
+				GlobalPinningEnabled:       c.config.GetBool(optionNameGlobalPinningEnabled),
+				PaymentThreshold:           c.config.GetString(optionNamePaymentThreshold),
+				PaymentTolerance:           c.config.GetString(optionNamePaymentTolerance),
+				PaymentEarly:               c.config.GetString(optionNamePaymentEarly),
+				ResolverConnectionCfgs:     resolverCfgs,
+				GatewayMode:                c.config.GetBool(optionNameGatewayMode),
+				BootnodeMode:               bootNode,
+				SwapEndpoint:               c.config.GetString(optionNameSwapEndpoint),
+				SwapFactoryAddress:         c.config.GetString(optionNameSwapFactoryAddress),
+				SwapLegacyFactoryAddresses: c.config.GetStringSlice(optionNameSwapLegacyFactoryAddresses),
+				SwapInitialDeposit:         c.config.GetString(optionNameSwapInitialDeposit),
+				SwapEnable:                 c.config.GetBool(optionNameSwapEnable),
+				FullNodeMode:               fullNode,
+				Transaction:                c.config.GetString(optionNameTransactionHash),
+				BlockHash:                  c.config.GetString(optionNameBlockHash),
+				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
+				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
+				BlockTime:                  blockTime,
+				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
+				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
 			})
 			if err != nil {
 				return err
@@ -241,7 +273,6 @@ func (p *program) Stop(s service.Service) error {
 
 type signerConfig struct {
 	signer           crypto.Signer
-	address          swarm.Address
 	publicKey        *ecdsa.PublicKey
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
@@ -273,7 +304,6 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}
 
 	var signer crypto.Signer
-	var address swarm.Address
 	var password string
 	var publicKey *ecdsa.PublicKey
 	if p := c.config.GetString(optionNamePassword); p != "" {
@@ -341,32 +371,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		if err != nil {
 			return nil, err
 		}
-
-		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
-		if err != nil {
-			return nil, err
-		}
-
-		logger.Infof("using swarm network address through clef: %s", address)
 	} else {
 		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
-		swarmPrivateKey, created, err := keystore.Key("swarm", password)
+		swarmPrivateKey, _, err := keystore.Key("swarm", password)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
 		}
 		signer = crypto.NewDefaultSigner(swarmPrivateKey)
 		publicKey = &swarmPrivateKey.PublicKey
-
-		address, err = crypto.NewOverlayAddress(*publicKey, c.config.GetUint64(optionNameNetworkID))
-		if err != nil {
-			return nil, err
-		}
-
-		if created {
-			logger.Infof("new swarm network address created: %s", address)
-		} else {
-			logger.Infof("using existing swarm network address: %s", address)
-		}
 	}
 
 	logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
@@ -402,9 +414,42 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 
 	return &signerConfig{
 		signer:           signer,
-		address:          address,
 		publicKey:        publicKey,
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
 	}, nil
+}
+
+func parseNetworks(main bool, networkID uint64) (uint64, error) {
+	if main && networkID != 1 {
+		return 0, errors.New("provided network ID does not match mainnet")
+	}
+
+	return networkID, nil
+}
+
+func parseBootnodes(log logging.Logger, main bool, networkID uint64, bootnodes []string) []string {
+	if len(bootnodes) > 0 {
+		return bootnodes // use provided values
+	}
+
+	if main {
+		return []string{"/dnsaddr/mainnet.ethswarm.org"}
+	}
+
+	if networkID == 10 {
+		return []string{"/dnsaddr/testnet.ethswarm.org"}
+	}
+
+	log.Warning("no bootnodes defined for network ID", networkID)
+
+	return bootnodes
+}
+
+func parseBlockTime(main bool, blockTime uint64) uint64 {
+	if main {
+		return uint64(5 * time.Second)
+	}
+
+	return blockTime
 }
