@@ -26,6 +26,7 @@ var (
 	ErrUnknownBeneficary = errors.New("unknown beneficiary for peer")
 	// ErrChequeValueTooLow is the error a peer issued a cheque not covering 1 accounting credit
 	ErrChequeValueTooLow = errors.New("cheque value too low")
+	ErrNoChequebook      = errors.New("no chequebook")
 )
 
 type Interface interface {
@@ -123,6 +124,10 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 			s.accounting.NotifyPaymentSent(peer, amount, err)
 		}
 	}()
+	if s.chequebook == nil {
+		err = ErrNoChequebook
+		return
+	}
 	beneficiary, known, err := s.addressbook.Beneficiary(peer)
 	if err != nil {
 		return
@@ -159,6 +164,9 @@ func (s *Service) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) 
 	if !known {
 		return nil, settlement.ErrPeerNoSettlements
 	}
+	if s.chequebook == nil {
+		return big.NewInt(0), nil
+	}
 	cheque, err := s.chequebook.LastCheque(beneficiary)
 	if err != nil {
 		if err == chequebook.ErrNoCheque {
@@ -192,6 +200,9 @@ func (s *Service) TotalReceived(peer swarm.Address) (totalReceived *big.Int, err
 // SettlementsSent returns sent settlements for each individual known peer
 func (s *Service) SettlementsSent() (map[string]*big.Int, error) {
 	result := make(map[string]*big.Int)
+	if s.chequebook == nil {
+		return result, nil
+	}
 	cheques, err := s.chequebook.LastCheques()
 	if err != nil {
 		return nil, err
@@ -268,6 +279,10 @@ func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, 
 		return nil, chequebook.ErrNoCheque
 	}
 
+	if s.chequebook == nil {
+		return nil, ErrNoChequebook
+	}
+
 	return s.chequebook.LastCheque(common)
 }
 
@@ -289,6 +304,9 @@ func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheq
 
 // LastSentCheques returns the list of last sent cheques for all peers
 func (s *Service) LastSentCheques() (map[string]*chequebook.SignedCheque, error) {
+	if s.chequebook == nil {
+		return nil, ErrNoChequebook
+	}
 	lastcheques, err := s.chequebook.LastCheques()
 	if err != nil {
 		return nil, err

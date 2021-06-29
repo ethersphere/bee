@@ -189,6 +189,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				SwapLegacyFactoryAddresses: c.config.GetStringSlice(optionNameSwapLegacyFactoryAddresses),
 				SwapInitialDeposit:         c.config.GetString(optionNameSwapInitialDeposit),
 				SwapEnable:                 c.config.GetBool(optionNameSwapEnable),
+				ChequebookEnable:           c.config.GetBool(optionNameChequebookEnable),
 				FullNodeMode:               fullNode,
 				Transaction:                c.config.GetString(optionNameTransactionHash),
 				BlockHash:                  c.config.GetString(optionNameBlockHash),
