@@ -322,23 +322,26 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					return nil, ErrWarmup
 				}
 
-				count := 0
-				// Push the chunk to some peers in the neighborhood in parallel for replication.
-				// Any errors here should NOT impact the rest of the handler.
-				_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
-					// skip forwarding peer
-					if peer.Equal(origin) {
-						return false, false, nil
-					}
+				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
+					count := 0
+					// Push the chunk to some peers in the neighborhood in parallel for replication.
+					// Any errors here should NOT impact the rest of the handler.
+					_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
+						// skip forwarding peer
+						if peer.Equal(origin) {
+							return false, false, nil
+						}
 
-					if count == nPeersToPushsync {
-						return true, false, nil
-					}
-					count++
-					go ps.pushToNeighbour(peer, ch, retryAllowed)
-					return false, false, nil
-				})
-				return nil, err
+						if count == nPeersToPushsync {
+							return true, false, nil
+						}
+						count++
+						go ps.pushToNeighbour(peer, ch, retryAllowed)
+						return false, false, nil
+					})
+					return nil, err
+				}
+				return nil, fmt.Errorf("closest peer: none available")
 			}
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
