@@ -7,7 +7,6 @@ package hive_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -98,8 +97,9 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 
 	lastRec := rec[len(rec)-1]
-	if !errors.Is(lastRec.Err(), hive.ErrRateLimitExceeded) {
-		t.Fatal(err)
+
+	if lastRec.Err() != nil {
+		t.Fatal("want nil error")
 	}
 }
 
