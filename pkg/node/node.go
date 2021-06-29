@@ -142,6 +142,7 @@ type Options struct {
 	SwapLegacyFactoryAddresses []string
 	SwapInitialDeposit         string
 	SwapEnable                 bool
+	ChequebookEnable           bool
 	FullNodeMode               bool
 	Transaction                string
 	BlockHash                  string
@@ -292,21 +293,23 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
-		chequebookService, err = InitChequebookService(
-			p2pCtx,
-			logger,
-			stateStore,
-			signer,
-			chainID,
-			swapBackend,
-			overlayEthAddress,
-			transactionService,
-			chequebookFactory,
-			o.SwapInitialDeposit,
-			o.DeployGasPrice,
-		)
-		if err != nil {
-			return nil, err
+		if o.ChequebookEnable {
+			chequebookService, err = InitChequebookService(
+				p2pCtx,
+				logger,
+				stateStore,
+				signer,
+				chainID,
+				swapBackend,
+				overlayEthAddress,
+				transactionService,
+				chequebookFactory,
+				o.SwapInitialDeposit,
+				o.DeployGasPrice,
+			)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		chequeStore, cashoutService = initChequeStoreCashout(
@@ -606,7 +609,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, err
 		}
 		b.priceOracleCloser = priceOracle
-		acc.SetPayFunc(swapService.Pay)
+
+		if o.ChequebookEnable {
+			acc.SetPayFunc(swapService.Pay)
+		}
 	}
 
 	pricing.SetPaymentThresholdObserver(acc)
@@ -767,7 +773,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, post, postageContractService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, swapService, chequebookService, batchStore, post, postageContractService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
