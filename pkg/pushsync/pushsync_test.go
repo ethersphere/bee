@@ -130,13 +130,9 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 	defer storerEmpty.Close()
 	emptyRecorder := streamtest.New(streamtest.WithProtocols(psEmpty.Protocol()), streamtest.WithBaseAddr(secondPeer))
 
-	wFunc := func(addr swarm.Address) bool {
-		return true
-	}
-
 	// node that is connected to closestPeer
 	// will receieve chunk from closestPeer
-	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, mock.WithPeers(emptyPeer), mock.WithIsWithinFunc(wFunc))
+	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, mock.WithPeers(emptyPeer))
 	defer storerSecond.Close()
 	secondRecorder := streamtest.New(streamtest.WithProtocols(psSecond.Protocol()), streamtest.WithBaseAddr(closestPeer))
 
