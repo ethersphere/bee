@@ -61,6 +61,7 @@ const (
 	optionNameSwapLegacyFactoryAddresses = "swap-legacy-factory-addresses"
 	optionNameSwapInitialDeposit         = "swap-initial-deposit"
 	optionNameSwapEnable                 = "swap-enable"
+	optionNameChequebookEnable           = "chequebook-enable"
 	optionNameTransactionHash            = "transaction"
 	optionNameBlockHash                  = "block-hash"
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
@@ -247,6 +248,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameSwapLegacyFactoryAddresses, nil, "legacy swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "10000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
+	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")

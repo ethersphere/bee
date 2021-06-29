@@ -369,7 +369,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		)
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, mockSwap, mockChequebook, batchStore, post, postageContract, traversalService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, true, mockSwap, mockChequebook, batchStore, post, postageContract, traversalService)
 	}
 
 	return b, nil
