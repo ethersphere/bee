@@ -161,13 +161,30 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
-	if s.chequebookEnabled {
+	if s.swapEnabled {
 		handle("/settlements", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.settlementsHandler),
 		})
+
 		handle("/settlements/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.peerSettlementsHandler),
 		})
+
+		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+		})
+
+		handle("/chequebook/cheque", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
+		})
+
+		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
+			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
+			"POST": http.HandlerFunc(s.swapCashoutHandler),
+		})
+	}
+
+	if s.chequebookEnabled {
 
 		handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
@@ -183,19 +200,6 @@ func (s *Service) newRouter() *mux.Router {
 
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
-		})
-
-		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
-		})
-
-		handle("/chequebook/cheque", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
-		})
-
-		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": http.HandlerFunc(s.swapCashoutHandler),
 		})
 	}
 
