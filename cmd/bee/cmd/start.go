@@ -80,7 +80,9 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			beeASCII := `
-            Welcome to Swarm... Bzzz Bzzzz Bzzzz
+
+              Welcome to Swarm... Bzz Bzzz Bzzzz!
+
                             \     /
                         \    o ^ o    /
                           \ (     ) /
@@ -92,7 +94,9 @@ func (c *command) initStartCmd() (err error) {
                           /(       )\
                         /   (%%%%%)   \
                              (%%%)
-                               !                   `
+                               !    
+							        
+							   `
 
 			fmt.Println(beeASCII)
 			logger.Infof("version: %v", bee.Version)
