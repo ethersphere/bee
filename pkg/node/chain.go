@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
@@ -82,7 +83,7 @@ func InitChequebookFactory(
 	var currentFactory common.Address
 	var legacyFactories []common.Address
 
-	foundFactory, foundLegacyFactories, found := chequebook.DiscoverFactoryAddress(chainID)
+	foundFactory, foundLegacyFactories, found := config.ChainID(chainID).DiscoverFactoryAddress()
 	if factoryAddress == "" {
 		if !found {
 			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
@@ -212,7 +213,7 @@ func InitSwap(
 	var currentPriceOracleAddress common.Address
 	if priceOracleAddress == "" {
 		var found bool
-		currentPriceOracleAddress, found = priceoracle.DiscoverPriceOracleAddress(chainID)
+		currentPriceOracleAddress, found = config.ChainID(chainID).DiscoverPriceOracleAddress()
 		if !found {
 			return nil, nil, errors.New("no known price oracle address for this network")
 		}
