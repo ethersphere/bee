@@ -840,25 +840,3 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-
-  "/stamps/default/{id}":
-    parameters:
-      - in: path
-        name: id
-        schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
-        required: true
-        description: Swarm address of the stamp
-    put:
-      summary: Set the default postage stamp issuer
-      tags:
-        - Postage Stamps
-      responses:
-        "204":
-          description: The default stamp issuer was updated successfully
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
