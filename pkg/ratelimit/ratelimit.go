@@ -5,18 +5,14 @@
 // Package ratelimit provides a mechanism to rate limit requests based on a string key,
 // refill rate and burst amount. Under the hood, it's a token bucket of size burst amount,
 // that refills at the refill rate.
-
 package ratelimit
 
 import (
-	"errors"
 	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
 )
-
-var ErrRateLimitExceeded = errors.New("rate limit exceeded")
 
 type Limiter struct {
 	mtx     sync.Mutex
