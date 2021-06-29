@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package ratelimit_test
 
 import (
@@ -18,25 +22,21 @@ func TestRateLimit(t *testing.T) {
 
 	limiter := ratelimit.New(rate, burst)
 
-	err := limiter.Allow(key1, burst)
-	if err != nil {
-		t.Fatal(err)
+	if !limiter.Allow(key1, burst) {
+		t.Fatal("want allowed")
 	}
 
-	err = limiter.Allow(key1, burst)
-	if err == nil {
-		t.Fatalf("want rate limit exceeded error")
+	if limiter.Allow(key1, burst) {
+		t.Fatalf("want not allowed")
 	}
 
 	limiter.Clear(key1)
 
-	err = limiter.Allow(key1, burst)
-	if err != nil {
-		t.Fatal(err)
+	if !limiter.Allow(key1, burst) {
+		t.Fatal("want allowed")
 	}
 
-	err = limiter.Allow(key2, burst)
-	if err != nil {
-		t.Fatal(err)
+	if !limiter.Allow(key2, burst) {
+		t.Fatal("want allowed")
 	}
 }

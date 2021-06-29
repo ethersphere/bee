@@ -12,6 +12,7 @@ package hive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -37,6 +38,8 @@ const (
 var (
 	limitBurst = 4 * int(swarm.MaxBins)
 	limitRate  = time.Minute
+
+	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
 
 type Service struct {
@@ -88,7 +91,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		}
 
 		// If broadcasting limit is exceeded, return early
-		if err := s.outLimiter.Allow(addressee.ByteString(), max); err != nil {
+		if !s.outLimiter.Allow(addressee.ByteString(), max) {
 			return nil
 		}
 
@@ -161,9 +164,9 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
-	if err := s.inLimiter.Allow(peer.Address.ByteString(), len(peersReq.Peers)); err != nil {
+	if !s.inLimiter.Allow(peer.Address.ByteString(), len(peersReq.Peers)) {
 		_ = stream.Reset()
-		return err
+		return ErrRateLimitExceeded
 	}
 
 	// close the stream before processing in order to unblock the sending side

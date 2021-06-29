@@ -1,3 +1,11 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package ratelimit provides a mechanism to rate limit requests based on a string key,
+// refill rate and burst amount. Under the hood, it's a token bucket of size burst amount,
+// that refills at the refill rate.
+
 package ratelimit
 
 import (
@@ -17,6 +25,7 @@ type Limiter struct {
 	burst   int
 }
 
+// New returns a new Limiter object with refresh rate and burst amount
 func New(r time.Duration, b int) *Limiter {
 	return &Limiter{
 		limiter: make(map[string]*rate.Limiter),
@@ -25,7 +34,8 @@ func New(r time.Duration, b int) *Limiter {
 	}
 }
 
-func (l *Limiter) Allow(key string, count int) error {
+// Allow checks if the limiter that belongs to 'key' has not exceeded the limit.
+func (l *Limiter) Allow(key string, count int) bool {
 
 	l.mux.Lock()
 	defer l.mux.Unlock()
@@ -36,13 +46,10 @@ func (l *Limiter) Allow(key string, count int) error {
 		l.limiter[key] = limiter
 	}
 
-	if limiter.AllowN(time.Now(), count) {
-		return nil
-	}
-
-	return ErrRateLimitExceeded
+	return limiter.AllowN(time.Now(), count)
 }
 
+// Clear deletes the limiter that belongs to 'key'
 func (l *Limiter) Clear(key string) {
 
 	l.mux.Lock()
