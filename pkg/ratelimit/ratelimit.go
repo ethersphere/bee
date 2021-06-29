@@ -19,26 +19,26 @@ import (
 var ErrRateLimitExceeded = errors.New("rate limit exceeded")
 
 type Limiter struct {
-	mux     sync.Mutex
+	mtx     sync.Mutex
 	limiter map[string]*rate.Limiter
 	rate    rate.Limit
 	burst   int
 }
 
 // New returns a new Limiter object with refresh rate and burst amount
-func New(r time.Duration, b int) *Limiter {
+func New(r time.Duration, burst int) *Limiter {
 	return &Limiter{
 		limiter: make(map[string]*rate.Limiter),
 		rate:    rate.Every(r),
-		burst:   b,
+		burst:   burst,
 	}
 }
 
 // Allow checks if the limiter that belongs to 'key' has not exceeded the limit.
 func (l *Limiter) Allow(key string, count int) bool {
 
-	l.mux.Lock()
-	defer l.mux.Unlock()
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 
 	limiter, ok := l.limiter[key]
 	if !ok {
@@ -52,8 +52,8 @@ func (l *Limiter) Allow(key string, count int) bool {
 // Clear deletes the limiter that belongs to 'key'
 func (l *Limiter) Clear(key string) {
 
-	l.mux.Lock()
-	defer l.mux.Unlock()
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 
 	delete(l.limiter, key)
 }

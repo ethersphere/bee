@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -51,6 +52,7 @@ type Service struct {
 	metrics         metrics
 	inLimiter       *ratelimit.Limiter
 	outLimiter      *ratelimit.Limiter
+	clearMtx        sync.Mutex
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
@@ -207,7 +209,12 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 }
 
 func (s *Service) disconnect(peer p2p.Peer) error {
+
+	s.clearMtx.Lock()
+	defer s.clearMtx.Unlock()
+
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
+
 	return nil
 }
