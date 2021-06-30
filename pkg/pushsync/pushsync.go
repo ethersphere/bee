@@ -37,7 +37,7 @@ const (
 )
 
 const (
-	maxPeers           = 3
+	maxPeers           = 16
 	maxAttempts        = 16
 	skipPeerExpiration = time.Minute
 )
@@ -78,7 +78,8 @@ type PushSync struct {
 	skipList       *peerSkipList
 }
 
-var defaultTTL = 20 * time.Second                     // request time to live
+var defaultTTL = 15 * time.Second // request time to live
+var preemptiveTTL = 9 * time.Second
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
@@ -123,6 +124,7 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
+
 	defer cancel()
 	defer func() {
 		if err != nil {
@@ -191,7 +193,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// forwarding replication
 	storedChunk := false
-	if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+	retryAllow := ps.topologyDriver.IsWithinDepth(chunk.Address())
+	if retryAllow {
 		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 		if err != nil {
 			ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
@@ -203,7 +206,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
-	receipt, err := ps.pushToClosest(ctx, chunk, false, p.Address)
+	receipt, err := ps.pushToClosest(ctx, chunk, retryAllow, false, p.Address)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			if !storedChunk {
@@ -254,7 +257,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
+	r, err := ps.pushToClosest(ctx, ch, true, true, swarm.ZeroAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -270,10 +273,12 @@ type pushResult struct {
 	attempted bool
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool, origin swarm.Address) (*pb.Receipt, error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed, originated bool, origin swarm.Address) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
+
+	preemptiveLimit := time.After(time.Second * 9)
 
 	var (
 		skipPeers      []swarm.Address
@@ -283,9 +288,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 	)
 
 	if retryAllowed {
-		// only originator retries
+		// only originator and peers in neighborhood of chunk retry
 		allowedRetries = maxPeers
 	}
+
+	chunkInNeighborhood := ps.topologyDriver.IsWithinDepth(ch.Address())
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
@@ -299,7 +306,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					return nil, ErrWarmup
 				}
 
-				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+				if !chunkInNeighborhood {
 					return nil, ErrNoPush
 				}
 
@@ -316,7 +323,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 						return true, false, nil
 					}
 					count++
-					go ps.pushToNeighbour(peer, ch, retryAllowed)
+					go ps.pushToNeighbour(peer, ch, originated)
 					return false, false, nil
 				})
 				return nil, err
@@ -337,7 +344,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 			defer canceld()
 
-			r, attempted, err := ps.pushPeer(ctxd, peer, ch, retryAllowed)
+			r, attempted, err := ps.pushPeer(ctxd, peer, ch, originated)
 			// attempted is true if we get past accounting and actually attempt
 			// to send the request to the peer. If we dont get past accounting, we
 			// should not count the retry and try with a different peer again
@@ -355,23 +362,46 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			}
 		}(peer, ch)
 
-		select {
-		case r := <-resultC:
-			// receipt received for chunk
-			if r.receipt != nil {
-				ps.skipList.PruneChunk(ch.Address())
-				return r.receipt, nil
-			}
-			if r.err != nil && r.attempted {
-				ps.metrics.TotalFailedSendAttempts.Inc()
-
-				// if the node has warmed up AND no other closer peer has been tried
-				if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
+		if !chunkInNeighborhood {
+			select {
+			case r := <-resultC:
+				// receipt received for chunk
+				if r.receipt != nil {
+					ps.skipList.PruneChunk(ch.Address())
+					return r.receipt, nil
 				}
+				if r.err != nil && r.attempted {
+					ps.metrics.TotalFailedSendAttempts.Inc()
+
+					// if the node has warmed up AND no other closer peer has been tried
+					if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighborhood && errors.Is(err, context.DeadlineExceeded) {
+						ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
+					}
+				}
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		} else {
+			select {
+			case r := <-resultC:
+				// receipt received for chunk
+				if r.receipt != nil {
+					ps.skipList.PruneChunk(ch.Address())
+					return r.receipt, nil
+				}
+				if r.err != nil && r.attempted {
+					ps.metrics.TotalFailedSendAttempts.Inc()
+					// if the node has warmed up AND no other closer peer has been tried
+					if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighborhood && errors.Is(err, context.DeadlineExceeded) {
+						ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
+					}
+				}
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-preemptiveLimit:
+				go ps.establishStorage(ch, origin, originated, resultC)
+				allowedRetries++
+			}
 		}
 	}
 
@@ -572,4 +602,44 @@ func (l *peerSkipList) PruneExpired() {
 			delete(l.skipExpiration, k)
 		}
 	}
+}
+
+func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, originated bool, resultC chan<- *pushResult) {
+
+	count := 0
+	// Push the chunk to some peers in the neighborhood in parallel for replication.
+	// Any errors here should NOT impact the rest of the handler.
+	_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		// skip forwarding peer
+		if peer.Equal(origin) {
+			return false, false, nil
+		}
+
+		if count == nPeersToPushsync {
+			return true, false, nil
+		}
+		count++
+		go ps.pushToNeighbour(peer, ch, originated)
+		return false, false, nil
+	})
+
+	bytes := ch.Address().Bytes()
+
+	signature, err := ps.signer.Sign(bytes)
+	if err != nil {
+		resultC <- &pushResult{
+			receipt:   nil,
+			err:       err,
+			attempted: true,
+		}
+		return
+	}
+
+	receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
+	resultC <- &pushResult{
+		receipt:   &receipt,
+		err:       err,
+		attempted: true,
+	}
+
 }
