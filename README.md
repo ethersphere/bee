@@ -55,3 +55,6 @@ Need even more incentive to get involved with the wonderful world of Swarm? Find
 
 ## Find Out More
 What happens with your Bee node when you start it up? Want to know more about the amazing Swarm technology behind Bee? Want to make your own client? Read The Book of Swarm, our 250 page epic guide to the future tech underpinning the Swarm network.
+
+## Development
+We'd love for you to join our efforts! Are you up to the challenge of helping us to create Bee and the other incredible technologies we're building on top of it? You are invited to contribute code to the Bee client or any of the other projects in Swarm's Ethersphere.
