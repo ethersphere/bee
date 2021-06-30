@@ -67,14 +67,27 @@ Because Bee must sign a lot of transactions automatically and quickly, a Bee spe
 -wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_arm64.deb
 -sudo-dpkg-i-bee-clef_0.5.0_arm64.deb`
 
-Finally, let's check Bee Clef is running.
+## Finally, let's check Bee Clef is running.
 
-Linux
+
+- Linux
 MacOS
-systemctl status bee-clef
-● bee-clef.service - Bee Clef
-     Loaded: loaded (/lib/systemd/system/bee-clef.service; enabled; vendor preset: enabled)
-     Active: active (running) since Fri 2020-11-20 23:45:16 GMT; 1min 29s ago
+systemctl 
+status
+
+ bee-clef
+-bee-clef.service-Bee.Clef
+     Loaded:
+     loaded
+
+ (/lib/systemd/system/bee-clef.service;
+ enabled;
+ vendor preset:
+ enabled)
+    -Active:
+     active 
+     (running)
+     -since Fri 2020-11-20 23:45:16 GMT; 1min 29s ago
 
 ## Get in touch
 [Only official website](https://www.ethswarm.org)
