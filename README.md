@@ -60,12 +60,12 @@ Because Bee must sign a lot of transactions automatically and quickly, a Bee spe
 ## ARM (Raspberry Pi)
 
 ## ARMv7
--wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_armv7.deb`
--sudo dpkg -i bee-clef_0.5.0_armv7.deb
+-wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_armv7.deb
+-sudo-dpkg-i-bee-clef_0.5.0_armv7.deb`
 
 ## ARM64
--wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_arm64.deb`
--sudo dpkg -i bee-clef_0.5.0_arm64.deb
+-wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_arm64.deb
+-sudo-dpkg-i-bee-clef_0.5.0_arm64.deb`
 
 Finally, let's check Bee Clef is running.
 
