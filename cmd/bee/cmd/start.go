@@ -33,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -128,12 +127,25 @@ inability to use, or your interaction with other nodes or the software.`)
 				return errors.New("boot node must be started as a full node")
 			}
 
-			mainnetCfg, err := getMainnectConfig(c.config, logger)
-			if err != nil {
-				return err
+			mainnet := c.config.GetBool(optionNameMainNet)
+			networkID := c.config.GetUint64(optionNameNetworkID)
+			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
+			blockTime := c.config.GetUint64(optionNameBlockTime)
+
+			if mainnet && networkID != 1 {
+				return errors.New("provided network ID does not match mainnet")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, mainnetCfg.networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			networkConfig := getDefaultNetworkConfig(networkID)
+
+			if len(bootnodes) > 0 {
+				networkConfig.bootNodes = bootnodes
+			}
+			if blockTime != 0 {
+				networkConfig.blockTime = blockTime
+			}
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -147,7 +159,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                  mainnetCfg.bootnodes,
+				Bootnodes:                  networkConfig.bootNodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
 				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
@@ -171,9 +183,10 @@ inability to use, or your interaction with other nodes or the software.`)
 				BlockHash:                  c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
-				BlockTime:                  mainnetCfg.blockTime,
+				BlockTime:                  networkConfig.blockTime,
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
+				ChainID:                    networkConfig.chainID,
 			})
 			if err != nil {
 				return err
@@ -412,38 +425,28 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}, nil
 }
 
-type mainnetCfg struct {
-	networkID uint64
-	bootnodes []string
+type mainnetConfig struct {
+	bootNodes []string
 	blockTime uint64
+	chainID   int64
 }
 
-func getMainnectConfig(c *viper.Viper, log logging.Logger) (*mainnetCfg, error) {
-	mainnet := c.GetBool(optionNameMainNet)
-	networkID := c.GetUint64(optionNameNetworkID)
-	bootnodes := c.GetStringSlice(optionNameBootnodes)
-	blockTime := c.GetUint64(optionNameBlockTime)
-
-	if mainnet {
-		if networkID != 1 {
-			return nil, errors.New("provided network ID does not match mainnet")
-		}
-		blockTime = uint64(5 * time.Second) // override block time
+func getDefaultNetworkConfig(networkID uint64) (cfg *mainnetConfig) {
+	defaultEthBlockTime := uint64(15 * time.Second)
+	switch networkID {
+	case 1:
+		cfg.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
+		cfg.blockTime = uint64(5 * time.Second)
+		cfg.chainID = 100
+	case 5: //staging
+		cfg.bootNodes = []string{"/dnsaddr/staging.ethswarm.org"}
+		cfg.blockTime = defaultEthBlockTime
+		cfg.chainID = 5
+	default:
+		cfg.bootNodes = []string{}
+		cfg.blockTime = defaultEthBlockTime
+		cfg.chainID = -1 // it will be rejected downstream since it's not valid chain ID
 	}
 
-	if len(bootnodes) == 0 {
-		if mainnet {
-			bootnodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
-		} else if networkID == 10 {
-			bootnodes = []string{"/dnsaddr/testnet.ethswarm.org"}
-		} else {
-			log.Warning("no bootnodes defined for network ID", networkID)
-		}
-	}
-
-	return &mainnetCfg{
-		networkID: networkID,
-		bootnodes: bootnodes,
-		blockTime: blockTime,
-	}, nil
+	return
 }

@@ -151,6 +151,7 @@ type Options struct {
 	BlockTime                  uint64
 	DeployGasPrice             string
 	WarmupTime                 time.Duration
+	ChainID                    int64
 }
 
 const (
@@ -225,6 +226,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		b.ethClientCloser = swapBackend.Close
 		b.transactionCloser = tracerCloser
 		b.transactionMonitorCloser = transactionMonitor
+
+		if o.ChainID != -1 && o.ChainID != chainID {
+			return nil, fmt.Errorf("connected to wrong ethereum network: got chainID %d, want %d", chainID, o.ChainID)
+		}
 	}
 
 	var debugAPIService *debugapi.Service
