@@ -1,2 +1,5 @@
 curl http://localhost:1633
 Ethereum Swarm Bee
+
+curl -H "Swarm-Postage-Batch-Id: 78a26be9b42317fe6f0cbea3e47cbd0cf34f533db4e9c91cf92be40eb2968264"
+-F file=@bee.jpg http://localhost:1633/bzz
