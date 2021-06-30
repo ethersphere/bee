@@ -22,11 +22,43 @@ var (
 	xdaiPostageStampContractAddress   = common.HexToAddress("0x6a1a21eca3ab28be85c7ba22b2d6eae5907c900e")
 )
 
-type ChainID int64
+type ChainConfig struct {
+	StartBlock         uint64
+	LegacyFactories    []common.Address
+	PostageStamp       common.Address
+	CurrentFactory     common.Address
+	PriceOracleAddress common.Address
+}
+
+func GetChainConfig(chainID int64) (cfg ChainConfig, found bool) {
+	postageStamp, startBlock, found := discoverAddresses(chainID)
+	if !found {
+		return ChainConfig{}, false
+	}
+
+	cfg.PostageStamp = postageStamp
+	cfg.StartBlock = startBlock
+
+	currentFactory, legacyFactories, found := discoverFactoryAddress(chainID)
+	if !found {
+		return ChainConfig{}, false
+	}
+
+	cfg.CurrentFactory = currentFactory
+	cfg.LegacyFactories = legacyFactories
+
+	priceOracleAddress, found := discoverPriceOracleAddress(chainID)
+	if !found {
+		return ChainConfig{}, false
+	}
+
+	cfg.PriceOracleAddress = priceOracleAddress
+
+	return
+}
 
 // DiscoverAddresses returns the canonical contracts for this chainID
-func (c ChainID) DiscoverAddresses() (postageStamp common.Address, startBlock uint64, found bool) {
-	chainID := int64(c)
+func discoverAddresses(chainID int64) (postageStamp common.Address, startBlock uint64, found bool) {
 	switch chainID {
 	case goerliChainID:
 		return goerliPostageStampContractAddress, GoerliStartBlock, true
@@ -38,8 +70,7 @@ func (c ChainID) DiscoverAddresses() (postageStamp common.Address, startBlock ui
 }
 
 // DiscoverFactoryAddress returns the canonical factory for this chainID
-func (c ChainID) DiscoverFactoryAddress() (currentFactory common.Address, legacyFactories []common.Address, found bool) {
-	chainID := int64(c)
+func discoverFactoryAddress(chainID int64) (currentFactory common.Address, legacyFactories []common.Address, found bool) {
 	switch chainID {
 	case goerliChainID:
 		// goerli
@@ -55,8 +86,7 @@ func (c ChainID) DiscoverFactoryAddress() (currentFactory common.Address, legacy
 }
 
 // DiscoverPriceOracleAddress returns the canonical price oracle for this chainID
-func (c ChainID) DiscoverPriceOracleAddress() (priceOracleAddress common.Address, found bool) {
-	chainID := int64(c)
+func discoverPriceOracleAddress(chainID int64) (priceOracleAddress common.Address, found bool) {
 	switch chainID {
 	case goerliChainID:
 		return goerliContractAddress, true

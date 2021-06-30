@@ -417,7 +417,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var postageSyncStart uint64 = 0
 	if !o.Standalone {
-		postageContractAddress, startBlock, found := config.ChainID(chainID).DiscoverAddresses()
+		chainCfg, found := config.GetChainConfig(chainID)
+		postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
 		if o.PostageContractAddress != "" {
 			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
