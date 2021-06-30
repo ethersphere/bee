@@ -39,3 +39,7 @@ As soon as your Bee client is up and running you will begin to connect with peer
 Swarm is a decentralised data storage and distribution technology, ready to power the next generation of censorship resistant, unstoppable serverless apps.
 
 Swarm is economically self-sustaining due to a built-in incentive system enforced through smart contracts on the Ethereum blockchain. Swarm aspires to shape the future towards a self-sovereign global society and permissionless open markets. Applications can run autonomously yet securely in a planetary-scale deployment and execution environment.
+
+## Bee#
+Installation#
+Don't have Bee installed yet? It's easy! Head over to the installation section to get Bee up and running.
