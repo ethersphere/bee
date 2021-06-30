@@ -54,8 +54,8 @@ Because Bee must sign a lot of transactions automatically and quickly, a Bee spe
 -MacOS
 
 ## AMD64
--wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_amd64.deb`
--sudo dpkg -i bee-clef_0.5.0_amd64.deb
+-wget 'https://github.com/ethersphere/bee-clef/releases/download/v0.5.0/bee-clef_0.5.0_amd64.deb
+-sudo-dpkg-i-bee-clef_0.5.0_amd64.deb`
 
 ## ARM (Raspberry Pi)
 
