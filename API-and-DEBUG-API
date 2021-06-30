@@ -1,0 +1,19 @@
+## API and Debug API
+The Bee node exposes two HTTP API endpoints, the API and the Debug API. These endpoints are the primary interfaces to a running Bee node. API-endpoints can be queried using familiar HTTP requests, and will respond with a semantically accurate HTTP status and error codes as well as data payloads in JSON format where appropriate.
+
+## API
+The API-endpoint exposes all functionality to upload and download content to and from the Swarm network. By default, it runs on port :1633.
+
+Detailed information about Bee API endpoint can be found here:
+
+## Bee API reference.
+
+## Debug API
+The Debug API is disabled by default but can be enabled by setting the debug-api-enable configuration option to true. The Debug API exposes functionality to inspect the state of your Bee node while it is running, as well as some other features that should not be exposed to the public Internet. The Debug API runs on port :1635 by default.
+
+INFO
+For a new installation of Bee, the Debug API endpoint is not yet exposed for security reasons. To enable the Debug API endpoints, set --debug-api-enable to true in your configuration file and restart your Bee.
+
+## Debug API reference.
+DANGER
+Your Debug API should not be exposed to the public Internet, make sure that your network has a firewall which blocks port 1635, or bind the Debug API to localhost
