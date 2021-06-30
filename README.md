@@ -67,3 +67,8 @@ There is a vibrant and buzzing community behind Swarm - get involved in one of o
 - Twitter @ethswarm
 - reddit channel
 - Medium
+
+## Reporting a bug
+If your Bee isn't working, get in touch with the #bee-support channel on Discord or let us know on GitHub! 🐝
+
+Thanks for beeing here, we wish you Love and Bees from the Swarm Team x
