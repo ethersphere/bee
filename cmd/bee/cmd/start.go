@@ -431,7 +431,8 @@ type mainnetConfig struct {
 	chainID   int64
 }
 
-func getDefaultNetworkConfig(networkID uint64) (cfg *mainnetConfig) {
+func getDefaultNetworkConfig(networkID uint64) *mainnetConfig {
+	var cfg mainnetConfig
 	defaultEthBlockTime := uint64(15 * time.Second)
 	switch networkID {
 	case 1:
@@ -448,5 +449,5 @@ func getDefaultNetworkConfig(networkID uint64) (cfg *mainnetConfig) {
 		cfg.chainID = -1 // it will be rejected downstream since it's not valid chain ID
 	}
 
-	return
+	return &cfg
 }
