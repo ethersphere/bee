@@ -40,15 +40,15 @@ Swarm is a decentralised data storage and distribution technology, ready to powe
 
 Swarm is economically self-sustaining due to a built-in incentive system enforced through smart contracts on the Ethereum blockchain. Swarm aspires to shape the future towards a self-sovereign global society and permissionless open markets. Applications can run autonomously yet securely in a planetary-scale deployment and execution environment.
 
-## Bee#
+## Bee
 Installation#
 Don't have Bee installed yet? It's easy! Head over to the installation section to get Bee up and running.
 
-## Working With Bee#
+## Working With Bee
 Once you have Bee installed, find out how to configure your software, interact with the API, monitor what Bee is up to, and make those all important backups in the working with Bee section.
 
-## Access the Swarm#
+## Access the Swarm
 To learn more about how to get the most out of Bee, find out how to access the swarm section so you can share files with your friends, use Bee to host a website on a public Swarm Gateway, and much more!
 
-## Incentives#
+## Incentives
 Need even more incentive to get involved with the wonderful world of Swarm? Find out how you'll soon be earning BZZ tokens for storing and distributing your share of the world's data - sharing is caring!
