@@ -58,3 +58,12 @@ What happens with your Bee node when you start it up? Want to know more about th
 
 ## Development
 We'd love for you to join our efforts! Are you up to the challenge of helping us to create Bee and the other incredible technologies we're building on top of it? You are invited to contribute code to the Bee client or any of the other projects in Swarm's Ethersphere.
+
+## Community
+There is a vibrant and buzzing community behind Swarm - get involved in one of our group channels:
+
+Swarm
+Discord
+Twitter @ethswarm
+reddit channel
+Medium
