@@ -210,9 +210,11 @@ func TestRetrieveChunk(t *testing.T) {
 			true,
 		)
 
+		forwarderStore := storemock.NewStorer()
+
 		forwarder := retrieval.New(
 			forwarderAddress,
-			storemock.NewStorer(), // no chunk in forwarder's store
+			forwarderStore, // no chunk in forwarder's store
 			streamtest.New(streamtest.WithProtocols(server.Protocol())), // connect to server
 			mockPeerSuggester{eachPeerRevFunc: func(f topology.EachPeerFunc) error {
 				_, _, _ = f(serverAddress, 0) // suggest server's address
@@ -240,6 +242,10 @@ func TestRetrieveChunk(t *testing.T) {
 			true,
 		)
 
+		if got, _ := forwarderStore.Has(context.Background(), chunk.Address()); got {
+			t.Fatalf("forwarder node already has chunk")
+		}
+
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
 		if err != nil {
 			t.Fatal(err)
@@ -247,6 +253,11 @@ func TestRetrieveChunk(t *testing.T) {
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
+
+		if got, _ := forwarderStore.Has(context.Background(), chunk.Address()); !got {
+			t.Fatalf("forwarder not caching chunk")
+		}
+
 	})
 }
 
@@ -487,6 +498,10 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		// client only knows about server 1
 		client := retrieval.New(clientAddress, nil, clientRecorder, peerSuggesterFn(serverAddress1), logger, accountingmock.NewAccounting(), pricerMock, nil, true)
 
+		if got, _ := serverStorer1.Has(context.Background(), chunk.Address()); got {
+			t.Fatalf("forwarder node already has chunk")
+		}
+
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
 		if err != nil {
 			t.Fatal(err)
@@ -495,6 +510,11 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
+
+		if got, _ := serverStorer1.Has(context.Background(), chunk.Address()); !got {
+			t.Fatalf("forwarder node does not have chunk")
+		}
+
 	})
 }
 
