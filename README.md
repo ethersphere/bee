@@ -31,3 +31,11 @@ Please read the [coding guidelines](CODING.md).
 
 This library is distributed under the BSD-style license found in the [LICENSE](LICENSE) file.
 
+## Welcome!
+Hello and welcome to the swarm! We are very happy to have you here with us! 🐝
+
+As soon as your Bee client is up and running you will begin to connect with peers all over the world to become a part of Swarm, a global p2p network tasked with storing and distributing all of the world's data.
+
+Swarm is a decentralised data storage and distribution technology, ready to power the next generation of censorship resistant, unstoppable serverless apps.
+
+Swarm is economically self-sustaining due to a built-in incentive system enforced through smart contracts on the Ethereum blockchain. Swarm aspires to shape the future towards a self-sovereign global society and permissionless open markets. Applications can run autonomously yet securely in a planetary-scale deployment and execution environment.
