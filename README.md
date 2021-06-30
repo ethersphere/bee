@@ -49,3 +49,6 @@ Once you have Bee installed, find out how to configure your software, interact w
 
 ## Access the Swarm#
 To learn more about how to get the most out of Bee, find out how to access the swarm section so you can share files with your friends, use Bee to host a website on a public Swarm Gateway, and much more!
+
+## Incentives#
+Need even more incentive to get involved with the wonderful world of Swarm? Find out how you'll soon be earning BZZ tokens for storing and distributing your share of the world's data - sharing is caring!
