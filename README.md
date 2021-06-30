@@ -62,8 +62,8 @@ We'd love for you to join our efforts! Are you up to the challenge of helping us
 ## Community
 There is a vibrant and buzzing community behind Swarm - get involved in one of our group channels:
 
-Swarm
-Discord
-Twitter @ethswarm
-reddit channel
-Medium
+## Swarm
+## Discord
+## Twitter @ethswarm
+## reddit channel
+## Medium
