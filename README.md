@@ -52,3 +52,6 @@ To learn more about how to get the most out of Bee, find out how to access the s
 
 ## Incentives
 Need even more incentive to get involved with the wonderful world of Swarm? Find out how you'll soon be earning BZZ tokens for storing and distributing your share of the world's data - sharing is caring!
+
+## Find Out More
+What happens with your Bee node when you start it up? Want to know more about the amazing Swarm technology behind Bee? Want to make your own client? Read The Book of Swarm, our 250 page epic guide to the future tech underpinning the Swarm network.
