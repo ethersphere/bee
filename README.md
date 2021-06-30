@@ -100,6 +100,45 @@ Don't have Bee installed yet? It's easy! Head over to the installation section t
 ## Working With Bee
 Once you have Bee installed, find out how to configure your software, interact with the API, monitor what Bee is up to, and make those all important backups in the working with Bee section.
 
+## Configure Bee
+Because Bee has many use cases and may run on a wide range of hardware, it is important that you configure Bee for your specific use case. This will make sure that you get the most out of your Bee!
+
+-Important Configuration Parameters#
+Bee is a versatile piece of software with diverse use cases. Before starting Bee for the first time, please consider changing the following configuration parameters to suit your needs. Read on for more specific information on how to tune your Bee, and (re)start it's service.
+
+-Mainnet Node or Testnet Node#
+To connect to mainnet, set your mainnet flag to true and network-id flag to 1.
+
+mainnet: true
+network-id: 1
+Full Node or Light Node#
+Since Bee can take a lot of resources when providing services to the network in exchange for BZZ, Bee nodes default automatically to running as a light node. To allow your Bee to use your network bandwidth and computing resources to serve the network and start cashing out cheques, set the --full-node flag to true.
+
+full-node: true
+Blockchain Endpoints#
+Your Bee node must have stable access to the XDAI blockchain, so that it can interact with and deploy your chequebook contract. You can run your own XDAI node or, use a provider instead - we recommend Getblock.
+
+-By default, Bee expects a local XDAI node at ws://localhost:8545. To use an Ethereum RPC provider instead, change your configuration as follows:
+
+-swap-endpoint: https://stake.getblock.io/mainnet/?api_key=your-api-key
+If you would like to use your node to resolve ENS domain names, you must also provide the endpoint for an Ethereum mainnet RPC provider.
+
+-resolver-options: ["https://mainnet.infura.io/v3/<<your-api-key>>"]
+Open File Descriptors#
+Bee is designed to work on a lot of different hardware configurations. To facilitate the exploration of this, during our beeta phase, we have given node operators access to leveldb's --db-open-files-limit. This helps determine the speed with which Bee can read and write to its database, and therefore its efficiency in forwarding and serving chunks. Some say setting this to much more than the default 200 leads to a much enhanced ability to participate in the swarm and get those BZZ! Share your experience in the #node-operators channel of our Discord server to help us make this process more automated in the future.
+
+-db-open-files-limit: 2000
+NAT Address#
+Swarm is all about sharing and storing chunks of data. To enable other Bees (also known as peers) to connect to your Bee, you must broadcast your public IP address, and ensure that Bee is reachable on the correct p2p port (default 1634). We recommend that you manually configure your external IP and check connectivity to ensure your Bee is able to receive connections from other peers.
+
+## First determine your public IP address:
+
+-curl icanhazip.com
+123.123.123.123
+Then configure your node, including your p2p port (default 1634).
+
+nat-addr: "123.123.123.123:1634"
+
 ## Access the Swarm
 To learn more about how to get the most out of Bee, find out how to access the swarm section so you can share files with your friends, use Bee to host a website on a public Swarm Gateway, and much more!
 
