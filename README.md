@@ -72,3 +72,19 @@ There is a vibrant and buzzing community behind Swarm - get involved in one of o
 If your Bee isn't working, get in touch with the #bee-support channel on Discord or let us know on GitHub! 🐝
 
 Thanks for beeing here, we wish you Love and Bees from the Swarm Team x
+
+## Quick Start
+Bee is a versatile piece of software that caters for a diverse array of use cases.
+
+- Access the Network
+If you want to interact with the Bee ecosystem in a decentralised way, but not earn BZZ by storing or forwarding chunks, simply run a Bee light node in the background on your laptop or desktop computer. This will enable direct access to the swarm from your web browser and other applications.
+
+-Install Bee
+
+Support the Network and Earn BZZ by Running a Full Node#
+Earn BZZ and help keep the swarm strong by running your own full node. It's easy to set up your own Bee on a Raspberry Pi, cloud host, or any home computer that's connected to the internet.
+
+-Install Bee
+
+## Run Your Own Hive of Nodes
+Take it to the next level by keeping a whole hive of Bees! We provide tooling and monitoring to help you manage large deployments of multiple Bee nodes: Bee Hives.
