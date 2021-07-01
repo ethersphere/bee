@@ -33,7 +33,7 @@ func MakeSettlementHeaders(exchangeRate, deduction *big.Int) p2p.Headers {
 	}
 }
 
-func ParseSettlementResponseHeaders(receivedHeaders p2p.Headers) (exchange *big.Int, deduction *big.Int, err error) {
+func ParseSettlementResponseHeaders(receivedHeaders p2p.Headers) (exchange, deduction *big.Int, err error) {
 
 	exchangeRate, err := ParseExchangeHeader(receivedHeaders)
 	if err != nil {

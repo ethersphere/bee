@@ -46,7 +46,7 @@ func NewChequeStore(opts ...Option) chequebook.ChequeStore {
 	return mock
 }
 
-func (s *Service) ReceiveCheque(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error) {
+func (s *Service) ReceiveCheque(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate, deduction *big.Int) (*big.Int, error) {
 	return s.receiveCheque(ctx, cheque, exchangeRate, deduction)
 }
 

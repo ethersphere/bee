@@ -49,7 +49,7 @@ type Service struct {
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold *big.Int, minThreshold *big.Int) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold, minThreshold *big.Int) *Service {
 	return &Service{
 		streamer:            streamer,
 		logger:              logger,
