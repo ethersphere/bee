@@ -132,8 +132,12 @@ inability to use, or your interaction with other nodes or the software.`)
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
 			blockTime := c.config.GetUint64(optionNameBlockTime)
 
-			if mainnet && networkID != 1 {
-				return errors.New("provided network ID does not match mainnet")
+			if mainnet {
+				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
+				if userHasSetNetworkID && networkID != 1 {
+					return errors.New("provided network ID does not match mainnet")
+				}
+				networkID = 1
 			}
 
 			networkConfig := getDefaultNetworkConfig(networkID)
