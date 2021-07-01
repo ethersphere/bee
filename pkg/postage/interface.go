@@ -12,10 +12,10 @@ import (
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
-	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txhash []byte) error
-	TopUp(id []byte, normalisedBalance *big.Int, txhash []byte) error
-	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txhash []byte) error
-	UpdatePrice(price *big.Int, txhash []byte) error
+	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
+	TopUp(id []byte, normalisedBalance *big.Int, txHash []byte) error
+	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
+	UpdatePrice(price *big.Int, txHash []byte) error
 	UpdateBlockNumber(blockNumber uint64) error
 	Start(startBlock uint64) (<-chan struct{}, error)
 
