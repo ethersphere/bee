@@ -131,7 +131,7 @@ func (s *service) GetPrice(ctx context.Context) (*big.Int, *big.Int, error) {
 	return exchangeRate, deduction, nil
 }
 
-func (s *service) CurrentRates() (exchangeRate *big.Int, deduction *big.Int, err error) {
+func (s *service) CurrentRates() (exchangeRate, deduction *big.Int, err error) {
 	if s.exchangeRate.Cmp(big.NewInt(0)) == 0 {
 		return nil, nil, errors.New("exchange rate not yet available")
 	}

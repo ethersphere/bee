@@ -516,7 +516,7 @@ func newPeerSkipList() *peerSkipList {
 	}
 }
 
-func (l *peerSkipList) Add(peer swarm.Address, chunk swarm.Address, expire time.Duration) {
+func (l *peerSkipList) Add(peer, chunk swarm.Address, expire time.Duration) {
 	l.Lock()
 	defer l.Unlock()
 

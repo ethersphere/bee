@@ -41,7 +41,7 @@ type notifyPaymentSentCall struct {
 	err    error
 }
 
-func newTestObserver(debtAmounts map[string]*big.Int, shadowBalanceAmounts map[string]*big.Int) *testObserver {
+func newTestObserver(debtAmounts, shadowBalanceAmounts map[string]*big.Int) *testObserver {
 	return &testObserver{
 		receivedCalled: make(chan notifyPaymentReceivedCall, 1),
 		sentCalled:     make(chan notifyPaymentSentCall, 1),
