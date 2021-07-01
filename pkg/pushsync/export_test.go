@@ -5,8 +5,10 @@
 package pushsync
 
 var (
-	ProtocolName    = protocolName
-	ProtocolVersion = protocolVersion
-	StreamName      = streamName
-	NewPeerSkipList = newPeerSkipList
+	ProtocolName     = protocolName
+	ProtocolVersion  = protocolVersion
+	StreamName       = streamName
+	NewPeerSkipList  = newPeerSkipList
+	DefaultTtl       = &defaultTTL
+	SendReceiptDelay = &sendReceiptDelay
 )

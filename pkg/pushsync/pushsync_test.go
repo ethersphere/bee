@@ -52,6 +52,10 @@ var (
 	defaultSigner = cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
 		return nil, nil
 	}))
+
+	defaultNotWithinDepthFunc = func(addr swarm.Address) bool {
+		return false
+	}
 )
 
 // TestPushClosest inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
@@ -225,13 +229,9 @@ func TestFailToReplicateBeforeReceipt(t *testing.T) {
 	_, storerEmpty, _, _ := createPushSyncNode(t, emptyPeer, defaultPrices, nil, nil, defaultSigner)
 	defer storerEmpty.Close()
 
-	wFunc := func(addr swarm.Address) bool {
-		return false
-	}
-
 	// node that is connected to closestPeer
 	// will receieve chunk from closestPeer
-	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, nil, nil, defaultSigner, mock.WithPeers(emptyPeer), mock.WithIsWithinFunc(wFunc))
+	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, nil, nil, defaultSigner, mock.WithPeers(emptyPeer), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
 	defer storerSecond.Close()
 	secondRecorder := streamtest.New(streamtest.WithProtocols(psSecond.Protocol()), streamtest.WithBaseAddr(closestPeer))
 
@@ -781,85 +781,6 @@ func TestSignsReceipt(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags, accounting.Interface) {
-	t.Helper()
-	mockAccounting := accountingmock.NewAccounting()
-	ps, mstorer, ts := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, mockOpts...)
-	return ps, mstorer, ts, mockAccounting
-}
-
-func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags) {
-	t.Helper()
-	logger := logging.New(ioutil.Discard, 0)
-	storer := mocks.NewStorer()
-
-	mockTopology := mock.NewTopologyDriver(mockOpts...)
-	mockStatestore := statestore.NewStateStore()
-	mtag := tags.NewTags(mockStatestore, logger)
-
-	mockPricer := pricermock.NewMockService(prices.price, prices.peerPrice)
-
-	recorderDisconnecter := streamtest.NewRecorderDisconnecter(recorder)
-	if unwrap == nil {
-		unwrap = func(swarm.Chunk) {}
-	}
-	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
-	}
-
-	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, 0), storer, mtag
-}
-
-func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
-	t.Helper()
-	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
-
-	if data != nil {
-		messages, err := protobuf.ReadMessages(
-			bytes.NewReader(records[0].In()),
-			func() protobuf.Message { return new(pb.Delivery) },
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if messages == nil {
-			t.Fatal("nil rcvd. for message")
-		}
-		if len(messages) > 1 {
-			t.Fatal("too many messages")
-		}
-		delivery := messages[0].(*pb.Delivery)
-
-		if !bytes.Equal(delivery.Address, add.Bytes()) {
-			t.Fatalf("chunk address mismatch")
-		}
-
-		if !bytes.Equal(delivery.Data, data) {
-			t.Fatalf("chunk data mismatch")
-		}
-	} else {
-		messages, err := protobuf.ReadMessages(
-			bytes.NewReader(records[0].In()),
-			func() protobuf.Message { return new(pb.Receipt) },
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if messages == nil {
-			t.Fatal("nil rcvd. for message")
-		}
-		if len(messages) > 1 {
-			t.Fatal("too many messages")
-		}
-		receipt := messages[0].(*pb.Receipt)
-		receiptAddress := swarm.NewAddress(receipt.Address)
-
-		if !receiptAddress.Equal(add) {
-			t.Fatalf("receipt address mismatch")
-		}
-	}
-}
-
 func TestPeerSkipList(t *testing.T) {
 
 	skipList := pushsync.NewPeerSkipList()
@@ -970,6 +891,11 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), nil)
 
 	want := false
+	if got, _ := storerPeer1.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	want = false
 	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -978,6 +904,408 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	if got, _ := storerPeer3.Has(context.Background(), chunk.Address()); got != want {
 		t.Fatalf("got %v, want %v", got, want)
 	}
+}
+
+// TestForwarderRetriesInNeighborhood tests that the out of depth forwarder does not retry, and
+// the forwarding peer inside the neighborhood retries.
+// P -> F -> | N1 -> N2 (fails), N1 -> N3
+func TestForwarderRetriesInNeighborhood(t *testing.T) {
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	signer := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return []byte{1}, nil
+	}))
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+
+	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+
+	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, signer, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer4.Close()
+
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer3.Close()
+
+	var (
+		lock1                 sync.Mutex
+		lock2                 sync.Mutex
+		failCountNeighborhood int
+		failCountForwarder    int
+	)
+
+	peer2Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer3.Protocol(), psPeer4.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock1.Lock()
+					defer lock1.Unlock()
+
+					failCountNeighborhood++
+
+					// this corresponds to peer3
+					if failCountNeighborhood == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer2),
+	)
+
+	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, peer2Recorder, nil, defaultSigner, mock.WithPeers(peer3, peer4))
+	defer storerPeer2.Close()
+
+	peer1Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer2.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock2.Lock()
+					defer lock2.Unlock()
+
+					failCountForwarder++
+
+					// this corresponds to peer3
+					if failCountForwarder == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer1))
+
+	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, peer1Recorder, nil, defaultSigner, mock.WithPeers(peer2), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPeer1.Close()
+
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPeer1.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	psPivot, storerPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, pivotRecorder, nil, defaultSigner, mock.WithPeers(peer1), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPivot.Close()
+
+	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data())
+
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal("err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 1)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 1)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 2)
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	want := false
+	if got, _ := storerPeer3.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	want = true
+	if got, _ := storerPeer4.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	if !bytes.Equal([]byte{1}, receipt.Signature) {
+		t.Fatal("receipt signature is not present")
+	}
+}
+
+// TestForwarderRetriesInNeighborhood tests that the out of depth forwarder does not retry, and
+// the forwarding peer inside the neighborhood retries.
+// P -> F -> | N1 -> N2 (fails), N1 -> N3
+func Test__(t *testing.T) {
+
+	defer func(t time.Duration) {
+		*pushsync.DefaultTtl = t
+	}(*pushsync.DefaultTtl)
+	*pushsync.DefaultTtl = time.Second * 3
+
+	defer func(t time.Duration) {
+		*pushsync.SendReceiptDelay = t
+	}(*pushsync.SendReceiptDelay)
+	*pushsync.SendReceiptDelay = time.Second * 2
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	signer := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return []byte{1}, nil
+	}))
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+
+	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+
+	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer4.Close()
+
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer3.Close()
+
+	var (
+		// lock1                 sync.Mutex
+		lock2                 sync.Mutex
+		failCountNeighborhood int
+		failCountForwarder    int
+	)
+
+	peer2Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer3.Protocol(), psPeer4.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					failCountNeighborhood++
+
+					// this corresponds to peer3
+					if failCountNeighborhood == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					// simulate timing out for peer4
+					if failCountNeighborhood == 2 {
+						time.Sleep(time.Second * 4)
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer2),
+	)
+
+	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, peer2Recorder, nil, signer, mock.WithPeers(peer3, peer4))
+	defer storerPeer2.Close()
+
+	peer1Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer2.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock2.Lock()
+					defer lock2.Unlock()
+
+					failCountForwarder++
+
+					// this corresponds to peer3
+					if failCountForwarder == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer1))
+
+	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, peer1Recorder, nil, defaultSigner, mock.WithPeers(peer2), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPeer1.Close()
+
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPeer1.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	psPivot, storerPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, pivotRecorder, nil, defaultSigner, mock.WithPeers(peer1), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPivot.Close()
+
+	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data())
+
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal("err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 2)
+
+	want := true
+	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	if !bytes.Equal([]byte{1}, receipt.Signature) {
+		t.Fatal("receipt signature is not present")
+	}
+}
+
+func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
+	waitOnRecordNAndTest(t, peer, recorder, add, data, 1)
+}
+
+func waitOnRecordNAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte, n int) {
+	t.Helper()
+	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, n, 5)
+
+	if data != nil {
+		messages, err := protobuf.ReadMessages(
+			bytes.NewReader(records[n-1].In()),
+			func() protobuf.Message { return new(pb.Delivery) },
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if messages == nil {
+			t.Fatal("nil rcvd. for message")
+		}
+		if len(messages) > 1 {
+			t.Fatal("too many messages")
+		}
+		delivery := messages[0].(*pb.Delivery)
+
+		if !bytes.Equal(delivery.Address, add.Bytes()) {
+			t.Fatalf("chunk address mismatch")
+		}
+
+		if !bytes.Equal(delivery.Data, data) {
+			t.Fatalf("chunk data mismatch")
+		}
+	} else {
+		messages, err := protobuf.ReadMessages(
+			bytes.NewReader(records[n-1].In()),
+			func() protobuf.Message { return new(pb.Receipt) },
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if messages == nil {
+			t.Fatal("nil rcvd. for message")
+		}
+		if len(messages) > 1 {
+			t.Fatal("too many messages")
+		}
+		receipt := messages[0].(*pb.Receipt)
+		receiptAddress := swarm.NewAddress(receipt.Address)
+
+		if !receiptAddress.Equal(add) {
+			t.Fatalf("receipt address mismatch")
+		}
+	}
+}
+
+func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags, accounting.Interface) {
+	t.Helper()
+	mockAccounting := accountingmock.NewAccounting()
+	ps, mstorer, ts := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, mockOpts...)
+	return ps, mstorer, ts, mockAccounting
+}
+
+func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags) {
+	t.Helper()
+	logger := logging.New(ioutil.Discard, 0)
+	storer := mocks.NewStorer()
+
+	mockTopology := mock.NewTopologyDriver(mockOpts...)
+	mockStatestore := statestore.NewStateStore()
+	mtag := tags.NewTags(mockStatestore, logger)
+
+	mockPricer := pricermock.NewMockService(prices.price, prices.peerPrice)
+
+	recorderDisconnecter := streamtest.NewRecorderDisconnecter(recorder)
+	if unwrap == nil {
+		unwrap = func(swarm.Chunk) {}
+	}
+	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
+	}
+
+	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, 0), storer, mtag
 }
 
 func chanFunc(c chan<- struct{}) func(swarm.Chunk) {
