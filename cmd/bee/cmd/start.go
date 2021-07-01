@@ -141,7 +141,7 @@ inability to use, or your interaction with other nodes or the software.`)
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
 			blockTime := c.config.GetUint64(optionNameBlockTime)
 
-			networkConfig := getDefaultNetworkConfig(networkID, blockTime, bootnodes)
+			networkConfig := getConfigByNetworkID(networkID, blockTime, bootnodes)
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -429,10 +429,10 @@ type networkConfig struct {
 	chainID   int64
 }
 
-func getDefaultNetworkConfig(networkID uint64, defaultEthBlockTime uint64, bootnodes []string) *networkConfig {
+func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64, defaultBootnodes []string) *networkConfig {
 	var config = networkConfig{
-		blockTime: uint64(time.Duration(defaultEthBlockTime) * time.Second),
-		bootNodes: bootnodes,
+		blockTime: uint64(time.Duration(defaultBlockTime) * time.Second),
+		bootNodes: defaultBootnodes,
 	}
 	switch networkID {
 	case 1:
