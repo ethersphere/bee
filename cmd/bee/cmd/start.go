@@ -142,10 +142,10 @@ inability to use, or your interaction with other nodes or the software.`)
 
 			networkConfig := getDefaultNetworkConfig(networkID)
 
-			if len(bootnodes) > 0 {
+			if c.config.IsSet(optionNameBootnodes) && len(bootnodes) > 0 {
 				networkConfig.bootNodes = bootnodes
 			}
-			if blockTime != 0 {
+			if c.config.IsSet(optionNameBlockTime) && blockTime != 0 {
 				networkConfig.blockTime = blockTime
 			}
 
