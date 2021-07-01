@@ -394,6 +394,8 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
+	fmt.Printf("peer: %v\n", peer)
+
 	// Reserve to see whether we can make the request
 	err := ps.accounting.Reserve(ctx, peer, receiptPrice)
 	if err != nil {
