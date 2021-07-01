@@ -141,7 +141,7 @@ LOOP:
 	return nil
 }
 
-func (c *factory) verifyChequebookAgainstFactory(ctx context.Context, factory common.Address, chequebook common.Address) (bool, error) {
+func (c *factory) verifyChequebookAgainstFactory(ctx context.Context, factory, chequebook common.Address) (bool, error) {
 	callData, err := factoryABI.Pack("deployedContracts", chequebook)
 	if err != nil {
 		return false, err
