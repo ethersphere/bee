@@ -129,8 +129,6 @@ inability to use, or your interaction with other nodes or the software.`)
 
 			mainnet := c.config.GetBool(optionNameMainNet)
 			networkID := c.config.GetUint64(optionNameNetworkID)
-			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
-			blockTime := c.config.GetUint64(optionNameBlockTime)
 
 			if mainnet {
 				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
@@ -140,11 +138,10 @@ inability to use, or your interaction with other nodes or the software.`)
 				networkID = 1
 			}
 
-			networkConfig := getDefaultNetworkConfig(networkID, blockTime)
+			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
+			blockTime := c.config.GetUint64(optionNameBlockTime)
 
-			if c.config.IsSet(optionNameBootnodes) && len(bootnodes) > 0 {
-				networkConfig.bootNodes = bootnodes
-			}
+			networkConfig := getDefaultNetworkConfig(networkID, blockTime, bootnodes)
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -426,28 +423,29 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}, nil
 }
 
-type mainnetConfig struct {
+type networkConfig struct {
 	bootNodes []string
 	blockTime uint64
 	chainID   int64
 }
 
-func getDefaultNetworkConfig(networkID uint64, defaultEthBlockTime uint64) *mainnetConfig {
-	var cfg mainnetConfig
+func getDefaultNetworkConfig(networkID uint64, defaultEthBlockTime uint64, bootnodes []string) *networkConfig {
+	var config = networkConfig{
+		blockTime: uint64(time.Duration(defaultEthBlockTime) * time.Second),
+		bootNodes: bootnodes,
+	}
 	switch networkID {
 	case 1:
-		cfg.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
-		cfg.blockTime = uint64(5 * time.Second)
-		cfg.chainID = 100
+		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
+		config.blockTime = uint64(5 * time.Second)
+		config.chainID = 100
 	case 5: //staging
-		cfg.bootNodes = []string{"/dnsaddr/staging.ethswarm.org"}
-		cfg.blockTime = defaultEthBlockTime
-		cfg.chainID = 5
-	default:
-		cfg.bootNodes = []string{}
-		cfg.blockTime = defaultEthBlockTime
-		cfg.chainID = -1
+		config.chainID = 5
+	case 10: //test
+		config.chainID = 5
+	default: //will use the value provided by the chain
+		config.chainID = -1
 	}
 
-	return &cfg
+	return &config
 }
