@@ -124,7 +124,6 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
-
 	defer cancel()
 	defer func() {
 		if err != nil {
@@ -206,7 +205,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
-	receipt, err := ps.pushToClosest(ctx, chunk, retryAllow, false, p.Address)
+	receipt, err := ps.pushToClosest(ctx, chunk, false, p.Address)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			if !storedChunk {
@@ -257,7 +256,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	r, err := ps.pushToClosest(ctx, ch, true, true, swarm.ZeroAddress)
+	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -298,8 +297,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 		// only originator and peers in neighborhood of chunk retry
 		allowedRetries = maxPeers
 	}
-
-	chunkInNeighborhood := ps.topologyDriver.IsWithinDepth(ch.Address())
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
@@ -393,7 +390,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 				go ps.establishStorage(ch, origin, originated, resultC)
 				allowedRetries++
 			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-sendReceipt:
+			signInProgress = true
+			go ps.establishStorage(ch, origin, originated, resultC)
+			allowedRetries++
 		}
+
 	}
 
 	return nil, ErrNoPush
