@@ -46,6 +46,7 @@ var (
 	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
 	ErrNoPush                = errors.New("could not push chunk")
 	ErrWarmup                = errors.New("node warmup time not complete")
+	ErrSelfSignFail          = errors.New("creating storage receipt failed")
 )
 
 type PushSyncer interface {
@@ -289,6 +290,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 		resultC        = make(chan *pushResult, 1)
 		includeSelf    = ps.isFullNode
 		signInProgress = false
+		attempts       = 0
+		results        = 0
 	)
 
 	if originated || chunkInNeighbourhood {
@@ -312,62 +315,50 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 					return nil, ErrNoPush
 				}
 
-				count := 0
-				// Push the chunk to some peers in the neighborhood in parallel for replication.
-				// Any errors here should NOT impact the rest of the handler.
-				_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
-					// skip forwarding peer
-					if peer.Equal(origin) {
-						return false, false, nil
-					}
-
-					if count == nPeersToPushsync {
-						return true, false, nil
-					}
-					count++
-					go ps.pushToNeighbour(peer, ch, originated)
-					return false, false, nil
-				})
-				return nil, err
+				signInProgress = true
+				go ps.establishStorage(ch, origin, originated, resultC)
 			}
 			if !errors.Is(err, topology.ErrWantSelf) {
 				return nil, fmt.Errorf("closest peer: %w", err)
 			}
 		}
 
-		skipPeers = append(skipPeers, peer)
+		if !peer.Equal(swarm.Address{}) {
 
-		if ps.skipList.ShouldSkip(peer) {
-			ps.metrics.TotalSkippedPeers.Inc()
-			continue
+			skipPeers = append(skipPeers, peer)
+
+			if ps.skipList.ShouldSkip(peer) {
+				ps.metrics.TotalSkippedPeers.Inc()
+				continue
+			}
+
+			ps.metrics.TotalSendAttempts.Inc()
+			attempts++
+			go func(peer swarm.Address, ch swarm.Chunk) {
+				ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
+				defer canceld()
+
+				r, attempted, err := ps.pushPeer(ctxd, peer, ch, originated)
+				// attempted is true if we get past accounting and actually attempt
+				// to send the request to the peer. If we dont get past accounting, we
+				// should not count the retry and try with a different peer again
+				if attempted {
+					allowedRetries--
+				}
+				if err != nil {
+					logger.Debugf("could not push to peer %s: %v", peer, err)
+					resultC <- &pushResult{err: err, attempted: attempted}
+					return
+				}
+				select {
+				case resultC <- &pushResult{receipt: r}:
+				case <-ctx.Done():
+				}
+			}(peer, ch)
 		}
-
-		ps.metrics.TotalSendAttempts.Inc()
-
-		go func(peer swarm.Address, ch swarm.Chunk) {
-			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
-			defer canceld()
-
-			r, attempted, err := ps.pushPeer(ctxd, peer, ch, originated)
-			// attempted is true if we get past accounting and actually attempt
-			// to send the request to the peer. If we dont get past accounting, we
-			// should not count the retry and try with a different peer again
-			if attempted {
-				allowedRetries--
-			}
-			if err != nil {
-				logger.Debugf("could not push to peer %s: %v", peer, err)
-				resultC <- &pushResult{err: err, attempted: attempted}
-				return
-			}
-			select {
-			case resultC <- &pushResult{receipt: r}:
-			case <-ctx.Done():
-			}
-		}(peer, ch)
-
 		select {
 		case r := <-resultC:
+			results++
 			// receipt received for chunk
 			if r.receipt != nil {
 				ps.skipList.PruneChunk(ch.Address())
@@ -375,6 +366,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 			}
 			if r.err != nil && r.attempted {
 				ps.metrics.TotalFailedSendAttempts.Inc()
+
+				if errors.Is(err, ErrSelfSignFail) && results > attempts {
+					return nil, ErrNoPush
+				}
 
 				// if the node has warmed up AND no other closer peer has been tried
 				if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighbourhood && errors.Is(err, context.DeadlineExceeded) {
@@ -384,9 +379,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-sendReceipt:
-			signInProgress = true
-			go ps.establishStorage(ch, origin, originated, resultC)
-			allowedRetries++
+			if !signInProgress {
+				signInProgress = true
+				go ps.establishStorage(ch, origin, originated, resultC)
+				allowedRetries++
+			}
 		}
 
 	}
@@ -615,7 +612,7 @@ func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, origi
 	if err != nil {
 		resultC <- &pushResult{
 			receipt:   nil,
-			err:       err,
+			err:       ErrSelfSignFail,
 			attempted: true,
 		}
 		return
