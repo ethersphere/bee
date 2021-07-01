@@ -46,6 +46,7 @@ var (
 	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
 	ErrNoPush                = errors.New("could not push chunk")
 	ErrWarmup                = errors.New("node warmup time not complete")
+	ErrSelfSignFail          = errors.New("creating storage receipt failed")
 )
 
 type PushSyncer interface {
@@ -393,9 +394,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-sendReceipt:
-			signInProgress = true
-			go ps.establishStorage(ch, origin, originated, resultC)
-			allowedRetries++
+			if !signInProgress {
+				signInProgress = true
+				go ps.establishStorage(ch, origin, originated, resultC)
+				allowedRetries++
+			}
 		}
 
 	}
@@ -624,7 +627,7 @@ func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, origi
 	if err != nil {
 		resultC <- &pushResult{
 			receipt:   nil,
-			err:       err,
+			err:       ErrSelfSignFail,
 			attempted: true,
 		}
 		return
