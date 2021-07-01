@@ -140,13 +140,10 @@ inability to use, or your interaction with other nodes or the software.`)
 				networkID = 1
 			}
 
-			networkConfig := getDefaultNetworkConfig(networkID)
+			networkConfig := getDefaultNetworkConfig(networkID, blockTime)
 
 			if c.config.IsSet(optionNameBootnodes) && len(bootnodes) > 0 {
 				networkConfig.bootNodes = bootnodes
-			}
-			if c.config.IsSet(optionNameBlockTime) && blockTime != 0 {
-				networkConfig.blockTime = blockTime
 			}
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
@@ -435,9 +432,8 @@ type mainnetConfig struct {
 	chainID   int64
 }
 
-func getDefaultNetworkConfig(networkID uint64) *mainnetConfig {
+func getDefaultNetworkConfig(networkID uint64, defaultEthBlockTime uint64) *mainnetConfig {
 	var cfg mainnetConfig
-	defaultEthBlockTime := uint64(15 * time.Second)
 	switch networkID {
 	case 1:
 		cfg.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
@@ -450,7 +446,7 @@ func getDefaultNetworkConfig(networkID uint64) *mainnetConfig {
 	default:
 		cfg.bootNodes = []string{}
 		cfg.blockTime = defaultEthBlockTime
-		cfg.chainID = -1 // it will be rejected downstream since it's not valid chain ID
+		cfg.chainID = -1
 	}
 
 	return &cfg
