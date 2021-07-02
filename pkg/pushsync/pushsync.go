@@ -324,17 +324,20 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 
 		if !peer.Equal(swarm.Address{}) {
 
+			fmt.Println(peer)
+
 			skipPeers = append(skipPeers, peer)
 
 			if ps.skipList.ShouldSkip(peer) {
+				// fmt.Println("skipping peer")
 				ps.metrics.TotalSkippedPeers.Inc()
 				continue
 			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 			attempts++
-			go func(peer swarm.Address, ch swarm.Chunk) {
-				ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
+			go func(peer swarm.Address, ch swarm.Chunk, chunkInNeighbourhood bool) {
+				ctxd, canceld := context.WithTimeout(context.Background(), defaultTTL)
 				defer canceld()
 
 				r, attempted, err := ps.pushPeer(ctxd, peer, ch, originated)
@@ -345,6 +348,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 					allowedRetries--
 				}
 				if err != nil {
+
+					if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighbourhood && errors.Is(err, context.DeadlineExceeded) {
+						fmt.Println("skipping peer ", peer)
+						ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
+					}
+
 					logger.Debugf("could not push to peer %s: %v", peer, err)
 					resultC <- &pushResult{err: err, attempted: attempted}
 					return
@@ -353,11 +362,16 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 				case resultC <- &pushResult{receipt: r}:
 				case <-ctx.Done():
 				}
-			}(peer, ch)
+			}(peer, ch, chunkInNeighbourhood)
 		}
 		select {
 		case r := <-resultC:
 			results++
+
+			// fmt.Printf("peer: %v\n", peer)
+			// fmt.Println(r.err)
+			// fmt.Println(r.attempted)
+
 			// receipt received for chunk
 			if r.receipt != nil {
 				ps.skipList.PruneChunk(ch.Address())
@@ -370,8 +384,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 					return nil, ErrNoPush
 				}
 
+				// fmt.Println(chunkInNeighbourhood)
+				// fmt.Println(!ps.skipList.HasChunk(ch.Address()))
+				// fmt.Println(err)
+				// fmt.Println(time.Now().After(ps.warmupPeriod))
+
 				// if the node has warmed up AND no other closer peer has been tried
 				if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighbourhood && errors.Is(err, context.DeadlineExceeded) {
+					fmt.Println("skipping peer ", peer)
 					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
 				}
 				if r.err != nil && r.attempted {
@@ -391,8 +411,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 				allowedRetries++
 			}
 		case <-ctx.Done():
+			fmt.Println(peer)
+			fmt.Println("timeout")
 			return nil, ctx.Err()
 		case <-sendReceipt:
+			fmt.Println(peer)
+			fmt.Println("sendReceipt")
 			if !signInProgress {
 				signInProgress = true
 				go ps.establishStorage(ch, origin, originated, resultC)
@@ -408,8 +432,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, originated bool) (*pb.Receipt, bool, error) {
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
-
-	fmt.Printf("peer: %v\n", peer)
 
 	// Reserve to see whether we can make the request
 	err := ps.accounting.Reserve(ctx, peer, receiptPrice)

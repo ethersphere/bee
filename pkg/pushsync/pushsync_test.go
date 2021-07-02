@@ -1063,9 +1063,8 @@ func TestForwarderRetriesInNeighborhood(t *testing.T) {
 	}
 }
 
-// TestForwarderRetriesInNeighborhood tests that the out of depth forwarder does not retry, and
-// the forwarding peer inside the neighborhood retries.
-// P -> F -> | N1 -> N2 (fails), N1 -> N3
+// __ tests that the closest peer returns with an error, the second closest timouts, so the forwarder in the neighborhood
+// stores the chunks and sends back a receipt
 func Test__(t *testing.T) {
 
 	defer func(t time.Duration) {
@@ -1076,7 +1075,7 @@ func Test__(t *testing.T) {
 	defer func(t time.Duration) {
 		*pushsync.SendReceiptDelay = t
 	}(*pushsync.SendReceiptDelay)
-	*pushsync.SendReceiptDelay = time.Second * 2
+	*pushsync.SendReceiptDelay = time.Second * 1
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -1090,8 +1089,8 @@ func Test__(t *testing.T) {
 
 	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
 	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	peer3 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
-	peer4 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
 
 	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer4.Close()
@@ -1112,6 +1111,8 @@ func Test__(t *testing.T) {
 			func(h p2p.HandlerFunc) p2p.HandlerFunc {
 				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
 
+					// fmt.Println("base peer", peer.Address.String())
+
 					failCountNeighborhood++
 
 					// this corresponds to peer3
@@ -1122,7 +1123,7 @@ func Test__(t *testing.T) {
 
 					// simulate timing out for peer4
 					if failCountNeighborhood == 2 {
-						time.Sleep(time.Second * 4)
+						time.Sleep(time.Second * 20)
 						stream.Close()
 						return errors.New("peer error")
 					}
@@ -1200,16 +1201,24 @@ func Test__(t *testing.T) {
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+	// waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// // this intercepts the outgoing delivery message
+	// waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// // this intercepts the outgoing delivery message
+	// waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+	// waitOnRecordNAndTest(t, peer3, peer1Recorder, chunk.Address(), nil, 1)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 2)
+
+	time.Sleep(time.Second * 5)
 
 	want := true
 	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
