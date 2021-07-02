@@ -1439,7 +1439,8 @@ func TestRacePreemptiveReceipt(t *testing.T) {
 	}
 }
 
-func Test_(t *testing.T) {
+// TestRaceStorerReceipt tests that the preemptive receipt creation can overtake the passing back of the receipt from a downstream peer
+func TestRaceStorerReceipt(t *testing.T) {
 
 	defer func(t time.Duration) {
 		*pushsync.DefaultTtl = t
