@@ -1089,9 +1089,9 @@ func TestPreemptiveReceipt(t *testing.T) {
 	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 
 	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
-	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	peer4 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 
 	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer4.Close()
@@ -1214,10 +1214,10 @@ func TestPreemptiveReceipt(t *testing.T) {
 	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 1)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
@@ -1238,12 +1238,12 @@ func TestPreemptiveReceipt(t *testing.T) {
 		t.Fatal("receipt signature is invalid")
 	}
 
-	if psPeer2.ShouldSkip(peer3) {
-		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	if !psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should be skipped", peer3.String())
 	}
 
-	if !psPeer2.ShouldSkip(peer4) {
-		t.Fatalf("peer %v should be skipped", peer4.String())
+	if psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should NOT be skipped", peer4.String())
 	}
 }
 
@@ -1279,9 +1279,9 @@ func TestRacePreemptiveReceipt(t *testing.T) {
 	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 
 	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
-	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	peer4 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 
 	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, signerPeer4, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer4.Close()
@@ -1402,10 +1402,10 @@ func TestRacePreemptiveReceipt(t *testing.T) {
 	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 1)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
@@ -1471,9 +1471,9 @@ func TestRaceStorerReceipt(t *testing.T) {
 	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 
 	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
-	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-	peer4 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 
 	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, signerPeer4, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer4.Close()
@@ -1594,10 +1594,10 @@ func TestRaceStorerReceipt(t *testing.T) {
 	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 1)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
