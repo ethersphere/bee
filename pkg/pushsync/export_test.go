@@ -4,6 +4,8 @@
 
 package pushsync
 
+import "github.com/ethersphere/bee/pkg/swarm"
+
 var (
 	ProtocolName     = protocolName
 	ProtocolVersion  = protocolVersion
@@ -12,3 +14,7 @@ var (
 	DefaultTtl       = &defaultTTL
 	SendReceiptDelay = &sendReceiptDelay
 )
+
+func (ps *PushSync) ShouldSkip(peer swarm.Address) bool {
+	return ps.skipList.ShouldSkip(peer)
+}

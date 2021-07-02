@@ -34,6 +34,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
+	"go.uber.org/atomic"
 )
 
 const (
@@ -1059,18 +1060,18 @@ func TestForwarderRetriesInNeighborhood(t *testing.T) {
 	}
 
 	if !bytes.Equal([]byte{1}, receipt.Signature) {
-		t.Fatal("receipt signature is not present")
+		t.Fatal("receipt signature is invalid")
 	}
 }
 
-// __ tests that the closest peer returns with an error, the second closest timouts, so the forwarder in the neighborhood
-// stores the chunks and sends back a receipt
-func Test__(t *testing.T) {
+// TestPreemptiveReceipt tests that the closest peer returns with an error, the second closest timouts,
+// so the forwarder in the neighborhood stores the chunks and sends back a receipt
+func TestPreemptiveReceipt(t *testing.T) {
 
 	defer func(t time.Duration) {
 		*pushsync.DefaultTtl = t
 	}(*pushsync.DefaultTtl)
-	*pushsync.DefaultTtl = time.Second * 3
+	*pushsync.DefaultTtl = time.Second * 2
 
 	defer func(t time.Duration) {
 		*pushsync.SendReceiptDelay = t
@@ -1099,7 +1100,7 @@ func Test__(t *testing.T) {
 	defer storerPeer3.Close()
 
 	var (
-		// lock1                 sync.Mutex
+		lock1                 sync.Mutex
 		lock2                 sync.Mutex
 		failCountNeighborhood int
 		failCountForwarder    int
@@ -1111,7 +1112,8 @@ func Test__(t *testing.T) {
 			func(h p2p.HandlerFunc) p2p.HandlerFunc {
 				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
 
-					// fmt.Println("base peer", peer.Address.String())
+					lock1.Lock()
+					defer lock1.Unlock()
 
 					failCountNeighborhood++
 
@@ -1123,7 +1125,7 @@ func Test__(t *testing.T) {
 
 					// simulate timing out for peer4
 					if failCountNeighborhood == 2 {
-						time.Sleep(time.Second * 20)
+						time.Sleep(time.Millisecond * 2500)
 						stream.Close()
 						return errors.New("peer error")
 					}
@@ -1194,6 +1196,14 @@ func Test__(t *testing.T) {
 		t.Fatal("err")
 	}
 
+	if psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	}
+
+	if psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should NOT be skipped", peer4.String())
+	}
+
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 2)
 
@@ -1201,24 +1211,19 @@ func Test__(t *testing.T) {
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
 
 	// this intercepts the outgoing delivery message
-	// waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 2)
-
-	// // this intercepts the outgoing delivery message
-	// waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
-
-	// // this intercepts the outgoing delivery message
-	// waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
 
 	// this intercepts the outgoing delivery message
-	// waitOnRecordNAndTest(t, peer3, peer1Recorder, chunk.Address(), nil, 1)
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
 
 	// this intercepts the outgoing delivery message
 	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 2)
-
-	time.Sleep(time.Second * 5)
 
 	want := true
 	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
@@ -1230,7 +1235,398 @@ func Test__(t *testing.T) {
 	}
 
 	if !bytes.Equal([]byte{1}, receipt.Signature) {
-		t.Fatal("receipt signature is not present")
+		t.Fatal("receipt signature is invalid")
+	}
+
+	if psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	}
+
+	if !psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should be skipped", peer4.String())
+	}
+}
+
+// TestRacePreemptiveReceipt tests that the preemptive receipt creation does not inhibit the passing back of the receipt from a downstream peer
+func TestRacePreemptiveReceipt(t *testing.T) {
+
+	defer func(t time.Duration) {
+		*pushsync.DefaultTtl = t
+	}(*pushsync.DefaultTtl)
+	*pushsync.DefaultTtl = time.Second * 2
+
+	defer func(t time.Duration) {
+		*pushsync.SendReceiptDelay = t
+	}(*pushsync.SendReceiptDelay)
+	*pushsync.SendReceiptDelay = time.Second * 1
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	peer2HasSigned := atomic.NewBool(false)
+
+	signerPeer2 := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		peer2HasSigned.Store(true)
+		time.Sleep(time.Millisecond * 500)
+		return nil, nil
+	}))
+
+	signerPeer4 := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return []byte{1}, nil
+	}))
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+
+	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+
+	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, signerPeer4, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer4.Close()
+
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer3.Close()
+
+	var (
+		lock1                 sync.Mutex
+		lock2                 sync.Mutex
+		failCountNeighborhood int
+		failCountForwarder    int
+	)
+
+	peer2Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer3.Protocol(), psPeer4.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock1.Lock()
+					defer lock1.Unlock()
+
+					failCountNeighborhood++
+
+					// this corresponds to peer3
+					if failCountNeighborhood == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					// simulate timing out for peer4
+					if failCountNeighborhood == 2 {
+						time.Sleep(time.Millisecond * 1100)
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer2),
+	)
+
+	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, peer2Recorder, nil, signerPeer2, mock.WithPeers(peer3, peer4))
+	defer storerPeer2.Close()
+
+	peer1Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer2.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock2.Lock()
+					defer lock2.Unlock()
+
+					failCountForwarder++
+
+					// this corresponds to peer3
+					if failCountForwarder == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer1))
+
+	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, peer1Recorder, nil, defaultSigner, mock.WithPeers(peer2), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPeer1.Close()
+
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPeer1.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	psPivot, storerPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, pivotRecorder, nil, defaultSigner, mock.WithPeers(peer1), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPivot.Close()
+
+	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data())
+
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal("err")
+	}
+
+	if psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	}
+
+	if psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should NOT be skipped", peer4.String())
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 2)
+
+	want := true
+	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	if !bytes.Equal([]byte{1}, receipt.Signature) {
+		t.Fatal("receipt signature is invalid")
+	}
+
+	if psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	}
+
+	if psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should NOT be skipped", peer4.String())
+	}
+
+	if !peer2HasSigned.Load() {
+		t.Fatal("preemptive signature has not started")
+	}
+}
+
+func Test_(t *testing.T) {
+
+	defer func(t time.Duration) {
+		*pushsync.DefaultTtl = t
+	}(*pushsync.DefaultTtl)
+	*pushsync.DefaultTtl = time.Second * 2
+
+	defer func(t time.Duration) {
+		*pushsync.SendReceiptDelay = t
+	}(*pushsync.SendReceiptDelay)
+	*pushsync.SendReceiptDelay = time.Second * 1
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	peer4HasSigned := atomic.NewBool(false)
+
+	signerPeer2 := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return []byte{1}, nil
+	}))
+
+	signerPeer4 := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		peer4HasSigned.Store(true)
+		time.Sleep(time.Millisecond * 1100)
+		return nil, nil
+	}))
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+
+	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+
+	psPeer4, storerPeer4, _, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, signerPeer4, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer4.Close()
+
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	defer storerPeer3.Close()
+
+	var (
+		lock1                 sync.Mutex
+		lock2                 sync.Mutex
+		failCountNeighborhood int
+		failCountForwarder    int
+	)
+
+	peer2Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer3.Protocol(), psPeer4.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock1.Lock()
+					defer lock1.Unlock()
+
+					failCountNeighborhood++
+
+					// this corresponds to peer3
+					if failCountNeighborhood == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					// simulate timing out for peer4
+					// if failCountNeighborhood == 2 {
+					// 	time.Sleep(time.Millisecond * 1100)
+					// }
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer2),
+	)
+
+	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, peer2Recorder, nil, signerPeer2, mock.WithPeers(peer3, peer4))
+	defer storerPeer2.Close()
+
+	peer1Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer2.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock2.Lock()
+					defer lock2.Unlock()
+
+					failCountForwarder++
+
+					// this corresponds to peer3
+					if failCountForwarder == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer1))
+
+	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, peer1Recorder, nil, defaultSigner, mock.WithPeers(peer2), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPeer1.Close()
+
+	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPeer1.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	psPivot, storerPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, pivotRecorder, nil, defaultSigner, mock.WithPeers(peer1), mock.WithIsWithinFunc(defaultNotWithinDepthFunc))
+	defer storerPivot.Close()
+
+	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data())
+
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal("err")
+	}
+
+	if psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	}
+
+	if psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should NOT be skipped", peer4.String())
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer4, peer2Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 2)
+
+	want := true
+	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	if !bytes.Equal([]byte{1}, receipt.Signature) {
+		t.Fatal("receipt signature is invalid")
+	}
+
+	if psPeer2.ShouldSkip(peer3) {
+		t.Fatalf("peer %v should NOT be skipped", peer3.String())
+	}
+
+	if psPeer2.ShouldSkip(peer4) {
+		t.Fatalf("peer %v should NOT be skipped", peer4.String())
+	}
+
+	if !peer4HasSigned.Load() {
+		t.Fatal("storer signature has not started")
 	}
 }
 
