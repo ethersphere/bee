@@ -13,8 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
-	"math/big"
+	"io"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -22,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/elgamal"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -33,8 +33,6 @@ var (
 
 	// ErrVarLenTargets is returned when the given target list for a trojan chunk has addresses of different lengths
 	ErrVarLenTargets = errors.New("target list cannot have targets of different length")
-
-	maxUint32 = big.NewInt(math.MaxUint32)
 )
 
 // Topic is the type that classifies messages, allows client applications to subscribe to
@@ -203,62 +201,57 @@ func contains(col Targets, elem []byte) bool {
 }
 
 // mine iteratively enumerates different nonces until the address (BMT hash) of the chunkhas one of the targets as its prefix
-func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
+func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (r swarm.Chunk, e error) {
 	seeds := make([]uint32, 8)
-	for i := range seeds {
-		b, err := random.Int(random.Reader, maxUint32)
-		if err != nil {
-			return nil, err
-		}
-		seeds[i] = uint32(b.Int64())
-	}
 	initnonce := make([]byte, 32)
-	for i := 0; i < 8; i++ {
-		binary.LittleEndian.PutUint32(initnonce[i*4:i*4+4], seeds[i])
+	if _, err := io.ReadFull(random.Reader, initnonce); err != nil {
+		return nil, err
 	}
 	if odd {
 		initnonce[28] |= 0x01
 	} else {
 		initnonce[28] &= 0xfe
 	}
-	seeds[7] = binary.LittleEndian.Uint32(initnonce[28:32])
+	for i := range seeds {
+		seeds[i] = binary.BigEndian.Uint32(initnonce[i*4 : i*4+4])
+	}
 
-	quit := make(chan struct{})
-	// make both  errs  and result channels buffered so they never block
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	eg, ctx := errgroup.WithContext(ctx)
 	result := make(chan swarm.Chunk, 8)
-	errs := make(chan error, 8)
 	for i := 0; i < 8; i++ {
-		go func(j int) {
+		j := i
+		eg.Go(func() error {
 			nonce := make([]byte, 32)
 			copy(nonce, initnonce)
-			for seed := seeds[j]; ; seed++ {
-				binary.LittleEndian.PutUint32(nonce[j*4:j*4+4], seed)
+			for seed := seeds[j]; ; seed += 2 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				binary.BigEndian.PutUint32(nonce[j*4:j*4+4], seed)
 				res, err := f(nonce)
 				if err != nil {
-					errs <- err
-					return
+					return err
 				}
 				if res != nil {
 					result <- res
-					return
-				}
-				select {
-				case <-quit:
-					return
-				default:
+					return nil
 				}
 			}
-		}(i)
+		})
 	}
-	defer close(quit)
+	errc := make(chan error)
+	go func() {
+		errc <- eg.Wait()
+	}()
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errs:
-		return nil, err
-	case res := <-result:
-		return res, nil
+	case r = <-result:
+	case e = <-errc:
 	}
+	return r, e
 }
 
 // extracts ephemeral public key from the chunk data to use with el-Gamal
