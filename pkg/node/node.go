@@ -75,6 +75,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -432,7 +433,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 		b.listenerCloser = eventListener
 
-		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post)
+		batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256)
+		if err != nil {
+			return nil, err
+		}
 
 		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {
