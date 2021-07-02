@@ -205,7 +205,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
 	defer span.Finish()
 
-	receipt, err := ps.pushToClosest(ctx, chunk, false, p.Address)
+	receipt, err := ps.pushToClosest(ctx, chunk, p.Address)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			if !storedChunk {
@@ -256,7 +256,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
+	r, err := ps.pushToClosest(ctx, ch, swarm.ZeroAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -272,10 +272,15 @@ type pushResult struct {
 	attempted bool
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originated bool, origin swarm.Address) (*pb.Receipt, error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin swarm.Address) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
+
+	originated := false
+	if origin.IsZero() {
+		originated = true
+	}
 
 	var sendReceipt <-chan time.Time
 	chunkInNeighbourhood := ps.topologyDriver.IsWithinDepth(ch.Address())
@@ -315,7 +320,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 				}
 
 				signInProgress = true
-				go ps.establishStorage(ch, origin, originated, resultC)
+				go ps.establishStorage(ch, origin, resultC)
 			}
 			if !errors.Is(err, topology.ErrWantSelf) {
 				return nil, fmt.Errorf("closest peer: %w", err)
@@ -323,9 +328,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 		}
 
 		if !peer.Equal(swarm.Address{}) {
-
-			fmt.Println(peer)
-
 			skipPeers = append(skipPeers, peer)
 
 			if ps.skipList.ShouldSkip(peer) {
@@ -347,7 +349,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 				if err != nil {
 
 					if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighbourhood && errors.Is(err, context.DeadlineExceeded) {
-						fmt.Println("skipping peer ", peer)
 						ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
 					}
 
@@ -388,7 +389,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, originate
 			if !signInProgress {
 				signInProgress = true
 				allowedRetries++
-				go ps.establishStorage(ch, origin, originated, resultC)
+				go ps.establishStorage(ch, origin, resultC)
 			}
 		}
 	}
@@ -592,7 +593,12 @@ func (l *peerSkipList) PruneExpired() {
 	}
 }
 
-func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, originated bool, resultC chan<- *pushResult) {
+func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, resultC chan<- *pushResult) {
+
+	originated := false
+	if origin.IsZero() {
+		originated = true
+	}
 
 	count := 0
 	// Push the chunk to some peers in the neighborhood in parallel for replication.
@@ -604,7 +610,7 @@ func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, origi
 		}
 
 		// here we skip the peer if the peer is closer to the chunk than us
-		// we replicate with peers that are further away than us because we are the strorer
+		// we replicate with peers that are further away than us because we are the storer
 		if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
 			return false, false, nil
 		}
