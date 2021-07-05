@@ -41,28 +41,6 @@ jobs:
           ${{ runner.OS }}-build-${{ env.cache-name }}-
           ${{ runner.OS }}-build-
           ${{ runner.OS }}-
-    - name: check whether docs have changed
-      id: checkdocs
-      if: matrix.os == 'ubuntu-latest' 
-      #outputs:
-        #build_docs:
-          #description: "whatever"
-      run: |
-          if [ $(git diff master openapi/* | wc -l) -ne 0 ]
-          then
-            echo "::set-output name=build_docs::true"
-          else
-            echo "::set-output name=build_docs::false"
-          fi
-    - name: Build docs
-      if: matrix.os == 'ubuntu-latest' && steps.checkdocs.outputs.build_docs == 'true'
-      uses: acud/openapi-dockerized@v1
-      #with:
-        #path-to-profile: cover.out
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
-        AWS_EC2_METADATA_DISABLED: true #needed when pushing to DigitalOcean Spaces
     - name: Build
       run: make build
     - name: Lint

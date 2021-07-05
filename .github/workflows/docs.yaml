@@ -38,11 +38,12 @@ jobs:
           else
             echo "::set-output name=build_docs::false"
           fi
-    - name: Build the docs
+    - name: Build the OpenAPI specs
       if: steps.checkdocs.outputs.build_docs == 'true'
       uses: acud/openapi-dockerized@v1
+      with:
+        build-roots: 'openapi/Swarm.yaml openapi/SwarmDebug.yaml'
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
         AWS_EC2_METADATA_DISABLED: true #needed when pushing to DigitalOcean Spaces
- 
