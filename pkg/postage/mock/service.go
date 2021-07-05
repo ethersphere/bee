@@ -55,7 +55,7 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 
 func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
 	if m.acceptAll {
-		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true), nil
+		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true, false), nil
 	}
 
 	if m.i != nil {

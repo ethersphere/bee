@@ -75,7 +75,7 @@ func TestValidStamp(t *testing.T) {
 	b := postagetesting.MustNewBatch(postagetesting.WithOwner(owner))
 	bs := mock.New(mock.WithBatch(b))
 	signer := crypto.NewDefaultSigner(privKey)
-	issuer := postage.NewStampIssuer("label", "keyID", b.ID, big.NewInt(3), b.Depth, b.BucketDepth, 1000, true)
+	issuer := postage.NewStampIssuer("label", "keyID", b.ID, big.NewInt(3), b.Depth, b.BucketDepth, 1000, true, false)
 	stamper := postage.NewStamper(issuer, signer)
 
 	// this creates a chunk with a mocked stamp. ValidStamp will override this

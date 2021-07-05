@@ -195,6 +195,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				createdEvent.BucketDepth,
 				ev.BlockNumber,
 				createdEvent.ImmutableFlag,
+				false,
 			))
 
 			return createdEvent.BatchId[:], nil

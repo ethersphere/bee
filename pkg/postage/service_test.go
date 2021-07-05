@@ -81,7 +81,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if i > 3 {
 			shift = uint64(i)
 		}
-		ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8, validBlockNumber+shift, true))
+		ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8, validBlockNumber+shift, true, false))
 	}
 	b := postagetesting.MustNewBatch()
 	b.Start = validBlockNumber

@@ -100,6 +100,7 @@ func (ps *service) Handle(b *Batch) {
 		b.BucketDepth,
 		b.Start,
 		b.Immutable,
+		false,
 	))
 }
 

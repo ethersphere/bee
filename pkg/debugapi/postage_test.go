@@ -194,7 +194,7 @@ func TestPostageCreateStamp(t *testing.T) {
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true, false)
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	ts := newTestServer(t, testServerOptions{Post: mp})
 
@@ -218,7 +218,7 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true, false)
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	ts := newTestServer(t, testServerOptions{Post: mp})
 

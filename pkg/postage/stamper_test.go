@@ -91,7 +91,7 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrBucketFull iff
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
-		st := postage.NewStampIssuer("", "", newTestStampIssuer(t, 1000).ID(), big.NewInt(3), 12, 8, 1000, true)
+		st := postage.NewStampIssuer("", "", newTestStampIssuer(t, 1000).ID(), big.NewInt(3), 12, 8, 1000, true, false)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
@@ -106,6 +106,36 @@ func TestStamperStamping(t *testing.T) {
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
 		if _, err = stamper.Stamp(chunkAddr); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
+		}
+	})
+	// tests that Stamps returns with postage.ErrBucketFull iff
+	// issuer has the corresponding collision bucket filled]
+	t.Run("wraps around if recycleable", func(t *testing.T) {
+		st := postage.NewStampIssuer("", "", newTestStampIssuer(t, 1000).ID(), big.NewInt(3), 12, 8, 1000, true, true)
+		stamper := postage.NewStamper(st, signer)
+		// issue 1 stamp
+		chunkAddr, _ := createStamp(t, stamper)
+		// issue another 15
+		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
+		for i := 0; i < 16; i++ {
+			_, err = stamper.Stamp(chunkAddr)
+			if err != nil {
+				t.Fatalf("error adding stamp at step %d: %v", i, err)
+			}
+		}
+		if u := st.Utilization(); u != 1 {
+			t.Fatalf("utilisation expected at 1, got %v", u)
+		}
+
+		for i := 0; i < 15; i++ {
+			_, err = stamper.Stamp(chunkAddr)
+			if err != nil {
+				t.Fatalf("error adding stamp at step %d: %v", i, err)
+			}
+		}
+
+		if u := st.Utilization(); u != 16 {
+			t.Fatalf("utilisation expected at 16, got %v", u)
 		}
 	})
 

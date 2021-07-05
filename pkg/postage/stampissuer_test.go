@@ -38,5 +38,5 @@ func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return postage.NewStampIssuer("label", "keyID", id, big.NewInt(3), 16, 8, block, true)
+	return postage.NewStampIssuer("label", "keyID", id, big.NewInt(3), 16, 8, block, true, false)
 }

@@ -27,7 +27,8 @@ type stampIssuerData struct {
 	Buckets        []uint32 `msgpack:"buckets"`        // Collision Buckets: counts per neighbourhoods (limited to 2^{batchdepth-bucketdepth}).
 	MaxBucketCount uint32   `msgpack:"maxBucketCount"` // the count of the fullest bucket
 	BlockNumber    uint64   `msgpack:"blockNumber"`    // BlockNumber when this batch was created
-	ImmutableFlag  bool     `msgpack:"immutableFlag"`  // Specifies immutability of the created batch.
+	Immutable      bool     `msgpack:"immutable"`      // Specifies immutability of the created batch.
+	Recyclable     bool     `msgpack:"recyclable"`     // Resets index when bucket is full
 }
 
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
@@ -42,18 +43,19 @@ type StampIssuer struct {
 // upload.
 //
 // BucketDepth must always be smaller than batchDepth otherwise inc() panics.
-func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
+func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutable, recyclable bool) *StampIssuer {
 	return &StampIssuer{
 		data: stampIssuerData{
-			Label:         label,
-			KeyID:         keyID,
-			BatchID:       batchID,
-			BatchAmount:   batchAmount,
-			BatchDepth:    batchDepth,
-			BucketDepth:   bucketDepth,
-			Buckets:       make([]uint32, 1<<bucketDepth),
-			BlockNumber:   blockNumber,
-			ImmutableFlag: immutableFlag,
+			Label:       label,
+			KeyID:       keyID,
+			BatchID:     batchID,
+			BatchAmount: batchAmount,
+			BatchDepth:  batchDepth,
+			BucketDepth: bucketDepth,
+			Buckets:     make([]uint32, 1<<bucketDepth),
+			BlockNumber: blockNumber,
+			Immutable:   immutable,
+			Recyclable:  recyclable,
 		},
 	}
 }
@@ -66,7 +68,11 @@ func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
 	b := toBucket(si.BucketDepth(), addr)
 	bucketCount := si.data.Buckets[b]
 	if bucketCount == 1<<(si.Depth()-si.BucketDepth()) {
-		return nil, ErrBucketFull
+		if !si.data.Recyclable {
+			return nil, ErrBucketFull
+		}
+		bucketCount = 0
+		si.data.Buckets[b] = 0
 	}
 	si.data.Buckets[b]++
 	if si.data.Buckets[b] > si.data.MaxBucketCount {
@@ -150,7 +156,12 @@ func (si *StampIssuer) BlockNumber() uint64 {
 	return si.data.BlockNumber
 }
 
-// ImmutableFlag immutability of the created batch.
+// Immutable immutability of the created batch.
 func (si *StampIssuer) ImmutableFlag() bool {
-	return si.data.ImmutableFlag
+	return si.data.Immutable
+}
+
+// Recyclable resets indexes when max is reached.
+func (si *StampIssuer) Recyclable() bool {
+	return si.data.Recyclable
 }
