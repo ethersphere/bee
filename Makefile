@@ -28,8 +28,7 @@ dist:
 
 .PHONY: beekeeper
 beekeeper:
-	# curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
-	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && cd beekeeper && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary && sudo mv dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
 	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
 	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
 
