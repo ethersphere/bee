@@ -315,22 +315,24 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin sw
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
-			if errors.Is(err, topology.ErrWantSelf) && !signInProgress {
-				if time.Now().Before(ps.warmupPeriod) {
-					return nil, ErrWarmup
-				}
+			if errors.Is(err, topology.ErrWantSelf) {
+				if !signInProgress {
 
-				// If we have run out of peers to select but chunk is not in our neighborhood, return error
-				if !chunkInNeighbourhood {
-					return nil, ErrNoPush
-				}
+					if time.Now().Before(ps.warmupPeriod) {
+						return nil, ErrWarmup
+					}
 
-				// If we have run out of peers to select and chunk is in neighborhood, replicate and create storage receipt
-				// This only happens if it is not in progress already by preemptive receipt creation
-				signInProgress = true
-				go ps.establishStorage(ch, origin, resultC)
-			}
-			if !errors.Is(err, topology.ErrWantSelf) {
+					// If we have run out of peers to select but chunk is not in our neighborhood, return error
+					if !chunkInNeighbourhood {
+						return nil, ErrNoPush
+					}
+
+					// If we have run out of peers to select and chunk is in neighborhood, replicate and create storage receipt
+					// This only happens if it is not in progress already by preemptive receipt creation
+					signInProgress = true
+					go ps.establishStorage(ch, origin, resultC)
+				}
+			} else {
 				return nil, fmt.Errorf("closest peer: %w", err)
 			}
 		}
@@ -547,6 +549,59 @@ func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk, origin b
 	err = ps.accounting.Credit(peer, receiptPrice, origin)
 }
 
+func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, resultC chan<- *pushResult) {
+
+	originated := false
+	if origin.IsZero() {
+		originated = true
+	}
+
+	count := 0
+	// Push the chunk to some peers in the neighborhood in parallel for replication.
+	// Any errors here should NOT impact the rest of the handler.
+	_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		// skip forwarding peer
+		if peer.Equal(origin) {
+			return false, false, nil
+		}
+
+		// here we skip the peer if the peer is closer to the chunk than us
+		// we replicate with peers that are further away than us because we are the storer
+		if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
+			return false, false, nil
+		}
+
+		if count == nPeersToPushsync {
+			return true, false, nil
+		}
+
+		count++
+
+		go ps.pushToNeighbour(peer, ch, originated)
+		return false, false, nil
+	})
+
+	bytes := ch.Address().Bytes()
+
+	signature, err := ps.signer.Sign(bytes)
+	if err != nil {
+		resultC <- &pushResult{
+			receipt:   nil,
+			err:       err,
+			attempted: true,
+		}
+		return
+	}
+
+	receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
+	resultC <- &pushResult{
+		receipt:   &receipt,
+		err:       err,
+		attempted: true,
+	}
+
+}
+
 type peerSkipList struct {
 	sync.Mutex
 	chunks         map[string]struct{}
@@ -612,57 +667,4 @@ func (l *peerSkipList) PruneExpired() {
 			delete(l.skipExpiration, k)
 		}
 	}
-}
-
-func (ps *PushSync) establishStorage(ch swarm.Chunk, origin swarm.Address, resultC chan<- *pushResult) {
-
-	originated := false
-	if origin.IsZero() {
-		originated = true
-	}
-
-	count := 0
-	// Push the chunk to some peers in the neighborhood in parallel for replication.
-	// Any errors here should NOT impact the rest of the handler.
-	_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		// skip forwarding peer
-		if peer.Equal(origin) {
-			return false, false, nil
-		}
-
-		// here we skip the peer if the peer is closer to the chunk than us
-		// we replicate with peers that are further away than us because we are the storer
-		if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
-			return false, false, nil
-		}
-
-		if count == nPeersToPushsync {
-			return true, false, nil
-		}
-
-		count++
-
-		go ps.pushToNeighbour(peer, ch, originated)
-		return false, false, nil
-	})
-
-	bytes := ch.Address().Bytes()
-
-	signature, err := ps.signer.Sign(bytes)
-	if err != nil {
-		resultC <- &pushResult{
-			receipt:   nil,
-			err:       err,
-			attempted: true,
-		}
-		return
-	}
-
-	receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
-	resultC <- &pushResult{
-		receipt:   &receipt,
-		err:       err,
-		attempted: true,
-	}
-
 }

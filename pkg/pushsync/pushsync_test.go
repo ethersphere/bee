@@ -1505,11 +1505,6 @@ func TestRaceStorerReceipt(t *testing.T) {
 						return errors.New("peer error")
 					}
 
-					// simulate timing out for peer4
-					// if failCountNeighborhood == 2 {
-					// 	time.Sleep(time.Millisecond * 1100)
-					// }
-
 					if err := h(ctx, peer, stream); err != nil {
 						return err
 					}
