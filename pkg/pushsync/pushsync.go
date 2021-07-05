@@ -395,6 +395,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin sw
 			if r.err != nil && r.attempted {
 				ps.metrics.TotalFailedSendAttempts.Inc()
 
+				// if we have received 1 more results than peers attempted, return
+				// this means all attempts including establishing storage have already failed
 				if results > attempts {
 					return nil, ErrNoPush
 				}
