@@ -10,24 +10,15 @@ on:
 
 jobs:
   build:
-    name: Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        go: [1.15]
-        os: [ubuntu-latest]
+    name: Preview
+    runs-on: ubuntu-latest
     steps:
-    - name: Set git to use LF
-      # make sure that line endings are not converted on windows
-      # as gofmt linter will report that they need to be changed
-      run: git config --global core.autocrlf false
     - name: Checkout
       uses: actions/checkout@v2
       with:
         fetch-depth: '0'
     - name: Check whether docs have changed
       id: checkdocs
-      if: matrix.os == 'ubuntu-latest'
       run: |
           changed=false
           git diff --name-only HEAD^ HEAD
@@ -48,7 +39,7 @@ jobs:
             echo "::set-output name=build_docs::false"
           fi
     - name: Build the docs
-      if: matrix.os == 'ubuntu-latest' && steps.checkdocs.outputs.build_docs == 'true'
+      if: steps.checkdocs.outputs.build_docs == 'true'
       uses: acud/openapi-dockerized@v1
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
