@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -151,6 +152,7 @@ type Options struct {
 	BlockTime                  uint64
 	DeployGasPrice             string
 	WarmupTime                 time.Duration
+	ChainID                    int64
 }
 
 const (
@@ -225,6 +227,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		b.ethClientCloser = swapBackend.Close
 		b.transactionCloser = tracerCloser
 		b.transactionMonitorCloser = transactionMonitor
+
+		if o.ChainID != -1 && o.ChainID != chainID {
+			return nil, fmt.Errorf("connected to wrong ethereum network: got chainID %d, want %d", chainID, o.ChainID)
+		}
 	}
 
 	var debugAPIService *debugapi.Service
@@ -417,7 +423,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var postageSyncStart uint64 = 0
 	if !o.Standalone {
-		postageContractAddress, startBlock, found := listener.DiscoverAddresses(chainID)
+		chainCfg, found := config.GetChainConfig(chainID)
+		postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
 		if o.PostageContractAddress != "" {
 			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
