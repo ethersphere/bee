@@ -269,7 +269,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if !isSynced {
 			logger.Infof("waiting to sync with the Ethereum backend")
 
-			err := transaction.WaitSynced(logger, p2pCtx, swapBackend, maxDelay)
+			err := transaction.WaitSynced(p2pCtx, logger, swapBackend, maxDelay)
 			if err != nil {
 				return nil, fmt.Errorf("waiting backend sync: %w", err)
 			}
