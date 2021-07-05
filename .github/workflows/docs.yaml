@@ -1,0 +1,57 @@
+name: OpenAPI
+
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        go: [1.15]
+        os: [ubuntu-latest]
+    steps:
+    - name: Set git to use LF
+      # make sure that line endings are not converted on windows
+      # as gofmt linter will report that they need to be changed
+      run: git config --global core.autocrlf false
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: '0'
+    - name: Check whether docs have changed
+      id: checkdocs
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+          changed=false
+          git diff --name-only HEAD^ HEAD
+          git diff --name-only HEAD^ HEAD > files.txt
+          while IFS= read -r file
+          do
+            echo $file
+            if [[ $file == openapi/* ]]; then
+              echo "detected openapi spec change"
+              changed=true
+            fi
+          done < files.txt
+
+          if [ $changed == true ]
+          then
+            echo "::set-output name=build_docs::true"
+          else
+            echo "::set-output name=build_docs::false"
+          fi
+    - name: Build the docs
+      if: matrix.os == 'ubuntu-latest' && steps.checkdocs.outputs.build_docs == 'true'
+      uses: acud/openapi-dockerized@v1
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+        AWS_EC2_METADATA_DISABLED: true #needed when pushing to DigitalOcean Spaces
+ 
