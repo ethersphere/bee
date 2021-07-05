@@ -143,7 +143,7 @@ inability to use, or your interaction with other nodes or the software.`)
 
 			networkConfig := getConfigByNetworkID(networkID, blockTime)
 
-			if c.config.IsSet(optionNameBootnodes) && len(bootnodes) > 0 {
+			if c.config.IsSet(optionNameBootnodes) {
 				networkConfig.bootNodes = bootnodes
 			}
 
