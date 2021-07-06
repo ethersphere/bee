@@ -322,6 +322,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					return nil, ErrWarmup
 				}
 
+				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+					return nil, ErrNoPush
+				}
+
 				count := 0
 				// Push the chunk to some peers in the neighborhood in parallel for replication.
 				// Any errors here should NOT impact the rest of the handler.
