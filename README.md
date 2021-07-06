@@ -105,6 +105,9 @@ Once you have Bee installed, find out how to configure your software, interact w
 ## Access the Swarm
 To learn more about how to get the most out of Bee, find out how to access the swarm section so you can share files with your friends, use Bee to host a website on a public Swarm Gateway, and much more!
 
+## Swarm Whitepaper and The Book of Swarm#
+What happens with your Bee node when you start it up? Want to know more about the Swarm technology behind Bee? Want to make your own client? Read the Swarm Whitepaper and for a deeper dive, The Book of Swarm , our 250 page guide to the tech underpinning the Swarm network.
+
 ## Incentives
 Need even more incentive to get involved with the wonderful world of Swarm? Find out how you'll soon be earning BZZ tokens for storing and distributing your share of the world's data - sharing is caring!
 
