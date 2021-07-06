@@ -164,7 +164,7 @@ func (m *mock) IsWithinDepth(addr swarm.Address) bool {
 	if m.isWithinFunc != nil {
 		return m.isWithinFunc(addr)
 	}
-	return true
+	return false
 }
 
 func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {
