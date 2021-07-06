@@ -362,7 +362,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		go func(peer swarm.Address, ch swarm.Chunk) {
 			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 			defer canceld()
-
+			fmt.Println(peer)
 			r, attempted, err := ps.pushPeer(ctxd, peer, ch, retryAllowed)
 			// attempted is true if we get past accounting and actually attempt
 			// to send the request to the peer. If we dont get past accounting, we
