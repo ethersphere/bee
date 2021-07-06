@@ -305,8 +305,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		includeSelf    = ps.isFullNode
 	)
 
-	if retryAllowed {
-		// only originator retries
+	chunkInNeighbourhood := ps.topologyDriver.IsWithinDepth(ch.Address())
+
+	if retryAllowed || chunkInNeighbourhood {
 		allowedRetries = maxPeers
 	}
 
@@ -318,17 +319,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			if errors.Is(err, topology.ErrWantSelf) {
+
 				if time.Now().Before(ps.warmupPeriod) {
 					return nil, ErrWarmup
 				}
 
-				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+				if !chunkInNeighbourhood {
 					return nil, ErrNoPush
 				}
 
-				count := 0
 				// Push the chunk to some peers in the neighborhood in parallel for replication.
 				// Any errors here should NOT impact the rest of the handler.
+				count := 0
 				_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
 					// skip forwarding peer
 					if peer.Equal(origin) {
@@ -342,6 +344,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					go ps.pushToNeighbour(peer, ch, retryAllowed)
 					return false, false, nil
 				})
+
 				return nil, err
 			}
 			return nil, fmt.Errorf("closest peer: %w", err)
