@@ -21,11 +21,9 @@ jobs:
       id: checkdocs
       run: |
           changed=false
-          git diff --name-only HEAD^ HEAD
           git diff --name-only HEAD^ HEAD > files.txt
           while IFS= read -r file
           do
-            echo $file
             if [[ $file == openapi/* ]]; then
               echo "detected openapi spec change"
               changed=true
