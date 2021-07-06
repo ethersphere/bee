@@ -228,7 +228,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			return 0, ru.Ruid, err
+			s.logger.Debugf("unverified chunk: %w", err)
+			continue
 		}
 
 		if cac.Valid(chunk) {

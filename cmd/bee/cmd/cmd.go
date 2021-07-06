@@ -68,6 +68,7 @@ const (
 	optionNamePriceOracleAddress         = "price-oracle-address"
 	optionNameBlockTime                  = "block-time"
 	optionWarmUpTime                     = "warmup-time"
+	optionNameMainNet                    = "mainnet"
 )
 
 func init() {
@@ -209,7 +210,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().Bool(optionNameP2PQUICEnable, false, "enable P2P QUIC transport")
-	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/bootnode.ethswarm.org"}, "initial nodes to connect to")
+	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/testnet.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 10, "ID of the Swarm network")
@@ -242,7 +243,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameBlockHash, "", "block hash of the block whose parent is the block that contains the transaction hash")
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
 	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
-	cmd.Flags().Duration(optionWarmUpTime, time.Minute*10, "time to warmup the node before pull/push protocols can be kicked off.")
+	cmd.Flags().Duration(optionWarmUpTime, time.Minute*20, "time to warmup the node before pull/push protocols can be kicked off.")
+	cmd.Flags().Bool(optionNameMainNet, false, "triggers connect to main net bootnodes.")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

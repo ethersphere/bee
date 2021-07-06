@@ -55,6 +55,8 @@ func (c *command) initStartCmd() (err error) {
 				return fmt.Errorf("new logger: %v", err)
 			}
 
+			go startTimeBomb(logger)
+
 			isWindowsService, err := isWindowsService()
 			if err != nil {
 				return fmt.Errorf("failed to determine if we are running in service: %w", err)
@@ -80,7 +82,6 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			beeASCII := `
-
               Welcome to Swarm... Bzz Bzzz Bzzzz!
 
                             \     /
@@ -97,9 +98,17 @@ func (c *command) initStartCmd() (err error) {
                                !    
 							        
 							   `
-
 			fmt.Println(beeASCII)
-			logger.Infof("version: %v", bee.Version)
+			fmt.Print(`
+DISCLAIMER:
+This software is provided to you "as is", use at your own risk and without warranties of any kind.
+It is your responsibility to read and understand how Swarm works and the implications of running this software.
+The usage of Bee involves various risks, including, but not limited to:
+damage to hardware or loss of funds associated with the Ethereum account connected to your node.
+No developers or entity involved will be liable for any claims and damages associated with your use,
+inability to use, or your interaction with other nodes or the software.`)
+
+			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
@@ -111,6 +120,8 @@ func (c *command) initStartCmd() (err error) {
 				return err
 			}
 
+			logger.Infof("version: %v", bee.Version)
+
 			bootNode := c.config.GetBool(optionNameBootnodeMode)
 			fullNode := c.config.GetBool(optionNameFullNode)
 
@@ -118,7 +129,31 @@ func (c *command) initStartCmd() (err error) {
 				return errors.New("boot node must be started as a full node")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, c.config.GetUint64(optionNameNetworkID), logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			mainnet := c.config.GetBool(optionNameMainNet)
+			networkID := c.config.GetUint64(optionNameNetworkID)
+
+			if mainnet {
+				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
+				if userHasSetNetworkID && networkID != 1 {
+					return errors.New("provided network ID does not match mainnet")
+				}
+				networkID = 1
+			}
+
+			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
+			blockTime := c.config.GetUint64(optionNameBlockTime)
+
+			networkConfig := getConfigByNetworkID(networkID, blockTime)
+
+			if c.config.IsSet(optionNameBootnodes) {
+				networkConfig.bootNodes = bootnodes
+			}
+
+			if c.config.IsSet(optionNameBlockTime) && blockTime != 0 {
+				networkConfig.blockTime = blockTime
+			}
+
+			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -132,7 +167,7 @@ func (c *command) initStartCmd() (err error) {
 				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                  c.config.GetStringSlice(optionNameBootnodes),
+				Bootnodes:                  networkConfig.bootNodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
 				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
@@ -156,9 +191,10 @@ func (c *command) initStartCmd() (err error) {
 				BlockHash:                  c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
-				BlockTime:                  c.config.GetUint64(optionNameBlockTime),
+				BlockTime:                  networkConfig.blockTime,
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
+				ChainID:                    networkConfig.chainID,
 			})
 			if err != nil {
 				return err
@@ -395,4 +431,30 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
 	}, nil
+}
+
+type networkConfig struct {
+	bootNodes []string
+	blockTime uint64
+	chainID   int64
+}
+
+func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
+	var config = networkConfig{
+		blockTime: uint64(time.Duration(defaultBlockTime) * time.Second),
+	}
+	switch networkID {
+	case 1:
+		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
+		config.blockTime = uint64(5 * time.Second)
+		config.chainID = 100
+	case 5: //staging
+		config.chainID = 5
+	case 10: //test
+		config.chainID = 5
+	default: //will use the value provided by the chain
+		config.chainID = -1
+	}
+
+	return &config
 }

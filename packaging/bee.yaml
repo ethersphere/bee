@@ -52,12 +52,12 @@ debug-api-enable: true
 # password: ""
 ## path to a file that contains password for decrypting keys
 password-file: /var/lib/bee/password
-## amount in BZZ below the peers payment threshold when we initiate settlement (default 1000000000000)
-# payment-early: 1000000000000
-## threshold in BZZ where you expect to get paid from your peers (default 10000000000000)
-# payment-threshold: 10000000000000
-## excess debt above payment threshold in BZZ where you disconnect from your peer (default 10000000000000)
-# payment-tolerance: 10000000000000
+## amount in BZZ below the peers payment threshold when we initiate settlement (default 10000000)
+# payment-early: 10000000
+## threshold in BZZ where you expect to get paid from your peers (default 100000000)
+# payment-threshold: 100000000
+## excess debt above payment threshold in BZZ where you disconnect from your peer (default 100000000)
+# payment-tolerance: 100000000
 ## postage stamp contract address
 # postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
@@ -88,3 +88,5 @@ password-file: /var/lib/bee/password
 # verbosity: info
 ## send a welcome message string during handshakes
 # welcome-message: ""
+## triggers connection to main network
+# mainnet: false

@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/logging"
 )
 
 // Backend is the minimum of blockchain backend functions we need.
@@ -35,28 +36,28 @@ type Backend interface {
 // is true if the current wall clock is after the block time of last block
 // with the given maxDelay as the maximum duration we can be behind the block
 // time.
-func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (bool, error) {
+func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (bool, time.Time, error) {
 	number, err := backend.BlockNumber(ctx)
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
 	}
 
 	header, err := backend.HeaderByNumber(ctx, big.NewInt(int64(number)))
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
 	}
 
 	blockTime := time.Unix(int64(header.Time), 0)
 
-	return blockTime.After(time.Now().UTC().Add(-maxDelay)), nil
+	return blockTime.After(time.Now().UTC().Add(-maxDelay)), blockTime, nil
 }
 
 // WaitSynced will wait until we are synced with the given blockchain backend,
 // with the given maxDelay duration as the maximum time we can be behind the
 // last block.
-func WaitSynced(ctx context.Context, backend Backend, maxDelay time.Duration) error {
+func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, maxDelay time.Duration) error {
 	for {
-		synced, err := IsSynced(ctx, backend, maxDelay)
+		synced, blockTime, err := IsSynced(ctx, backend, maxDelay)
 		if err != nil {
 			return err
 		}
@@ -64,6 +65,8 @@ func WaitSynced(ctx context.Context, backend Backend, maxDelay time.Duration) er
 		if synced {
 			return nil
 		}
+
+		logger.Infof("still waiting for Ethereum to sync. Block time is %s.", blockTime)
 
 		select {
 		case <-ctx.Done():

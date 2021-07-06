@@ -27,14 +27,19 @@ type Traverser interface {
 	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
 }
 
+type PutGetter interface {
+	storage.Putter
+	storage.Getter
+}
+
 // New constructs for a new Traverser.
-func New(store storage.Storer) Traverser {
+func New(store PutGetter) Traverser {
 	return &service{store: store}
 }
 
 // service is implementation of Traverser using storage.Storer as its storage.
 type service struct {
-	store storage.Storer
+	store PutGetter
 }
 
 // Traverse implements Traverser.Traverse method.

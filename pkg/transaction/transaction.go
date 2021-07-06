@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"golang.org/x/net/context"
 )
@@ -34,6 +35,7 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
+	ErrGasPriceTooLow      = errors.New("gas price too low")
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -76,9 +78,11 @@ type Service interface {
 	StoredTransaction(txHash common.Hash) (*StoredTransaction, error)
 	// PendingTransactions retrieves the list of all pending transaction hashes
 	PendingTransactions() ([]common.Hash, error)
-	// Resend resends a previously sent transaction
+	// ResendTransaction resends a previously sent transaction
 	// This operation can be useful if for some reason the transaction vanished from the eth networks pending pool
-	ResendTransaction(txHash common.Hash) error
+	ResendTransaction(ctx context.Context, txHash common.Hash) error
+	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one
+	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 }
 
 type transactionService struct {
@@ -195,8 +199,9 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 			if !errors.Is(err, ErrTransactionCancelled) {
 				t.logger.Errorf("error while waiting for pending transaction %x: %v", txHash, err)
 				return
+			} else {
+				t.logger.Warningf("pending transaction %x cancelled", txHash)
 			}
-			t.logger.Warningf("pending transaction %x cancelled", txHash)
 		} else {
 			t.logger.Tracef("pending transaction %x confirmed", txHash)
 		}
@@ -371,7 +376,7 @@ func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
 	return txHashes, nil
 }
 
-func (t *transactionService) ResendTransaction(txHash common.Hash) error {
+func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash) error {
 	storedTransaction, err := t.StoredTransaction(txHash)
 	if err != nil {
 		return err
@@ -413,6 +418,61 @@ func (t *transactionService) ResendTransaction(txHash common.Hash) error {
 		}
 	}
 	return nil
+}
+
+func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+	storedTransaction, err := t.StoredTransaction(originalTxHash)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	gasPrice := sctx.GetGasPrice(ctx)
+	if gasPrice == nil {
+		gasPrice = new(big.Int).Add(storedTransaction.GasPrice, big.NewInt(1))
+	} else if gasPrice.Cmp(storedTransaction.GasPrice) <= 0 {
+		return common.Hash{}, ErrGasPriceTooLow
+	}
+
+	signedTx, err := t.signer.SignTx(types.NewTransaction(
+		storedTransaction.Nonce,
+		t.sender,
+		big.NewInt(0),
+		21000,
+		gasPrice,
+		[]byte{},
+	), t.chainID)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	err = t.backend.SendTransaction(t.ctx, signedTx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	txHash := signedTx.Hash()
+	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
+		To:          signedTx.To(),
+		Data:        signedTx.Data(),
+		GasPrice:    signedTx.GasPrice(),
+		GasLimit:    signedTx.Gas(),
+		Value:       signedTx.Value(),
+		Nonce:       signedTx.Nonce(),
+		Created:     time.Now().Unix(),
+		Description: fmt.Sprintf("%s (cancellation)", storedTransaction.Description),
+	})
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	err = t.store.Put(pendingTransactionKey(txHash), struct{}{})
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	t.waitForPendingTx(txHash)
+
+	return txHash, err
 }
 
 func (t *transactionService) Close() error {

@@ -1041,7 +1041,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 		}
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-db.close:
+		case <-closed:
 		}
 	}))
 
@@ -1051,6 +1051,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 		UnreserveFunc:   unres,
 	})
 
+	closed = db.close
 	// insert 10 chunks that fall into the reserve, then
 	// expect first one to be evicted
 	for i := 0; i < chunkCount; i++ {
