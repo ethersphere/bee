@@ -9,7 +9,7 @@ security:
   - {}
 
 externalDocs:
-  description: Browse the documentation @ the Swarm Docs and tell us how you feel about it
+  description: Browse the documentation @ the Swarm Docs
   url: "https://docs.swarm.eth"
 
 servers:
