@@ -902,10 +902,9 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	}
 }
 
-// TestForwarderRetriesInNeighborhood tests that the out of depth forwarder does not retry, and
-// the forwarding peer inside the neighborhood retries.
-// P -> F -> | N1 -> N2 (fails), N1 -> N3
-func TestForwarderRetriesInNeighborhood(t *testing.T) {
+// TestForwarderRetriesInNeighborhoodAndEstablishesStorage tests that retries occur when a chunk lands in the neighborhood and that
+// in neighboor replication is occuring.
+func TestForwarderRetriesInNeighborhoodAndEstablishesStorage(t *testing.T) {
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -1026,7 +1025,8 @@ func TestForwarderRetriesInNeighborhood(t *testing.T) {
 	}
 }
 
-func Test_ForwarderRetriesInNeighborhood(t *testing.T) {
+// TestForwarderRetriesInNeighborhood tests that retries occur when a chunk lands in the neighborhood.
+func TestForwarderRetriesInNeighborhood(t *testing.T) {
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
