@@ -335,6 +335,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 						return false, false, nil
 					}
 
+					// here we skip the peer if the peer is closer to the chunk than us
+					// we replicate with peers that are further away than us because we are the storer
+					if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
+						return false, false, nil
+					}
+
 					if count == nPeersToPushsync {
 						return true, false, nil
 					}
