@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -139,9 +140,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	ps.metrics.TotalReceived.Inc()
 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
-	if chunk, err = ps.validStamp(chunk, ch.Stamp); err != nil {
-		return fmt.Errorf("pushsync valid stamp: %w", err)
+	chunkAddress := chunk.Address()
+	stamp := new(postage.Stamp)
+	// attaching the stamp is required becase pushToClosest expects a chunk with a stamp
+	err = stamp.UnmarshalBinary(ch.Stamp)
+	if err != nil {
+		return fmt.Errorf("pushsync stamp unmarshall: %w", err)
 	}
+	chunk.WithStamp(stamp)
 
 	if cac.Valid(chunk) {
 		if ps.unwrap != nil {
@@ -151,15 +157,20 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return swarm.ErrInvalidChunk
 	}
 
-	price := ps.pricer.Price(chunk.Address())
+	price := ps.pricer.Price(chunkAddress)
 
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
-		bytes := chunk.Address().Bytes()
+		bytes := chunkAddress.Bytes()
 		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-			if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+			if ps.topologyDriver.IsWithinDepth(chunkAddress) {
 				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
 				defer canceld()
+
+				chunk, err = ps.validStamp(chunk, ch.Stamp)
+				if err != nil {
+					return fmt.Errorf("pushsync valid stamp: %w", err)
+				}
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 				if err != nil {
@@ -191,7 +202,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// forwarding replication
 	storedChunk := false
-	if ps.topologyDriver.IsWithinDepth(chunk.Address()) {
+	if ps.topologyDriver.IsWithinDepth(chunkAddress) {
+
+		chunk, err = ps.validStamp(chunk, ch.Stamp)
+		if err != nil {
+			return fmt.Errorf("pushsync valid stamp: %w", err)
+		}
+
 		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 		if err != nil {
 			ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
@@ -200,13 +217,19 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 	}
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunk.Address().String()})
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
 	receipt, err := ps.pushToClosest(ctx, chunk, false, p.Address)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			if !storedChunk {
+
+				chunk, err = ps.validStamp(chunk, ch.Stamp)
+				if err != nil {
+					return fmt.Errorf("pushsync valid stamp: %w", err)
+				}
+
 				_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 				if err != nil {
 					return fmt.Errorf("chunk store: %w", err)
@@ -225,7 +248,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 			defer debit.Cleanup()
 
-			receipt := pb.Receipt{Address: chunk.Address().Bytes(), Signature: signature, BlockHash: ps.blockHash}
+			receipt := pb.Receipt{Address: chunkAddress.Bytes(), Signature: signature, BlockHash: ps.blockHash}
 			if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
@@ -297,6 +320,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			if errors.Is(err, topology.ErrWantSelf) {
 				if time.Now().Before(ps.warmupPeriod) {
 					return nil, ErrWarmup
+				}
+
+				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+					return nil, ErrNoPush
 				}
 
 				count := 0
@@ -516,7 +543,7 @@ func newPeerSkipList() *peerSkipList {
 	}
 }
 
-func (l *peerSkipList) Add(peer swarm.Address, chunk swarm.Address, expire time.Duration) {
+func (l *peerSkipList) Add(peer, chunk swarm.Address, expire time.Duration) {
 	l.Lock()
 	defer l.Unlock()
 
