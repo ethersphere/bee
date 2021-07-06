@@ -902,8 +902,8 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	}
 }
 
-// TestForwarderRetriesInNeighborhoodAndEstablishesStorage tests that retries occur when a chunk lands in the neighborhood and that
-// in neighboor replication is occuring.
+// TestForwarderRetriesInNeighborhoodAndEstablishesStorage tests that retries occur when a chunk lands in the neighborhood
+// and that in neighborhood replication is occuring.
 func TestForwarderRetriesInNeighborhoodAndEstablishesStorage(t *testing.T) {
 
 	// chunk data to upload
