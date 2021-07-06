@@ -131,6 +131,24 @@ Thanks for beeing here, we wish you Love and Bees from the Swarm Team x
 ## Quick Start
 Bee is a versatile piece of software that caters for a diverse array of use cases.
 
+## Pre Push Go 
+##
+/usr/bin/env bash
+
+set -euo pipefail
+
+# Get current branch name
+current=$(git rev-parse --abbrev-ref HEAD)
+if git branch -r | grep "^  ${1}/${current}$" &> /dev/null; then
+    # Check if we actually have commits to push
+    commits=$(git log @{u}..)
+    if [ -z "$commits" ]; then
+        exit 0
+    fi
+fi
+
+make build lint vet test-race
+
 - Access the Network
 If you want to interact with the Bee ecosystem in a decentralised way, but not earn BZZ by storing or forwarding chunks, simply run a Bee light node in the background on your laptop or desktop computer. This will enable direct access to the swarm from your web browser and other applications.
 
