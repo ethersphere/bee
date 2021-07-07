@@ -137,8 +137,8 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				if err != nil {
 					return nil, err
 				}
+				gcSizeChange += c
 			}
-			gcSizeChange += c
 		}
 
 	case storage.ModePutSync:
