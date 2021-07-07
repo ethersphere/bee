@@ -899,6 +899,191 @@ func TestPushChunkToClosestSkipFailed(t *testing.T) {
 	}
 }
 
+// TestForwarderRetriesInNeighborhood tests that the out of depth forwarder does not retry, and
+// the forwarding peer inside the neighborhood retries.
+// P -> F -> | N1 -> N2 (fails), N1 -> N3
+func TestForwarderRetriesInNeighborhood(t *testing.T) {
+
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	signer := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return []byte{1}, nil
+	}))
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+
+	peer1 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000") // outside neighborhood forwarder
+	peer2 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // inside neighborhood forwarder
+	peer3 := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000") // inside neighborhood storer candidate failing
+
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	defer storerPeer3.Close()
+
+	var (
+		lock1                     sync.Mutex
+		lock2                     sync.Mutex
+		lock3                     sync.Mutex
+		failCountForwarder        int
+		failCountForwarderOutside int
+	)
+
+	peer2Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer3.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock1.Lock()
+					defer lock1.Unlock()
+
+					stream.Close()
+					return errors.New("peer error")
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer2),
+	)
+
+	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, peer2Recorder, nil, signer, mock.WithPeers(peer3), WithinDepthMock)
+	defer storerPeer2.Close()
+
+	peer1Recorder := streamtest.New(
+		streamtest.WithProtocols(psPeer2.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock2.Lock()
+					defer lock2.Unlock()
+
+					failCountForwarder++
+
+					if failCountForwarder == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(peer1),
+	)
+
+	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, peer1Recorder, nil, defaultSigner, mock.WithPeers(peer2))
+	defer storerPeer1.Close()
+
+	pivotRecorder := streamtest.New(
+		streamtest.WithProtocols(psPeer1.Protocol()),
+		streamtest.WithMiddlewares(
+			func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+
+					lock3.Lock()
+					defer lock3.Unlock()
+
+					failCountForwarderOutside++
+
+					if failCountForwarderOutside == 1 {
+						stream.Close()
+						return errors.New("peer error")
+					}
+
+					if err := h(ctx, peer, stream); err != nil {
+						return err
+					}
+					// close stream after all previous middlewares wrote to it
+					// so that the receiving peer can get all the post messages
+					return stream.Close()
+				}
+			},
+		),
+		streamtest.WithBaseAddr(pivotNode),
+	)
+
+	psPivot, storerPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, pivotRecorder, nil, defaultSigner, mock.WithPeers(peer1))
+	defer storerPivot.Close()
+
+	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data())
+
+	_, err = psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 1)
+
+	_, err = psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("want err")
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 3)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 2)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer3, peer2Recorder, chunk.Address(), chunk.Data(), 1)
+
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), chunk.Data(), 4)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), chunk.Data(), 3)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer2, peer1Recorder, chunk.Address(), nil, 3)
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordNAndTest(t, peer1, pivotRecorder, chunk.Address(), nil, 4)
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	want := false
+	if got, _ := storerPeer3.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	want = true
+	if got, _ := storerPeer2.Has(context.Background(), chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	if !bytes.Equal([]byte{1}, receipt.Signature) {
+		t.Fatal("receipt signature is invalid")
+	}
+}
+
 func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags, accounting.Interface) {
 	t.Helper()
 	mockAccounting := accountingmock.NewAccounting()
@@ -929,13 +1114,13 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1), storer, mtag
 }
 
-func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
+func waitOnRecordNAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte, n int) {
 	t.Helper()
-	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
+	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, n, 5)
 
 	if data != nil {
 		messages, err := protobuf.ReadMessages(
-			bytes.NewReader(records[0].In()),
+			bytes.NewReader(records[n-1].In()),
 			func() protobuf.Message { return new(pb.Delivery) },
 		)
 		if err != nil {
@@ -958,7 +1143,7 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 		}
 	} else {
 		messages, err := protobuf.ReadMessages(
-			bytes.NewReader(records[0].In()),
+			bytes.NewReader(records[n-1].In()),
 			func() protobuf.Message { return new(pb.Receipt) },
 		)
 		if err != nil {
@@ -977,6 +1162,11 @@ func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.
 			t.Fatalf("receipt address mismatch")
 		}
 	}
+}
+
+func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
+	t.Helper()
+	waitOnRecordNAndTest(t, peer, recorder, add, data, 1)
 }
 
 func chanFunc(c chan<- struct{}) func(swarm.Chunk) {
