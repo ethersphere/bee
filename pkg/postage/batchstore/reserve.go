@@ -252,7 +252,7 @@ func (rs *reserveState) size(depth uint8, t tier) int64 {
 func (rs *reserveState) tier(x *big.Int) tier {
 
 	// x < rs.Inner || x == 0
-	if x.Cmp(rs.Inner) < 0 || rs.Inner.Cmp(big.NewInt(0)) == 0 {
+	if x.Cmp(rs.Inner) < 0 || x.Cmp(big.NewInt(0)) == 0 {
 		return unreserved
 	}
 
