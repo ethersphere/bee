@@ -200,6 +200,7 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 
 	sem := make(chan struct{}, 5)
 	var peersToAdd []swarm.Address
+	mtx := sync.Mutex{}
 
 	for i := range peers.Peers {
 		sem <- struct{}{}
@@ -237,7 +238,9 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 				return
 			}
 
+			mtx.Lock()
 			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
+			mtx.Unlock()
 		}(i)
 	}
 
