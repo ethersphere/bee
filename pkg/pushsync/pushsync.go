@@ -305,8 +305,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		includeSelf    = ps.isFullNode
 	)
 
-	chunkInNeighbourhood := ps.topologyDriver.IsWithinDepth(ch.Address())
-
 	if retryAllowed {
 		// only originator retries
 		allowedRetries = maxPeers
@@ -373,7 +371,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				logger.Debugf("could not push to peer %s: %v", peer, err)
 
 				// if the node has warmed up AND no other closer peer has been tried
-				if ps.warmedUp() && !ps.skipList.HasChunk(ch.Address()) && chunkInNeighbourhood {
+				if ps.warmedUp() && !ps.skipList.HasChunk(ch.Address()) {
 					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
 				}
 
