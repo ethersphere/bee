@@ -179,10 +179,11 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
 	jsonhttp.OK(w, reserveStateResponse{
-		Radius:    state.Radius,
-		Available: state.Available,
-		Outer:     bigint.Wrap(state.Outer),
-		Inner:     bigint.Wrap(state.Inner),
+		Radius:        state.Radius,
+		StorageRadius: state.StorageRadius,
+		Available:     state.Available,
+		Outer:         bigint.Wrap(state.Outer),
+		Inner:         bigint.Wrap(state.Inner),
 	})
 }
 
