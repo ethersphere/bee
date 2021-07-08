@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -75,6 +76,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -150,6 +152,7 @@ type Options struct {
 	BlockTime                  uint64
 	DeployGasPrice             string
 	WarmupTime                 time.Duration
+	ChainID                    int64
 }
 
 const (
@@ -224,6 +227,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		b.ethClientCloser = swapBackend.Close
 		b.transactionCloser = tracerCloser
 		b.transactionMonitorCloser = transactionMonitor
+
+		if o.ChainID != -1 && o.ChainID != chainID {
+			return nil, fmt.Errorf("connected to wrong ethereum network: got chainID %d, want %d", chainID, o.ChainID)
+		}
 	}
 
 	var debugAPIService *debugapi.Service
@@ -268,7 +275,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if !isSynced {
 			logger.Infof("waiting to sync with the Ethereum backend")
 
-			err := transaction.WaitSynced(logger, p2pCtx, swapBackend, maxDelay)
+			err := transaction.WaitSynced(p2pCtx, logger, swapBackend, maxDelay)
 			if err != nil {
 				return nil, fmt.Errorf("waiting backend sync: %w", err)
 			}
@@ -416,7 +423,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var postageSyncStart uint64 = 0
 	if !o.Standalone {
-		postageContractAddress, startBlock, found := listener.DiscoverAddresses(chainID)
+		chainCfg, found := config.GetChainConfig(chainID)
+		postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
 		if o.PostageContractAddress != "" {
 			if !common.IsHexAddress(o.PostageContractAddress) {
 				return nil, errors.New("malformed postage stamp address")
@@ -432,7 +440,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 		b.listenerCloser = eventListener
 
-		batchSvc = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post)
+		batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256)
+		if err != nil {
+			return nil, err
+		}
 
 		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
 		if err != nil {

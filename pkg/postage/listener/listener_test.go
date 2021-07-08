@@ -307,7 +307,7 @@ type updater struct {
 	eventC chan interface{}
 }
 
-func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, bucketDepth uint8, immutable bool) error {
+func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, bucketDepth uint8, immutable bool, _ []byte) error {
 	u.eventC <- createArgs{
 		id:               id,
 		owner:            owner,
@@ -319,7 +319,7 @@ func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, buc
 	return nil
 }
 
-func (u *updater) TopUp(id []byte, normalisedBalance *big.Int) error {
+func (u *updater) TopUp(id []byte, normalisedBalance *big.Int, _ []byte) error {
 	u.eventC <- topupArgs{
 		id:                id,
 		normalisedBalance: normalisedBalance,
@@ -327,7 +327,7 @@ func (u *updater) TopUp(id []byte, normalisedBalance *big.Int) error {
 	return nil
 }
 
-func (u *updater) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error {
+func (u *updater) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, _ []byte) error {
 	u.eventC <- depthArgs{
 		id:                id,
 		depth:             depth,
@@ -336,7 +336,7 @@ func (u *updater) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int
 	return nil
 }
 
-func (u *updater) UpdatePrice(price *big.Int) error {
+func (u *updater) UpdatePrice(price *big.Int, _ []byte) error {
 	u.eventC <- priceArgs{price}
 	return nil
 }
