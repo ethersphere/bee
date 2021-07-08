@@ -261,7 +261,11 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 func (db *DB) setPin(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, err error) {
 	// Get the existing pin counter of the chunk
 	i, err := db.pinIndex.Get(item)
+
+	// this will not panic because shed.Index.Get returns an instance, not a pointer.
+	// we therefore leverage the default value of the pin counter on the item (zero).
 	item.PinCounter = i.PinCounter
+
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return 0, err
