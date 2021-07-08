@@ -929,13 +929,13 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1), storer, mtag
 }
 
-func waitOnRecordNAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte, n int) {
+func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
 	t.Helper()
-	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, n, 5)
+	records := recorder.WaitRecords(t, peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName, 1, 5)
 
 	if data != nil {
 		messages, err := protobuf.ReadMessages(
-			bytes.NewReader(records[n-1].In()),
+			bytes.NewReader(records[0].In()),
 			func() protobuf.Message { return new(pb.Delivery) },
 		)
 		if err != nil {
@@ -958,7 +958,7 @@ func waitOnRecordNAndTest(t *testing.T, peer swarm.Address, recorder *streamtest
 		}
 	} else {
 		messages, err := protobuf.ReadMessages(
-			bytes.NewReader(records[n-1].In()),
+			bytes.NewReader(records[0].In()),
 			func() protobuf.Message { return new(pb.Receipt) },
 		)
 		if err != nil {
@@ -977,11 +977,6 @@ func waitOnRecordNAndTest(t *testing.T, peer swarm.Address, recorder *streamtest
 			t.Fatalf("receipt address mismatch")
 		}
 	}
-}
-
-func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {
-	t.Helper()
-	waitOnRecordNAndTest(t, peer, recorder, add, data, 1)
 }
 
 func chanFunc(c chan<- struct{}) func(swarm.Chunk) {
