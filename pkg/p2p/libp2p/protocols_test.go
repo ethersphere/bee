@@ -378,6 +378,21 @@ func TestConnectDisconnectEvents(t *testing.T) {
 
 }
 
+func TestPing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{})
+
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Ping(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+}
+
 const (
 	testProtocolName     = "testing"
 	testProtocolVersion  = "2.3.4"
