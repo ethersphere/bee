@@ -201,13 +201,16 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 	sem := make(chan struct{}, 5)
 	var peersToAdd []swarm.Address
 	mtx := sync.Mutex{}
+	wg := sync.WaitGroup{}
 
 	for i := range peers.Peers {
 		sem <- struct{}{}
 
+		wg.Add(1)
 		go func(idx int) {
 			defer func() {
 				<-sem
+				wg.Done()
 			}()
 
 			newPeer := peers.Peers[idx]
@@ -244,8 +247,9 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 		}(i)
 	}
 
-	if s.addPeersHandler != nil {
+	wg.Wait()
+
+	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
 		s.addPeersHandler(peersToAdd...)
 	}
-
 }
