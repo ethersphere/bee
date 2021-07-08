@@ -131,7 +131,7 @@ func (s *service) GetPrice(ctx context.Context) (*big.Int, *big.Int, error) {
 	return exchangeRate, deduction, nil
 }
 
-func (s *service) CurrentRates() (exchangeRate *big.Int, deduction *big.Int, err error) {
+func (s *service) CurrentRates() (exchangeRate, deduction *big.Int, err error) {
 	if s.exchangeRate.Cmp(big.NewInt(0)) == 0 {
 		return nil, nil, errors.New("exchange rate not yet available")
 	}
@@ -144,22 +144,4 @@ func (s *service) CurrentRates() (exchangeRate *big.Int, deduction *big.Int, err
 func (s *service) Close() error {
 	close(s.quitC)
 	return nil
-}
-
-var (
-	goerliChainID         = int64(5)
-	goerliContractAddress = common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2")
-	xdaiChainID           = int64(100)
-	xdaiContractAddress   = common.HexToAddress("0x0FDc5429C50e2a39066D8A94F3e2D2476fcc3b85")
-)
-
-// DiscoverPriceOracleAddress returns the canonical price oracle for this chainID
-func DiscoverPriceOracleAddress(chainID int64) (priceOracleAddress common.Address, found bool) {
-	switch chainID {
-	case goerliChainID:
-		return goerliContractAddress, true
-	case xdaiChainID:
-		return xdaiContractAddress, true
-	}
-	return common.Address{}, false
 }
