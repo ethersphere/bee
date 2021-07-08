@@ -16,6 +16,7 @@ type metrics struct {
 
 	PeersHandler      prometheus.Counter
 	PeersHandlerPeers prometheus.Counter
+	UnreachablePeers  prometheus.Counter
 }
 
 func newMetrics() metrics {
