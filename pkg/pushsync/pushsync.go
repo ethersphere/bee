@@ -318,7 +318,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			if errors.Is(err, topology.ErrWantSelf) {
-				if time.Now().Before(ps.warmupPeriod) {
+				if !ps.warmedUp() {
 					return nil, ErrWarmup
 				}
 
@@ -375,6 +375,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			}
 			if err != nil {
 				logger.Debugf("could not push to peer %s: %v", peer, err)
+
+				// if the node has warmed up AND no other closer peer has been tried
+				if ps.warmedUp() && !ps.skipList.HasChunk(ch.Address()) {
+					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
+				}
+
 				resultC <- &pushResult{err: err, attempted: attempted}
 				return
 			}
@@ -393,11 +399,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			}
 			if r.err != nil && r.attempted {
 				ps.metrics.TotalFailedSendAttempts.Inc()
-
-				// if the node has warmed up AND no other closer peer has been tried
-				if time.Now().After(ps.warmupPeriod) && !ps.skipList.HasChunk(ch.Address()) {
-					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
-				}
 			}
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -534,6 +535,10 @@ func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk, origin b
 	}
 
 	err = ps.accounting.Credit(peer, receiptPrice, origin)
+}
+
+func (ps *PushSync) warmedUp() bool {
+	return time.Now().After(ps.warmupPeriod)
 }
 
 type peerSkipList struct {
