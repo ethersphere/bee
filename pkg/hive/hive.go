@@ -121,8 +121,6 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			// added this because Recorder (unit test) emits an unnecessary EOF when Close is called
-			time.Sleep(time.Millisecond * 50)
 			_ = stream.Close()
 		}
 	}()

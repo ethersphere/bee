@@ -7,6 +7,7 @@ package streamtest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -165,7 +166,9 @@ func (r *Recorder) Records(addr swarm.Address, protocolName, protocolVersio, str
 	}
 	// wait for all records goroutines to terminate
 	for _, r := range records {
+		fmt.Println("Records")
 		<-r.done
+		fmt.Println("Records FINISH")
 	}
 	return records, nil
 }
@@ -254,45 +257,59 @@ func (s *stream) ResponseHeaders() p2p.Headers {
 }
 
 func (s *stream) Close() error {
-	return s.in.Close()
+	fmt.Println("Close")
+
+	return s.in.WriteClose()
 }
 
 func (s *stream) FullClose() error {
+
+	fmt.Println("FullClose")
+
 	if err := s.Close(); err != nil {
 		_ = s.Reset()
 		return err
 	}
 
-	waitStart := time.Now()
+	return s.out.ReadClose()
 
-	for {
-		if s.out.Closed() {
-			return nil
-		}
+	// waitStart := time.Now()
 
-		if time.Since(waitStart) >= fullCloseTimeout {
-			return ErrStreamFullcloseTimeout
-		}
+	// for {
+	// 	fmt.Println("FullClose LOOP")
+	// 	if s.out.ReadClosed() {
+	// 		return nil
+	// 	}
 
-		time.Sleep(10 * time.Millisecond)
-	}
+	// 	if time.Since(waitStart) >= fullCloseTimeout {
+	// 		return ErrStreamFullcloseTimeout
+	// 	}
+
+	// 	time.Sleep(10 * time.Millisecond)
+	// }
 }
 
 func (s *stream) Reset() (err error) {
-	if err := s.in.Close(); err != nil {
-		_ = s.out.Close()
+
+	fmt.Println("Reset")
+
+	if err := s.in.WriteClose(); err != nil {
+		_ = s.out.ReadClose()
 		return err
 	}
 
-	return s.out.Close()
+	return s.out.ReadClose()
 }
 
 type record struct {
-	b       []byte
-	c       int
-	closed  bool
-	closeMu sync.RWMutex
-	cond    *sync.Cond
+	b []byte
+	// bMu          sync.Mutex
+	c            int
+	readclose    bool
+	writeclose   bool
+	readcloseMu  sync.Mutex
+	writecloseMu sync.Mutex
+	cond         *sync.Cond
 }
 
 func newRecord() *record {
@@ -302,19 +319,26 @@ func newRecord() *record {
 }
 
 func (r *record) Read(p []byte) (n int, err error) {
+
+	fmt.Println("Read", time.Now().Unix())
+
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
-	for r.c == len(r.b) && !r.Closed() {
+	defer r.cond.Signal()
+
+	for r.c == len(r.b) && !r.WriteClosed() {
+		fmt.Println("Read LOOP")
 		r.cond.Wait()
 	}
+
 	end := r.c + len(p)
 	if end > len(r.b) {
 		end = len(r.b)
 	}
 	n = copy(p, r.b[r.c:end])
 	r.c += n
-	if r.Closed() {
+	if r.ReadClosed() {
 		err = io.EOF
 	}
 
@@ -322,38 +346,79 @@ func (r *record) Read(p []byte) (n int, err error) {
 }
 
 func (r *record) Write(p []byte) (int, error) {
+
+	fmt.Println("Write", time.Now().Unix())
+
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
-	if r.Closed() {
-		return 0, ErrStreamClosed
-	}
 
 	defer r.cond.Signal()
 
+	if r.WriteClosed() {
+		return 0, ErrStreamClosed
+	}
+
+	// r.bMu.Lock()
 	r.b = append(r.b, p...)
+	// r.bMu.Unlock()
+
 	return len(p), nil
 }
 
-func (r *record) Close() error {
+func (r *record) ReadClose() error {
+
+	fmt.Println("ReadClose", time.Now().Unix())
+
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
 	defer r.cond.Broadcast()
 
-	r.closeMu.Lock()
-	r.closed = true
-	r.closeMu.Unlock()
+	r.readcloseMu.Lock()
+	r.readclose = true
+	r.readcloseMu.Unlock()
 
 	return nil
 }
 
-func (r *record) Closed() bool {
-	r.closeMu.RLock()
-	defer r.closeMu.RUnlock()
-	return r.closed
+func (r *record) WriteClose() error {
+
+	fmt.Println("WriteClose", time.Now().Unix())
+
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
+
+	defer r.cond.Broadcast()
+
+	r.writecloseMu.Lock()
+	r.writeclose = true
+	r.writecloseMu.Unlock()
+
+	return nil
+}
+
+func (r *record) ReadClosed() bool {
+
+	fmt.Println("ReadClosed", time.Now().Unix())
+
+	r.readcloseMu.Lock()
+	defer r.readcloseMu.Unlock()
+
+	return r.readclose
+}
+
+func (r *record) WriteClosed() bool {
+
+	r.writecloseMu.Lock()
+	defer r.writecloseMu.Unlock()
+
+	return r.writeclose
 }
 
 func (r *record) bytes() []byte {
+
+	fmt.Println("bytes", time.Now().Unix())
+
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
