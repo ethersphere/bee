@@ -44,7 +44,7 @@ var (
 )
 
 type Service struct {
-	streamer        p2p.Streamer
+	streamer        p2p.StreamerPinger
 	addressBook     addressbook.GetPutter
 	addPeersHandler func(...swarm.Address)
 	networkID       uint64
@@ -55,7 +55,7 @@ type Service struct {
 	clearMtx        sync.Mutex
 }
 
-func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
 	return &Service{
 		streamer:    streamer,
 		logger:      logger,
@@ -176,34 +176,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
-	var peers []swarm.Address
-	for _, newPeer := range peersReq.Peers {
-
-		multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
-		if err != nil {
-			s.logger.Errorf("hive: multi address underlay err: %v", err)
-			continue
-		}
-
-		bzzAddress := bzz.Address{
-			Overlay:     swarm.NewAddress(newPeer.Overlay),
-			Underlay:    multiUnderlay,
-			Signature:   newPeer.Signature,
-			Transaction: newPeer.Transaction,
-		}
-
-		err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
-		if err != nil {
-			s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
-			continue
-		}
-
-		peers = append(peers, bzzAddress.Overlay)
-	}
-
-	if s.addPeersHandler != nil {
-		s.addPeersHandler(peers...)
-	}
+	go s.checkAndAddPeers(peersReq)
 
 	return nil
 }
@@ -217,4 +190,59 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 	s.outLimiter.Clear(peer.Address.ByteString())
 
 	return nil
+}
+
+const checkPeersTimeout = time.Minute * 15
+
+func (s *Service) checkAndAddPeers(peers pb.Peers) {
+	ctx, cancel := context.WithTimeout(context.Background(), checkPeersTimeout)
+	defer cancel()
+
+	sem := make(chan struct{}, 5)
+	var peersToAdd []swarm.Address
+
+	for i, _ := range peers.Peers {
+		sem <- struct{}{}
+
+		go func(idx int) {
+			defer func() {
+				<-sem
+			}()
+
+			newPeer := peers.Peers[idx]
+
+			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
+			if err != nil {
+				s.logger.Errorf("hive: multi address underlay err: %v", err)
+				return
+			}
+
+			// check if the underlay is usable by doing a raw ping using libp2p
+			_, err = s.streamer.Ping(ctx, multiUnderlay)
+			if err != nil {
+				s.logger.Errorf("hive: multi address underlay %s not reachable err: %w", multiUnderlay, err)
+				return
+			}
+
+			bzzAddress := bzz.Address{
+				Overlay:     swarm.NewAddress(newPeer.Overlay),
+				Underlay:    multiUnderlay,
+				Signature:   newPeer.Signature,
+				Transaction: newPeer.Transaction,
+			}
+
+			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
+			if err != nil {
+				s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
+				return
+			}
+
+			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
+		}(i)
+	}
+
+	if s.addPeersHandler != nil {
+		s.addPeersHandler(peersToAdd...)
+	}
+
 }

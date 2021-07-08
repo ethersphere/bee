@@ -37,6 +37,7 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -815,4 +816,24 @@ func (s *Service) Ready() {
 
 func (s *Service) Halt() {
 	close(s.halt)
+}
+
+func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duration, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
+	if err != nil {
+		return rtt, fmt.Errorf("unable to parse underlay address: %w", err)
+	}
+
+	// Add the address to libp2p peerstore for it to be dialable
+	s.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
+
+	select {
+	case <-ctx.Done():
+		return rtt, ctx.Err()
+	case res := <-libp2pping.Ping(ctx, s.host, info.ID):
+		return res.RTT, res.Error
+	}
 }
