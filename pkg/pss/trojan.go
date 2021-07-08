@@ -201,8 +201,7 @@ func contains(col Targets, elem []byte) bool {
 }
 
 // mine iteratively enumerates different nonces until the address (BMT hash) of the chunkhas one of the targets as its prefix
-func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (r swarm.Chunk, e error) {
-	seeds := make([]uint32, 8)
+func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, error)) (swarm.Chunk, error) {
 	initnonce := make([]byte, 32)
 	if _, err := io.ReadFull(random.Reader, initnonce); err != nil {
 		return nil, err
@@ -212,26 +211,23 @@ func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, erro
 	} else {
 		initnonce[28] &= 0xfe
 	}
-	for i := range seeds {
-		seeds[i] = binary.BigEndian.Uint32(initnonce[i*4 : i*4+4])
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	eg, ctx := errgroup.WithContext(ctx)
 	result := make(chan swarm.Chunk, 8)
 	for i := 0; i < 8; i++ {
-		j := i
 		eg.Go(func() error {
 			nonce := make([]byte, 32)
 			copy(nonce, initnonce)
-			for seed := seeds[j]; ; seed += 2 {
+			for {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
 				default:
 				}
-				binary.BigEndian.PutUint32(nonce[j*4:j*4+4], seed)
+				if _, err := io.ReadFull(random.Reader, nonce[:4]); err != nil {
+					return err
+				}
 				res, err := f(nonce)
 				if err != nil {
 					return err
@@ -243,15 +239,16 @@ func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, erro
 			}
 		})
 	}
-	errc := make(chan error)
+	var err error
 	go func() {
-		errc <- eg.Wait()
+		err = eg.Wait()
+		result <- nil
 	}()
-	select {
-	case r = <-result:
-	case e = <-errc:
+	r := <-result
+	if r == nil {
+		return nil, err
 	}
-	return r, e
+	return r, nil
 }
 
 // extracts ephemeral public key from the chunk data to use with el-Gamal
