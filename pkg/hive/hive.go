@@ -201,7 +201,7 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 	sem := make(chan struct{}, 5)
 	var peersToAdd []swarm.Address
 
-	for i, _ := range peers.Peers {
+	for i := range peers.Peers {
 		sem <- struct{}{}
 
 		go func(idx int) {
