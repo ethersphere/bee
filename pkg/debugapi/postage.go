@@ -107,6 +107,18 @@ type postageStampsResponse struct {
 	Stamps []postageStampResponse `json:"stamps"`
 }
 
+type postageStampBucketsResponse struct {
+	Depth            uint8        `json:"depth"`
+	BucketDepth      uint8        `json:"bucketDepth"`
+	BucketUpperBound uint32       `json:"bucketUpperBound"`
+	Buckets          []bucketData `json:"buckets"`
+}
+
+type bucketData struct {
+	BucketID   uint32 `json:"bucketID"`
+	Collisions uint32 `json:"collisions"`
+}
+
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request) {
 	resp := postageStampsResponse{}
 	for _, v := range s.post.StampIssuers() {
@@ -122,6 +134,45 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 			ImmutableFlag: v.ImmutableFlag(),
 		})
 	}
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
+
+	idStr := mux.Vars(r)["id"]
+	if idStr == "" || len(idStr) != 64 {
+		s.logger.Error("get stamp issuer: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+	id, err := hex.DecodeString(idStr)
+	if err != nil {
+		s.logger.Error("get stamp issuer: invalid batchID: %v", err)
+		s.logger.Error("get stamp issuer: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+
+	issuer, err := s.post.GetStampIssuer(id)
+	if err != nil {
+		s.logger.Error("get stamp issuer: get issuer: %v", err)
+		s.logger.Error("get stamp issuer: get issuer")
+		jsonhttp.BadRequest(w, "cannot get issuer")
+		return
+	}
+
+	b := issuer.Buckets()
+	resp := postageStampBucketsResponse{
+		Depth:            issuer.Depth(),
+		BucketDepth:      issuer.BucketDepth(),
+		BucketUpperBound: issuer.BucketUpperBound(),
+		Buckets:          make([]bucketData, len(b)),
+	}
+
+	for i, v := range b {
+		resp.Buckets[i] = bucketData{BucketID: uint32(i), Collisions: v}
+	}
+
 	jsonhttp.OK(w, resp)
 }
 

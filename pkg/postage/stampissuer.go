@@ -145,6 +145,11 @@ func (si *StampIssuer) BucketDepth() uint8 {
 	return si.data.BucketDepth
 }
 
+// BucketDepth the depth of collision Buckets uniformity.
+func (si *StampIssuer) BucketUpperBound() uint32 {
+	return 1 << (si.Depth() - si.BucketDepth())
+}
+
 // BlockNumber when this batch was created.
 func (si *StampIssuer) BlockNumber() uint64 {
 	return si.data.BlockNumber
@@ -153,4 +158,12 @@ func (si *StampIssuer) BlockNumber() uint64 {
 // ImmutableFlag immutability of the created batch.
 func (si *StampIssuer) ImmutableFlag() bool {
 	return si.data.ImmutableFlag
+}
+
+func (si *StampIssuer) Buckets() []uint32 {
+	si.bucketMu.Lock()
+	b := make([]uint32, len(si.data.Buckets))
+	copy(b, si.data.Buckets)
+	si.bucketMu.Unlock()
+	return b
 }
