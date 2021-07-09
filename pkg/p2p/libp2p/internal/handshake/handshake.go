@@ -56,7 +56,7 @@ var (
 
 // AdvertisableAddressResolver can Resolve a Multiaddress.
 type AdvertisableAddressResolver interface {
-	Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error)
+	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
 type SenderMatcher interface {

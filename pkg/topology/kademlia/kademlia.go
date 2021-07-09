@@ -155,10 +155,10 @@ func New(
 
 func (k *Kad) generateCommonBinPrefixes() {
 	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
-	bitSufixes := make([]uint8, bitCombinationsCount)
+	bitSuffixes := make([]uint8, bitCombinationsCount)
 
 	for i := 0; i < bitCombinationsCount; i++ {
-		bitSufixes[i] = uint8(i)
+		bitSuffixes[i] = uint8(i)
 	}
 
 	addr := swarm.MustParseHexAddress(k.base.String())
@@ -197,7 +197,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
 				index, pos := l/8, l%8
 
-				if hasBit(bitSufixes[j], uint8(bitSuffixPos)) {
+				if hasBit(bitSuffixes[j], uint8(bitSuffixPos)) {
 					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 				} else {
 					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
