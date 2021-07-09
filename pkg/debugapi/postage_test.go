@@ -264,7 +264,7 @@ func TestPostageGetBuckets(t *testing.T) {
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	ts := newTestServer(t, testServerOptions{Post: mp})
 	buckets := make([]debugapi.BucketData, 1024)
-	for i, _ := range buckets {
+	for i := range buckets {
 		buckets[i] = debugapi.BucketData{BucketID: uint32(i)}
 	}
 
