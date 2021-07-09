@@ -225,7 +225,7 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 			_, err = s.streamer.Ping(ctx, multiUnderlay)
 			if err != nil {
 				s.metrics.UnreachablePeers.Inc()
-				s.logger.Errorf("hive: multi address underlay %s not reachable err: %w", multiUnderlay, err)
+				s.logger.Warningf("hive: multi address underlay %s not reachable err: %w", multiUnderlay, err)
 				return
 			}
 
