@@ -224,6 +224,7 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 			// check if the underlay is usable by doing a raw ping using libp2p
 			_, err = s.streamer.Ping(ctx, multiUnderlay)
 			if err != nil {
+				s.metrics.UnreachablePeers.Inc()
 				s.logger.Errorf("hive: multi address underlay %s not reachable err: %w", multiUnderlay, err)
 				return
 			}
