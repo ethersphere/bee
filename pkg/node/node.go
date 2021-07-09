@@ -623,7 +623,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
