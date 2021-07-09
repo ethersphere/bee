@@ -357,8 +357,6 @@ components:
           items:
             $ref: "#/components/schemas/StampBucketData"
 
-
-
     Settlement:
       type: object
       properties:

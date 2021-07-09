@@ -138,9 +138,8 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 }
 
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
-
 	idStr := mux.Vars(r)["id"]
-	if idStr == "" || len(idStr) != 64 {
+	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return

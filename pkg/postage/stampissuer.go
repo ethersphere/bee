@@ -145,7 +145,9 @@ func (si *StampIssuer) BucketDepth() uint8 {
 	return si.data.BucketDepth
 }
 
-// BucketDepth the depth of collision Buckets uniformity.
+// BucketUpperBound returns the maximum number of collisions
+// possible in a bucket given the batch's depth and bucket
+// depth.
 func (si *StampIssuer) BucketUpperBound() uint32 {
 	return 1 << (si.Depth() - si.BucketDepth())
 }
