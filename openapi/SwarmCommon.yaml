@@ -554,7 +554,10 @@ components:
       schema:
         type: boolean
       required: false
-      description: Represents the pinning state of the chunk
+      description: >
+      Represents if the uploaded data should be also locally pinned on the node.
+
+      Warning! Not available for nodes that run in Gateway mode!
 
     SwarmEncryptParameter:
       in: header
@@ -562,7 +565,10 @@ components:
       schema:
         type: boolean
       required: false
-      description: Represents the encrypting state of the file
+      description: >
+      Represents the encrypting state of the file
+
+      Warning! Not available for nodes that run in Gateway mode!
 
     ContentTypePreserved:
       in: header
@@ -626,12 +632,6 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
-    "403":
-      description: Forbidden
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
     "404":
       description: Not Found
       content:
@@ -640,6 +640,13 @@ components:
             $ref: "#/components/schemas/ProblemDetails"
     "500":
       description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+    "GatewayForbidden":
+      description: Endpoint or specific header (pinning or encryption headers) forbidden in Gateway mode
       content:
         application/problem+json:
           schema:
