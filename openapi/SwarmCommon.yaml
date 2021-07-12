@@ -646,7 +646,7 @@ components:
             $ref: "#/components/schemas/ProblemDetails"
 
     "GatewayForbidden":
-      description: "Endpoint or specific header (pinning or encryption headers) forbidden in Gateway mode"
+      description: "Endpoint or header (pinning or encryption headers) forbidden in Gateway mode"
       content:
         application/problem+json:
           schema:
