@@ -381,7 +381,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
 				}
 
-				resultC <- &pushResult{err: err, attempted: attempted}
+				select {
+				case resultC <- &pushResult{err: err, attempted: attempted}:
+				case <-ctx.Done():
+				}
 				return
 			}
 			select {

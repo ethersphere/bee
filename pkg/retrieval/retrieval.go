@@ -154,16 +154,22 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					defer cancel()
 
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
-					resultC <- retrievalResult{
+					select {
+					case resultC <- retrievalResult{
 						chunk:     chunk,
 						peer:      peer,
 						err:       err,
 						retrieved: requested,
+					}:
+					case <-ctx.Done():
 					}
 
 				}()
 			} else {
-				resultC <- retrievalResult{}
+				select {
+				case resultC <- retrievalResult{}:
+				case <-ctx.Done():
+				}
 			}
 
 			select {
