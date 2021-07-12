@@ -43,6 +43,8 @@ const (
 	optionNameStandalone                 = "standalone"
 	optionNameTracingEnabled             = "tracing-enable"
 	optionNameTracingEndpoint            = "tracing-endpoint"
+	optionNameTracingHost                = "tracing-host"
+	optionNameTracingPort                = "tracing-port"
 	optionNameTracingServiceName         = "tracing-service-name"
 	optionNameVerbosity                  = "verbosity"
 	optionNameGlobalPinningEnabled       = "global-pinning-enable"
@@ -218,6 +220,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameStandalone, false, "whether we want the node to start with no listen addresses for p2p")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
+	cmd.Flags().String(optionNameTracingHost, "", "host to send tracing data")
+	cmd.Flags().String(optionNameTracingPort, "", "port to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
