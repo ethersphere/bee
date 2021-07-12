@@ -151,6 +151,12 @@ inability to use, or your interaction with other nodes or the software.`)
 				networkConfig.blockTime = blockTime
 			}
 
+			tracingEndpoint := c.config.GetString(optionNameTracingEndpoint)
+
+			if c.config.IsSet(optionNameTracingHost) && c.config.IsSet(optionNameTracingPort) {
+				tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
+			}
+
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
@@ -169,7 +175,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
 				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:            c.config.GetString(optionNameTracingEndpoint),
+				TracingEndpoint:            tracingEndpoint,
 				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
 				Logger:                     logger,
 				GlobalPinningEnabled:       c.config.GetBool(optionNameGlobalPinningEnabled),
