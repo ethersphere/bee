@@ -198,6 +198,18 @@ func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
 	s.radiusSetter = r
 }
 
+// Exists reports whether batch referenced by the give id exists.
+func (s *store) Exists(id []byte) (bool, error) {
+	switch err := s.store.Get(batchKey(id), nil); {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, storage.ErrNotFound):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
 func (s *store) Reset() error {
 	prefix := "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {

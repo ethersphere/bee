@@ -101,6 +101,7 @@ type postageStampResponse struct {
 	BucketDepth   uint8          `json:"bucketDepth"`
 	BlockNumber   uint64         `json:"blockNumber"`
 	ImmutableFlag bool           `json:"immutableFlag"`
+	Exists        bool           `json:"exists"`
 }
 
 type postageStampsResponse struct {
@@ -110,6 +111,13 @@ type postageStampsResponse struct {
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request) {
 	resp := postageStampsResponse{}
 	for _, v := range s.post.StampIssuers() {
+		exists, err := s.post.BatchExists(v.ID())
+		if err != nil {
+			s.logger.Error("get stamp issuer: check batch: %v", err)
+			s.logger.Error("get stamp issuer: check batch")
+			jsonhttp.InternalServerError(w, "unable to check batch")
+			return
+		}
 		resp.Stamps = append(resp.Stamps, postageStampResponse{
 			BatchID:       v.ID(),
 			Utilization:   v.Utilization(),
@@ -120,6 +128,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 			BucketDepth:   v.BucketDepth(),
 			BlockNumber:   v.BlockNumber(),
 			ImmutableFlag: v.ImmutableFlag(),
+			Exists:        exists,
 		})
 	}
 	jsonhttp.OK(w, resp)
@@ -127,7 +136,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	if idStr == "" || len(idStr) != 64 {
+	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
@@ -147,6 +156,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		jsonhttp.BadRequest(w, "cannot get issuer")
 		return
 	}
+	exists, err := s.post.BatchExists(id)
+	if err != nil {
+		s.logger.Error("get stamp issuer: check batch: %v", err)
+		s.logger.Error("get stamp issuer: check batch")
+		jsonhttp.InternalServerError(w, "unable to check batch")
+		return
+	}
 	resp := postageStampResponse{
 		BatchID:       id,
 		Utilization:   issuer.Utilization(),
@@ -157,6 +173,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		BucketDepth:   issuer.BucketDepth(),
 		BlockNumber:   issuer.BlockNumber(),
 		ImmutableFlag: issuer.ImmutableFlag(),
+		Exists:        exists,
 	}
 	jsonhttp.OK(w, &resp)
 }
