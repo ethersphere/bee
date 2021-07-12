@@ -57,6 +57,7 @@ type Service struct {
 	natManager        basichost.NATManager
 	natAddrResolver   *staticAddressResolver
 	autonatDialer     host.Host
+	pingDialer        host.Host
 	libp2pPeerstore   peerstore.Peerstore
 	metrics           metrics
 	networkID         uint64
@@ -223,6 +224,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
 
+	// Create a new dialer for libp2p ping protocol. This ensures that the protocol
+	// uses a different set of keys to do ping. It prevents inconsistencies in peerstore as
+	// the addresses used are not dialable and hence should be cleaned up. We should create
+	// this host with the same transports and security options to be able to dial to other
+	// peers.
+	pingDialer, err := libp2p.New(ctx, append(transports, security, libp2p.NoListenAddrs)...)
+	if err != nil {
+		return nil, err
+	}
+
 	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:               ctx,
@@ -230,6 +241,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		natManager:        natManager,
 		natAddrResolver:   natAddrResolver,
 		autonatDialer:     dialer,
+		pingDialer:        pingDialer,
 		handshakeService:  handshakeService,
 		libp2pPeerstore:   libp2pPeerstore,
 		metrics:           newMetrics(),
@@ -828,12 +840,12 @@ func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duratio
 	}
 
 	// Add the address to libp2p peerstore for it to be dialable
-	s.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
+	s.pingDialer.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
 
 	select {
 	case <-ctx.Done():
 		return rtt, ctx.Err()
-	case res := <-libp2pping.Ping(ctx, s.host, info.ID):
+	case res := <-libp2pping.Ping(ctx, s.pingDialer, info.ID):
 		return res.RTT, res.Error
 	}
 }
