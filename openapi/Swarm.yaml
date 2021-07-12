@@ -10,7 +10,7 @@ security:
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: "https://docs.swarm.eth"
+  url: "https://docs.ethswarm.org"
 
 servers:
   - url: "http://{apiRoot}:{port}/v1"
