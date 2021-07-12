@@ -808,6 +808,9 @@ func (s *Service) Close() error {
 	if err := s.autonatDialer.Close(); err != nil {
 		return err
 	}
+	if err := s.pingDialer.Close(); err != nil {
+		return err
+	}
 
 	return s.host.Close()
 }
