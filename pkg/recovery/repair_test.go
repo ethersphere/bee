@@ -233,12 +233,12 @@ func newTestNetStore(t *testing.T, recoveryFunc recovery.Callback) storage.Store
 		return nil
 	}}
 
-	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps0, logger, serverMockAccounting, pricerMock, nil, true)
+	server := retrieval.New(swarm.ZeroAddress, mockStorer, nil, ps0, logger, serverMockAccounting, pricerMock, nil, true, noopStampValidator)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 		streamtest.WithBaseAddr(peerID),
 	)
-	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil, true)
+	retrieve := retrieval.New(swarm.ZeroAddress, mockStorer, recorder, ps, logger, serverMockAccounting, pricerMock, nil, true, noopStampValidator)
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
 		return ch.WithStamp(postage.NewStamp(nil, nil, nil, nil)), nil
 	}
@@ -266,4 +266,8 @@ type mockPssSender struct {
 func (mp *mockPssSender) Send(ctx context.Context, topic pss.Topic, payload []byte, _ postage.Stamper, recipient *ecdsa.PublicKey, targets pss.Targets) error {
 	mp.callbackC <- true
 	return nil
+}
+
+var noopStampValidator = func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
+	return chunk, nil
 }
