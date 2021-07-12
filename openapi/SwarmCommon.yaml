@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 0.6.0
+  version: 1.0.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -609,7 +609,7 @@ components:
       description: "ID of Postage Batch that is used to upload data with"
       required: true
       schema:
-        $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+        $ref: "#/components/schemas/SwarmAddress"
 
   responses:
     "204":
