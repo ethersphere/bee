@@ -555,10 +555,9 @@ components:
         type: boolean
       required: false
       description: >
-      Represents if the uploaded data should be also locally pinned on the node.
+        Represents if the uploaded data should be also locally pinned on the node.
 
-      Warning! Not available for nodes that run in Gateway mode!
-
+        Warning! Not available for nodes that run in Gateway mode!
 
     SwarmEncryptParameter:
       in: header
@@ -567,10 +566,9 @@ components:
         type: boolean
       required: false
       description: >
-      Represents the encrypting state of the file
+        Represents the encrypting state of the file
 
-      Warning! Not available for nodes that run in Gateway mode!
-
+        Warning! Not available for nodes that run in Gateway mode!
 
     ContentTypePreserved:
       in: header
