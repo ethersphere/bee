@@ -252,7 +252,7 @@ paths:
     get:
       summary: "Get file or index document from a collection of files"
       tags:
-        - Collection
+        - BZZ
       parameters:
         - in: path
           name: reference
@@ -287,7 +287,7 @@ paths:
     get:
       summary: "Get referenced file from a collection of files"
       tags:
-        - Collection
+        - BZZ
       parameters:
         - in: path
           name: reference
