@@ -34,7 +34,7 @@ var (
 type contextKey struct{}
 
 // LogField is the key in log message field that holds tracing id value.
-const LogField = "traceid"
+const LogField = "traceID"
 
 const (
 	// TraceContextHeaderName is the http header name used to propagate tracing context.
@@ -91,7 +91,7 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 
 // StartSpanFromContext starts a new tracing span that is either a root one or a
 // child of existing one from the provided Context. If logger is provided, a new
-// log Entry will be returned with "traceid" log field.
+// log Entry will be returned with "traceID" log field.
 func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l logging.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, *logrus.Entry, context.Context) {
 	if t == nil {
 		t = noopTracer
@@ -239,7 +239,7 @@ func FromContext(ctx context.Context) opentracing.SpanContext {
 	return c
 }
 
-// NewLoggerWithTraceID creates a new log Entry with "traceid" field added if it
+// NewLoggerWithTraceID creates a new log Entry with "traceID" field added if it
 // exists in tracing span context stored from go context.
 func NewLoggerWithTraceID(ctx context.Context, l logging.Logger) *logrus.Entry {
 	return loggerWithTraceID(FromContext(ctx), l)
