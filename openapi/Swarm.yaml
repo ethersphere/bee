@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 0.6.0
+  version: 1.0.0
   title: Swarm API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -10,7 +10,7 @@ security:
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
-  url: "https://docs.swarm.eth"
+  url: "https://docs.ethswarm.org"
 
 servers:
   - url: "http://{apiRoot}:{port}/v1"
@@ -62,7 +62,7 @@ paths:
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -157,6 +157,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -171,8 +173,7 @@ paths:
         A multipart request is treated as a collection regardless of whether the swarm-collection header is present. This means in order to serve single files
         uploaded as a multipart request, the swarm-index-document header should be used with the name of the file."
       tags:
-        - File
-        - Collection
+        - BZZ
       parameters:
         - in: query
           name: name
@@ -223,7 +224,7 @@ paths:
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -233,15 +234,14 @@ paths:
     patch:
       summary: "Reupload a root hash to the network"
       tags:
-        - Reupload file
-        - Reupload collection
+        - BZZ
       parameters:
         - in: path
           name: reference
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
-          description: Root hash of content
+          description: "Root hash of content (can be of any type: collection, file, chunk)"
       responses:
         "200":
           description: Ok
@@ -252,7 +252,7 @@ paths:
     get:
       summary: "Get file or index document from a collection of files"
       tags:
-        - Collection
+        - BZZ
       parameters:
         - in: path
           name: reference
@@ -287,7 +287,7 @@ paths:
     get:
       summary: "Get referenced file from a collection of files"
       tags:
-        - Collection
+        - BZZ
       parameters:
         - in: path
           name: reference
@@ -354,7 +354,7 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/TagsList"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -377,7 +377,7 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/NewTagResponse"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -405,7 +405,7 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"    
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -429,7 +429,7 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -462,7 +462,7 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Status"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -481,7 +481,7 @@ paths:
     post:
       summary: Pin the root hash with the given reference
       tags:
-        - Root hash pinning
+        - Pinning
       responses:
         "200":
           description: Pin already exists, so no operation
@@ -498,7 +498,7 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -508,7 +508,7 @@ paths:
     delete:
       summary: Unpin the root hash with the given reference
       tags:
-        - Root hash pinning
+        - Pinning
       responses:
         "200":
           description: Unpinning root hash with reference
@@ -519,7 +519,7 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -527,7 +527,7 @@ paths:
     get:
       summary: Get pinning status of the root hash with the given reference
       tags:
-        - Root hash pinning
+        - Pinning
       responses:
         "200":
           description: Reference of the pinned root hash
@@ -538,7 +538,7 @@ paths:
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -550,7 +550,7 @@ paths:
     get:
       summary: Get the list of pinned root hash references
       tags:
-        - Root hash pinning
+        - Pinning
       responses:
         "200":
           description: List of pinned root hash references
@@ -559,7 +559,7 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReferencesList"
         "403":
-          $ref: "SwarmCommon.yaml#/components/responses/403"
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -597,6 +597,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -617,6 +619,8 @@ paths:
       responses:
         "200":
           description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -660,6 +664,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -704,6 +710,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -802,7 +810,8 @@ paths:
 
   "/stamps/{amount}/{depth}":
     post:
-      summary: Buy a new postage batch. Be aware, this endpoint create an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
+      summary: Buy a new postage batch.
+      description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
       deprecated: true
       tags:
         - Postage Stamps
