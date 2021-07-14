@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"sync"
 	"time"
 
@@ -53,10 +54,14 @@ type Service struct {
 	inLimiter       *ratelimit.Limiter
 	outLimiter      *ratelimit.Limiter
 	clearMtx        sync.Mutex
+	quit            chan struct{}
+	wg              sync.WaitGroup
+	peersChan       chan pb.Peers
+	sem             *semaphore.Weighted
 }
 
 func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
-	return &Service{
+	svc := &Service{
 		streamer:    streamer,
 		logger:      logger,
 		addressBook: addressbook,
@@ -64,7 +69,12 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		metrics:     newMetrics(),
 		inLimiter:   ratelimit.New(limitRate, limitBurst),
 		outLimiter:  ratelimit.New(limitRate, limitBurst),
+		quit:        make(chan struct{}),
+		peersChan:   make(chan pb.Peers),
+		sem:         semaphore.NewWeighted(int64(15)),
 	}
+	svc.startCheckPeersHandler()
+	return svc
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -109,6 +119,23 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 	s.addPeersHandler = h
+}
+
+func (s *Service) Close() error {
+	close(s.quit)
+
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(time.Second * 5):
+		return errors.New("hive: waited 5 seconds to close active goroutines")
+	}
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
@@ -176,7 +203,11 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
-	go s.checkAndAddPeers(peersReq)
+	select {
+	case s.peersChan <- peersReq:
+	case <-ctx.Done():
+		return fmt.Errorf("failed to process peers, reason: %w", ctx.Err())
+	}
 
 	return nil
 }
@@ -192,24 +223,49 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 	return nil
 }
 
-const checkPeersTimeout = time.Minute * 15
+func (s *Service) startCheckPeersHandler() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		<-s.quit
+		cancel()
+	}()
 
-func (s *Service) checkAndAddPeers(peers pb.Peers) {
-	ctx, cancel := context.WithTimeout(context.Background(), checkPeersTimeout)
-	defer cancel()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case newPeers := <-s.peersChan:
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
+					s.checkAndAddPeers(ctx, newPeers)
+				}()
+			}
+		}
+	}()
+}
 
-	sem := make(chan struct{}, 5)
+func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
+
 	var peersToAdd []swarm.Address
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
 	for i := range peers.Peers {
-		sem <- struct{}{}
+		err := s.sem.Acquire(ctx, 1)
+		if err != nil {
+			return
+		}
 
 		wg.Add(1)
 		go func(idx int) {
 			defer func() {
-				<-sem
+				s.sem.Release(1)
 				wg.Done()
 			}()
 

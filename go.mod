@@ -60,6 +60,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.3.4
 	github.com/wealdtech/go-ens/v3 v3.4.4
 	gitlab.com/nolash/go-mockbytes v0.0.7
+	go.opencensus.io v0.22.5 // indirect
 	go.uber.org/atomic v1.8.0
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.18.1 // indirect
