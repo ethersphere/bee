@@ -71,48 +71,6 @@ jobs:
       - name: Test pss
         id: pss
         run: beekeeper check --cluster-name local-dns --checks=ci-pss
-      - name: Test soc
-        id: soc
-        run: beekeeper check --cluster-name local-dns --checks=ci-soc
-      - name: Test pushsync (chunks)
-        id: pushsync-chunks-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test retrieval
-        id: retrieval-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
-      - name: Test manifest
-        id: manifest-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-manifest
-      - name: Destroy the cluster
-        run: |
-          beekeeper delete bee-cluster --cluster-name local-dns
-          make beelocal ACTION=uninstall
-      - name: Prepare testing cluster (Node connection and clef enabled)
-        run: |
-            timeout 10m make beelocal OPTS='ci skip-vet'
-      - name: Set kube config
-        run: |
-          mkdir -p ~/.kube
-          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - name: Set testing cluster (Node connection and clef enabled)
-        run: |
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
-      - name: Test pingpong
-        id: pingpong-2
-        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
-      - name: Test fullconnectivity
-        id: fullconnectivity-2
-        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
-      - name: Test settlements
-        id: settlements-2
-        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
-      - name: Destroy the cluster
-        run: |
-          beekeeper delete bee-cluster --cluster-name local-clef
-          make beelocal ACTION=uninstall
       - name: Retag Docker image and push for cache
         if: success()
         run: |
@@ -146,14 +104,7 @@ jobs:
           if ${{ steps.pingpong-1.outcome=='failure' }}; then FAILED=pingpong-1; fi
           if ${{ steps.fullconnectivity-1.outcome=='failure' }}; then FAILED=fullconnectivity-1; fi
           if ${{ steps.settlements-1.outcome=='failure' }}; then FAILED=settlements-1; fi
-          if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
-          if ${{ steps.retrieval-1.outcome=='failure' }}; then FAILED=retrieval-1; fi
-          if ${{ steps.manifest-1.outcome=='failure' }}; then FAILED=manifest-1; fi
-          if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
-          if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
-          if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
-          if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** ${{ github.head_ref }}\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
