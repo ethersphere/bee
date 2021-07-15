@@ -198,6 +198,12 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
+	router.Handle("/stamps/{id}/buckets", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
+		})),
+	)
+
 	router.Handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),

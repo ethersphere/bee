@@ -336,6 +336,29 @@ components:
         exists:
           type: boolean
 
+    StampBucketData:
+      type: object
+      properties:
+        bucketID:
+          type: integer
+        collisions:
+          type: integer
+
+    PostageStampBuckets:
+      type: object
+      properties:
+        depth:
+          type: integer
+        bucketDepth:
+          type: integer
+        bucketUpperBound:
+          type: integer
+        buckets:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/StampBucketData"
+
     Settlement:
       type: object
       properties:
