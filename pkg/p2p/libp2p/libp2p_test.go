@@ -32,6 +32,7 @@ type libp2pServiceOpts struct {
 	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
 	lightNodes  *lightnode.Container
+	addr        string
 }
 
 // newService constructs a new libp2p service.
@@ -52,6 +53,9 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 
 	addr := ":0"
+	if o.addr != "" {
+		addr = o.addr
+	}
 
 	if o.Logger == nil {
 		o.Logger = logging.New(ioutil.Discard, 0)

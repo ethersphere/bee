@@ -384,7 +384,7 @@ func TestPing(t *testing.T) {
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
 
-	s2, _ := newService(t, 1, libp2pServiceOpts{})
+	s2, _ := newService(t, 1, libp2pServiceOpts{addr: ":12345"})
 
 	addr := serviceUnderlayAddress(t, s1)
 
