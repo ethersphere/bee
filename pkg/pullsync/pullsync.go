@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -67,7 +68,7 @@ type Syncer struct {
 	quit       chan struct{}
 	wg         sync.WaitGroup
 	unwrap     func(swarm.Chunk)
-	validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error)
+	validStamp postage.ValidStampFn
 
 	ruidMtx sync.Mutex
 	ruidCtx map[uint32]func()
@@ -76,7 +77,7 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger) *Syncer {
 	return &Syncer{
 		streamer:   streamer,
 		storage:    storage,

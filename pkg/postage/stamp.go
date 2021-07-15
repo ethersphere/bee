@@ -113,8 +113,10 @@ func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+type ValidStampFn func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error)
+
 // ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
-func ValidStamp(batchStore Storer) func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
+func ValidStamp(batchStore Storer) ValidStampFn {
 	return func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
 		stamp := new(Stamp)
 		err := stamp.UnmarshalBinary(stampBytes)

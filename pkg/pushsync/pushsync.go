@@ -72,7 +72,7 @@ type PushSync struct {
 	pricer         pricer.Interface
 	metrics        metrics
 	tracer         *tracing.Tracer
-	validStamp     func(swarm.Chunk, []byte) (swarm.Chunk, error)
+	validStamp     postage.ValidStampFn
 	signer         crypto.Signer
 	isFullNode     bool
 	warmupPeriod   time.Time
@@ -83,7 +83,7 @@ var defaultTTL = 20 * time.Second                     // request time to live
 var timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 var nPeersToPushsync = 3                              // number of peers to replicate to as receipt is sent upstream
 
-func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		blockHash:      blockHash,

@@ -70,6 +70,7 @@ const (
 	optionNameBlockTime                  = "block-time"
 	optionWarmUpTime                     = "warmup-time"
 	optionNameMainNet                    = "mainnet"
+	optionNameRetrievalCaching           = "cache-retrieval"
 )
 
 func init() {
@@ -247,6 +248,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*20, "time to warmup the node before pull/push protocols can be kicked off.")
 	cmd.Flags().Bool(optionNameMainNet, false, "triggers connect to main net bootnodes.")
+	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
