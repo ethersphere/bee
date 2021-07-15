@@ -69,8 +69,6 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_POSTAGE_STAMP_ADDRESS=
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # BEE_RESOLVER_OPTIONS=[]
-## whether we want the node to start with no listen addresses for p2p
-# BEE_STANDALONE=false
 ## enable swap (default true)
 # BEE_SWAP_ENABLE=true
 ## swap ethereum blockchain endpoint (default ws://localhost:8546)

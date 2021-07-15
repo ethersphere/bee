@@ -173,7 +173,6 @@ inability to use, or your interaction with other nodes or the software.`)
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
 				Bootnodes:                  networkConfig.bootNodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
-				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:            tracingEndpoint,
 				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
