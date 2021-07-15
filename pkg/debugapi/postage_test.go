@@ -22,6 +22,7 @@ import (
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sctx"
 )
 
@@ -194,15 +195,19 @@ func TestPostageCreateStamp(t *testing.T) {
 }
 
 func TestPostageGetStamps(t *testing.T) {
-	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	si := postage.NewStampIssuer("", "", b.ID, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	ts := newTestServer(t, testServerOptions{Post: mp})
+	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
+	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
+	ts := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs})
 
 	jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampsResponse{
 			Stamps: []debugapi.PostageStampResponse{
 				{
-					BatchID:       batchOk,
+					BatchID:       b.ID,
 					Utilization:   si.Utilization(),
 					Usable:        true,
 					Label:         si.Label(),
@@ -212,6 +217,7 @@ func TestPostageGetStamps(t *testing.T) {
 					BlockNumber:   si.BlockNumber(),
 					ImmutableFlag: si.ImmutableFlag(),
 					Exists:        true,
+					Expire:        14,
 				},
 			},
 		}),
@@ -219,14 +225,18 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetStamp(t *testing.T) {
-	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	si := postage.NewStampIssuer("", "", b.ID, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	ts := newTestServer(t, testServerOptions{Post: mp})
+	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
+	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
+	ts := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampResponse{
-				BatchID:       batchOk,
+				BatchID:       b.ID,
 				Utilization:   si.Utilization(),
 				Usable:        true,
 				Label:         si.Label(),
@@ -236,6 +246,7 @@ func TestPostageGetStamp(t *testing.T) {
 				BlockNumber:   si.BlockNumber(),
 				ImmutableFlag: si.ImmutableFlag(),
 				Exists:        true,
+				Expire:        14,
 			}),
 		)
 	})
