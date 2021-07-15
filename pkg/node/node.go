@@ -850,7 +850,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		b.recoveryHandleCleanup()
 	}
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(6)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
@@ -872,6 +872,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		tryClose(b.pullSyncCloser, "pull sync")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.hiveCloser, "pull sync")
 	}()
 
 	wg.Wait()
