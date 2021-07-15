@@ -333,6 +333,8 @@ components:
           type: integer
         immutableFlag:
           type: boolean
+        exists:
+          type: boolean
 
     Settlement:
       type: object
