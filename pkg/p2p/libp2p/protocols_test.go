@@ -7,7 +7,6 @@ package libp2p_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
