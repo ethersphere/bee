@@ -379,7 +379,7 @@ func TestConnectDisconnectEvents(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
