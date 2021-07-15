@@ -205,8 +205,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	select {
 	case s.peersChan <- peersReq:
-	case <-ctx.Done():
-		return fmt.Errorf("failed to process peers, reason: %w", ctx.Err())
+	case <-s.quit:
+		return errors.New("failed to process peers, shutting down hive")
 	}
 
 	return nil
