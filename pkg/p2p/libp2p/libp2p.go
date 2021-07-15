@@ -400,7 +400,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			}
 		} else {
 			if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
-				// full node announces implicitly
 				s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
 				// note: this cannot be unit tested since the node
 				// waiting on handshakeStream.FullClose() on the other side
@@ -496,6 +495,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay, FullNode: full}, stream); err != nil {
 				var de *p2p.DisconnectError
 				if errors.As(err, &de) {
+					logger.Tracef("libp2p handler(%s): disconnecting %s", p.Name, overlay.String())
 					_ = stream.Reset()
 					_ = s.Disconnect(overlay)
 					logger.Tracef("handler(%s): disconnecting %s due to disconnect error", p.Name, overlay.String())
@@ -551,6 +551,7 @@ func (s *Service) NATManager() basichost.NATManager {
 }
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error {
+	s.logger.Debugf("libp2p blocklist: peer %s for %v", overlay.String(), duration)
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay)
