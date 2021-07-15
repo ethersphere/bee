@@ -468,10 +468,10 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 32; i++ {
 		go connAttempt(peerConnChan)
 	}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 8; i++ {
 		go connAttempt(peerConnChan2)
 	}
 }

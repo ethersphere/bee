@@ -71,7 +71,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		outLimiter:  ratelimit.New(limitRate, limitBurst),
 		quit:        make(chan struct{}),
 		peersChan:   make(chan pb.Peers),
-		sem:         semaphore.NewWeighted(int64(15)),
+		sem:         semaphore.NewWeighted(int64(31)),
 	}
 	svc.startCheckPeersHandler()
 	return svc
