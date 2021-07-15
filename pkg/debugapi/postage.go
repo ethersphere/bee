@@ -102,6 +102,7 @@ type postageStampResponse struct {
 	BlockNumber   uint64         `json:"blockNumber"`
 	ImmutableFlag bool           `json:"immutableFlag"`
 	Exists        bool           `json:"exists"`
+	BatchTTL      int64          `json:"batchTTL"`
 }
 
 type postageStampsResponse struct {
@@ -123,11 +124,18 @@ type bucketData struct {
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request) {
 	resp := postageStampsResponse{}
 	for _, v := range s.post.StampIssuers() {
-		exists, err := s.post.BatchExists(v.ID())
+		exists, err := s.batchStore.Exists(v.ID())
 		if err != nil {
 			s.logger.Errorf("get stamp issuer: check batch: %v", err)
 			s.logger.Error("get stamp issuer: check batch")
 			jsonhttp.InternalServerError(w, "unable to check batch")
+			return
+		}
+		batchTTL, err := s.estimateBatchTTL(v.ID())
+		if err != nil {
+			s.logger.Errorf("get stamp issuer: estimate batch expiration: %v", err)
+			s.logger.Error("get stamp issuer: estimate batch expiration")
+			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
 		resp.Stamps = append(resp.Stamps, postageStampResponse{
@@ -141,6 +149,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 			BlockNumber:   v.BlockNumber(),
 			ImmutableFlag: v.ImmutableFlag(),
 			Exists:        exists,
+			BatchTTL:      batchTTL,
 		})
 	}
 	jsonhttp.OK(w, resp)
@@ -206,13 +215,21 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		jsonhttp.BadRequest(w, "cannot get issuer")
 		return
 	}
-	exists, err := s.post.BatchExists(id)
+	exists, err := s.batchStore.Exists(id)
 	if err != nil {
 		s.logger.Errorf("get stamp issuer: check batch: %v", err)
 		s.logger.Error("get stamp issuer: check batch")
 		jsonhttp.InternalServerError(w, "unable to check batch")
 		return
 	}
+	batchTTL, err := s.estimateBatchTTL(id)
+	if err != nil {
+		s.logger.Errorf("get stamp issuer: estimate batch expiration: %v", err)
+		s.logger.Error("get stamp issuer: estimate batch expiration")
+		jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
+		return
+	}
+
 	resp := postageStampResponse{
 		BatchID:       id,
 		Utilization:   issuer.Utilization(),
@@ -224,6 +241,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		BlockNumber:   issuer.BlockNumber(),
 		ImmutableFlag: issuer.ImmutableFlag(),
 		Exists:        exists,
+		BatchTTL:      batchTTL,
 	}
 	jsonhttp.OK(w, &resp)
 }
@@ -262,4 +280,30 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
 		TotalAmount:  bigint.Wrap(state.TotalAmount),
 		CurrentPrice: bigint.Wrap(state.CurrentPrice),
 	})
+}
+
+// estimateBatchTTL estimates the time remaining until the batch expires.
+// The -1 signals that the batch never expires.
+func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
+	state := s.batchStore.GetChainState()
+	batch, err := s.batchStore.Get(id)
+	if err != nil {
+		return 0, err
+	}
+
+	var (
+		normalizedBalance = batch.Value
+		cumulativePayout  = state.TotalAmount
+		pricePerBlock     = state.CurrentPrice
+	)
+
+	if len(pricePerBlock.Bits()) == 0 {
+		return -1, nil
+	}
+
+	ttl := new(big.Int).Sub(normalizedBalance, cumulativePayout)
+	ttl = ttl.Mul(ttl, s.blockTime)
+	ttl = ttl.Div(ttl, pricePerBlock)
+
+	return ttl.Int64(), nil
 }
