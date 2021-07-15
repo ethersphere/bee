@@ -30,11 +30,12 @@ type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
 type Storer interface {
 	Get(id []byte) (*Batch, error)
 	Put(*Batch, *big.Int, uint8) error
-	PutChainState(*ChainState) error
 	GetChainState() *ChainState
+	PutChainState(*ChainState) error
 	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
 	Unreserve(UnreserveIteratorFn) error
+	Exists(id []byte) (bool, error)
 
 	Reset() error
 }

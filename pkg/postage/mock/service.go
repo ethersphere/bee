@@ -69,6 +69,11 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
 
+// BatchExists returns always true.
+func (m *mockPostage) BatchExists(_ []byte) (bool, error) {
+	return true, nil
+}
+
 func (m *mockPostage) Handle(_ *postage.Batch) {}
 
 func (m *mockPostage) Close() error {

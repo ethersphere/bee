@@ -211,6 +211,7 @@ func TestPostageGetStamps(t *testing.T) {
 					BucketDepth:   si.BucketDepth(),
 					BlockNumber:   si.BlockNumber(),
 					ImmutableFlag: si.ImmutableFlag(),
+					Exists:        true,
 				},
 			},
 		}),
@@ -234,6 +235,7 @@ func TestPostageGetStamp(t *testing.T) {
 				BucketDepth:   si.BucketDepth(),
 				BlockNumber:   si.BlockNumber(),
 				ImmutableFlag: si.ImmutableFlag(),
+				Exists:        true,
 			}),
 		)
 	})
