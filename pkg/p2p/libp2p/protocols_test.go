@@ -7,6 +7,7 @@ package libp2p_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -384,9 +385,13 @@ func TestPing(t *testing.T) {
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
 
-	s2, _ := newService(t, 1, libp2pServiceOpts{addr: ":12345"})
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
+
+	time.Sleep(time.Second)
 
 	addr := serviceUnderlayAddress(t, s1)
+
+	fmt.Printf("%v\n", addr)
 
 	if _, err := s2.Ping(ctx, addr); err != nil {
 		t.Fatal(err)
