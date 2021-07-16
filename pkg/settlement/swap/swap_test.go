@@ -761,7 +761,7 @@ func TestStateStoreKeys(t *testing.T) {
 		t.Fatalf("wrong peer key. wanted %s, got %s", expected, swap.PeerKey(swarmAddress))
 	}
 
-	expected = fmt.Sprintf("swap_peer_chequebook_%s", [20]byte(address))
+	expected = fmt.Sprintf("swap_peer_chequebook_%s", address[:])
 	if swap.ChequebookPeerKey(address) != expected {
 		t.Fatalf("wrong peer key. wanted %s, got %s", expected, swap.ChequebookPeerKey(address))
 	}
@@ -771,7 +771,7 @@ func TestStateStoreKeys(t *testing.T) {
 		t.Fatalf("wrong peer beneficiary key. wanted %s, got %s", expected, swap.PeerBeneficiaryKey(swarmAddress))
 	}
 
-	expected = fmt.Sprintf("swap_beneficiary_peer_%s", [20]byte(address))
+	expected = fmt.Sprintf("swap_beneficiary_peer_%s", address[:])
 	if swap.BeneficiaryPeerKey(address) != expected {
 		t.Fatalf("wrong beneficiary peer key. wanted %s, got %s", expected, swap.BeneficiaryPeerKey(address))
 	}
