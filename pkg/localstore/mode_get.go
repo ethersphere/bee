@@ -68,16 +68,8 @@ func (db *DB) get(mode storage.ModeGet, addr swarm.Address) (out shed.Item, err 
 	case storage.ModeGetRequest:
 		db.updateGCItems(out)
 
-	case storage.ModeGetPin:
-		pinnedItem, err := db.pinIndex.Get(item)
-		if err != nil {
-			return out, err
-		}
-		return pinnedItem, nil
-
 	// no updates to indexes
-	case storage.ModeGetSync:
-	case storage.ModeGetLookup:
+	case storage.ModeGetSync, storage.ModeGetLookup:
 	default:
 		return out, ErrInvalidMode
 	}
