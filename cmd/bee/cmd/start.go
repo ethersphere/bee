@@ -445,7 +445,7 @@ type networkConfig struct {
 
 func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
 	var config = networkConfig{
-		blockTime: uint64(time.Duration(defaultBlockTime) * time.Second),
+		blockTime: defaultBlockTime,
 	}
 	switch networkID {
 	case 1:
