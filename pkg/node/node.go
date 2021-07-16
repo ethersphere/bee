@@ -107,6 +107,7 @@ type Bee struct {
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
 	priceOracleCloser        io.Closer
+	hiveCloser               io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 }
@@ -477,6 +478,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
+	b.hiveCloser = hive
 
 	var bootnodes []ma.Multiaddr
 
@@ -737,6 +739,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		debugAPIService.MustRegisterMetrics(pullStorage.Metrics()...)
 		debugAPIService.MustRegisterMetrics(retrieve.Metrics()...)
 		debugAPIService.MustRegisterMetrics(lightNodes.Metrics()...)
+		debugAPIService.MustRegisterMetrics(hive.Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugAPIService.MustRegisterMetrics(bs.Metrics()...)
@@ -835,7 +838,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		b.recoveryHandleCleanup()
 	}
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(6)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
@@ -857,6 +860,10 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		tryClose(b.pullSyncCloser, "pull sync")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.hiveCloser, "pull sync")
 	}()
 
 	wg.Wait()
