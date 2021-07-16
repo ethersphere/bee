@@ -38,6 +38,9 @@ jobs:
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: fail
+        run: |
+          exit 1
       - name: Apply patches
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
