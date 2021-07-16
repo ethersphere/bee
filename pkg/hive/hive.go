@@ -256,20 +256,18 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
-	for i := range peers.Peers {
+	for _, p := range peers.Peers {
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
 		}
 
 		wg.Add(1)
-		go func(idx int) {
+		go func(newPeer *pb.BzzAddress) {
 			defer func() {
 				s.sem.Release(1)
 				wg.Done()
 			}()
-
-			newPeer := peers.Peers[idx]
 
 			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
 			if err != nil {
@@ -301,7 +299,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			mtx.Lock()
 			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
 			mtx.Unlock()
-		}(i)
+		}(p)
 	}
 
 	wg.Wait()

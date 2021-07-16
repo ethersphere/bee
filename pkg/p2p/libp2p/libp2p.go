@@ -834,9 +834,6 @@ func (s *Service) Halt() {
 }
 
 func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duration, err error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
 		return rtt, fmt.Errorf("unable to parse underlay address: %w", err)
