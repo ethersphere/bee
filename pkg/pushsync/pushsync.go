@@ -377,7 +377,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				logger.Debugf("could not push to peer %s: %v", peer, err)
 
 				// if the node has warmed up AND no other closer peer has been tried
-				if ps.warmedUp() && !ps.skipList.HasChunk(ch.Address()) {
+				if ps.warmedUp() && !ps.skipList.HasChunk(ch.Address()) && attempted {
 					ps.skipList.Add(peer, ch.Address(), skipPeerExpiration)
 				}
 
