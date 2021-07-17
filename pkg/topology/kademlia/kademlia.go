@@ -66,7 +66,6 @@ var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 type Options struct {
 	SaturationFunc  binSaturationFunc
 	Bootnodes       []ma.Multiaddr
-	StandaloneMode  bool
 	BootnodeMode    bool
 	BitSuffixLength int
 }
@@ -90,7 +89,6 @@ type Kad struct {
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
 	logger            logging.Logger // logger
-	standalone        bool           // indicates whether the node is working in standalone mode
 	bootnode          bool           // indicates whether the node is working in bootnode mode
 	collector         *im.Collector
 	quit              chan struct{} // quit channel
@@ -136,7 +134,6 @@ func New(
 		manageC:           make(chan struct{}, 1),
 		waitNext:          waitnext.New(),
 		logger:            logger,
-		standalone:        o.StandaloneMode,
 		bootnode:          o.BootnodeMode,
 		collector:         im.NewCollector(metricsDB),
 		quit:              make(chan struct{}),
@@ -155,10 +152,10 @@ func New(
 
 func (k *Kad) generateCommonBinPrefixes() {
 	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
-	bitSufixes := make([]uint8, bitCombinationsCount)
+	bitSuffixes := make([]uint8, bitCombinationsCount)
 
 	for i := 0; i < bitCombinationsCount; i++ {
-		bitSufixes[i] = uint8(i)
+		bitSuffixes[i] = uint8(i)
 	}
 
 	addr := swarm.MustParseHexAddress(k.base.String())
@@ -197,7 +194,7 @@ func (k *Kad) generateCommonBinPrefixes() {
 			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
 				index, pos := l/8, l%8
 
-				if hasBit(bitSufixes[j], uint8(bitSuffixPos)) {
+				if hasBit(bitSuffixes[j], uint8(bitSuffixPos)) {
 					pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 				} else {
 					pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
@@ -468,7 +465,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 64; i++ {
+	for i := 0; i < 32; i++ {
 		go connAttempt(peerConnChan)
 	}
 	for i := 0; i < 8; i++ {
@@ -527,10 +524,6 @@ func (k *Kad) manage() {
 			case <-k.quit:
 				return
 			default:
-			}
-
-			if k.standalone {
-				continue
 			}
 
 			oldDepth := k.NeighborhoodDepth()

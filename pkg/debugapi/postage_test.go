@@ -211,6 +211,7 @@ func TestPostageGetStamps(t *testing.T) {
 					BucketDepth:   si.BucketDepth(),
 					BlockNumber:   si.BlockNumber(),
 					ImmutableFlag: si.ImmutableFlag(),
+					Exists:        true,
 				},
 			},
 		}),
@@ -234,10 +235,11 @@ func TestPostageGetStamp(t *testing.T) {
 				BucketDepth:   si.BucketDepth(),
 				BlockNumber:   si.BlockNumber(),
 				ImmutableFlag: si.ImmutableFlag(),
+				Exists:        true,
 			}),
 		)
 	})
-	t.Run("ok", func(t *testing.T) {
+	t.Run("bad request", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2}
 
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
@@ -247,10 +249,51 @@ func TestPostageGetStamp(t *testing.T) {
 			}),
 		)
 	})
-	t.Run("ok", func(t *testing.T) {
+	t.Run("bad request", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2, 4}
 
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid batchID",
+			}),
+		)
+	})
+}
+
+func TestPostageGetBuckets(t *testing.T) {
+	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
+	ts := newTestServer(t, testServerOptions{Post: mp})
+	buckets := make([]debugapi.BucketData, 1024)
+	for i := range buckets {
+		buckets[i] = debugapi.BucketData{BucketID: uint32(i)}
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+batchOkStr+"/buckets", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampBucketsResponse{
+				Depth:            si.Depth(),
+				BucketDepth:      si.BucketDepth(),
+				BucketUpperBound: si.BucketUpperBound(),
+				Buckets:          buckets,
+			}),
+		)
+	})
+	t.Run("bad batch", func(t *testing.T) {
+		badBatch := []byte{0, 1, 2}
+
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid batchID",
+			}),
+		)
+	})
+	t.Run("bad batch", func(t *testing.T) {
+		badBatch := []byte{0, 1, 2, 4}
+
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",

@@ -729,7 +729,7 @@ type AdvertisableAddresserMock struct {
 	err                 error
 }
 
-func (a *AdvertisableAddresserMock) Resolve(observedAdddress ma.Multiaddr) (ma.Multiaddr, error) {
+func (a *AdvertisableAddresserMock) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
 	if a.err != nil {
 		return nil, a.err
 	}
@@ -738,7 +738,7 @@ func (a *AdvertisableAddresserMock) Resolve(observedAdddress ma.Multiaddr) (ma.M
 		return a.advertisableAddress, nil
 	}
 
-	return observedAdddress, nil
+	return observedAddress, nil
 }
 
 type MockSenderMatcher struct {
