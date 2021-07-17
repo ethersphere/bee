@@ -1,0 +1,49 @@
+name: OpenAPI
+
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    name: Preview
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: '0'
+    - name: Check whether docs have changed
+      id: checkdocs
+      run: |
+          changed=false
+          git diff --name-only HEAD^ HEAD > files.txt
+          while IFS= read -r file
+          do
+            if [[ $file == openapi/* ]]; then
+              echo "detected openapi spec change"
+              changed=true
+            fi
+          done < files.txt
+
+          if [ $changed == true ]
+          then
+            echo "::set-output name=build_docs::true"
+          else
+            echo "::set-output name=build_docs::false"
+          fi
+    - name: Build the OpenAPI specs
+      if: steps.checkdocs.outputs.build_docs == 'true'
+      uses: acud/openapi-dockerized@v1
+      with:
+        build-roots: 'openapi/Swarm.yaml openapi/SwarmDebug.yaml'
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+        AWS_EC2_METADATA_DISABLED: true #needed when pushing to DigitalOcean Spaces
+        AWS_ENDPOINT: fra1.digitaloceanspaces.com
+        BUCKET_NAME: openapi-specs

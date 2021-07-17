@@ -106,7 +106,7 @@ damage to hardware or loss of funds associated with the Ethereum account connect
 No developers or entity involved will be liable for any claims and damages associated with your use,
 inability to use, or your interaction with other nodes or the software.`)
 
-			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow http://ethswarm.org/\n\n", bee.Version, endSupportDate())
+			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
@@ -128,18 +128,34 @@ inability to use, or your interaction with other nodes or the software.`)
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
-
 			networkID := c.config.GetUint64(optionNameNetworkID)
-			networkID, err = parseNetworks(mainnet, networkID)
-			if err != nil {
-				return err
+
+			if mainnet {
+				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
+				if userHasSetNetworkID && networkID != 1 {
+					return errors.New("provided network ID does not match mainnet")
+				}
+				networkID = 1
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
-			bootnodes = parseBootnodes(logger, mainnet, networkID, bootnodes)
-
 			blockTime := c.config.GetUint64(optionNameBlockTime)
-			blockTime = parseBlockTime(mainnet, blockTime)
+
+			networkConfig := getConfigByNetworkID(networkID, blockTime)
+
+			if c.config.IsSet(optionNameBootnodes) {
+				networkConfig.bootNodes = bootnodes
+			}
+
+			if c.config.IsSet(optionNameBlockTime) && blockTime != 0 {
+				networkConfig.blockTime = blockTime
+			}
+
+			tracingEndpoint := c.config.GetString(optionNameTracingEndpoint)
+
+			if c.config.IsSet(optionNameTracingHost) && c.config.IsSet(optionNameTracingPort) {
+				tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
+			}
 
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -155,11 +171,10 @@ inability to use, or your interaction with other nodes or the software.`)
 				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
 				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                  bootnodes,
+				Bootnodes:                  networkConfig.bootNodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
-				Standalone:                 c.config.GetBool(optionNameStandalone),
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:            c.config.GetString(optionNameTracingEndpoint),
+				TracingEndpoint:            tracingEndpoint,
 				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
 				Logger:                     logger,
 				GlobalPinningEnabled:       c.config.GetBool(optionNameGlobalPinningEnabled),
@@ -179,9 +194,11 @@ inability to use, or your interaction with other nodes or the software.`)
 				BlockHash:                  c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
-				BlockTime:                  blockTime,
+				BlockTime:                  networkConfig.blockTime,
 				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
+				ChainID:                    networkConfig.chainID,
+				RetrievalCaching:           c.config.GetBool(optionNameRetrievalCaching),
 			})
 			if err != nil {
 				return err
@@ -420,36 +437,28 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	}, nil
 }
 
-func parseNetworks(main bool, networkID uint64) (uint64, error) {
-	if main && networkID != 1 {
-		return 0, errors.New("provided network ID does not match mainnet")
-	}
-
-	return networkID, nil
+type networkConfig struct {
+	bootNodes []string
+	blockTime uint64
+	chainID   int64
 }
 
-func parseBootnodes(log logging.Logger, main bool, networkID uint64, bootnodes []string) []string {
-	if len(bootnodes) > 0 {
-		return bootnodes // use provided values
+func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
+	var config = networkConfig{
+		blockTime: uint64(time.Duration(defaultBlockTime) * time.Second),
+	}
+	switch networkID {
+	case 1:
+		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
+		config.blockTime = uint64(5 * time.Second)
+		config.chainID = 100
+	case 5: //staging
+		config.chainID = 5
+	case 10: //test
+		config.chainID = 5
+	default: //will use the value provided by the chain
+		config.chainID = -1
 	}
 
-	if main {
-		return []string{"/dnsaddr/mainnet.ethswarm.org"}
-	}
-
-	if networkID == 10 {
-		return []string{"/dnsaddr/testnet.ethswarm.org"}
-	}
-
-	log.Warning("no bootnodes defined for network ID", networkID)
-
-	return bootnodes
-}
-
-func parseBlockTime(main bool, blockTime uint64) uint64 {
-	if main {
-		return uint64(5 * time.Second)
-	}
-
-	return blockTime
+	return &config
 }
