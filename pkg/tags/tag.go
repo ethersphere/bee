@@ -296,7 +296,7 @@ func encodeInt64Append(buffer *[]byte, val int64) {
 }
 
 func decodeInt64Splice(buffer *[]byte) int64 {
-	val, n := binary.Varint((*buffer))
+	val, n := binary.Varint(*buffer)
 	*buffer = (*buffer)[n:]
 	return val
 }

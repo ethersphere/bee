@@ -55,7 +55,7 @@ func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (boo
 // WaitSynced will wait until we are synced with the given blockchain backend,
 // with the given maxDelay duration as the maximum time we can be behind the
 // last block.
-func WaitSynced(logger logging.Logger, ctx context.Context, backend Backend, maxDelay time.Duration) error {
+func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, maxDelay time.Duration) error {
 	for {
 		synced, blockTime, err := IsSynced(ctx, backend, maxDelay)
 		if err != nil {
