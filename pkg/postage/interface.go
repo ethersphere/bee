@@ -12,10 +12,10 @@ import (
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
-	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool) error
-	TopUp(id []byte, normalisedBalance *big.Int) error
-	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int) error
-	UpdatePrice(price *big.Int) error
+	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
+	TopUp(id []byte, normalisedBalance *big.Int, txHash []byte) error
+	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
+	UpdatePrice(price *big.Int, txHash []byte) error
 	UpdateBlockNumber(blockNumber uint64) error
 	Start(startBlock uint64) (<-chan struct{}, error)
 
@@ -30,11 +30,12 @@ type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
 type Storer interface {
 	Get(id []byte) (*Batch, error)
 	Put(*Batch, *big.Int, uint8) error
-	PutChainState(*ChainState) error
 	GetChainState() *ChainState
+	PutChainState(*ChainState) error
 	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
 	Unreserve(UnreserveIteratorFn) error
+	Exists(id []byte) (bool, error)
 
 	Reset() error
 }

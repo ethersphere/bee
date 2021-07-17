@@ -104,7 +104,7 @@ func TestConnect(t *testing.T) {
 
 func TestDisconnect(t *testing.T) {
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	unknownAdddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e")
+	unknownAddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e")
 	errorAddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
 	testErr := errors.New("test error")
 
@@ -132,7 +132,7 @@ func TestDisconnect(t *testing.T) {
 	})
 
 	t.Run("unknown", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/peers/"+unknownAdddress.String(), http.StatusBadRequest,
+		jsonhttptest.Request(t, testServer.Client, http.MethodDelete, "/peers/"+unknownAddress.String(), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "peer not found",

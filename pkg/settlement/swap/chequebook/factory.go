@@ -141,7 +141,7 @@ LOOP:
 	return nil
 }
 
-func (c *factory) verifyChequebookAgainstFactory(ctx context.Context, factory common.Address, chequebook common.Address) (bool, error) {
+func (c *factory) verifyChequebookAgainstFactory(ctx context.Context, factory, chequebook common.Address) (bool, error) {
 	callData, err := factoryABI.Pack("deployedContracts", chequebook)
 	if err != nil {
 		return false, err
@@ -226,28 +226,4 @@ func (c *factory) ERC20Address(ctx context.Context) (common.Address, error) {
 		return common.Address{}, errDecodeABI
 	}
 	return *erc20Address, nil
-}
-
-var (
-	GoerliChainID              = int64(5)
-	GoerliFactoryAddress       = common.HexToAddress("0x73c412512E1cA0be3b89b77aB3466dA6A1B9d273")
-	GoerliLegacyFactoryAddress = common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474")
-	XDaiChainID                = int64(100)
-	XDaiFactoryAddress         = common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420")
-)
-
-// DiscoverFactoryAddress returns the canonical factory for this chainID
-func DiscoverFactoryAddress(chainID int64) (currentFactory common.Address, legacyFactories []common.Address, found bool) {
-	switch chainID {
-	case GoerliChainID:
-		// goerli
-		return GoerliFactoryAddress, []common.Address{
-			GoerliLegacyFactoryAddress,
-		}, true
-	case XDaiChainID:
-		// xdai
-		return XDaiFactoryAddress, []common.Address{}, true
-	default:
-		return common.Address{}, nil, false
-	}
 }

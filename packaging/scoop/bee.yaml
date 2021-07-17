@@ -52,8 +52,6 @@ password-file: ./password
 # postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # resolver-options: []
-## whether we want the node to start with no listen addresses for p2p
-# standalone: false
 ## enable swap (default true)
 # swap-enable: true
 ## swap ethereum blockchain endpoint (default "ws://localhost:8546")
