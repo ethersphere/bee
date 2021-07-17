@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ var (
 )
 
 type Service struct {
-	streamer        p2p.Streamer
+	streamer        p2p.StreamerPinger
 	addressBook     addressbook.GetPutter
 	addPeersHandler func(...swarm.Address)
 	networkID       uint64
@@ -53,10 +54,14 @@ type Service struct {
 	inLimiter       *ratelimit.Limiter
 	outLimiter      *ratelimit.Limiter
 	clearMtx        sync.Mutex
+	quit            chan struct{}
+	wg              sync.WaitGroup
+	peersChan       chan pb.Peers
+	sem             *semaphore.Weighted
 }
 
-func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
-	return &Service{
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
+	svc := &Service{
 		streamer:    streamer,
 		logger:      logger,
 		addressBook: addressbook,
@@ -64,7 +69,12 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		metrics:     newMetrics(),
 		inLimiter:   ratelimit.New(limitRate, limitBurst),
 		outLimiter:  ratelimit.New(limitRate, limitBurst),
+		quit:        make(chan struct{}),
+		peersChan:   make(chan pb.Peers),
+		sem:         semaphore.NewWeighted(int64(31)),
 	}
+	svc.startCheckPeersHandler()
+	return svc
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -109,6 +119,23 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 	s.addPeersHandler = h
+}
+
+func (s *Service) Close() error {
+	close(s.quit)
+
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(time.Second * 5):
+		return errors.New("hive: waited 5 seconds to close active goroutines")
+	}
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
@@ -176,33 +203,10 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
-	var peers []swarm.Address
-	for _, newPeer := range peersReq.Peers {
-
-		multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
-		if err != nil {
-			s.logger.Errorf("hive: multi address underlay err: %v", err)
-			continue
-		}
-
-		bzzAddress := bzz.Address{
-			Overlay:     swarm.NewAddress(newPeer.Overlay),
-			Underlay:    multiUnderlay,
-			Signature:   newPeer.Signature,
-			Transaction: newPeer.Transaction,
-		}
-
-		err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
-		if err != nil {
-			s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
-			continue
-		}
-
-		peers = append(peers, bzzAddress.Overlay)
-	}
-
-	if s.addPeersHandler != nil {
-		s.addPeersHandler(peers...)
+	select {
+	case s.peersChan <- peersReq:
+	case <-s.quit:
+		return errors.New("failed to process peers, shutting down hive")
 	}
 
 	return nil
@@ -217,4 +221,90 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 	s.outLimiter.Clear(peer.Address.ByteString())
 
 	return nil
+}
+
+func (s *Service) startCheckPeersHandler() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		<-s.quit
+		cancel()
+	}()
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case newPeers := <-s.peersChan:
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
+					s.checkAndAddPeers(ctx, newPeers)
+				}()
+			}
+		}
+	}()
+}
+
+func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
+
+	var peersToAdd []swarm.Address
+	mtx := sync.Mutex{}
+	wg := sync.WaitGroup{}
+
+	for _, p := range peers.Peers {
+		err := s.sem.Acquire(ctx, 1)
+		if err != nil {
+			return
+		}
+
+		wg.Add(1)
+		go func(newPeer *pb.BzzAddress) {
+			defer func() {
+				s.sem.Release(1)
+				wg.Done()
+			}()
+
+			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
+			if err != nil {
+				s.logger.Errorf("hive: multi address underlay err: %v", err)
+				return
+			}
+
+			// check if the underlay is usable by doing a raw ping using libp2p
+			_, err = s.streamer.Ping(ctx, multiUnderlay)
+			if err != nil {
+				s.metrics.UnreachablePeers.Inc()
+				s.logger.Warningf("hive: multi address underlay %s not reachable err: %w", multiUnderlay, err)
+				return
+			}
+
+			bzzAddress := bzz.Address{
+				Overlay:     swarm.NewAddress(newPeer.Overlay),
+				Underlay:    multiUnderlay,
+				Signature:   newPeer.Signature,
+				Transaction: newPeer.Transaction,
+			}
+
+			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
+			if err != nil {
+				s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
+				return
+			}
+
+			mtx.Lock()
+			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
+			mtx.Unlock()
+		}(p)
+	}
+
+	wg.Wait()
+
+	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
+		s.addPeersHandler(peersToAdd...)
+	}
 }

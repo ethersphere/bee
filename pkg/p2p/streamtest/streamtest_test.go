@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/swarm"
+	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -756,6 +757,28 @@ func TestRecorder_withStreamError(t *testing.T) {
 			"handler 2\n",
 		},
 	}, nil)
+}
+
+func TestRecorder_ping(t *testing.T) {
+	testAddr, _ := ma.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+
+	rec := streamtest.New()
+
+	_, err := rec.Ping(context.Background(), testAddr)
+	if err != nil {
+		t.Fatalf("unable to ping err: %s", err.Error())
+	}
+
+	rec2 := streamtest.New(
+		streamtest.WithPingErr(func(_ ma.Multiaddr) (rtt time.Duration, err error) {
+			return rtt, errors.New("fail")
+		}),
+	)
+
+	_, err = rec2.Ping(context.Background(), testAddr)
+	if err == nil {
+		t.Fatal("expected ping err")
+	}
 }
 
 const (
