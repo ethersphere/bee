@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package debugapi_test
+package api_test
 
 import (
 	"context"
@@ -13,12 +13,11 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
@@ -49,12 +48,12 @@ func TestPostageCreateStamp(t *testing.T) {
 				return batchID, nil
 			}),
 		)
-		ts := newTestServer(t, testServerOptions{
+		client, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 			}),
 		)
@@ -78,13 +77,13 @@ func TestPostageCreateStamp(t *testing.T) {
 				return batchID, nil
 			}),
 		)
-		ts := newTestServer(t, testServerOptions{
+		client, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
 			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 			}),
 		)
@@ -96,11 +95,11 @@ func TestPostageCreateStamp(t *testing.T) {
 				return nil, errors.New("err")
 			}),
 		)
-		ts := newTestServer(t, testServerOptions{
+		client, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: "cannot create batch",
@@ -114,11 +113,11 @@ func TestPostageCreateStamp(t *testing.T) {
 				return nil, postagecontract.ErrInsufficientFunds
 			}),
 		)
-		ts := newTestServer(t, testServerOptions{
+		client, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "out of funds",
@@ -127,9 +126,9 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
-		ts := newTestServer(t, testServerOptions{})
+		client, _, _ := newTestServer(t, testServerOptions{})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/stamps/1000/ab", http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/1000/ab", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid depth",
@@ -143,11 +142,11 @@ func TestPostageCreateStamp(t *testing.T) {
 				return nil, postagecontract.ErrInvalidDepth
 			}),
 		)
-		ts := newTestServer(t, testServerOptions{
+		client, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/stamps/1000/9", http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/1000/9", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid depth",
@@ -156,9 +155,9 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("invalid balance", func(t *testing.T) {
-		ts := newTestServer(t, testServerOptions{})
+		client, _, _ := newTestServer(t, testServerOptions{})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/stamps/abcd/2", http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid postage amount",
@@ -175,13 +174,13 @@ func TestPostageCreateStamp(t *testing.T) {
 				return batchID, nil
 			}),
 		)
-		ts := newTestServer(t, testServerOptions{
+		client, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts.Client, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
 			jsonhttptest.WithRequestHeader("Immutable", "true"),
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 			}),
 		)
@@ -196,11 +195,11 @@ func TestPostageCreateStamp(t *testing.T) {
 func TestPostageGetStamps(t *testing.T) {
 	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	ts := newTestServer(t, testServerOptions{Post: mp})
+	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
-	jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps", http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampsResponse{
-			Stamps: []debugapi.PostageStampResponse{
+	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
+			Stamps: []api.PostageStampResponse{
 				{
 					BatchID:       batchOk,
 					Utilization:   si.Utilization(),
@@ -211,7 +210,6 @@ func TestPostageGetStamps(t *testing.T) {
 					BucketDepth:   si.BucketDepth(),
 					BlockNumber:   si.BlockNumber(),
 					ImmutableFlag: si.ImmutableFlag(),
-					Exists:        true,
 				},
 			},
 		}),
@@ -221,11 +219,11 @@ func TestPostageGetStamps(t *testing.T) {
 func TestPostageGetStamp(t *testing.T) {
 	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	ts := newTestServer(t, testServerOptions{Post: mp})
+	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampResponse{
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
 				BatchID:       batchOk,
 				Utilization:   si.Utilization(),
 				Usable:        true,
@@ -235,125 +233,27 @@ func TestPostageGetStamp(t *testing.T) {
 				BucketDepth:   si.BucketDepth(),
 				BlockNumber:   si.BlockNumber(),
 				ImmutableFlag: si.ImmutableFlag(),
-				Exists:        true,
 			}),
 		)
 	})
-	t.Run("bad request", func(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2}
 
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
 			}),
 		)
 	})
-	t.Run("bad request", func(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2, 4}
 
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
 			}),
-		)
-	})
-}
-
-func TestPostageGetBuckets(t *testing.T) {
-	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
-	mp := mockpost.New(mockpost.WithIssuer(si))
-	ts := newTestServer(t, testServerOptions{Post: mp})
-	buckets := make([]debugapi.BucketData, 1024)
-	for i := range buckets {
-		buckets[i] = debugapi.BucketData{BucketID: uint32(i)}
-	}
-
-	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+batchOkStr+"/buckets", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampBucketsResponse{
-				Depth:            si.Depth(),
-				BucketDepth:      si.BucketDepth(),
-				BucketUpperBound: si.BucketUpperBound(),
-				Buckets:          buckets,
-			}),
-		)
-	})
-	t.Run("bad batch", func(t *testing.T) {
-		badBatch := []byte{0, 1, 2}
-
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-	t.Run("bad batch", func(t *testing.T) {
-		badBatch := []byte{0, 1, 2, 4}
-
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-}
-
-func TestReserveState(t *testing.T) {
-	t.Run("ok", func(t *testing.T) {
-		ts := newTestServer(t, testServerOptions{
-			BatchStore: mock.New(mock.WithReserveState(&postage.ReserveState{
-				Radius: 5,
-				Outer:  big.NewInt(5),
-				Inner:  big.NewInt(5),
-			})),
-		})
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{
-				Radius: 5,
-				Outer:  bigint.Wrap(big.NewInt(5)),
-				Inner:  bigint.Wrap(big.NewInt(5)),
-			}),
-		)
-	})
-	t.Run("empty", func(t *testing.T) {
-		ts := newTestServer(t, testServerOptions{
-			BatchStore: mock.New(),
-		})
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{}),
-		)
-	})
-}
-
-func TestChainState(t *testing.T) {
-	t.Run("ok", func(t *testing.T) {
-		cs := &postage.ChainState{
-			Block:        123456,
-			TotalAmount:  big.NewInt(50),
-			CurrentPrice: big.NewInt(5),
-		}
-		ts := newTestServer(t, testServerOptions{
-			BatchStore: mock.New(mock.WithChainState(cs)),
-		})
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{
-				Block:        123456,
-				TotalAmount:  bigint.Wrap(big.NewInt(50)),
-				CurrentPrice: bigint.Wrap(big.NewInt(5)),
-			}),
-		)
-	})
-
-	t.Run("empty", func(t *testing.T) {
-		ts := newTestServer(t, testServerOptions{
-			BatchStore: mock.New(),
-		})
-		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{}),
 		)
 	})
 }

@@ -64,9 +64,11 @@ type Service struct {
 	metrics       metrics
 	pricer        pricer.Interface
 	tracer        *tracing.Tracer
+	caching       bool
+	validStamp    postage.ValidStampFn
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -77,6 +79,8 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		pricer:        pricer,
 		metrics:       newMetrics(),
 		tracer:        tracer,
+		caching:       forwarderCaching,
+		validStamp:    validStamp,
 	}
 }
 
@@ -154,16 +158,22 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					defer cancel()
 
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
-					resultC <- retrievalResult{
+					select {
+					case resultC <- retrievalResult{
 						chunk:     chunk,
 						peer:      peer,
 						err:       err,
 						retrieved: requested,
+					}:
+					case <-ctx.Done():
 					}
 
 				}()
 			} else {
-				resultC <- retrievalResult{}
+				select {
+				case resultC <- retrievalResult{}:
+				case <-ctx.Done():
+				}
 			}
 
 			select {
@@ -410,6 +420,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
 	addr := swarm.NewAddress(req.Addr)
+
+	forwarded := false
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -418,11 +430,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			if err != nil {
 				return fmt.Errorf("retrieve chunk: %w", err)
 			}
+			forwarded = true
 		} else {
 			return fmt.Errorf("get from store: %w", err)
 		}
 	}
-
 	stamp, err := chunk.Stamp().MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("stamp marshal: %w", err)
@@ -443,6 +455,28 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
+
 	// debit price from p's balance
-	return debit.Apply()
+	if err := debit.Apply(); err != nil {
+		return fmt.Errorf("apply debit: %w", err)
+	}
+
+	// cache the request last, so that putting to the localstore does not slow down the request flow
+	if s.caching && forwarded {
+		putMode := storage.ModePutRequest
+
+		cch, err := s.validStamp(chunk, stamp)
+		if err != nil {
+			// if a chunk with an invalid postage stamp was received
+			// we force it into the cache.
+			putMode = storage.ModePutRequestCache
+			cch = chunk
+		}
+
+		_, err = s.storer.Put(ctx, putMode, cch)
+		if err != nil {
+			return fmt.Errorf("retrieve cache put: %w", err)
+		}
+	}
+	return nil
 }

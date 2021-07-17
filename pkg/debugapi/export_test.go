@@ -34,6 +34,8 @@ type (
 	PostageCreateResponse             = postageCreateResponse
 	PostageStampResponse              = postageStampResponse
 	PostageStampsResponse             = postageStampsResponse
+	PostageStampBucketsResponse       = postageStampBucketsResponse
+	BucketData                        = bucketData
 )
 
 var (

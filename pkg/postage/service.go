@@ -34,6 +34,7 @@ type Service interface {
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, error)
 	IssuerUsable(*StampIssuer) bool
+	BatchExists([]byte) (bool, error)
 	BatchCreationListener
 	io.Closer
 }
@@ -121,6 +122,11 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 		return false
 	}
 	return true
+}
+
+// BatchExists returns true if the batch referenced by the given id exists.
+func (ps *service) BatchExists(id []byte) (bool, error) {
+	return ps.postageStore.Exists(id)
 }
 
 // GetStampIssuer finds a stamp issuer by batch ID.

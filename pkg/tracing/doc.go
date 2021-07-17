@@ -34,7 +34,7 @@ Once the operation is finished, the open span should be finished:
 	span.Finish()
 
 The tracing package also provides a function for creating a logger which will
-inject a "traceid" field entry to the log line, which helps in finding out which
+inject a "traceID" field entry to the log line, which helps in finding out which
 log lines belong to a specific trace.
 
 To create a logger with trace just wrap an existing logger:
@@ -46,6 +46,6 @@ To create a logger with trace just wrap an existing logger:
 Which will result in following log line (if the context contains tracing
 information):
 
-	time="2015-09-07T08:48:33Z" level=info msg="some message" traceid=ed65818cc1d30c
+	time="2015-09-07T08:48:33Z" level=info msg="some message" traceID=ed65818cc1d30c
 */
 package tracing
