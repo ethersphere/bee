@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -25,7 +26,7 @@ type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
 	logger           logging.Logger
-	validStamp       func(swarm.Chunk, []byte) (swarm.Chunk, error)
+	validStamp       postage.ValidStampFn
 	recoveryCallback recovery.Callback // this is the callback to be executed when a chunk fails to be retrieved
 }
 
@@ -34,7 +35,7 @@ var (
 )
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, validStamp func(swarm.Chunk, []byte) (swarm.Chunk, error), rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
+func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
 	return &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
 }
 

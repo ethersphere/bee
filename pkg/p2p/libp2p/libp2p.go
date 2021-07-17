@@ -37,6 +37,7 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -56,6 +57,7 @@ type Service struct {
 	natManager        basichost.NATManager
 	natAddrResolver   *staticAddressResolver
 	autonatDialer     host.Host
+	pingDialer        host.Host
 	libp2pPeerstore   peerstore.Peerstore
 	metrics           metrics
 	networkID         uint64
@@ -87,7 +89,6 @@ type Options struct {
 	NATAddr        string
 	EnableWS       bool
 	EnableQUIC     bool
-	Standalone     bool
 	FullNode       bool
 	LightNodeLimit int
 	WelcomeMessage string
@@ -178,10 +179,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
 	}
 
-	if o.Standalone {
-		opts = append(opts, libp2p.NoListenAddrs)
-	}
-
 	opts = append(opts, transports...)
 
 	h, err := libp2p.New(ctx, opts...)
@@ -222,6 +219,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
 
+	// Create a new dialer for libp2p ping protocol. This ensures that the protocol
+	// uses a different set of keys to do ping. It prevents inconsistencies in peerstore as
+	// the addresses used are not dialable and hence should be cleaned up. We should create
+	// this host with the same transports and security options to be able to dial to other
+	// peers.
+	pingDialer, err := libp2p.New(ctx, append(transports, security, libp2p.NoListenAddrs)...)
+	if err != nil {
+		return nil, err
+	}
+
 	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:               ctx,
@@ -229,6 +236,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		natManager:        natManager,
 		natAddrResolver:   natAddrResolver,
 		autonatDialer:     dialer,
+		pingDialer:        pingDialer,
 		handshakeService:  handshakeService,
 		libp2pPeerstore:   libp2pPeerstore,
 		metrics:           newMetrics(),
@@ -795,6 +803,9 @@ func (s *Service) Close() error {
 	if err := s.autonatDialer.Close(); err != nil {
 		return err
 	}
+	if err := s.pingDialer.Close(); err != nil {
+		return err
+	}
 
 	return s.host.Close()
 }
@@ -815,4 +826,21 @@ func (s *Service) Ready() {
 
 func (s *Service) Halt() {
 	close(s.halt)
+}
+
+func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duration, err error) {
+	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
+	if err != nil {
+		return rtt, fmt.Errorf("unable to parse underlay address: %w", err)
+	}
+
+	// Add the address to libp2p peerstore for it to be dialable
+	s.pingDialer.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
+
+	select {
+	case <-ctx.Done():
+		return rtt, ctx.Err()
+	case res := <-libp2pping.Ping(ctx, s.pingDialer, info.ID):
+		return res.RTT, res.Error
+	}
 }

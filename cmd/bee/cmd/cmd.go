@@ -40,9 +40,10 @@ const (
 	optionNameNetworkID                  = "network-id"
 	optionWelcomeMessage                 = "welcome-message"
 	optionCORSAllowedOrigins             = "cors-allowed-origins"
-	optionNameStandalone                 = "standalone"
 	optionNameTracingEnabled             = "tracing-enable"
 	optionNameTracingEndpoint            = "tracing-endpoint"
+	optionNameTracingHost                = "tracing-host"
+	optionNameTracingPort                = "tracing-port"
 	optionNameTracingServiceName         = "tracing-service-name"
 	optionNameVerbosity                  = "verbosity"
 	optionNameGlobalPinningEnabled       = "global-pinning-enable"
@@ -69,6 +70,7 @@ const (
 	optionNameBlockTime                  = "block-time"
 	optionWarmUpTime                     = "warmup-time"
 	optionNameMainNet                    = "mainnet"
+	optionNameRetrievalCaching           = "cache-retrieval"
 )
 
 func init() {
@@ -210,14 +212,15 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().Bool(optionNameP2PQUICEnable, false, "enable P2P QUIC transport")
-	cmd.Flags().StringSlice(optionNameBootnodes, []string{}, "initial nodes to connect to")
+	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/testnet.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, 10, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
-	cmd.Flags().Bool(optionNameStandalone, false, "whether we want the node to start with no listen addresses for p2p")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
+	cmd.Flags().String(optionNameTracingHost, "", "host to send tracing data")
+	cmd.Flags().String(optionNameTracingPort, "", "port to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
@@ -245,6 +248,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*20, "time to warmup the node before pull/push protocols can be kicked off.")
 	cmd.Flags().Bool(optionNameMainNet, false, "triggers connect to main net bootnodes.")
+	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

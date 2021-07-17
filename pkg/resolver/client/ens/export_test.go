@@ -14,7 +14,7 @@ const SwarmContentHashPrefix = swarmContentHashPrefix
 
 var ErrNotImplemented = errNotImplemented
 
-// WithConnectFunc will set the Dial function implementaton.
+// WithConnectFunc will set the Dial function implementation.
 func WithConnectFunc(fn func(endpoint string, contractAddr string) (*ethclient.Client, *goens.Registry, error)) Option {
 	return func(c *Client) {
 		c.connectFn = fn
