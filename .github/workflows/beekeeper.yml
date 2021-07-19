@@ -388,7 +388,7 @@ jobs:
           if ${{ steps.fullconnectivity-1.outcome=='failure' }}; then FAILED=fullconnectivity-1; fi
           if ${{ steps.settlements-1.outcome=='failure' }}; then FAILED=settlements-1; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl https://gist.githubusercontent.com/acud/2c219531e832aafbab51feffe5b5e91f/raw/114a44b4a4ad9e747bec10ac16c66d3b40ebd5aa/beekeeper_artifacts.sh | bash
+          curl -s https://gist.githubusercontent.com/acud/2c219531e832aafbab51feffe5b5e91f/raw/eb60416d36da97b85db239845ced96523caed9ad/beekeeper_artifacts.sh | bash
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** ${{ github.head_ref }}\nFailed -> \`${FAILED}\`\nTo debug run:\n\`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
