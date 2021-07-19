@@ -445,12 +445,12 @@ type networkConfig struct {
 
 func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
 	var config = networkConfig{
-		blockTime: uint64(time.Duration(defaultBlockTime) * time.Second),
+		blockTime: defaultBlockTime,
 	}
 	switch networkID {
 	case 1:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
-		config.blockTime = uint64(5 * time.Second)
+		config.blockTime = 5
 		config.chainID = 100
 	case 5: //staging
 		config.chainID = 5
