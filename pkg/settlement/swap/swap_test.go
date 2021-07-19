@@ -7,7 +7,6 @@ package swap_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"math/big"
 	"testing"
@@ -761,7 +760,7 @@ func TestStateStoreKeys(t *testing.T) {
 		t.Fatalf("wrong peer key. wanted %s, got %s", expected, swap.PeerKey(swarmAddress))
 	}
 
-	expected = fmt.Sprintf("swap_peer_chequebook_%s", address[:])
+	expected = "swap_peer_chequebook_000000000000000000000000000000000000abcd"
 	if swap.ChequebookPeerKey(address) != expected {
 		t.Fatalf("wrong peer key. wanted %s, got %s", expected, swap.ChequebookPeerKey(address))
 	}
@@ -771,7 +770,7 @@ func TestStateStoreKeys(t *testing.T) {
 		t.Fatalf("wrong peer beneficiary key. wanted %s, got %s", expected, swap.PeerBeneficiaryKey(swarmAddress))
 	}
 
-	expected = fmt.Sprintf("swap_beneficiary_peer_%s", address[:])
+	expected = "swap_beneficiary_peer_000000000000000000000000000000000000abcd"
 	if swap.BeneficiaryPeerKey(address) != expected {
 		t.Fatalf("wrong beneficiary peer key. wanted %s, got %s", expected, swap.BeneficiaryPeerKey(address))
 	}
