@@ -513,10 +513,18 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
-
-		if got, _ := serverStorer1.Has(context.Background(), chunk.Address()); !got {
+		has := false
+		for i := 0; i < 10; i++ {
+			has, _ = serverStorer1.Has(context.Background(), chunk.Address())
+			if has {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if !has {
 			t.Fatalf("forwarder node does not have chunk")
 		}
+
 	})
 }
 
