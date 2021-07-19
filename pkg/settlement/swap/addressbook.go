@@ -198,7 +198,7 @@ func peerKey(peer swarm.Address) string {
 
 // chequebookPeerKey computes the key where to store the peer for a chequebook.
 func chequebookPeerKey(chequebook common.Address) string {
-	return fmt.Sprintf("%s%s", peerChequebookPrefix, string(chequebook[:]))
+	return fmt.Sprintf("%s%x", peerChequebookPrefix, chequebook)
 }
 
 // peerBeneficiaryKey computes the key where to store the beneficiary for a peer.
@@ -208,7 +208,7 @@ func peerBeneficiaryKey(peer swarm.Address) string {
 
 // beneficiaryPeerKey computes the key where to store the peer for a beneficiary.
 func beneficiaryPeerKey(peer common.Address) string {
-	return fmt.Sprintf("%s%s", beneficiaryPeerPrefix, string(peer[:]))
+	return fmt.Sprintf("%s%x", beneficiaryPeerPrefix, peer)
 }
 
 func peerDeductedByKey(peer swarm.Address) string {

@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -35,6 +37,7 @@ const (
 	dbSchemaCleanInterval = "clean-interval"
 	dbSchemaNoStamp       = "no-stamp"
 	dbSchemaFlushBlock    = "flushblock"
+	dbSchemaSwapAddr      = "swapaddr"
 )
 
 var (
@@ -54,6 +57,7 @@ var schemaMigrations = []migration{
 	{name: dbSchemaCleanInterval, fn: migrateGrace},
 	{name: dbSchemaNoStamp, fn: migrateStamp},
 	{name: dbSchemaFlushBlock, fn: migrateFB},
+	{name: dbSchemaSwapAddr, fn: migrateSwap},
 }
 
 func migrateFB(s *store) error {
@@ -106,6 +110,41 @@ func migrateGrace(s *store) error {
 	s.logger.Debugf("deleted keys: %d", len(collectedKeys))
 
 	return nil
+}
+
+func migrateSwap(s *store) error {
+	migratePrefix := func(prefix string) error {
+		keys, err := collectKeys(s, prefix)
+		if err != nil {
+			return err
+		}
+
+		for _, key := range keys {
+			split := strings.SplitAfter(key, prefix)
+			if len(split) != 2 {
+				return errors.New("no peer in key")
+			}
+
+			addr := common.BytesToAddress([]byte(split[1]))
+			fixed := fmt.Sprintf("%s%x", prefix, addr)
+
+			var chequebookAddress common.Address
+			if err = s.Get(key, &chequebookAddress); err != nil {
+				return err
+			}
+
+			if err = s.Put(fixed, chequebookAddress); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := migratePrefix("swap_peer_chequebook_"); err != nil {
+		return err
+	}
+
+	return migratePrefix("swap_beneficiary_peer_")
 }
 
 func (s *store) migrate(schemaName string) error {
