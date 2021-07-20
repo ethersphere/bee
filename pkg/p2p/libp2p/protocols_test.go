@@ -387,20 +387,20 @@ func TestPing(t *testing.T) {
 	defer cancel()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2p.Options{
-			HostFactory: func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
+		libp2pOpts: libp2p.WithHostFactory(
+			func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
 				return bhost.NewHost(ctx, swarmt.GenSwarm(t, ctx), &bhost.HostOpts{EnablePing: true})
 			},
-		},
+		),
 	})
 	defer s1.Close()
 
 	s2, _ := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2p.Options{
-			HostFactory: func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
+		libp2pOpts: libp2p.WithHostFactory(
+			func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
 				return bhost.NewHost(ctx, swarmt.GenSwarm(t, ctx), &bhost.HostOpts{EnablePing: true})
 			},
-		},
+		),
 	})
 	defer s2.Close()
 
