@@ -25,6 +25,19 @@ type store struct {
 	logger logging.Logger
 }
 
+func NewStateStoreFromDB(db *leveldb.DB, l logging.Logger) (storage.StateStorer, error) {
+	s := &store{
+		db:     db,
+		logger: l,
+	}
+
+	if err := migrate(s); err != nil {
+		return nil, err
+	}
+
+	return s, nil
+}
+
 // NewStateStore creates a new persistent state storage.
 func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 	db, err := leveldb.OpenFile(path, nil)
@@ -46,26 +59,34 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		logger: l,
 	}
 
+	if err := migrate(s); err != nil {
+		return nil, err
+	}
+
+	return s, nil
+}
+
+func migrate(s *store) error {
 	sn, err := s.getSchemaName()
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			_ = s.Close()
-			return nil, fmt.Errorf("get schema name: %w", err)
+			return fmt.Errorf("get schema name: %w", err)
 		}
 		// new statestore - put schema key with current name
 		if err := s.putSchemaName(dbSchemaCurrent); err != nil {
 			_ = s.Close()
-			return nil, fmt.Errorf("put schema name: %w", err)
+			return fmt.Errorf("put schema name: %w", err)
 		}
 		sn = dbSchemaCurrent
 	}
 
 	if err = s.migrate(sn); err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
+		return fmt.Errorf("migrate: %w", err)
 	}
 
-	return s, nil
+	return nil
 }
 
 // Get retrieves a value of the requested key. If no results are found,
