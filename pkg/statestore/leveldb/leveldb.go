@@ -14,6 +14,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldberr "github.com/syndtr/goleveldb/leveldb/errors"
+
+	ldb "github.com/syndtr/goleveldb/leveldb"
+	ldbs "github.com/syndtr/goleveldb/leveldb/storage"
+
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
@@ -25,9 +29,14 @@ type store struct {
 	logger logging.Logger
 }
 
-func NewStateStoreFromDB(db *leveldb.DB, l logging.Logger) (storage.StateStorer, error) {
+func NewInMemoryStateStore(l logging.Logger) (storage.StateStorer, error) {
+	ldb, err := ldb.Open(ldbs.NewMemStorage(), nil)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &store{
-		db:     db,
+		db:     ldb,
 		logger: l,
 	}
 
