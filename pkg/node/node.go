@@ -213,20 +213,23 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
-	swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
-		p2pCtx,
-		logger,
-		stateStore,
-		o.SwapEndpoint,
-		signer,
-		pollingInterval,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("init chain: %w", err)
+
+	if o.SwapEnable {
+		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+			p2pCtx,
+			logger,
+			stateStore,
+			o.SwapEndpoint,
+			signer,
+			pollingInterval,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("init chain: %w", err)
+		}
+		b.ethClientCloser = swapBackend.Close
+		b.transactionCloser = tracerCloser
+		b.transactionMonitorCloser = transactionMonitor
 	}
-	b.ethClientCloser = swapBackend.Close
-	b.transactionCloser = tracerCloser
-	b.transactionMonitorCloser = transactionMonitor
 
 	if o.ChainID != -1 && o.ChainID != chainID {
 		return nil, fmt.Errorf("connected to wrong ethereum network: got chainID %d, want %d", chainID, o.ChainID)
@@ -265,21 +268,21 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		b.debugAPIServer = debugAPIServer
 	}
 
-	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
-	if err != nil {
-		return nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
-
-		err := transaction.WaitSynced(p2pCtx, logger, swapBackend, maxDelay)
-		if err != nil {
-			return nil, fmt.Errorf("waiting backend sync: %w", err)
-		}
-	}
-
 	if o.SwapEnable {
+		// Sync the with the given Ethereum backend:
+		isSynced, _, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
+		if err != nil {
+			return nil, fmt.Errorf("is synced: %w", err)
+		}
+		if !isSynced {
+			logger.Infof("waiting to sync with the Ethereum backend")
+
+			err := transaction.WaitSynced(p2pCtx, logger, swapBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("waiting backend sync: %w", err)
+			}
+		}
+
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
 			swapBackend,
@@ -333,14 +336,16 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		txHash    []byte
 	)
 
-	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction hash: %w", err)
-	}
+	if o.SwapEnable {
+		txHash, err = GetTxHash(stateStore, logger, o.Transaction)
+		if err != nil {
+			return nil, fmt.Errorf("invalid transaction hash: %w", err)
+		}
 
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
-	if err != nil {
-		return nil, fmt.Errorf("invalid block hash: %w", err)
+		blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid block hash: %w", err)
+		}
 	}
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
@@ -425,8 +430,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, errors.New("malformed postage stamp address")
 		}
 		postageContractAddress = common.HexToAddress(o.PostageContractAddress)
-	} else if !found {
-		return nil, errors.New("no known postage stamp addresses for this network")
+		// } else if !found {
+		// return nil, errors.New("no known postage stamp addresses for this network")
 	}
 	if found {
 		postageSyncStart = startBlock
@@ -435,23 +440,25 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256)
-	if err != nil {
-		return nil, err
-	}
+	if o.SwapEnable {
+		batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256)
+		if err != nil {
+			return nil, err
+		}
 
-	erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
-	if err != nil {
-		return nil, err
-	}
+		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
+		if err != nil {
+			return nil, err
+		}
 
-	postageContractService = postagecontract.New(
-		overlayEthAddress,
-		postageContractAddress,
-		erc20Address,
-		transactionService,
-		post,
-	)
+		postageContractService = postagecontract.New(
+			overlayEthAddress,
+			postageContractAddress,
+			erc20Address,
+			transactionService,
+			post,
+		)
+	}
 
 	if natManager := p2ps.NATManager(); natManager != nil {
 		// wait for nat manager to init
@@ -691,7 +698,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		// API server
 		feedFactory := factory.New(ns)
 		steward := steward.New(storer, traversalService, pushSyncProtocol)
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, logger, tracer, api.Options{
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, nil, steward, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
