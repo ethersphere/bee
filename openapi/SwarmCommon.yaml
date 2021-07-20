@@ -335,6 +335,9 @@ components:
           type: boolean
         exists:
           type: boolean
+        batchTTL:
+          description: The time (in seconds) remaining until the batch expires; -1 signals that the batch never expires; 0 signals that the batch has already expired.
+          type: integer
 
     StampBucketData:
       type: object
