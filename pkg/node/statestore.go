@@ -13,9 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-
-	ldb "github.com/syndtr/goleveldb/leveldb"
-	ldbs "github.com/syndtr/goleveldb/leveldb/storage"
 )
 
 // InitStateStore will initialize the stateStore with the given path to the
@@ -23,13 +20,8 @@ import (
 // initialize an in-memory state store that will not be persisted.
 func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer, err error) {
 	if dataDir == "" {
-		ldb, err := ldb.Open(ldbs.NewMemStorage(), nil)
-		if err != nil {
-			return nil, err
-		}
 		log.Warning("using in-mem state store, no node state will be persisted")
-
-		return leveldb.NewStateStoreFromDB(ldb, log)
+		return leveldb.NewInMemoryStateStore(log)
 	}
 
 	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
