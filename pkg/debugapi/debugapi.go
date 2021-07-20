@@ -12,7 +12,11 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -29,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Service implements http.Handler interface to be used in HTTP server.
@@ -102,6 +105,9 @@ func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpon
 	s.post = post
 	s.postageContract = postageContract
 
+	if !chequebookEnabled {
+		s.batchStore = new(mock.BatchStore)
+	}
 	s.setRouter(s.newRouter())
 }
 
