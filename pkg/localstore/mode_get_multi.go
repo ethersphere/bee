@@ -75,15 +75,8 @@ func (db *DB) getMulti(mode storage.ModeGet, addrs ...swarm.Address) (out []shed
 	case storage.ModeGetRequest:
 		db.updateGCItems(out...)
 
-	case storage.ModeGetPin:
-		err := db.pinIndex.Fill(out)
-		if err != nil {
-			return nil, err
-		}
-
 	// no updates to indexes
-	case storage.ModeGetSync:
-	case storage.ModeGetLookup:
+	case storage.ModeGetSync, storage.ModeGetLookup:
 	default:
 		return out, ErrInvalidMode
 	}
