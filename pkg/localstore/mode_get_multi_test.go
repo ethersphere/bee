@@ -34,7 +34,6 @@ func TestModeGetMulti(t *testing.T) {
 		storage.ModeGetRequest,
 		storage.ModeGetSync,
 		storage.ModeGetLookup,
-		storage.ModeGetPin,
 	} {
 		t.Run(mode.String(), func(t *testing.T) {
 			db := newTestDB(t, nil)
@@ -44,17 +43,6 @@ func TestModeGetMulti(t *testing.T) {
 			_, err := db.Put(context.Background(), storage.ModePutUpload, chunks...)
 			if err != nil {
 				t.Fatal(err)
-			}
-
-			if mode == storage.ModeGetPin {
-				// pin chunks so that it is not returned as not found by pinIndex
-				for i, ch := range chunks {
-					err := db.Set(context.Background(), storage.ModeSetPin, ch.Address())
-					if err != nil {
-						t.Fatal(err)
-					}
-					chunks[i] = ch
-				}
 			}
 
 			addrs := chunkAddresses(chunks)
