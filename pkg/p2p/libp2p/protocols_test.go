@@ -14,6 +14,10 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	libp2pm "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/host"
+	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
+	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/multiformats/go-multistream"
 )
 
@@ -379,21 +383,26 @@ func TestConnectDisconnectEvents(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	t.Skip("test flaking")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	s1, _ := newService(t, 1, libp2pServiceOpts{})
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.WithHostFactory(
+			func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(ctx, swarmt.GenSwarm(t, ctx), &bhost.HostOpts{EnablePing: true})
+			},
+		),
+	})
+	defer s1.Close()
 
-	s2, _ := newService(t, 1, libp2pServiceOpts{})
-
-	// Wait for listeners to start. There are times when the test fails unexpectedly
-	// during CI and we suspect it is due to the listeners not starting in time. The
-	// sleep here ensures CPU is given up for any goroutines which are not getting
-	// scheduled. Ideally we should explicitly check the TCP status on the port
-	// where the libp2p.Host is started before assuming the host is up. This seems like
-	// a bit of an overkill here unless the test starts flaking.
-	time.Sleep(time.Second)
+	s2, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.WithHostFactory(
+			func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(ctx, swarmt.GenSwarm(t, ctx), &bhost.HostOpts{EnablePing: true})
+			},
+		),
+	})
+	defer s2.Close()
 
 	addr := serviceUnderlayAddress(t, s1)
 
