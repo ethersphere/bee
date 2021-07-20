@@ -93,6 +93,7 @@ type Options struct {
 	LightNodeLimit int
 	WelcomeMessage string
 	Transaction    []byte
+	HostFactory    func(context.Context, ...libp2p.Option) (host.Host, error)
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, swapBackend handshake.SenderMatcher, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -181,14 +182,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	opts = append(opts, transports...)
 
-	h, err := libp2p.New(ctx, opts...)
+	if o.HostFactory == nil {
+		// Use the default libp2p host creation
+		o.HostFactory = libp2p.New
+	}
+
+	h, err := o.HostFactory(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Support same non default security and transport options as
 	// original host.
-	dialer, err := libp2p.New(ctx, append(transports, security)...)
+	dialer, err := o.HostFactory(ctx, append(transports, security)...)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +230,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// the addresses used are not dialable and hence should be cleaned up. We should create
 	// this host with the same transports and security options to be able to dial to other
 	// peers.
-	pingDialer, err := libp2p.New(ctx, append(transports, security, libp2p.NoListenAddrs)...)
+	pingDialer, err := o.HostFactory(ctx, append(transports, security, libp2p.NoListenAddrs)...)
 	if err != nil {
 		return nil, err
 	}
