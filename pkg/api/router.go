@@ -63,8 +63,8 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	handle("/stream/chunks", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
+	handle("/chunks/stream", web.ChainHandlers(
+		s.newTracingHandler("chunks-stream-upload"),
 		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
 	))
 
