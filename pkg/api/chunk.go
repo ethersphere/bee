@@ -44,14 +44,6 @@ func (s *server) processUploadRequest(
 
 		// add the tag to the context if it exists
 		ctx = sctx.SetTag(r.Context(), tag)
-
-		// increment the StateSplit here since we dont have a splitter for the file upload
-		err = tag.Inc(tags.StateSplit)
-		if err != nil {
-			s.logger.Debugf("chunk upload: increment tag: %v", err)
-			s.logger.Error("chunk upload: increment tag")
-			return nil, nil, nil, errors.New("cannot increment tag")
-		}
 	} else {
 		ctx = r.Context()
 	}
@@ -80,7 +72,6 @@ func (s *server) processUploadRequest(
 }
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("handling")
 	ctx, tag, putter, err := s.processUploadRequest(r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())

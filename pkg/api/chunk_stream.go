@@ -65,7 +65,7 @@ func (s *server) handleUploadStream(
 
 	var (
 		gone   = make(chan struct{})
-		ticker = time.NewTicker(time.Second * 4)
+		ticker = time.NewTicker(uploadPingTimout)
 		err    error
 	)
 	defer func() {
@@ -82,8 +82,7 @@ func (s *server) handleUploadStream(
 	// default handlers for ping/pong
 	conn.SetPingHandler(nil)
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(readDeadline))
-		return nil
+		return conn.SetReadDeadline(time.Now().Add(readDeadline))
 	})
 
 	sendMsg := func(msgType int, buf []byte) error {
@@ -98,22 +97,22 @@ func (s *server) handleUploadStream(
 		return nil
 	}
 
-	sendErrorClose := func(code int, errmsg string) error {
-		return conn.WriteControl(
+	sendErrorClose := func(code int, errmsg string) {
+		err := conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(code, errmsg),
 			time.Now().Add(writeDeadline),
 		)
+		if err != nil {
+			s.logger.Errorf("failed sending close msg with err, reason: %s", err.Error())
+		}
 	}
 
 	for {
 		select {
 		case <-s.quit:
 			// shutdown
-			err := sendErrorClose(websocket.CloseGoingAway, "node shutting down")
-			if err != nil {
-				s.logger.Debugf("failed sending close message: %v", err)
-			}
+			sendErrorClose(websocket.CloseGoingAway, "node shutting down")
 			return
 		case <-gone:
 			// client gone

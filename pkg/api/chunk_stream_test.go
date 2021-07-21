@@ -108,10 +108,8 @@ func TestChunkUploadStream(t *testing.T) {
 		}
 		if cerr, ok := err.(*websocket.CloseError); !ok {
 			t.Fatal("invalid error on read")
-		} else {
-			if cerr.Text != "invalid message" {
-				t.Fatalf("incorrect response on error, exp: (invalid message) got (%s)", cerr.Text)
-			}
+		} else if cerr.Text != "invalid message" {
+			t.Fatalf("incorrect response on error, exp: (invalid message) got (%s)", cerr.Text)
 		}
 	})
 }
