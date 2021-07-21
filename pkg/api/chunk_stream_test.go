@@ -38,7 +38,7 @@ func TestChunkUploadStream(t *testing.T) {
 			Pinning:   pinningMock,
 			Tags:      tag,
 			Post:      mockpost.New(mockpost.WithAcceptAll()),
-			WsPath:    "/stream/chunks",
+			WsPath:    "/chunks/stream",
 			WsHeaders: wsHeaders,
 		})
 	)
