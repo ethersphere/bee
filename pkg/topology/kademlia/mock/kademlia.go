@@ -152,6 +152,10 @@ func (m *Mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
 	return nil
 }
 
+func (m *Mock) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
+	return nil
+}
+
 func (m *Mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	channel := make(chan struct{}, 1)
 	var closeOnce sync.Once
