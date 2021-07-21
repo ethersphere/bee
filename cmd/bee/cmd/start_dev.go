@@ -78,7 +78,7 @@ Welcome to Swarm.... Bzzz Bzzzz Bzzzz
 
 			fmt.Println(beeASCII)
 			fmt.Println()
-			fmt.Println(`Starting in development mode`)
+			fmt.Println("Starting in development mode")
 			fmt.Println()
 
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
