@@ -281,7 +281,8 @@ func NewDevBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, lo
 	if o.APIAddr != "" {
 		// API server
 		feedFactory := factory.New(ns)
-		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, nil, nil, nil, signer, logger, tracer, api.Options{
+
+		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, nil, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
