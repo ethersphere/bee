@@ -54,7 +54,7 @@ var (
 	// values needed to adjust subscription trigger
 	// buffer time.
 	flipFlopBufferDuration    = 150 * time.Millisecond
-	flipFlopWorstCaseDuration = 20 * time.Second
+	flipFlopWorstCaseDuration = 10 * time.Second
 )
 
 // DB is the local store implementation and holds
