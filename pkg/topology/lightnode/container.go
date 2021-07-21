@@ -96,6 +96,10 @@ PICKPEER:
 	return addr, nil
 }
 
+func (c *Container) EachBin(pf topology.EachPeerFunc) error {
+	return c.connectedPeers.EachBin(pf)
+}
+
 func (c *Container) PeerInfo() topology.BinInfo {
 	return topology.BinInfo{
 		BinPopulation:     uint(c.connectedPeers.Length()),

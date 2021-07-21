@@ -794,6 +794,10 @@ func (n *notifiee) Announce(context.Context, swarm.Address, bool) error {
 	return nil
 }
 
+func (n *notifiee) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
+	return nil
+}
+
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
 	return &notifiee{connected: c, disconnected: d, pick: pick}
 }
