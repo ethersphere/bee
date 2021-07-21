@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -20,8 +21,9 @@ import (
 // initialize an in-memory state store that will not be persisted.
 func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer, err error) {
 	if dataDir == "" {
+		ret = mock.NewStateStore()
 		log.Warning("using in-mem state store, no node state will be persisted")
-		return leveldb.NewInMemoryStateStore(log)
+		return ret, nil
 	}
 
 	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
