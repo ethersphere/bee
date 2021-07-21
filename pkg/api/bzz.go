@@ -207,7 +207,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 		}
 		return
 	}
-	logger.Debugf("Manifest Reference: %s", manifestReference.String())
+	logger.Debugf("bzz upload file: manifest reference: %s", manifestReference.String())
 
 	if created {
 		_, err = tag.DoneSplit(manifestReference)
