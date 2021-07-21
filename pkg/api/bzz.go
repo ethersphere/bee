@@ -177,7 +177,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 		return
 	}
 
-	logger.Debugf("Uploading file Encrypt: %v Filename: %s Filehash: %s FileMtdt: %v",
+	logger.Debugf("bzz upload file: encrypt %v filename: %s hash: %s metadata: %v",
 		encrypt, fileName, fr.String(), fileMtdt)
 
 	storeSizeFn := []manifest.StoreSizeFunc{}
@@ -207,7 +207,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 		}
 		return
 	}
-	logger.Debugf("Manifest Reference: %s", manifestReference.String())
+	logger.Debugf("bzz upload file: manifest reference: %s", manifestReference.String())
 
 	if created {
 		_, err = tag.DoneSplit(manifestReference)
