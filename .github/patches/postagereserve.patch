@@ -1,4 +1,4 @@
 43c43
 < var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging to master
 ---
-> var DefaultDepth = uint8(5) // 12 is the testnet depth at the time of merging to master
+> var DefaultDepth = uint8(2) // 12 is the testnet depth at the time of merging to master

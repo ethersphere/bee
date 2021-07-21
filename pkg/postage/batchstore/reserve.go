@@ -39,9 +39,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// ErrBatchNotFound is returned when the postage batch is not found or expired
-var ErrBatchNotFound = errors.New("postage batch not found or expired")
-
 // DefaultDepth is the initial depth for the reserve
 var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging to master
 
@@ -179,7 +176,7 @@ func (s *store) evictExpired() error {
 			return true, err
 		}
 
-		s.rs.Available += multiplier * exp2(b.Radius-s.rs.Radius-1)
+		s.rs.Available += multiplier * exp2(uint(b.Radius-s.rs.Radius-1))
 
 		// if batch has no value then delete it
 		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
@@ -236,7 +233,7 @@ func (rs *reserveState) change(oldv, newv *big.Int, oldDepth, newDepth uint8) (i
 // size returns the number of chunks the local node is responsible
 // to store in its reserve.
 func (rs *reserveState) size(depth uint8, t tier) int64 {
-	size := exp2(depth - rs.Radius - 1)
+	size := exp2(uint(depth - rs.Radius - 1))
 	switch t {
 	case inner:
 		return size
@@ -354,7 +351,7 @@ func (s *store) evictOuter(last *postage.Batch) error {
 			return true, nil
 		}
 		// unreserve outer PO of the lowest priority batch  until capacity is back to positive
-		s.rs.Available += exp2(b.Depth - s.rs.Radius - 1)
+		s.rs.Available += exp2(uint(b.Depth) - uint(s.rs.Radius) - 1)
 		s.rs.Outer.Set(b.Value)
 		return false, s.unreserveFn(b.ID, s.rs.Radius)
 	})
@@ -409,13 +406,6 @@ func (u *UnreserveItem) UnmarshalBinary(b []byte) error {
 }
 
 // exp2 returns the e-th power of 2
-func exp2(e uint8) int64 {
-	if e == 0 {
-		return 1
-	}
-	b := int64(2)
-	for i := uint8(1); i < e; i++ {
-		b *= 2
-	}
-	return b
+func exp2(e uint) int64 {
+	return 1 << e
 }
