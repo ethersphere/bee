@@ -129,6 +129,8 @@ func NewDevBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, lo
 		ns            storage.Storer
 	)
 
+	lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
+
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
