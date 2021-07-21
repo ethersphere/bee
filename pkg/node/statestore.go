@@ -25,7 +25,6 @@ func InitStateStore(log logging.Logger, dataDir string) (ret storage.StateStorer
 		log.Warning("using in-mem state store, no node state will be persisted")
 		return ret, nil
 	}
-
 	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
 }
 
