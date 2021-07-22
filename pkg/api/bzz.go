@@ -522,6 +522,7 @@ func (s *server) manifestFeed(
 	return s.feedFactory.NewLookup(*t, f)
 }
 
+// bzzPatchHandler endpoint has been deprecated; use stewardship endpoint instead.
 func (s *server) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
