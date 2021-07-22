@@ -177,6 +177,13 @@ func (s *server) setupRouting() {
 		})),
 	)
 
+	handle("/stewardship/{address}", jsonhttp.MethodHandler{
+		"PUT": web.ChainHandlers(
+			s.gatewayModeForbidEndpointHandler,
+			web.FinalHandlerFunc(s.stewardshipPutHandler),
+		),
+	})
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
