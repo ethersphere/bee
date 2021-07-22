@@ -16,8 +16,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const uploadPingTimout = time.Second * 4
-
 var successWsMsg = []byte("successful")
 
 func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
