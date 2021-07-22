@@ -32,7 +32,7 @@ require (
 	github.com/libp2p/go-libp2p-discovery v0.5.1 // indirect
 	github.com/libp2p/go-libp2p-peerstore v0.2.7
 	github.com/libp2p/go-libp2p-quic-transport v0.10.0
-	github.com/libp2p/go-libp2p-swarm v0.5.0 // indirect
+	github.com/libp2p/go-libp2p-swarm v0.5.0
 	github.com/libp2p/go-libp2p-transport-upgrader v0.4.2
 	github.com/libp2p/go-tcp-transport v0.2.3
 	github.com/libp2p/go-ws-transport v0.4.0
