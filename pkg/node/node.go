@@ -90,7 +90,6 @@ type Bee struct {
 	resolverCloser           io.Closer
 	errorLogWriter           *io.PipeWriter
 	tracerCloser             io.Closer
-	tagsCloser               io.Closer
 	stateStoreCloser         io.Closer
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
@@ -613,8 +612,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	pricing.SetPaymentThresholdObserver(acc)
 
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
-	tagService := tags.NewTags(stateStore, logger)
-	b.tagsCloser = tagService
+	tagService := tags.NewTags(logger)
 
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
@@ -893,7 +891,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	tryClose(b.tracerCloser, "tracer")
-	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")

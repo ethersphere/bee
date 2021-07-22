@@ -25,7 +25,6 @@ import (
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	mocks "github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -912,8 +911,7 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 	storer := mocks.NewStorer()
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)
-	mockStatestore := statestore.NewStateStore()
-	mtag := tags.NewTags(mockStatestore, logger)
+	mtag := tags.NewTags(logger)
 
 	mockPricer := pricermock.NewMockService(prices.price, prices.peerPrice)
 

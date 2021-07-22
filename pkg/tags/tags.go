@@ -20,17 +20,13 @@ package tags
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"math/rand"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -46,24 +42,22 @@ var (
 
 // Tags hold tag information indexed by a unique random uint32
 type Tags struct {
-	tags       *sync.Map
-	stateStore storage.StateStorer
-	logger     logging.Logger
+	tags   *sync.Map
+	logger logging.Logger
 }
 
 // NewTags creates a tags object
-func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
+func NewTags(logger logging.Logger) *Tags {
 	return &Tags{
-		tags:       &sync.Map{},
-		stateStore: stateStore,
-		logger:     logger,
+		tags:   &sync.Map{},
+		logger: logger,
 	}
 }
 
 // Create creates a new tag, stores it by the UID and returns it
 // it returns an error if the tag with this UID already exists
 func (ts *Tags) Create(total int64) (*Tag, error) {
-	t := NewTag(context.Background(), TagUidFunc(), total, nil, ts.stateStore, ts.logger)
+	t := NewTag(context.Background(), TagUidFunc(), total, nil, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
 		return nil, errExists
@@ -77,7 +71,6 @@ func (ts *Tags) Create(total int64) (*Tag, error) {
 func (ts *Tags) All() (t []*Tag) {
 	ts.tags.Range(func(k, v interface{}) bool {
 		t = append(t, v.(*Tag))
-
 		return true
 	})
 
@@ -88,15 +81,7 @@ func (ts *Tags) All() (t []*Tag) {
 func (ts *Tags) Get(uid uint32) (*Tag, error) {
 	t, ok := ts.tags.Load(uid)
 	if !ok {
-		// see if the tag is present in the store
-		// if yes, load it in to the memory
-		ta, err := ts.getTagFromStore(uid)
-		if err != nil {
-			ts.logger.Debugf("tags: Get: %d not found: %v", uid, err)
-			return nil, ErrNotFound
-		}
-		ts.tags.LoadOrStore(ta.Uid, ta)
-		return ta, nil
+		return nil, ErrNotFound
 	}
 	return t.(*Tag), nil
 }
@@ -127,50 +112,6 @@ func (ts *Tags) Range(fn func(k, v interface{}) bool) {
 
 func (ts *Tags) Delete(k interface{}) {
 	ts.tags.Delete(k)
-
-	// k is a uint32, try to create the tag key and remove
-	// from statestore
-	if uid, ok := k.(uint32); ok && uid != 0 {
-		key := tagKey(uid)
-		_ = ts.stateStore.Delete(key)
-	}
-}
-
-func (ts *Tags) MarshalJSON() (out []byte, err error) {
-	m := make(map[string]*Tag)
-	ts.Range(func(k, v interface{}) bool {
-		key := fmt.Sprintf("%d", k)
-		val := v.(*Tag)
-
-		// don't persist tags which were already done
-		if !val.Done(StateSynced) {
-			m[key] = val
-		}
-		return true
-	})
-	return json.Marshal(m)
-}
-
-func (ts *Tags) UnmarshalJSON(value []byte) error {
-	m := make(map[string]*Tag)
-	err := json.Unmarshal(value, &m)
-	if err != nil {
-		return err
-	}
-	for k, v := range m {
-		key, err := strconv.ParseUint(k, 10, 32)
-		if err != nil {
-			return err
-		}
-
-		// prevent a condition where a chunk was sent before shutdown
-		// and the node was turned off before the receipt was received
-		v.Sent = v.Synced
-
-		ts.tags.Store(key, v)
-	}
-
-	return err
 }
 
 func (ts *Tags) ListAll(ctx context.Context, offset, limit int) (t []*Tag, err error) {
@@ -200,82 +141,5 @@ func (ts *Tags) ListAll(ctx context.Context, offset, limit int) (t []*Tag, err e
 		return
 	}
 
-	// and then from statestore
-	err = ts.stateStore.Iterate(tagKeyPrefix, func(key, value []byte) (stop bool, err error) {
-		if offset > 0 {
-			offset--
-			return false, nil
-		}
-
-		var ta *Tag
-		ta, err = decodeTagValueFromStore(value)
-		if err != nil {
-			return true, err
-		}
-
-		if _, ok := ts.tags.Load(ta.Uid); ok {
-			// tag was already returned from sync.Map
-			return false, nil
-		}
-
-		t = append(t, ta)
-
-		limit--
-
-		if limit == 0 {
-			return true, nil
-		}
-
-		return false, nil
-	})
-
 	return t, err
-}
-
-func decodeTagValueFromStore(value []byte) (*Tag, error) {
-	var data []byte
-	err := json.Unmarshal(value, &data)
-	if err != nil {
-		return nil, err
-	}
-	var ta Tag
-	err = ta.UnmarshalBinary(data)
-	if err != nil {
-		return nil, err
-	}
-	return &ta, nil
-}
-
-// getTagFromStore get a given tag from the state store.
-func (ts *Tags) getTagFromStore(uid uint32) (*Tag, error) {
-	key := tagKey(uid)
-	var data []byte
-	err := ts.stateStore.Get(key, &data)
-	if err != nil {
-		return nil, err
-	}
-	var ta Tag
-	err = ta.UnmarshalBinary(data)
-	if err != nil {
-		return nil, err
-	}
-	return &ta, nil
-}
-
-// Close is called when the node goes down. This is when all the tags in memory is persisted.
-func (ts *Tags) Close() (err error) {
-	// store all the tags in memory
-	tags := ts.All()
-	for _, t := range tags {
-		ts.logger.Trace("updating tag: ", t.Uid)
-		err := t.saveTag()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func tagKey(uid uint32) string {
-	return tagKeyPrefix + strconv.Itoa(int(uid))
 }
