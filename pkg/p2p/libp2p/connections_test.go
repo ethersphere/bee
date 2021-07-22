@@ -918,10 +918,6 @@ func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool
 	return n.announceTo(ctx, a, b, full)
 }
 
-func (n *notifiee) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
-	return nil
-}
-
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
 	return &notifiee{connected: c, disconnected: d, pick: pick, announce: noopAnnounce, announceTo: noopAnnounceTo}
 }
