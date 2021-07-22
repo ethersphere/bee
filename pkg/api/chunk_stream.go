@@ -64,12 +64,10 @@ func (s *server) handleUploadStream(
 	defer s.wsWg.Done()
 
 	var (
-		gone   = make(chan struct{})
-		ticker = time.NewTicker(uploadPingTimout)
-		err    error
+		gone = make(chan struct{})
+		err  error
 	)
 	defer func() {
-		ticker.Stop()
 		_ = conn.Close()
 	}()
 
@@ -77,12 +75,6 @@ func (s *server) handleUploadStream(
 		s.logger.Debugf("chunk stream handler: client gone. code %d message %s", code, text)
 		close(gone)
 		return nil
-	})
-
-	// default handlers for ping/pong
-	conn.SetPingHandler(nil)
-	conn.SetPongHandler(func(string) error {
-		return conn.SetReadDeadline(time.Now().Add(readDeadline))
 	})
 
 	sendMsg := func(msgType int, buf []byte) error {
@@ -117,12 +109,6 @@ func (s *server) handleUploadStream(
 		case <-gone:
 			// client gone
 			return
-		case <-ticker.C:
-			err = sendMsg(websocket.PingMessage, nil)
-			if err != nil {
-				s.logger.Debugf("failed sending ping message: %v", err)
-				return
-			}
 		default:
 			// if there is no indication to stop, go ahead and read the next message
 		}
