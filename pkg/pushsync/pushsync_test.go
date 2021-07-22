@@ -781,36 +781,26 @@ func TestSignsReceipt(t *testing.T) {
 	}
 }
 
-//func TestPeerSkipList(t *testing.T) {
+func TestPeerSkipList(t *testing.T) {
+	skipList := pushsync.NewPeerSkipList()
 
-//skipList := pushsync.NewPeerSkipList()
+	addr1 := testingc.GenerateTestRandomChunk().Address()
+	addr2 := testingc.GenerateTestRandomChunk().Address()
 
-//addr1 := testingc.GenerateTestRandomChunk().Address()
-//addr2 := testingc.GenerateTestRandomChunk().Address()
+	skipList.Add(addr1, addr2, time.Millisecond*10)
 
-//skipList.Add(addr1, addr2, time.Millisecond*10)
+	if !skipList.ChunkSkipPeers(addr2)[0].Equal(addr1) {
+		t.Fatal("peer should be skipped")
+	}
 
-//if !skipList.ShouldSkip(addr1) {
-//t.Fatal("peer should be skipped")
-//}
+	time.Sleep(time.Millisecond * 11)
 
-//if !skipList.HasChunk(addr2) {
-//t.Fatal("chunk is missing")
-//}
+	skipList.PruneExpired()
 
-//time.Sleep(time.Millisecond * 11)
-
-//skipList.PruneExpired()
-
-//if skipList.ShouldSkip(addr1) {
-//t.Fatal("peer should be not be skipped")
-//}
-
-//skipList.PruneChunk(addr2)
-//if skipList.HasChunk(addr2) {
-//t.Fatal("chunk should be missing")
-//}
-//}
+	if len(skipList.ChunkSkipPeers(addr2)) != 0 {
+		t.Fatal("entry should be pruned")
+	}
+}
 
 func TestPushChunkToClosestSkipFailed(t *testing.T) {
 
