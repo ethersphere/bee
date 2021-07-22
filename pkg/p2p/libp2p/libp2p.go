@@ -23,6 +23,7 @@ import (
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
@@ -82,6 +83,7 @@ type lightnodes interface {
 	Disconnected(p2p.Peer)
 	Count() int
 	RandomPeer(swarm.Address) (swarm.Address, error)
+	EachPeer(pf topology.EachPeerFunc) error
 }
 
 type Options struct {
@@ -396,20 +398,33 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					return
 				}
 			}
-		} else if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
-			// full node announces implicitly
-			s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
-			// note: this cannot be unit tested since the node
-			// waiting on handshakeStream.FullClose() on the other side
-			// might actually get a stream reset when we disconnect here
-			// resulting in a flaky response from the Connect method on
-			// the other side.
-			// that is why the Pick method has been added to the notifier
-			// interface, in addition to the possibility of deciding whether
-			// a peer connection is wanted prior to adding the peer to the
-			// peer registry and starting the protocols.
-			_ = s.Disconnect(overlay)
-			return
+		} else {
+			if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
+				// full node announces implicitly
+				s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
+				// note: this cannot be unit tested since the node
+				// waiting on handshakeStream.FullClose() on the other side
+				// might actually get a stream reset when we disconnect here
+				// resulting in a flaky response from the Connect method on
+				// the other side.
+				// that is why the Pick method has been added to the notifier
+				// interface, in addition to the possibility of deciding whether
+				// a peer connection is wanted prior to adding the peer to the
+				// peer registry and starting the protocols.
+				_ = s.Disconnect(overlay)
+				return
+			}
+			// when a full node connects, we gossip about it to the
+			// light nodes so that they can also have a chance at building
+			// a solid topology.
+			_ = s.lightNodes.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+				go func(addressee, peer swarm.Address, fullnode bool) {
+					if err := s.notifier.AnnounceTo(s.ctx, addressee, peer, fullnode); err != nil {
+						s.logger.Debugf("stream handler: notifier.Announce to light node %s %s: %v", addressee.String(), peer.String(), err)
+					}
+				}(addr, peer.Address, i.FullNode)
+				return false, false, nil
+			})
 		}
 	}
 
@@ -483,6 +498,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				if errors.As(err, &de) {
 					_ = stream.Reset()
 					_ = s.Disconnect(overlay)
+					logger.Tracef("handler(%s): disconnecting %s due to disconnect error", p.Name, overlay.String())
 				}
 
 				var bpe *p2p.BlockPeerError
@@ -492,7 +508,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 						logger.Debugf("blocklist: could not blocklist peer %s: %v", peerID, err)
 						logger.Errorf("unable to blocklist peer %v", peerID)
 					}
-					logger.Tracef("blocklisted a peer %s", peerID)
+					logger.Tracef("handler(%s): blocklisted %s", p.Name, overlay.String())
 				}
 				// count unexpected requests
 				if errors.Is(err, p2p.ErrUnexpected) {

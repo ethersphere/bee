@@ -6,6 +6,7 @@ package lightnode_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -61,6 +62,18 @@ func TestContainer(t *testing.T) {
 		}
 		if !p.Equal(p1) {
 			t.Fatalf("expected p2 but got %s", p.String())
+		}
+
+		i := 0
+		peers := []swarm.Address{p2, p1}
+		if err = c.EachPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
+			if !p.Equal(peers[i]) {
+				return false, false, errors.New("peer not in order")
+			}
+			i++
+			return false, false, nil
+		}); err != nil {
+			t.Fatal(err)
 		}
 	})
 	t.Run("empty container after peer disconnect", func(t *testing.T) {

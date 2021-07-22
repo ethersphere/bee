@@ -545,6 +545,98 @@ func TestTopologyNotifier(t *testing.T) {
 	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
 }
 
+// TestTopologyAnnounce checks that announcement
+// works correctly for full nodes and light nodes.
+func TestTopologyAnnounce(t *testing.T) {
+	var (
+		mtx sync.Mutex
+		ctx = context.Background()
+
+		ab1, ab2, ab3 = addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore())
+
+		announceCalled   = false
+		announceToCalled = false
+
+		n1a = func(context.Context, swarm.Address, bool) error {
+			mtx.Lock()
+			announceCalled = true
+			mtx.Unlock()
+			return nil
+		}
+		n1at = func(context.Context, swarm.Address, swarm.Address, bool) error {
+			mtx.Lock()
+			announceToCalled = true
+			mtx.Unlock()
+			return nil
+		}
+	)
+	// test setup: 2 full nodes and one light
+	// light connect to full(1), then full(2)
+	// connects to full(1), check that full(1)
+	// tried to announce full(2) to light.
+
+	notifier1 := mockAnnouncingNotifier(n1a, n1at)
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		Addressbook: ab1,
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		},
+	})
+	s1.SetPickyNotifier(notifier1)
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		Addressbook: ab2,
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		},
+	})
+
+	s3, overlay3 := newService(t, 1, libp2pServiceOpts{
+		Addressbook: ab3,
+		libp2pOpts: libp2p.Options{
+			FullNode: false,
+		},
+	})
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	// s3 (light) connects to s1 (full)
+	_, err := s3.Connect(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s3, overlay1)
+	expectPeersEventually(t, s1, overlay3)
+
+	mtx.Lock()
+	if !announceCalled {
+		t.Error("expected announce to be called")
+	}
+	if announceToCalled {
+		t.Error("announceTo called but should not")
+	}
+	mtx.Unlock()
+
+	// check address book entries are there
+	checkAddressbook(t, ab3, overlay1, addr)
+
+	// s2 (full) connects to s1 (full)
+	_, err = s2.Connect(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2, overlay3)
+
+	mtx.Lock()
+	if !announceToCalled {
+		t.Error("expected announceTo to be called")
+	}
+	mtx.Unlock()
+}
+
 func TestTopologyOverSaturated(t *testing.T) {
 	var (
 		mtx sync.Mutex
@@ -773,9 +865,11 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 }
 
 type notifiee struct {
-	connected    func(context.Context, p2p.Peer, bool) error
-	disconnected func(p2p.Peer)
+	connected    cFunc
+	disconnected dFunc
 	pick         bool
+	announce     announceFunc
+	announceTo   announceToFunc
 }
 
 func (n *notifiee) Connected(c context.Context, p p2p.Peer, f bool) error {
@@ -790,21 +884,30 @@ func (n *notifiee) Pick(p p2p.Peer) bool {
 	return n.pick
 }
 
-func (n *notifiee) Announce(context.Context, swarm.Address, bool) error {
-	return nil
+func (n *notifiee) Announce(ctx context.Context, a swarm.Address, full bool) error {
+	return n.announce(ctx, a, full)
+}
+
+func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool) error {
+	return n.announceTo(ctx, a, b, full)
 }
 
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
-	return &notifiee{connected: c, disconnected: d, pick: pick}
+	return &notifiee{connected: c, disconnected: d, pick: pick, announce: noopAnnounce, announceTo: noopAnnounceTo}
+}
+
+func mockAnnouncingNotifier(a announceFunc, at announceToFunc) p2p.PickyNotifier {
+	return &notifiee{connected: noopCf, disconnected: noopDf, pick: true, announce: a, announceTo: at}
 }
 
 type (
-	cFunc func(context.Context, p2p.Peer, bool) error
-	dFunc func(p2p.Peer)
+	cFunc          func(context.Context, p2p.Peer, bool) error
+	dFunc          func(p2p.Peer)
+	announceFunc   func(context.Context, swarm.Address, bool) error
+	announceToFunc func(context.Context, swarm.Address, swarm.Address, bool) error
 )
 
-var noopCf = func(_ context.Context, _ p2p.Peer, _ bool) error {
-	return nil
-}
-
-var noopDf = func(p p2p.Peer) {}
+var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
+var noopDf = func(p2p.Peer) {}
+var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
+var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
