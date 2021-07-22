@@ -622,7 +622,6 @@ func TestTopologyAnnounce(t *testing.T) {
 	if !called {
 		t.Error("expected announce to be called")
 	}
-	called = true
 	for i := 0; i < 10; i++ {
 		mtx.Lock()
 		called = announceToCalled
@@ -649,7 +648,6 @@ func TestTopologyAnnounce(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2, overlay3)
 
-	called = false
 	for i := 0; i < 20; i++ {
 		mtx.Lock()
 		called = announceToCalled
