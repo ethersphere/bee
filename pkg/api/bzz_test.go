@@ -625,12 +625,3 @@ func TestBzzReupload(t *testing.T) {
 		t.Fatalf("got address %s want %s", m.addr.String(), addr.String())
 	}
 }
-
-type mockSteward struct {
-	addr swarm.Address
-}
-
-func (m *mockSteward) Reupload(_ context.Context, addr swarm.Address) error {
-	m.addr = addr
-	return nil
-}
