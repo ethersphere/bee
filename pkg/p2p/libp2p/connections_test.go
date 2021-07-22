@@ -608,15 +608,33 @@ func TestTopologyAnnounce(t *testing.T) {
 
 	expectPeers(t, s3, overlay1)
 	expectPeersEventually(t, s1, overlay3)
+	called := false
 
-	mtx.Lock()
-	if !announceCalled {
+	for i := 0; i < 20; i++ {
+		mtx.Lock()
+		called = announceCalled
+		mtx.Unlock()
+		if called {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !called {
 		t.Error("expected announce to be called")
 	}
+	for i := 0; i < 10; i++ {
+		mtx.Lock()
+		called = announceToCalled
+		mtx.Unlock()
+		if called {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	if announceToCalled {
 		t.Error("announceTo called but should not")
 	}
-	mtx.Unlock()
 
 	// check address book entries are there
 	checkAddressbook(t, ab3, overlay1, addr)
@@ -630,11 +648,19 @@ func TestTopologyAnnounce(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2, overlay3)
 
-	mtx.Lock()
-	if !announceToCalled {
+	for i := 0; i < 20; i++ {
+		mtx.Lock()
+		called = announceToCalled
+		mtx.Unlock()
+		if called {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !called {
 		t.Error("expected announceTo to be called")
 	}
-	mtx.Unlock()
 }
 
 func TestTopologyOverSaturated(t *testing.T) {
