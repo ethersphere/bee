@@ -671,6 +671,32 @@ func TestDiscoveryHooks(t *testing.T) {
 	waitBcast(t, disc, p3, p1, p2)
 }
 
+func TestAnnounceTo(t *testing.T) {
+	var (
+		conns                    int32
+		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+		p1, p2                   = test.RandomAddress(), test.RandomAddress()
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	// first add a peer from AddPeers, wait for the connection
+	addOne(t, signer, kad, ab, p1)
+	waitConn(t, &conns)
+
+	if err := kad.AnnounceTo(context.Background(), p1, p2, true); err != nil {
+		t.Fatal(err)
+	}
+	waitBcast(t, disc, p1, p2)
+
+	if err := kad.AnnounceTo(context.Background(), p1, p2, false); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	// cheat and decrease the timer
 	defer func(t time.Duration) {
