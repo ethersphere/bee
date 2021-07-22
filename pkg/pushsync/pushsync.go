@@ -365,18 +365,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		}
 		if err != nil {
 			ps.logger.Debugf("pushsync: chunk %s peer %s err: %v, attempted %t, allowedRetries: %d", ch.Address().String(), peer.String(), err, attempted, allowedRetries)
-			/*
-				If we've seen an error on a peer+chunk path within NN, we add the peer to the ttl
-				cache.
-				The time for which we block a peer for depends on the type of error we get when
-				trying to send a message to the peer.
-				If it is an overdraft, we wait for a short time, since it might resolve quickly due to
-				time based settlements.
-				If it is a different error i.e. stream reset, context deadline exceeded, context canceled
-				then we wait for longer.
-
-			*/
-
 			var timeToSkip time.Duration
 			switch {
 			case errors.Is(err, context.DeadlineExceeded):
