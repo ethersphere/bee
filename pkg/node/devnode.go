@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"log"
@@ -9,7 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -17,8 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -30,15 +28,21 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
+
+	accountingMock "github.com/ethersphere/bee/pkg/accounting/mock"
+	p2pMock "github.com/ethersphere/bee/pkg/p2p/mock"
+	pingpongMock "github.com/ethersphere/bee/pkg/pingpong/mock"
+	batchMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	topologyMock "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
-func NewDevBee(signer crypto.Signer, logger logging.Logger, o *Options) (b *Bee, err error) {
+func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -59,46 +63,47 @@ func NewDevBee(signer crypto.Signer, logger logging.Logger, o *Options) (b *Bee,
 	}
 	b.stateStoreCloser = stateStore
 
-	// addressbook := addressbook.New(stateStore) //check if needed
+	mockKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		return nil, err
+	}
+	signer := crypto.NewDefaultSigner(mockKey)
 
 	var (
 		transactionService transaction.Service // mock for debug api
 		chequebookService  chequebook.Service  // mock both
 	)
 
-	var debugAPIService *debugapi.Service
-	if o.DebugAPIAddr != "" { // if debug enabled
-		overlayEthAddress, err := signer.EthereumAddress()
-		if err != nil {
-			return nil, fmt.Errorf("eth address: %w", err)
-		}
-		// set up basic debug api endpoints for debugging and /health endpoint
-		var publicKey, pssPublicKey ecdsa.PublicKey
-		debugAPIService = debugapi.New(publicKey, pssPublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(0), transactionService)
-
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugAPIService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
+	overlayEthAddress, err := signer.EthereumAddress()
+	if err != nil {
+		return nil, fmt.Errorf("eth address: %w", err)
 	}
+
+	// set up basic debug api endpoints for debugging and /health endpoint
+	debugAPIService := debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), transactionService)
+
+	debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+	if err != nil {
+		return nil, fmt.Errorf("debug api listener: %w", err)
+	}
+
+	debugAPIServer := &http.Server{
+		IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           debugAPIService,
+		ErrorLog:          log.New(b.errorLogWriter, "", 0),
+	}
+
+	go func() {
+		logger.Infof("debug api address: %s", debugAPIListener.Addr())
+
+		if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+			logger.Debugf("debug api server: %v", err)
+			logger.Error("unable to serve debug api")
+		}
+	}()
+
+	b.debugAPIServer = debugAPIServer
 
 	// var (
 	// 	// TO BE MOCKED
@@ -304,34 +309,46 @@ func NewDevBee(signer crypto.Signer, logger logging.Logger, o *Options) (b *Bee,
 		b.apiCloser = apiService
 	}
 
-	if debugAPIService != nil {
-		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
-		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-			debugAPIService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
-		}
-		if apiService != nil {
-			debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
-		}
-		if l, ok := logger.(metrics.Collector); ok {
-			debugAPIService.MustRegisterMetrics(l.Metrics()...)
-		}
-
-		lightNodes := lightnode.NewContainer(swarm.NewAddress(nil))
-
-		var (
-			// mock or find existing mocks
-			p2ps                p2p.DebugService
-			pingPong            pingpong.Interface
-			kad                 topology.Driver
-			acc                 accounting.Interface
-			pseudosettleService settlement.Interface
-			batchStore          postage.Storer
-			post                postage.Service
-			postageContract     postagecontract.Interface
-		)
-		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, false, nil, chequebookService, batchStore, post, postageContract)
+	debugAPIService.MustRegisterMetrics(storer.Metrics()...)
+	if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
+		debugAPIService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
+	}
+	if apiService != nil {
+		debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
+	}
+	if l, ok := logger.(metrics.Collector); ok {
+		debugAPIService.MustRegisterMetrics(l.Metrics()...)
 	}
 
+	lightNodes := lightnode.NewContainer(swarm.NewAddress(nil))
+
+	var (
+		// mock or find existing mocks
+		pseudosettleService settlement.Interface
+		post                postage.Service
+	)
+
+	addrFunc := p2pMock.WithAddressesFunc(addrFunc)
+	var (
+		batchStore      = batchMock.New()
+		pingPong        = pingpongMock.New(pong)
+		p2ps            = p2pMock.New(addrFunc)
+		acc             = accountingMock.NewAccounting()
+		kad             = topologyMock.NewTopologyDriver()
+		postageContract = new(mockContract)
+	)
+
+	// inject dependencies and configure full debug api http path routes
+	debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, false, nil, chequebookService, batchStore, post, postageContract)
+
 	return b, nil
+}
+
+func addrFunc() ([]multiaddr.Multiaddr, error) {
+	ma, _ := multiaddr.NewMultiaddr("mock")
+	return []multiaddr.Multiaddr{ma}, nil
+}
+
+func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
+	return time.Duration(1 * time.Millisecond), nil
 }

@@ -13,8 +13,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -108,9 +106,6 @@ func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpon
 	s.post = post
 	s.postageContract = postageContract
 
-	if !chequebookEnabled {
-		s.batchStore = new(mock.BatchStore)
-	}
 	s.setRouter(s.newRouter())
 }
 
