@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee"
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -75,17 +74,10 @@ Welcome to Swarm.... Bzzz Bzzzz Bzzzz
 				debugAPIAddr = ""
 			}
 
-			var signer crypto.Signer
-			// signer := crypto.NewDefaultSigner(swarmPrivateKey)
-			// signerConfig, err := configureDevSigner(cmd, logger)
-			if err != nil {
-				return err
-			}
-
 			logger.Infof("version: %v", bee.Version)
 
 			// generate signer in here
-			b, err := node.NewDevBee(signer, logger, &node.Options{
+			b, err := node.NewDevBee(logger, &node.Options{
 				APIAddr:      c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr: debugAPIAddr,
 				Logger:       logger,
