@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
+	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
@@ -33,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
-	"github.com/libp2p/go-libp2p-core/mux"
 )
 
 const (
@@ -431,8 +430,8 @@ func TestPushChunkToNextClosest(t *testing.T) {
 					defer lock.Unlock()
 					if fail {
 						fail = false
-						_ = stream.Reset()
-						return mux.ErrReset
+						stream.Close()
+						return errors.New("peer not reachable")
 					}
 
 					if err := h(ctx, peer, stream); err != nil {
@@ -904,7 +903,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameter
 
 func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags) {
 	t.Helper()
-	logger := logging.New(os.Stdout, 0)
+	logger := logging.New(ioutil.Discard, 0)
 	storer := mocks.NewStorer()
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)

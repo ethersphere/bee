@@ -262,7 +262,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 	}
 
 	currentTime := s.timeNow().Unix()
-	if currentTime == lastTime.CheckTimestamp {
+	if currentTime == lastTime.Timestamp {
 		return nil, 0, ErrSettlementTooSoon
 	}
 
