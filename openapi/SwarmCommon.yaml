@@ -528,6 +528,12 @@ components:
       type: string
       pattern: "^(sequence|epoch)$"
 
+    IsRetrievableResponse:
+      type: object
+      properties:
+        isRetrievable:
+          type: boolean
+
   headers:
     SwarmTag:
       description: "Tag UID"
