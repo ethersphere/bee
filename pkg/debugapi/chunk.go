@@ -5,6 +5,7 @@
 package debugapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -62,4 +63,54 @@ func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonhttp.OK(w, nil)
+}
+
+type chunkRelatedAddressesListResponse struct {
+	Addresses []swarm.Address `json:"addresses"`
+}
+
+// chunkRelatedAddressesList lists all addresses related to the supplied one.
+func (s *Service) chunkRelatedAddressesList(w http.ResponseWriter, r *http.Request) {
+	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	if err != nil {
+		s.logger.Debugf("debug api: parse chunk address: %v", err)
+		jsonhttp.BadRequest(w, "bad address")
+		return
+	}
+
+	ctx := r.Context()
+
+	has, err := s.storer.Has(ctx, addr)
+	if err != nil {
+		s.logger.Debugf("debug api: localstore has: %v", err)
+		jsonhttp.BadRequest(w, err)
+		return
+	}
+	if !has {
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+
+	var addresses []swarm.Address
+	iterFn := func(leaf swarm.Address) error {
+		chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, leaf)
+		if err == nil || errors.Is(err, storage.ErrNotFound) {
+			if chunk != nil {
+				addresses = append(addresses, chunk.Address())
+			}
+			return nil
+		}
+		return err
+	}
+
+	if err := s.traverser.Traverse(ctx, addr, iterFn); err != nil {
+		s.logger.Debugf("debug api: traverse of %s failed: %v", addr, err)
+		s.logger.Error("debug api: traverse failed")
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
+
+	jsonhttp.OK(w, chunkRelatedAddressesListResponse{
+		Addresses: addresses,
+	})
 }

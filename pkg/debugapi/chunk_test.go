@@ -7,13 +7,17 @@ package debugapi_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/traversal"
 )
 
 func TestHasChunkHandler(t *testing.T) {
@@ -88,5 +92,49 @@ func TestHasChunkHandler(t *testing.T) {
 		if yes {
 			t.Fatalf("The chunk %s is not deleted", notPresentChunkAddress)
 		}
+	})
+}
+
+func TestChunkRelatedAddressesListHandler(t *testing.T) {
+	mockStorer := mock.NewStorer()
+	traverser := traversal.New(mockStorer)
+	testServer := newTestServer(t, testServerOptions{
+		Storer:    mockStorer,
+		Traverser: traverser,
+	})
+
+	ctx := context.Background()
+	pipe := builder.NewPipelineBuilder(ctx, mockStorer, storage.ModePutUpload, false)
+	addr, err := builder.FeedPipeline(ctx, pipe, strings.NewReader("hello test world"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("addresses", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chunks/"+addr.String()+"/list", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(debugapi.ChunkRelatedAddressesListResponse{
+				Addresses: []swarm.Address{
+					swarm.MustParseHexAddress("e94a5aadf259f008b7d5039420c65d692901846523f503d97d24e2f077786d9a"),
+				},
+			}),
+		)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chunks/abbbbb/list", http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusNotFound),
+				Code:    http.StatusNotFound,
+			}),
+		)
+	})
+
+	t.Run("bad address", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/chunks/abcd1100zz/list", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "bad address",
+				Code:    http.StatusBadRequest,
+			}),
+		)
 	})
 }

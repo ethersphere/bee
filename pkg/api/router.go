@@ -178,6 +178,10 @@ func (s *server) setupRouting() {
 	)
 
 	handle("/stewardship/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.gatewayModeForbidEndpointHandler,
+			web.FinalHandlerFunc(s.stewardshipGetHandler),
+		),
 		"PUT": web.ChainHandlers(
 			s.gatewayModeForbidEndpointHandler,
 			web.FinalHandlerFunc(s.stewardshipPutHandler),

@@ -113,6 +113,9 @@ func (s *Service) newRouter() *mux.Router {
 		"GET":    http.HandlerFunc(s.hasChunkHandler),
 		"DELETE": http.HandlerFunc(s.removeChunk),
 	})
+	router.Handle("/chunks/{address}/list", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chunkRelatedAddressesList),
+	})
 	router.Handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})

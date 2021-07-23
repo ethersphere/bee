@@ -36,6 +36,7 @@ type (
 	PostageStampsResponse             = postageStampsResponse
 	PostageStampBucketsResponse       = postageStampBucketsResponse
 	BucketData                        = bucketData
+	ChunkRelatedAddressesListResponse = chunkRelatedAddressesListResponse
 )
 
 var (
