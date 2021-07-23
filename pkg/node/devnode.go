@@ -4,14 +4,17 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -41,7 +44,19 @@ import (
 	topologyMock "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
-func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
+type DevBee struct {
+	tracerCloser     io.Closer
+	stateStoreCloser io.Closer
+	localstoreCloser io.Closer
+	apiCloser        io.Closer
+	pssCloser        io.Closer
+	tagsCloser       io.Closer
+	errorLogWriter   *io.PipeWriter
+	apiServer        *http.Server
+	debugAPIServer   *http.Server
+}
+
+func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -51,7 +66,7 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	b = &Bee{ //DevBee with custom shutdown (os.Exit(0))
+	b = &DevBee{
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
 	}
@@ -73,7 +88,6 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 		return nil, fmt.Errorf("eth address: %w", err)
 	}
 
-	// set up basic debug api endpoints for debugging and /health endpoint
 	debugAPIService := debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), nil)
 
 	debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
@@ -129,7 +143,7 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 		return &pushsync.Receipt{}, nil
 	}))
 
-	traversalService := traversal.New(storer) //fixme
+	traversalService := traversal.New(storer)
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
@@ -214,6 +228,52 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 	debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, nil, false, nil, nil, batchStore, post, postageContract)
 
 	return b, nil
+}
+
+func (b *DevBee) Shutdown(ctx context.Context) error {
+	var mErr error
+
+	tryClose := func(c io.Closer, errMsg string) {
+		if c == nil {
+			return
+		}
+		if err := c.Close(); err != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
+		}
+	}
+
+	tryClose(b.apiCloser, "api")
+
+	var eg errgroup.Group
+	if b.apiServer != nil {
+		eg.Go(func() error {
+			if err := b.apiServer.Shutdown(ctx); err != nil {
+				return fmt.Errorf("api server: %w", err)
+			}
+			return nil
+		})
+	}
+	if b.debugAPIServer != nil {
+		eg.Go(func() error {
+			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
+				return fmt.Errorf("debug api server: %w", err)
+			}
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		mErr = multierror.Append(mErr, err)
+	}
+
+	tryClose(b.pssCloser, "pss")
+	tryClose(b.tracerCloser, "tracer")
+	tryClose(b.tagsCloser, "tag persistence")
+	tryClose(b.stateStoreCloser, "statestore")
+	tryClose(b.localstoreCloser, "localstore")
+	tryClose(b.errorLogWriter, "error log writer")
+
+	return mErr
 }
 
 func addrFunc() ([]multiaddr.Multiaddr, error) {
