@@ -489,7 +489,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	}
 
 	// the write to the first peer might succeed or
-	// fail, so it is not guarenteed that two increments
+	// fail, so it is not guaranteed that two increments
 	// are made to Sent. expect >= 1
 	if tg := ta2.Get(tags.StateSent); tg == 0 {
 		t.Fatalf("tags error got %d want >= 1", tg)
