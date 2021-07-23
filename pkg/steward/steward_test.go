@@ -29,6 +29,7 @@ func TestSteward(t *testing.T) {
 		data           = make([]byte, chunks*4096) //1k chunks
 		store          = mock.NewStorer()
 		traverser      = traversal.New(store)
+		retrievalMock  = &retrievalMock{}
 		traversedAddrs = make(map[string]struct{})
 		mu             sync.Mutex
 		fn             = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
@@ -38,7 +39,7 @@ func TestSteward(t *testing.T) {
 			return nil, nil
 		}
 		ps = psmock.New(fn)
-		s  = steward.New(store, traverser, ps)
+		s  = steward.New(store, traverser, retrievalMock, ps)
 	)
 	n, err := rand.Read(data)
 	if n != cap(data) {
@@ -62,6 +63,14 @@ func TestSteward(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	isRetrievable, err := s.IsRetrievable(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isRetrievable {
+		t.Fatalf("re-uploaded content on %q should be retrievable", addr)
+	}
+
 	// check that everything that was stored is also traversed
 	for _, a := range l.addrs {
 		if _, ok := traversedAddrs[a.String()]; !ok {
@@ -72,16 +81,17 @@ func TestSteward(t *testing.T) {
 
 func TestSteward_ErrWantSelf(t *testing.T) {
 	var (
-		ctx       = context.Background()
-		chunks    = 10
-		data      = make([]byte, chunks*4096)
-		store     = mock.NewStorer()
-		traverser = traversal.New(store)
-		fn        = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
+		ctx           = context.Background()
+		chunks        = 10
+		data          = make([]byte, chunks*4096)
+		store         = mock.NewStorer()
+		traverser     = traversal.New(store)
+		retrievalMock = &retrievalMock{}
+		fn            = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
 			return nil, topology.ErrWantSelf
 		}
 		ps = psmock.New(fn)
-		s  = steward.New(store, traverser, ps)
+		s  = steward.New(store, traverser, retrievalMock, ps)
 	)
 	n, err := rand.Read(data)
 	if n != cap(data) {
@@ -114,4 +124,10 @@ func (l *loggingStore) Put(ctx context.Context, mode storage.ModePut, chs ...swa
 		l.addrs = append(l.addrs, c.Address())
 	}
 	return l.Storer.Put(ctx, mode, chs...)
+}
+
+type retrievalMock struct{}
+
+func (rm *retrievalMock) RetrieveChunk(_ context.Context, _ swarm.Address, _ bool) (chunk swarm.Chunk, err error) {
+	return nil, nil
 }
