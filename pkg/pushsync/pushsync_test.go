@@ -487,8 +487,12 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ta2.Get(tags.StateSent) != 2 {
-		t.Fatalf("tags error")
+
+	// the write to the first peer might succeed or
+	// fail, so it is not guarenteed that two increments
+	// are made to Sent. expect >= 1
+	if tg := ta2.Get(tags.StateSent); tg == 0 {
+		t.Fatalf("tags error got %d want >= 1", tg)
 	}
 
 	balance, err := pivotAccounting.Balance(peer2)
