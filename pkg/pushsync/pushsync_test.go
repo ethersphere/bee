@@ -792,7 +792,7 @@ func TestPeerSkipList(t *testing.T) {
 
 	skipList.Add(addr1, addr2, time.Millisecond*10)
 
-	if !skipList.ChunkSkipPeers(addr2)[0].Equal(addr1) {
+	if !skipList.ChunkSkipPeers(addr1)[0].Equal(addr2) {
 		t.Fatal("peer should be skipped")
 	}
 
@@ -800,7 +800,7 @@ func TestPeerSkipList(t *testing.T) {
 
 	skipList.PruneExpired()
 
-	if len(skipList.ChunkSkipPeers(addr2)) != 0 {
+	if len(skipList.ChunkSkipPeers(addr1)) != 0 {
 		t.Fatal("entry should be pruned")
 	}
 }
