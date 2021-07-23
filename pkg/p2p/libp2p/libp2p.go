@@ -551,7 +551,7 @@ func (s *Service) NATManager() basichost.NATManager {
 }
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error {
-	s.logger.Debugf("libp2p blocklist: peer %s for %v", overlay.String(), duration)
+	s.logger.Tracef("libp2p blocklist: peer %s for %v", overlay.String(), duration)
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay)
