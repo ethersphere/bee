@@ -16,13 +16,15 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
+	mockPostContract "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/pushsync"
+	mockPs "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
@@ -38,7 +40,6 @@ import (
 	accountingMock "github.com/ethersphere/bee/pkg/accounting/mock"
 	p2pMock "github.com/ethersphere/bee/pkg/p2p/mock"
 	pingpongMock "github.com/ethersphere/bee/pkg/pingpong/mock"
-	batchMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	topologyMock "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
@@ -130,17 +131,6 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 	// b.p2pHalter = p2ps
 
 	// mock ^
-
-	// var unreserveFn func([]byte, uint8) (uint64, error)
-	// var evictFn = func(b []byte) error {
-	// 	_, err := unreserveFn(b, swarm.MaxPO+1)
-	// 	return err
-	// }
-
-	// _, err := batchstore.New(stateStore, evictFn, logger)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("batchstore: %w", err)
-	// }
 
 	lo := &localstore.Options{
 		Capacity:        o.CacheCapacity,
@@ -258,27 +248,54 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
+	pssService.SetPushSyncer(mockPs.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		return &pushsync.Receipt{}, nil
+	}))
+
 	traversalService := traversal.New(storer) //fixme
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	// multiResolver := multiresolver.NewMultiResolver(	// maybe mock?
-	// 	multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
-	// 	multiresolver.WithLogger(o.Logger),
-	// )
-	// b.resolverCloser = multiResolver
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+	post := mockPost.New()
+	postageContract := mockPostContract.New(mockPostContract.WithCreateBatchFunc(
+		func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+			id := postagetesting.MustNewID()
+			b := &postage.Batch{
+				ID:        id,
+				Owner:     overlayEthAddress.Bytes(),
+				Value:     big.NewInt(0),
+				Depth:     depth,
+				Immutable: immutable,
+			}
+
+			err := batchStore.Put(b, initialBalance, depth)
+			if err != nil {
+				return nil, err
+			}
+
+			post.Add(postage.NewStampIssuer(
+				label,
+				string(overlayEthAddress.Bytes()),
+				id,
+				initialBalance,
+				depth,
+				0, 0,
+				immutable,
+			))
+			return id, nil
+		},
+	))
 
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
 		feedFactory := factory.New(storer)
 
-		var (
-			multiResolver   resolver.Interface
-			post            postage.Service
-			postageContract postagecontract.Interface
-		)
-		apiService = api.New(tagService, storer, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, logger, tracer, api.Options{
+		apiService = api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, logger, tracer, api.Options{
 			// mock errored ^
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
@@ -309,33 +326,19 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 		b.apiCloser = apiService
 	}
 
-	debugAPIService.MustRegisterMetrics(storer.Metrics()...)
-	if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-		debugAPIService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
-	}
-	if apiService != nil {
-		debugAPIService.MustRegisterMetrics(apiService.Metrics()...)
-	}
-	if l, ok := logger.(metrics.Collector); ok {
-		debugAPIService.MustRegisterMetrics(l.Metrics()...)
-	}
-
 	lightNodes := lightnode.NewContainer(swarm.NewAddress(nil))
 
 	var (
 		// mock or find existing mocks
 		pseudosettleService settlement.Interface
-		post                postage.Service
 	)
 
 	addrFunc := p2pMock.WithAddressesFunc(addrFunc)
 	var (
-		batchStore      = batchMock.New()
-		pingPong        = pingpongMock.New(pong)
-		p2ps            = p2pMock.New(addrFunc)
-		acc             = accountingMock.NewAccounting()
-		kad             = topologyMock.NewTopologyDriver()
-		postageContract = new(mockContract)
+		pingPong = pingpongMock.New(pong)
+		p2ps     = p2pMock.New(addrFunc)
+		acc      = accountingMock.NewAccounting()
+		kad      = topologyMock.NewTopologyDriver()
 	)
 
 	// inject dependencies and configure full debug api http path routes
@@ -350,5 +353,5 @@ func addrFunc() ([]multiaddr.Multiaddr, error) {
 }
 
 func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
-	return time.Duration(1 * time.Millisecond), nil
+	return time.Millisecond, nil
 }
