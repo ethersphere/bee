@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"io"
 	"log"
@@ -135,11 +134,11 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
-	var pssPrivateKey *ecdsa.PrivateKey
-	pssService := pss.New(pssPrivateKey, logger)
+	pssService := pss.New(mockKey, logger)
 	b.pssCloser = pssService
 
 	pssService.SetPushSyncer(mockPs.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		pssService.TryUnwrap(chunk)
 		return &pushsync.Receipt{}, nil
 	}))
 
