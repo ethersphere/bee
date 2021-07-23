@@ -23,7 +23,9 @@ func (f optionFunc) apply(r *mockPostage) { f(r) }
 
 // New creates a new mock postage service.
 func New(o ...Option) postage.Service {
-	m := &mockPostage{}
+	m := &mockPostage{
+		issuersMap: make(map[string]*postage.StampIssuer),
+	}
 	for _, v := range o {
 		v.apply(m)
 	}
