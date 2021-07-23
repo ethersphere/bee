@@ -86,6 +86,9 @@ jobs:
       - name: Test manifest
         id: manifest-1
         run: beekeeper check --cluster-name local-dns --checks=ci-manifest
+      - name: Test content availability
+        id: content-availability
+        run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
       - name: Destroy the cluster
         run: |
           beekeeper delete bee-cluster --cluster-name local-dns
@@ -177,6 +180,7 @@ jobs:
           if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
           if ${{ steps.retrieval-1.outcome=='failure' }}; then FAILED=retrieval-1; fi
           if ${{ steps.manifest-1.outcome=='failure' }}; then FAILED=manifest-1; fi
+          if ${{ steps.content-availability.outcome=='failure' }}; then FAILED=content-availability; fi
           if ${{ steps.pingpong-2.outcome=='failure' }}; then FAILED=pingpong-2; fi
           if ${{ steps.fullconnectivity-2.outcome=='failure' }}; then FAILED=fullconnectivity-2; fi
           if ${{ steps.settlements-2.outcome=='failure' }}; then FAILED=settlements-2; fi

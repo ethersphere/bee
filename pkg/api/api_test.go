@@ -70,7 +70,7 @@ type testServerOptions struct {
 	CORSAllowedOrigins []string
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
-	Steward            steward.Reuploader
+	Steward            steward.Interface
 	WsHeaders          http.Header
 }
 
