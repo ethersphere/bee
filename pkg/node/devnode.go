@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/multiformats/go-multiaddr"
+	"github.com/sirupsen/logrus"
+
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -25,17 +28,12 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	mockPs "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/settlement"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/multiformats/go-multiaddr"
-	"github.com/sirupsen/logrus"
 
 	accountingMock "github.com/ethersphere/bee/pkg/accounting/mock"
 	p2pMock "github.com/ethersphere/bee/pkg/p2p/mock"
@@ -70,18 +68,13 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 	}
 	signer := crypto.NewDefaultSigner(mockKey)
 
-	var (
-		transactionService transaction.Service // mock for debug api
-		chequebookService  chequebook.Service  // mock both
-	)
-
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, fmt.Errorf("eth address: %w", err)
 	}
 
 	// set up basic debug api endpoints for debugging and /health endpoint
-	debugAPIService := debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), transactionService)
+	debugAPIService := debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), nil)
 
 	debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 	if err != nil {
@@ -106,32 +99,6 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 
 	b.debugAPIServer = debugAPIServer
 
-	// var (
-	// 	// TO BE MOCKED
-	// 	networkID     uint64
-	// 	swarmAddress  swarm.Address
-	// 	lightNodes    *lightnode.Container
-	// 	senderMatcher *transaction.Matcher
-	// 	swapBackend   listener.BlockHeightContractFilterer
-	// 	ns            storage.Storer
-	// )
-
-	// p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
-	// 	PrivateKey:     libp2pPrivateKey,
-	// 	NATAddr:        o.NATAddr,
-	// 	EnableWS:       o.EnableWS,
-	// 	EnableQUIC:     o.EnableQUIC,
-	// 	WelcomeMessage: o.WelcomeMessage,
-	// 	FullNode:       true,
-	// })
-	// if err != nil {
-	// 	return nil, fmt.Errorf("p2p service: %w", err)
-	// }
-	// b.p2pService = p2ps
-	// b.p2pHalter = p2ps
-
-	// mock ^
-
 	lo := &localstore.Options{
 		Capacity:        o.CacheCapacity,
 		ReserveCapacity: uint64(batchstore.Capacity),
@@ -150,96 +117,6 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
-	// unreserveFn = storer.UnreserveBatch
-
-	// post, err := postage.NewService(stateStore, batchStore, 0)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("postage service load: %w", err)
-	// }
-
-	// use mock from postage/mock
-	// b.postageServiceCloser = post
-
-	// var (
-	// 	postageContractService postagecontract.Interface
-	// 	eventListener          postage.Listener
-	// 	postageContractAddress common.Address
-	// )
-
-	// postageContractService = new(mockContract)
-
-	// eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
-	// b.listenerCloser = eventListener
-
-	// if natManager := p2ps.NATManager(); natManager != nil {
-	// 	// wait for nat manager to init
-	// 	logger.Debug("initializing NAT manager")
-	// 	select {
-	// 	case <-natManager.Ready():
-	// 		// this is magic sleep to give NAT time to sync the mappings
-	// 		// this is a hack, kind of alchemy and should be improved
-	// 		time.Sleep(3 * time.Second)
-	// 		logger.Debug("NAT manager initialized")
-	// 	case <-time.After(10 * time.Second):
-	// 		logger.Warning("NAT manager init timeout")
-	// 	}
-	// }
-
-	// Construct protocols.
-	// pingPong := pingpong.New(p2ps, logger, tracer)
-
-	// if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
-	// 	return nil, fmt.Errorf("pingpong service: %w", err)
-	// }
-
-	// hive := hive.New(p2ps, addressbook, networkID, logger)
-	// if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
-	// 	return nil, fmt.Errorf("hive service: %w", err)
-	// }
-
-	// var bootnodes []ma.Multiaddr
-
-	// metricsDB, err := shed.NewDBWrap(stateStore.DB())
-	// if err != nil {
-	// 	return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
-	// }
-
-	// kad := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode})
-	// b.topologyCloser = kad
-	// b.topologyHalter = kad
-	// hive.SetAddPeersHandler(kad.AddPeers)
-	// p2ps.SetPickyNotifier(kad)
-	// batchStore.SetRadiusSetter(kad)
-
-	// var (
-	// 	paymentTolerance = big.NewInt(1000)
-	// 	paymentEarly     = big.NewInt(1000)
-	// 	paymentThreshold = big.NewInt(10000)
-	// )
-
-	// var pricing pricing.Interface
-
-	// acc, err := accounting.NewAccounting(
-	// 	paymentThreshold,
-	// 	paymentTolerance,
-	// 	paymentEarly,
-	// 	logger,
-	// 	stateStore,
-	// 	pricing,
-	// 	big.NewInt(refreshRate),
-	// 	p2ps,
-	// )
-	// if err != nil {
-	// 	return nil, fmt.Errorf("accounting: %w", err)
-	// }
-	// b.accountingCloser = acc
-
-	// pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
-	// if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
-	// 	return nil, fmt.Errorf("pseudosettle service: %w", err)
-	// }
-
-	// acc.SetRefreshFunc(pseudosettleService.Pay)
 
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
@@ -260,6 +137,7 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
+
 	post := mockPost.New()
 	postageContract := mockPostContract.New(mockPostContract.WithCreateBatchFunc(
 		func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
@@ -290,59 +168,50 @@ func NewDevBee(logger logging.Logger, o *Options) (b *Bee, err error) {
 		},
 	))
 
-	var apiService api.Service
-	if o.APIAddr != "" {
-		// API server
-		feedFactory := factory.New(storer)
+	// API server
+	feedFactory := factory.New(storer)
 
-		apiService = api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, logger, tracer, api.Options{
-			// mock errored ^
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			GatewayMode:        o.GatewayMode,
-			WsPingPeriod:       60 * time.Second,
-		})
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
+	apiService := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, logger, tracer, api.Options{
+		CORSAllowedOrigins: o.CORSAllowedOrigins,
+		GatewayMode:        o.GatewayMode,
+		WsPingPeriod:       60 * time.Second,
+	})
 
-		apiServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Infof("api address: %s", apiListener.Addr())
-
-			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("api server: %v", err)
-				logger.Error("unable to serve api")
-			}
-		}()
-
-		b.apiServer = apiServer
-		b.apiCloser = apiService
+	apiListener, err := net.Listen("tcp", o.APIAddr)
+	if err != nil {
+		return nil, fmt.Errorf("api listener: %w", err)
 	}
 
-	lightNodes := lightnode.NewContainer(swarm.NewAddress(nil))
+	apiServer := &http.Server{
+		IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           apiService,
+		ErrorLog:          log.New(b.errorLogWriter, "", 0),
+	}
+
+	go func() {
+		logger.Infof("api address: %s", apiListener.Addr())
+
+		if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+			logger.Debugf("api server: %v", err)
+			logger.Error("unable to serve api")
+		}
+	}()
+
+	b.apiServer = apiServer
+	b.apiCloser = apiService
 
 	var (
-		// mock or find existing mocks
-		pseudosettleService settlement.Interface
-	)
-
-	addrFunc := p2pMock.WithAddressesFunc(addrFunc)
-	var (
-		pingPong = pingpongMock.New(pong)
-		p2ps     = p2pMock.New(addrFunc)
-		acc      = accountingMock.NewAccounting()
-		kad      = topologyMock.NewTopologyDriver()
+		lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
+		pingPong   = pingpongMock.New(pong)
+		addrFunc   = p2pMock.WithAddressesFunc(addrFunc)
+		p2ps       = p2pMock.New(addrFunc)
+		acc        = accountingMock.NewAccounting()
+		kad        = topologyMock.NewTopologyDriver()
 	)
 
 	// inject dependencies and configure full debug api http path routes
-	debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, false, nil, chequebookService, batchStore, post, postageContract)
+	debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, nil, false, nil, nil, batchStore, post, postageContract)
 
 	return b, nil
 }
