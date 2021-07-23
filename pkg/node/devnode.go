@@ -353,5 +353,5 @@ func addrFunc() ([]multiaddr.Multiaddr, error) {
 }
 
 func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
-	return time.Duration(1 * time.Millisecond), nil
+	return time.Millisecond, nil
 }
