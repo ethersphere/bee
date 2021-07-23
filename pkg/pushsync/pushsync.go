@@ -306,20 +306,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
-		ps.logger.Debugf("pushsync: calling ClosestPeer, skiplist: %v", ps.skipList.ChunkSkipPeers(ch.Address()))
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, ps.skipList.ChunkSkipPeers(ch.Address())...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			if errors.Is(err, topology.ErrWantSelf) {
-				ps.logger.Debugf("pushsync: closest peer err want self, chunk %s", ch.Address().String())
 				if !ps.warmedUp() {
 					return nil, ErrWarmup
 				}
 
 				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					ps.logger.Debugf("pushsync: closest peer err want self, err no push, chunk %s", ch.Address().String())
 					return nil, ErrNoPush
 				}
 
@@ -353,7 +350,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 		ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 		defer canceld()
-		ps.logger.Debugf("pushsync: pushing chunk %s to peer %s", ch.Address().String(), peer.String())
 
 		r, attempted, err := ps.pushPeer(ctxd, peer, ch, retryAllowed)
 
@@ -364,7 +360,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			allowedRetries--
 		}
 		if err != nil {
-			ps.logger.Debugf("pushsync: chunk %s peer %s err: %v, attempted %t, allowedRetries: %d", ch.Address().String(), peer.String(), err, attempted, allowedRetries)
 			var timeToSkip time.Duration
 			switch {
 			case errors.Is(err, context.DeadlineExceeded):
@@ -373,24 +368,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				// the originator retry will eventually come in and
 				// would hopefully resolve the situation with the next
 				// closest peer.
-				ps.logger.Debugf("pushsync: chunk %s peer %s context deadline", ch.Address().String(), peer.String())
 				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					ps.logger.Debugf("pushsync: chunk %s peer %s context deadline blocking peer for %v", ch.Address().String(), peer.String(), sanctionWait)
 					timeToSkip = sanctionWait
 				}
 			case errors.Is(err, accounting.ErrOverdraft):
-				ps.logger.Debugf("pushsync: chunk %s peer %s err overdraft blocking peer for %v", ch.Address().String(), peer.String(), overdraftWait)
 				timeToSkip = overdraftWait
 			case errors.Is(err, mux.ErrReset):
-				ps.logger.Debugf("pushsync: chunk %s peer %s err stream reset", ch.Address().String(), peer.String())
 				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					ps.logger.Debugf("pushsync: chunk %s peer %s err stream reset blocking peer for %v", ch.Address().String(), peer.String(), sanctionWait)
 					timeToSkip = sanctionWait
 				}
 			default:
 				// network error, context canceled, eof
-				ps.logger.Debugf("pushsync: chunk %s peer %s err %v blocking peer for %v", ch.Address().String(), peer.String(), err, sanctionWait)
-
 				timeToSkip = sanctionWait
 			}
 
@@ -398,12 +386,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 			// if the node has warmed up AND no other closer peer has been tried
 			if ps.warmedUp() && timeToSkip > 0 {
-				logger.Debugf("pushsync: chunk %s sanctioning peer %s for %v", ch.Address().String(), peer, timeToSkip)
 				ps.skipList.Add(peer, ch.Address(), timeToSkip)
 			}
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			if allowedRetries > 0 {
-				logger.Debugf("pushsync: chunk %s has more attempts %d", ch.Address().String(), allowedRetries)
 				continue
 			}
 			return nil, err
