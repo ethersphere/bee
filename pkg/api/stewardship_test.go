@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
-func TestStewardshipReUpload(t *testing.T) {
+func TestStewardship(t *testing.T) {
 	var (
 		logger         = logging.New(ioutil.Discard, 0)
 		mockStatestore = statestore.NewStateStore()
@@ -33,15 +33,28 @@ func TestStewardshipReUpload(t *testing.T) {
 		Logger:  logger,
 		Steward: m,
 	})
-	jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+addr.String(), http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		}),
-	)
-	if !m.addr.Equal(addr) {
-		t.Fatalf("\nhave address: %q\nwant address: %q", m.addr.String(), addr.String())
-	}
+
+	t.Run("re-upload", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+addr.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+		if !m.addr.Equal(addr) {
+			t.Fatalf("\nhave address: %q\nwant address: %q", m.addr.String(), addr.String())
+		}
+	})
+
+	t.Run("is-retrievable", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, "/v1/stewardship/"+addr.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(struct {
+				IsRetrievable bool `json:"isRetrievable"`
+			}{
+				IsRetrievable: true,
+			}),
+		)
+	})
 }
 
 type mockSteward struct {
@@ -51,4 +64,8 @@ type mockSteward struct {
 func (m *mockSteward) Reupload(_ context.Context, addr swarm.Address) error {
 	m.addr = addr
 	return nil
+}
+
+func (m *mockSteward) IsRetrievable(_ context.Context, _ swarm.Address) (bool, error) {
+	return true, nil
 }

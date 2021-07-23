@@ -38,7 +38,7 @@ func TestSteward(t *testing.T) {
 			return nil, nil
 		}
 		ps = psmock.New(fn)
-		s  = steward.New(store, traverser, ps)
+		s  = steward.New(store, traverser, nil, ps)
 	)
 	n, err := rand.Read(data)
 	if n != cap(data) {
@@ -81,7 +81,7 @@ func TestSteward_ErrWantSelf(t *testing.T) {
 			return nil, topology.ErrWantSelf
 		}
 		ps = psmock.New(fn)
-		s  = steward.New(store, traverser, ps)
+		s  = steward.New(store, traverser, nil, ps)
 	)
 	n, err := rand.Read(data)
 	if n != cap(data) {

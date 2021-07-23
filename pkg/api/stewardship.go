@@ -31,3 +31,27 @@ func (s *server) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonhttp.OK(w, nil)
 }
+
+// stewardshipGetHandler checks whether the content on the given address is retrievable.
+func (s *server) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) {
+	nameOrHex := mux.Vars(r)["address"]
+	address, err := s.resolveNameOrAddress(nameOrHex)
+	if err != nil {
+		s.logger.Debugf("stewardship get: parse address %s: %v", nameOrHex, err)
+		s.logger.Error("stewardship get: parse address")
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+	res, err := s.steward.IsRetrievable(r.Context(), address)
+	if err != nil {
+		s.logger.Debugf("stewardship get: is retrievable %s: %v", address, err)
+		s.logger.Error("stewardship get: is retrievable")
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
+	jsonhttp.OK(w, struct {
+		IsRetrievable bool `json:"isRetrievable"`
+	}{
+		IsRetrievable: res,
+	})
+}
