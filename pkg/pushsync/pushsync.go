@@ -49,8 +49,7 @@ var (
 	ErrWarmup                = errors.New("node warmup time not complete")
 
 	defaultTTL                      = 20 * time.Second // request time to live
-	overdraftWait                   = 1 * time.Second  // how long to skip this peer for the specific chunk when overdrafting
-	sanctionWait                    = 30 * time.Second
+	sanctionWait                    = time.Minute
 	timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 	nPeersToPushsync                = 3               // number of peers to replicate to as receipt is sent upstream
 )
@@ -297,6 +296,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 	var (
 		allowedRetries = 1
 		includeSelf    = ps.isFullNode
+		skipPeers      []swarm.Address
 	)
 
 	if retryAllowed {
@@ -306,7 +306,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, ps.skipList.ChunkSkipPeers(ch.Address())...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
@@ -372,7 +372,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					timeToSkip = sanctionWait
 				}
 			case errors.Is(err, accounting.ErrOverdraft):
-				timeToSkip = overdraftWait
+				skipPeers = append(skipPeers, peer)
 			case errors.Is(err, mux.ErrReset):
 				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
 					timeToSkip = sanctionWait
