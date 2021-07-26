@@ -5,13 +5,12 @@ go 1.15
 require (
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/coreos/go-semver v0.3.0
-	github.com/ethereum/go-ethereum v1.10.5
+	github.com/ethereum/go-ethereum v1.10.3
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
 	github.com/ethersphere/go-storage-incentives-abi v0.3.0
 	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.5
 	github.com/gopherjs/gopherjs v0.0.0-20200217142428-fce0ec30dd00 // indirect
 	github.com/gorilla/handlers v1.4.2
@@ -24,7 +23,6 @@ require (
 	github.com/kardianos/service v1.2.0
 	github.com/klauspost/cpuid/v2 v2.0.8 // indirect
 	github.com/koron/go-ssdp v0.0.2 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/libp2p/go-libp2p v0.14.3
 	github.com/libp2p/go-libp2p-autonat v0.4.2
 	github.com/libp2p/go-libp2p-core v0.8.5
@@ -58,7 +56,7 @@ require (
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.4
-	github.com/wealdtech/go-ens/v3 v3.5.1
+	github.com/wealdtech/go-ens/v3 v3.4.6
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.uber.org/atomic v1.8.0
 	go.uber.org/multierr v1.7.0 // indirect
