@@ -159,7 +159,3 @@ func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, 
 		return 0, nil
 	}
 }
-
-func (m *simulatedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	return nil, errors.New("not implemented")
-}

@@ -129,10 +129,6 @@ func (m *backendMock) NonceAt(ctx context.Context, account common.Address, block
 	return 0, errors.New("not implemented")
 }
 
-func (m *backendMock) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	return nil, errors.New("not implemented")
-}
-
 func New(opts ...Option) transaction.Backend {
 	mock := new(backendMock)
 	for _, o := range opts {

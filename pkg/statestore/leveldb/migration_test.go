@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -299,11 +300,14 @@ func TestMigrationSwap(t *testing.T) {
 	address := common.HexToAddress("0xabcd")
 	storedAddress := common.HexToAddress("0xffff")
 
-	if err = db.Put(fmt.Sprintf("swap_peer_chequebook_%s", address[:]), storedAddress); err != nil {
+	legacyKey1 := fmt.Sprintf("swap_peer_chequebook_%s", address[:])
+	legacyKey2 := fmt.Sprintf("swap_beneficiary_peer_%s", address[:])
+
+	if err = db.Put(legacyKey1, storedAddress); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = db.Put(fmt.Sprintf("swap_beneficiary_peer_%s", address[:]), storedAddress); err != nil {
+	if err = db.Put(legacyKey2, storedAddress); err != nil {
 		t.Fatal(err)
 	}
 
@@ -326,5 +330,13 @@ func TestMigrationSwap(t *testing.T) {
 
 	if retrievedAddress != storedAddress {
 		t.Fatalf("got wrong address. wanted %x, got %x", storedAddress, retrievedAddress)
+	}
+
+	if err = db.Get(legacyKey1, &retrievedAddress); err != storage.ErrNotFound {
+		t.Fatalf("legacyKey1 not deleted. got error %v", err)
+	}
+
+	if err = db.Get(legacyKey2, &retrievedAddress); err != storage.ErrNotFound {
+		t.Fatalf("legacyKey2 not deleted. got error %v", err)
 	}
 }

@@ -136,6 +136,10 @@ func migrateSwap(s *store) error {
 			if err = s.Put(fixed, chequebookAddress); err != nil {
 				return err
 			}
+
+			if err = s.Delete(key); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
