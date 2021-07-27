@@ -750,3 +750,38 @@ func TestCashoutStatus(t *testing.T) {
 		t.Fatalf("go wrong status. wanted %v, got %v", expectedStatus, returnedStatus)
 	}
 }
+
+func TestStateStoreKeys(t *testing.T) {
+	address := common.HexToAddress("0xabcd")
+	swarmAddress := swarm.MustParseHexAddress("deff")
+
+	expected := "swap_chequebook_peer_deff"
+	if swap.PeerKey(swarmAddress) != expected {
+		t.Fatalf("wrong peer key. wanted %s, got %s", expected, swap.PeerKey(swarmAddress))
+	}
+
+	expected = "swap_peer_chequebook_000000000000000000000000000000000000abcd"
+	if swap.ChequebookPeerKey(address) != expected {
+		t.Fatalf("wrong peer key. wanted %s, got %s", expected, swap.ChequebookPeerKey(address))
+	}
+
+	expected = "swap_peer_beneficiary_deff"
+	if swap.PeerBeneficiaryKey(swarmAddress) != expected {
+		t.Fatalf("wrong peer beneficiary key. wanted %s, got %s", expected, swap.PeerBeneficiaryKey(swarmAddress))
+	}
+
+	expected = "swap_beneficiary_peer_000000000000000000000000000000000000abcd"
+	if swap.BeneficiaryPeerKey(address) != expected {
+		t.Fatalf("wrong beneficiary peer key. wanted %s, got %s", expected, swap.BeneficiaryPeerKey(address))
+	}
+
+	expected = "swap_deducted_by_peer_deff"
+	if swap.PeerDeductedByKey(swarmAddress) != expected {
+		t.Fatalf("wrong peer deducted by key. wanted %s, got %s", expected, swap.PeerDeductedByKey(swarmAddress))
+	}
+
+	expected = "swap_deducted_for_peer_deff"
+	if swap.PeerDeductedForKey(swarmAddress) != expected {
+		t.Fatalf("wrong peer deducted for key. wanted %s, got %s", expected, swap.PeerDeductedForKey(swarmAddress))
+	}
+}

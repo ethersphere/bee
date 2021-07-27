@@ -18,10 +18,13 @@ package leveldb
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -280,5 +283,60 @@ func TestMigrationErrorTo(t *testing.T) {
 
 	if shouldNotRun {
 		t.Errorf("migration ran but shouldnt have")
+	}
+}
+
+func TestMigrationSwap(t *testing.T) {
+	dir := t.TempDir()
+	logger := logging.New(ioutil.Discard, 0)
+
+	// start the fresh statestore with the sanctuary schema name
+	db, err := NewStateStore(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	address := common.HexToAddress("0xabcd")
+	storedAddress := common.HexToAddress("0xffff")
+
+	legacyKey1 := fmt.Sprintf("swap_peer_chequebook_%s", address[:])
+	legacyKey2 := fmt.Sprintf("swap_beneficiary_peer_%s", address[:])
+
+	if err = db.Put(legacyKey1, storedAddress); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = db.Put(legacyKey2, storedAddress); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = migrateSwap(db.(*store)); err != nil {
+		t.Fatal(err)
+	}
+
+	var retrievedAddress common.Address
+	if err = db.Get("swap_peer_chequebook_000000000000000000000000000000000000abcd", &retrievedAddress); err != nil {
+		t.Fatal(err)
+	}
+
+	if retrievedAddress != storedAddress {
+		t.Fatalf("got wrong address. wanted %x, got %x", storedAddress, retrievedAddress)
+	}
+
+	if err = db.Get("swap_beneficiary_peer_000000000000000000000000000000000000abcd", &retrievedAddress); err != nil {
+		t.Fatal(err)
+	}
+
+	if retrievedAddress != storedAddress {
+		t.Fatalf("got wrong address. wanted %x, got %x", storedAddress, retrievedAddress)
+	}
+
+	if err = db.Get(legacyKey1, &retrievedAddress); err != storage.ErrNotFound {
+		t.Fatalf("legacyKey1 not deleted. got error %v", err)
+	}
+
+	if err = db.Get(legacyKey2, &retrievedAddress); err != storage.ErrNotFound {
+		t.Fatalf("legacyKey2 not deleted. got error %v", err)
 	}
 }

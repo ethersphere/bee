@@ -470,3 +470,22 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 		t.Fatalf("got wrong error. wanted %v, got %v", chequebook.ErrInsufficientFunds, err)
 	}
 }
+
+func TestStateStoreKeys(t *testing.T) {
+	address := common.HexToAddress("0xabcd")
+
+	expected := "swap_cashout_000000000000000000000000000000000000abcd"
+	if chequebook.CashoutActionKey(address) != expected {
+		t.Fatalf("wrong cashout action key. wanted %s, got %s", expected, chequebook.CashoutActionKey(address))
+	}
+
+	expected = "swap_chequebook_last_issued_cheque_000000000000000000000000000000000000abcd"
+	if chequebook.LastIssuedChequeKey(address) != expected {
+		t.Fatalf("wrong last issued cheque key. wanted %s, got %s", expected, chequebook.LastIssuedChequeKey(address))
+	}
+
+	expected = "swap_chequebook_last_received_cheque__000000000000000000000000000000000000abcd"
+	if chequebook.LastReceivedChequeKey(address) != expected {
+		t.Fatalf("wrong last received cheque key. wanted %s, got %s", expected, chequebook.LastReceivedChequeKey(address))
+	}
+}
