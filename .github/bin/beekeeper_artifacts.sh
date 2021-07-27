@@ -13,19 +13,14 @@ do
   curl -s -o dump/"$i"/timesettlements.json "$i"-debug.localhost/timesettlements
   curl -s -o dump/"$i"/stamps.json "$i"-debug.localhost/stamps
 done
-
-
 kubectl -n local get pods > dump/kubectl_get_pods
 kubectl -n local logs -l app.kubernetes.io/part-of=bee --tail -1 --prefix -c bee > dump/kubectl_logs
-      
 vertag=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 15)
 endpoint=$AWS_ENDPOINT
-
 if [[ "$endpoint" != http* ]]
 then
   endpoint=https://$endpoint
 fi
-
 fname=artifacts_$vertag.tar.gz
 tar -cz dump | aws --endpoint-url "$endpoint" s3 cp - s3://"$BUCKET_NAME"/"$fname"
 aws --endpoint-url "$endpoint" s3api put-object-acl --bucket "$BUCKET_NAME" --acl public-read --key "$fname"
