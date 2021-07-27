@@ -2,7 +2,7 @@ version: "3"
 
 services:
   clef-1:
-    image: ethersphere/clef:0.4.12
+    image: ethersphere/clef:0.6.0
     restart: unless-stopped
     environment:
       - CLEF_CHAINID
@@ -11,7 +11,7 @@ services:
     command: full
 
   bee-1:
-    image: ethersphere/bee:beta
+    image: ethersphere/bee:stable
     restart: unless-stopped
     environment:
       - BEE_API_ADDR
