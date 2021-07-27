@@ -1,8 +1,8 @@
 openapi: 3.0.3
 
 info:
-  version: 1.0.0
-  title: Swarm API
+  version: 1.0.1
+  title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
 security:
