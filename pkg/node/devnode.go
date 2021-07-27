@@ -10,17 +10,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-	"github.com/multiformats/go-multiaddr"
-	"github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
-
+	"github.com/ethereum/go-ethereum/common"
+	mockAccounting "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
+	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
+	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -29,18 +28,25 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
-	mockPs "github.com/ethersphere/bee/pkg/pushsync/mock"
+	mockPushsync "github.com/ethersphere/bee/pkg/pushsync/mock"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	mockStateStore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
-
-	accountingMock "github.com/ethersphere/bee/pkg/accounting/mock"
-	p2pMock "github.com/ethersphere/bee/pkg/p2p/mock"
-	pingpongMock "github.com/ethersphere/bee/pkg/pingpong/mock"
-	topologyMock "github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/hashicorp/go-multierror"
+	"github.com/multiformats/go-multiaddr"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 type DevBee struct {
@@ -87,34 +93,57 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 		return nil, fmt.Errorf("eth address: %w", err)
 	}
 
-	debugAPIService := debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), nil)
+	var debugAPIService *debugapi.Service
 
-	debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-	if err != nil {
-		return nil, fmt.Errorf("debug api listener: %w", err)
-	}
-
-	debugAPIServer := &http.Server{
-		IdleTimeout:       30 * time.Second,
-		ReadHeaderTimeout: 3 * time.Second,
-		Handler:           debugAPIService,
-		ErrorLog:          log.New(b.errorLogWriter, "", 0),
-	}
-
-	go func() {
-		logger.Infof("debug api address: %s", debugAPIListener.Addr())
-
-		if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-			logger.Debugf("debug api server: %v", err)
-			logger.Error("unable to serve debug api")
+	if o.DebugAPIAddr != "" {
+		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
-	}()
 
-	b.debugAPIServer = debugAPIServer
+		var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
+			return []common.Hash{common.HexToHash("abcd")}, nil
+		}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
+			return nil
+		}), transactionmock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
+			recipient := common.HexToAddress("dfff")
+			return &transaction.StoredTransaction{
+				To:          &recipient,
+				Created:     1,
+				Data:        []byte{1, 2, 3, 4},
+				GasPrice:    big.NewInt(12),
+				GasLimit:    5345,
+				Value:       big.NewInt(4),
+				Nonce:       3,
+				Description: "test",
+			}, nil
+		}),
+		)
+
+		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction)
+
+		debugAPIServer := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           debugAPIService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		go func() {
+			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+
+			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+				logger.Debugf("debug api server: %v", err)
+				logger.Error("unable to serve debug api")
+			}
+		}()
+
+		b.debugAPIServer = debugAPIServer
+	}
 
 	lo := &localstore.Options{
-		Capacity:        o.CacheCapacity,
-		ReserveCapacity: uint64(batchstore.Capacity),
+		Capacity:        1000,
+		ReserveCapacity: uint64(batchstore.Capacity), // not adjustable
 		UnreserveFunc: func(postage.UnreserveIteratorFn) error {
 			return nil
 		},
@@ -137,7 +166,7 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 	pssService := pss.New(mockKey, logger)
 	b.pssCloser = pssService
 
-	pssService.SetPushSyncer(mockPs.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+	pssService.SetPushSyncer(mockPushsync.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		pssService.TryUnwrap(chunk)
 		return &pushsync.Receipt{}, nil
 	}))
@@ -168,15 +197,9 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 				return nil, err
 			}
 
-			post.Add(postage.NewStampIssuer(
-				label,
-				string(overlayEthAddress.Bytes()),
-				id,
-				initialBalance,
-				depth,
-				0, 0,
-				immutable,
-			))
+			stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, initialBalance, depth, 0, 0, immutable)
+			post.Add(stampIssuer)
+
 			return id, nil
 		},
 	))
@@ -214,17 +237,64 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 	b.apiServer = apiServer
 	b.apiCloser = apiService
 
-	var (
-		lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
-		pingPong   = pingpongMock.New(pong)
-		addrFunc   = p2pMock.WithAddressesFunc(addrFunc)
-		p2ps       = p2pMock.New(addrFunc)
-		acc        = accountingMock.NewAccounting()
-		kad        = topologyMock.NewTopologyDriver()
-	)
+	if debugAPIService != nil {
+		var (
+			lightNodes     = lightnode.NewContainer(swarm.NewAddress(nil))
+			pingPong       = mockPingPong.New(pong)
+			addrFunc       = mockP2P.WithAddressesFunc(addrFunc)
+			p2ps           = mockP2P.New(addrFunc)
+			acc            = mockAccounting.NewAccounting()
+			kad            = mockTopology.NewTopologyDriver()
+			storeRecipient = mockStateStore.NewStateStore()
+			pseudoset      = pseudosettle.New(nil, logger, storeRecipient, nil, big.NewInt(10000), p2ps)
+			mockSwap       = swapmock.New(swapmock.WithCashoutStatusFunc(
+				func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+					return &chequebook.CashoutStatus{
+						Last:           &chequebook.LastCashout{},
+						UncashedAmount: big.NewInt(0),
+					}, nil
+				},
+			), swapmock.WithLastSentChequeFunc(
+				func(a swarm.Address) (*chequebook.SignedCheque, error) {
+					return &chequebook.SignedCheque{
+						Cheque: chequebook.Cheque{
+							Beneficiary: common.Address{},
+							Chequebook:  common.Address{},
+						},
+					}, nil
+				},
+			), swapmock.WithLastReceivedChequeFunc(
+				func(a swarm.Address) (*chequebook.SignedCheque, error) {
+					return &chequebook.SignedCheque{
+						Cheque: chequebook.Cheque{
+							Beneficiary: common.Address{},
+							Chequebook:  common.Address{},
+						},
+					}, nil
+				},
+			))
+			mockChequebook = mockchequebook.NewChequebook(mockchequebook.WithChequebookBalanceFunc(
+				func(context.Context) (ret *big.Int, err error) {
+					return big.NewInt(0), nil
+				},
+			), mockchequebook.WithChequebookAvailableBalanceFunc(
+				func(context.Context) (ret *big.Int, err error) {
+					return big.NewInt(0), nil
+				},
+			), mockchequebook.WithChequebookWithdrawFunc(
+				func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+					return common.Hash{}, nil
+				},
+			), mockchequebook.WithChequebookDepositFunc(
+				func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+					return common.Hash{}, nil
+				},
+			))
+		)
 
-	// inject dependencies and configure full debug api http path routes
-	debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, nil, false, nil, nil, batchStore, post, postageContract)
+		// inject dependencies and configure full debug api http path routes
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, mockSwap, mockChequebook, batchStore, post, postageContract)
+	}
 
 	return b, nil
 }
