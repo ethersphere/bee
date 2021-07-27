@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	mockAccounting "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -117,6 +118,8 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 				Nonce:       3,
 				Description: "test",
 			}, nil
+		}), transactionmock.WithCancelTransactionFunc(func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+			return common.Hash{}, nil
 		}),
 		)
 
@@ -239,10 +242,21 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 
 	if debugAPIService != nil {
 		var (
-			lightNodes     = lightnode.NewContainer(swarm.NewAddress(nil))
-			pingPong       = mockPingPong.New(pong)
-			addrFunc       = mockP2P.WithAddressesFunc(addrFunc)
-			p2ps           = mockP2P.New(addrFunc)
+			lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
+			pingPong   = mockPingPong.New(pong)
+			p2ps       = mockP2P.New(
+				mockP2P.WithConnectFunc(func(ctx context.Context, addr multiaddr.Multiaddr) (address *bzz.Address, err error) {
+					return &bzz.Address{}, nil
+				}), mockP2P.WithDisconnectFunc(
+					func(overlay swarm.Address) error {
+						return nil
+					},
+				), mockP2P.WithAddressesFunc(
+					func() ([]multiaddr.Multiaddr, error) {
+						ma, _ := multiaddr.NewMultiaddr("mock")
+						return []multiaddr.Multiaddr{ma}, nil
+					},
+				))
 			acc            = mockAccounting.NewAccounting()
 			kad            = mockTopology.NewTopologyDriver()
 			storeRecipient = mockStateStore.NewStateStore()
@@ -343,11 +357,6 @@ func (b *DevBee) Shutdown(ctx context.Context) error {
 	tryClose(b.errorLogWriter, "error log writer")
 
 	return mErr
-}
-
-func addrFunc() ([]multiaddr.Multiaddr, error) {
-	ma, _ := multiaddr.NewMultiaddr("mock")
-	return []multiaddr.Multiaddr{ma}, nil
 }
 
 func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
