@@ -216,7 +216,7 @@ func TestPostageGetStamps(t *testing.T) {
 					BucketDepth:   si.BucketDepth(),
 					BlockNumber:   si.BlockNumber(),
 					ImmutableFlag: si.ImmutableFlag(),
-					Exists:        true,
+					Expired:       true,
 					BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 				},
 			},
@@ -245,7 +245,7 @@ func TestPostageGetStamp(t *testing.T) {
 				BucketDepth:   si.BucketDepth(),
 				BlockNumber:   si.BlockNumber(),
 				ImmutableFlag: si.ImmutableFlag(),
-				Exists:        true,
+				Expired:       true,
 				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			}),
 		)

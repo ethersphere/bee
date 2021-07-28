@@ -101,7 +101,7 @@ type postageStampResponse struct {
 	BucketDepth   uint8          `json:"bucketDepth"`
 	BlockNumber   uint64         `json:"blockNumber"`
 	ImmutableFlag bool           `json:"immutableFlag"`
-	Exists        bool           `json:"exists"`
+	Expired       bool           `json:"expired"`
 	BatchTTL      int64          `json:"batchTTL"`
 }
 
@@ -148,7 +148,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 			BucketDepth:   v.BucketDepth(),
 			BlockNumber:   v.BlockNumber(),
 			ImmutableFlag: v.ImmutableFlag(),
-			Exists:        exists,
+			Expired:       exists,
 			BatchTTL:      batchTTL,
 		})
 	}
@@ -240,7 +240,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		BucketDepth:   issuer.BucketDepth(),
 		BlockNumber:   issuer.BlockNumber(),
 		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        exists,
+		Expired:       exists,
 		BatchTTL:      batchTTL,
 	}
 	jsonhttp.OK(w, &resp)
