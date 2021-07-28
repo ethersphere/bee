@@ -368,9 +368,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				// the originator retry will eventually come in and
 				// would hopefully resolve the situation with the next
 				// closest peer.
-				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					timeToSkip = sanctionWait
-				}
+				//if ps.topologyDriver.IsWithinDepth(ch.Address()) {
+				timeToSkip = sanctionWait
+				//}
 			case errors.Is(err, accounting.ErrOverdraft):
 				skipPeers = append(skipPeers, peer)
 			case errors.Is(err, mux.ErrReset):
