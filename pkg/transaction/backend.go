@@ -76,15 +76,15 @@ func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, max
 	}
 }
 
-func WaitBlock(ctx context.Context, backend Backend, pollingInterval time.Duration, block *big.Int) (*types.Block, error) {
+func WaitBlock(ctx context.Context, backend Backend, pollingInterval time.Duration, block *big.Int) (*types.Header, error) {
 	for {
-		block, err := backend.BlockByNumber(ctx, block)
+		header, err := backend.HeaderByNumber(ctx, block)
 		if err != nil {
 			if !errors.Is(err, ethereum.NotFound) {
 				return nil, err
 			}
 		} else {
-			return block, nil
+			return header, nil
 		}
 
 		select {
