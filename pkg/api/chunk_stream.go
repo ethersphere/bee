@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package api
 
 import (
@@ -94,7 +98,7 @@ func (s *server) handleUploadStream(
 			time.Now().Add(writeDeadline),
 		)
 		if err != nil {
-			s.logger.Errorf("failed sending close msg with err, reason: %s", err.Error())
+			s.logger.Errorf("chunk stream handler: failed sending close msg")
 		}
 	}
 
@@ -113,36 +117,42 @@ func (s *server) handleUploadStream(
 
 		err = conn.SetReadDeadline(time.Now().Add(readDeadline))
 		if err != nil {
-			s.logger.Debugf("chunk stream set read deadline: %v", err)
+			s.logger.Debugf("chunk stream handler: set read deadline: %v", err)
+			s.logger.Error("chunk stream handler: set read deadline")
 			return
 		}
 
 		mt, msg, err := conn.ReadMessage()
 		if err != nil {
-			s.logger.Debugf("chunk stream handler read message error: %v", err)
+			s.logger.Debugf("chunk stream handler: read message error: %v", err)
+			s.logger.Error("chunk stream handler: read message error")
 			return
 		}
 
 		if mt != websocket.BinaryMessage {
-			s.logger.Debug("unexpected message received from client", mt)
+			s.logger.Debug("chunk stream handler: unexpected message received from client", mt)
+			s.logger.Error("chunk stream handler: unexpected message received from client")
 			sendErrorClose(websocket.CloseUnsupportedData, "invalid message")
 			return
 		}
 
 		if len(msg) < swarm.SpanSize {
-			s.logger.Debug("chunk upload: not enough data")
+			s.logger.Debug("chunk stream handler: not enough data")
+			s.logger.Error("chunk stream handler: not enough data")
 			return
 		}
 
 		chunk, err := cac.NewWithDataSpan(msg)
 		if err != nil {
-			s.logger.Debugf("chunk upload: create chunk error: %v", err)
+			s.logger.Debugf("chunk stream handler: create chunk error: %v", err)
+			s.logger.Error("chunk stream handler: failed creating chunk")
 			return
 		}
 
 		seen, err := putter.Put(ctx, mode, chunk)
 		if err != nil {
-			s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
+			s.logger.Debugf("chunk stream handler: chunk write error: %v, addr %s", err, chunk.Address())
+			s.logger.Error("chunk stream handler: chunk write error")
 			switch {
 			case errors.Is(err, postage.ErrBucketFull):
 				sendErrorClose(websocket.CloseInternalServerErr, "batch is overissued")
@@ -153,17 +163,17 @@ func (s *server) handleUploadStream(
 		} else if len(seen) > 0 && seen[0] && tag != nil {
 			err := tag.Inc(tags.StateSeen)
 			if err != nil {
-				s.logger.Debugf("chunk upload: increment tag", err)
+				s.logger.Debugf("chunk stream handler: increment tag", err)
+				s.logger.Error("chunk stream handler: increment tag")
 				sendErrorClose(websocket.CloseInternalServerErr, "failed incrementing tag")
 				return
 			}
-		}
-
-		if tag != nil {
+		} else if tag != nil {
 			// indicate that the chunk is stored
 			err = tag.Inc(tags.StateStored)
 			if err != nil {
-				s.logger.Debugf("chunk upload: increment tag", err)
+				s.logger.Debugf("chunk stream handler: increment tag", err)
+				s.logger.Error("chunk stream handler: increment tag")
 				sendErrorClose(websocket.CloseInternalServerErr, "failed incrementing tag")
 				return
 			}
@@ -171,7 +181,8 @@ func (s *server) handleUploadStream(
 
 		if pin {
 			if err := s.pinning.CreatePin(ctx, chunk.Address(), false); err != nil {
-				s.logger.Debugf("chunk upload: creation of pin for %q failed: %v", chunk.Address(), err)
+				s.logger.Debugf("chunk stream handler: creation of pin for %q failed: %v", chunk.Address(), err)
+				s.logger.Error("chunk stream handler: creation of pin failed")
 				sendErrorClose(websocket.CloseInternalServerErr, "failed creating pin")
 				return
 			}
@@ -179,7 +190,8 @@ func (s *server) handleUploadStream(
 
 		err = sendMsg(websocket.TextMessage, successWsMsg)
 		if err != nil {
-			s.logger.Debugf("failed sending success msg: %v", err)
+			s.logger.Debugf("chunk stream handler: failed sending success msg: %v", err)
+			s.logger.Error("chunk stream handler: failed sending confirmation")
 			return
 		}
 	}
