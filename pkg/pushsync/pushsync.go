@@ -347,10 +347,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
 		ps.metrics.TotalSendAttempts.Inc()
-
 		ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 		defer canceld()
-
+		logger.Debugf("chunk %s closest peer returned peer %s for push", ch.Address().String(), peer.String())
 		r, attempted, err := ps.pushPeer(ctxd, peer, ch, retryAllowed)
 
 		// attempted is true if we get past accounting and actually attempt
@@ -386,7 +385,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 			// if the node has warmed up AND no other closer peer has been tried
 			if ps.warmedUp() && timeToSkip > 0 {
-				fmt.Printf("pushsync sacntioning peer %s chunk %s for %v", peer.String(), ch.Address().String(), timeToSkip)
+				logger.Debugf("pushsync sacntioning peer %s chunk %s for %v", peer.String(), ch.Address().String(), timeToSkip)
 				ps.skipList.Add(ch.Address(), peer, timeToSkip)
 			}
 			ps.metrics.TotalFailedSendAttempts.Inc()
