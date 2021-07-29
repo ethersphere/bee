@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethersphere/bee"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -23,7 +22,7 @@ import (
 func (c *command) initStartDevCmd() (err error) {
 
 	cmd := &cobra.Command{
-		Use:   "start-dev",
+		Use:   "dev",
 		Short: "Start a Swarm node in development mode",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
@@ -50,19 +49,15 @@ func (c *command) initStartDevCmd() (err error) {
 			}
 
 			beeASCII := `
-Welcome to Swarm.... Bzzz Bzzzz Bzzzz
-                \     /
-            \    o ^ o    /
-              \ (     ) /
-   ____________(%%%%%%%)____________
-  (     /   /  )%%%%%%%(  \   \     )
-  (___/___/__/           \__\___\___)
-     (     /  /(%%%%%%%)\  \     )
-      (__/___/ (%%%%%%%) \___\__)
-              /(       )\
-            /   (%%%%%)   \
-                 (%%%)
-                   !                   `
+ (                      *        )  (           
+ )\ )                 (  *    ( /(  )\ )        
+(()/(   (    (   (    )\))(   )\())(()/(   (    
+ /(_))  )\   )\  )\  ((_)()\ ((_)\  /(_))  )\   
+(_))_  ((_) ((_)((_) (_()((_)  ((_)(_))_  ((_)  
+ |   \ | __|\ \ / /  |  \/  | / _ \ |   \ | __| 
+ | |) || _|  \ V /   | |\/| || (_) || |) || _|  
+ |___/ |___|  \_/    |_|  |_| \___/ |___/ |___|                
+`
 
 			fmt.Println(beeASCII)
 			fmt.Println()
@@ -74,13 +69,17 @@ Welcome to Swarm.... Bzzz Bzzzz Bzzzz
 				debugAPIAddr = ""
 			}
 
-			logger.Infof("version: %v", bee.Version)
-
 			// generate signer in here
-			b, err := node.NewDevBee(logger, &node.Options{
-				APIAddr:      c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr: debugAPIAddr,
-				Logger:       logger,
+			b, err := node.NewDevBee(logger, &node.DevOptions{
+				APIAddr:                  c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:             debugAPIAddr,
+				Logger:                   logger,
+				DBOpenFilesLimit:         c.config.GetUint64(optionNameDBOpenFilesLimit),
+				DBBlockCacheCapacity:     c.config.GetUint64(optionNameDBBlockCacheCapacity),
+				DBWriteBufferSize:        c.config.GetUint64(optionNameDBWriteBufferSize),
+				DBDisableSeeksCompaction: c.config.GetBool(optionNameDBDisableSeeksCompaction),
+				CORSAllowedOrigins:       c.config.GetStringSlice(optionCORSAllowedOrigins),
+				ReserveCapacity:          c.config.GetUint64(optionNameDevReserveCapacity),
 			})
 			if err != nil {
 				return err
@@ -149,10 +148,16 @@ Welcome to Swarm.... Bzzz Bzzzz Bzzzz
 		},
 	}
 
+	cmd.Flags().Bool(optionNameDebugAPIEnable, true, "enable debug HTTP API")
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
-	cmd.Flags().Bool(optionNameDebugAPIEnable, true, "enable debug HTTP API")
+	cmd.Flags().Uint64(optionNameDevReserveCapacity, 4194304, "cache reserve capacity")
+	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
+	cmd.Flags().Uint64(optionNameDBOpenFilesLimit, 200, "number of open files allowed by database")
+	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
+	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
+	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
 
 	c.root.AddCommand(cmd)
 	return nil

@@ -71,6 +71,7 @@ const (
 	optionWarmUpTime                     = "warmup-time"
 	optionNameMainNet                    = "mainnet"
 	optionNameRetrievalCaching           = "cache-retrieval"
+	optionNameDevReserveCapacity         = "dev-reserve-capacity"
 )
 
 func init() {

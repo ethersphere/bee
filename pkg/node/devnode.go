@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package node
 
 import (
@@ -62,11 +66,23 @@ type DevBee struct {
 	debugAPIServer   *http.Server
 }
 
-func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
+type DevOptions struct {
+	Logger                   logging.Logger
+	APIAddr                  string
+	DebugAPIAddr             string
+	CORSAllowedOrigins       []string
+	DBOpenFilesLimit         uint64
+	ReserveCapacity          uint64
+	DBWriteBufferSize        uint64
+	DBBlockCacheCapacity     uint64
+	DBDisableSeeksCompaction bool
+}
+
+// NewDevBee starts the bee instance in 'development' mode
+// this implies starting an API and a Debug endpoints while mocking all their services
+func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:     o.TracingEnabled,
-		Endpoint:    o.TracingEndpoint,
-		ServiceName: o.TracingServiceName,
+		Enabled: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)
@@ -145,15 +161,15 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 	}
 
 	lo := &localstore.Options{
-		Capacity:        1000,
-		ReserveCapacity: uint64(batchstore.Capacity), // not adjustable
-		UnreserveFunc: func(postage.UnreserveIteratorFn) error {
-			return nil
-		},
+		Capacity:               1000,
+		ReserveCapacity:        o.ReserveCapacity,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		UnreserveFunc: func(postage.UnreserveIteratorFn) error {
+			return nil
+		},
 	}
 
 	var swarmAddress swarm.Address
@@ -207,12 +223,11 @@ func NewDevBee(logger logging.Logger, o *Options) (b *DevBee, err error) {
 		},
 	))
 
-	// API server
 	feedFactory := factory.New(storer)
 
 	apiService := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		GatewayMode:        o.GatewayMode,
+		GatewayMode:        false,
 		WsPingPeriod:       60 * time.Second,
 	})
 
