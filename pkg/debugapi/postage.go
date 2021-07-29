@@ -66,6 +66,14 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		immutable, _ = strconv.ParseBool(val[0])
 	}
 
+	if !s.postageCreateSem.TryAcquire(1) {
+		s.logger.Debug("create batch: resource is busy")
+		jsonhttp.InternalServerError(w, "resource is busy")
+		return
+	} else {
+		defer s.postageCreateSem.Release(1)
+	}
+
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {

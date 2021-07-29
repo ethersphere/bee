@@ -235,6 +235,14 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasLimit(ctx, l)
 	}
 
+	if !s.cashOutChequeSem.TryAcquire(1) {
+		s.logger.Debug("debug api: cashout resource is busy")
+		jsonhttp.InternalServerError(w, "cashout resource is busy")
+		return
+	} else {
+		defer s.cashOutChequeSem.Release(1)
+	}
+
 	txHash, err := s.swap.CashCheque(ctx, peer)
 	if err != nil {
 		s.logger.Debugf("debug api: cashout peer: cannot cash %s: %v", addr, err)
