@@ -40,11 +40,11 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		}
 		l.Warning("statestore recovery ok! you are kindly request to inform us about the steps that preceded the last Bee shutdown.")
 	}
-
 	s := &store{
 		db:     db,
 		logger: l,
 	}
+	_ = s.Put("batchservice_dirty_db", true)
 
 	sn, err := s.getSchemaName()
 	if err != nil {
