@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/gorilla/mux"
 )
 
@@ -294,7 +295,10 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
 func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
 	state := s.batchStore.GetChainState()
 	batch, err := s.batchStore.Get(id)
-	if err != nil {
+	switch {
+	case errors.Is(err, storage.ErrNotFound), len(state.CurrentPrice.Bits()) == 0:
+		return -1, nil
+	case err != nil:
 		return 0, err
 	}
 
@@ -303,11 +307,6 @@ func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
 		cumulativePayout  = state.TotalAmount
 		pricePerBlock     = state.CurrentPrice
 	)
-
-	if len(pricePerBlock.Bits()) == 0 {
-		return -1, nil
-	}
-
 	ttl := new(big.Int).Sub(normalizedBalance, cumulativePayout)
 	ttl = ttl.Mul(ttl, s.blockTime)
 	ttl = ttl.Div(ttl, pricePerBlock)
