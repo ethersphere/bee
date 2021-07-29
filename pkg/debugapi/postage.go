@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/gorilla/mux"
@@ -209,12 +210,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	issuer, err := s.post.GetStampIssuer(id)
-	if err != nil {
+	if err != nil && !errors.Is(err, postage.ErrNotUsable) {
 		s.logger.Debugf("get stamp issuer: get issuer: %v", err)
 		s.logger.Error("get stamp issuer: get issuer")
 		jsonhttp.BadRequest(w, "cannot get issuer")
 		return
 	}
+
 	exists, err := s.batchStore.Exists(id)
 	if err != nil {
 		s.logger.Debugf("get stamp issuer: check batch: %v", err)
@@ -231,18 +233,22 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	resp := postageStampResponse{
-		BatchID:       id,
-		Utilization:   issuer.Utilization(),
-		Usable:        s.post.IssuerUsable(issuer),
-		Label:         issuer.Label(),
-		Depth:         issuer.Depth(),
-		Amount:        bigint.Wrap(issuer.Amount()),
-		BucketDepth:   issuer.BucketDepth(),
-		BlockNumber:   issuer.BlockNumber(),
-		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        exists,
-		BatchTTL:      batchTTL,
+		BatchID:  id,
+		Exists:   exists,
+		BatchTTL: batchTTL,
 	}
+
+	if issuer != nil {
+		resp.Utilization = issuer.Utilization()
+		resp.Usable = s.post.IssuerUsable(issuer)
+		resp.Label = issuer.Label()
+		resp.Depth = issuer.Depth()
+		resp.Amount = bigint.Wrap(issuer.Amount())
+		resp.BucketDepth = issuer.BucketDepth()
+		resp.BlockNumber = issuer.BlockNumber()
+		resp.ImmutableFlag = issuer.ImmutableFlag()
+	}
+
 	jsonhttp.OK(w, &resp)
 }
 
