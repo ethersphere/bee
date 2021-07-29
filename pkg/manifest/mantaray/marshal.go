@@ -270,13 +270,6 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 
 		n.entry = append([]byte{}, data[nodeHeaderSize:nodeHeaderSize+refBytesSize]...)
 		offset := nodeHeaderSize + refBytesSize // skip entry
-		// Currently we don't persist the root nodeType when we marshal the manifest, as a result
-		// the root nodeType information is lost on Unmarshal. This causes issues when we want to
-		// perform a path 'Walk' on the root. If there is more than 1 fork, the root node type
-		// is an edge, so we will deduce this information from index byte array
-		if !bytes.Equal(data[offset:offset+32], make([]byte, 32)) {
-			n.nodeType = nodeTypeEdge
-		}
 		n.forks = make(map[byte]*fork)
 		bb := &bitsForBytes{}
 		bb.fromBytes(data[offset:])
