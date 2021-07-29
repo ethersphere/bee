@@ -1023,14 +1023,15 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 	}
 
 	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		if closest.IsZero() {
-			closest = peer
-		}
 
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
 			}
+		}
+
+		if closest.IsZero() {
+			closest = peer
 		}
 
 		// kludge: hotfix for topology peer inconsistencies bug
