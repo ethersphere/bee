@@ -35,7 +35,8 @@ const secureOverlayKey = "non-mineable-overlay"
 func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
 
 	// migrate overlay key to new key
-	err := storer.Delete(overlayKey)
+	_ = storer.Delete(overlayKey)
+	err := storer.Delete(secureOverlayKey)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return err
 	}
