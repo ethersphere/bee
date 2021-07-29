@@ -368,15 +368,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				// the originator retry will eventually come in and
 				// would hopefully resolve the situation with the next
 				// closest peer.
-				//if ps.topologyDriver.IsWithinDepth(ch.Address()) {
-				timeToSkip = sanctionWait
-				//}
-			case errors.Is(err, accounting.ErrOverdraft):
-				skipPeers = append(skipPeers, peer)
-			case errors.Is(err, mux.ErrReset):
 				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
 					timeToSkip = sanctionWait
 				}
+			case errors.Is(err, accounting.ErrOverdraft):
+				skipPeers = append(skipPeers, peer)
+			case errors.Is(err, mux.ErrReset):
+				//if ps.topologyDriver.IsWithinDepth(ch.Address()) {
+				timeToSkip = sanctionWait
+				//}
 			default:
 				// network error, context canceled, eof
 				timeToSkip = sanctionWait
@@ -386,6 +386,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 			// if the node has warmed up AND no other closer peer has been tried
 			if ps.warmedUp() && timeToSkip > 0 {
+				fmt.Printf("pushsync sacntioning peer %s chunk %s for %v", peer.String(), ch.Address().String(), timeToSkip)
 				ps.skipList.Add(ch.Address(), peer, timeToSkip)
 			}
 			ps.metrics.TotalFailedSendAttempts.Inc()
