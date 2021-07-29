@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/libp2p/go-libp2p-core/mux"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -49,7 +48,7 @@ var (
 	ErrWarmup                = errors.New("node warmup time not complete")
 
 	defaultTTL                      = 20 * time.Second // request time to live
-	sanctionWait                    = time.Minute
+	sanctionWait                    = 5 * time.Minute
 	timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
 	nPeersToPushsync                = 3               // number of peers to replicate to as receipt is sent upstream
 )
@@ -362,23 +361,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		if err != nil {
 			var timeToSkip time.Duration
 			switch {
-			case errors.Is(err, context.DeadlineExceeded):
-				// can happen both in NN but also on forwarder nodes.
-				// if its inside the neighborhood - wait a long time.
-				// the originator retry will eventually come in and
-				// would hopefully resolve the situation with the next
-				// closest peer.
-				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					timeToSkip = sanctionWait
-				}
 			case errors.Is(err, accounting.ErrOverdraft):
 				skipPeers = append(skipPeers, peer)
-			case errors.Is(err, mux.ErrReset):
-				if ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					timeToSkip = sanctionWait
-				}
 			default:
-				// network error, context canceled, eof
 				timeToSkip = sanctionWait
 			}
 
