@@ -235,6 +235,14 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasLimit(ctx, l)
 	}
 
+	if !s.cashOutChequeSem.TryAcquire(1) {
+		s.logger.Debug("debug api: simultaneous on-chain operations not supported")
+		s.logger.Error("debug api: simultaneous on-chain operations not supported")
+		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
+		return
+	}
+	defer s.cashOutChequeSem.Release(1)
+
 	txHash, err := s.swap.CashCheque(ctx, peer)
 	if err != nil {
 		s.logger.Debugf("debug api: cashout peer: cannot cash %s: %v", addr, err)

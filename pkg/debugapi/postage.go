@@ -68,6 +68,14 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		immutable, _ = strconv.ParseBool(val[0])
 	}
 
+	if !s.postageCreateSem.TryAcquire(1) {
+		s.logger.Debug("create batch: simultaneous on-chain operations not supported")
+		s.logger.Error("create batch: simultaneous on-chain operations not supported")
+		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
+		return
+	}
+	defer s.postageCreateSem.Release(1)
+
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
