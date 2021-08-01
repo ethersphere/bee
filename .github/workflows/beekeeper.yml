@@ -165,6 +165,11 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
+          export BUCKET_NAME=beekeeper-artifacts
+          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
           export FAILED='no-test'
           if ${{ steps.pingpong-1.outcome=='failure' }}; then FAILED=pingpong-1; fi
           if ${{ steps.fullconnectivity-1.outcome=='failure' }}; then FAILED=fullconnectivity-1; fi
@@ -180,7 +185,9 @@ jobs:
           if ${{ steps.pingpong-3.outcome=='failure' }}; then FAILED=pingpong-3; fi
           if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** ${{ github.head_ref }}\nFailed -> \`${FAILED}\`\nDebug -> \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: ${{ github.head_ref }}\nStep failed:\n \`${FAILED}\`\nDebug shell:\n\`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "run the debug shell and run the following to get debugging artifacts:"
+          echo "curl -s -o debug.sh https://gist.githubusercontent.com/acud/2c219531e832aafbab51feffe5b5e91f/raw/304880f1f8cc819e577d1dd3f1f45df8709c543d/beekeeper_artifacts.sh | bash"
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 1.0.0
+  version: 1.0.1
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 

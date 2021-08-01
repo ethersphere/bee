@@ -486,8 +486,12 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ta2.Get(tags.StateSent) != 2 {
-		t.Fatalf("tags error")
+
+	// the write to the first peer might succeed or
+	// fail, so it is not guaranteed that two increments
+	// are made to Sent. expect >= 1
+	if tg := ta2.Get(tags.StateSent); tg == 0 {
+		t.Fatalf("tags error got %d want >= 1", tg)
 	}
 
 	balance, err := pivotAccounting.Balance(peer2)
@@ -779,8 +783,8 @@ func TestSignsReceipt(t *testing.T) {
 		t.Fatal("receipt block hash do not match")
 	}
 }
-func TestPeerSkipList(t *testing.T) {
 
+func TestPeerSkipList(t *testing.T) {
 	skipList := pushsync.NewPeerSkipList()
 
 	addr1 := testingc.GenerateTestRandomChunk().Address()
@@ -788,25 +792,16 @@ func TestPeerSkipList(t *testing.T) {
 
 	skipList.Add(addr1, addr2, time.Millisecond*10)
 
-	if !skipList.ShouldSkip(addr1) {
+	if !skipList.ChunkSkipPeers(addr1)[0].Equal(addr2) {
 		t.Fatal("peer should be skipped")
-	}
-
-	if !skipList.HasChunk(addr2) {
-		t.Fatal("chunk is missing")
 	}
 
 	time.Sleep(time.Millisecond * 11)
 
 	skipList.PruneExpired()
 
-	if skipList.ShouldSkip(addr1) {
-		t.Fatal("peer should be not be skipped")
-	}
-
-	skipList.PruneChunk(addr2)
-	if skipList.HasChunk(addr2) {
-		t.Fatal("chunk should be missing")
+	if len(skipList.ChunkSkipPeers(addr1)) != 0 {
+		t.Fatal("entry should be pruned")
 	}
 }
 

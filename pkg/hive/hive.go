@@ -12,11 +12,13 @@ package hive
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/semaphore"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
@@ -276,10 +278,9 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			}
 
 			// check if the underlay is usable by doing a raw ping using libp2p
-			_, err = s.streamer.Ping(ctx, multiUnderlay)
-			if err != nil {
+			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
 				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debugf("hive: multi address underlay %s not reachable err: %s", multiUnderlay, err.Error())
+				s.logger.Debugf("hive: peer %s: underlay %s not reachable", hex.EncodeToString(newPeer.Overlay), multiUnderlay)
 				return
 			}
 

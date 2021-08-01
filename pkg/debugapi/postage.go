@@ -14,8 +14,10 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/gorilla/mux"
 )
 
@@ -65,6 +67,14 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := r.Header[immutableHeader]; ok {
 		immutable, _ = strconv.ParseBool(val[0])
 	}
+
+	if !s.postageCreateSem.TryAcquire(1) {
+		s.logger.Debug("create batch: simultaneous on-chain operations not supported")
+		s.logger.Error("create batch: simultaneous on-chain operations not supported")
+		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
+		return
+	}
+	defer s.postageCreateSem.Release(1)
 
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
@@ -209,12 +219,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	issuer, err := s.post.GetStampIssuer(id)
-	if err != nil {
+	if err != nil && !errors.Is(err, postage.ErrNotUsable) {
 		s.logger.Debugf("get stamp issuer: get issuer: %v", err)
 		s.logger.Error("get stamp issuer: get issuer")
 		jsonhttp.BadRequest(w, "cannot get issuer")
 		return
 	}
+
 	exists, err := s.batchStore.Exists(id)
 	if err != nil {
 		s.logger.Debugf("get stamp issuer: check batch: %v", err)
@@ -231,18 +242,22 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	resp := postageStampResponse{
-		BatchID:       id,
-		Utilization:   issuer.Utilization(),
-		Usable:        s.post.IssuerUsable(issuer),
-		Label:         issuer.Label(),
-		Depth:         issuer.Depth(),
-		Amount:        bigint.Wrap(issuer.Amount()),
-		BucketDepth:   issuer.BucketDepth(),
-		BlockNumber:   issuer.BlockNumber(),
-		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        exists,
-		BatchTTL:      batchTTL,
+		BatchID:  id,
+		Exists:   exists,
+		BatchTTL: batchTTL,
 	}
+
+	if issuer != nil {
+		resp.Utilization = issuer.Utilization()
+		resp.Usable = s.post.IssuerUsable(issuer)
+		resp.Label = issuer.Label()
+		resp.Depth = issuer.Depth()
+		resp.Amount = bigint.Wrap(issuer.Amount())
+		resp.BucketDepth = issuer.BucketDepth()
+		resp.BlockNumber = issuer.BlockNumber()
+		resp.ImmutableFlag = issuer.ImmutableFlag()
+	}
+
 	jsonhttp.OK(w, &resp)
 }
 
@@ -288,7 +303,10 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
 func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
 	state := s.batchStore.GetChainState()
 	batch, err := s.batchStore.Get(id)
-	if err != nil {
+	switch {
+	case errors.Is(err, storage.ErrNotFound), len(state.CurrentPrice.Bits()) == 0:
+		return -1, nil
+	case err != nil:
 		return 0, err
 	}
 
@@ -297,11 +315,6 @@ func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
 		cumulativePayout  = state.TotalAmount
 		pricePerBlock     = state.CurrentPrice
 	)
-
-	if len(pricePerBlock.Bits()) == 0 {
-		return -1, nil
-	}
-
 	ttl := new(big.Int).Sub(normalizedBalance, cumulativePayout)
 	ttl = ttl.Mul(ttl, s.blockTime)
 	ttl = ttl.Div(ttl, pricePerBlock)
