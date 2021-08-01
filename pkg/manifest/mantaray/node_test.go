@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package mantaray
+package mantaray_test
 
 import (
 	"bytes"
@@ -10,17 +10,13 @@ import (
 	"errors"
 	"strconv"
 	"testing"
-)
 
-type nodeEntry struct {
-	path     []byte
-	entry    []byte
-	metadata map[string]string
-}
+	"github.com/ethersphere/bee/pkg/manifest/mantaray"
+)
 
 func TestNilPath(t *testing.T) {
 	ctx := context.Background()
-	n := New()
+	n := mantaray.New()
 	_, err := n.Lookup(ctx, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -29,7 +25,7 @@ func TestNilPath(t *testing.T) {
 
 func TestAddAndLookup(t *testing.T) {
 	ctx := context.Background()
-	n := New()
+	n := mantaray.New()
 	testCases := [][]byte{
 		[]byte("aaaaaa"),
 		[]byte("aaaaab"),
@@ -135,7 +131,7 @@ func TestAddAndLookupNode(t *testing.T) {
 	} {
 		ctx := context.Background()
 		t.Run(tc.name, func(t *testing.T) {
-			n := New()
+			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {
 				c := tc.toAdd[i]
@@ -151,12 +147,46 @@ func TestAddAndLookupNode(t *testing.T) {
 						t.Fatalf("expected no error, got %v", err)
 					}
 					if !node.IsValueType() {
-						t.Fatalf("expected value type, got %v", strconv.FormatInt(int64(node.nodeType), 2))
+						t.Fatalf("expected value type, got %v", strconv.FormatInt(int64(node.NodeType()), 2))
 					}
 					de := append(make([]byte, 32-len(d)), d...)
-					if !bytes.Equal(node.entry, de) {
-						t.Fatalf("expected value %x, got %x", d, node.entry)
+					if !bytes.Equal(node.Entry(), de) {
+						t.Fatalf("expected value %x, got %x", d, node.Entry())
 					}
+				}
+			}
+		})
+		t.Run(tc.name+"/with load save", func(t *testing.T) {
+			n := mantaray.New()
+
+			for i := 0; i < len(tc.toAdd); i++ {
+				c := tc.toAdd[i]
+				e := append(make([]byte, 32-len(c)), c...)
+				err := n.Add(ctx, c, e, nil, nil)
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+			}
+			ls := newMockLoadSaver()
+			err := n.Save(ctx, ls)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			n2 := mantaray.NewNodeRef(n.Reference())
+
+			for j := 0; j < len(tc.toAdd); j++ {
+				d := tc.toAdd[j]
+				node, err := n2.LookupNode(ctx, d, ls)
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				if !node.IsValueType() {
+					t.Fatalf("expected value type, got %v", strconv.FormatInt(int64(node.NodeType()), 2))
+				}
+				de := append(make([]byte, 32-len(d)), d...)
+				if !bytes.Equal(node.Entry(), de) {
+					t.Fatalf("expected value %x, got %x", d, node.Entry())
 				}
 			}
 		})
@@ -166,29 +196,29 @@ func TestAddAndLookupNode(t *testing.T) {
 func TestRemove(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		toAdd    []nodeEntry
+		toAdd    []mantaray.NodeEntry
 		toRemove [][]byte
 	}{
 		{
 			name: "simple",
-			toAdd: []nodeEntry{
+			toAdd: []mantaray.NodeEntry{
 				{
-					path: []byte("/"),
-					metadata: map[string]string{
+					Path: []byte("/"),
+					Metadata: map[string]string{
 						"index-document": "index.html",
 					},
 				},
 				{
-					path: []byte("index.html"),
+					Path: []byte("index.html"),
 				},
 				{
-					path: []byte("img/1.png"),
+					Path: []byte("img/1.png"),
 				},
 				{
-					path: []byte("img/2.png"),
+					Path: []byte("img/2.png"),
 				},
 				{
-					path: []byte("robots.txt"),
+					Path: []byte("robots.txt"),
 				},
 			},
 			toRemove: [][]byte{
@@ -197,21 +227,21 @@ func TestRemove(t *testing.T) {
 		},
 		{
 			name: "nested-prefix-is-not-collapsed",
-			toAdd: []nodeEntry{
+			toAdd: []mantaray.NodeEntry{
 				{
-					path: []byte("index.html"),
+					Path: []byte("index.html"),
 				},
 				{
-					path: []byte("img/1.png"),
+					Path: []byte("img/1.png"),
 				},
 				{
-					path: []byte("img/2/test1.png"),
+					Path: []byte("img/2/test1.png"),
 				},
 				{
-					path: []byte("img/2/test2.png"),
+					Path: []byte("img/2/test2.png"),
 				},
 				{
-					path: []byte("robots.txt"),
+					Path: []byte("robots.txt"),
 				},
 			},
 			toRemove: [][]byte{
@@ -221,21 +251,21 @@ func TestRemove(t *testing.T) {
 	} {
 		ctx := context.Background()
 		t.Run(tc.name, func(t *testing.T) {
-			n := New()
+			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {
-				c := tc.toAdd[i].path
-				e := tc.toAdd[i].entry
+				c := tc.toAdd[i].Path
+				e := tc.toAdd[i].Entry
 				if len(e) == 0 {
 					e = append(make([]byte, 32-len(c)), c...)
 				}
-				m := tc.toAdd[i].metadata
+				m := tc.toAdd[i].Metadata
 				err := n.Add(ctx, c, e, m, nil)
 				if err != nil {
 					t.Fatalf("expected no error, got %v", err)
 				}
 				for j := 0; j < i; j++ {
-					d := tc.toAdd[j].path
+					d := tc.toAdd[j].Path
 					m, err := n.Lookup(ctx, d, nil)
 					if err != nil {
 						t.Fatalf("expected no error, got %v", err)
@@ -254,7 +284,7 @@ func TestRemove(t *testing.T) {
 					t.Fatalf("expected no error, got %v", err)
 				}
 				_, err = n.Lookup(ctx, c, nil)
-				if !errors.Is(err, ErrNotFound) {
+				if !errors.Is(err, mantaray.ErrNotFound) {
 					t.Fatalf("expected not found error, got %v", err)
 				}
 			}
@@ -306,7 +336,7 @@ func TestHasPrefix(t *testing.T) {
 	} {
 		ctx := context.Background()
 		t.Run(tc.name, func(t *testing.T) {
-			n := New()
+			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {
 				c := tc.toAdd[i]
