@@ -140,6 +140,8 @@ func TestWalk(t *testing.T) {
 				[]byte("img/test/"),
 				[]byte("img/test/oho.png"),
 				[]byte("img/test/old/test.png"),
+				// file with same prefix but not a directory prefix
+				[]byte("img/test/old/test.png.backup"),
 				[]byte("robots.txt"),
 			},
 			expected: [][]byte{
@@ -149,6 +151,7 @@ func TestWalk(t *testing.T) {
 				[]byte("img/test/oho.png"),
 				[]byte("img/test/old"),
 				[]byte("img/test/old/test.png"),
+				[]byte("img/test/old/test.png.backup"),
 				[]byte("robots.txt"),
 			},
 		},
