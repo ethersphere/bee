@@ -20,25 +20,31 @@ const testMarshalOutput01 = "52fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bb
 
 const testMarshalOutput02 = "52fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64905954fb18659339d0b25e0fb9723d3cd5d528fb3c8d495fd157bd7b7a210496952fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952fdfc072102654f163f5f0fa0621d729566c74d10037c4d7bbb0407d1e2c64940fcd3072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952e3872548ec012a6e123b60f9177017fb12e57732621d2c1ada267adbe8cc4350f89d6640e3044f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64850ff9f642182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64b50fc98072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64a50ff99622182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64952fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c64d"
 
-var testEntries = []nodeEntry{
+var testEntries = []NodeEntry{
 	{
-		path: []byte("/"),
-		metadata: map[string]string{
+		Path: []byte("/"),
+		Metadata: map[string]string{
 			"index-document": "aaaaa",
 		},
 	},
 	{
-		path: []byte("aaaaa"),
+		Path: []byte("aaaaa"),
 	},
 	{
-		path: []byte("cc"),
+		Path: []byte("cc"),
 	},
 	{
-		path: []byte("d"),
+		Path: []byte("d"),
 	},
 	{
-		path: []byte("ee"),
+		Path: []byte("ee"),
 	},
+}
+
+type NodeEntry struct {
+	Path     []byte
+	Entry    []byte
+	Metadata map[string]string
 }
 
 func init() {
@@ -98,7 +104,7 @@ func TestUnmarshal01(t *testing.T) {
 		t.Fatalf("expected %d forks, got %d", len(testEntries), len(n.forks))
 	}
 	for _, entry := range testEntries {
-		prefix := entry.path
+		prefix := entry.Path
 		f := n.forks[prefix[0]]
 		if f == nil {
 			t.Fatalf("expected to have  fork on byte %x", prefix[:1])
@@ -130,7 +136,7 @@ func TestUnmarshal02(t *testing.T) {
 		t.Fatalf("expected %d forks, got %d", len(testEntries), len(n.forks))
 	}
 	for _, entry := range testEntries {
-		prefix := entry.path
+		prefix := entry.Path
 		f := n.forks[prefix[0]]
 		if f == nil {
 			t.Fatalf("expected to have  fork on byte %x", prefix[:1])
@@ -138,9 +144,9 @@ func TestUnmarshal02(t *testing.T) {
 		if !bytes.Equal(f.prefix, prefix) {
 			t.Fatalf("expected prefix for byte %x to match %s, got %s", prefix[:1], prefix, f.prefix)
 		}
-		if len(entry.metadata) > 0 {
-			if !reflect.DeepEqual(entry.metadata, f.metadata) {
-				t.Fatalf("expected metadata for byte %x to match %s, got %s", prefix[:1], entry.metadata, f.metadata)
+		if len(entry.Metadata) > 0 {
+			if !reflect.DeepEqual(entry.Metadata, f.metadata) {
+				t.Fatalf("expected metadata for byte %x to match %s, got %s", prefix[:1], entry.Metadata, f.metadata)
 			}
 		}
 	}
@@ -159,12 +165,12 @@ func TestMarshal(t *testing.T) {
 		return b
 	}
 	for i := 0; i < len(testEntries); i++ {
-		c := testEntries[i].path
-		e := testEntries[i].entry
+		c := testEntries[i].Path
+		e := testEntries[i].Entry
 		if len(e) == 0 {
 			e = append(make([]byte, 32-len(c)), c...)
 		}
-		m := testEntries[i].metadata
+		m := testEntries[i].Metadata
 		err := n.Add(ctx, c, e, m, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
