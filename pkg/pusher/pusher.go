@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -34,6 +35,7 @@ type Service struct {
 	networkID         uint64
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
+	validStamp        postage.ValidStampFn
 	depther           topology.NeighborhoodDepther
 	logger            logging.Logger
 	tag               *tags.Tags
@@ -54,11 +56,12 @@ var (
 	ErrShallowReceipt = errors.New("shallow recipt")
 )
 
-func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	service := &Service{
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
+		validStamp:        validStamp,
 		depther:           depther,
 		tag:               tagger,
 		logger:            logger,
@@ -119,6 +122,19 @@ LOOP:
 				}
 				timer.Reset(dur)
 				break
+			}
+
+			stamp := ch.Stamp()
+			stampBytes, err := ch.Stamp().MarshalBinary()
+			if err != nil {
+				s.logger.Warningf("pusher: stamp batch ID %s marshal binary: %v", stamp.BatchID(), err)
+				continue
+			}
+
+			_, err = s.validStamp(ch, stampBytes)
+			if err != nil {
+				s.logger.Warningf("pusher: stamp validation chunk %s batch ID %s: %v", ch.Address().String(), stamp.BatchID(), err)
+				continue
 			}
 
 			if span == nil {
