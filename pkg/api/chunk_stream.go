@@ -136,6 +136,16 @@ func (s *server) handleUploadStream(
 			return
 		}
 
+		if tag != nil {
+			err = tag.Inc(tags.StateSplit)
+			if err != nil {
+				s.logger.Debug("chunk stream handler: failed incrementing tag", err)
+				s.logger.Error("chunk stream handler: failed incrementing tag")
+				sendErrorClose(websocket.CloseInternalServerErr, "failed incrementing tag")
+				return
+			}
+		}
+
 		if len(msg) < swarm.SpanSize {
 			s.logger.Debug("chunk stream handler: not enough data")
 			s.logger.Error("chunk stream handler: not enough data")
@@ -168,7 +178,9 @@ func (s *server) handleUploadStream(
 				sendErrorClose(websocket.CloseInternalServerErr, "failed incrementing tag")
 				return
 			}
-		} else if tag != nil {
+		}
+
+		if tag != nil {
 			// indicate that the chunk is stored
 			err = tag.Inc(tags.StateStored)
 			if err != nil {
@@ -185,7 +197,7 @@ func (s *server) handleUploadStream(
 				s.logger.Error("chunk stream handler: creation of pin failed")
 				// since we already increment the pin counter because of the ModePut, we need
 				// to delete the pin here to prevent the pin counter from never going to 0
-				err = s.pinning.DeletePin(ctx, chunk.Address())
+				err = s.storer.Set(ctx, storage.ModeSetUnpin, chunk.Address())
 				if err != nil {
 					s.logger.Debugf("chunk stream handler: deletion of pin for %q failed: %v", chunk.Address(), err)
 					s.logger.Error("chunk stream handler: deletion of pin failed")

@@ -133,7 +133,9 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "increment tag")
 			return
 		}
-	} else if tag != nil {
+	}
+
+	if tag != nil {
 		// indicate that the chunk is stored
 		err = tag.Inc(tags.StateStored)
 		if err != nil {
@@ -149,9 +151,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.pinning.CreatePin(ctx, chunk.Address(), false); err != nil {
 			s.logger.Debugf("chunk upload: creation of pin for %q failed: %v", chunk.Address(), err)
 			s.logger.Error("chunk upload: creation of pin failed")
-			// since we already increment the pin counter because of the ModePut, we need
-			// to delete the pin here to prevent the pin counter from never going to 0
-			err = s.pinning.DeletePin(ctx, chunk.Address())
+			err = s.storer.Set(ctx, storage.ModeSetUnpin, chunk.Address())
 			if err != nil {
 				s.logger.Debugf("chunk upload: deletion of pin for %q failed: %v", chunk.Address(), err)
 				s.logger.Error("chunk upload: deletion of pin failed")
