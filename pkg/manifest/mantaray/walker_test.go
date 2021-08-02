@@ -2,13 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package mantaray
+package mantaray_test
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 )
 
 func TestWalkNode(t *testing.T) {
@@ -37,37 +39,45 @@ func TestWalkNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		t.Run(tc.name, func(t *testing.T) {
-			n := New()
 
-			for i := 0; i < len(tc.toAdd); i++ {
-				c := tc.toAdd[i]
+		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
+			n := mantaray.New()
+
+			for i := 0; i < len(toAdd); i++ {
+				c := toAdd[i]
 				e := append(make([]byte, 32-len(c)), c...)
 				err := n.Add(ctx, c, e, nil, nil)
 				if err != nil {
 					t.Fatalf("expected no error, got %v", err)
 				}
 			}
+			return n
+		}
+
+		pathExists := func(found []byte, expected [][]byte) bool {
+			pathFound := false
+
+			for i := 0; i < len(tc.expected); i++ {
+				c := tc.expected[i]
+				if bytes.Equal(found, c) {
+					pathFound = true
+					break
+				}
+			}
+			return pathFound
+		}
+
+		t.Run(tc.name, func(t *testing.T) {
+			n := createTree(t, tc.toAdd)
 
 			walkedCount := 0
 
-			walker := func(path []byte, node *Node, err error) error {
+			walker := func(path []byte, node *mantaray.Node, err error) error {
 				walkedCount++
 
-				pathFound := false
-
-				for i := 0; i < len(tc.expected); i++ {
-					c := tc.expected[i]
-					if bytes.Equal(path, c) {
-						pathFound = true
-						break
-					}
-				}
-
-				if !pathFound {
+				if !pathExists(path, tc.expected) {
 					return fmt.Errorf("walkFn returned unknown path: %s", path)
 				}
-
 				return nil
 			}
 			// Expect no errors.
@@ -79,7 +89,40 @@ func TestWalkNode(t *testing.T) {
 			if len(tc.expected) != walkedCount {
 				t.Errorf("expected %d nodes, got %d", len(tc.expected), walkedCount)
 			}
+		})
 
+		t.Run(tc.name+"/with load save", func(t *testing.T) {
+			n := createTree(t, tc.toAdd)
+
+			ls := newMockLoadSaver()
+
+			err := n.Save(ctx, ls)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			n2 := mantaray.NewNodeRef(n.Reference())
+
+			walkedCount := 0
+
+			walker := func(path []byte, node *mantaray.Node, err error) error {
+				walkedCount++
+
+				if !pathExists(path, tc.expected) {
+					return fmt.Errorf("walkFn returned unknown path: %s", path)
+				}
+
+				return nil
+			}
+			// Expect no errors.
+			err = n2.WalkNode(ctx, []byte{}, ls, walker)
+			if err != nil {
+				t.Fatalf("no error expected, found: %s", err)
+			}
+
+			if len(tc.expected) != walkedCount {
+				t.Errorf("expected %d nodes, got %d", len(tc.expected), walkedCount)
+			}
 		})
 	}
 }
@@ -97,6 +140,8 @@ func TestWalk(t *testing.T) {
 				[]byte("img/test/"),
 				[]byte("img/test/oho.png"),
 				[]byte("img/test/old/test.png"),
+				// file with same prefix but not a directory prefix
+				[]byte("img/test/old/test.png.backup"),
 				[]byte("robots.txt"),
 			},
 			expected: [][]byte{
@@ -106,39 +151,50 @@ func TestWalk(t *testing.T) {
 				[]byte("img/test/oho.png"),
 				[]byte("img/test/old"),
 				[]byte("img/test/old/test.png"),
+				[]byte("img/test/old/test.png.backup"),
 				[]byte("robots.txt"),
 			},
 		},
 	} {
 		ctx := context.Background()
-		t.Run(tc.name, func(t *testing.T) {
-			n := New()
 
-			for i := 0; i < len(tc.toAdd); i++ {
-				c := tc.toAdd[i]
+		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
+			n := mantaray.New()
+
+			for i := 0; i < len(toAdd); i++ {
+				c := toAdd[i]
 				e := append(make([]byte, 32-len(c)), c...)
 				err := n.Add(ctx, c, e, nil, nil)
 				if err != nil {
 					t.Fatalf("expected no error, got %v", err)
 				}
 			}
+			return n
+		}
+
+		pathExists := func(found []byte, expected [][]byte) bool {
+			pathFound := false
+
+			for i := 0; i < len(tc.expected); i++ {
+				c := tc.expected[i]
+				if bytes.Equal(found, c) {
+					pathFound = true
+					break
+				}
+			}
+			return pathFound
+		}
+
+		t.Run(tc.name, func(t *testing.T) {
+
+			n := createTree(t, tc.toAdd)
 
 			walkedCount := 0
 
 			walker := func(path []byte, isDir bool, err error) error {
 				walkedCount++
 
-				pathFound := false
-
-				for i := 0; i < len(tc.expected); i++ {
-					c := tc.expected[i]
-					if bytes.Equal(path, c) {
-						pathFound = true
-						break
-					}
-				}
-
-				if !pathFound {
+				if !pathExists(path, tc.expected) {
 					return fmt.Errorf("walkFn returned unknown path: %s", path)
 				}
 
@@ -146,6 +202,42 @@ func TestWalk(t *testing.T) {
 			}
 			// Expect no errors.
 			err := n.Walk(ctx, []byte{}, nil, walker)
+			if err != nil {
+				t.Fatalf("no error expected, found: %s", err)
+			}
+
+			if len(tc.expected) != walkedCount {
+				t.Errorf("expected %d nodes, got %d", len(tc.expected), walkedCount)
+			}
+
+		})
+
+		t.Run(tc.name+"/with load save", func(t *testing.T) {
+
+			n := createTree(t, tc.toAdd)
+
+			ls := newMockLoadSaver()
+
+			err := n.Save(ctx, ls)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			n2 := mantaray.NewNodeRef(n.Reference())
+
+			walkedCount := 0
+
+			walker := func(path []byte, isDir bool, err error) error {
+				walkedCount++
+
+				if !pathExists(path, tc.expected) {
+					return fmt.Errorf("walkFn returned unknown path: %s", path)
+				}
+
+				return nil
+			}
+			// Expect no errors.
+			err = n2.Walk(ctx, []byte{}, ls, walker)
 			if err != nil {
 				t.Fatalf("no error expected, found: %s", err)
 			}
