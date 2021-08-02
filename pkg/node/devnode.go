@@ -79,7 +79,7 @@ type DevOptions struct {
 }
 
 // NewDevBee starts the bee instance in 'development' mode
-// this implies starting an API and a Debug endpoints while mocking all their services
+// this implies starting an API and a Debug endpoints while mocking all their services.
 func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
