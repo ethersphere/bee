@@ -472,7 +472,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 			break
 		}
 	}
-	if err == nil {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
