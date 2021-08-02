@@ -78,7 +78,7 @@ func (m *transactionServiceMock) StoredTransaction(txHash common.Hash) (*transac
 }
 
 func (m *transactionServiceMock) CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
-	if m.send != nil {
+	if m.cancelTransaction != nil {
 		return m.cancelTransaction(ctx, originalTxHash)
 	}
 	return common.Hash{}, errors.New("not implemented")
@@ -130,6 +130,12 @@ func WithPendingTransactionsFunc(f func() ([]common.Hash, error)) Option {
 func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash) error) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.resendTransaction = f
+	})
+}
+
+func WithCancelTransactionFunc(f func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.cancelTransaction = f
 	})
 }
 
