@@ -771,7 +771,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchesResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatchesResponse"
 
         default:
           description: Default response
@@ -794,7 +794,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatch"
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatch"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:

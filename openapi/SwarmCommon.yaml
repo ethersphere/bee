@@ -286,6 +286,15 @@ components:
           items:
             $ref: "#/components/schemas/PostageBatch"
 
+    DebugPostageBatchesResponse:
+      type: object
+      properties:
+        stamps:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/DebugPostageBatch"
+
     BatchIDResponse:
       type: object
       properties:
@@ -320,6 +329,7 @@ components:
         utilization:
           type: integer
         usable:
+          description: Indicate that the batch was discovered by the Bee node, but it awaits enough on-chain confirmations before declaring the batch as usable.
           type: boolean
         label:
           type: string
@@ -333,11 +343,18 @@ components:
           type: integer
         immutableFlag:
           type: boolean
-        exists:
-          type: boolean
-        batchTTL:
-          description: The time (in seconds) remaining until the batch expires; -1 signals that the batch never expires; 0 signals that the batch has already expired.
-          type: integer
+
+    DebugPostageBatch:
+      allOf:
+        - $ref: '#/components/schemas/PostageBatch'
+        - type: object
+          properties:
+            exists:
+              description: Internal debugging property. It indicates if the batch is expired.
+              type: boolean
+            batchTTL:
+              description: The time (in seconds) remaining until the batch expires; -1 signals that the batch never expires; 0 signals that the batch has already expired.
+              type: integer
 
     StampBucketData:
       type: object
