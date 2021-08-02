@@ -68,28 +68,287 @@ jobs:
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Sleep for time allowance to replenish
         run: sleep 2
-      - name: Test pss
-        id: pss
-        run: beekeeper check --cluster-name local-dns --checks=ci-pss
-      - name: Test soc
-        id: soc
-        run: beekeeper check --cluster-name local-dns --checks=ci-soc
-      - name: Test pushsync (chunks)
-        id: pushsync-chunks-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test retrieval
-        id: retrieval-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
-      - name: Test manifest
-        id: manifest-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-manifest
       - name: Destroy the cluster
         run: |
           beekeeper delete bee-cluster --cluster-name local-dns
           make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
+        run: |
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
+      - name: Prepare local cluster
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
           timeout 10m make beelocal OPTS='ci skip-vet'
