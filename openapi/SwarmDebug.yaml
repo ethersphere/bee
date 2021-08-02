@@ -438,7 +438,6 @@ paths:
         default:
           description: Default response
 
-
   "/topology":
     get:
       description: Get topology of known network
@@ -670,7 +669,7 @@ paths:
         default:
           description: Default response
 
-  "/transaction":
+  "/transactions":
     get:
       summary: Get list of pending transactions      
       tags:
@@ -687,7 +686,7 @@ paths:
         default:
           description: Default response
 
-  "/transaction/{txHash}":
+  "/transactions/{txHash}":
     get:
       summary: Get information about a sent transaction
       parameters:
