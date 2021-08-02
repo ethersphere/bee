@@ -72,7 +72,7 @@ func TestChunkUploadStream(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if mt != websocket.TextMessage || !bytes.Equal(msg, api.SuccessWsMsg) {
+			if mt != websocket.BinaryMessage || !bytes.Equal(msg, api.SuccessWsMsg) {
 				t.Fatal("invalid response", mt, string(msg))
 			}
 

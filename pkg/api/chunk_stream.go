@@ -20,7 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var successWsMsg = []byte("successful")
+var successWsMsg = []byte{}
 
 func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -188,7 +188,7 @@ func (s *server) handleUploadStream(
 			}
 		}
 
-		err = sendMsg(websocket.TextMessage, successWsMsg)
+		err = sendMsg(websocket.BinaryMessage, successWsMsg)
 		if err != nil {
 			s.logger.Debugf("chunk stream handler: failed sending success msg: %v", err)
 			s.logger.Error("chunk stream handler: failed sending confirmation")

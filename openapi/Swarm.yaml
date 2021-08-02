@@ -175,7 +175,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       responses:
         "200":
-          description: "Returns a Websocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a text response `success`. Chunks should be packaged as binary messages for uploading."
+          description: "Returns a Websocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading."
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
