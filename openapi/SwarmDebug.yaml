@@ -538,6 +538,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "429":
+          $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -864,6 +866,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/BatchIDResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "429":
+          $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
