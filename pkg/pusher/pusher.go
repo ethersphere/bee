@@ -124,16 +124,21 @@ LOOP:
 				break
 			}
 
-			stamp := ch.Stamp()
-			stampBytes, err := stamp.MarshalBinary()
+			stampBytes, err := ch.Stamp().MarshalBinary()
 			if err != nil {
-				s.logger.Warningf("pusher: stamp marshal binary batch ID %x: %v", stamp.BatchID(), err)
+				s.logger.Errorf("pusher: stamp marshal: %w", err)
+				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
+					s.logger.Errorf("pusher: set sync: %w", err)
+				}
 				continue
 			}
 
 			_, err = s.validStamp(ch, stampBytes)
 			if err != nil {
-				s.logger.Warningf("pusher: stamp validation chunk %s batch ID %x: %v", ch.Address().String(), stamp.BatchID(), err)
+				s.logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
+				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
+					s.logger.Errorf("pusher: set sync: %w", err)
+				}
 				continue
 			}
 
