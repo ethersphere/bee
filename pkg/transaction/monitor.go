@@ -159,23 +159,31 @@ func (tm *transactionMonitor) watchPending() {
 	}
 }
 
-type confirmedTx struct {
-	receipt types.Receipt
-	watch   *transactionWatch
+type watchesWithNonce struct {
+	watches []*transactionWatch
+	nonce   uint64
 }
 
-// potentiallyConfirmedWatches returns all watches with nonce less than what was specified
-func (tm *transactionMonitor) potentiallyConfirmedWatches(nonce uint64) (watches []*transactionWatch) {
+// potentiallyConfirmedTxs returns all watches with nonce less than what was specified
+func (tm *transactionMonitor) potentiallyConfirmedTxs(nonce uint64) (watches map[common.Hash]*watchesWithNonce) {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
+	checkTxs := make(map[common.Hash]*watchesWithNonce)
 	for watch := range tm.watches {
 		if watch.nonce < nonce {
-			watches = append(watches, watch)
+			if c, ok := checkTxs[watch.txHash]; ok {
+				c.watches = append(c.watches, watch)
+			} else {
+				checkTxs[watch.txHash] = &watchesWithNonce{
+					nonce:   watch.nonce,
+					watches: []*transactionWatch{watch},
+				}
+			}
 		}
 	}
 
-	return watches
+	return checkTxs
 }
 
 func (tm *transactionMonitor) hasWatches() bool {
@@ -192,23 +200,20 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	}
 
 	// transactions with a nonce lower or equal to what is found on-chain are either confirmed or (at least temporarily) cancelled
-	checkWatches := tm.potentiallyConfirmedWatches(nonce)
+	checkTxs := tm.potentiallyConfirmedTxs(nonce)
 
-	var confirmedTxs []confirmedTx
-	var potentiallyCancelledTxs []*transactionWatch
-	for _, watch := range checkWatches {
-		receipt, err := tm.backend.TransactionReceipt(tm.ctx, watch.txHash)
+	var confirmedTxs []*types.Receipt
+	var potentiallyCancelledTxs []common.Hash
+	for txHash := range checkTxs {
+		receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
 		if receipt != nil {
 			// if we have a receipt we have a confirmation
-			confirmedTxs = append(confirmedTxs, confirmedTx{
-				receipt: *receipt,
-				watch:   watch,
-			})
+			confirmedTxs = append(confirmedTxs, receipt)
 		} else if err == nil || errors.Is(err, ethereum.NotFound) {
 			// if both err and receipt are nil, there is no receipt
 			// we also match for the special error "not found" that some clients return
 			// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
-			potentiallyCancelledTxs = append(potentiallyCancelledTxs, watch)
+			potentiallyCancelledTxs = append(potentiallyCancelledTxs, txHash)
 		} else {
 			// any other error is probably a real error
 			return err
@@ -216,18 +221,18 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	}
 
 	// mark all transactions without receipt whose nonce was already used at least cancellationDepth blocks ago as cancelled
-	var cancelledTxs []*transactionWatch
+	var cancelledTxs []common.Hash
 	if len(potentiallyCancelledTxs) > 0 {
 		oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
 		if err != nil {
 			return err
 		}
 
-		for _, watch := range potentiallyCancelledTxs {
+		for _, txHash := range potentiallyCancelledTxs {
 			// oldNonce is the nonce of the next tx that could have been included
 			// if this was already larger in the past our transaction becomes impossible
-			if watch.nonce < oldNonce {
-				cancelledTxs = append(cancelledTxs, watch)
+			if checkTxs[txHash].nonce <= oldNonce {
+				cancelledTxs = append(cancelledTxs, txHash)
 			}
 		}
 	}
@@ -236,14 +241,18 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
-	for _, confirmedTx := range confirmedTxs {
-		confirmedTx.watch.receiptC <- confirmedTx.receipt
-		delete(tm.watches, confirmedTx.watch)
+	for _, receipt := range confirmedTxs {
+		for _, watch := range checkTxs[receipt.TxHash].watches {
+			watch.receiptC <- *receipt
+			delete(tm.watches, watch)
+		}
 	}
 
-	for _, watch := range cancelledTxs {
-		watch.errC <- ErrTransactionCancelled
-		delete(tm.watches, watch)
+	for _, txHash := range cancelledTxs {
+		for _, watch := range checkTxs[txHash].watches {
+			watch.errC <- ErrTransactionCancelled
+			delete(tm.watches, watch)
+		}
 	}
 	return nil
 }
