@@ -31,7 +31,7 @@ import (
 
 const (
 	maxDelay          = 1 * time.Minute
-	cancellationDepth = 6
+	cancellationDepth = 12
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
