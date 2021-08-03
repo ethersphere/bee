@@ -42,6 +42,8 @@ var (
 	FeedMetadataEntryOwner = feedMetadataEntryOwner
 	FeedMetadataEntryTopic = feedMetadataEntryTopic
 	FeedMetadataEntryType  = feedMetadataEntryType
+
+	SuccessWsMsg = successWsMsg
 )
 
 func (s *Server) ResolveNameOrAddress(str string) (swarm.Address, error) {
