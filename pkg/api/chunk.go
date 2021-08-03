@@ -57,7 +57,7 @@ func (s *server) processUploadRequest(
 
 	putter, err = newStamperPutter(s.storer, s.post, s.signer, batch)
 	if err != nil {
-		s.logger.Debugf("chunk upload: putter:%v", err)
+		s.logger.Debugf("chunk upload: putter: %v", err)
 		s.logger.Error("chunk upload: putter")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
@@ -65,7 +65,7 @@ func (s *server) processUploadRequest(
 		case errors.Is(err, postage.ErrNotUsable):
 			return nil, nil, nil, errors.New("batch not usable")
 		}
-		return nil, nil, nil, errors.New("")
+		return nil, nil, nil, err
 	}
 
 	return ctx, tag, putter, nil

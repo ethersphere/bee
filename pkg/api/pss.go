@@ -23,7 +23,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var (
+const (
 	writeDeadline   = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
 	readDeadline    = 4 * time.Second // read deadline. should be smaller than the shutdown timeout on api close
 	targetMaxLength = 2               // max target length in bytes, in order to prevent grieving by excess computation
