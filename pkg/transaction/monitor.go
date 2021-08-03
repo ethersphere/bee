@@ -224,7 +224,9 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 		}
 
 		for _, watch := range potentiallyCancelledTxs {
-			if watch.nonce <= oldNonce {
+			// oldNonce is the nonce of the next tx that could have been included
+			// if this was already larger in the past our transaction becomes impossible
+			if watch.nonce < oldNonce {
 				cancelledTxs = append(cancelledTxs, watch)
 			}
 		}
