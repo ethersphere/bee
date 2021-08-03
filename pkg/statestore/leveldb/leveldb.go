@@ -14,6 +14,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldberr "github.com/syndtr/goleveldb/leveldb/errors"
+
+	ldb "github.com/syndtr/goleveldb/leveldb"
+	ldbs "github.com/syndtr/goleveldb/leveldb/storage"
+
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
@@ -23,6 +27,24 @@ var _ storage.StateStorer = (*store)(nil)
 type store struct {
 	db     *leveldb.DB
 	logger logging.Logger
+}
+
+func NewInMemoryStateStore(l logging.Logger) (storage.StateStorer, error) {
+	ldb, err := ldb.Open(ldbs.NewMemStorage(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &store{
+		db:     ldb,
+		logger: l,
+	}
+
+	if err := migrate(s); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
 // NewStateStore creates a new persistent state storage.
@@ -46,26 +68,34 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 		logger: l,
 	}
 
+	if err := migrate(s); err != nil {
+		return nil, err
+	}
+
+	return s, nil
+}
+
+func migrate(s *store) error {
 	sn, err := s.getSchemaName()
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			_ = s.Close()
-			return nil, fmt.Errorf("get schema name: %w", err)
+			return fmt.Errorf("get schema name: %w", err)
 		}
 		// new statestore - put schema key with current name
 		if err := s.putSchemaName(dbSchemaCurrent); err != nil {
 			_ = s.Close()
-			return nil, fmt.Errorf("put schema name: %w", err)
+			return fmt.Errorf("put schema name: %w", err)
 		}
 		sn = dbSchemaCurrent
 	}
 
 	if err = s.migrate(sn); err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
+		return fmt.Errorf("migrate: %w", err)
 	}
 
-	return s, nil
+	return nil
 }
 
 // Get retrieves a value of the requested key. If no results are found,

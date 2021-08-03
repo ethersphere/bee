@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"

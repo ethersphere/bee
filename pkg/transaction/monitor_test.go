@@ -253,6 +253,84 @@ func TestMonitorWatchTransaction(t *testing.T) {
 		}
 	})
 
+	t.Run("single transaction no confirm", func(t *testing.T) {
+		txHash2 := common.HexToHash("bbbb")
+		monitor := transaction.NewMonitor(
+			logger,
+			backendsimulation.New(
+				backendsimulation.WithBlocks(
+					backendsimulation.Block{
+						Number: 0,
+					},
+					backendsimulation.Block{
+						Number: 1,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{
+								BlockNumber: 1,
+								Account:     sender,
+							}: nonce,
+						},
+					},
+					backendsimulation.Block{
+						Number: 1 + cancellationDepth,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{
+								BlockNumber: 1,
+								Account:     sender,
+							}: nonce,
+							{
+								BlockNumber: 1 + cancellationDepth,
+								Account:     sender,
+							}: nonce + 1,
+						},
+					},
+					backendsimulation.Block{
+						Number: 1 + cancellationDepth + 1,
+						Receipts: map[common.Hash]*types.Receipt{
+							txHash2: {TxHash: txHash2},
+						},
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{
+								BlockNumber: 1 + cancellationDepth + 1,
+								Account:     sender,
+							}: nonce + 1,
+						},
+					},
+				),
+			),
+			sender,
+			pollingInterval,
+			cancellationDepth,
+		)
+
+		receiptC, errC, err := monitor.WatchTransaction(txHash, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		receiptC2, errC2, err := monitor.WatchTransaction(txHash2, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case <-receiptC:
+			t.Fatal("got receipt")
+		case err := <-errC:
+			t.Fatal(err)
+		case <-receiptC2:
+		case err := <-errC2:
+			t.Fatal(err)
+		case <-time.After(1 * time.Second):
+			t.Fatal("timeout")
+		}
+
+		err = monitor.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("shutdown while waiting", func(t *testing.T) {
 		monitor := transaction.NewMonitor(
 			logger,

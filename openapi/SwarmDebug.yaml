@@ -438,7 +438,6 @@ paths:
         default:
           description: Default response
 
-
   "/topology":
     get:
       description: Get topology of known network
@@ -538,6 +537,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "429":
+          $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -668,7 +669,7 @@ paths:
         default:
           description: Default response
 
-  "/transaction":
+  "/transactions":
     get:
       summary: Get list of pending transactions      
       tags:
@@ -685,7 +686,7 @@ paths:
         default:
           description: Default response
 
-  "/transaction/{txHash}":
+  "/transactions/{txHash}":
     get:
       summary: Get information about a sent transaction
       parameters:
@@ -771,7 +772,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchesResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatchesResponse"
 
         default:
           description: Default response
@@ -794,7 +795,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatch"
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatch"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
@@ -864,6 +865,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/BatchIDResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "429":
+          $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
