@@ -199,7 +199,7 @@ func (s *server) handleUploadStream(
 				// to delete the pin here to prevent the pin counter from never going to 0
 				err = s.storer.Set(ctx, storage.ModeSetUnpin, chunk.Address())
 				if err != nil {
-					s.logger.Debugf("chunk stream handler: deletion of pin for %q failed: %v", chunk.Address(), err)
+					s.logger.Debugf("chunk stream handler: deletion of pin for %s failed: %v", chunk.Address(), err)
 					s.logger.Error("chunk stream handler: deletion of pin failed")
 				}
 				sendErrorClose(websocket.CloseInternalServerErr, "failed creating pin")

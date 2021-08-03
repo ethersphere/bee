@@ -153,7 +153,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			s.logger.Error("chunk upload: creation of pin failed")
 			err = s.storer.Set(ctx, storage.ModeSetUnpin, chunk.Address())
 			if err != nil {
-				s.logger.Debugf("chunk upload: deletion of pin for %q failed: %v", chunk.Address(), err)
+				s.logger.Debugf("chunk upload: deletion of pin for %s failed: %v", chunk.Address(), err)
 				s.logger.Error("chunk upload: deletion of pin failed")
 			}
 			jsonhttp.InternalServerError(w, nil)
