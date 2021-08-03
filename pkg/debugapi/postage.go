@@ -151,7 +151,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 		resp.Stamps = append(resp.Stamps, postageStampResponse{
 			BatchID:       v.ID(),
 			Utilization:   v.Utilization(),
-			Usable:        s.post.IssuerUsable(v),
+			Usable:        exists && s.post.IssuerUsable(v),
 			Label:         v.Label(),
 			Depth:         v.Depth(),
 			Amount:        bigint.Wrap(v.Amount()),
@@ -249,7 +249,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 
 	if issuer != nil {
 		resp.Utilization = issuer.Utilization()
-		resp.Usable = s.post.IssuerUsable(issuer)
+		resp.Usable = exists && s.post.IssuerUsable(issuer)
 		resp.Label = issuer.Label()
 		resp.Depth = issuer.Depth()
 		resp.Amount = bigint.Wrap(issuer.Amount())
