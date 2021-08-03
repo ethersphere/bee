@@ -124,6 +124,9 @@ LOOP:
 				break
 			}
 
+			// If the stamp is invalid, the chunk is not synced with the network
+			// since other nodes would reject the chunk, so the chunk is marked as
+			// synced which makes it available to the node but not to the network
 			stampBytes, err := ch.Stamp().MarshalBinary()
 			if err != nil {
 				s.logger.Errorf("pusher: stamp marshal: %w", err)
