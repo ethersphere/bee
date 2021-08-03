@@ -6,6 +6,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,27 +30,55 @@ type chunkAddressResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		tag *tags.Tag
-		ctx = r.Context()
-		err error
-	)
+func (s *server) processUploadRequest(
+	r *http.Request,
+) (ctx context.Context, tag *tags.Tag, putter storage.Putter, err error) {
 
 	if h := r.Header.Get(SwarmTagHeader); h != "" {
 		tag, err = s.getTag(h)
 		if err != nil {
 			s.logger.Debugf("chunk upload: get tag: %v", err)
 			s.logger.Error("chunk upload: get tag")
-			jsonhttp.BadRequest(w, "cannot get tag")
-			return
-
+			return nil, nil, nil, errors.New("cannot get tag")
 		}
 
 		// add the tag to the context if it exists
 		ctx = sctx.SetTag(r.Context(), tag)
+	} else {
+		ctx = r.Context()
+	}
 
-		// increment the StateSplit here since we dont have a splitter for the file upload
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		s.logger.Debugf("chunk upload: postage batch id: %v", err)
+		s.logger.Error("chunk upload: postage batch id")
+		return nil, nil, nil, errors.New("invalid postage batch id")
+	}
+
+	putter, err = newStamperPutter(s.storer, s.post, s.signer, batch)
+	if err != nil {
+		s.logger.Debugf("chunk upload: putter: %v", err)
+		s.logger.Error("chunk upload: putter")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			return nil, nil, nil, errors.New("batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			return nil, nil, nil, errors.New("batch not usable")
+		}
+		return nil, nil, nil, err
+	}
+
+	return ctx, tag, putter, nil
+}
+
+func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, tag, putter, err := s.processUploadRequest(r)
+	if err != nil {
+		jsonhttp.BadRequest(w, err.Error())
+		return
+	}
+
+	if tag != nil {
 		err = tag.Inc(tags.StateSplit)
 		if err != nil {
 			s.logger.Debugf("chunk upload: increment tag: %v", err)
@@ -82,29 +111,6 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Debugf("chunk upload: create chunk error: %v", err)
 		s.logger.Error("chunk upload: create chunk error")
 		jsonhttp.InternalServerError(w, "create chunk error")
-		return
-	}
-
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		s.logger.Debugf("chunk upload: postage batch id: %v", err)
-		s.logger.Error("chunk upload: postage batch id")
-		jsonhttp.BadRequest(w, "invalid postage batch id")
-		return
-	}
-
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
-	if err != nil {
-		s.logger.Debugf("chunk upload: putter:%v", err)
-		s.logger.Error("chunk upload: putter")
-		switch {
-		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.BadRequest(w, "batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
-			jsonhttp.BadRequest(w, "batch not usable yet")
-		default:
-			jsonhttp.BadRequest(w, nil)
-		}
 		return
 	}
 
@@ -145,6 +151,11 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.pinning.CreatePin(ctx, chunk.Address(), false); err != nil {
 			s.logger.Debugf("chunk upload: creation of pin for %q failed: %v", chunk.Address(), err)
 			s.logger.Error("chunk upload: creation of pin failed")
+			err = s.storer.Set(ctx, storage.ModeSetUnpin, chunk.Address())
+			if err != nil {
+				s.logger.Debugf("chunk upload: deletion of pin for %s failed: %v", chunk.Address(), err)
+				s.logger.Error("chunk upload: deletion of pin failed")
+			}
 			jsonhttp.InternalServerError(w, nil)
 			return
 		}

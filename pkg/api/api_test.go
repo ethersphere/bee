@@ -71,6 +71,7 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
 	Steward            steward.Reuploader
+	WsHeaders          http.Header
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string) {
@@ -115,7 +116,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	if o.WsPath != "" {
 		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
-		conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+		conn, _, err = websocket.DefaultDialer.Dial(u.String(), o.WsHeaders)
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())
 		}

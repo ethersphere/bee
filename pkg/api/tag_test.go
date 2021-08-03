@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -25,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/gorilla/websocket"
 	"gitlab.com/nolash/go-mockbytes"
 )
 
@@ -35,16 +38,17 @@ type fileUploadResponse struct {
 func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 
 func TestTags(t *testing.T) {
+
 	var (
-		bzzResource    = "/bzz"
-		bytesResource  = "/bytes"
-		chunksResource = "/chunks"
-		tagsResource   = "/tags"
-		chunk          = testingc.GenerateTestRandomChunk()
-		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(ioutil.Discard, 0)
-		tag            = tags.NewTags(mockStatestore, logger)
-		client, _, _   = newTestServer(t, testServerOptions{
+		bzzResource           = "/bzz"
+		bytesResource         = "/bytes"
+		chunksResource        = "/chunks"
+		tagsResource          = "/tags"
+		chunk                 = testingc.GenerateTestRandomChunk()
+		mockStatestore        = statestore.NewStateStore()
+		logger                = logging.New(ioutil.Discard, 0)
+		tag                   = tags.NewTags(mockStatestore, logger)
+		client, _, listenAddr = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tag,
 			Logger: logger,
@@ -121,6 +125,56 @@ func TestTags(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
 		tagValueTest(t, tr.Uid, 1, 1, 1, 0, 0, 0, swarm.ZeroAddress, client)
+	})
+
+	t.Run("create tag upload chunk stream", func(t *testing.T) {
+		// create a tag using the API
+		tr := api.TagResponse{}
+		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
+		)
+
+		wsHeaders := http.Header{}
+		wsHeaders.Set("Content-Type", "application/octet-stream")
+		wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
+		wsHeaders.Set(api.SwarmTagHeader, strconv.FormatUint(uint64(tr.Uid), 10))
+
+		u := url.URL{Scheme: "ws", Host: listenAddr, Path: "/chunks/stream"}
+		wsConn, _, err := websocket.DefaultDialer.Dial(u.String(), wsHeaders)
+		if err != nil {
+			t.Fatalf("dial: %v. url %v", err, u.String())
+		}
+
+		for i := 0; i < 5; i++ {
+			ch := testingc.GenerateTestRandomChunk()
+
+			err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = wsConn.WriteMessage(websocket.BinaryMessage, ch.Data())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = wsConn.SetReadDeadline(time.Now().Add(time.Second))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			mt, msg, err := wsConn.ReadMessage()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if mt != websocket.BinaryMessage || !bytes.Equal(msg, api.SuccessWsMsg) {
+				t.Fatal("invalid response", mt, string(msg))
+			}
+		}
+
+		tagValueTest(t, tr.Uid, 5, 5, 0, 0, 0, 0, swarm.ZeroAddress, client)
 	})
 
 	t.Run("list tags", func(t *testing.T) {

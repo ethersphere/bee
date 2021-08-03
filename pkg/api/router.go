@@ -63,6 +63,11 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle("/chunks/stream", web.ChainHandlers(
+		s.newTracingHandler("chunks-stream-upload"),
+		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
+	))
+
 	handle("/chunks/{addr}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.chunkGetHandler),
 	})
