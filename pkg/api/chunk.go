@@ -16,6 +16,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/ethersphere/bee/pkg/postage/stampputter"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -55,7 +56,7 @@ func (s *server) processUploadRequest(
 		return nil, nil, nil, errors.New("invalid postage batch id")
 	}
 
-	putter, err = newStamperPutter(s.storer, s.post, s.signer, batch)
+	putter, err = stampputter.New(s.storer, s.post, s.signer, batch)
 	if err != nil {
 		s.logger.Debugf("chunk upload: putter: %v", err)
 		s.logger.Error("chunk upload: putter")

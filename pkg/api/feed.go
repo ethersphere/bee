@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/stampputter"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -149,7 +150,7 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	putter, err := stampputter.New(s.storer, s.post, s.signer, batch)
 	if err != nil {
 		s.logger.Debugf("feed put: putter: %v", err)
 		s.logger.Error("feed put: putter")

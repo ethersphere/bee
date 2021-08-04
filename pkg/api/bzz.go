@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/stampputter"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -53,7 +54,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	putter, err := stampputter.New(s.storer, s.post, s.signer, batch)
 	if err != nil {
 		logger.Debugf("bzz upload: putter: %v", err)
 		logger.Error("bzz upload: putter")
