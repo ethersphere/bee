@@ -47,7 +47,7 @@ var (
 	reserveCollectionRatio = 0.5
 	// reserveEvictionBatch limits the number of chunks collected in
 	// a single reserve eviction run.
-	reserveEvictionBatch uint64 = 200
+	reserveEvictionBatch uint64 = 2000
 	// maxPurgeablePercentageOfReserve is a ceiling of size of the reserve
 	// to evict in case the cache size is bigger than the reserve
 	maxPurgeablePercentageOfReserve = 0.1

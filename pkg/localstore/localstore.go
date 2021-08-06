@@ -229,7 +229,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		db.cacheCapacity = defaultCacheCapacity
 	}
 
-	capacityMB := float64((db.cacheCapacity+uint64(batchstore.Capacity))*swarm.ChunkSize) * 9.5367431640625e-7
+	capacityMB := float64((db.cacheCapacity+uint64(db.reserveCapacity))*swarm.ChunkSize) * 9.5367431640625e-7
 
 	if capacityMB <= 1000 {
 		db.logger.Infof("database capacity: %d chunks (approximately %fMB)", db.cacheCapacity, capacityMB)

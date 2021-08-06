@@ -24,14 +24,15 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		batch     = new(leveldb.Batch)
 		oldRadius = radius
 	)
-	i, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
-			return 0, err
-		}
-	} else {
-		oldRadius = i.Radius
-	}
+	//i, err := db.postageRadiusIndex.Get(item)
+	//if err != nil {
+	//if !errors.Is(err, leveldb.ErrNotFound) {
+	//return 0, err
+	//}
+	//} //else {
+	//	oldRadius = i.Radius
+	//	}
+	oldRadius = 0
 	var (
 		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
 		reserveSizeChange uint64
