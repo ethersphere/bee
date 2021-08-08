@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	inserts = 50000
+	inserts = 10000
 	reserve = 5000
 	cache   = 1000
 )
@@ -149,7 +150,7 @@ func main() {
 			logger.Infof("set %d chunks a synced", i)
 			chs = nil
 			chmtx.Unlock()
-			time.Sleep(2 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 		}
 	}()
 
@@ -157,28 +158,28 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		f, _ := os.OpenFile("get_req_reserve_size.csv", os.O_RDWR|os.O_CREATE, 0666)
+		f2, _ := os.OpenFile("get_req_gc_size.csv", os.O_RDWR|os.O_CREATE, 0666)
 		for {
 			select {
 			case <-done:
 				return
 			default:
 			}
-			//chmtx.Lock()
-			//i := 0
-			//err := storer.Set(ctx, storage.ModeSetSync, v)
-			//if err != nil {
-			//logger.Errorf("had error setting chunk synced: %v", v)
-			//}
-			//i++
-			//}
-			//logger.Infof("set %d chunks a synced", i)
-			//chs = nil
-			//chmtx.Unlock()
-			time.Sleep(2 * time.Second)
-		}
 
+			time.Sleep(10 * time.Millisecond)
+			chmtx.Lock()
+			chaddr := rdchs[rand.Intn(len(rdchs))]
+			start := time.Now()
+			_, _ = storer.Get(ctx, storage.ModeGetRequest, chaddr)
+			end := time.Since(start)
+			sz := storer.GcSize()
+			rsz := storer.ReserveSize()
+			f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
+			f2.Write([]byte(fmt.Sprintf("%d,%d\n", sz, end)))
+			chmtx.Unlock()
+		}
 	}()
 
 	wg.Wait()
-
 }
