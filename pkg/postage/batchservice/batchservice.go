@@ -29,7 +29,7 @@ type batchService struct {
 	logger        logging.Logger
 	listener      postage.Listener
 	owner         []byte
-	batchListener postage.BatchCreationListener
+	batchListener postage.BatchEventListener
 
 	checksum hash.Hash // checksum hasher
 }
@@ -45,7 +45,7 @@ func New(
 	logger logging.Logger,
 	listener postage.Listener,
 	owner []byte,
-	batchListener postage.BatchCreationListener,
+	batchListener postage.BatchEventListener,
 	checksumFunc func() hash.Hash,
 ) (Interface, error) {
 	if checksumFunc == nil {
@@ -96,8 +96,9 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 	}
 
 	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
-		svc.batchListener.Handle(b)
+		svc.batchListener.HandleCreate(b)
 	}
+
 	cs, err := svc.updateChecksum(txHash)
 	if err != nil {
 		return fmt.Errorf("update checksum: %w", err)
@@ -119,6 +120,11 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txHash []b
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
+
+	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
+		svc.batchListener.HandleTopUp(id, normalisedBalance, svc.storer.GetChainState().Block)
+	}
+
 	cs, err := svc.updateChecksum(txHash)
 	if err != nil {
 		return fmt.Errorf("update checksum: %w", err)
