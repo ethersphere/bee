@@ -451,6 +451,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		erc20Address,
 		transactionService,
 		post,
+		batchStore,
 	)
 
 	if natManager := p2ps.NATManager(); natManager != nil {
