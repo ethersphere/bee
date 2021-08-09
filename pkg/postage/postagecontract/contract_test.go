@@ -205,7 +205,6 @@ func TestTopUpBatch(t *testing.T) {
 	}(postagecontract.BucketDepth)
 	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
-	label := "label"
 	postageStampAddress := common.HexToAddress("ffff")
 	bzzTokenAddress := common.HexToAddress("eeee")
 	ctx := context.Background()
@@ -231,7 +230,7 @@ func TestTopUpBatch(t *testing.T) {
 		)))
 		batchStoreMock := postagestoreMock.New(postagestoreMock.WithBatch(batch))
 
-		expectedCallData, err := postagecontract.PostageStampABI.Pack("topupBatch", batch.ID, topupBalance)
+		expectedCallData, err := postagecontract.PostageStampABI.Pack("topUp", common.BytesToHash(batch.ID), topupBalance)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -245,7 +244,7 @@ func TestTopUpBatch(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					} else if *request.To == postageStampAddress {
-						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
+						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashTopup, nil
@@ -283,7 +282,7 @@ func TestTopUpBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		si, err := postageMock.GetStampIssuer(returnedID)
+		si, err := postageMock.GetStampIssuer(batch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -293,26 +292,27 @@ func TestTopUpBatch(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid depth", func(t *testing.T) {
-		depth := uint8(9)
-
+	t.Run("batch doesnt exist", func(t *testing.T) {
+		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
 			postageStampAddress,
 			bzzTokenAddress,
 			transactionMock.New(),
 			postageMock.New(),
+			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
 		)
 
-		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
-		if !errors.Is(err, postagecontract.ErrInvalidDepth) {
-			t.Fatalf("expected error %v. got %v", postagecontract.ErrInvalidDepth, err)
+		err := contract.TopUpBatch(ctx, postagetesting.MustNewID(), topupBalance)
+		if !errors.Is(err, errNotFound) {
+			t.Fatal("expected error on topup of non existent batch")
 		}
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
-		depth := uint8(10)
 		totalAmount := big.NewInt(102399)
+		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
+		batchStoreMock := postagestoreMock.New(postagestoreMock.WithBatch(batch))
 
 		contract := postagecontract.New(
 			owner,
@@ -327,9 +327,10 @@ func TestTopUpBatch(t *testing.T) {
 				}),
 			),
 			postageMock.New(),
+			batchStoreMock,
 		)
 
-		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
+		err := contract.TopUpBatch(ctx, batch.ID, topupBalance)
 		if !errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 		}

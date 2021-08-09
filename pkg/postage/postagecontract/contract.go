@@ -133,7 +133,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 
 func (c *postageContract) sendTopUpBatchTransaction(ctx context.Context, batchID []byte, topUpAmount *big.Int) (*types.Receipt, error) {
 
-	callData, err := postageStampABI.Pack("topUp", batchID, topUpAmount)
+	callData, err := postageStampABI.Pack("topUp", common.BytesToHash(batchID), topUpAmount)
 	if err != nil {
 		return nil, err
 	}
