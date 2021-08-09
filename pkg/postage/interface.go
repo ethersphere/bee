@@ -52,5 +52,5 @@ type Listener interface {
 
 type BatchEventListener interface {
 	HandleCreate(*Batch)
-	HandleTopUp(id []byte, newBalance *big.Int)
+	HandleTopUp(id []byte, newBalance *big.Int, blockNumber uint64)
 }
