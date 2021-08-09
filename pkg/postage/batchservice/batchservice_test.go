@@ -47,7 +47,7 @@ func (m *mockBatchListener) HandleCreate(b *postage.Batch) {
 	m.createCount++
 }
 
-func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
+func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int, _ uint64) {
 	m.topupCount++
 }
 
@@ -238,9 +238,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		}
 	})
 
-	// if a batch with a different owner is topped up we should not see any event fired in the
-	// batch service
-	t.Run("passes without BatchEventListener update", func(t *testing.T) {
+	t.Run("passes without update", func(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
