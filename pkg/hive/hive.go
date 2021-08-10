@@ -37,6 +37,7 @@ const (
 	peersStreamName = "peers"
 	messageTimeout  = 1 * time.Minute // maximum allowed time for a message to be read or written.
 	maxBatchSize    = 30
+	pingTimeout     = time.Second * 5 // time to wait for ping to succeed
 )
 
 var (
@@ -276,6 +277,9 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 				s.logger.Errorf("hive: multi address underlay err: %v", err)
 				return
 			}
+
+			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+			defer cancel()
 
 			// check if the underlay is usable by doing a raw ping using libp2p
 			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
