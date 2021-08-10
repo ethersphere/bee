@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	inserts = 10000
-	reserve = 5000
-	cache   = 1000
+	inserts = 5000000
+	reserve = 5000000
+	cache   = 100000
 )
 
 func main() {
@@ -59,19 +59,15 @@ func main() {
 		defer mtx.Unlock()
 		for {
 			for k, v := range batchesMap {
-				//fmt.Printf("unreserve %x radius %d \n", []byte(k), v)
 				stop, err := cb([]byte(k), v)
 				if err != nil {
 					return err
 				}
 				batchesMap[k] = v + 1
 				if stop {
-					//pos = pos + i
 					return nil
 				}
 			}
-			//pos = 0
-			//storageRadius++
 		}
 	}
 
@@ -92,24 +88,28 @@ func main() {
 	}
 	defer storer.Close()
 
-	//gcSize := func() uint64 {
-	//sz, err := storer.gcSize.Get()
-	//if err != nil {
-	//panic(err)
-	//}
-	//return sz
-	//}
-
 	ctx := context.Background()
 	wg.Add(1)
 	// one goroutine inserts data
 	go func() {
 		defer wg.Done()
+		f, _ := os.OpenFile("put_up_reserve_size.csv", os.O_RDWR|os.O_CREATE, 0666)
+		f.Write([]byte("res,pututime\n"))
+		//f2, _ := os.OpenFile("put_up_gc_size.csv", os.O_RDWR|os.O_CREATE, 0666)
+		//f2.Write([]byte("gcsize,pututime\n"))
 		for i := 0; i < inserts; i++ {
 			ch := testing.GenerateTestRandomChunk()
+			start := time.Now()
 			_, err := storer.Put(ctx, storage.ModePutUpload, ch)
 			if err != nil {
 				logger.Errorf("error putting uploaded chunk: %v", err)
+			}
+			end := int(time.Since(start).Microseconds())
+			if i%100 == 0 {
+				//sz := storer.GcSize()
+				rsz := storer.ReserveSize()
+				f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
+				//f2.Write([]byte(fmt.Sprintf("%d,%d\n", sz, end)))
 			}
 			chmtx.Lock()
 			chs = append(chs, ch.Address())
@@ -150,7 +150,7 @@ func main() {
 			logger.Infof("set %d chunks a synced", i)
 			chs = nil
 			chmtx.Unlock()
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(5000 * time.Millisecond)
 		}
 	}()
 
@@ -159,7 +159,9 @@ func main() {
 	go func() {
 		defer wg.Done()
 		f, _ := os.OpenFile("get_req_reserve_size.csv", os.O_RDWR|os.O_CREATE, 0666)
-		f2, _ := os.OpenFile("get_req_gc_size.csv", os.O_RDWR|os.O_CREATE, 0666)
+		f.Write([]byte("res,getrtime\n"))
+		//f2, _ := os.OpenFile("get_req_gc_size.csv", os.O_RDWR|os.O_CREATE, 0666)
+		//f2.Write([]byte("gcsize,getrtime\n"))
 		for {
 			select {
 			case <-done:
@@ -167,17 +169,17 @@ func main() {
 			default:
 			}
 
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(1000 * time.Millisecond)
 			chmtx.Lock()
 			chaddr := rdchs[rand.Intn(len(rdchs))]
 			start := time.Now()
 			_, _ = storer.Get(ctx, storage.ModeGetRequest, chaddr)
-			end := time.Since(start)
-			sz := storer.GcSize()
+			end := int(time.Since(start).Microseconds())
+			chmtx.Unlock()
+			//sz := storer.GcSize()
 			rsz := storer.ReserveSize()
 			f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
-			f2.Write([]byte(fmt.Sprintf("%d,%d\n", sz, end)))
-			chmtx.Unlock()
+			//f2.Write([]byte(fmt.Sprintf("%d,%d\n", sz, end)))
 		}
 	}()
 
