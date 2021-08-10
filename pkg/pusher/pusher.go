@@ -191,10 +191,13 @@ LOOP:
 					if err == nil {
 						s.metrics.TotalSynced.Inc()
 						s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-						// only print this if there was no error while sending the chunk
-						po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
-						logger.Tracef("pusher: pushed chunk %s to node %s, receipt depth %d", ch.Address().String(), storerPeer.String(), po)
-						s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+						if wantSelf {
+							logger.Tracef("pusher: chunk %s stays here, i'm the closest node", ch.Address().String())
+						} else {
+							po := swarm.Proximity(ch.Address().Bytes(), storerPeer.Bytes())
+							logger.Tracef("pusher: pushed chunk %s to node %s, receipt depth %d", ch.Address().String(), storerPeer.String(), po)
+							s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+						}
 						delete(retryCounter, ch.Address().ByteString())
 					} else {
 						s.metrics.TotalErrors.Inc()
