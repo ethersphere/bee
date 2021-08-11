@@ -72,6 +72,7 @@ const (
 	optionNameMainNet                    = "mainnet"
 	optionNameRetrievalCaching           = "cache-retrieval"
 	optionNameDevReserveCapacity         = "dev-reserve-capacity"
+	optionNameRestrictedAPI              = "restricted"
 )
 
 func init() {
