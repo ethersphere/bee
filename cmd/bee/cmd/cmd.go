@@ -75,6 +75,7 @@ const (
 	optionNameResync                     = "resync"
 	optionNamePProfBlock                 = "pprof-profile"
 	optionNamePProfMutex                 = "pprof-mutex"
+	optionNameRestrictedAPI              = "restricted"
 )
 
 func init() {
