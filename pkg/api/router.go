@@ -43,15 +43,26 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
+	if s.Restricted {
+		handle("/auth", jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				s.newTracingHandler("auth"),
+				web.FinalHandlerFunc(s.authHandler),
+			),
+		})
+	}
+
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.newTracingHandler("bytes-upload"),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bytesUploadHandler),
 		),
 	})
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.newTracingHandler("bytes-download"),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
 	})
@@ -59,6 +70,7 @@ func (s *server) setupRouting() {
 	handle("/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
@@ -69,20 +81,28 @@ func (s *server) setupRouting() {
 	))
 
 	handle("/chunks/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chunkGetHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.chunkGetHandler),
+		),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.socUploadHandler),
 		),
 	})
 
 	handle("/feeds/{owner}/{topic}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.feedGetHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.feedGetHandler),
+		),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.feedPostHandler),
 		),
 	})
@@ -90,6 +110,7 @@ func (s *server) setupRouting() {
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.newTracingHandler("bzz-upload"),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
 	})
@@ -101,10 +122,12 @@ func (s *server) setupRouting() {
 	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.newTracingHandler("bzz-download"),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
 		"PATCH": web.ChainHandlers(
 			s.newTracingHandler("bzz-patch"),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bzzPatchHandler),
 		),
 	})
@@ -114,6 +137,7 @@ func (s *server) setupRouting() {
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
+				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.pssPostHandler),
 			),
 		})),
@@ -121,15 +145,20 @@ func (s *server) setupRouting() {
 
 	handle("/pss/subscribe/{topic}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
+		s.permissionCheckHandler(),
 		web.FinalHandlerFunc(s.pssWsHandler),
 	))
 
 	handle("/tags", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.listTagsHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.listTagsHandler),
+			),
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
+				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.createTagHandler),
 			),
 		})),
@@ -137,10 +166,15 @@ func (s *server) setupRouting() {
 	handle("/tags/{id}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getTagHandler),
-			"DELETE": http.HandlerFunc(s.deleteTagHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.getTagHandler)),
+			"DELETE": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.deleteTagHandler)),
 			"PATCH": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
+				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.doneSplitHandler),
 			),
 		})),
@@ -149,36 +183,50 @@ func (s *server) setupRouting() {
 	handle("/pins", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.listPinnedRootHashes),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.listPinnedRootHashes)),
 		})),
 	)
 	handle("/pins/{reference}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getPinnedRootHash),
-			"POST":   http.HandlerFunc(s.pinRootHash),
-			"DELETE": http.HandlerFunc(s.unpinRootHash),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.getPinnedRootHash)),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.pinRootHash)),
+			"DELETE": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.unpinRootHash)),
 		})),
 	)
 
 	handle("/stamps", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageGetStampsHandler)),
 		})),
 	)
 
 	handle("/stamps/{id}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageGetStampHandler)),
 		})),
 	)
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.postageCreateHandler),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageCreateHandler)),
 		})),
 	)
 
