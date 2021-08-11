@@ -8,6 +8,7 @@ import (
 	"expvar"
 	"net/http"
 	"net/http/pprof"
+	"strings"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -52,21 +53,32 @@ func (s *Service) newBasicRouter() *mux.Router {
 
 	router.Handle("/health", web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		s.permissionCheckHandler(),
 		web.FinalHandlerFunc(statusHandler),
 	))
 
 	router.Handle("/addresses", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.addressesHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.addressesHandler)),
 	})
 
 	if s.transaction != nil {
 		router.Handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.transactionListHandler)),
 		})
 		router.Handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.transactionDetailHandler)),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.transactionResendHandler)),
+			"DELETE": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.transactionCancelHandler)),
 		})
 	}
 
@@ -79,57 +91,86 @@ func (s *Service) newBasicRouter() *mux.Router {
 func (s *Service) newRouter() *mux.Router {
 	router := s.newBasicRouter()
 
-	router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(statusHandler),
-	))
+	router.Handle("/readiness", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(statusHandler)),
+	})
 
 	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.pingpongHandler),
+		"POST": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.pingpongHandler)),
 	})
 
 	router.Handle("/reservestate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.reserveStateHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.reserveStateHandler)),
 	})
 
 	router.Handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chainStateHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.chainStateHandler)),
 	})
 
 	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.peerConnectHandler),
+		"POST": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.peerConnectHandler)),
 	})
 	router.Handle("/peers", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peersHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.peersHandler)),
 	})
 	router.Handle("/blocklist", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.blocklistedPeersHandler)),
 	})
 
 	router.Handle("/peers/{address}", jsonhttp.MethodHandler{
-		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
+		"DELETE": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.peerDisconnectHandler)),
 	})
 	router.Handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.hasChunkHandler),
-		"DELETE": http.HandlerFunc(s.removeChunk),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.hasChunkHandler)),
+		"DELETE": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.removeChunk)),
 	})
 	router.Handle("/topology", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.topologyHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.topologyHandler)),
 	})
 	router.Handle("/welcome-message", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.getWelcomeMessageHandler)),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
+			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
 		),
 	})
 
 	router.Handle("/balances", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.compensatedBalancesHandler)),
 	})
 
 	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.compensatedPeerBalanceHandler)),
 	})
 
 	router.Handle("/consumed", jsonhttp.MethodHandler{
@@ -141,72 +182,104 @@ func (s *Service) newRouter() *mux.Router {
 	})
 
 	router.Handle("/timesettlements", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.settlementsHandlerPseudosettle)),
 	})
 
 	if s.chequebookEnabled {
 		router.Handle("/settlements", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.settlementsHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.settlementsHandler)),
 		})
 		router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.peerSettlementsHandler)),
 		})
 
 		router.Handle("/chequebook/balance", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.chequebookBalanceHandler)),
 		})
 
 		router.Handle("/chequebook/address", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAddressHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.chequebookAddressHandler)),
 		})
 
 		router.Handle("/chequebook/deposit", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookDepositHandler),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.chequebookDepositHandler)),
 		})
 
 		router.Handle("/chequebook/withdraw", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.chequebookWithdrawHandler)),
 		})
 
 		router.Handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.chequebookLastPeerHandler)),
 		})
 
 		router.Handle("/chequebook/cheque", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.chequebookAllLastHandler)),
 		})
 
 		router.Handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": http.HandlerFunc(s.swapCashoutHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.swapCashoutStatusHandler)),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.swapCashoutHandler)),
 		})
 	}
 
 	router.Handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagHandler),
+		"GET": web.ChainHandlers(
+			s.permissionCheckHandler(),
+			web.FinalHandlerFunc(s.getTagHandler)),
 	})
 
 	router.Handle("/stamps", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageGetStampsHandler)),
 		})),
 	)
 
 	router.Handle("/stamps/{id}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageGetStampHandler)),
 		})),
 	)
 
 	router.Handle("/stamps/{id}/buckets", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
+			"GET": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageGetStampBucketsHandler)),
 		})),
 	)
 
 	router.Handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.postageCreateHandler),
+			"POST": web.ChainHandlers(
+				s.permissionCheckHandler(),
+				web.FinalHandlerFunc(s.postageCreateHandler)),
 		})),
 	)
 
@@ -228,4 +301,41 @@ func (s *Service) setRouter(router http.Handler) {
 	defer s.handlerMu.Unlock()
 
 	s.handler = h
+}
+
+func (s *Service) permissionCheckHandler() func(h http.Handler) http.Handler {
+	if !s.restricted {
+		return func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				h.ServeHTTP(w, r)
+			})
+		}
+	}
+
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqToken := r.Header.Get("Authorization")
+			if !strings.HasPrefix(reqToken, "Bearer ") {
+				http.Error(w, "Missing bearer token", http.StatusForbidden)
+				return
+			}
+
+			keys := strings.Split(reqToken, "Bearer ")
+
+			if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
+				http.Error(w, "Missing API Key", http.StatusForbidden)
+				return
+			}
+
+			apiKey := keys[1]
+
+			allowed := s.auth.Enforce(apiKey, r.URL.Path, r.Method)
+			if !allowed {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			h.ServeHTTP(w, r)
+		})
+	}
 }
