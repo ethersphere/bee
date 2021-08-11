@@ -2,7 +2,7 @@
 name: Bug report
 about: Use this template to create a new bug report
 title: General problem description
-labels: 'bug'
+labels: 'needs-triaging'
 assignees: ''
 ---
 
@@ -20,6 +20,9 @@ account of what happened and disclose any possible piece of information related 
 <!-- How did you expect the application to behave -->
 
 #### Actual behavior
-<!-- How did the application behave -->
-
-<!-- Extras: If the problem involves a specific file, providing that file would be helpful; screenshots are welcome too -->
+<!-- How did the application behave? -->
+<!-- Please help us help you:
+- if the problem involves a specific file/dir, providing it might be helpful
+- if the issue is related to an API behavior - please provide the exact command (curl/postman etc) used to call the API. 
+- please try to always provide the node console output preferably in TRACE level
+- screenshots are welcome -->
