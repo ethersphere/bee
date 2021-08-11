@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/btcsuite/btcd v0.22.0-beta
+	github.com/casbin/casbin/v2 v2.35.0
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.10.8
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
@@ -69,6 +70,7 @@ require (
 )
 
 require (
+	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/VictoriaMetrics/fastcache v1.6.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

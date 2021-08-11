@@ -9,9 +9,11 @@ package api
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"strconv"
@@ -86,7 +88,14 @@ type Service interface {
 	io.Closer
 }
 
+type authenticator interface {
+	Authorize(string, string) bool
+	AddKey(string, string) string
+	Enforce(string, string, string) bool
+}
+
 type server struct {
+	auth            authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
 	resolver        resolver.Interface
@@ -112,6 +121,7 @@ type Options struct {
 	CORSAllowedOrigins []string
 	GatewayMode        bool
 	WsPingPeriod       time.Duration
+	Restricted         bool
 }
 
 const (
@@ -120,8 +130,9 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
 	s := &server{
+		auth:            auth,
 		tags:            tags,
 		storer:          storer,
 		resolver:        resolver,
@@ -241,6 +252,35 @@ func requestPostageBatchId(r *http.Request) ([]byte, error) {
 	return nil, errInvalidPostageBatch
 }
 
+func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
+	user, pass, ok := r.BasicAuth()
+
+	if !ok || !s.auth.Authorize(user, pass) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+		return
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Read body", http.StatusBadRequest)
+		return
+	}
+
+	var role struct {
+		Role string `json:"role"`
+	}
+
+	if err = json.Unmarshal(body, &role); err != nil {
+		http.Error(w, "Unmarshal json body", http.StatusBadRequest)
+		return
+	}
+
+	key := s.auth.AddKey(user, role.Role)
+
+	_, _ = w.Write([]byte(key))
+}
+
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -260,6 +300,43 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 			}
 
 			h.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func (s *server) permissionCheckHandler() func(h http.Handler) http.Handler {
+	if !s.Restricted {
+		return func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				h.ServeHTTP(w, r)
+			})
+		}
+	}
+
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqToken := r.Header.Get("Authorization")
+			if !strings.HasPrefix(reqToken, "Bearer ") {
+				http.Error(w, "Missing bearer token", http.StatusForbidden)
+				return
+			}
+
+			keys := strings.Split(reqToken, "Bearer ")
+
+			if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
+				http.Error(w, "Missing API Key", http.StatusForbidden)
+				return
+			}
+
+			apiKey := keys[1]
+
+			allowed := s.auth.Enforce(apiKey, r.URL.Path, r.Method)
+			if !allowed {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			h.ServeHTTP(w, r)
 		})
 	}
 }
