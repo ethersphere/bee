@@ -861,7 +861,9 @@ func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duratio
 	s.pingDialer.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
 
 	// Cleanup connection after ping is done
-	defer s.pingDialer.Network().ClosePeer(info.ID)
+	defer func() {
+		_ = s.pingDialer.Network().ClosePeer(info.ID)
+	}()
 
 	select {
 	case <-ctx.Done():
