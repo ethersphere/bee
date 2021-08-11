@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"crypto/sha1"
+	sha "crypto/sha512"
 	"fmt"
 	"os"
 	"time"
@@ -65,18 +65,18 @@ func (a *Authenticator) Authorize(u, p string) bool {
 }
 
 func (a *Authenticator) AddKey(user, role string) string {
-	t := time.Now()
-	hasher := sha1.New()
+	now := time.Now()
+	hasher := sha.New()
 
 	_, _ = hasher.Write([]byte(user))
-	_, _ = hasher.Write([]byte(t.String()))
 	_, _ = hasher.Write([]byte(role))
+	_, _ = hasher.Write([]byte(now.String()))
 
 	hash := hasher.Sum(nil)
 
 	ar := authRecord{
 		role:   role,
-		expiry: t.Add(1 * time.Hour),
+		expiry: now.Add(1 * time.Hour),
 	}
 
 	apiKey := fmt.Sprintf("%x", hash)
