@@ -77,6 +77,7 @@ const (
 	optionNameStaticNodes                = "static-nodes"
 	optionNameAllowPrivateCIDRs          = "allow-private-cidrs"
 	optionNameSleepAfter                 = "sleep-after"
+	optionNameRestrictedAPI              = "restricted"
 )
 
 func init() {
