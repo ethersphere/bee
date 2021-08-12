@@ -210,6 +210,12 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
+	router.Handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
+		})),
+	)
+
 	return router
 }
 

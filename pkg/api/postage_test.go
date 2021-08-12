@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -254,123 +253,6 @@ func TestPostageGetStamp(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
-			}),
-		)
-	})
-}
-
-func TestPostageTopUpStamp(t *testing.T) {
-	topupAmount := int64(1000)
-	topupBatch := func(id string, amount int64) string {
-		return fmt.Sprintf("/stamps/topup/%s/%d", id, amount)
-	}
-
-	t.Run("ok", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
-				if !bytes.Equal(id, batchOk) {
-					return errors.New("incorrect batch ID in call")
-				}
-				if ib.Cmp(big.NewInt(topupAmount)) != 0 {
-					return fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
-				}
-				return nil
-			}),
-		)
-		client, _, _ := newTestServer(t, testServerOptions{
-			PostageContract: contract,
-		})
-
-		jsonhttptest.Request(t, client, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusAccepted,
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
-				BatchID: batchOk,
-			}),
-		)
-	})
-
-	t.Run("with-custom-gas", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
-				if !bytes.Equal(id, batchOk) {
-					return errors.New("incorrect batch ID in call")
-				}
-				if ib.Cmp(big.NewInt(topupAmount)) != 0 {
-					return fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
-				}
-				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
-				}
-				return nil
-			}),
-		)
-		client, _, _ := newTestServer(t, testServerOptions{
-			PostageContract: contract,
-		})
-
-		jsonhttptest.Request(t, client, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusAccepted,
-			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
-				BatchID: batchOk,
-			}),
-		)
-	})
-
-	t.Run("with-error", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
-				return errors.New("err")
-			}),
-		)
-		client, _, _ := newTestServer(t, testServerOptions{
-			PostageContract: contract,
-		})
-
-		jsonhttptest.Request(t, client, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusInternalServerError,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusInternalServerError,
-				Message: "cannot topup batch",
-			}),
-		)
-	})
-
-	t.Run("out-of-funds", func(t *testing.T) {
-		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
-				return postagecontract.ErrInsufficientFunds
-			}),
-		)
-		client, _, _ := newTestServer(t, testServerOptions{
-			PostageContract: contract,
-		})
-
-		jsonhttptest.Request(t, client, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "out of funds",
-			}),
-		)
-	})
-
-	t.Run("invalid batch id", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
-
-		jsonhttptest.Request(t, client, http.MethodPatch, "/stamps/topup/abcd/2", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-
-	t.Run("invalid amount", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
-
-		wrongURL := fmt.Sprintf("/stamps/topup/%s/amount", batchOkStr)
-
-		jsonhttptest.Request(t, client, http.MethodPatch, wrongURL, http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid postage amount",
 			}),
 		)
 	})
