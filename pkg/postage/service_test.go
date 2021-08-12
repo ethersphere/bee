@@ -123,8 +123,8 @@ func TestGetStampIssuer(t *testing.T) {
 	t.Run("topup", func(t *testing.T) {
 		ps.HandleTopUp(ids[1], big.NewInt(10), testChainState.Block)
 		_, err := ps.GetStampIssuer(ids[1])
-		if err != postage.ErrNotUsable {
-			t.Fatalf("expected ErrNotUsable, got %v", err)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
 		if ps.StampIssuers()[0].Amount().Cmp(big.NewInt(10)) != 0 {
 			t.Fatalf("expected amount %d got %d", 10, ps.StampIssuers()[0].Amount().Int64())

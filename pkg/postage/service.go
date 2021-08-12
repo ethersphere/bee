@@ -104,18 +104,16 @@ func (ps *service) HandleCreate(b *Batch) {
 	))
 }
 
-// Handle implements the BatchCreationListener interface. This is fired on receiving
-// a batch creation event from the blockchain listener to ensure that if a stamp
-// issuer was not created initially, we will create it here.
+// HandleTopUp implements the BatchEventListener interface. This is fired on receiving
+// a batch topup event from the blockchain to update stampissuer details
 func (ps *service) HandleTopUp(batchID []byte, newValue *big.Int, blockNumber uint64) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(batchID, v.data.BatchID) {
-			if blockNumber > v.data.BlockNumber {
+			if newValue.Cmp(v.data.BatchAmount) > 0 {
 				v.data.BatchAmount = newValue
-				v.data.BlockNumber = blockNumber
 			}
 			return
 		}

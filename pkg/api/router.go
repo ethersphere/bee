@@ -182,13 +182,6 @@ func (s *server) setupRouting() {
 		})),
 	)
 
-	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
-		})),
-	)
-
 	handle("/stewardship/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.gatewayModeForbidEndpointHandler,

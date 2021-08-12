@@ -238,7 +238,9 @@ func TestBatchServiceTopUp(t *testing.T) {
 		}
 	})
 
-	t.Run("passes without update", func(t *testing.T) {
+	// if a batch with a different owner is topped up we should not see any event fired in the
+	// batch service
+	t.Run("passes without BatchEventListener update", func(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
