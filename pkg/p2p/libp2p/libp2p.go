@@ -860,6 +860,11 @@ func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duratio
 	// Add the address to libp2p peerstore for it to be dialable
 	s.pingDialer.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
 
+	// Cleanup connection after ping is done
+	defer func() {
+		_ = s.pingDialer.Network().ClosePeer(info.ID)
+	}()
+
 	select {
 	case <-ctx.Done():
 		return rtt, ctx.Err()
