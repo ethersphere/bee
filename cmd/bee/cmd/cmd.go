@@ -72,6 +72,9 @@ const (
 	optionNameMainNet                    = "mainnet"
 	optionNameRetrievalCaching           = "cache-retrieval"
 	optionNameDevReserveCapacity         = "dev-reserve-capacity"
+	optionNameResync                     = "resync"
+	optionNamePProfBlock                 = "pprof-profile"
+	optionNamePProfMutex                 = "pprof-mutex"
 )
 
 func init() {
@@ -254,6 +257,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*20, "time to warmup the node before pull/push protocols can be kicked off.")
 	cmd.Flags().Bool(optionNameMainNet, false, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
+	cmd.Flags().Bool(optionNameResync, false, "forces the node to resync postage contract data")
+	cmd.Flags().Bool(optionNamePProfBlock, false, "enable pprof block profile")
+	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

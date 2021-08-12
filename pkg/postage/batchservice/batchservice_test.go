@@ -333,7 +333,7 @@ func TestTransactionOk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil)
+	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestTransactionFail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil)
+	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestChecksum(t *testing.T) {
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash })
+	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +389,49 @@ func TestChecksum(t *testing.T) {
 	}
 }
 
+func TestChecksumResync(t *testing.T) {
+	s := mocks.NewStateStore()
+	store := mock.New()
+	mockHash := &hs{}
+	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testNormalisedBalance := big.NewInt(2000000000000)
+	testBatch := postagetesting.MustNewBatch()
+	putBatch(t, store, testBatch)
+
+	if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err != nil {
+		t.Fatalf("top up: %v", err)
+	}
+	if m := mockHash.ctr; m != 2 {
+		t.Fatalf("expected %d calls got %d", 2, m)
+	}
+
+	// now start a new instance and check that the value gets read from statestore
+	store2 := mock.New()
+	mockHash2 := &hs{}
+	_, err = batchservice.New(s, store2, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash2 }, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := mockHash2.ctr; m != 1 {
+		t.Fatalf("expected %d calls got %d", 1, m)
+	}
+
+	// now start a new instance and check that the value does not get written into the hasher
+	// when resyncing
+	store3 := mock.New()
+	mockHash3 := &hs{}
+	_, err = batchservice.New(s, store3, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash3 }, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := mockHash3.ctr; m != 0 {
+		t.Fatalf("expected %d calls got %d", 0, m)
+	}
+}
+
 func newTestStoreAndServiceWithListener(
 	t *testing.T,
 	owner []byte,
@@ -398,7 +441,7 @@ func newTestStoreAndServiceWithListener(
 	t.Helper()
 	s := mocks.NewStateStore()
 	store := mock.New(opts...)
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), owner, batchListener, nil)
+	svc, err := batchservice.New(s, store, testLog, newMockListener(), owner, batchListener, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

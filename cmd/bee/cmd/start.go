@@ -199,6 +199,9 @@ inability to use, or your interaction with other nodes or the software.`)
 				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
 				ChainID:                    networkConfig.chainID,
 				RetrievalCaching:           c.config.GetBool(optionNameRetrievalCaching),
+				Resync:                     c.config.GetBool(optionNameResync),
+				BlockProfile:               c.config.GetBool(optionNamePProfBlock),
+				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
 			})
 			if err != nil {
 				return err
