@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -154,6 +155,9 @@ type Options struct {
 	DeployGasPrice             string
 	WarmupTime                 time.Duration
 	ChainID                    int64
+	Resync                     bool
+	BlockProfile               bool
+	MutexProfile               bool
 }
 
 const (
@@ -238,6 +242,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if err != nil {
 			return nil, fmt.Errorf("eth address: %w", err)
 		}
+
+		if o.MutexProfile {
+			_ = runtime.SetMutexProfileFraction(1)
+		}
+
+		if o.BlockProfile {
+			runtime.SetBlockProfileRate(1)
+		}
+
 		// set up basic debug api endpoints for debugging and /health endpoint
 		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService)
 
@@ -435,7 +448,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b})
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256)
+	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 	if err != nil {
 		return nil, err
 	}

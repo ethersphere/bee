@@ -32,6 +32,7 @@ type batchService struct {
 	batchListener postage.BatchCreationListener
 
 	checksum hash.Hash // checksum hasher
+	resync   bool
 }
 
 type Interface interface {
@@ -47,6 +48,7 @@ func New(
 	owner []byte,
 	batchListener postage.BatchCreationListener,
 	checksumFunc func() hash.Hash,
+	resync bool,
 ) (Interface, error) {
 	if checksumFunc == nil {
 		checksumFunc = sha3.New256
@@ -56,25 +58,37 @@ func New(
 		sum = checksumFunc()
 	)
 
-	if err := stateStore.Get(checksumDBKey, &b); err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
+	dirty := false
+	err := stateStore.Get(dirtyDBKey, &dirty)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, err
+	}
+
+	if resync {
+		if err := stateStore.Delete(checksumDBKey); err != nil {
 			return nil, err
 		}
-	} else {
-		s, err := hex.DecodeString(b)
-		if err != nil {
-			return nil, err
-		}
-		n, err := sum.Write(s)
-		if err != nil {
-			return nil, err
-		}
-		if n != len(s) {
-			return nil, errors.New("batchstore checksum init")
+	} else if !dirty {
+		if err := stateStore.Get(checksumDBKey, &b); err != nil {
+			if !errors.Is(err, storage.ErrNotFound) {
+				return nil, err
+			}
+		} else {
+			s, err := hex.DecodeString(b)
+			if err != nil {
+				return nil, err
+			}
+			n, err := sum.Write(s)
+			if err != nil {
+				return nil, err
+			}
+			if n != len(s) {
+				return nil, errors.New("batchstore checksum init")
+			}
 		}
 	}
 
-	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum}, nil
+	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -195,15 +209,21 @@ func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
-	if dirty {
-		svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+
+	if dirty || svc.resync {
+		if svc.resync {
+			svc.logger.Warning("batch service: resync requested, resetting batch store")
+		} else {
+			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+		}
+
 		if err := svc.storer.Reset(); err != nil {
 			return nil, err
 		}
 		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
 			return nil, err
 		}
-		svc.logger.Warning("batch service: batch store reset. your node will now resync chain data")
+		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
 
 	cs := svc.storer.GetChainState()
