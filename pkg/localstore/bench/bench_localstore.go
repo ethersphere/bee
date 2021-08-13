@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -19,9 +18,9 @@ import (
 )
 
 const (
-	inserts = 5000000
-	reserve = 5000000
-	cache   = 100000
+	inserts = 1
+	reserve = 1900000
+	cache   = 50000
 )
 
 func main() {
@@ -30,12 +29,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	path, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	path = filepath.Join(path, "data")
-	fmt.Printf("using datadir in: '%s'\n", path)
+	path := "" /// in mem
+	//path, err := os.Getwd()
+	//if err != nil {
+	//panic(err)
+	//}
+	//path = filepath.Join(path, "data")
+	//fmt.Printf("using datadir in: '%s'\n", path)
 	var (
 		storageRadius = uint8(0)
 		batches       [][]byte
@@ -87,7 +87,7 @@ func main() {
 		panic(err)
 	}
 	defer storer.Close()
-
+	fmt.Println("starting to put chunks")
 	ctx := context.Background()
 	wg.Add(1)
 	// one goroutine inserts data
@@ -95,9 +95,10 @@ func main() {
 		defer wg.Done()
 		f, _ := os.OpenFile("put_up_reserve_size.csv", os.O_RDWR|os.O_CREATE, 0666)
 		f.Write([]byte("res,pututime\n"))
-		//f2, _ := os.OpenFile("put_up_gc_size.csv", os.O_RDWR|os.O_CREATE, 0666)
-		//f2.Write([]byte("gcsize,pututime\n"))
-		for i := 0; i < inserts; i++ {
+		f2, _ := os.OpenFile("put_up_time.csv", os.O_RDWR|os.O_CREATE, 0666)
+		f2.Write([]byte("chunks,put100time\n"))
+		start1000 := time.Now()
+		for i := 0; i <= inserts; i++ {
 			ch := testing.GenerateTestRandomChunk()
 			start := time.Now()
 			_, err := storer.Put(ctx, storage.ModePutUpload, ch)
@@ -109,7 +110,6 @@ func main() {
 				//sz := storer.GcSize()
 				rsz := storer.ReserveSize()
 				f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
-				//f2.Write([]byte(fmt.Sprintf("%d,%d\n", sz, end)))
 			}
 			chmtx.Lock()
 			chs = append(chs, ch.Address())
@@ -121,13 +121,17 @@ func main() {
 			mtx.Unlock()
 			if i%1000 == 0 {
 				logger.Infof("wrote %d chunks", i)
+				stop1000 := int(time.Since(start1000).Milliseconds())
+				f2.Write([]byte(fmt.Sprintf("%d,%d\n", i, stop1000)))
+				start1000 = time.Now()
 			}
 		}
 
 		time.Sleep(5 * time.Second)
 		close(done)
 	}()
-
+	wg.Wait()
+	return
 	// one goroutine trails and tries to sync the data like the pusher does
 	wg.Add(1)
 	go func() {
