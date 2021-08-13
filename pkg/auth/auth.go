@@ -1,9 +1,12 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package auth
 
 import (
 	sha "crypto/sha512"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/casbin/casbin/v2"
@@ -23,7 +26,7 @@ type Authenticator struct {
 	enforcer   *casbin.Enforcer
 }
 
-func New() (*Authenticator, error) {
+func New(username, password string) (*Authenticator, error) {
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
@@ -51,8 +54,8 @@ func New() (*Authenticator, error) {
 	}
 
 	auth := Authenticator{
-		user:     os.Getenv("AUTH_USERNAME"),
-		pass:     os.Getenv("AUTH_PASSWORD"),
+		user:     username,
+		pass:     password,
 		apiKeys:  make(apiKeys),
 		enforcer: e,
 	}
