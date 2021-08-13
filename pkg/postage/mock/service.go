@@ -90,7 +90,7 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 
 func (m *mockPostage) HandleCreate(_ *postage.Batch) {}
 
-func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int, _ uint64) {}
+func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}
 
 func (m *mockPostage) Close() error {
 	return nil

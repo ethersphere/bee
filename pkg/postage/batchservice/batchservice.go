@@ -122,7 +122,7 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txHash []b
 	}
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		svc.batchListener.HandleTopUp(id, normalisedBalance, svc.storer.GetChainState().Block)
+		svc.batchListener.HandleTopUp(id, normalisedBalance)
 	}
 
 	cs, err := svc.updateChecksum(txHash)

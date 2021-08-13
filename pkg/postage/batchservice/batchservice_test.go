@@ -47,7 +47,7 @@ func (m *mockBatchListener) HandleCreate(b *postage.Batch) {
 	m.createCount++
 }
 
-func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int, _ uint64) {
+func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
 	m.topupCount++
 }
 
