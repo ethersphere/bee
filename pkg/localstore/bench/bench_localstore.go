@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	inserts = 1
+	inserts = 2000000
 	reserve = 1900000
 	cache   = 50000
 )
@@ -29,13 +30,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	path := "" /// in mem
-	//path, err := os.Getwd()
-	//if err != nil {
-	//panic(err)
-	//}
-	//path = filepath.Join(path, "data")
-	//fmt.Printf("using datadir in: '%s'\n", path)
+	path, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	path = filepath.Join(path, "data")
+	fmt.Printf("using datadir in: '%s'\n", path)
 	var (
 		storageRadius = uint8(0)
 		batches       [][]byte
@@ -87,7 +87,6 @@ func main() {
 		panic(err)
 	}
 	defer storer.Close()
-	fmt.Println("starting to put chunks")
 	ctx := context.Background()
 	wg.Add(1)
 	// one goroutine inserts data
@@ -107,7 +106,6 @@ func main() {
 			}
 			end := int(time.Since(start).Microseconds())
 			if i%100 == 0 {
-				//sz := storer.GcSize()
 				rsz := storer.ReserveSize()
 				f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
 			}
@@ -130,8 +128,6 @@ func main() {
 		time.Sleep(5 * time.Second)
 		close(done)
 	}()
-	wg.Wait()
-	return
 	// one goroutine trails and tries to sync the data like the pusher does
 	wg.Add(1)
 	go func() {
@@ -164,8 +160,6 @@ func main() {
 		defer wg.Done()
 		f, _ := os.OpenFile("get_req_reserve_size.csv", os.O_RDWR|os.O_CREATE, 0666)
 		f.Write([]byte("res,getrtime\n"))
-		//f2, _ := os.OpenFile("get_req_gc_size.csv", os.O_RDWR|os.O_CREATE, 0666)
-		//f2.Write([]byte("gcsize,getrtime\n"))
 		for {
 			select {
 			case <-done:
@@ -180,10 +174,8 @@ func main() {
 			_, _ = storer.Get(ctx, storage.ModeGetRequest, chaddr)
 			end := int(time.Since(start).Microseconds())
 			chmtx.Unlock()
-			//sz := storer.GcSize()
 			rsz := storer.ReserveSize()
 			f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
-			//f2.Write([]byte(fmt.Sprintf("%d,%d\n", sz, end)))
 		}
 	}()
 

@@ -59,7 +59,7 @@ func init() {
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
 func GenerateTestRandomChunk() swarm.Chunk {
-	data := make([]byte, swarm.ChunkSize)
+	data := make([]byte, 8)
 	_, _ = rand.Read(data)
 	ch, _ := cac.New(data)
 	stamp := postagetesting.MustNewStamp()
