@@ -121,7 +121,7 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("topup", func(t *testing.T) {
-		ps.HandleTopUp(ids[1], big.NewInt(10), testChainState.Block)
+		ps.HandleTopUp(ids[1], big.NewInt(10))
 		_, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)

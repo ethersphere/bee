@@ -106,7 +106,7 @@ func (ps *service) HandleCreate(b *Batch) {
 
 // HandleTopUp implements the BatchEventListener interface. This is fired on receiving
 // a batch topup event from the blockchain to update stampissuer details
-func (ps *service) HandleTopUp(batchID []byte, newValue *big.Int, blockNumber uint64) {
+func (ps *service) HandleTopUp(batchID []byte, newValue *big.Int) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
