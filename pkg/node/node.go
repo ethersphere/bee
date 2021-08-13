@@ -246,9 +246,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	username := os.Getenv("BEE_AUTH_USERNAME")
 	password := os.Getenv("BEE_AUTH_PASSWORD")
+	expiry := 1 * time.Hour
 
 	if o.Restricted {
-		if authenticator, err = auth.New(username, password); err != nil {
+		if authenticator, err = auth.New(username, password, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 	}
