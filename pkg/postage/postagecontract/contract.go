@@ -41,6 +41,7 @@ var (
 type Interface interface {
 	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error
+	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error
 }
 
 type postageContract struct {

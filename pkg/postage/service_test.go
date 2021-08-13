@@ -130,4 +130,17 @@ func TestGetStampIssuer(t *testing.T) {
 			t.Fatalf("expected amount %d got %d", 10, ps.StampIssuers()[0].Amount().Int64())
 		}
 	})
+	t.Run("dilute", func(t *testing.T) {
+		ps.HandleDepthIncrease(ids[2], 17, big.NewInt(1))
+		_, err := ps.GetStampIssuer(ids[2])
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if ps.StampIssuers()[1].Amount().Cmp(big.NewInt(1)) != 0 {
+			t.Fatalf("expected amount %d got %d", 1, ps.StampIssuers()[1].Amount().Int64())
+		}
+		if ps.StampIssuers()[1].Depth() != 17 {
+			t.Fatalf("expected depth %d got %d", 17, ps.StampIssuers()[1].Depth())
+		}
+	})
 }
