@@ -879,12 +879,12 @@ paths:
       tags:
         - Postage Stamps
       parameters:
-         - in: path
-           name: id
-           schema:
-             $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
-           required: true
-           description: Swarm address of the stamp
+        - in: path
+          name: id
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+          required: true
+          description: Swarm address of the stamp
         - in: path
           name: amount
           schema:
