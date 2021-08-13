@@ -381,3 +381,65 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID: id,
 	})
 }
+
+func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	if idStr == "" || len(idStr) != 64 {
+		s.logger.Error("dilute batch: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+	id, err := hex.DecodeString(idStr)
+	if err != nil {
+		s.logger.Debugf("dilute batch: invalid batchID: %v", err)
+		s.logger.Error("dilute batch: invalid batchID")
+		jsonhttp.BadRequest(w, "invalid batchID")
+		return
+	}
+
+	depthStr := mux.Vars(r)["depth"]
+	depth, err := strconv.ParseUint(depthStr, 10, 8)
+	if err != nil {
+		s.logger.Debugf("dilute batch: invalid depth: %v", err)
+		s.logger.Error("dilute batch: invalid depth")
+		jsonhttp.BadRequest(w, "invalid depth")
+		return
+	}
+
+	ctx := r.Context()
+	if price, ok := r.Header[gasPriceHeader]; ok {
+		p, ok := big.NewInt(0).SetString(price[0], 10)
+		if !ok {
+			s.logger.Error("dilute batch: bad gas price")
+			jsonhttp.BadRequest(w, errBadGasPrice)
+			return
+		}
+		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	if !s.postageCreateSem.TryAcquire(1) {
+		s.logger.Debug("dilute batch: simultaneous on-chain operations not supported")
+		s.logger.Error("dilute batch: simultaneous on-chain operations not supported")
+		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
+		return
+	}
+	defer s.postageCreateSem.Release(1)
+
+	err = s.postageContract.DiluteBatch(ctx, id, uint8(depth))
+	if err != nil {
+		if errors.Is(err, postagecontract.ErrInvalidDepth) {
+			s.logger.Debugf("dilute batch: invalid depth: %v", err)
+			s.logger.Error("dilte batch: invalid depth")
+			jsonhttp.BadRequest(w, "invalid depth")
+			return
+		}
+		s.logger.Debugf("dilute batch: failed to dilute: %v", err)
+		s.logger.Error("dilute batch: failed to dilute")
+		jsonhttp.InternalServerError(w, "cannot dilute batch")
+		return
+	}
+
+	jsonhttp.Accepted(w, &postageCreateResponse{
+		BatchID: id,
+	})
+}
