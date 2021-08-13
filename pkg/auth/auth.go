@@ -5,12 +5,13 @@
 package auth
 
 import (
-	sha "crypto/sha512"
-	"fmt"
+	"crypto/rand"
+	"encoding/base64"
 	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type authRecord struct {
@@ -21,12 +22,14 @@ type authRecord struct {
 type apiKeys map[string]authRecord
 
 type Authenticator struct {
-	user, pass string
-	apiKeys    apiKeys
-	enforcer   *casbin.Enforcer
+	user     string
+	pass     []byte
+	keys     apiKeys
+	expires  time.Duration
+	enforcer *casbin.Enforcer
 }
 
-func New(username, password string) (*Authenticator, error) {
+func New(username, password string, expires time.Duration) (*Authenticator, error) {
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
@@ -53,50 +56,56 @@ func New(username, password string) (*Authenticator, error) {
 		return nil, err
 	}
 
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	if err != nil {
+		return nil, err
+	}
+
 	auth := Authenticator{
 		user:     username,
-		pass:     password,
-		apiKeys:  make(apiKeys),
+		pass:     passwordHash,
+		keys:     make(apiKeys),
+		expires:  expires,
 		enforcer: e,
 	}
 
 	return &auth, nil
 }
 
+func isValidHash(password string, hash []byte) bool {
+	err := bcrypt.CompareHashAndPassword(hash, []byte(password))
+	return err == nil
+}
+
 func (a *Authenticator) Authorize(u, p string) bool {
-	return a.user == u && a.pass == p
+	return a.user == u && isValidHash(p, a.pass)
 }
 
 func (a *Authenticator) AddKey(user, role string) string {
 	now := time.Now()
-	hasher := sha.New()
-
-	_, _ = hasher.Write([]byte(user))
-	_, _ = hasher.Write([]byte(role))
-	_, _ = hasher.Write([]byte(now.String()))
-
-	hash := hasher.Sum(nil)
 
 	ar := authRecord{
 		role:   role,
-		expiry: now.Add(1 * time.Hour),
+		expiry: now.Add(a.expires),
 	}
 
-	apiKey := fmt.Sprintf("%x", hash)
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	apiKey := base64.URLEncoding.EncodeToString(b)
 
-	a.apiKeys[apiKey] = ar
+	a.keys[apiKey] = ar
 
 	return apiKey
 }
 
 func (a *Authenticator) Enforce(apiKey, obj, act string) bool {
-	ar, found := a.apiKeys[apiKey]
+	ar, found := a.keys[apiKey]
 	if !found {
 		return false
 	}
 
 	if time.Now().After(ar.expiry) {
-		delete(a.apiKeys, apiKey)
+		delete(a.keys, apiKey)
 		return false
 	}
 
