@@ -41,6 +41,7 @@ func newMockListener() *mockListener {
 type mockBatchListener struct {
 	createCount int
 	topupCount  int
+	diluteCount int
 }
 
 func (m *mockBatchListener) HandleCreate(b *postage.Batch) {
@@ -49,6 +50,10 @@ func (m *mockBatchListener) HandleCreate(b *postage.Batch) {
 
 func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
 	m.topupCount++
+}
+
+func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8, _ *big.Int) {
+	m.diluteCount++
 }
 
 func TestBatchServiceCreate(t *testing.T) {
@@ -279,19 +284,29 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	testBatch := postagetesting.MustNewBatch()
 
 	t.Run("expect get error", func(t *testing.T) {
-		svc, _, _ := newTestStoreAndService(
+		testBatchListener := &mockBatchListener{}
+		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
+			testBatch.Owner,
+			testBatchListener,
 			mock.WithGetErr(errTest, 0),
 		)
 
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance, testTxHash); err == nil {
 			t.Fatal("expected get error")
 		}
+
+		if testBatchListener.diluteCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.diluteCount)
+		}
 	})
 
 	t.Run("expect put error", func(t *testing.T) {
-		svc, batchStore, _ := newTestStoreAndService(
+		testBatchListener := &mockBatchListener{}
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
+			testBatch.Owner,
+			testBatchListener,
 			mock.WithPutErr(errTest, 1),
 		)
 		putBatch(t, batchStore, testBatch)
@@ -299,10 +314,19 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance, testTxHash); err == nil {
 			t.Fatal("expected put error")
 		}
+
+		if testBatchListener.diluteCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.diluteCount)
+		}
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore, _ := newTestStoreAndService(t)
+		testBatchListener := &mockBatchListener{}
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			t,
+			testBatch.Owner,
+			testBatchListener,
+		)
 		putBatch(t, batchStore, testBatch)
 
 		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance, testTxHash); err != nil {
@@ -316,6 +340,43 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 		if val.Depth != testNewDepth {
 			t.Fatalf("wrong batch depth set: want %v, got %v", testNewDepth, val.Depth)
+		}
+
+		if testBatchListener.diluteCount != 1 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.diluteCount)
+		}
+	})
+
+	// if a batch with a different owner is diluted we should not see any event fired in the
+	// batch service
+	t.Run("passes without BatchEventListener update", func(t *testing.T) {
+		testBatchListener := &mockBatchListener{}
+		// create a owner different from the batch owner
+		owner := make([]byte, 32)
+		rand.Read(owner)
+
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			t,
+			owner,
+			testBatchListener,
+		)
+		putBatch(t, batchStore, testBatch)
+
+		if err := svc.UpdateDepth(testBatch.ID, testNewDepth, testNormalisedBalance, testTxHash); err != nil {
+			t.Fatalf("update depth: %v", err)
+		}
+
+		val, err := batchStore.Get(testBatch.ID)
+		if err != nil {
+			t.Fatalf("batch store get: %v", err)
+		}
+
+		if val.Depth != testNewDepth {
+			t.Fatalf("wrong batch depth set: want %v, got %v", testNewDepth, val.Depth)
+		}
+
+		if testBatchListener.diluteCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.diluteCount)
 		}
 	})
 }

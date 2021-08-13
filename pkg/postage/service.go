@@ -120,7 +120,7 @@ func (ps *service) HandleTopUp(batchID []byte, newValue *big.Int) {
 	}
 }
 
-func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
+func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8, normalisedBalance *big.Int) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
@@ -128,6 +128,7 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 		if bytes.Equal(batchID, v.data.BatchID) {
 			if newDepth > v.data.BatchDepth {
 				v.data.BatchDepth = newDepth
+				v.data.BatchAmount = normalisedBalance
 			}
 			return
 		}
