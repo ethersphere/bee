@@ -903,7 +903,7 @@ paths:
         "429":
           $ref: "SwarmCommon.yaml#/components/responses/429"
         "402":
-          $ref: "SwarmCommon.yaml#/components/responses/429"
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
