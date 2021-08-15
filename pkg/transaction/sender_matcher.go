@@ -94,7 +94,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, ErrTransactionPending
 	}
 
-	sender, err := types.Sender(m.signer, nTx)
+	type1sender, err := types.Sender(m.signer, nTx)
 	if err != nil {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 			TimeStamp: m.timeNow(),
@@ -104,6 +104,12 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 			return nil, err2
 		}
 		return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
+	}
+
+	var type2sender common.Address
+
+	if len(nTx.Data()) == 20 {
+		type2sender = common.BytesToAddress(nTx.Data())
 	}
 
 	receipt, err := m.backend.TransactionReceipt(ctx, incomingTx)
@@ -145,9 +151,10 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
-	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID, nextBlockHash)
+	expectedRemoteBzzAddressType1 := crypto.NewOverlayFromEthereumAddress(type1sender.Bytes(), networkID, nextBlockHash)
+	expectedRemoteBzzAddressType2 := crypto.NewOverlayFromEthereumAddress(type2sender.Bytes(), networkID, nextBlockHash)
 
-	if !expectedRemoteBzzAddress.Equal(senderOverlay) {
+	if !(expectedRemoteBzzAddressType1.Equal(senderOverlay) || (type2sender != common.Address{} && expectedRemoteBzzAddressType2.Equal(senderOverlay))) {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 			TimeStamp: m.timeNow(),
 			Verified:  false,
