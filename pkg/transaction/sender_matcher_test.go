@@ -145,6 +145,45 @@ func TestMatchesSender(t *testing.T) {
 		}
 	})
 
+	t.Run("sender matches type2", func(t *testing.T) {
+		trxBlock := common.HexToHash("0x2")
+		nextBlockHeader := &types.Header{
+			ParentHash: trxBlock,
+		}
+
+		overlayEth := common.HexToAddress("0xff")
+
+		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, overlayEth.Bytes())
+
+		trxReceipt := backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+			return &types.Receipt{
+				BlockNumber: big.NewInt(0),
+				BlockHash:   trxBlock,
+			}, nil
+		})
+
+		headerByNum := backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+			return nextBlockHeader, nil
+		})
+
+		txByHash := backendmock.WithTransactionByHashFunc(func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
+			return signedTx, false, nil
+		})
+
+		signer := &mockSigner{
+			addr: common.HexToAddress("0xee"),
+		}
+
+		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore())
+
+		senderOverlay := crypto.NewOverlayFromEthereumAddress(overlayEth.Bytes(), 0, nextBlockHeader.Hash().Bytes())
+
+		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		if err != nil {
+			t.Fatalf("expected match. got %v", err)
+		}
+	})
+
 	t.Run("cached", func(t *testing.T) {
 
 		trxBlock := common.HexToHash("0x2")
