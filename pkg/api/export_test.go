@@ -20,6 +20,7 @@ type (
 	PostageCreateResponse = postageCreateResponse
 	PostageStampResponse  = postageStampResponse
 	PostageStampsResponse = postageStampsResponse
+	IsRetrievableResponse = isRetrievableResponse
 )
 
 var (

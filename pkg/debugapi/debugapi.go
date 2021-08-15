@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 )
@@ -61,6 +62,7 @@ type Service struct {
 	metricsRegistry    *prometheus.Registry
 	lightNodes         *lightnode.Container
 	blockTime          *big.Int
+	traverser          traversal.Traverser
 	// handler is changed in the Configure method
 	handler   http.Handler
 	handlerMu sync.RWMutex
@@ -97,7 +99,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, post postage.Service, postageContract postagecontract.Interface) {
+func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, post postage.Service, postageContract postagecontract.Interface, traverser traversal.Traverser) {
 	s.p2p = p2p
 	s.pingpong = pingpong
 	s.topologyDriver = topologyDriver
@@ -113,6 +115,7 @@ func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpon
 	s.overlay = &overlay
 	s.post = post
 	s.postageContract = postageContract
+	s.traverser = traverser
 
 	s.setRouter(s.newRouter())
 }

@@ -37,6 +37,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
 )
@@ -72,6 +73,7 @@ type testServerOptions struct {
 	TransactionOpts    []transactionmock.Option
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
+	Traverser          traversal.Traverser
 }
 
 type testServer struct {
@@ -88,7 +90,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	transaction := transactionmock.New(o.TransactionOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(ioutil.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction)
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract, o.Traverser)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -186,7 +188,7 @@ func TestServer_Configure(t *testing.T) {
 		}),
 	)
 
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, mockpost.New(), nil)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, nil, mockpost.New(), nil, nil)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,

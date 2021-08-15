@@ -867,6 +867,30 @@ paths:
           description: Default response
 
   "/stewardship/{reference}":
+    get:
+      summary: "Check if content is available"
+      tags:
+        - Stewardship
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+          required: true
+          description: "Root hash of content (can be of any type: collection, file, chunk)"
+      responses:
+        "200":
+          description: Returns if the content is retrievable
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/IsRetrievableResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
     put:
       summary: "Reupload a root hash to the network"
       tags:
@@ -881,6 +905,8 @@ paths:
       responses:
         "200":
           description: Ok
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
