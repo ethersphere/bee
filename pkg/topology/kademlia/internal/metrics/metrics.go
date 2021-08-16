@@ -281,9 +281,9 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 
 // Inspect allows to inspect current snapshot for the given
 // peer address by executing the inspection function.
-func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) {
+func (c *Collector) Inspect(addr swarm.Address) *Snapshot {
 	snapshots := c.Snapshot(time.Now(), addr)
-	fn(snapshots[addr.ByteString()])
+	return snapshots[addr.ByteString()]
 }
 
 // Flush sync the dirty in memory counters by flushing their values to the

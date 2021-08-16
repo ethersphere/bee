@@ -23,7 +23,7 @@ type Service struct {
 	peersFunc             func() []p2p.Peer
 	blocklistedPeersFunc  func() ([]p2p.Peer, error)
 	addressesFunc         func() ([]ma.Multiaddr, error)
-	setNotifierFunc       func(p2p.PickyNotifier)
+	notifierFunc          p2p.PickyNotifier
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
 	blocklistFunc         func(swarm.Address, time.Duration) error
@@ -34,13 +34,6 @@ type Service struct {
 func WithAddProtocolFunc(f func(p2p.ProtocolSpec) error) Option {
 	return optionFunc(func(s *Service) {
 		s.addProtocolFunc = f
-	})
-}
-
-// WithSetNotifierFunc sets the mock implementation of the SetNotifier function
-func WithSetPickyNotifierFunc(f func(p2p.PickyNotifier)) Option {
-	return optionFunc(func(s *Service) {
-		s.setNotifierFunc = f
 	})
 }
 
@@ -126,6 +119,11 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 	if s.disconnectFunc == nil {
 		return errors.New("function Disconnect not configured")
 	}
+
+	if s.notifierFunc != nil {
+		s.notifierFunc.Disconnected(p2p.Peer{Address: overlay})
+	}
+
 	return s.disconnectFunc(overlay)
 }
 
@@ -176,11 +174,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error
 }
 
 func (s *Service) SetPickyNotifier(f p2p.PickyNotifier) {
-	if s.setNotifierFunc == nil {
-		return
-	}
-
-	s.setNotifierFunc(f)
+	s.notifierFunc = f
 }
 
 type Option interface {
