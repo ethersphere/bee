@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/coreos/go-semver v0.3.0
-	github.com/ethereum/go-ethereum v1.10.3
+	github.com/ethereum/go-ethereum v1.10.7
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
 	github.com/ethersphere/go-storage-incentives-abi v0.3.0
 	github.com/ethersphere/go-sw3-abi v0.4.0
@@ -17,7 +17,6 @@ require (
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/huin/goupnp v1.0.1 // indirect
 	github.com/ipfs/go-log v1.0.5 // indirect
 	github.com/ipfs/go-log/v2 v2.3.0 // indirect
 	github.com/kardianos/service v1.2.0
@@ -56,7 +55,7 @@ require (
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.4
-	github.com/wealdtech/go-ens/v3 v3.4.6
+	github.com/wealdtech/go-ens/v3 v3.5.1
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.uber.org/atomic v1.8.0
 	go.uber.org/multierr v1.7.0 // indirect
