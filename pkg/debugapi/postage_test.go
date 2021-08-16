@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -108,6 +109,41 @@ func TestPostageCreateStamp(t *testing.T) {
 				Message: "cannot create batch",
 			}),
 		)
+	})
+
+	t.Run("with too many requests error", func(t *testing.T) {
+		wait, done := make(chan struct{}), make(chan struct{})
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+				<-wait
+				return batchID, nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		go func() {
+			defer close(done)
+
+			jsonhttptest.Request(t, ts.Client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
+				jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+					BatchID: batchID,
+				}),
+			)
+		}()
+
+		time.Sleep(time.Millisecond * 100)
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusTooManyRequests,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusTooManyRequests,
+				Message: "simultaneous on-chain operations not supported",
+			}),
+		)
+
+		close(wait)
+		<-done
 	})
 
 	t.Run("out-of-funds", func(t *testing.T) {
@@ -444,6 +480,41 @@ func TestPostageTopUpStamp(t *testing.T) {
 		)
 	})
 
+	t.Run("with too many requests error", func(t *testing.T) {
+		wait, done := make(chan struct{}), make(chan struct{})
+		contract := contractMock.New(
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+				<-wait
+				return nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		go func() {
+			defer close(done)
+
+			jsonhttptest.Request(t, ts.Client, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusAccepted,
+				jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+					BatchID: batchOk,
+				}),
+			)
+		}()
+
+		time.Sleep(time.Millisecond * 100)
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusTooManyRequests,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusTooManyRequests,
+				Message: "simultaneous on-chain operations not supported",
+			}),
+		)
+
+		close(wait)
+		<-done
+	})
+
 	t.Run("out-of-funds", func(t *testing.T) {
 		contract := contractMock.New(
 			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
@@ -577,6 +648,41 @@ func TestPostageDiluteStamp(t *testing.T) {
 				Message: "invalid depth",
 			}),
 		)
+	})
+
+	t.Run("with too many requests error", func(t *testing.T) {
+		wait, done := make(chan struct{}), make(chan struct{})
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				<-wait
+				return nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		go func() {
+			defer close(done)
+
+			jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
+				jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+					BatchID: batchOk,
+				}),
+			)
+		}()
+
+		time.Sleep(time.Millisecond * 100)
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusTooManyRequests,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusTooManyRequests,
+				Message: "simultaneous on-chain operations not supported",
+			}),
+		)
+
+		close(wait)
+		<-done
 	})
 
 	t.Run("invalid batch id", func(t *testing.T) {
