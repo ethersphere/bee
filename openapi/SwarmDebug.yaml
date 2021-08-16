@@ -873,7 +873,7 @@ paths:
           description: Default response
 
   "/stamps/topup/{id}/{amount}":
-    post:
+    patch:
       summary: Top up an existing postage batch.
       description: Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
       tags:
