@@ -94,22 +94,25 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, ErrTransactionPending
 	}
 
-	type1sender, err := types.Sender(m.signer, nTx)
-	if err != nil {
-		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
-			TimeStamp: m.timeNow(),
-			Verified:  false,
-		})
-		if err2 != nil {
-			return nil, err2
+	// if transaction data is exactly one word and starts with 4 0-bytes this is a transaction data type proof
+	// we check for the starting 0-bytes so we don't mistake a 28 byte data solidity call for this
+	// otherwise this is considered as a signer based proof. a transaction can be only one of the two.
+	var attestedOverlay common.Address
+	txData := nTx.Data()
+	if len(txData) == 32 && bytes.Equal(txData[0:4], []byte{0, 0, 0, 0}) {
+		attestedOverlay = common.BytesToAddress(nTx.Data())
+	} else {
+		attestedOverlay, err = types.Sender(m.signer, nTx)
+		if err != nil {
+			err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+				TimeStamp: m.timeNow(),
+				Verified:  false,
+			})
+			if err2 != nil {
+				return nil, err2
+			}
+			return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
 		}
-		return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
-	}
-
-	var type2sender common.Address
-
-	if len(nTx.Data()) == 20 {
-		type2sender = common.BytesToAddress(nTx.Data())
 	}
 
 	receipt, err := m.backend.TransactionReceipt(ctx, incomingTx)
@@ -151,10 +154,9 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
-	expectedRemoteBzzAddressType1 := crypto.NewOverlayFromEthereumAddress(type1sender.Bytes(), networkID, nextBlockHash)
-	expectedRemoteBzzAddressType2 := crypto.NewOverlayFromEthereumAddress(type2sender.Bytes(), networkID, nextBlockHash)
+	expectedRemoteBzzAddressTypeSigner := crypto.NewOverlayFromEthereumAddress(attestedOverlay.Bytes(), networkID, nextBlockHash)
 
-	if !(expectedRemoteBzzAddressType1.Equal(senderOverlay) || (type2sender != common.Address{} && expectedRemoteBzzAddressType2.Equal(senderOverlay))) {
+	if !expectedRemoteBzzAddressTypeSigner.Equal(senderOverlay) {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 			TimeStamp: m.timeNow(),
 			Verified:  false,

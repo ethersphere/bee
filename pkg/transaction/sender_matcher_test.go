@@ -102,7 +102,7 @@ func TestMatchesSender(t *testing.T) {
 		}
 	})
 
-	t.Run("sender matches", func(t *testing.T) {
+	t.Run("sender matches signer type", func(t *testing.T) {
 
 		trxBlock := common.HexToHash("0x2")
 		nextBlockHeader := &types.Header{
@@ -138,7 +138,7 @@ func TestMatchesSender(t *testing.T) {
 		}
 	})
 
-	t.Run("sender matches type2", func(t *testing.T) {
+	t.Run("sender matches data type", func(t *testing.T) {
 		trxBlock := common.HexToHash("0x2")
 		nextBlockHeader := &types.Header{
 			ParentHash: trxBlock,
@@ -146,7 +146,7 @@ func TestMatchesSender(t *testing.T) {
 
 		overlayEth := common.HexToAddress("0xff")
 
-		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, overlayEth.Bytes())
+		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, overlayEth.Hash().Bytes())
 
 		trxReceipt := backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 			return &types.Receipt{
@@ -174,6 +174,13 @@ func TestMatchesSender(t *testing.T) {
 		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay)
 		if err != nil {
 			t.Fatalf("expected match. got %v", err)
+		}
+
+		senderOverlay = crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
+
+		_, err = matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		if err == nil {
+			t.Fatalf("matched signer for data tx")
 		}
 	})
 
