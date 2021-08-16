@@ -1174,6 +1174,54 @@ func TestStart(t *testing.T) {
 	})
 }
 
+func TestOutofDepthPrune(t *testing.T) {
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+
+	defer func(p int) {
+		*kademlia.OverSaturationPeers = p
+	}(*kademlia.OverSaturationPeers)
+
+	*kademlia.SaturationPeers = 4
+	*kademlia.OverSaturationPeers = 8
+
+	var (
+		conns, failedConns       int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{})
+	)
+
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	for i := 0; i < 6; i++ {
+		for j := 0; j < *kademlia.OverSaturationPeers*2; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addOne(t, signer, kad, ab, addr)
+		}
+		time.Sleep(time.Millisecond * 5)
+		kDepth(t, kad, i)
+	}
+
+	bins := map[uint8]int{}
+
+	_ = kad.EachPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+		bins[u]++
+		return false, false, nil
+	})
+
+	for i := uint8(0); i < 5; i++ {
+		if bins[i] != *kademlia.OverSaturationPeers {
+			t.Fatalf("bin %d, got %d, want %d", i, bins[i], *kademlia.OverSaturationPeers)
+		}
+	}
+}
+
 func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
@@ -1196,6 +1244,8 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 		disc   = mock.NewDiscovery()                                           // mock discovery protocol
 		kad    = kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts) // kademlia instance
 	)
+
+	p2p.SetPickyNotifier(kad)
 
 	return base, kad, ab, disc, signer
 }

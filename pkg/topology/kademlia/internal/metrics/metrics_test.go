@@ -111,12 +111,11 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 
 	// Inspect.
-	mc.Inspect(addr, func(have *metrics.Snapshot) {
-		want := ss
-		if diff := cmp.Diff(have, want); diff != "" {
-			t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
-		}
-	})
+	have := mc.Inspect(addr)
+	want := ss
+	if diff := cmp.Diff(have, want); diff != "" {
+		t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
+	}
 
 	// Flush.
 	if err := mc.Flush(addr); err != nil {

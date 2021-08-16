@@ -151,6 +151,13 @@ func New(
 	return k
 }
 
+// generateCommonBinPrefixes creates a table of bins with prefixes based on the base address
+// and 2^bitSuffixLength suffixes in a 2 dimensional array, example:
+// assume base addr starts with 1111, the table would look as such:
+// bin 0 - 0---, 000, 001, 010, 011, 100, 101, 110, 111
+// bin 1 - 10--, 000, 001, 010, 011, 100, 101, 110, 111
+// bin 2 - 110-, 000, 001, 010, 011, 100, 101, 110, 111
+// bin 3 - 1110, 000, 001, 010, 011, 100, 101, 110, 111
 func (k *Kad) generateCommonBinPrefixes() {
 	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
 	bitSuffixes := make([]uint8, bitCombinationsCount)
@@ -312,7 +319,6 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		// out of depth, skip bin
 		if po < depth {
 			return false, true, nil
-
 		}
 
 		if po != currentPo {
@@ -341,8 +347,8 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			sent++
 		}
 
-		// We want to sent number of attempts equal to saturationPeers
-		// in order to speed up the topology build.
+		// We want 'sent' equal to 'saturationPeers'
+		// in order to skip to the next bin and speed up the topology build.
 		return false, sent == saturationPeers, nil
 	})
 }
@@ -509,6 +515,8 @@ func (k *Kad) manage() {
 			radius := k.radius
 			k.depthMu.Unlock()
 
+			k.pruneOversaturatedBins(depth)
+
 			k.logger.Tracef(
 				"kademlia: connector took %s to finish: old depth %d; new depth %d",
 				time.Since(start),
@@ -532,6 +540,60 @@ func (k *Kad) manage() {
 			}
 		}
 	}
+}
+
+// pruneOversaturatedBins disconnects peers from out of depth, oversaturated bins
+// while maintaining the balance of the bin and favoring peers with longers connections
+func (k *Kad) pruneOversaturatedBins(depth uint8) {
+
+	for i := range k.commonBinPrefixes {
+
+		if i >= int(depth) {
+			return
+		}
+
+		binPeers := k.connectedPeers.BinPeers(uint8(i))
+		binPeersCount := len(binPeers)
+		if len(binPeers) < overSaturationPeers {
+			continue
+		}
+
+		peersToRemove := binPeersCount - overSaturationPeers
+
+		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
+
+			pseudoAddr := k.commonBinPrefixes[i][j]
+			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
+
+			if len(peers) > 1 {
+				var smallestDuration time.Duration
+				var newestPeer swarm.Address
+				for _, peer := range peers {
+					duration := k.collector.Inspect(peer).SessionConnectionDuration
+					if smallestDuration == 0 || duration < smallestDuration {
+						smallestDuration = duration
+						newestPeer = peer
+					}
+				}
+				_ = k.p2p.Disconnect(newestPeer)
+				peersToRemove--
+			}
+		}
+	}
+}
+
+func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address, po int) []swarm.Address {
+
+	var ret []swarm.Address
+
+	for _, peer := range peers {
+		peerPo := swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())
+		if int(peerPo) >= po+k.bitSuffixLength+1 {
+			ret = append(ret, peer)
+		}
+	}
+
+	return ret
 }
 
 func (k *Kad) Start(_ context.Context) error {
@@ -672,7 +734,7 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 			return false, false, nil
 		}
 		if bin > shallowestUnsaturated && binCount < quickSaturationPeers {
-			// this means we have less than quickSaturation in the previous bin
+			// this means we have less than quickSaturationPeers in the previous bin
 			// therefore we can return assuming that bin is the unsaturated one.
 			return true, false, nil
 		}
@@ -746,19 +808,18 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		k.metrics.TotalOutboundConnectionFailedAttempts.Inc()
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
 
-		k.collector.Inspect(peer, func(ss *im.Snapshot) {
-			quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
-			if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
-				k.waitNext.Remove(peer)
-				k.knownPeers.Remove(peer)
-				if err := k.addressBook.Remove(peer); err != nil {
-					k.logger.Debugf("could not remove peer from addressbook: %q", peer)
-				}
-				k.logger.Debugf("kademlia pruned peer from address book %q", peer)
-			} else {
-				k.waitNext.Set(peer, retryTime, failedAttempts)
+		ss := k.collector.Inspect(peer)
+		quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
+		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
+			k.waitNext.Remove(peer)
+			k.knownPeers.Remove(peer)
+			if err := k.addressBook.Remove(peer); err != nil {
+				k.logger.Debugf("could not remove peer from addressbook: %q", peer)
 			}
-		})
+			k.logger.Debugf("kademlia pruned peer from address book %q", peer)
+		} else {
+			k.waitNext.Set(peer, retryTime, failedAttempts)
+		}
 
 		return err
 	case !i.Overlay.Equal(peer):
