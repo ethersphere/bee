@@ -38,8 +38,8 @@ import (
 
 type authenticator interface {
 	Authorize(string, string) bool
-	AddKey(string, string) string
-	Enforce(string, string, string) bool
+	AddKey(string) (string, error)
+	Enforce(string, string, string) (bool, error)
 }
 
 // Service implements http.Handler interface to be used in HTTP server.
