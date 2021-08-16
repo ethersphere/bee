@@ -884,13 +884,13 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
           required: true
-          description: Swarm address of the stamp
+          description: Batch ID to top up
         - in: path
           name: amount
           schema:
             type: integer
           required: true
-          description: Amount of BZZ to top up to an existing postage batch.
+          description: Amount of BZZ per chunk to top up to an existing postage batch.
       responses:
         "202":
           description: Returns the postage batch ID that was topped up
