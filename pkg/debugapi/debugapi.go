@@ -67,7 +67,7 @@ type Service struct {
 
 	// The following are semaphores which exists to limit concurrent access
 	// to some parts of the resources in order to avoid undefined behaviour.
-	postageCreateSem *semaphore.Weighted
+	postageSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
 }
 
@@ -86,7 +86,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.blockTime = blockTime
 	s.metricsRegistry = newMetricsRegistry()
 	s.transaction = transaction
-	s.postageCreateSem = semaphore.NewWeighted(1)
+	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
 
 	s.setRouter(s.newBasicRouter())
