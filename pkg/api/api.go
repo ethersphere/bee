@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -90,8 +91,8 @@ type Service interface {
 
 type authenticator interface {
 	Authorize(string, string) bool
-	AddKey(string, string) string
-	Enforce(string, string, string) bool
+	AddKey(string) (string, error)
+	Enforce(string, string, string) (bool, error)
 }
 
 type server struct {
@@ -252,33 +253,44 @@ func requestPostageBatchId(r *http.Request) ([]byte, error) {
 	return nil, errInvalidPostageBatch
 }
 
+type AuthKeyResponse struct {
+	Key string `json:"key"`
+}
+
+type RoleRequest struct {
+	Role string `json:"role"`
+}
+
 func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	user, pass, ok := r.BasicAuth()
 
 	if !ok || !s.auth.Authorize(user, pass) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+		jsonhttp.Unauthorized(w, "Unauthorized")
 		return
 	}
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Read body", http.StatusBadRequest)
+		jsonhttp.BadRequest(w, "Read request body")
 		return
 	}
 
-	var role struct {
-		Role string `json:"role"`
-	}
-
+	var role RoleRequest
 	if err = json.Unmarshal(body, &role); err != nil {
-		http.Error(w, "Unmarshal json body", http.StatusBadRequest)
+		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
 	}
 
-	key := s.auth.AddKey(user, role.Role)
+	key, err := s.auth.AddKey(role.Role)
+	if err != nil {
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
 
-	_, _ = w.Write([]byte(key))
+	jsonhttp.Created(w, AuthKeyResponse{
+		Key: key,
+	})
 }
 
 func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
@@ -317,22 +329,27 @@ func (s *server) permissionCheckHandler() func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqToken := r.Header.Get("Authorization")
 			if !strings.HasPrefix(reqToken, "Bearer ") {
-				http.Error(w, "Missing bearer token", http.StatusForbidden)
+				jsonhttp.Forbidden(w, "Missing bearer token")
 				return
 			}
 
 			keys := strings.Split(reqToken, "Bearer ")
 
 			if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
-				http.Error(w, "Missing API Key", http.StatusForbidden)
+				jsonhttp.Forbidden(w, "Missing security token")
 				return
 			}
 
 			apiKey := keys[1]
 
-			allowed := s.auth.Enforce(apiKey, r.URL.Path, r.Method)
+			allowed, err := s.auth.Enforce(apiKey, r.URL.Path, r.Method)
+			if err != nil {
+				jsonhttp.InternalServerError(w, "Validate security token")
+				return
+			}
+
 			if !allowed {
-				w.WriteHeader(http.StatusForbidden)
+				jsonhttp.Forbidden(w, "Provided security token does not grant access to the resource")
 				return
 			}
 
