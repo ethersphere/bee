@@ -1179,32 +1179,6 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 	return k.depth
 }
 
-// IsBalanced returns if Kademlia is balanced to bin.
-func (k *Kad) IsBalanced(bin uint8) bool {
-	k.depthMu.RLock()
-	defer k.depthMu.RUnlock()
-
-	if int(bin) > len(k.commonBinPrefixes) {
-		return false
-	}
-
-	// for each pseudo address
-	for i := range k.commonBinPrefixes[bin] {
-		pseudoAddr := k.commonBinPrefixes[bin][i]
-		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn)
-		if err != nil {
-			return false
-		}
-
-		closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
-		if int(closestConnectedPO) < int(bin)+k.bitSuffixLength+1 {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (k *Kad) SetRadius(r uint8) {
 	k.depthMu.Lock()
 	defer k.depthMu.Unlock()
