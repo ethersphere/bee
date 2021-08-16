@@ -154,9 +154,9 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
-	expectedRemoteBzzAddressTypeSigner := crypto.NewOverlayFromEthereumAddress(attestedOverlay.Bytes(), networkID, nextBlockHash)
+	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(attestedOverlay.Bytes(), networkID, nextBlockHash)
 
-	if !expectedRemoteBzzAddressTypeSigner.Equal(senderOverlay) {
+	if !expectedRemoteBzzAddress.Equal(senderOverlay) {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 			TimeStamp: m.timeNow(),
 			Verified:  false,
