@@ -331,22 +331,27 @@ func (s *Service) permissionCheckHandler() func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqToken := r.Header.Get("Authorization")
 			if !strings.HasPrefix(reqToken, "Bearer ") {
-				http.Error(w, "Missing bearer token", http.StatusForbidden)
+				jsonhttp.Forbidden(w, "Missing bearer token")
 				return
 			}
 
 			keys := strings.Split(reqToken, "Bearer ")
 
 			if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
-				http.Error(w, "Missing API Key", http.StatusForbidden)
+				jsonhttp.Forbidden(w, "Missing security token")
 				return
 			}
 
 			apiKey := keys[1]
 
-			allowed := s.auth.Enforce(apiKey, r.URL.Path, r.Method)
+			allowed, err := s.auth.Enforce(apiKey, r.URL.Path, r.Method)
+			if err != nil {
+				jsonhttp.InternalServerError(w, "Validate security token")
+				return
+			}
+
 			if !allowed {
-				w.WriteHeader(http.StatusForbidden)
+				jsonhttp.Forbidden(w, "Provided security token does not grant access to the resource")
 				return
 			}
 

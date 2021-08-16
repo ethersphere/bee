@@ -22,11 +22,11 @@ type authRecord struct {
 type apiKeys map[string]authRecord
 
 type Authenticator struct {
-	user     string
-	pass     []byte
-	keys     apiKeys
-	expires  time.Duration
-	enforcer *casbin.Enforcer
+	username     string
+	passwordHash []byte
+	keys         apiKeys
+	expires      time.Duration
+	enforcer     *casbin.Enforcer
 }
 
 func New(username, password string, expires time.Duration) (*Authenticator, error) {
@@ -62,26 +62,24 @@ func New(username, password string, expires time.Duration) (*Authenticator, erro
 	}
 
 	auth := Authenticator{
-		user:     username,
-		pass:     passwordHash,
-		keys:     make(apiKeys),
-		expires:  expires,
-		enforcer: e,
+		username:     username,
+		passwordHash: passwordHash,
+		keys:         make(apiKeys),
+		expires:      expires,
+		enforcer:     e,
 	}
 
 	return &auth, nil
 }
 
-func isValidHash(password string, hash []byte) bool {
-	err := bcrypt.CompareHashAndPassword(hash, []byte(password))
-	return err == nil
+func (a *Authenticator) Authorize(username, password string) bool {
+	if a.username != username {
+		return false
+	}
+	return nil == bcrypt.CompareHashAndPassword(a.passwordHash, []byte(password))
 }
 
-func (a *Authenticator) Authorize(u, p string) bool {
-	return a.user == u && isValidHash(p, a.pass)
-}
-
-func (a *Authenticator) AddKey(user, role string) string {
+func (a *Authenticator) AddKey(role string) (string, error) {
 	now := time.Now()
 
 	ar := authRecord{
@@ -90,32 +88,36 @@ func (a *Authenticator) AddKey(user, role string) string {
 	}
 
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+
 	apiKey := base64.URLEncoding.EncodeToString(b)
 
 	a.keys[apiKey] = ar
 
-	return apiKey
+	return apiKey, nil
 }
 
-func (a *Authenticator) Enforce(apiKey, obj, act string) bool {
-	ar, found := a.keys[apiKey]
+func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
+	authRecord, found := a.keys[apiKey]
 	if !found {
-		return false
+		return false, nil
 	}
 
-	if time.Now().After(ar.expiry) {
+	if time.Now().After(authRecord.expiry) {
 		delete(a.keys, apiKey)
-		return false
+		return false, nil
 	}
 
-	sub := ar.role // the user that wants to access a resource.
-
-	if allow, _ := a.enforcer.Enforce(sub, obj, act); !allow {
-		return false
+	allow, err := a.enforcer.Enforce(authRecord.role, obj, act)
+	if err != nil {
+		return false, err
 	}
 
-	return true
+	return allow, nil
 }
 
 func applyPolicies(e *casbin.Enforcer) error {
