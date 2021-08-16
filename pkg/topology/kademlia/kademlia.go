@@ -545,6 +545,10 @@ func (k *Kad) manage() {
 			radius := k.radius
 			k.depthMu.Unlock()
 
+			if depth != oldDepth {
+				k.pruneOversaturatedBins(depth)
+			}
+
 			k.logger.Tracef(
 				"kademlia: connector took %s to finish: old depth %d; new depth %d",
 				time.Since(start),
@@ -565,6 +569,25 @@ func (k *Kad) manage() {
 				}
 				k.logger.Debug("kademlia: no connected peers, trying bootnodes")
 				k.connectBootNodes(ctx)
+			}
+		}
+	}
+}
+
+func (k *Kad) pruneOversaturatedBins(depth uint8) {
+
+	for i := uint8(0); i < depth; i++ {
+
+		peers := k.connectedPeers.BinPeers(i)
+		lenPeers := len(peers)
+
+		if lenPeers > saturationPeers {
+			peersToRemove, err := randomSubset(peers, lenPeers-saturationPeers)
+			if err != nil {
+				continue
+			}
+			for _, peer := range peersToRemove {
+				_ = k.p2p.Disconnect(peer)
 			}
 		}
 	}
@@ -708,7 +731,7 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 			return false, false, nil
 		}
 		if bin > shallowestUnsaturated && binCount < quickSaturationPeers {
-			// this means we have less than quickSaturation in the previous bin
+			// this means we have less than quickSaturationPeers in the previous bin
 			// therefore we can return assuming that bin is the unsaturated one.
 			return true, false, nil
 		}
