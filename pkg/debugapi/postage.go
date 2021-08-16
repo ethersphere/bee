@@ -21,6 +21,20 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.postageSem.TryAcquire(1) {
+			s.logger.Debug("postage access: simultaneous on-chain operations not supported")
+			s.logger.Error("postage access: simultaneous on-chain operations not supported")
+			jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
+			return
+		}
+		defer s.postageSem.Release(1)
+
+		h.ServeHTTP(w, r)
+	})
+}
+
 type batchID []byte
 
 func (b batchID) MarshalJSON() ([]byte, error) {
@@ -67,14 +81,6 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := r.Header[immutableHeader]; ok {
 		immutable, _ = strconv.ParseBool(val[0])
 	}
-
-	if !s.postageCreateSem.TryAcquire(1) {
-		s.logger.Debug("create batch: simultaneous on-chain operations not supported")
-		s.logger.Error("create batch: simultaneous on-chain operations not supported")
-		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
-		return
-	}
-	defer s.postageCreateSem.Release(1)
 
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
@@ -355,14 +361,6 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
-	if !s.postageCreateSem.TryAcquire(1) {
-		s.logger.Debug("topup batch: simultaneous on-chain operations not supported")
-		s.logger.Error("topup batch: simultaneous on-chain operations not supported")
-		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
-		return
-	}
-	defer s.postageCreateSem.Release(1)
-
 	err = s.postageContract.TopUpBatch(ctx, id, amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
@@ -416,14 +414,6 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
-
-	if !s.postageCreateSem.TryAcquire(1) {
-		s.logger.Debug("dilute batch: simultaneous on-chain operations not supported")
-		s.logger.Error("dilute batch: simultaneous on-chain operations not supported")
-		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
-		return
-	}
-	defer s.postageCreateSem.Release(1)
 
 	err = s.postageContract.DiluteBatch(ctx, id, uint8(depth))
 	if err != nil {
