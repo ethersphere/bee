@@ -56,7 +56,11 @@ func TestEnforceWithNonExistentApiKey(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	result := a.Enforce("non-existent", "/resource", "GET")
+
+	result, err := a.Enforce("non-existent", "/resource", "GET")
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
 
 	if result {
 		t.Errorf("expected %v, got %v", false, result)
@@ -65,15 +69,23 @@ func TestEnforceWithNonExistentApiKey(t *testing.T) {
 
 func TestExpiry(t *testing.T) {
 	oneMili := 1 * time.Millisecond
+
 	a, err := auth.New("test", "test", oneMili)
 	if err != nil {
 		t.Error(err)
 	}
-	key := a.AddKey("test", "role0")
+
+	key, err := a.AddKey("role0")
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
 
 	time.Sleep(oneMili)
 
-	result := a.Enforce(key, "/bytes/1", "GET")
+	result, err := a.Enforce(key, "/bytes/1", "GET")
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
 
 	if result {
 		t.Errorf("expected %v, got %v", false, result)
@@ -120,9 +132,17 @@ func TestEnforce(t *testing.T) {
 
 	for _, tC := range tt {
 		t.Run(tC.desc, func(t *testing.T) {
-			apiKey := a.AddKey("test", tC.role)
+			apiKey, err := a.AddKey(tC.role)
 
-			result := a.Enforce(apiKey, tC.resource, tC.action)
+			if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+
+			result, err := a.Enforce(apiKey, tC.resource, tC.action)
+
+			if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
 
 			if result != tC.expected {
 				t.Errorf("request from user with %s on object %s: expected %v, got %v", tC.role, tC.resource, tC.expected, result)
