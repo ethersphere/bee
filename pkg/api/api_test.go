@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
@@ -75,6 +76,8 @@ type testServerOptions struct {
 	Post               postage.Service
 	Steward            steward.Interface
 	WsHeaders          http.Header
+	Authenticator      *auth.MockAuth
+	Restricted         bool
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string) {
@@ -94,10 +97,14 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.Post == nil {
 		o.Post = mockpost.New()
 	}
-	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, nil, o.Logger, nil, api.Options{
+	if o.Authenticator == nil {
+		o.Authenticator = &auth.MockAuth{}
+	}
+	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Authenticator, o.Logger, nil, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
+		Restricted:         o.Restricted,
 	})
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
