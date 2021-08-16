@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	mockPostContract "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -242,6 +243,28 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 				}
 
 				post.HandleTopUp(batch.ID, newBalance)
+				return nil
+			},
+		),
+		mockPostContract.WithDiluteBatchFunc(
+			func(ctx context.Context, batchID []byte, newDepth uint8) error {
+				batch, err := batchStore.Get(batchID)
+				if err != nil {
+					return err
+				}
+
+				if newDepth < batch.Depth {
+					return postagecontract.ErrInvalidDepth
+				}
+
+				newBalance := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(newDepth-batch.Depth))))
+
+				err = batchStore.Put(batch, newBalance, newDepth)
+				if err != nil {
+					return err
+				}
+
+				post.HandleDepthIncrease(batch.ID, newDepth, newBalance)
 				return nil
 			},
 		),
