@@ -486,3 +486,120 @@ func TestPostageTopUpStamp(t *testing.T) {
 		)
 	})
 }
+
+func TestPostageDiluteStamp(t *testing.T) {
+	newBatchDepth := uint8(17)
+	diluteBatch := func(id string, depth uint8) string {
+		return fmt.Sprintf("/stamps/dilute/%s/%d", id, depth)
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				if !bytes.Equal(id, batchOk) {
+					return errors.New("incorrect batch ID in call")
+				}
+				if newDepth != newBatchDepth {
+					return fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
+				}
+				return nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			}),
+		)
+	})
+
+	t.Run("with-custom-gas", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				if !bytes.Equal(id, batchOk) {
+					return errors.New("incorrect batch ID in call")
+				}
+				if newDepth != newBatchDepth {
+					return fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
+				}
+				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
+					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+				}
+				return nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
+			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			}),
+		)
+	})
+
+	t.Run("with-error", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				return errors.New("err")
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: "cannot dilute batch",
+			}),
+		)
+	})
+
+	t.Run("with depth error", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				return postagecontract.ErrInvalidDepth
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid depth",
+			}),
+		)
+	})
+
+	t.Run("invalid batch id", func(t *testing.T) {
+		ts := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, "/stamps/dilute/abcd/2", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid batchID",
+			}),
+		)
+	})
+
+	t.Run("invalid depth", func(t *testing.T) {
+		ts := newTestServer(t, testServerOptions{})
+
+		wrongURL := fmt.Sprintf("/stamps/dilute/%s/depth", batchOkStr)
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, wrongURL, http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid depth",
+			}),
+		)
+	})
+}

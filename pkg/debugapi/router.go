@@ -216,6 +216,12 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
+	router.Handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
+		})),
+	)
+
 	return router
 }
 
