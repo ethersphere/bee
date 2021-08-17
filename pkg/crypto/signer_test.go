@@ -103,7 +103,14 @@ func TestDefaultSignerSignTx(t *testing.T) {
 
 	chainID := big.NewInt(10)
 
-	tx, err := signer.SignTx(types.NewTransaction(0, beneficiary, big.NewInt(0), 21000, big.NewInt(1), []byte{1}), chainID)
+	tx, err := signer.SignTx(types.NewTx(&types.LegacyTx{
+		Nonce:    0,
+		To:       &beneficiary,
+		Value:    big.NewInt(0),
+		Gas:      21000,
+		GasPrice: big.NewInt(1),
+		Data:     []byte{1},
+	}), chainID)
 	if err != nil {
 		t.Fatal(err)
 	}

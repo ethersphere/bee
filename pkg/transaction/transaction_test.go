@@ -82,7 +82,14 @@ func TestTransactionSend(t *testing.T) {
 	chainID := big.NewInt(5)
 
 	t.Run("send", func(t *testing.T) {
-		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+		signedTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			To:       &recipient,
+			Value:    value,
+			Gas:      estimatedGasLimit,
+			GasPrice: suggestedGasPrice,
+			Data:     txData,
+		})
 		request := &transaction.TxRequest{
 			To:    &recipient,
 			Data:  txData,
@@ -193,7 +200,14 @@ func TestTransactionSend(t *testing.T) {
 	})
 
 	t.Run("send_no_nonce", func(t *testing.T) {
-		signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+		signedTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			To:       &recipient,
+			Value:    value,
+			Gas:      estimatedGasLimit,
+			GasPrice: suggestedGasPrice,
+			Data:     txData,
+		})
 		request := &transaction.TxRequest{
 			To:    &recipient,
 			Data:  txData,
@@ -256,7 +270,14 @@ func TestTransactionSend(t *testing.T) {
 
 	t.Run("send_skipped_nonce", func(t *testing.T) {
 		nextNonce := nonce + 5
-		signedTx := types.NewTransaction(nextNonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+		signedTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nextNonce,
+			To:       &recipient,
+			Value:    value,
+			Gas:      estimatedGasLimit,
+			GasPrice: suggestedGasPrice,
+			Data:     txData,
+		})
 		request := &transaction.TxRequest{
 			To:    &recipient,
 			Data:  txData,
@@ -317,58 +338,6 @@ func TestTransactionSend(t *testing.T) {
 		}
 		if storedNonce != nextNonce+1 {
 			t.Fatalf("did not store nonce correctly. wanted %d, got %d", nextNonce+1, storedNonce)
-		}
-	})
-
-	t.Run("deploy", func(t *testing.T) {
-		signedTx := types.NewContractCreation(nonce, value, estimatedGasLimit, suggestedGasPrice, txData)
-		request := &transaction.TxRequest{
-			To:    nil,
-			Data:  txData,
-			Value: value,
-		}
-
-		transactionService, err := transaction.NewService(logger,
-			backendmock.New(
-				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-					if tx != signedTx {
-						t.Fatal("not sending signed transaction")
-					}
-					return nil
-				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-					if call.To != nil {
-						t.Fatalf("estimating with recipient. wanted nil, got %x", call.To)
-					}
-					if !bytes.Equal(call.Data, txData) {
-						t.Fatal("estimating with wrong data")
-					}
-					return estimatedGasLimit, nil
-				}),
-				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
-					return suggestedGasPrice, nil
-				}),
-				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
-					return nonce, nil
-				}),
-			),
-			signerMockForTransaction(signedTx, sender, chainID, t),
-			storemock.NewStateStore(),
-			chainID,
-			monitormock.New(),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer transactionService.Close()
-
-		txHash, err := transactionService.Send(context.Background(), request)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
-			t.Fatal("returning wrong transaction hash")
 		}
 	})
 }
@@ -444,7 +413,14 @@ func TestTransactionResend(t *testing.T) {
 	store := storemock.NewStateStore()
 	defer store.Close()
 
-	signedTx := types.NewTransaction(nonce, recipient, value, gasLimit, gasPrice, data)
+	signedTx := types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       &recipient,
+		Value:    value,
+		Gas:      gasLimit,
+		GasPrice: gasPrice,
+		Data:     data,
+	})
 
 	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
 		Nonce:    nonce,
@@ -496,7 +472,14 @@ func TestTransactionCancel(t *testing.T) {
 	store := storemock.NewStateStore()
 	defer store.Close()
 
-	signedTx := types.NewTransaction(nonce, recipient, value, gasLimit, gasPrice, data)
+	signedTx := types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       &recipient,
+		Value:    value,
+		Gas:      gasLimit,
+		GasPrice: gasPrice,
+		Data:     data,
+	})
 	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
 		Nonce:    nonce,
 		To:       &recipient,
@@ -510,14 +493,14 @@ func TestTransactionCancel(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		cancelTx := types.NewTransaction(
-			nonce,
-			recipient,
-			big.NewInt(0),
-			21000,
-			new(big.Int).Add(gasPrice, big.NewInt(1)),
-			[]byte{},
-		)
+		cancelTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			To:       &recipient,
+			Value:    big.NewInt(0),
+			Gas:      21000,
+			GasPrice: new(big.Int).Add(gasPrice, big.NewInt(1)),
+			Data:     []byte{},
+		})
 
 		transactionService, err := transaction.NewService(logger,
 			backendmock.New(
@@ -550,15 +533,14 @@ func TestTransactionCancel(t *testing.T) {
 
 	t.Run("custom gas price", func(t *testing.T) {
 		customGasPrice := big.NewInt(5)
-
-		cancelTx := types.NewTransaction(
-			nonce,
-			recipient,
-			big.NewInt(0),
-			21000,
-			customGasPrice,
-			[]byte{},
-		)
+		cancelTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			To:       &recipient,
+			Value:    big.NewInt(0),
+			Gas:      21000,
+			GasPrice: customGasPrice,
+			Data:     []byte{},
+		})
 
 		transactionService, err := transaction.NewService(logger,
 			backendmock.New(
@@ -592,15 +574,14 @@ func TestTransactionCancel(t *testing.T) {
 
 	t.Run("too low gas price", func(t *testing.T) {
 		customGasPrice := big.NewInt(0)
-
-		cancelTx := types.NewTransaction(
-			nonce,
-			recipient,
-			big.NewInt(0),
-			21000,
-			customGasPrice,
-			[]byte{},
-		)
+		cancelTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			To:       &recipient,
+			Value:    big.NewInt(0),
+			Gas:      21000,
+			GasPrice: customGasPrice,
+			Data:     []byte{},
+		})
 
 		transactionService, err := transaction.NewService(logger,
 			backendmock.New(

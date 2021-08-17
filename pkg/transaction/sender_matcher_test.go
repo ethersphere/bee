@@ -24,7 +24,14 @@ func TestMatchesSender(t *testing.T) {
 	nonce := uint64(2)
 	trx := common.HexToAddress("0x1").Bytes()
 
-	signedTx := types.NewTransaction(nonce, recipient, value, estimatedGasLimit, suggestedGasPrice, txData)
+	signedTx := types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       &recipient,
+		Value:    value,
+		Gas:      estimatedGasLimit,
+		GasPrice: suggestedGasPrice,
+		Data:     txData,
+	})
 
 	t.Run("fail to retrieve tx from backend", func(t *testing.T) {
 		txByHash := backendmock.WithTransactionByHashFunc(func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
