@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -94,6 +95,12 @@ func TestListAll(t *testing.T) {
 		}
 	}
 
+	// This sleep is needed because otherwise in test the ts2 newtags gets the same seed as ts1 (happening in the same second in the test),
+	// which in the test results in the same uids already existing in statestore that the "create few more tags" creates below in sync.Map
+	// this highlights that upon tags.Create(), already existing values are only checked in sync.Map but not in statestore
+
+	time.Sleep(1 * time.Second)
+
 	// use new tags object
 	ts2 := NewTags(mockStatestore, logger)
 
@@ -121,7 +128,7 @@ func TestListAll(t *testing.T) {
 	}
 
 	if len(tagList3) != 5 {
-		t.Fatalf("want %d tags but got %d", 5, len(tagList2))
+		t.Fatalf("want %d tags but got %d", 5, len(tagList3))
 	}
 
 	// where they are not sorted
