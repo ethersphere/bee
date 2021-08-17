@@ -170,6 +170,10 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"role3", "/transactions/*", "(POST)|(DELETE)"},
 		{"role0", "/readiness", "GET"},
 		{"role0", "/health", "GET"},
+		{"role0", "/consumed", "GET"},
+		{"role0", "/consumed/*", "GET"},
+		{"role0", "/chunks/stream", "GET"},
+		{"role0", "/stewardship/*", "PUT"},
 	})
 
 	return err
