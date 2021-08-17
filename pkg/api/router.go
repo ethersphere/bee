@@ -81,9 +81,7 @@ func (s *server) setupRouting() {
 	))
 
 	handle("/chunks/{addr}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.chunkGetHandler),
-		),
+		"GET": http.HandlerFunc(s.chunkGetHandler),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
@@ -94,9 +92,7 @@ func (s *server) setupRouting() {
 	})
 
 	handle("/feeds/{owner}/{topic}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.feedGetHandler),
-		),
+		"GET": http.HandlerFunc(s.feedGetHandler),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.feedPostHandler),
@@ -143,9 +139,7 @@ func (s *server) setupRouting() {
 	handle("/tags", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.listTagsHandler),
-			),
+			"GET": http.HandlerFunc(s.listTagsHandler),
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
 				web.FinalHandlerFunc(s.createTagHandler),
@@ -155,10 +149,8 @@ func (s *server) setupRouting() {
 	handle("/tags/{id}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.getTagHandler)),
-			"DELETE": web.ChainHandlers(
-				web.FinalHandlerFunc(s.deleteTagHandler)),
+			"GET":    http.HandlerFunc(s.getTagHandler),
+			"DELETE": http.HandlerFunc(s.deleteTagHandler),
 			"PATCH": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
 				web.FinalHandlerFunc(s.doneSplitHandler),
@@ -169,43 +161,36 @@ func (s *server) setupRouting() {
 	handle("/pins", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.listPinnedRootHashes)),
+			"GET": http.HandlerFunc(s.listPinnedRootHashes),
 		})),
 	)
 	handle("/pins/{reference}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.getPinnedRootHash)),
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.pinRootHash)),
-			"DELETE": web.ChainHandlers(
-				web.FinalHandlerFunc(s.unpinRootHash)),
+			"GET":    http.HandlerFunc(s.getPinnedRootHash),
+			"POST":   http.HandlerFunc(s.pinRootHash),
+			"DELETE": http.HandlerFunc(s.unpinRootHash),
 		})),
 	)
 
 	handle("/stamps", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageGetStampsHandler)),
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
 	handle("/stamps/{id}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageGetStampHandler)),
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageCreateHandler)),
+			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
 	)
 
