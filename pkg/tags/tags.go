@@ -40,8 +40,9 @@ const (
 )
 
 var (
-	TagUidFunc  = rand.Uint32
-	ErrNotFound = errors.New("tag not found")
+	randomGenerator = rand.New(rand.NewSource(time.Now().Unix()))
+	TagUidFunc      = randomGenerator.Uint32
+	ErrNotFound     = errors.New("tag not found")
 )
 
 // Tags hold tag information indexed by a unique random uint32
