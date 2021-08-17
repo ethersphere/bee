@@ -532,6 +532,8 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
+		case <-time.After(15 * time.Second):
+			k.notifyManageLoop()
 		case <-k.manageC:
 			start := time.Now()
 
