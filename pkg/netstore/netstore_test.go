@@ -109,44 +109,22 @@ func TestRecovery(t *testing.T) {
 	retrieve, _, nstore := newRetrievingNetstore(rec.recovery, noopValidStamp)
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
-	ctx := context.Background()
-	ctx = sctx.SetTargets(ctx, "be, cd")
 
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
-		t.Fatal(err)
-	}
+	for _, s := range []string{"be, cd", "c, d"} {
+		ctx := context.Background()
+		ctx = sctx.SetTargets(ctx, s)
 
-	select {
-	case <-callbackWasCalled:
-		break
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery callback was not called")
-	}
-}
+		_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
+		if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
+			t.Fatal(err)
+		}
 
-func TestRecoveryOddNumberOfHexTarges(t *testing.T) {
-	callbackWasCalled := make(chan bool, 1)
-	rec := &mockRecovery{
-		callbackC: callbackWasCalled,
-	}
-
-	retrieve, _, nstore := newRetrievingNetstore(rec.recovery, noopValidStamp)
-	addr := swarm.MustParseHexAddress("deadbeef")
-	retrieve.failure = true
-	ctx := context.Background()
-	ctx = sctx.SetTargets(ctx, "b, c")
-
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-callbackWasCalled:
-		break
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery callback was not called")
+		select {
+		case <-callbackWasCalled:
+			continue
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("recovery callback was not called")
+		}
 	}
 }
 
