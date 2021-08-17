@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/auth"
+	"github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -21,7 +21,7 @@ func TestAuth(t *testing.T) {
 	var (
 		resource      = "/auth"
 		logger        = logging.New(ioutil.Discard, 0)
-		authenticator = &auth.MockAuth{
+		authenticator = &mock.Auth{
 			AuthorizeFunc: func(s1, s2 string) bool { return true },
 			AddKeyFunc:    func(s string) (string, error) { return "123", nil },
 		}
