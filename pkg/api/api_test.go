@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/auth"
+	mockauth "github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -73,7 +73,7 @@ type testServerOptions struct {
 	Post               postage.Service
 	Steward            steward.Interface
 	WsHeaders          http.Header
-	Authenticator      *auth.MockAuth
+	Authenticator      *mockauth.Auth
 	Restricted         bool
 }
 
@@ -95,7 +95,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.Post = mockpost.New()
 	}
 	if o.Authenticator == nil {
-		o.Authenticator = &auth.MockAuth{}
+		o.Authenticator = &mockauth.Auth{}
 	}
 	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Authenticator, o.Logger, nil, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
