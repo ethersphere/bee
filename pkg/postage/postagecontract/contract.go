@@ -139,11 +139,12 @@ func (c *postageContract) sendTopUpBatchTransaction(ctx context.Context, batchID
 	}
 
 	request := &transaction.TxRequest{
-		To:       &c.postageContractAddress,
-		Data:     callData,
-		GasPrice: sctx.GetGasPrice(ctx),
-		GasLimit: 160000,
-		Value:    big.NewInt(0),
+		To:          &c.postageContractAddress,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    160000,
+		Value:       big.NewInt(0),
+		Description: "Postage batch top up",
 	}
 
 	txHash, err := c.transactionService.Send(ctx, request)
@@ -272,7 +273,7 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 	}
 
 	for _, ev := range receipt.Logs {
-		if ev.Address == c.postageContractAddress && ev.Topics[0] == batchTopUpTopic {
+		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchTopUpTopic {
 			return nil
 		}
 	}
