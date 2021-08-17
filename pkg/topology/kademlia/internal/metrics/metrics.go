@@ -164,7 +164,7 @@ type Counters struct {
 
 // flush writes the current state of in memory counters into the given db.
 func (cs *Counters) flush(db *shed.DB, batch *leveldb.Batch) error {
-	if cs.dirty.Load() > 1 {
+	if cs.dirty.Load() < 3 {
 		return nil
 	}
 	cs.dirty.CAS(3, 2)
