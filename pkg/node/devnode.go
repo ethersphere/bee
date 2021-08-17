@@ -12,7 +12,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -79,6 +78,8 @@ type DevOptions struct {
 	DBBlockCacheCapacity     uint64
 	DBDisableSeeksCompaction bool
 	Restricted               bool
+	AdminUsername            string
+	AdminPassword            string
 }
 
 // NewDevBee starts the bee instance in 'development' mode
@@ -115,12 +116,10 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	var authenticator *auth.Authenticator
 
-	username := os.Getenv("BEE_AUTH_USERNAME")
-	password := os.Getenv("BEE_AUTH_PASSWORD")
 	expiry := 1 * time.Hour
 
 	if o.Restricted {
-		if authenticator, err = auth.New(username, password, expiry); err != nil {
+		if authenticator, err = auth.New(o.AdminUsername, o.AdminPassword, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 	}
