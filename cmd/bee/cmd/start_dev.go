@@ -80,6 +80,8 @@ func (c *command) initStartDevCmd() (err error) {
 				CORSAllowedOrigins:       c.config.GetStringSlice(optionCORSAllowedOrigins),
 				ReserveCapacity:          c.config.GetUint64(optionNameDevReserveCapacity),
 				Restricted:               c.config.GetBool(optionNameRestrictedAPI),
+				AdminUsername:            c.config.GetString(optionNameAdminUsername),
+				AdminPassword:            c.config.GetString(optionNameAdminPassword),
 			})
 			if err != nil {
 				return err
@@ -158,7 +160,9 @@ func (c *command) initStartDevCmd() (err error) {
 	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
 	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
 	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
-	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enables restrictions on the API and debug API")
+	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
+	cmd.Flags().String(optionNameAdminUsername, "", "admin username to get the security token")
+	cmd.Flags().String(optionNameAdminPassword, "", "admin password to get the security token")
 
 	c.root.AddCommand(cmd)
 	return nil
