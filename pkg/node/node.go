@@ -160,6 +160,8 @@ type Options struct {
 	BlockProfile               bool
 	MutexProfile               bool
 	Restricted                 bool
+	AdminUsername              string
+	AdminPassword              string
 }
 
 const (
@@ -240,12 +242,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var authenticator *auth.Authenticator
 
-	username := os.Getenv("BEE_AUTH_USERNAME")
-	password := os.Getenv("BEE_AUTH_PASSWORD")
-	expiry := 1 * time.Hour
+	expiry := 1 * time.Hour // TODO make configurable
 
 	if o.Restricted {
-		if authenticator, err = auth.New(username, password, expiry); err != nil {
+		if authenticator, err = auth.New(o.AdminUsername, o.AdminPassword, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 	}

@@ -202,6 +202,9 @@ inability to use, or your interaction with other nodes or the software.`)
 				Resync:                     c.config.GetBool(optionNameResync),
 				BlockProfile:               c.config.GetBool(optionNamePProfBlock),
 				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
+				Restricted:                 c.config.GetBool(optionNameRestrictedAPI),
+				AdminUsername:              c.config.GetString(optionNameAdminUsername),
+				AdminPassword:              c.config.GetString(optionNameAdminPassword),
 			})
 			if err != nil {
 				return err
