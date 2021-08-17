@@ -147,17 +147,22 @@ func (db *DB) schemaIndexPrefix(name string) (id byte, err error) {
 // getSchema retrieves the complete schema from
 // the database.
 func (db *DB) getSchema() (s schema, err error) {
+	if db.sch != nil {
+		return *db.sch, nil
+	}
 	b, err := db.Get(keySchema)
 	if err != nil {
 		return s, err
 	}
 	err = json.Unmarshal(b, &s)
+	db.sch = &s
 	return s, err
 }
 
 // putSchema stores the complete schema to
 // the database.
 func (db *DB) putSchema(s schema) (err error) {
+	db.sch = &s
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err
