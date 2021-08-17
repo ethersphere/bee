@@ -9,14 +9,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/auth"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/logging/httpaccess"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"resenje.org/web"
-
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging/httpaccess"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func (s *server) setupRouting() {
@@ -29,6 +29,9 @@ func (s *server) setupRouting() {
 
 	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
+		if s.Restricted {
+			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
+		}
 		router.Handle(path, handler)
 		router.Handle(rootPath+path, handler)
 	}
@@ -44,7 +47,7 @@ func (s *server) setupRouting() {
 	})
 
 	if s.Restricted {
-		handle("/auth", jsonhttp.MethodHandler{
+		router.Handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
 				s.newTracingHandler("auth"),
 				web.FinalHandlerFunc(s.authHandler),
@@ -55,14 +58,12 @@ func (s *server) setupRouting() {
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.newTracingHandler("bytes-upload"),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bytesUploadHandler),
 		),
 	})
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.newTracingHandler("bytes-download"),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
 	})
@@ -70,7 +71,6 @@ func (s *server) setupRouting() {
 	handle("/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
@@ -82,7 +82,6 @@ func (s *server) setupRouting() {
 
 	handle("/chunks/{addr}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.chunkGetHandler),
 		),
 	})
@@ -90,19 +89,16 @@ func (s *server) setupRouting() {
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.socUploadHandler),
 		),
 	})
 
 	handle("/feeds/{owner}/{topic}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.feedGetHandler),
 		),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.feedPostHandler),
 		),
 	})
@@ -110,7 +106,6 @@ func (s *server) setupRouting() {
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.newTracingHandler("bzz-upload"),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
 	})
@@ -122,12 +117,10 @@ func (s *server) setupRouting() {
 	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.newTracingHandler("bzz-download"),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
 		"PATCH": web.ChainHandlers(
 			s.newTracingHandler("bzz-patch"),
-			s.permissionCheckHandler(),
 			web.FinalHandlerFunc(s.bzzPatchHandler),
 		),
 	})
@@ -137,7 +130,6 @@ func (s *server) setupRouting() {
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.pssPostHandler),
 			),
 		})),
@@ -145,7 +137,6 @@ func (s *server) setupRouting() {
 
 	handle("/pss/subscribe/{topic}", web.ChainHandlers(
 		s.gatewayModeForbidEndpointHandler,
-		s.permissionCheckHandler(),
 		web.FinalHandlerFunc(s.pssWsHandler),
 	))
 
@@ -153,12 +144,10 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.listTagsHandler),
 			),
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.createTagHandler),
 			),
 		})),
@@ -167,14 +156,11 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.getTagHandler)),
 			"DELETE": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.deleteTagHandler)),
 			"PATCH": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(1024),
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.doneSplitHandler),
 			),
 		})),
@@ -184,7 +170,6 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.listPinnedRootHashes)),
 		})),
 	)
@@ -192,13 +177,10 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.getPinnedRootHash)),
 			"POST": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.pinRootHash)),
 			"DELETE": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.unpinRootHash)),
 		})),
 	)
@@ -207,7 +189,6 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.postageGetStampsHandler)),
 		})),
 	)
@@ -216,7 +197,6 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.postageGetStampHandler)),
 		})),
 	)
@@ -225,7 +205,6 @@ func (s *server) setupRouting() {
 		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.permissionCheckHandler(),
 				web.FinalHandlerFunc(s.postageCreateHandler)),
 		})),
 	)
