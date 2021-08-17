@@ -64,22 +64,17 @@ func (s *Service) newBasicRouter() *mux.Router {
 	))
 
 	handle("/addresses", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.addressesHandler)),
+		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
 	if s.transaction != nil {
 		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.transactionListHandler)),
+			"GET": http.HandlerFunc(s.transactionListHandler),
 		})
 		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.transactionDetailHandler)),
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.transactionResendHandler)),
-			"DELETE": web.ChainHandlers(
-				web.FinalHandlerFunc(s.transactionCancelHandler)),
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
 		})
 	}
 
@@ -99,57 +94,45 @@ func (s *Service) newRouter() *mux.Router {
 		router.Handle(path, handler)
 	}
 
-	handle("/readiness", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-			web.FinalHandlerFunc(statusHandler)),
-	})
+	handle("/readiness", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
 
 	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			web.FinalHandlerFunc(s.pingpongHandler)),
+		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
 	handle("/reservestate", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.reserveStateHandler)),
+		"GET": http.HandlerFunc(s.reserveStateHandler),
 	})
 
 	handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.chainStateHandler)),
+		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
 	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			web.FinalHandlerFunc(s.peerConnectHandler)),
+		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
 	handle("/peers", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.peersHandler)),
+		"GET": http.HandlerFunc(s.peersHandler),
 	})
 	handle("/blocklist", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.blocklistedPeersHandler)),
+		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
 	})
 
 	handle("/peers/{address}", jsonhttp.MethodHandler{
-		"DELETE": web.ChainHandlers(
-			web.FinalHandlerFunc(s.peerDisconnectHandler)),
+		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.hasChunkHandler)),
-		"DELETE": web.ChainHandlers(
-			web.FinalHandlerFunc(s.removeChunk)),
+		"GET":    http.HandlerFunc(s.hasChunkHandler),
+		"DELETE": http.HandlerFunc(s.removeChunk),
 	})
 	handle("/topology", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.topologyHandler)),
+		"GET": http.HandlerFunc(s.topologyHandler),
 	})
 	handle("/welcome-message", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.getWelcomeMessageHandler)),
+		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
 			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
@@ -157,13 +140,11 @@ func (s *Service) newRouter() *mux.Router {
 	})
 
 	handle("/balances", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.compensatedBalancesHandler)),
+		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
 	})
 
 	handle("/balances/{peer}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.compensatedPeerBalanceHandler)),
+		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
 	})
 
 	handle("/consumed", jsonhttp.MethodHandler{
@@ -175,88 +156,72 @@ func (s *Service) newRouter() *mux.Router {
 	})
 
 	handle("/timesettlements", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.settlementsHandlerPseudosettle)),
+		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
 	if s.chequebookEnabled {
 		handle("/settlements", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.settlementsHandler)),
+			"GET": http.HandlerFunc(s.settlementsHandler),
 		})
 		handle("/settlements/{peer}", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.peerSettlementsHandler)),
+			"GET": http.HandlerFunc(s.peerSettlementsHandler),
 		})
 
 		handle("/chequebook/balance", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.chequebookBalanceHandler)),
+			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})
 
 		handle("/chequebook/address", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.chequebookAddressHandler)),
+			"GET": http.HandlerFunc(s.chequebookAddressHandler),
 		})
 
 		handle("/chequebook/deposit", jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.chequebookDepositHandler)),
+			"POST": http.HandlerFunc(s.chequebookDepositHandler),
 		})
 
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.chequebookWithdrawHandler)),
+			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
 
 		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.chequebookLastPeerHandler)),
+			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
 		})
 
 		handle("/chequebook/cheque", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.chequebookAllLastHandler)),
+			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
 		})
 
 		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.swapCashoutStatusHandler)),
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.swapCashoutHandler)),
+			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
+			"POST": http.HandlerFunc(s.swapCashoutHandler),
 		})
 	}
 
 	handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			web.FinalHandlerFunc(s.getTagHandler)),
+		"GET": http.HandlerFunc(s.getTagHandler),
 	})
 
 	handle("/stamps", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageGetStampsHandler)),
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
 	handle("/stamps/{id}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageGetStampHandler)),
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
 	handle("/stamps/{id}/buckets", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageGetStampBucketsHandler)),
+			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
 		})),
 	)
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
-				web.FinalHandlerFunc(s.postageCreateHandler)),
+			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
 	)
 
