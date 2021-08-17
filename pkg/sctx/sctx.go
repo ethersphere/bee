@@ -76,7 +76,7 @@ func GetTargets(ctx context.Context) pss.Targets {
 	var targets pss.Targets
 	for _, prefix := range prefixes {
 		var target pss.Target
-		target, err := hex.DecodeString(prefix)
+		target, err := hex.DecodeString(padHexString(prefix))
 		if err != nil {
 			continue
 		}
@@ -86,6 +86,15 @@ func GetTargets(ctx context.Context) pss.Targets {
 		return nil
 	}
 	return targets
+}
+
+func padHexString(str string) string {
+
+	if len(str)%2 == 1 {
+		return str + "0"
+	}
+
+	return str
 }
 
 func SetGasLimit(ctx context.Context, limit uint64) context.Context {

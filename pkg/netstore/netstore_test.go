@@ -125,6 +125,31 @@ func TestRecovery(t *testing.T) {
 	}
 }
 
+func TestRecoveryOddNumberOfHexTarges(t *testing.T) {
+	callbackWasCalled := make(chan bool, 1)
+	rec := &mockRecovery{
+		callbackC: callbackWasCalled,
+	}
+
+	retrieve, _, nstore := newRetrievingNetstore(rec.recovery, noopValidStamp)
+	addr := swarm.MustParseHexAddress("deadbeef")
+	retrieve.failure = true
+	ctx := context.Background()
+	ctx = sctx.SetTargets(ctx, "b, c")
+
+	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
+	if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-callbackWasCalled:
+		break
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("recovery callback was not called")
+	}
+}
+
 func TestInvalidRecoveryFunction(t *testing.T) {
 	retrieve, _, nstore := newRetrievingNetstore(nil, noopValidStamp)
 	addr := swarm.MustParseHexAddress("deadbeef")
