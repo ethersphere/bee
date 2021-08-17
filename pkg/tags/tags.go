@@ -40,9 +40,8 @@ const (
 )
 
 var (
-	randomGenerator = rand.New(rand.NewSource(time.Now().Unix()))
-	TagUidFunc      = randomGenerator.Uint32
-	ErrNotFound     = errors.New("tag not found")
+	TagUidFunc  = rand.Uint32
+	ErrNotFound = errors.New("tag not found")
 )
 
 // Tags hold tag information indexed by a unique random uint32
@@ -54,6 +53,7 @@ type Tags struct {
 
 // NewTags creates a tags object
 func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
+	rand.Seed(time.Now().Unix())
 	return &Tags{
 		tags:       &sync.Map{},
 		stateStore: stateStore,
@@ -61,9 +61,20 @@ func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
 	}
 }
 
-// Create creates a new tag, stores it by the UID and returns it
-// it returns an error if the tag with this UID already exists
+// Create creates a new tag, stores it by a not yet in use UID and returns it
 func (ts *Tags) Create(total int64) (*Tag, error) {
+
+	exists := true
+
+	var uid uint32
+
+	for exists {
+		uid = TagUidFunc()
+		if _, loaded := ts.tags.Load(uid); !loaded {
+			exists = false
+		}
+	}
+
 	t := NewTag(context.Background(), TagUidFunc(), total, nil, ts.stateStore, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
