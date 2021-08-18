@@ -79,7 +79,7 @@ type DevOptions struct {
 	DBDisableSeeksCompaction bool
 	Restricted               bool
 	AdminUsername            string
-	AdminPassword            string
+	AdminPasswordHash        string
 }
 
 // NewDevBee starts the bee instance in 'development' mode
@@ -119,7 +119,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	expiry := 1 * time.Hour
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.AdminUsername, o.AdminPassword, expiry); err != nil {
+		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 	}
