@@ -13,8 +13,13 @@ import (
 
 const oneHour = 1 * time.Hour
 
+const (
+	username     = "test"
+	passwordHash = "$2a$12$mZIODMvjsiS2VdK1xgI1cOTizhGVNoVz2Xn48H8ddFFLzX2B3lD3m"
+)
+
 func TestAuthorize(t *testing.T) {
-	a, err := auth.New("test", "test", oneHour)
+	a, err := auth.New(username, passwordHash, oneHour)
 	if err != nil {
 		t.Error(err)
 	}
@@ -52,7 +57,7 @@ func TestAuthorize(t *testing.T) {
 }
 
 func TestEnforceWithNonExistentApiKey(t *testing.T) {
-	a, err := auth.New("test", "test", oneHour)
+	a, err := auth.New(username, passwordHash, oneHour)
 	if err != nil {
 		t.Error(err)
 	}
@@ -70,7 +75,7 @@ func TestEnforceWithNonExistentApiKey(t *testing.T) {
 func TestExpiry(t *testing.T) {
 	oneMili := 1 * time.Millisecond
 
-	a, err := auth.New("test", "test", oneMili)
+	a, err := auth.New(username, passwordHash, oneMili)
 	if err != nil {
 		t.Error(err)
 	}
@@ -93,7 +98,7 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestEnforce(t *testing.T) {
-	a, err := auth.New("test", "test", oneHour)
+	a, err := auth.New(username, passwordHash, oneHour)
 	if err != nil {
 		t.Error(err)
 	}
