@@ -53,7 +53,7 @@ type Tags struct {
 
 // NewTags creates a tags object
 func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
-	rand.Seed(time.Now().Unix())
+	rand.Seed(time.Now().UnixNano())
 	return &Tags{
 		tags:       &sync.Map{},
 		stateStore: stateStore,
