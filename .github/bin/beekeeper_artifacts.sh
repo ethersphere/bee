@@ -15,7 +15,7 @@ do
 done
 kubectl -n local get pods > dump/kubectl_get_pods
 kubectl -n local logs -l app.kubernetes.io/part-of=bee --tail -1 --prefix -c bee > dump/kubectl_logs
-vertag=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 15)
+vertag=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
 endpoint=$AWS_ENDPOINT
 if [[ "$endpoint" != http* ]]
 then
