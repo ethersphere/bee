@@ -99,7 +99,7 @@ func TestListAll(t *testing.T) {
 	// which in the test results in the same uids already existing in statestore that the "create few more tags" creates below in sync.Map
 	// this highlights that upon tags.Create(), already existing values are only checked in sync.Map but not in statestore
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(1 * time.Nanosecond)
 
 	// use new tags object
 	ts2 := NewTags(mockStatestore, logger)
