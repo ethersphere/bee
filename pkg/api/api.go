@@ -265,8 +265,8 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	user, pass, ok := r.BasicAuth()
 
 	if !ok || !s.auth.Authorize(user, pass) {
-		s.logger.Debug("unauthorized")
-		s.logger.Error("unauthorized")
+		s.logger.Debug("api: auth handler: unauthorized")
+		s.logger.Error("api: auth handler: unauthorized")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		jsonhttp.Unauthorized(w, "Unauthorized")
 		return
@@ -274,24 +274,24 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debugf("read auth request body: %v", err)
-		s.logger.Errorf("read auth request body: %v", err)
+		s.logger.Debug("api: auth handler: read request body")
+		s.logger.Error("api: auth handler: read request body")
 		jsonhttp.BadRequest(w, "Read request body")
 		return
 	}
 
 	var role roleRequest
 	if err = json.Unmarshal(body, &role); err != nil {
-		s.logger.Debugf("unmarshal auth request body: %v", err)
-		s.logger.Errorf("unmarshal auth request body: %v", err)
+		s.logger.Debugf("api: auth handler: unmarshal request body: %v", err)
+		s.logger.Errorf("api: auth handler: unmarshal request body: %v", err)
 		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
 	}
 
 	key, err := s.auth.AddKey(role.Role)
 	if err != nil {
-		s.logger.Debugf("add auth key: %v", err)
-		s.logger.Errorf("add auth key: %v", err)
+		s.logger.Debugf("api: auth handler: add auth key: %v", err)
+		s.logger.Errorf("api: auth handler: add auth key: %v", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
