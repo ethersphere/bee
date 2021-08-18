@@ -200,7 +200,7 @@ func (c *command) initStartCmd() (err error) {
 				AllowPrivateCIDRs:          c.config.GetBool(optionNameAllowPrivateCIDRs),
 				Restricted:                 c.config.GetBool(optionNameRestrictedAPI),
 				AdminUsername:              c.config.GetString(optionNameAdminUsername),
-				AdminPassword:              c.config.GetString(optionNameAdminPassword),
+				AdminPasswordHash:          c.config.GetString(optionNameAdminPasswordHash),
 			})
 			if err != nil {
 				return err

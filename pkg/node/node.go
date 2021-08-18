@@ -166,7 +166,7 @@ type Options struct {
 	AllowPrivateCIDRs          bool
 	Restricted                 bool
 	AdminUsername              string
-	AdminPassword              string
+	AdminPasswordHash          string
 }
 
 const (
@@ -250,7 +250,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	expiry := 1 * time.Hour // TODO make configurable
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.AdminUsername, o.AdminPassword, expiry); err != nil {
+		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 	}

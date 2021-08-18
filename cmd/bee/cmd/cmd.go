@@ -79,7 +79,7 @@ const (
 	optionNameAllowPrivateCIDRs          = "allow-private-cidrs"
 	optionNameRestrictedAPI              = "restricted"
 	optionNameAdminUsername              = "admin-username"
-	optionNameAdminPassword              = "admin-password"
+	optionNameAdminPasswordHash          = "admin-password"
 )
 
 func init() {
@@ -269,7 +269,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
 	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
 	cmd.Flags().String(optionNameAdminUsername, "", "admin username to get the security token")
-	cmd.Flags().String(optionNameAdminPassword, "", "admin password to get the security token")
+	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
