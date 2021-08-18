@@ -204,7 +204,7 @@ inability to use, or your interaction with other nodes or the software.`)
 				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
 				Restricted:                 c.config.GetBool(optionNameRestrictedAPI),
 				AdminUsername:              c.config.GetString(optionNameAdminUsername),
-				AdminPassword:              c.config.GetString(optionNameAdminPassword),
+				AdminPasswordHash:          c.config.GetString(optionNameAdminPasswordHash),
 			})
 			if err != nil {
 				return err
