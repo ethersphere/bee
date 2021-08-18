@@ -7,6 +7,7 @@
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -341,15 +342,19 @@ func (c *Collector) Flush(addresses ...swarm.Address) error {
 	return mErr
 }
 
-// Finalize logs out all ongoing peer sessions
-// and flushes all in-memory metrics counters.
-func (c *Collector) Finalize(t time.Time) error {
+// Finalize tries to logs out all ongoing peer sessions.
+func (c *Collector) Finalize(ctx context.Context, t time.Time) error {
 	var (
 		mErr  error
 		batch = new(leveldb.Batch)
 	)
 
 	c.counters.Range(func(_, val interface{}) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
 		cs := val.(*Counters)
 		PeerLogOut(t)(cs)
 		if err := cs.flush(c.db, batch); err != nil {

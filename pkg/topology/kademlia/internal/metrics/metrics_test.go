@@ -5,6 +5,7 @@
 package metrics_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -125,7 +126,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 
 	// Finalize.
 	mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound))
-	if err := mc.Finalize(t3); err != nil {
+	if err := mc.Finalize(context.Background(), t3); err != nil {
 		t.Fatalf("Finalize(%s): unexpected error: %v", t3, err)
 	}
 	if have, want := len(mc.Snapshot(t2, addr)), 0; have != want {
