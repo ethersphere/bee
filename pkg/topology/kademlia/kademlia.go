@@ -229,24 +229,22 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 				continue
 			}
 
+			po := swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes())
+
 			select {
 			case <-k.quit:
 				return
 			default:
 				wg.Add(1)
-				peerConnChan <- &peerConnInfo{
-					po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
-					addr: closestKnownPeer,
-				}
+				peerConnChan <- &peerConnInfo{po: po, addr: closestKnownPeer}
 			}
 			break
 		}
 	}
 }
 
-// connectNeighbours attempts to connect to the neighbours
-// which were not considered by the connectBalanced method.
-func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
+// connectNeighbourhoodOffset attempts to connect to the neighbours between po of range [depth, depth + offset]
+func (k *Kad) connectNeighbourhoodOffset(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo, offsetBin uint8) {
 
 	sent := 0
 	var currentPo uint8 = 0
@@ -254,9 +252,13 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		depth := k.NeighborhoodDepth()
 
-		// out of depth, skip bin
+		// po must be in neighborhood
 		if po < depth {
 			return false, true, nil
+		}
+		// po must not exceed offset
+		if po > depth+offsetBin {
+			return true, false, nil
 		}
 
 		if po != currentPo {
@@ -278,22 +280,19 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return true, false, nil
 		default:
 			wg.Add(1)
-			peerConnChan <- &peerConnInfo{
-				po:   po,
-				addr: addr,
-			}
+			peerConnChan <- &peerConnInfo{po: po, addr: addr}
 			sent++
 		}
 
-		// We want 'sent' equal to 'saturationPeers'
-		// in order to skip to the next bin and speed up the topology build.
-		return false, sent == saturationPeers, nil
+		// We want to limit number of attempts per bin
+		// in order to speed up horizontal topology build up.
+		return false, sent == quickSaturationPeers, nil
 	})
 }
 
 // connectionAttemptsHandler handles the connection attempts
 // to peers sent by the producers to the peerConnChan.
-func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup, neighbourhoodChan, balanceChan <-chan *peerConnInfo) {
+func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup, balanceChan, shallowChan, neighbourhoodChan <-chan *peerConnInfo) {
 	connect := func(peer *peerConnInfo) {
 		bzzAddr, err := k.addressBook.Get(peer.addr)
 		switch {
@@ -378,10 +377,14 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 16; i++ {
+
+	for i := 0; i < 8; i++ {
 		go connAttempt(balanceChan)
 	}
 	for i := 0; i < 32; i++ {
+		go connAttempt(shallowChan)
+	}
+	for i := 0; i < 8; i++ {
 		go connAttempt(neighbourhoodChan)
 	}
 }
@@ -410,9 +413,10 @@ func (k *Kad) manage() {
 	// The wg makes sure that we wait for all the connection attempts,
 	// spun up by goroutines, to finish before we try the boot-nodes.
 	var wg sync.WaitGroup
+	shallowChan := make(chan *peerConnInfo)
 	neighbourhoodChan := make(chan *peerConnInfo)
 	balanceChan := make(chan *peerConnInfo)
-	go k.connectionAttemptsHandler(ctx, &wg, neighbourhoodChan, balanceChan)
+	go k.connectionAttemptsHandler(ctx, &wg, balanceChan, shallowChan, neighbourhoodChan)
 
 	k.wg.Add(1)
 	go func() {
@@ -460,8 +464,9 @@ func (k *Kad) manage() {
 			}
 
 			oldDepth := k.NeighborhoodDepth()
+			k.connectNeighbourhoodOffset(&wg, shallowChan, 8)
 			k.connectBalanced(&wg, balanceChan)
-			k.connectNeighbours(&wg, neighbourhoodChan)
+			k.connectNeighbourhoodOffset(&wg, neighbourhoodChan, swarm.MaxPO)
 			wg.Wait()
 
 			k.depthMu.Lock()

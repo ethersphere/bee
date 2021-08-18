@@ -1373,6 +1373,8 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 
 	p2p.SetPickyNotifier(kad)
 
+	p2p.SetPickyNotifier(kad)
+
 	return base, kad, ab, disc, signer
 }
 
