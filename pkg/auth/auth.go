@@ -29,7 +29,7 @@ type Authenticator struct {
 	enforcer     *casbin.Enforcer
 }
 
-func New(username, password string, expires time.Duration) (*Authenticator, error) {
+func New(username, passwordHash string, expires time.Duration) (*Authenticator, error) {
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
@@ -56,14 +56,9 @@ func New(username, password string, expires time.Duration) (*Authenticator, erro
 		return nil, err
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	if err != nil {
-		return nil, err
-	}
-
 	auth := Authenticator{
 		username:     username,
-		passwordHash: passwordHash,
+		passwordHash: []byte(passwordHash),
 		keys:         make(apiKeys),
 		expires:      expires,
 		enforcer:     e,
