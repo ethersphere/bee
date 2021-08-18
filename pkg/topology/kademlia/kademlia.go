@@ -326,6 +326,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		// out of depth, skip bin
 		if po < depth {
 			return false, true, nil
+
 		}
 
 		if po != currentPo {
