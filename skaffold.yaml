@@ -1,0 +1,21 @@
+apiVersion: skaffold/v2beta16
+kind: Config
+build:
+  local:
+    concurrency: 4
+  artifacts:
+  - image: k3d-registry.localhost:5000/bee-local
+    docker:
+      dockerfile: "Dockerfile"
+deploy:
+  helm:
+    releases:
+    - name: bee
+      remoteChart: ethersphere/bee
+      valuesFiles:
+      - "bee.yaml"
+test:
+  - image: k3d-registry.localhost:5000/bee-local
+    custom:
+      - command: beekeeper check
+        timeoutSeconds: 60
