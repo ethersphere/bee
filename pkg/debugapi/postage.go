@@ -330,7 +330,7 @@ func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
 
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	if idStr == "" || len(idStr) != 64 {
+	if len(idStr) != 64 {
 		s.logger.Error("topup batch: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
@@ -382,7 +382,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	if idStr == "" || len(idStr) != 64 {
+	if len(idStr) != 64 {
 		s.logger.Error("dilute batch: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
