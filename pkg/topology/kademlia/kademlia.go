@@ -548,7 +548,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 	for i := range k.commonBinPrefixes {
 
 		if i >= int(depth) {
-			continue
+			return
 		}
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
