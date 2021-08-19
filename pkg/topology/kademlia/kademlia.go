@@ -1055,6 +1055,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 
 		// kludge: hotfix for topology peer inconsistencies bug
 		if !isIn(peer, peers) {
+			k.metrics.P2PKademliaDiscrepancy.Inc()
 			a := swarm.NewAddress(peer.Bytes())
 			peersToDisconnect = append(peersToDisconnect, a)
 			return false, false, nil
