@@ -53,7 +53,7 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true BEEKEEPER_BRANCH=auth-health-check 
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
@@ -62,7 +62,7 @@ jobs:
       - name: Set local cluster
         run: |
           make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns  BEEKEEPER_BRANCH=auth-health-check
       - name: Test pingpong
         id: pingpong
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
@@ -322,6 +322,13 @@ jobs:
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           timeout 10m make beelocal ACTION=build OPTS='ci skip-vet skip-push'
+      - name: Test authenticated health
+        id: auth-health
+        run: until beekeeper check --cluster-name local-dns --checks ci-auth; do echo "waiting for auth..."; sleep .3; done
+      - name: Destroy the cluster
+        run: |
+          beekeeper delete bee-cluster --cluster-name local-dns
+          make beelocal ACTION=uninstall
       - name: Retag Docker image and push for cache
         if: success()
         run: |
