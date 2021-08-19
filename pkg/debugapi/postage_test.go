@@ -639,7 +639,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "dilute batch ok",
 			method:   http.MethodPatch,
-			url:      fmt.Sprintf("/stamps/dilute/%s/10", batchOkStr),
+			url:      fmt.Sprintf("/stamps/dilute/%s/18", batchOkStr),
 			respCode: http.StatusAccepted,
 			resp: &debugapi.PostageCreateResponse{
 				BatchID: batchOk,
@@ -671,7 +671,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "dilute batch not ok",
 			method:   http.MethodPatch,
-			url:      fmt.Sprintf("/stamps/dilute/%s/10", batchOkStr),
+			url:      fmt.Sprintf("/stamps/dilute/%s/18", batchOkStr),
 			respCode: http.StatusTooManyRequests,
 			resp: &jsonhttp.StatusResponse{
 				Code:    http.StatusTooManyRequests,
