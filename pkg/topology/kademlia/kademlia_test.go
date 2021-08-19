@@ -1210,7 +1210,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 	bins := map[uint8]int{}
 
-	kad.EachPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+	_ = kad.EachPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 		bins[u]++
 		return false, false, nil
 	})

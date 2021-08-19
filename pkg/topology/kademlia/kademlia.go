@@ -542,6 +542,8 @@ func (k *Kad) manage() {
 	}
 }
 
+// pruneOversaturatedBins disconnects peers from out of depth, oversaturated bins
+// while maintaining the balance of the bin and favoring peers with longers connections
 func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 	for i := range k.commonBinPrefixes {
