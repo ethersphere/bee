@@ -252,6 +252,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
+		logger.Info("starting with restricted APIs")
 	}
 
 	var debugAPIService *debugapi.Service
@@ -757,6 +758,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
+			Restricted:         o.Restricted,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
