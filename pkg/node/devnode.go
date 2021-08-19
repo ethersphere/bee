@@ -122,6 +122,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
+		logger.Info("starting with restricted APIs")
 	}
 
 	var debugAPIService *debugapi.Service
