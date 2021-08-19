@@ -280,8 +280,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 			}
 
 			// Connect to closest known peer which we haven't tried connecting to recently.
-			closestKnownPeer, err := closestPeerList(binPeers, pseudoAddr, skipPeers)
-
+			closestKnownPeer, err := closestPeerInSlice(binPeers, pseudoAddr, skipPeers)
 			if err != nil {
 				if errors.Is(err, topology.ErrNotFound) {
 					break
@@ -944,13 +943,46 @@ func (k *Kad) notifyPeerSig() {
 
 func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
 	closest := swarm.ZeroAddress
-	err := peers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	err := peers.EachBinRev(closestPeerFunc(&closest, addr, spf))
+	if err != nil {
+		return closest, err
+	}
+
+	// check if found
+	if closest.IsZero() {
+		return closest, topology.ErrNotFound
+	}
+
+	return closest, nil
+}
+
+func closestPeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
+	closest := swarm.ZeroAddress
+	closestFunc := closestPeerFunc(&closest, addr, spf)
+
+	for _, peer := range peers {
+		_, _, err := closestFunc(peer, 0)
+		if err != nil {
+			return closest, err
+		}
+	}
+
+	// check if found
+	if closest.IsZero() {
+		return closest, topology.ErrNotFound
+	}
+
+	return closest, nil
+}
+
+func closestPeerFunc(closest *swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) func(peer swarm.Address, po uint8) (bool, bool, error) {
+	return func(peer swarm.Address, po uint8) (bool, bool, error) {
 		// check whether peer is sanctioned
 		if spf(peer) {
 			return false, false, nil
 		}
 		if closest.IsZero() {
-			closest = peer
+			*closest = peer
 			return false, false, nil
 		}
 		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
@@ -962,63 +994,13 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFun
 			// do nothing
 		case -1:
 			// current peer is closer
-			closest = peer
+			*closest = peer
 		case 1:
 			// closest is already closer to chunk
 			// do nothing
 		}
 		return false, false, nil
-	})
-	if err != nil {
-		return swarm.ZeroAddress, err
 	}
-
-	// check if found
-	if closest.IsZero() {
-		return swarm.ZeroAddress, topology.ErrNotFound
-	}
-
-	return closest, nil
-}
-
-func closestPeerList(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
-	closest := swarm.ZeroAddress
-
-	for _, peer := range peers {
-
-		// check whether peer is sanctioned
-		if spf(peer) {
-			continue
-		}
-
-		if closest.IsZero() {
-			closest = peer
-			continue
-		}
-
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
-		if err != nil {
-			continue
-		}
-		switch dcmp {
-		case 0:
-			// do nothing
-		case -1:
-			// current peer is closer
-			closest = peer
-		case 1:
-			// closest is already closer to chunk
-			// do nothing
-		}
-		continue
-	}
-
-	// check if found
-	if closest.IsZero() {
-		return swarm.ZeroAddress, topology.ErrNotFound
-	}
-
-	return closest, nil
 }
 
 func isIn(a swarm.Address, addresses []p2p.Peer) bool {
