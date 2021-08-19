@@ -921,7 +921,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
           required: true
-          description: Swarm address of the stamp
+          description: Batch ID to dilute
         - in: path
           name: depth
           schema:
