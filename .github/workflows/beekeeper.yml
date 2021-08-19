@@ -60,7 +60,9 @@ jobs:
       - name: Test pingpong
         id: pingpong-1
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
-      - name: Test fullconnectivity
+      - name: Exit 1
+        run: exit 1
+        - name: Test fullconnectivity
         id: fullconnectivity-1
         run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
       - name: Test settlements
@@ -173,6 +175,8 @@ jobs:
           export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
           export AWS_EC2_METADATA_DISABLED=true
           export AWS_ENDPOINT=fra1.digitaloceanspaces.com
+          export VERTAG=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
+          bash .github/bin/beekeeper_artifacts.sh
           export FAILED='no-test'
           if ${{ steps.pingpong-1.outcome=='failure' }}; then FAILED=pingpong-1; fi
           if ${{ steps.fullconnectivity-1.outcome=='failure' }}; then FAILED=fullconnectivity-1; fi
@@ -189,7 +193,7 @@ jobs:
           if ${{ steps.pingpong-3.outcome=='failure' }}; then FAILED=pingpong-3; fi
           if ${{ steps.gc-chunk-1.outcome=='failure' }}; then FAILED=gc-chunk-1; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: ${{ github.head_ref }}\nStep failed:\n \`${FAILED}\`\nDebug shell:\n\`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: ${{ github.head_ref }}\nDebugging artifacts should be uploaded to https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz\nStep failed:\n \`${FAILED}\`\nDebug shell:\n\`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "run the debug shell and run the following to get debugging artifacts:"
           echo "curl -s -o debug.sh https://gist.githubusercontent.com/acud/2c219531e832aafbab51feffe5b5e91f/raw/304880f1f8cc819e577d1dd3f1f45df8709c543d/beekeeper_artifacts.sh | bash"
           echo "Failed test: ${FAILED}"
