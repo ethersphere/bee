@@ -267,7 +267,7 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 		return err
 	}
 
-	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, totalAmount)
+	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topUpAmount)
 	if err != nil {
 		return err
 	}
