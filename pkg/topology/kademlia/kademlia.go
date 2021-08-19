@@ -319,7 +319,6 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		// out of depth, skip bin
 		if po < depth {
 			return false, true, nil
-
 		}
 
 		if po != currentPo {
@@ -348,8 +347,8 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			sent++
 		}
 
-		// We want to sent number of attempts equal to saturationPeers
-		// in order to speed up the topology build.
+		// We want 'sent' equal to 'saturationPeers'
+		// in order to skip to the next bin and speed up the topology build.
 		return false, sent == saturationPeers, nil
 	})
 }
