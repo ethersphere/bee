@@ -1336,9 +1336,11 @@ func (k *Kad) Close() error {
 	case <-time.After(5 * time.Second):
 		k.logger.Warning("kademlia manage loop did not shut down properly")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	k.logger.Info("kademlia persisting peer metrics")
-	if err := k.collector.Finalize(time.Now()); err != nil {
+	if err := k.collector.Finalize(ctx, time.Now()); err != nil {
 		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
 	}
 
