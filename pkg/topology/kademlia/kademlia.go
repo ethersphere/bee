@@ -562,13 +562,11 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
 
 			pseudoAddr := k.commonBinPrefixes[i][j]
-
-			var smallestDuration time.Duration
-			var newestPeer swarm.Address
-
 			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
 
 			if len(peers) > 1 {
+				var smallestDuration time.Duration
+				var newestPeer swarm.Address
 				for _, peer := range peers {
 					duration := k.collector.Inspect(peer).SessionConnectionDuration
 					if smallestDuration == 0 || duration < smallestDuration {
