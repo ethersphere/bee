@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/traversal"
 )
 
-func checkPinHandlers(t *testing.T, client *http.Client, rootHash string) {
+func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, createPin bool) {
 	t.Helper()
 
 	const pinsBasePath = "/pins"
@@ -45,12 +45,14 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string) {
 		}),
 	)
 
-	jsonhttptest.Request(t, client, http.MethodPost, pinsReferencePath, http.StatusCreated,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusCreated),
-			Code:    http.StatusCreated,
-		}),
-	)
+	if createPin {
+		jsonhttptest.Request(t, client, http.MethodPost, pinsReferencePath, http.StatusCreated,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusCreated),
+				Code:    http.StatusCreated,
+			}),
+		)
+	}
 
 	jsonhttptest.Request(t, client, http.MethodGet, pinsReferencePath, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(struct {
@@ -100,7 +102,7 @@ func TestPinHandlers(t *testing.T) {
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 		)
-		checkPinHandlers(t, client, rootHash)
+		checkPinHandlers(t, client, rootHash, true)
 	})
 
 	t.Run("bzz", func(t *testing.T) {
@@ -114,23 +116,24 @@ func TestPinHandlers(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
-			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 		)
-		checkPinHandlers(t, client, rootHash)
+		checkPinHandlers(t, client, rootHash, false)
 
-		rootHash = "dd13a5a6cc9db3ef514d645e6719178dbfb1a90b49b9262cafce35b0d27cf245"
-		jsonhttptest.Request(t, client, http.MethodPost, "/bzz?name=somefile.txt", http.StatusCreated,
+		header := jsonhttptest.Request(t, client, http.MethodPost, "/bzz?name=somefile.txt", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader("Content-Type", "text/plain"),
+			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(strings.NewReader("this is a simple text")),
-			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
-				Reference: swarm.MustParseHexAddress(rootHash),
-			}),
 		)
-		checkPinHandlers(t, client, rootHash)
+
+		rootHash = strings.Trim(header.Get("ETag"), "\"")
+		checkPinHandlers(t, client, rootHash, false)
 	})
 
 	t.Run("chunk", func(t *testing.T) {
@@ -145,6 +148,6 @@ func TestPinHandlers(t *testing.T) {
 				Reference: chunk.Address(),
 			}),
 		)
-		checkPinHandlers(t, client, rootHash)
+		checkPinHandlers(t, client, rootHash, true)
 	})
 }
