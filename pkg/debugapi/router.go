@@ -51,17 +51,17 @@ func (s *Service) newBasicRouter() *mux.Router {
 
 	router.Handle("/debug/vars", expvar.Handler())
 
+	router.Handle("/health", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
+
 	var handle = func(path string, handler http.Handler) {
 		if s.restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		router.Handle(path, handler)
 	}
-
-	handle("/health", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(statusHandler),
-	))
 
 	handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
@@ -87,17 +87,17 @@ func (s *Service) newBasicRouter() *mux.Router {
 func (s *Service) newRouter() *mux.Router {
 	router := s.newBasicRouter()
 
+	router.Handle("/readiness", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
+
 	var handle = func(path string, handler http.Handler) {
 		if s.restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		router.Handle(path, handler)
 	}
-
-	handle("/readiness", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(statusHandler),
-	))
 
 	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.pingpongHandler),
