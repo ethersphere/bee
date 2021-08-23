@@ -96,16 +96,16 @@ func (s *Service) newRouter() *mux.Router {
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
 
+	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.pingpongHandler),
+	})
+
 	var handle = func(path string, handler http.Handler) {
 		if s.restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		router.Handle(path, handler)
 	}
-
-	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.pingpongHandler),
-	})
 
 	handle("/reservestate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.reserveStateHandler),
