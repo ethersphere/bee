@@ -120,6 +120,21 @@ func (ps *service) HandleTopUp(batchID []byte, newValue *big.Int) {
 	}
 }
 
+func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8, normalisedBalance *big.Int) {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	for _, v := range ps.issuers {
+		if bytes.Equal(batchID, v.data.BatchID) {
+			if newDepth > v.data.BatchDepth {
+				v.data.BatchDepth = newDepth
+				v.data.BatchAmount = normalisedBalance
+			}
+			return
+		}
+	}
+}
+
 // StampIssuers returns the currently active stamp issuers.
 func (ps *service) StampIssuers() []*StampIssuer {
 	ps.lock.Lock()
