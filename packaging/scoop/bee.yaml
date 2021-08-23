@@ -4,8 +4,8 @@
 # api-addr: :1633
 ## chain block time (default 15)
 # block-time: 15
-## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
-# bootnode: [/dnsaddr/bootnode.ethswarm.org]
+## initial nodes to connect to (default [/dnsaddr/testnet.ethswarm.org])
+# bootnode: [/dnsaddr/testnet.ethswarm.org]
 ## enable clef signer
 # clef-signer-enable: false
 ## clef signer endpoint

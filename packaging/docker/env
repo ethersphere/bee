@@ -11,8 +11,8 @@ CLEF_CHAINID=5
 # BEE_API_ADDR=:1633
 ## chain block time (default 15)
 # BEE_BLOCK_TIME=15
-## initial nodes to connect to (default [/dnsaddr/bootnode.ethswarm.org])
-# BEE_BOOTNODE=[/dnsaddr/bootnode.ethswarm.org]
+## initial nodes to connect to (default [/dnsaddr/testnet.ethswarm.org])
+# BEE_BOOTNODE=[/dnsaddr/testnet.ethswarm.org]
 ## cause the node to always accept incoming connections
 # BEE_BOOTNODE_MODE=false
 ## enable clef signer
