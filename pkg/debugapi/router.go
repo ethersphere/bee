@@ -92,6 +92,10 @@ func (s *Service) newRouter() *mux.Router {
 		web.FinalHandlerFunc(statusHandler),
 	))
 
+	router.Handle("/peers", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peersHandler),
+	})
+
 	var handle = func(path string, handler http.Handler) {
 		if s.restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
@@ -114,9 +118,7 @@ func (s *Service) newRouter() *mux.Router {
 	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
-	handle("/peers", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peersHandler),
-	})
+
 	handle("/blocklist", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
 	})
