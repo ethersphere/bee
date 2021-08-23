@@ -56,16 +56,16 @@ func (s *Service) newBasicRouter() *mux.Router {
 		web.FinalHandlerFunc(statusHandler),
 	))
 
+	router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
+
 	var handle = func(path string, handler http.Handler) {
 		if s.restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		router.Handle(path, handler)
 	}
-
-	handle("/addresses", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.addressesHandler),
-	})
 
 	if s.transaction != nil {
 		handle("/transactions", jsonhttp.MethodHandler{
