@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -485,4 +486,238 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 	})
+}
+
+func TestPostageDiluteStamp(t *testing.T) {
+	newBatchDepth := uint8(17)
+	diluteBatch := func(id string, depth uint8) string {
+		return fmt.Sprintf("/stamps/dilute/%s/%d", id, depth)
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				if !bytes.Equal(id, batchOk) {
+					return errors.New("incorrect batch ID in call")
+				}
+				if newDepth != newBatchDepth {
+					return fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
+				}
+				return nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			}),
+		)
+	})
+
+	t.Run("with-custom-gas", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				if !bytes.Equal(id, batchOk) {
+					return errors.New("incorrect batch ID in call")
+				}
+				if newDepth != newBatchDepth {
+					return fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
+				}
+				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
+					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+				}
+				return nil
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
+			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			}),
+		)
+	})
+
+	t.Run("with-error", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				return errors.New("err")
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusInternalServerError,
+				Message: "cannot dilute batch",
+			}),
+		)
+	})
+
+	t.Run("with depth error", func(t *testing.T) {
+		contract := contractMock.New(
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+				return postagecontract.ErrInvalidDepth
+			}),
+		)
+		ts := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid depth",
+			}),
+		)
+	})
+
+	t.Run("invalid batch id", func(t *testing.T) {
+		ts := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, "/stamps/dilute/abcd/2", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid batchID",
+			}),
+		)
+	})
+
+	t.Run("invalid depth", func(t *testing.T) {
+		ts := newTestServer(t, testServerOptions{})
+
+		wrongURL := fmt.Sprintf("/stamps/dilute/%s/depth", batchOkStr)
+
+		jsonhttptest.Request(t, ts.Client, http.MethodPatch, wrongURL, http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid depth",
+			}),
+		)
+	})
+}
+
+// Tests the postageAccessHandler middleware for any set of operations that are guarded
+// by the postage semaphore
+func TestPostageAccessHandler(t *testing.T) {
+
+	type operation struct {
+		name     string
+		method   string
+		url      string
+		respCode int
+		resp     interface{}
+	}
+
+	success := []operation{
+		{
+			name:     "create batch ok",
+			method:   http.MethodPost,
+			url:      "/stamps/1000/17?label=test",
+			respCode: http.StatusCreated,
+			resp: &debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			},
+		},
+		{
+			name:     "topup batch ok",
+			method:   http.MethodPatch,
+			url:      fmt.Sprintf("/stamps/topup/%s/10", batchOkStr),
+			respCode: http.StatusAccepted,
+			resp: &debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			},
+		},
+		{
+			name:     "dilute batch ok",
+			method:   http.MethodPatch,
+			url:      fmt.Sprintf("/stamps/dilute/%s/18", batchOkStr),
+			respCode: http.StatusAccepted,
+			resp: &debugapi.PostageCreateResponse{
+				BatchID: batchOk,
+			},
+		},
+	}
+
+	failure := []operation{
+		{
+			name:     "create batch not ok",
+			method:   http.MethodPost,
+			url:      "/stamps/1000/17?label=test",
+			respCode: http.StatusTooManyRequests,
+			resp: &jsonhttp.StatusResponse{
+				Code:    http.StatusTooManyRequests,
+				Message: "simultaneous on-chain operations not supported",
+			},
+		},
+		{
+			name:     "topup batch not ok",
+			method:   http.MethodPatch,
+			url:      fmt.Sprintf("/stamps/topup/%s/10", batchOkStr),
+			respCode: http.StatusTooManyRequests,
+			resp: &jsonhttp.StatusResponse{
+				Code:    http.StatusTooManyRequests,
+				Message: "simultaneous on-chain operations not supported",
+			},
+		},
+		{
+			name:     "dilute batch not ok",
+			method:   http.MethodPatch,
+			url:      fmt.Sprintf("/stamps/dilute/%s/18", batchOkStr),
+			respCode: http.StatusTooManyRequests,
+			resp: &jsonhttp.StatusResponse{
+				Code:    http.StatusTooManyRequests,
+				Message: "simultaneous on-chain operations not supported",
+			},
+		},
+	}
+
+	for _, op1 := range success {
+		for _, op2 := range failure {
+
+			t.Run(op1.name+"-"+op2.name, func(t *testing.T) {
+				wait, done := make(chan struct{}), make(chan struct{})
+				contract := contractMock.New(
+					contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+						<-wait
+						return batchOk, nil
+					}),
+					contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+						<-wait
+						return nil
+					}),
+					contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+						<-wait
+						return nil
+					}),
+				)
+
+				ts := newTestServer(t, testServerOptions{
+					PostageContract: contract,
+				})
+
+				go func() {
+					defer close(done)
+
+					jsonhttptest.Request(t, ts.Client, op1.method, op1.url, op1.respCode, jsonhttptest.WithExpectedJSONResponse(op1.resp))
+				}()
+
+				time.Sleep(time.Millisecond * 100)
+
+				jsonhttptest.Request(t, ts.Client, op2.method, op2.url, op2.respCode, jsonhttptest.WithExpectedJSONResponse(op2.resp))
+
+				close(wait)
+				<-done
+
+			})
+		}
+	}
 }

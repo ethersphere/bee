@@ -205,14 +205,23 @@ func (s *Service) newRouter() *mux.Router {
 	)
 
 	router.Handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
 	)
 
 	router.Handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
+		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
+		})),
+	)
+
+	router.Handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
+		s.postageAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
 	)
 

@@ -159,6 +159,11 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
+
+	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
+		svc.batchListener.HandleDepthIncrease(id, depth, normalisedBalance)
+	}
+
 	cs, err := svc.updateChecksum(txHash)
 	if err != nil {
 		return fmt.Errorf("update checksum: %w", err)
