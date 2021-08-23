@@ -38,12 +38,17 @@ func newMockListener() *mockListener {
 	return &mockListener{}
 }
 
-type mockBatchCreationHandler struct {
-	count int
+type mockBatchListener struct {
+	createCount int
+	topupCount  int
 }
 
-func (m *mockBatchCreationHandler) Handle(b *postage.Batch) {
-	m.count++
+func (m *mockBatchListener) HandleCreate(b *postage.Batch) {
+	m.createCount++
+}
+
+func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
+	m.topupCount++
 }
 
 func TestBatchServiceCreate(t *testing.T) {
@@ -51,7 +56,7 @@ func TestBatchServiceCreate(t *testing.T) {
 
 	t.Run("expect put create put error", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
-		testBatchListener := &mockBatchCreationHandler{}
+		testBatchListener := &mockBatchListener{}
 		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
 			testBatch.Owner,
@@ -71,8 +76,8 @@ func TestBatchServiceCreate(t *testing.T) {
 		); err == nil {
 			t.Fatalf("expected error")
 		}
-		if testBatchListener.count != 0 {
-			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.count)
+		if testBatchListener.createCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.createCount)
 		}
 	})
 
@@ -107,7 +112,7 @@ func TestBatchServiceCreate(t *testing.T) {
 
 	t.Run("passes", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
-		testBatchListener := &mockBatchCreationHandler{}
+		testBatchListener := &mockBatchListener{}
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
 			testBatch.Owner,
@@ -126,8 +131,8 @@ func TestBatchServiceCreate(t *testing.T) {
 		); err != nil {
 			t.Fatalf("got error %v", err)
 		}
-		if testBatchListener.count != 1 {
-			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.count)
+		if testBatchListener.createCount != 1 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.createCount)
 		}
 
 		validateBatch(t, testBatch, batchStore)
@@ -135,7 +140,7 @@ func TestBatchServiceCreate(t *testing.T) {
 
 	t.Run("passes without recovery", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
-		testBatchListener := &mockBatchCreationHandler{}
+		testBatchListener := &mockBatchListener{}
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
 		rand.Read(owner)
@@ -158,8 +163,8 @@ func TestBatchServiceCreate(t *testing.T) {
 		); err != nil {
 			t.Fatalf("got error %v", err)
 		}
-		if testBatchListener.count != 0 {
-			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.count)
+		if testBatchListener.createCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.createCount)
 		}
 
 		validateBatch(t, testBatch, batchStore)
@@ -171,19 +176,28 @@ func TestBatchServiceTopUp(t *testing.T) {
 	testNormalisedBalance := big.NewInt(2000000000000)
 
 	t.Run("expect get error", func(t *testing.T) {
-		svc, _, _ := newTestStoreAndService(
+		testBatchListener := &mockBatchListener{}
+		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
+			testBatch.Owner,
+			testBatchListener,
 			mock.WithGetErr(errTest, 0),
 		)
 
 		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err == nil {
 			t.Fatal("expected error")
 		}
+		if testBatchListener.topupCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.topupCount)
+		}
 	})
 
 	t.Run("expect put error", func(t *testing.T) {
-		svc, batchStore, _ := newTestStoreAndService(
+		testBatchListener := &mockBatchListener{}
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
+			testBatch.Owner,
+			testBatchListener,
 			mock.WithPutErr(errTest, 1),
 		)
 		putBatch(t, batchStore, testBatch)
@@ -191,10 +205,18 @@ func TestBatchServiceTopUp(t *testing.T) {
 		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err == nil {
 			t.Fatal("expected error")
 		}
+		if testBatchListener.topupCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.topupCount)
+		}
 	})
 
 	t.Run("passes", func(t *testing.T) {
-		svc, batchStore, _ := newTestStoreAndService(t)
+		testBatchListener := &mockBatchListener{}
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			t,
+			testBatch.Owner,
+			testBatchListener,
+		)
 		putBatch(t, batchStore, testBatch)
 
 		want := testNormalisedBalance
@@ -210,6 +232,43 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 		if got.Value.Cmp(want) != 0 {
 			t.Fatalf("topped up amount: got %v, want %v", got.Value, want)
+		}
+		if testBatchListener.topupCount != 1 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 1, testBatchListener.topupCount)
+		}
+	})
+
+	// if a batch with a different owner is topped up we should not see any event fired in the
+	// batch service
+	t.Run("passes without BatchEventListener update", func(t *testing.T) {
+		testBatchListener := &mockBatchListener{}
+		// create a owner different from the batch owner
+		owner := make([]byte, 32)
+		rand.Read(owner)
+
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			t,
+			owner,
+			testBatchListener,
+		)
+		putBatch(t, batchStore, testBatch)
+
+		want := testNormalisedBalance
+
+		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err != nil {
+			t.Fatalf("top up: %v", err)
+		}
+
+		got, err := batchStore.Get(testBatch.ID)
+		if err != nil {
+			t.Fatalf("batch store get: %v", err)
+		}
+
+		if got.Value.Cmp(want) != 0 {
+			t.Fatalf("topped up amount: got %v, want %v", got.Value, want)
+		}
+		if testBatchListener.topupCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.topupCount)
 		}
 	})
 }
@@ -435,7 +494,7 @@ func TestChecksumResync(t *testing.T) {
 func newTestStoreAndServiceWithListener(
 	t *testing.T,
 	owner []byte,
-	batchListener postage.BatchCreationListener,
+	batchListener postage.BatchEventListener,
 	opts ...mock.Option,
 ) (postage.EventUpdater, *mock.BatchStore, storage.StateStorer) {
 	t.Helper()

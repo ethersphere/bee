@@ -200,28 +200,52 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	post := mockPost.New()
-	postageContract := mockPostContract.New(mockPostContract.WithCreateBatchFunc(
-		func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
-			id := postagetesting.MustNewID()
-			b := &postage.Batch{
-				ID:        id,
-				Owner:     overlayEthAddress.Bytes(),
-				Value:     big.NewInt(0),
-				Depth:     depth,
-				Immutable: immutable,
-			}
+	postageContract := mockPostContract.New(
+		mockPostContract.WithCreateBatchFunc(
+			func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+				id := postagetesting.MustNewID()
+				b := &postage.Batch{
+					ID:        id,
+					Owner:     overlayEthAddress.Bytes(),
+					Value:     big.NewInt(0),
+					Depth:     depth,
+					Immutable: immutable,
+				}
 
-			err := batchStore.Put(b, initialBalance, depth)
-			if err != nil {
-				return nil, err
-			}
+				totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
 
-			stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, initialBalance, depth, 0, 0, immutable)
-			post.Add(stampIssuer)
+				err := batchStore.Put(b, totalAmount, depth)
+				if err != nil {
+					return nil, err
+				}
 
-			return id, nil
-		},
-	))
+				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, totalAmount, depth, 0, 0, immutable)
+				post.Add(stampIssuer)
+
+				return id, nil
+			},
+		),
+		mockPostContract.WithTopUpBatchFunc(
+			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
+				batch, err := batchStore.Get(batchID)
+				if err != nil {
+					return err
+				}
+
+				totalAmount := big.NewInt(0).Mul(topupAmount, big.NewInt(int64(1<<batch.Depth)))
+
+				newBalance := big.NewInt(0).Add(totalAmount, batch.Value)
+
+				err = batchStore.Put(batch, newBalance, batch.Depth)
+				if err != nil {
+					return err
+				}
+
+				post.HandleTopUp(batch.ID, newBalance)
+				return nil
+			},
+		),
+	)
 
 	feedFactory := factory.New(storer)
 
