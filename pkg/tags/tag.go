@@ -156,7 +156,7 @@ func (t *Tag) Get(state State) int64 {
 	return atomic.LoadInt64(v)
 }
 
-// GetTotal returns the total count
+// TotalCounter returns the total count
 func (t *Tag) TotalCounter() int64 {
 	return atomic.LoadInt64(&t.Total)
 }
@@ -169,6 +169,8 @@ func (t *Tag) WaitTillDone(ctx context.Context, s State) error {
 		return nil
 	}
 	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
