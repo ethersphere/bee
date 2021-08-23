@@ -233,7 +233,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	b.transactionMonitorCloser = transactionMonitor
 
 	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong ethereum network: got chainID %d, want %d", chainID, o.ChainID)
+		return nil, fmt.Errorf("connected to wrong ethereum network: got chainID %d, want %d", o.ChainID, chainID)
 	}
 
 	var debugAPIService *debugapi.Service
