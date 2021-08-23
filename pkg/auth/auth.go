@@ -33,13 +33,13 @@ func New(username, passwordHash string, expires time.Duration) (*Authenticator, 
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
-	
+
 	[policy_definition]
 	p = sub, obj, act
-	
+
 	[policy_effect]
 	e = some(where (p.eft == allow))
-	
+
 	[matchers]
 	m = r.sub == p.sub && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)`)
 
