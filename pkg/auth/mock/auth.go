@@ -9,7 +9,7 @@ type Auth struct {
 	AddKeyFunc    func(string) (string, error)
 }
 
-func (ma *Auth) Authorize(u string, p string) bool {
+func (ma *Auth) Authorize(u, p string) bool {
 	if ma.AuthorizeFunc == nil {
 		return true
 	}
