@@ -350,9 +350,9 @@ jobs:
       - name: Set testing cluster (Node connection and clef enabled)
         run: |
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
-      # - name: Test pingpong
-      #   id: pingpong-2
-      #   run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test pingpong
+        id: pingpong-2
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity-2
         run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
@@ -376,9 +376,9 @@ jobs:
       - name: Set testing cluster (storage incentives setup)
         run: |
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
-      # - name: Test pingpong
-      #   id: pingpong-3
-      #   run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test pingpong
+        id: pingpong-3
+        run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test gc
         id: gc-chunk-1
         run: beekeeper check --cluster-name local-gc --checks=ci-gc
