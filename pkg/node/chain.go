@@ -30,8 +30,9 @@ import (
 )
 
 const (
-	maxDelay          = 1 * time.Minute
-	cancellationDepth = 6
+	maxDelay                = 1 * time.Minute
+	cancellationDepth       = 6
+	additionalConfirmations = 2
 )
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
@@ -293,13 +294,7 @@ func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transact
 		return blockHash, nil
 	}
 
-	// if not found in statestore, fetch from chain
-	tx, err := backend.TransactionReceipt(ctx, common.BytesToHash(trx))
-	if err != nil {
-		return nil, err
-	}
-
-	block, err := transaction.WaitBlock(ctx, backend, duration, big.NewInt(0).Add(tx.BlockNumber, big.NewInt(1)))
+	block, err := transaction.WaitBlockAfterTransaction(ctx, backend, duration, common.BytesToHash(trx), additionalConfirmations)
 	if err != nil {
 		return nil, err
 	}
