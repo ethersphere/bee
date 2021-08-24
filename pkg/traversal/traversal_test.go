@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/file/loadsave"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -250,7 +251,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ls := loadsave.New(storerMock, storage.ModePutRequest, false)
+			ls := loadsave.New(storerMock, pipelineFactory(storerMock, storage.ModePutRequest, false))
 			fManifest, err := manifest.NewDefaultManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -404,7 +405,7 @@ func TestTraversalManifest(t *testing.T) {
 			}
 			wantHashes = append(wantHashes, tc.manifestHashes...)
 
-			ls := loadsave.New(storerMock, storage.ModePutRequest, false)
+			ls := loadsave.New(storerMock, pipelineFactory(storerMock, storage.ModePutRequest, false))
 			dirManifest, err := manifest.NewMantarayManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -454,5 +455,11 @@ func TestTraversalManifest(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func() pipeline.Interface {
+	return func() pipeline.Interface {
+		return builder.NewPipelineBuilder(context.Background(), s, mode, encrypt)
 	}
 }

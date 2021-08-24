@@ -56,7 +56,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		return nil
 	}
 
-	ls := loadsave.New(s.store, storage.ModePutRequest, false)
+	ls := loadsave.NewReadonly(s.store)
 	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
 	case errors.Is(err, manifest.ErrInvalidManifestType):
 		break
