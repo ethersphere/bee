@@ -434,10 +434,10 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 24; i++ {
+	for i := 0; i < 16; i++ {
 		go connAttempt(balanceChan)
 	}
-	for i := 0; i < 24; i++ {
+	for i := 0; i < 32; i++ {
 		go connAttempt(neighbourhoodChan)
 	}
 }
