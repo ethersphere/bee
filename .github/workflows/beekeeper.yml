@@ -58,9 +58,6 @@ jobs:
         run: |
           make beelocal ACTION=add-hosts
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns BEEKEEPER_BRANCH=auth-health-check
-      - name: Test pingpong
-        id: pingpong-1
-        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test authenticated health
         id: auth-health
         run: until beekeeper check --cluster-name local-dns --checks ci-auth; do echo "waiting for auth..."; sleep .3; done
