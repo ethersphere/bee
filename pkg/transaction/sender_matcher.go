@@ -94,16 +94,25 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, ErrTransactionPending
 	}
 
-	sender, err := types.Sender(m.signer, nTx)
-	if err != nil {
-		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
-			TimeStamp: m.timeNow(),
-			Verified:  false,
-		})
-		if err2 != nil {
-			return nil, err2
+	// if transaction data is exactly one word and starts with 4 0-bytes this is a transaction data type proof
+	// we check for the starting 0-bytes so we don't mistake a 28 byte data solidity call for this
+	// otherwise this is considered as a signer based proof. a transaction can be only one of the two.
+	var attestedOverlay common.Address
+	txData := nTx.Data()
+	if len(txData) == 32 && bytes.Equal(txData[0:4], []byte{0, 0, 0, 0}) {
+		attestedOverlay = common.BytesToAddress(nTx.Data())
+	} else {
+		attestedOverlay, err = types.Sender(m.signer, nTx)
+		if err != nil {
+			err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
+				TimeStamp: m.timeNow(),
+				Verified:  false,
+			})
+			if err2 != nil {
+				return nil, err2
+			}
+			return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
 		}
-		return nil, fmt.Errorf("%v: %w", err, ErrTransactionSenderInvalid)
 	}
 
 	receipt, err := m.backend.TransactionReceipt(ctx, incomingTx)
@@ -145,7 +154,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, fmt.Errorf("receipt hash %x does not match block's parent hash %x: %w", receiptBlockHash, nextBlockParentHash, ErrBlockHashMismatch)
 	}
 
-	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(sender.Bytes(), networkID, nextBlockHash)
+	expectedRemoteBzzAddress := crypto.NewOverlayFromEthereumAddress(attestedOverlay.Bytes(), networkID, nextBlockHash)
 
 	if !expectedRemoteBzzAddress.Equal(senderOverlay) {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
