@@ -142,7 +142,8 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	}
 
 	encrypt := requestEncrypt(r)
-	l := loadsave.New(storer, requestModePut(r), encrypt)
+	factory := requestPipelineFactory(ctx, storer, r)
+	l := loadsave.New(storer, factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -210,6 +211,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	logger.Debugf("bzz upload file: manifest reference: %s", manifestReference.String())
 
 	if created {
+		fmt.Println("donesplit")
 		_, err = tag.DoneSplit(manifestReference)
 		if err != nil {
 			logger.Debugf("bzz upload file: done split: %v", err)
@@ -238,7 +240,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-	ls := loadsave.New(s.storer, storage.ModePutRequest, false)
+	ls := loadsave.NewReadonly(s.storer)
 	feedDereferenced := false
 
 	targets := r.URL.Query().Get("targets")
