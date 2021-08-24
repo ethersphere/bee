@@ -76,15 +76,33 @@ func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, max
 	}
 }
 
-func WaitBlock(ctx context.Context, backend Backend, pollingInterval time.Duration, block *big.Int) (*types.Header, error) {
+func WaitBlockAfterTransaction(ctx context.Context, backend Backend, pollingInterval time.Duration, txHash common.Hash, additionalConfirmations uint64) (*types.Header, error) {
 	for {
-		header, err := backend.HeaderByNumber(ctx, block)
+		receipt, err := backend.TransactionReceipt(ctx, txHash)
 		if err != nil {
 			if !errors.Is(err, ethereum.NotFound) {
 				return nil, err
 			}
-		} else {
-			return header, nil
+			continue
+		}
+
+		bn, err := backend.BlockNumber(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		nextBlock := receipt.BlockNumber.Uint64() + 1
+
+		if bn >= nextBlock+additionalConfirmations {
+			header, err := backend.HeaderByNumber(ctx, new(big.Int).SetUint64(nextBlock))
+			if err != nil {
+				if !errors.Is(err, ethereum.NotFound) {
+					return nil, err
+				}
+				// in the case where we cannot find the block even though we already saw a higher number we keep on trying
+			} else {
+				return header, nil
+			}
 		}
 
 		select {
