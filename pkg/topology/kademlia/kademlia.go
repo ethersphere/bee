@@ -516,14 +516,14 @@ func (k *Kad) manage() {
 			case <-k.quit:
 				return
 			case <-time.After(5 * time.Minute):
-				start := time.Now()
-				if err := k.collector.Flush(); err != nil {
-					k.metrics.InternalMetricsFlushTotalErrors.Inc()
-					k.logger.Debugf("kademlia: took %s unable to flush metrics counters to the persistent store: %v", time.Since(start), err)
-				} else {
-					k.metrics.InternalMetricsFlushTime.Observe(float64(time.Since(start).Nanoseconds()))
-					k.logger.Tracef("kademlia took %s to flush", time.Since(start))
-				}
+				//start := time.Now()
+				//if err := k.collector.Flush(); err != nil {
+				//k.metrics.InternalMetricsFlushTotalErrors.Inc()
+				//k.logger.Debugf("kademlia: took %s unable to flush metrics counters to the persistent store: %v", time.Since(start), err)
+				//} else {
+				//k.metrics.InternalMetricsFlushTime.Observe(float64(time.Since(start).Nanoseconds()))
+				//k.logger.Tracef("kademlia took %s to flush", time.Since(start))
+				//}
 			}
 		}
 	}()
@@ -589,34 +589,34 @@ func (k *Kad) Start(_ context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
-	go func() {
-		select {
-		case <-k.halt:
-			return
-		case <-k.quit:
-			return
-		default:
-		}
-		var (
-			start     = time.Now()
-			addresses []swarm.Address
-		)
+	//go func() {
+	//select {
+	//case <-k.halt:
+	//return
+	//case <-k.quit:
+	//return
+	//default:
+	//}
+	//var (
+	//start     = time.Now()
+	//addresses []swarm.Address
+	//)
 
-		err := k.addressBook.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
-			addresses = append(addresses, addr)
-			if len(addresses) == addPeerBatchSize {
-				k.AddPeers(addresses...)
-				addresses = nil
-			}
-			return false, nil
-		})
-		if err != nil {
-			k.logger.Errorf("addressbook overlays: %w", err)
-			return
-		}
-		k.AddPeers(addresses...)
-		k.metrics.StartAddAddressBookOverlaysTime.Observe(float64(time.Since(start).Nanoseconds()))
-	}()
+	//err := k.addressBook.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
+	//addresses = append(addresses, addr)
+	//if len(addresses) == addPeerBatchSize {
+	//k.AddPeers(addresses...)
+	//addresses = nil
+	//}
+	//return false, nil
+	//})
+	//if err != nil {
+	//k.logger.Errorf("addressbook overlays: %w", err)
+	//return
+	//}
+	//k.AddPeers(addresses...)
+	//k.metrics.StartAddAddressBookOverlaysTime.Observe(float64(time.Since(start).Nanoseconds()))
+	//}()
 
 	// trigger the first manage loop immediately so that
 	// we can start connecting to the bootnode quickly

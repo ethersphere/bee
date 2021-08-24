@@ -32,12 +32,13 @@ import (
 )
 
 const (
-	protocolName    = "hive"
-	protocolVersion = "1.0.0"
-	peersStreamName = "peers"
-	messageTimeout  = 1 * time.Minute // maximum allowed time for a message to be read or written.
-	maxBatchSize    = 30
-	pingTimeout     = time.Second * 5 // time to wait for ping to succeed
+	protocolName           = "hive"
+	protocolVersion        = "1.0.0"
+	peersStreamName        = "peers"
+	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
+	maxBatchSize           = 30
+	pingTimeout            = time.Second * 5 // time to wait for ping to succeed
+	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
 )
 
 var (
@@ -246,7 +247,9 @@ func (s *Service) startCheckPeersHandler() {
 				s.wg.Add(1)
 				go func() {
 					defer s.wg.Done()
-					s.checkAndAddPeers(ctx, newPeers)
+					cctx, cancel := context.WithTimeout(ctx, batchValidationTimeout)
+					defer cancel()
+					s.checkAndAddPeers(cctx, newPeers)
 				}()
 			}
 		}
