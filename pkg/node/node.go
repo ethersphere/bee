@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -242,7 +243,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var authenticator *auth.Authenticator
 
-	expiry := 1 * time.Hour // TODO make configurable
+	expiry := time.Duration(math.MaxInt64) // TODO make configurable
 
 	if o.Restricted {
 		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
