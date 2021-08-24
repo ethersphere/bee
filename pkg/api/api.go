@@ -264,7 +264,6 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	user, pass, ok := r.BasicAuth()
 
 	if !ok {
-		s.logger.Debug("api: auth handler: missing basic auth")
 		s.logger.Error("api: auth handler: missing basic auth")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		jsonhttp.Unauthorized(w, "Unauthorized")
@@ -272,7 +271,6 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !s.auth.Authorize(user, pass) {
-		s.logger.Debug("api: auth handler: unauthorized")
 		s.logger.Error("api: auth handler: unauthorized")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		jsonhttp.Unauthorized(w, "Unauthorized")
