@@ -61,9 +61,9 @@ jobs:
       # - name: Test pingpong
       #   id: pingpong-1
       #   run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
-      - name: Test fullconnectivity
-        id: fullconnectivity-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      # - name: Test fullconnectivity
+      #   id: fullconnectivity-1
+      #   run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
       - name: Test settlements
         id: settlements-1
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
