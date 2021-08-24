@@ -9,7 +9,6 @@ on:
 
 jobs:
   beekeeper:
-    continue-on-error: true
     name: Infra tests
     env:
       REPLICA: 3
@@ -61,35 +60,44 @@ jobs:
       # - name: Test pingpong
       #   id: pingpong-1
       #   run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
-      # - name: Test fullconnectivity
-      #   id: fullconnectivity-1
-      #   run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test fullconnectivity
+        id: fullconnectivity-1
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+        continue-on-error: true
       - name: Test settlements
         id: settlements-1
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+        continue-on-error: true
       - name: Sleep for time allowance to replenish
         run: sleep 2
       - name: Test pss
         id: pss
         run: beekeeper check --cluster-name local-dns --checks=ci-pss
+        continue-on-error: true
       - name: Test soc
         id: soc
         run: beekeeper check --cluster-name local-dns --checks=ci-soc
+        continue-on-error: true
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+        continue-on-error: true
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+        continue-on-error: true
       - name: Test retrieval
         id: retrieval-1
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+        continue-on-error: true
       - name: Test manifest
         id: manifest-1
         run: beekeeper check --cluster-name local-dns --checks=ci-manifest
+        continue-on-error: true
       - name: Test content availability
         id: content-availability
         run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
+        continue-on-error: true
       - name: Test authenticated consumed
         id: auth-consumed
         run: until beekeeper check --cluster-name local-dns --checks ci-consumed-authenticated; do echo "waiting for auth..."; sleep .3; done
