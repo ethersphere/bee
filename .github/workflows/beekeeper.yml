@@ -325,6 +325,9 @@ jobs:
       - name: Test authenticated health
         id: auth-health
         run: until beekeeper check --cluster-name local-dns --checks ci-auth; do echo "waiting for auth..."; sleep .3; done
+      - name: Test authenticated consumed
+        id: auth-consumed
+        run: until beekeeper check --cluster-name local-dns --checks ci-consumed-authenticated; do echo "waiting for auth..."; sleep .3; done
       - name: Destroy the cluster
         run: |
           beekeeper delete bee-cluster --cluster-name local-dns
