@@ -142,7 +142,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
-	tx, err := prepareTransaction(ctx, request, t.sender, t.backend, nonce)
+	tx, err := t.prepareTransaction(ctx, request, nonce)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -243,11 +243,11 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 }
 
 // prepareTransaction creates a signable transaction based on a request.
-func prepareTransaction(ctx context.Context, request *TxRequest, from common.Address, backend Backend, nonce uint64) (tx *types.Transaction, err error) {
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
-		gasLimit, err = backend.EstimateGas(ctx, ethereum.CallMsg{
-			From: from,
+		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
+			From: t.sender,
 			To:   request.To,
 			Data: request.Data,
 		})
@@ -263,7 +263,7 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 
 	var gasPrice *big.Int
 	if request.GasPrice == nil {
-		gasPrice, err = backend.SuggestGasPrice(ctx)
+		gasPrice, err = t.backend.SuggestGasPrice(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -271,24 +271,14 @@ func prepareTransaction(ctx context.Context, request *TxRequest, from common.Add
 		gasPrice = request.GasPrice
 	}
 
-	if request.To != nil {
-		return types.NewTransaction(
-			nonce,
-			*request.To,
-			request.Value,
-			gasLimit,
-			gasPrice,
-			request.Data,
-		), nil
-	}
-
-	return types.NewContractCreation(
-		nonce,
-		request.Value,
-		gasLimit,
-		gasPrice,
-		request.Data,
-	), nil
+	return types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       request.To,
+		Value:    request.Value,
+		Gas:      gasLimit,
+		GasPrice: gasPrice,
+		Data:     request.Data,
+	}), nil
 }
 
 func (t *transactionService) nonceKey() string {
@@ -382,25 +372,14 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	var tx *types.Transaction
-	if storedTransaction.To != nil {
-		tx = types.NewTransaction(
-			storedTransaction.Nonce,
-			*storedTransaction.To,
-			storedTransaction.Value,
-			storedTransaction.GasLimit,
-			storedTransaction.GasPrice,
-			storedTransaction.Data,
-		)
-	} else {
-		tx = types.NewContractCreation(
-			storedTransaction.Nonce,
-			storedTransaction.Value,
-			storedTransaction.GasLimit,
-			storedTransaction.GasPrice,
-			storedTransaction.Data,
-		)
-	}
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    storedTransaction.Nonce,
+		To:       storedTransaction.To,
+		Value:    storedTransaction.Value,
+		Gas:      storedTransaction.GasLimit,
+		GasPrice: storedTransaction.GasPrice,
+		Data:     storedTransaction.Data,
+	})
 
 	signedTx, err := t.signer.SignTx(tx, t.chainID)
 	if err != nil {
@@ -433,14 +412,14 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, ErrGasPriceTooLow
 	}
 
-	signedTx, err := t.signer.SignTx(types.NewTransaction(
-		storedTransaction.Nonce,
-		t.sender,
-		big.NewInt(0),
-		21000,
-		gasPrice,
-		[]byte{},
-	), t.chainID)
+	signedTx, err := t.signer.SignTx(types.NewTx(&types.AccessListTx{
+		Nonce:    storedTransaction.Nonce,
+		To:       &t.sender,
+		Value:    big.NewInt(0),
+		Gas:      21000,
+		GasPrice: gasPrice,
+		Data:     []byte{},
+	}), t.chainID)
 	if err != nil {
 		return common.Hash{}, err
 	}
