@@ -27,7 +27,6 @@ type metrics struct {
 	TotalOutboundConnectionFailedAttempts prometheus.Counter
 	TotalBootNodesConnectionAttempts      prometheus.Counter
 	StartAddAddressBookOverlaysTime       prometheus.Histogram
-	P2PKademliaDiscrepancy                prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -130,12 +129,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "start_add_addressbook_overlays_time",
 			Help:      "The time spent adding overlays peers from addressbook on kademlia start.",
-		}),
-		P2PKademliaDiscrepancy: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "p2p_kademlia_discrepancy",
-			Help:      "Discrepancy counter between lists of peers in kademlia and libp2p",
 		}),
 	}
 }
