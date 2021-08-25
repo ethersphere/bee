@@ -27,7 +27,6 @@ import (
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -174,7 +173,7 @@ func TestFeed_Post(t *testing.T) {
 			}),
 		)
 
-		ls := loadsave.New(mockStorer, storage.ModePutUpload, false)
+		ls := loadsave.NewReadonly(mockStorer)
 		i, err := manifest.NewMantarayManifestReference(expReference, ls)
 		if err != nil {
 			t.Fatal(err)
