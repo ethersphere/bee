@@ -475,16 +475,16 @@ components:
 
     TransactionHash:
       type: string
-      pattern: "^[A-Fa-f0-9]{64}$"
-      example: "e28a34ffe7b1710c1baf97ca6d71d81b7f159a9920910876856c8d94dd7be4ae"
+      pattern: "^0x[A-Fa-f0-9]{64}$"
+      example: "0x780cb6a37d1946978087896e1e489c37e30fe3e329510fff8d97360f73529f5a"
 
     TransactionResponse:
       type: object
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
-    
-    TransactionInfoResponse:
+
+    TransactionInfo:
       type: object
       properties:
         transactionHash:
@@ -506,14 +506,14 @@ components:
         value:
           $ref: "#/components/schemas/BigInt"
 
-    PendingTransactionReponse:
+    PendingTransactionsResponse:
       type: object
       properties:
         pendingTransactions:
           type: array
           nullable: true
           items:
-            $ref: "#/components/schemas/TransactionHash"
+            $ref: "#/components/schemas/TransactionInfo"
 
     Uid:
       type: integer

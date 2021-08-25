@@ -680,7 +680,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PendingTransactionReponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/PendingTransactionsResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -704,7 +704,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/TransactionInfoResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionInfo"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
