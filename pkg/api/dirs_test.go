@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -288,7 +287,7 @@ func TestDirs(t *testing.T) {
 			// verify manifest content
 			verifyManifest, err := manifest.NewDefaultManifestReference(
 				resp.Reference,
-				loadsave.New(storer, storage.ModePutRequest, false),
+				loadsave.NewReadonly(storer),
 			)
 			if err != nil {
 				t.Fatal(err)

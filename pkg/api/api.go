@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
+	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -371,6 +372,13 @@ func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r)
+	}
+}
+
+func requestPipelineFactory(ctx context.Context, s storage.Putter, r *http.Request) func() pipeline.Interface {
+	mode, encrypt := requestModePut(r), requestEncrypt(r)
+	return func() pipeline.Interface {
+		return builder.NewPipelineBuilder(ctx, s, mode, encrypt)
 	}
 }
 

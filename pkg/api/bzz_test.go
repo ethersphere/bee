@@ -576,7 +576,7 @@ func TestFeedIndirection(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, err := manifest.NewDefaultManifest(
-		loadsave.New(storer, storage.ModePutUpload, false),
+		loadsave.New(storer, pipelineFactory(storer, storage.ModePutUpload, false)),
 		false,
 	)
 	if err != nil {
