@@ -13,7 +13,7 @@ Config: /etc/bee/bee.yaml
 
 Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
 If needed obtain a free Infura account and set:
-`swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 It is recommended to use external signer with bee.
 Check documentation for more info:
 - External signer https://docs.ethswarm.org/docs/installation/bee-clef
