@@ -252,7 +252,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 	for i := range k.commonBinPrefixes {
 
-		binPeersLength := k.knownPeers.BinPeersLength(uint8(i))
+		binPeersLength := k.knownPeers.BinSize(uint8(i))
 
 		// balancer should skip on bins where neighborhood connector would connect to peers anyway
 		// and there are not enough peers in known addresses to properly balance the bin

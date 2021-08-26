@@ -96,7 +96,7 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	return nil
 }
 
-func (s *PSlice) BinPeersLength(bin uint8) int {
+func (s *PSlice) BinSize(bin uint8) int {
 
 	s.RLock()
 	defer s.RUnlock()

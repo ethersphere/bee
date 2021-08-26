@@ -284,7 +284,7 @@ func TestBinPeers(t *testing.T) {
 				if !isEqual(binPeers[bin], ps.BinPeers(uint8(bin))) {
 					t.Fatal("peers list do not match")
 				}
-				if len(binPeers[bin]) != ps.BinPeersLength(uint8(bin)) {
+				if len(binPeers[bin]) != ps.BinSize(uint8(bin)) {
 					t.Fatal("peers list lengths do not match")
 				}
 			}
