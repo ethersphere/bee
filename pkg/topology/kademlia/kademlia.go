@@ -501,12 +501,13 @@ func (k *Kad) manage() {
 				return
 			case <-time.After(5 * time.Minute):
 				start := time.Now()
+				k.logger.Tracef("kademlia: starting to flush metrics at %s", start)
 				if err := k.collector.Flush(); err != nil {
 					k.metrics.InternalMetricsFlushTotalErrors.Inc()
-					k.logger.Debugf("kademlia: took %s unable to flush metrics counters to the persistent store: %v", time.Since(start), err)
+					k.logger.Debugf("kademlia: unable to flush metrics counters to the persistent store: %v", err)
 				} else {
 					k.metrics.InternalMetricsFlushTime.Observe(float64(time.Since(start).Nanoseconds()))
-					k.logger.Tracef("kademlia took %s to flush", time.Since(start))
+					k.logger.Tracef("kademlia: took %s to flush", time.Since(start))
 				}
 			}
 		}
