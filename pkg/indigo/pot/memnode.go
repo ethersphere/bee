@@ -5,6 +5,12 @@ type MemNode struct {
 	pin   Entry
 }
 
+var _ Node = (*MemNode)(nil)
+
+func NewMemNode(e Entry) *MemNode {
+	return &MemNode{pin: e}
+}
+
 // Child node at PO po
 func (n *MemNode) Fork(po int) Node {
 	for _, cn := range n.forks {
