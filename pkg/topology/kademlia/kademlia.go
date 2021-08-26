@@ -109,7 +109,7 @@ func New(
 	metricsDB *shed.DB,
 	logger logging.Logger,
 	o Options,
-) *Kad {
+) (*Kad, error) {
 	if o.SaturationFunc == nil {
 		os := overSaturationPeers
 		if o.BootnodeMode {
@@ -119,6 +119,11 @@ func New(
 	}
 	if o.BitSuffixLength == 0 {
 		o.BitSuffixLength = defaultBitSuffixLength
+	}
+
+	imc, err := im.NewCollector(metricsDB)
+	if err != nil {
+		return nil, err
 	}
 
 	k := &Kad{
@@ -136,7 +141,7 @@ func New(
 		waitNext:          waitnext.New(),
 		logger:            logger,
 		bootnode:          o.BootnodeMode,
-		collector:         im.NewCollector(metricsDB),
+		collector:         imc,
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -148,7 +153,7 @@ func New(
 		k.generateCommonBinPrefixes()
 	}
 
-	return k
+	return k, nil
 }
 
 func (k *Kad) generateCommonBinPrefixes() {
