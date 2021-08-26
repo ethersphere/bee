@@ -1240,7 +1240,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	bins := binSizes(kad)
 	for i := 0; i < 6; i++ {
 		if bins[i] != overSaturationAmount {
-			t.Fatalf("bin %d, got %d, want %d", i, bins[i], *kademlia.OverSaturationPeers)
+			t.Fatalf("bin %d, got %d, want %d", i, bins[i], overSaturationAmount)
 		}
 	}
 
