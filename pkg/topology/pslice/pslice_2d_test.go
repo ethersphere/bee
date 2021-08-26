@@ -10,7 +10,7 @@ import (
 func Benchmark2DAdd(b *testing.B) {
 	var (
 		base = test.RandomAddress()
-		ps   = pslice.New2D(16, base)
+		ps   = pslice.New(16, base)
 	)
 
 	for i := 0; i < 16; i++ {
@@ -30,7 +30,7 @@ func Benchmark2DAdd(b *testing.B) {
 func Benchmark2DAddReverse(b *testing.B) {
 	var (
 		base = test.RandomAddress()
-		ps   = pslice.New2D(16, base)
+		ps   = pslice.New(16, base)
 	)
 
 	for i := 15; i >= 0; i-- {

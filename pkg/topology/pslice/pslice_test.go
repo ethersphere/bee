@@ -115,53 +115,45 @@ func TestAddRemove(t *testing.T) {
 	// check duplicates
 	ps.Add(peers[0])
 	chkLen(t, ps, 1)
-	chkBins(t, ps, []uint{0, 1, 1, 1})
 	chkExists(t, ps, peers[:1]...)
 	chkNotExists(t, ps, peers[1:]...)
 
 	// check empty
 	ps.Remove(peers[0])
 	chkLen(t, ps, 0)
-	chkBins(t, ps, []uint{0, 0, 0, 0})
 	chkNotExists(t, ps, peers...)
 
 	// add two in bin 0
 	ps.Add(peers[0])
 	ps.Add(peers[1])
 	chkLen(t, ps, 2)
-	chkBins(t, ps, []uint{0, 2, 2, 2})
 	chkExists(t, ps, peers[:2]...)
 	chkNotExists(t, ps, peers[2:]...)
 
 	ps.Add(peers[2])
 	ps.Add(peers[3])
 	chkLen(t, ps, 4)
-	chkBins(t, ps, []uint{0, 2, 4, 4})
 	chkExists(t, ps, peers[:4]...)
 	chkNotExists(t, ps, peers[4:]...)
 
 	ps.Remove(peers[1])
 	chkLen(t, ps, 3)
-	chkBins(t, ps, []uint{0, 1, 3, 3})
 	chkExists(t, ps, peers[0], peers[2], peers[3])
 	chkNotExists(t, ps, append([]swarm.Address{peers[1]}, peers[4:]...)...)
 
 	// this should not move the last cursor
 	ps.Add(peers[7])
 	chkLen(t, ps, 4)
-	chkBins(t, ps, []uint{0, 1, 3, 3})
 	chkExists(t, ps, peers[0], peers[2], peers[3], peers[7])
 	chkNotExists(t, ps, append([]swarm.Address{peers[1]}, peers[4:7]...)...)
 
 	ps.Add(peers[5])
 	chkLen(t, ps, 5)
-	chkBins(t, ps, []uint{0, 1, 3, 4})
 	chkExists(t, ps, peers[0], peers[2], peers[3], peers[5], peers[7])
 	chkNotExists(t, ps, []swarm.Address{peers[1], peers[4], peers[6]}...)
 
 	ps.Remove(peers[2])
 	chkLen(t, ps, 4)
-	chkBins(t, ps, []uint{0, 1, 2, 3})
 	chkExists(t, ps, peers[0], peers[3], peers[5], peers[7])
 	chkNotExists(t, ps, []swarm.Address{peers[1], peers[2], peers[4], peers[6]}...)
 
@@ -174,7 +166,6 @@ func TestAddRemove(t *testing.T) {
 
 	// check empty again
 	chkLen(t, ps, 0)
-	chkBins(t, ps, []uint{0, 0, 0, 0})
 	chkNotExists(t, ps, peers...)
 }
 
@@ -335,12 +326,12 @@ func TestIteratorsJumpStop(t *testing.T) {
 	}
 
 	// check that jump to next bin works as expected
-	testIterator(t, ps, true, false, 4, []swarm.Address{peers[11], peers[8], peers[5], peers[2]})
-	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[2], peers[5], peers[8], peers[11]})
+	testIterator(t, ps, true, false, 4, []swarm.Address{peers[9], peers[6], peers[3], peers[0]})
+	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[0], peers[3], peers[6], peers[9]})
 
-	// check that the stop functionality works correctly
-	testIterator(t, ps, true, true, 1, []swarm.Address{peers[11]})
-	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[2]})
+	// // check that the stop functionality works correctly
+	testIterator(t, ps, true, true, 1, []swarm.Address{peers[9]})
+	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[0]})
 
 }
 
@@ -388,16 +379,6 @@ func chkLen(t *testing.T, ps *pslice.PSlice, l int) {
 	t.Helper()
 	if lp := ps.Length(); lp != l {
 		t.Fatalf("length mismatch, want %d got %d", l, lp)
-	}
-}
-
-func chkBins(t *testing.T, ps *pslice.PSlice, seq []uint) {
-	t.Helper()
-	pb := pslice.PSliceBins(ps)
-	for i, v := range seq {
-		if pb[i] != v {
-			t.Fatalf("bin seq wrong, got %d want %d, index %v", pb[i], v, pb)
-		}
 	}
 }
 

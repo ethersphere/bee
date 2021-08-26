@@ -4,23 +4,23 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 )
 
-type PSlice2D struct {
+type PSlice struct {
 	peers     [][]swarm.Address // the slice of peers
 	baseBytes []byte
-
 	sync.RWMutex
 }
 
-func New2D(maxBins int, base swarm.Address) *PSlice2D {
-	return &PSlice2D{
+func New(maxBins int, base swarm.Address) *PSlice {
+	return &PSlice{
 		peers:     make([][]swarm.Address, maxBins),
 		baseBytes: base.Bytes(),
 	}
 }
 
-func (s *PSlice2D) Add(addrs ...swarm.Address) {
+func (s *PSlice) Add(addrs ...swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -41,26 +41,98 @@ func (s *PSlice2D) Add(addrs ...swarm.Address) {
 
 		s.peers[po] = append(s.peers[po], addr)
 	}
-
-	// peers, bins := s.copy(len(addrs))
-
-	// for _, addr := range addrs {
-
-	// 	if e, _ := s.exists(addr); e {
-	// 		return
-	// 	}
-
-	// 	po := s.po(addr.Bytes())
-
-	// 	peers = insertAddresses(peers, int(s.bins[po]), addr)
-	// 	s.peers = peers
-
-	// 	incDeeper(bins, po)
-	// 	s.bins = bins
-	// }
 }
 
-func (s *PSlice2D) po(peer []byte) uint8 {
+// iterates over all peers from deepest bin to shallowest.
+func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
+	s.RLock()
+	defer s.RUnlock()
+
+	for i := len(s.peers) - 1; i >= 0; i-- {
+		for _, peer := range s.peers[i] {
+			stop, next, err := pf(peer, uint8(i))
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+			if next {
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// EachBinRev iterates over all peers from shallowest bin to deepest.
+func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
+	s.RLock()
+	defer s.RUnlock()
+
+	for i := 0; i < len(s.peers); i++ {
+		for _, peer := range s.peers[i] {
+			stop, next, err := pf(peer, uint8(i))
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
+			if next {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
+	s.RLock()
+	defer s.RUnlock()
+
+	if int(bin) >= len(s.peers) {
+		return nil
+	}
+
+	ret := make([]swarm.Address, len(s.peers[bin]))
+	copy(ret, s.peers[bin])
+
+	return ret
+}
+
+func (s *PSlice) Length() int {
+	s.RLock()
+	defer s.RUnlock()
+
+	var ret int
+
+	for _, peers := range s.peers {
+		ret += len(peers)
+	}
+
+	return ret
+}
+
+// ShallowestEmpty returns the shallowest empty bin if one exists.
+// If such bin does not exists, returns true as bool value.
+func (s *PSlice) ShallowestEmpty() (uint8, bool) {
+	s.RLock()
+	defer s.RUnlock()
+
+	for i, peers := range s.peers {
+
+		if len(peers) == 0 {
+			return uint8(i), false
+		}
+
+	}
+
+	return 0, true
+}
+
+func (s *PSlice) po(peer []byte) uint8 {
 
 	po := swarm.Proximity(s.baseBytes, peer)
 	if int(po) >= len(s.peers) {
@@ -70,20 +142,39 @@ func (s *PSlice2D) po(peer []byte) uint8 {
 	return po
 }
 
-// var (
-// 	base = test.RandomAddress()
-// 	ps   = pslice.New(16, base)
-// )
+// Exists checks if a peer exists.
+func (s *PSlice) Exists(addr swarm.Address) bool {
+	s.RLock()
+	defer s.RUnlock()
 
-// for i := 0; i < 16; i++ {
-// 	for j := 0; j < 300; j++ {
-// 		ps.Add(test.RandomAddressAt(base, i))
-// 	}
-// }
+	e, _ := s.exists(addr)
+	return e
+}
 
-// const po = 8
+// checks if a peer exists. must be called under lock.
+func (s *PSlice) exists(addr swarm.Address) (bool, int) {
+	po := s.po(addr.Bytes())
 
-// b.ResetTimer()
-// for n := 0; n < b.N; n++ {
-// 	ps.Add(test.RandomAddressAt(base, po))
-// }
+	for i, peer := range s.peers[po] {
+		if peer.Equal(addr) {
+			return true, i
+		}
+	}
+
+	return false, 0
+}
+
+// Remove a peer at a certain PO.
+func (s *PSlice) Remove(addr swarm.Address) {
+	s.Lock()
+	defer s.Unlock()
+
+	e, i := s.exists(addr)
+	if !e {
+		return
+	}
+
+	po := s.po(addr.Bytes())
+
+	s.peers[po] = append(s.peers[po][:i], s.peers[po][i+1:]...)
+}

@@ -11,20 +11,20 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-// PSlice maintains a list of addresses, indexing them by their different proximity orders.
+// PSliceX maintains a list of addresses, indexing them by their different proximity orders.
 // Currently, when peers are added or removed, their proximity order must be supplied, this is
 // in order to reduce duplicate PO calculation which is normally known and already needed in the
 // calling context.
-type PSlice struct {
+type PSliceX struct {
 	peers     []swarm.Address // the slice of peers
 	bins      []uint          // the indexes of every proximity order in the peers slice, index is po, value is index of peers slice
 	baseBytes []byte
 	sync.RWMutex
 }
 
-// New creates a new PSlice.
-func New(maxBins int, base swarm.Address) *PSlice {
-	return &PSlice{
+// New creates a new PSliceX.
+func NewX(maxBins int, base swarm.Address) *PSliceX {
+	return &PSliceX{
 		peers:     make([]swarm.Address, 0),
 		bins:      make([]uint, maxBins),
 		baseBytes: base.Bytes(),
@@ -32,7 +32,7 @@ func New(maxBins int, base swarm.Address) *PSlice {
 }
 
 // iterates over all peers from deepest bin to shallowest.
-func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
+func (s *PSliceX) EachBin(pf topology.EachPeerFunc) error {
 	s.RLock()
 	peers, bins := s.peers, s.bins
 	s.RUnlock()
@@ -63,7 +63,7 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 }
 
 // EachBinRev iterates over all peers from shallowest bin to deepest.
-func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
+func (s *PSliceX) EachBinRev(pf topology.EachPeerFunc) error {
 	s.RLock()
 	peers, bins := s.peers, s.bins
 	s.RUnlock()
@@ -96,7 +96,7 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	return nil
 }
 
-func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
+func (s *PSliceX) BinPeers(bin uint8) []swarm.Address {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -118,7 +118,7 @@ func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 	return ret
 }
 
-func (s *PSlice) Length() int {
+func (s *PSliceX) Length() int {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -127,7 +127,7 @@ func (s *PSlice) Length() int {
 
 // ShallowestEmpty returns the shallowest empty bin if one exists.
 // If such bin does not exists, returns true as bool value.
-func (s *PSlice) ShallowestEmpty() (bin uint8, none bool) {
+func (s *PSliceX) ShallowestEmpty() (bin uint8, none bool) {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -144,7 +144,7 @@ func (s *PSlice) ShallowestEmpty() (bin uint8, none bool) {
 }
 
 // Exists checks if a peer exists.
-func (s *PSlice) Exists(addr swarm.Address) bool {
+func (s *PSliceX) Exists(addr swarm.Address) bool {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -153,7 +153,7 @@ func (s *PSlice) Exists(addr swarm.Address) bool {
 }
 
 // checks if a peer exists. must be called under lock.
-func (s *PSlice) exists(addr swarm.Address) (bool, int) {
+func (s *PSliceX) exists(addr swarm.Address) (bool, int) {
 	if len(s.peers) == 0 {
 		return false, 0
 	}
@@ -166,7 +166,7 @@ func (s *PSlice) exists(addr swarm.Address) (bool, int) {
 }
 
 // Add a peer at a certain PO.
-func (s *PSlice) Add(addrs ...swarm.Address) {
+func (s *PSliceX) Add(addrs ...swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -189,7 +189,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 }
 
 // Remove a peer at a certain PO.
-func (s *PSlice) Remove(addr swarm.Address) {
+func (s *PSliceX) Remove(addr swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -207,7 +207,7 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	s.bins = bins
 }
 
-func (s *PSlice) po(peer []byte) uint8 {
+func (s *PSliceX) po(peer []byte) uint8 {
 
 	po := swarm.Proximity(s.baseBytes, peer)
 	if int(po) >= len(s.bins) {
@@ -247,7 +247,7 @@ func decDeeper(bins []uint, po uint8) {
 // copy makes copies of peers and bins with a possibility of adding peers
 // additional capacity if it is know that a number of new addresses will be
 // inserted.
-func (s *PSlice) copy(peersExtraCap int) (peers []swarm.Address, bins []uint) {
+func (s *PSliceX) copy(peersExtraCap int) (peers []swarm.Address, bins []uint) {
 	peers = make([]swarm.Address, len(s.peers), len(s.peers)+peersExtraCap)
 	copy(peers, s.peers)
 	bins = make([]uint, len(s.bins))
