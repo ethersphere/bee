@@ -400,82 +400,46 @@ func chkNotExists(t *testing.T, ps *pslice.PSlice, addrs ...swarm.Address) {
 	}
 }
 
+var (
+	base = test.RandomAddress()
+	bins = int(swarm.MaxBins)
+)
+
 func BenchmarkAdd(b *testing.B) {
-	var (
-		base = test.RandomAddress()
-		ps   = pslice.NewX(16, base)
-	)
+	ps := pslice.NewX(bins, base)
 
-	for i := 0; i < 16; i++ {
-		for j := 0; j < 1000; j++ {
+	for i := 0; i < bins; i++ {
+		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
 	}
-
-	const po = 8
-
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ps.Add(test.RandomAddressAt(base, po))
-	}
 }
-
-func BenchmarkAddReverset(b *testing.B) {
-	var (
-		base = test.RandomAddress()
-		ps   = pslice.NewX(16, base)
-	)
-
-	for i := 15; i >= 0; i-- {
-		for j := 0; j < 1000; j++ {
-			ps.Add(test.RandomAddressAt(base, i))
-		}
-	}
-
-	const po = 8
-
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ps.Add(test.RandomAddressAt(base, po))
-	}
-}
-
 func Benchmark2DAdd(b *testing.B) {
-	var (
-		base = test.RandomAddress()
-		ps   = pslice.New(16, base)
-	)
+	ps := pslice.New(bins, base)
 
-	for i := 0; i < 16; i++ {
-		for j := 0; j < 1000; j++ {
+	for i := 0; i < bins; i++ {
+		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
 	}
+}
 
-	const po = 8
+func BenchmarkAddReverse(b *testing.B) {
+	ps := pslice.NewX(bins, base)
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ps.Add(test.RandomAddressAt(base, po))
+	for i := bins - 1; i >= 0; i-- {
+		for j := 0; j < b.N; j++ {
+			ps.Add(test.RandomAddressAt(base, i))
+		}
 	}
 }
 
 func Benchmark2DAddReverse(b *testing.B) {
-	var (
-		base = test.RandomAddress()
-		ps   = pslice.New(16, base)
-	)
+	ps := pslice.New(bins, base)
 
-	for i := 15; i >= 0; i-- {
-		for j := 0; j < 1000; j++ {
+	for i := bins - 1; i >= 0; i-- {
+		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
-	}
-
-	const po = 8
-
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ps.Add(test.RandomAddressAt(base, po))
 	}
 }

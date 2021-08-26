@@ -27,15 +27,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	for _, addr := range addrs {
 		po := s.po(addr.Bytes())
 
-		exists := false
-		for _, peer := range s.peers[po] {
-			if addr.Equal(peer) {
-				exists = true
-				break
-			}
-		}
-
-		if exists {
+		if e, _ := s.exists(addr, po); e {
 			continue
 		}
 
@@ -147,13 +139,12 @@ func (s *PSlice) Exists(addr swarm.Address) bool {
 	s.RLock()
 	defer s.RUnlock()
 
-	e, _ := s.exists(addr)
+	e, _ := s.exists(addr, s.po(addr.Bytes()))
 	return e
 }
 
 // checks if a peer exists. must be called under lock.
-func (s *PSlice) exists(addr swarm.Address) (bool, int) {
-	po := s.po(addr.Bytes())
+func (s *PSlice) exists(addr swarm.Address, po uint8) (bool, int) {
 
 	for i, peer := range s.peers[po] {
 		if peer.Equal(addr) {
@@ -169,12 +160,12 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
-	e, i := s.exists(addr)
+	po := s.po(addr.Bytes())
+
+	e, i := s.exists(addr, po)
 	if !e {
 		return
 	}
-
-	po := s.po(addr.Bytes())
 
 	s.peers[po] = append(s.peers[po][:i], s.peers[po][i+1:]...)
 }
