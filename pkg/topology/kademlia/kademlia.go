@@ -109,7 +109,7 @@ func New(
 	metricsDB *shed.DB,
 	logger logging.Logger,
 	o Options,
-) *Kad {
+) (*Kad, error) {
 	if o.SaturationFunc == nil {
 		os := overSaturationPeers
 		if o.BootnodeMode {
@@ -120,6 +120,13 @@ func New(
 	if o.BitSuffixLength == 0 {
 		o.BitSuffixLength = defaultBitSuffixLength
 	}
+
+	start := time.Now()
+	imc, err := im.NewCollector(metricsDB)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debugf("kademlia: NewCollector(...) took %v", time.Since(start))
 
 	k := &Kad{
 		base:              base,
@@ -136,7 +143,7 @@ func New(
 		waitNext:          waitnext.New(),
 		logger:            logger,
 		bootnode:          o.BootnodeMode,
-		collector:         im.NewCollector(metricsDB),
+		collector:         imc,
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -148,7 +155,7 @@ func New(
 		k.generateCommonBinPrefixes()
 	}
 
-	return k
+	return k, nil
 }
 
 func (k *Kad) generateCommonBinPrefixes() {
@@ -1314,13 +1321,13 @@ func (k *Kad) Close() error {
 	case <-time.After(5 * time.Second):
 		k.logger.Warning("kademlia manage loop did not shut down properly")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	k.logger.Info("kademlia persisting peer metrics")
-	if err := k.collector.Finalize(ctx, time.Now()); err != nil {
+	start := time.Now()
+	if err := k.collector.Finalize(start, false); err != nil {
 		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
 	}
+	k.logger.Debugf("kademlia: Finalize(...) took %v", time.Since(start))
 
 	return nil
 }
