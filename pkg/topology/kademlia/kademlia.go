@@ -57,6 +57,7 @@ var (
 type (
 	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 	sanctionedPeerFunc func(peer swarm.Address) bool
+	pruneFunc          func(bin uint8)
 )
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
@@ -67,6 +68,7 @@ type Options struct {
 	Bootnodes       []ma.Multiaddr
 	BootnodeMode    bool
 	BitSuffixLength int
+	PruneFunc       pruneFunc
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -96,6 +98,7 @@ type Kad struct {
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
+	pruneFunc         pruneFunc // pluggable prune function
 }
 
 // New returns a new Kademlia.
@@ -140,6 +143,11 @@ func New(
 		done:              make(chan struct{}),
 		wg:                sync.WaitGroup{},
 		metrics:           newMetrics(),
+		pruneFunc:         o.PruneFunc,
+	}
+
+	if k.pruneFunc == nil {
+		k.pruneFunc = k.PruneOversaturatedBins
 	}
 
 	if k.bitSuffixLength > 0 {
@@ -453,7 +461,7 @@ func (k *Kad) manage() {
 			radius := k.radius
 			k.depthMu.Unlock()
 
-			k.pruneOversaturatedBins(depth)
+			k.pruneFunc(depth)
 
 			k.logger.Tracef(
 				"kademlia: connector took %s to finish: old depth %d; new depth %d",
@@ -482,7 +490,7 @@ func (k *Kad) manage() {
 
 // pruneOversaturatedBins disconnects peers from out of depth, oversaturated bins
 // while maintaining the balance of the bin and favoring peers with longers connections
-func (k *Kad) pruneOversaturatedBins(depth uint8) {
+func (k *Kad) PruneOversaturatedBins(depth uint8) {
 
 	for i := range k.commonBinPrefixes {
 
