@@ -1234,7 +1234,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	// check that bin 0 is balanced
 	waitBalanced(t, kad, uint8(0))
 
-	time.Sleep(time.Millisecond * 50)
+	time.Sleep(time.Millisecond * 100)
 
 	// check that no pruning has happened
 	bins := binSizes(kad)
@@ -1255,7 +1255,8 @@ func TestOutofDepthPrune(t *testing.T) {
 	// add a peer to kick start pruning
 	addr := test.RandomAddressAt(base, 6)
 	addOne(t, signer, kad, ab, addr)
-	time.Sleep(time.Millisecond * 50)
+
+	time.Sleep(time.Millisecond * 100)
 
 	// check bins have been pruned
 	bins = binSizes(kad)
