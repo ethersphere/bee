@@ -1,0 +1,2 @@
+package indigo_test
+
