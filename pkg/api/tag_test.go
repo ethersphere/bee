@@ -123,7 +123,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tr.Uid), 10)),
 		)
 
-		isTagFoundInResponse(t, rcvdHeaders, &tr)
+		IsTagFoundInResponse(t, rcvdHeaders, &tr)
 		tagValueTest(t, tr.Uid, 1, 1, 1, 0, 0, 0, swarm.ZeroAddress, client)
 	})
 
@@ -396,7 +396,7 @@ func TestTags(t *testing.T) {
 			}),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tr.Uid), 10)),
 		)
-		id := isTagFoundInResponse(t, rcvdHeaders, nil)
+		id := IsTagFoundInResponse(t, rcvdHeaders, nil)
 
 		tagToVerify, err := tag.Get(id)
 		if err != nil {
@@ -410,9 +410,9 @@ func TestTags(t *testing.T) {
 	})
 }
 
-// isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
+// IsTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
-func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
+func IsTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
 	t.Helper()
 
 	idStr := headers.Get(api.SwarmTagHeader)
