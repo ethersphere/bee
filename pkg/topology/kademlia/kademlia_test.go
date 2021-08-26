@@ -1190,8 +1190,6 @@ func TestOutofDepthPrune(t *testing.T) {
 	*kademlia.OverSaturationPeers = 8
 
 	var (
-		overSaturationAmount = 20
-
 		conns, failedConns int32 // how many connect calls were made to the p2p mock
 
 		pruneFuncImpl *func(uint8)
@@ -1223,7 +1221,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 	// add peers upto bin 6
 	for i := 0; i < 6; i++ {
-		for j := 0; j < overSaturationAmount; j++ {
+		for j := 0; j < 20; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addOne(t, signer, kad, ab, addr)
 		}
@@ -1239,8 +1237,8 @@ func TestOutofDepthPrune(t *testing.T) {
 	// check that no pruning has happened
 	bins := binSizes(kad)
 	for i := 0; i < 6; i++ {
-		if bins[i] != overSaturationAmount {
-			t.Fatalf("bin %d, got %d, want %d", i, bins[i], overSaturationAmount)
+		if bins[i] <= *kademlia.OverSaturationPeers {
+			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], *kademlia.OverSaturationPeers)
 		}
 	}
 
