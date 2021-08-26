@@ -6,6 +6,7 @@ package pslice_test
 
 import (
 	"errors"
+	"math/rand"
 	"sort"
 	"testing"
 
@@ -30,9 +31,7 @@ func TestShallowestEmpty(t *testing.T) {
 	}
 
 	for i, v := range peers {
-		for _, vv := range v {
-			ps.Add(vv)
-		}
+		ps.Add(v...)
 		sd, none := ps.ShallowestEmpty()
 		if i == 15 {
 			if !none {
@@ -88,6 +87,25 @@ func TestShallowestEmpty(t *testing.T) {
 	}
 }
 
+func TestNoPanicOnEmptyRemove(t *testing.T) {
+	var ps = pslice.New(4, base)
+
+	addr1 := test.RandomAddressAt(base, 2)
+	addr2 := test.RandomAddressAt(base, 2)
+
+	ps.Remove(addr1)
+
+	ps.Add(addr1)
+	ps.Remove(addr1)
+	chkNotExists(t, ps, addr1)
+
+	ps.Add(addr1)
+	ps.Add(addr2)
+	ps.Remove(addr2)
+	chkExists(t, ps, addr1)
+	chkNotExists(t, ps, addr2)
+}
+
 // TestAddRemove checks that the Add, Remove and Exists methods work as expected.
 func TestAddRemove(t *testing.T) {
 	var (
@@ -115,53 +133,45 @@ func TestAddRemove(t *testing.T) {
 	// check duplicates
 	ps.Add(peers[0])
 	chkLen(t, ps, 1)
-	chkBins(t, ps, []uint{0, 1, 1, 1})
 	chkExists(t, ps, peers[:1]...)
 	chkNotExists(t, ps, peers[1:]...)
 
 	// check empty
 	ps.Remove(peers[0])
 	chkLen(t, ps, 0)
-	chkBins(t, ps, []uint{0, 0, 0, 0})
 	chkNotExists(t, ps, peers...)
 
 	// add two in bin 0
 	ps.Add(peers[0])
 	ps.Add(peers[1])
 	chkLen(t, ps, 2)
-	chkBins(t, ps, []uint{0, 2, 2, 2})
 	chkExists(t, ps, peers[:2]...)
 	chkNotExists(t, ps, peers[2:]...)
 
 	ps.Add(peers[2])
 	ps.Add(peers[3])
 	chkLen(t, ps, 4)
-	chkBins(t, ps, []uint{0, 2, 4, 4})
 	chkExists(t, ps, peers[:4]...)
 	chkNotExists(t, ps, peers[4:]...)
 
 	ps.Remove(peers[1])
 	chkLen(t, ps, 3)
-	chkBins(t, ps, []uint{0, 1, 3, 3})
 	chkExists(t, ps, peers[0], peers[2], peers[3])
 	chkNotExists(t, ps, append([]swarm.Address{peers[1]}, peers[4:]...)...)
 
 	// this should not move the last cursor
 	ps.Add(peers[7])
 	chkLen(t, ps, 4)
-	chkBins(t, ps, []uint{0, 1, 3, 3})
 	chkExists(t, ps, peers[0], peers[2], peers[3], peers[7])
 	chkNotExists(t, ps, append([]swarm.Address{peers[1]}, peers[4:7]...)...)
 
 	ps.Add(peers[5])
 	chkLen(t, ps, 5)
-	chkBins(t, ps, []uint{0, 1, 3, 4})
 	chkExists(t, ps, peers[0], peers[2], peers[3], peers[5], peers[7])
 	chkNotExists(t, ps, []swarm.Address{peers[1], peers[4], peers[6]}...)
 
 	ps.Remove(peers[2])
 	chkLen(t, ps, 4)
-	chkBins(t, ps, []uint{0, 1, 2, 3})
 	chkExists(t, ps, peers[0], peers[3], peers[5], peers[7])
 	chkNotExists(t, ps, []swarm.Address{peers[1], peers[2], peers[4], peers[6]}...)
 
@@ -174,7 +184,6 @@ func TestAddRemove(t *testing.T) {
 
 	// check empty again
 	chkLen(t, ps, 0)
-	chkBins(t, ps, []uint{0, 0, 0, 0})
 	chkNotExists(t, ps, peers...)
 }
 
@@ -335,12 +344,12 @@ func TestIteratorsJumpStop(t *testing.T) {
 	}
 
 	// check that jump to next bin works as expected
-	testIterator(t, ps, true, false, 4, []swarm.Address{peers[11], peers[8], peers[5], peers[2]})
-	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[2], peers[5], peers[8], peers[11]})
+	testIterator(t, ps, true, false, 4, []swarm.Address{peers[9], peers[6], peers[3], peers[0]})
+	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[0], peers[3], peers[6], peers[9]})
 
-	// check that the stop functionality works correctly
-	testIterator(t, ps, true, true, 1, []swarm.Address{peers[11]})
-	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[2]})
+	// // check that the stop functionality works correctly
+	testIterator(t, ps, true, true, 1, []swarm.Address{peers[9]})
+	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[0]})
 
 }
 
@@ -391,16 +400,6 @@ func chkLen(t *testing.T, ps *pslice.PSlice, l int) {
 	}
 }
 
-func chkBins(t *testing.T, ps *pslice.PSlice, seq []uint) {
-	t.Helper()
-	pb := pslice.PSliceBins(ps)
-	for i, v := range seq {
-		if pb[i] != v {
-			t.Fatalf("bin seq wrong, got %d want %d, index %v", pb[i], v, pb)
-		}
-	}
-}
-
 func chkExists(t *testing.T, ps *pslice.PSlice, addrs ...swarm.Address) {
 	t.Helper()
 	for _, a := range addrs {
@@ -419,42 +418,84 @@ func chkNotExists(t *testing.T, ps *pslice.PSlice, addrs ...swarm.Address) {
 	}
 }
 
-func BenchmarkAdd(b *testing.B) {
-	var (
-		base = test.RandomAddress()
-		ps   = pslice.New(16, base)
-	)
+var (
+	base = test.RandomAddress()
+	bins = int(swarm.MaxBins)
+)
 
-	for i := 0; i < 16; i++ {
-		for j := 0; j < 1000; j++ {
+func Benchmark2DAdd(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	for i := 0; i < bins; i++ {
+		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
-	}
-
-	const po = 8
-
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ps.Add(test.RandomAddressAt(base, po))
 	}
 }
 
-func BenchmarkAddReverset(b *testing.B) {
-	var (
-		base = test.RandomAddress()
-		ps   = pslice.New(16, base)
-	)
+func Benchmark2DAddBatch(b *testing.B) {
+	ps := pslice.New(bins, base)
 
-	for i := 15; i >= 0; i-- {
-		for j := 0; j < 1000; j++ {
+	var addrs []swarm.Address
+
+	for i := 0; i < 100000; i++ {
+		addrs = append(addrs, test.RandomAddressAt(base, rand.Intn(bins)))
+	}
+
+	b.ResetTimer()
+
+	for j := 0; j < b.N; j++ {
+		ps.Add(addrs...)
+	}
+}
+
+func Benchmark2DAddReverse(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	for i := bins - 1; i >= 0; i-- {
+		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
 	}
+}
 
-	const po = 8
+func Benchmark2DRemove(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := 0; i < bins; i++ {
+		for j := 0; j < b.N; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addrs = append(addrs, addr)
+			ps.Add(addr)
+		}
+	}
 
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ps.Add(test.RandomAddressAt(base, po))
+
+	for _, addr := range addrs {
+		ps.Remove(addr)
+	}
+
+}
+
+func Benchmark2DRemoveReverse(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := bins - 1; i >= 0; i-- {
+		for j := 0; j < b.N; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addrs = append(addrs, addr)
+			ps.Add(addr)
+		}
+	}
+
+	b.ResetTimer()
+
+	for _, addr := range addrs {
+		ps.Remove(addr)
 	}
 }
