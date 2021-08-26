@@ -7,21 +7,15 @@
 package metrics
 
 import (
-	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
-	"go.uber.org/atomic"
-)
-
-const (
-	peerLastSeenTimestamp       string = "peer-last-seen-timestamp"
-	peerTotalConnectionDuration string = "peer-total-connection-duration"
 )
 
 // PeerConnectionDirection represents peer connection direction.
@@ -31,25 +25,6 @@ const (
 	PeerConnectionDirectionInbound  PeerConnectionDirection = "inbound"
 	PeerConnectionDirectionOutbound PeerConnectionDirection = "outbound"
 )
-
-// peerKey is used to store peers' persistent metrics counters.
-type peerKey struct {
-	prefix  string
-	address string
-}
-
-// String implements Stringer.String method.
-func (pk peerKey) String() string {
-	return fmt.Sprintf("%s-%s", pk.prefix, pk.address)
-}
-
-// newPeerKey is a convenient constructor for creating new peerKey.
-func newPeerKey(p, a string) *peerKey {
-	return &peerKey{
-		prefix:  p,
-		address: a,
-	}
-}
 
 // RecordOp is a definition of a peer metrics Record
 // operation whose execution modifies a specific metrics.
@@ -65,10 +40,10 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 		cs.Lock()
 		defer cs.Unlock()
 
-		if cs.loggedIn {
+		if cs.isLoggedIn {
 			return // Ignore when the peer is already logged in.
 		}
-		cs.loggedIn = true
+		cs.isLoggedIn = true
 
 		ls := t.UnixNano()
 		if ls < 0 {
@@ -76,7 +51,6 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 		}
 		cs.sessionConnDirection = dir
 		cs.lastSeenTimestamp = ls
-		cs.dirty.Store(3)
 	}
 }
 
@@ -84,16 +58,16 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 // the difference of the given time t and the current last seen value. As the
 // second it'll also update the last seen peer metrics to the given time t.
 // The time is set as Unix timestamp ignoring the timezone. The operation will
-// panics if the given time is before the Unix epoch.
+// panic if the given time is before the Unix epoch.
 func PeerLogOut(t time.Time) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
 
-		if !cs.loggedIn {
+		if !cs.isLoggedIn {
 			return // Ignore when the peer is not logged in.
 		}
-		cs.loggedIn = false
+		cs.isLoggedIn = false
 
 		curLs := cs.lastSeenTimestamp
 		newLs := t.UnixNano()
@@ -104,7 +78,6 @@ func PeerLogOut(t time.Time) RecordOp {
 		cs.sessionConnDuration = time.Duration(newLs - curLs)
 		cs.connTotalDuration += cs.sessionConnDuration
 		cs.lastSeenTimestamp = newLs
-		cs.dirty.Store(3)
 	}
 }
 
@@ -135,77 +108,54 @@ func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
 	return ss.LastSeenTimestamp == 0 && ss.SessionConnectionRetry <= 1
 }
 
+// persistentCounters is a helper struct used for persisting selected counters.
+type persistentCounters struct {
+	PeerAddress       swarm.Address `json:"peerAddress"`
+	LastSeenTimestamp int64         `json:"lastSeenTimestamp"`
+	ConnTotalDuration time.Duration `json:"connTotalDuration"`
+}
+
 // Counters represents a collection of peer metrics
 // mainly collected for statistics and debugging.
 type Counters struct {
 	sync.Mutex
 
 	// Bookkeeping.
-	peer     *swarm.Address
-	loggedIn bool
+	isLoggedIn  bool
+	peerAddress swarm.Address
 
-	// Watches in-memory counters which has to be persisted.
-	// 	3 - dirty, need to be persisted
-	//	2 - snapshot of counters in progress
-	//	1 - batched for persistent write
-	//	0 - persisted
-	dirty atomic.Int32
-
-	// In-memory counters.
+	// Counters.
 	lastSeenTimestamp    int64
 	connTotalDuration    time.Duration
 	sessionConnRetry     uint64
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
-
-	// Persistent counters.
-	persistentLastSeenTimestamp atomic.Value
-	persistentConnTotalDuration atomic.Value
 }
 
-// flush writes the current state of in memory counters into the given db.
-func (cs *Counters) flush(db *shed.DB, batch *leveldb.Batch) error {
-	if cs.dirty.Load() < 3 {
-		return nil
+// UnmarshalJSON unmarshal just the persistent counters.
+func (cs *Counters) UnmarshalJSON(b []byte) (err error) {
+	var val persistentCounters
+	if err := json.Unmarshal(b, &val); err != nil {
+		return err
 	}
-	cs.dirty.CAS(3, 2)
-
 	cs.Lock()
-	var (
-		key                             = cs.peer.String()
-		lastSeenTimestampSnapshot       = cs.lastSeenTimestamp
-		connectionTotalDurationSnapshot = cs.connTotalDuration
-	)
+	cs.peerAddress = val.PeerAddress
+	cs.lastSeenTimestamp = val.LastSeenTimestamp
+	cs.connTotalDuration = val.ConnTotalDuration
 	cs.Unlock()
-
-	ls, ok := cs.persistentLastSeenTimestamp.Load().(*shed.Uint64Field)
-	if !ok {
-		mk := newPeerKey(peerLastSeenTimestamp, key)
-		field, err := db.NewUint64Field(mk.String())
-		if err != nil {
-			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
-		}
-		ls = &field
-		cs.persistentLastSeenTimestamp.Store(ls)
-	}
-
-	cd, ok := cs.persistentConnTotalDuration.Load().(*shed.Uint64Field)
-	if !ok {
-		mk := newPeerKey(peerTotalConnectionDuration, key)
-		field, err := db.NewUint64Field(mk.String())
-		if err != nil {
-			return fmt.Errorf("field initialization for %q failed: %w", mk, err)
-		}
-		cd = &field
-		cs.persistentConnTotalDuration.Store(cd)
-	}
-
-	ls.PutInBatch(batch, uint64(lastSeenTimestampSnapshot))
-	cd.PutInBatch(batch, uint64(connectionTotalDurationSnapshot))
-
-	cs.dirty.CAS(2, 1)
-
 	return nil
+}
+
+// MarshalJSON marshals just the persistent counters.
+func (cs *Counters) MarshalJSON() ([]byte, error) {
+	cs.Lock()
+	val := persistentCounters{
+		PeerAddress:       cs.peerAddress,
+		LastSeenTimestamp: cs.lastSeenTimestamp,
+		ConnTotalDuration: cs.connTotalDuration,
+	}
+	cs.Unlock()
+	return json.Marshal(val)
 }
 
 // snapshot returns current snapshot of counters referenced to the given t.
@@ -215,7 +165,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 
 	connTotalDuration := cs.connTotalDuration
 	sessionConnDuration := cs.sessionConnDuration
-	if cs.loggedIn {
+	if cs.isLoggedIn {
 		sessionConnDuration = t.Sub(time.Unix(0, cs.lastSeenTimestamp))
 		connTotalDuration += sessionConnDuration
 	}
@@ -230,20 +180,43 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 }
 
 // NewCollector is a convenient constructor for creating new Collector.
-func NewCollector(db *shed.DB) *Collector {
-	return &Collector{db: db}
+func NewCollector(db *shed.DB) (*Collector, error) {
+	const name = "kademlia-counters"
+
+	c := new(Collector)
+
+	val, err := db.NewStructField(name)
+	if err != nil {
+		return nil, fmt.Errorf("field initialization for %q failed: %w", name, err)
+	}
+	c.persistence = &val
+
+	counters := make(map[string]persistentCounters)
+	if err := val.Get(&counters); err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+		return nil, err
+	}
+
+	for _, val := range counters {
+		c.counters.Store(val.PeerAddress.ByteString(), &Counters{
+			peerAddress:       val.PeerAddress,
+			lastSeenTimestamp: val.LastSeenTimestamp,
+			connTotalDuration: val.ConnTotalDuration,
+		})
+	}
+
+	return c, nil
 }
 
 // Collector collects various metrics about
 // peers specified be the swarm.Address.
 type Collector struct {
-	db       *shed.DB
-	counters sync.Map
+	counters    sync.Map
+	persistence *shed.StructField
 }
 
 // Record records a set of metrics for peer specified by the given address.
 func (c *Collector) Record(addr swarm.Address, rop ...RecordOp) {
-	val, _ := c.counters.LoadOrStore(addr.ByteString(), &Counters{peer: &addr})
+	val, _ := c.counters.LoadOrStore(addr.ByteString(), &Counters{peerAddress: addr})
 	for _, op := range rop {
 		op(val.(*Counters))
 	}
@@ -272,7 +245,7 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 	if len(addresses) == 0 {
 		c.counters.Range(func(key, val interface{}) bool {
 			cs := val.(*Counters)
-			snapshot[cs.peer.ByteString()] = cs.snapshot(t)
+			snapshot[cs.peerAddress.ByteString()] = cs.snapshot(t)
 			return true
 		})
 	}
@@ -280,100 +253,48 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 	return snapshot
 }
 
-// Inspect allows to inspect current snapshot for the given
+// Inspect allows inspecting current snapshot for the given
 // peer address by executing the inspection function.
 func (c *Collector) Inspect(addr swarm.Address, fn func(ss *Snapshot)) {
 	snapshots := c.Snapshot(time.Now(), addr)
 	fn(snapshots[addr.ByteString()])
 }
 
-// Flush sync the dirty in memory counters by flushing their values to the
-// underlying storage. If an address or a set of addresses is specified then
-// only counters related to them will be flushed, otherwise counters for all
-// peers will be flushed.
-func (c *Collector) Flush(addresses ...swarm.Address) error {
-	var (
-		mErr  error
-		dirty []string
-		batch = new(leveldb.Batch)
-	)
-
-	for _, addr := range addresses {
-		val, ok := c.counters.Load(addr.ByteString())
-		if !ok {
-			continue
-		}
+// Flush sync the dirty in memory counters for all peers by flushing their
+// values to the underlying storage.
+func (c *Collector) Flush() error {
+	counters := make(map[string]interface{})
+	c.counters.Range(func(key, val interface{}) bool {
 		cs := val.(*Counters)
-		if err := cs.flush(c.db, batch); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to batch the counters of peer %q for flash: %w", addr, err))
-			continue
-		}
-		dirty = append(dirty, addr.ByteString())
+		counters[cs.peerAddress.ByteString()] = val
+		return true
+	})
+
+	if err := c.persistence.Put(counters); err != nil {
+		return fmt.Errorf("unable to persist counters: %w", err)
+	}
+	return nil
+}
+
+// Finalize tries to log out all ongoing peer sessions.
+func (c *Collector) Finalize(t time.Time, delete bool) error {
+	c.counters.Range(func(_, val interface{}) bool {
+		cs := val.(*Counters)
+		PeerLogOut(t)(cs)
+		return true
+	})
+
+	if err := c.Flush(); err != nil {
+		return err
 	}
 
-	if len(addresses) == 0 {
+	if delete {
 		c.counters.Range(func(_, val interface{}) bool {
 			cs := val.(*Counters)
-			if err := cs.flush(c.db, batch); err != nil {
-				mErr = multierror.Append(mErr, fmt.Errorf("unable to batch the counters of peer %q for flash: %w", cs.peer, err))
-				return true
-			}
-			dirty = append(dirty, cs.peer.ByteString())
+			c.counters.Delete(cs.peerAddress.ByteString())
 			return true
 		})
 	}
 
-	if batch.Len() == 0 {
-		return mErr
-	}
-	if err := c.db.WriteBatch(batch); err != nil {
-		mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
-	}
-
-	for _, addr := range dirty {
-		val, ok := c.counters.Load(addr)
-		if !ok {
-			continue
-		}
-		cs := val.(*Counters)
-		cs.dirty.CAS(1, 0)
-	}
-
-	return mErr
-}
-
-// Finalize tries to logs out all ongoing peer sessions.
-func (c *Collector) Finalize(ctx context.Context, t time.Time) error {
-	var (
-		mErr  error
-		batch = new(leveldb.Batch)
-	)
-
-	c.counters.Range(func(_, val interface{}) bool {
-		select {
-		case <-ctx.Done():
-			return false
-		default:
-		}
-		cs := val.(*Counters)
-		PeerLogOut(t)(cs)
-		if err := cs.flush(c.db, batch); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to flush counters for peer %q: %w", cs.peer, err))
-		}
-		return true
-	})
-
-	if batch.Len() > 0 {
-		if err := c.db.WriteBatch(batch); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("unable to persist counters in batch: %w", err))
-		}
-	}
-
-	c.counters.Range(func(_, val interface{}) bool {
-		cs := val.(*Counters)
-		c.counters.Delete(cs.peer.ByteString())
-		return true
-	})
-
-	return mErr
+	return nil
 }
