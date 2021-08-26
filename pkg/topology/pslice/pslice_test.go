@@ -426,7 +426,27 @@ func BenchmarkAdd(b *testing.B) {
 	)
 
 	for i := 0; i < 16; i++ {
-		for j := 0; j < 300; j++ {
+		for j := 0; j < 1000; j++ {
+			ps.Add(test.RandomAddressAt(base, i))
+		}
+	}
+
+	const po = 8
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		ps.Add(test.RandomAddressAt(base, po))
+	}
+}
+
+func BenchmarkAddReverset(b *testing.B) {
+	var (
+		base = test.RandomAddress()
+		ps   = pslice.New(16, base)
+	)
+
+	for i := 15; i >= 0; i-- {
+		for j := 0; j < 1000; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
 	}
