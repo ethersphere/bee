@@ -380,7 +380,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		if !i.FullNode {
 			s.lightNodes.Connected(s.ctx, peer)
 			// light node announces explicitly
-			if err := s.notifier.Announce(s.ctx, peer.Address, i.FullNode); err != nil {
+			if err := s.notifier.AnnouncePeers(s.ctx, peer.Address); err != nil {
 				s.logger.Debugf("stream handler: notifier.Announce: %s: %v", peer.Address.String(), err)
 			}
 
@@ -399,7 +399,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 				}
 			}
 		} else {
-			if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
+			if err := s.notifier.Connected(s.ctx, peer); err != nil {
 				s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
 				// note: this cannot be unit tested since the node
 				// waiting on handshakeStream.FullClose() on the other side
@@ -416,14 +416,17 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			// when a full node connects, we gossip about it to the
 			// light nodes so that they can also have a chance at building
 			// a solid topology.
-			_ = s.lightNodes.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-				go func(addressee, peer swarm.Address, fullnode bool) {
-					if err := s.notifier.AnnounceTo(s.ctx, addressee, peer, fullnode); err != nil {
-						s.logger.Debugf("stream handler: notifier.Announce to light node %s %s: %v", addressee.String(), peer.String(), err)
-					}
-				}(addr, peer.Address, i.FullNode)
-				return false, false, nil
-			})
+
+			if i.FullNode {
+				_ = s.lightNodes.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+					go func(addressee, peer swarm.Address) {
+						if err := s.notifier.AnnounceTo(s.ctx, addressee, peer); err != nil {
+							s.logger.Debugf("stream handler: notifier.Announce to light node %s %s: %v", addressee.String(), peer.String(), err)
+						}
+					}(addr, peer.Address)
+					return false, false, nil
+				})
+			}
 		}
 	}
 

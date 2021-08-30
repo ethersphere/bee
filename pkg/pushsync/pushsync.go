@@ -220,7 +220,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
-	receipt, err := ps.pushToClosest(ctx, chunk, false, p.Address)
+	receipt, err := ps.pushToClosest(ctx, chunk, 1, p.Address)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			if !storedChunk {
@@ -277,7 +277,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
+	r, err := ps.pushToClosest(ctx, ch, maxPeers, swarm.ZeroAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -287,25 +287,28 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		BlockHash: r.BlockHash}, nil
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool, origin swarm.Address) (*pb.Receipt, error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, allowedRetries int, origin swarm.Address) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
 
 	var (
-		allowedRetries = 1
-		includeSelf    = ps.isFullNode
-		skipPeers      []swarm.Address
+		retryAllowed = false
+		base         = swarm.ZeroAddress
+		skipPeers    []swarm.Address
 	)
 
-	if retryAllowed {
-		// only originator retries
-		allowedRetries = maxPeers
+	if ps.isFullNode {
+		base = ps.address
+	}
+
+	if allowedRetries > 1 {
+		retryAllowed = true
 	}
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), base, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.

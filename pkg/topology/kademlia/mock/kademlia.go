@@ -61,23 +61,23 @@ func NewMockKademlia(o ...Option) *Mock {
 
 // AddPeers is called when a peers are added to the topology backlog
 // for further processing by connectivity strategy.
-func (m *Mock) AddPeers(addr ...swarm.Address) {
+func (*Mock) AddPeers(...swarm.Address) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) ClosestPeer(addr swarm.Address, _ bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (*Mock) ClosestPeer(swarm.Address, swarm.Address, ...swarm.Address) (peerAddr swarm.Address, err error) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) IsWithinDepth(adr swarm.Address) bool {
+func (*Mock) IsWithinDepth(swarm.Address) bool {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) EachNeighbor(topology.EachPeerFunc) error {
+func (*Mock) EachNeighbor(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) EachNeighborRev(topology.EachPeerFunc) error {
+func (*Mock) EachNeighborRev(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
@@ -126,11 +126,16 @@ func (m *Mock) NeighborhoodDepth() uint8 {
 }
 
 // Connected is called when a peer dials in.
-func (m *Mock) Connected(_ context.Context, peer p2p.Peer, _ bool) error {
+func (m *Mock) Connected(_ context.Context, peer p2p.Peer) error {
 	m.mtx.Lock()
 	m.peers = append(m.peers, peer.Address)
 	m.mtx.Unlock()
 	m.Trigger()
+	return nil
+}
+
+// Connected is called when a peer dials in.
+func (*Mock) ConnectedForce(context.Context, p2p.Peer) error {
 	return nil
 }
 
@@ -148,11 +153,15 @@ func (m *Mock) Disconnected(peer p2p.Peer) {
 	m.Trigger()
 }
 
-func (m *Mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
+func (*Mock) Announce(_ context.Context, _ swarm.Address) error {
 	return nil
 }
 
-func (m *Mock) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
+func (*Mock) AnnouncePeers(_ context.Context, _ swarm.Address) error {
+	return nil
+}
+
+func (*Mock) AnnounceTo(_ context.Context, _, _ swarm.Address) error {
 	return nil
 }
 
@@ -200,10 +209,10 @@ func (m *Mock) ResetPeers() {
 	m.eachPeerRev = nil
 }
 
-func (d *Mock) Halt()        {}
-func (m *Mock) Close() error { return nil }
+func (*Mock) Halt()        {}
+func (*Mock) Close() error { return nil }
 
-func (m *Mock) Snapshot() *topology.KadParams {
+func (*Mock) Snapshot() *topology.KadParams {
 	panic("not implemented") // TODO: Implement
 }
 

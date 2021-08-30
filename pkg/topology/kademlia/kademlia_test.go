@@ -619,7 +619,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, signer, kad, ab, peer, nil)
 
-	p, err := kad.ClosestPeer(addr, true)
+	p, err := kad.ClosestPeer(addr, base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(p2p.Peer{Address: peer})
-	_, err = kad.ClosestPeer(addr, true)
+	_, err = kad.ClosestPeer(addr, base)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -687,14 +687,10 @@ func TestAnnounceTo(t *testing.T) {
 	addOne(t, signer, kad, ab, p1)
 	waitConn(t, &conns)
 
-	if err := kad.AnnounceTo(context.Background(), p1, p2, true); err != nil {
+	if err := kad.AnnounceTo(context.Background(), p1, p2); err != nil {
 		t.Fatal(err)
 	}
 	waitBcast(t, disc, p1, p2)
-
-	if err := kad.AnnounceTo(context.Background(), p1, p2, false); err == nil {
-		t.Fatal("expected error")
-	}
 }
 
 func TestBackoff(t *testing.T) {
@@ -950,7 +946,13 @@ func TestClosestPeer(t *testing.T) {
 			includeSelf:  false,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf)
+
+		baseAddr := swarm.ZeroAddress
+		if tc.includeSelf {
+			baseAddr = base
+		}
+
+		peer, err := kad.ClosestPeer(tc.chunkAddress, baseAddr)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
@@ -1265,7 +1267,7 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	err = k.Connected(context.Background(), p2p.Peer{Address: peer}, false)
+	err = k.Connected(context.Background(), p2p.Peer{Address: peer})
 
 	if !errors.Is(err, expErr) {
 		t.Fatalf("expected error %v , got %v", expErr, err)

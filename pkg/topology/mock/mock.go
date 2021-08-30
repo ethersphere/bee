@@ -82,8 +82,12 @@ func (d *mock) AddPeers(addrs ...swarm.Address) {
 	d.peers = append(d.peers, addrs...)
 }
 
-func (d *mock) Connected(ctx context.Context, peer p2p.Peer, _ bool) error {
+func (d *mock) Connected(_ context.Context, peer p2p.Peer) error {
 	d.AddPeers(peer.Address)
+	return nil
+}
+
+func (*mock) ConnectedForce(context.Context, p2p.Peer) error {
 	return nil
 }
 
@@ -99,11 +103,15 @@ func (d *mock) Disconnected(peer p2p.Peer) {
 	}
 }
 
-func (d *mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
+func (*mock) Announce(_ context.Context, _ swarm.Address) error {
 	return nil
 }
 
-func (d *mock) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
+func (*mock) AnnouncePeers(_ context.Context, _ swarm.Address) error {
+	return nil
+}
+
+func (*mock) AnnounceTo(_ context.Context, _, _ swarm.Address) error {
 	return nil
 }
 
@@ -111,7 +119,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr, base swarm.Address, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
@@ -151,7 +159,7 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, skipPeers ...swarm
 	}
 
 	if peerAddr.IsZero() {
-		if wantSelf {
+		if !base.IsZero() {
 			return peerAddr, topology.ErrWantSelf
 		} else {
 			return peerAddr, topology.ErrNotFound
@@ -161,7 +169,7 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, skipPeers ...swarm
 	return peerAddr, nil
 }
 
-func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+func (*mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 
@@ -218,12 +226,12 @@ func (d *mock) EachPeerRev(f topology.EachPeerFunc) (err error) {
 	return nil
 }
 
-func (d *mock) Snapshot() *topology.KadParams {
+func (*mock) Snapshot() *topology.KadParams {
 	return new(topology.KadParams)
 }
 
-func (d *mock) Halt()        {}
-func (d *mock) Close() error { return nil }
+func (*mock) Halt()        {}
+func (*mock) Close() error { return nil }
 
 type Option interface {
 	apply(*mock)

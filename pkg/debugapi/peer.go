@@ -35,7 +35,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
+	if err := s.topologyDriver.ConnectedForce(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}); err != nil {
 		_ = s.p2p.Disconnect(bzzAddr.Overlay)
 		s.logger.Debugf("debug api: peer connect handler %s: %v", addr, err)
 		s.logger.Errorf("unable to connect to peer %s", addr)
@@ -81,13 +81,13 @@ type peersResponse struct {
 	Peers []Peer `json:"peers"`
 }
 
-func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) peersHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, peersResponse{
 		Peers: mapPeers(s.p2p.Peers()),
 	})
 }
 
-func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request) {
 	peers, err := s.p2p.BlocklistedPeers()
 	if err != nil {
 		s.logger.Debugf("debug api: blocklisted peers: %v", err)

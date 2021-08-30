@@ -50,10 +50,9 @@ var (
 )
 
 var (
-	errOverlayMismatch   = errors.New("overlay mismatch")
-	errPruneEntry        = errors.New("prune entry")
-	errEmptyBin          = errors.New("empty bin")
-	errAnnounceLightNode = errors.New("announcing light node")
+	errOverlayMismatch = errors.New("overlay mismatch")
+	errPruneEntry      = errors.New("prune entry")
+	errEmptyBin        = errors.New("empty bin")
 )
 
 type (
@@ -657,7 +656,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, nil
 			}
 
-			if err := k.connected(ctx, bzzAddress.Overlay); err != nil {
+			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
 				return false, err
 			}
 			k.logger.Tracef("connected to bootnode %s", addr)
@@ -818,19 +817,73 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return errOverlayMismatch
 	}
 
-	return k.Announce(ctx, peer, true)
+	return k.Announce(ctx, peer)
 }
 
 // Announce a newly connected peer to our connected peers, but also
 // notify the peer about our already connected peers
-func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
+func (k *Kad) Announce(ctx context.Context, peer swarm.Address) error {
+
+	randPeers, err := k.randPeers(peer)
+	if err != nil {
+		return err
+	}
+
+	if len(randPeers) == 0 {
+		return nil
+	}
+
+	for _, addr := range randPeers {
+		go func(addr swarm.Address) {
+			if err := k.discovery.BroadcastPeers(ctx, addr, peer); err != nil {
+				k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, addr, err)
+			}
+		}(addr)
+	}
+
+	err = k.discovery.BroadcastPeers(ctx, peer, randPeers...)
+	if err != nil {
+		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
+		_ = k.p2p.Disconnect(peer)
+	}
+
+	return nil
+}
+
+// notify the peer about our already connected peers
+func (k *Kad) AnnouncePeers(ctx context.Context, peer swarm.Address) error {
+
+	randPeers, err := k.randPeers(peer)
+	if err != nil {
+		return err
+	}
+
+	if len(randPeers) == 0 {
+		return nil
+	}
+
+	err = k.discovery.BroadcastPeers(ctx, peer, randPeers...)
+	if err != nil {
+		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
+		_ = k.p2p.Disconnect(peer)
+	}
+
+	return nil
+}
+
+// AnnounceTo announces a selected peer to another.
+func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address) error {
+	return k.discovery.BroadcastPeers(ctx, addressee, peer)
+}
+
+func (k *Kad) randPeers(peer swarm.Address) ([]swarm.Address, error) {
 	var addrs []swarm.Address
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 
 		connectedPeers, err := randomSubset(k.connectedPeers.BinPeers(bin), broadcastBinSize)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for _, connectedPeer := range connectedPeers {
@@ -839,40 +892,10 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 			}
 
 			addrs = append(addrs, connectedPeer)
-
-			if !fullnode {
-				// we continue here so we dont gossip
-				// about lightnodes to others.
-				continue
-			}
-			go func(connectedPeer swarm.Address) {
-				if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
-					k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, connectedPeer, err)
-				}
-			}(connectedPeer)
 		}
 	}
 
-	if len(addrs) == 0 {
-		return nil
-	}
-
-	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
-	if err != nil {
-		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
-		_ = k.p2p.Disconnect(peer)
-	}
-
-	return err
-}
-
-// AnnounceTo announces a selected peer to another.
-func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, fullnode bool) error {
-	if !fullnode {
-		return errAnnounceLightNode
-	}
-
-	return k.discovery.BroadcastPeers(ctx, addressee, peer)
+	return addrs, nil
 }
 
 // AddPeers adds peers to the knownPeers list.
@@ -902,7 +925,25 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 // Connected is called when a peer has dialed in.
 // If forceConnection is true `overSaturated` is ignored for non-bootnodes.
-func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) error {
+func (k *Kad) ConnectedForce(ctx context.Context, peer p2p.Peer) error {
+	address := peer.Address
+	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
+
+	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated && k.bootnode {
+		randPeer, err := k.randomPeer(po)
+		if err != nil {
+			return err
+		}
+		_ = k.p2p.Disconnect(randPeer)
+		return k.onConnected(ctx, address)
+	}
+
+	return k.onConnected(ctx, address)
+}
+
+// Connected is called when a peer has dialed in.
+// If forceConnection is true `overSaturated` is ignored for non-bootnodes.
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer) error {
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
@@ -913,18 +954,16 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 				return err
 			}
 			_ = k.p2p.Disconnect(randPeer)
-			return k.connected(ctx, address)
+			return k.onConnected(ctx, address)
 		}
-		if !forceConnection {
-			return topology.ErrOversaturated
-		}
+		return topology.ErrOversaturated
 	}
 
-	return k.connected(ctx, address)
+	return k.onConnected(ctx, address)
 }
 
-func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
-	if err := k.Announce(ctx, addr, true); err != nil {
+func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
+	if err := k.Announce(ctx, addr); err != nil {
 		return err
 	}
 
@@ -1028,18 +1067,14 @@ func isIn(a swarm.Address, addresses []p2p.Peer) bool {
 }
 
 // ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (swarm.Address, error) {
+func (k *Kad) ClosestPeer(addr, base swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
 	peers := k.p2p.Peers()
 	var peersToDisconnect []swarm.Address
-	closest := swarm.ZeroAddress
-
-	if includeSelf {
-		closest = k.base
-	}
+	closest := base
 
 	err := k.connectedPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 

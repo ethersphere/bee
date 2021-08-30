@@ -48,10 +48,12 @@ type PickyNotifier interface {
 }
 
 type Notifier interface {
-	Connected(context.Context, Peer, bool) error
+	Connected(context.Context, Peer) error
+	ConnectedForce(context.Context, Peer) error
 	Disconnected(Peer)
-	Announce(ctx context.Context, peer swarm.Address, fullnode bool) error
-	AnnounceTo(ctx context.Context, addressee, peer swarm.Address, fullnode bool) error
+	Announce(ctx context.Context, peer swarm.Address) error
+	AnnouncePeers(ctx context.Context, peer swarm.Address) error
+	AnnounceTo(ctx context.Context, addressee, peer swarm.Address) error
 }
 
 // DebugService extends the Service with method used for debugging.

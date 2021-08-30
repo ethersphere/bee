@@ -440,7 +440,7 @@ func TestTopologyNotifier(t *testing.T) {
 		n2connectedPeer    p2p.Peer
 		n2disconnectedPeer p2p.Peer
 
-		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n1c = func(_ context.Context, p p2p.Peer) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
@@ -454,7 +454,7 @@ func TestTopologyNotifier(t *testing.T) {
 			n1disconnectedPeer = p
 		}
 
-		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n2c = func(_ context.Context, p p2p.Peer) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
@@ -554,16 +554,17 @@ func TestTopologyAnnounce(t *testing.T) {
 
 		ab1, ab2, ab3 = addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore())
 
-		announceCalled   = false
-		announceToCalled = false
+		announcePeersCalled = false
+		announceToCalled    = false
 
-		n1a = func(context.Context, swarm.Address, bool) error {
+		n1aP = func(context.Context, swarm.Address) error {
 			mtx.Lock()
-			announceCalled = true
+			announcePeersCalled = true
 			mtx.Unlock()
 			return nil
 		}
-		n1at = func(context.Context, swarm.Address, swarm.Address, bool) error {
+
+		n1at = func(context.Context, swarm.Address, swarm.Address) error {
 			mtx.Lock()
 			announceToCalled = true
 			mtx.Unlock()
@@ -575,7 +576,7 @@ func TestTopologyAnnounce(t *testing.T) {
 	// connects to full(1), check that full(1)
 	// tried to announce full(2) to light.
 
-	notifier1 := mockAnnouncingNotifier(n1a, n1at)
+	notifier1 := mockAnnouncingNotifier(nil, n1aP, n1at)
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
 		Addressbook: ab1,
 		libp2pOpts: libp2p.Options{
@@ -612,7 +613,7 @@ func TestTopologyAnnounce(t *testing.T) {
 
 	for i := 0; i < 20; i++ {
 		mtx.Lock()
-		called = announceCalled
+		called = announcePeersCalled
 		mtx.Unlock()
 		if called {
 			break
@@ -674,7 +675,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 		n2connectedPeer    p2p.Peer
 		n2disconnectedPeer p2p.Peer
 
-		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n1c = func(_ context.Context, p p2p.Peer) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
@@ -683,7 +684,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 		}
 		n1d = func(p p2p.Peer) {}
 
-		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n2c = func(_ context.Context, p p2p.Peer) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
@@ -891,49 +892,58 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 }
 
 type notifiee struct {
-	connected    cFunc
-	disconnected dFunc
-	pick         bool
-	announce     announceFunc
-	announceTo   announceToFunc
+	connected     cFunc
+	disconnected  dFunc
+	pick          bool
+	announce      announceFunc
+	announcePeers announceFunc
+	announceTo    announceToFunc
 }
 
-func (n *notifiee) Connected(c context.Context, p p2p.Peer, f bool) error {
-	return n.connected(c, p, f)
+func (n *notifiee) Connected(c context.Context, p p2p.Peer) error {
+	return n.connected(c, p)
+}
+
+func (*notifiee) ConnectedForce(context.Context, p2p.Peer) error {
+	return nil
 }
 
 func (n *notifiee) Disconnected(p p2p.Peer) {
 	n.disconnected(p)
 }
 
-func (n *notifiee) Pick(p p2p.Peer) bool {
+func (n *notifiee) Pick(p2p.Peer) bool {
 	return n.pick
 }
 
-func (n *notifiee) Announce(ctx context.Context, a swarm.Address, full bool) error {
-	return n.announce(ctx, a, full)
+func (n *notifiee) Announce(ctx context.Context, a swarm.Address) error {
+	return n.announce(ctx, a)
 }
 
-func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool) error {
-	return n.announceTo(ctx, a, b, full)
+func (n *notifiee) AnnouncePeers(ctx context.Context, a swarm.Address) error {
+	return n.announcePeers(ctx, a)
+}
+
+func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address) error {
+	return n.announceTo(ctx, a, b)
 }
 
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
-	return &notifiee{connected: c, disconnected: d, pick: pick, announce: noopAnnounce, announceTo: noopAnnounceTo}
+	return &notifiee{connected: c, disconnected: d, pick: pick, announce: noopAnnounce, announcePeers: noopAnnounce, announceTo: noopAnnounceTo}
 }
 
-func mockAnnouncingNotifier(a announceFunc, at announceToFunc) p2p.PickyNotifier {
-	return &notifiee{connected: noopCf, disconnected: noopDf, pick: true, announce: a, announceTo: at}
+func mockAnnouncingNotifier(a, aP announceFunc, at announceToFunc) p2p.PickyNotifier {
+	return &notifiee{connected: noopCf, disconnected: noopDf, pick: true, announce: a, announcePeers: aP, announceTo: at}
 }
 
 type (
-	cFunc          func(context.Context, p2p.Peer, bool) error
+	cFunc          func(context.Context, p2p.Peer) error
 	dFunc          func(p2p.Peer)
-	announceFunc   func(context.Context, swarm.Address, bool) error
-	announceToFunc func(context.Context, swarm.Address, swarm.Address, bool) error
+	announceFunc   func(context.Context, swarm.Address) error
+	announceToFunc func(context.Context, swarm.Address, swarm.Address) error
 )
 
-var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
+var noopCf = func(context.Context, p2p.Peer) error { return nil }
 var noopDf = func(p2p.Peer) {}
-var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
-var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
+var noopAnnounce = func(context.Context, swarm.Address) error { return nil }
+var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address) error { return nil }
