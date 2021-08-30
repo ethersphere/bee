@@ -100,7 +100,7 @@ func TestBzzFiles(t *testing.T) {
 			}),
 		)
 
-		IsTagFoundInResponse(t, rcvdHeader, nil)
+		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		has, err := storerMock.Has(context.Background(), address)
 		if err != nil {
@@ -157,7 +157,7 @@ func TestBzzFiles(t *testing.T) {
 			}),
 		)
 
-		IsTagFoundInResponse(t, rcvdHeader, nil)
+		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		has, err := storerMock.Has(context.Background(), reference)
 		if err != nil {
@@ -192,7 +192,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
 
-		IsTagFoundInResponse(t, rcvdHeader, nil)
+		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		rootHash := resp.Reference.String()
 		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
@@ -226,7 +226,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
 		)
 
-		IsTagFoundInResponse(t, rcvdHeader, nil)
+		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
 			fileDownloadResource(rootHash), http.StatusOK,
@@ -273,7 +273,7 @@ func TestBzzFiles(t *testing.T) {
 			t.Fatal("Invalid ETags header received")
 		}
 
-		IsTagFoundInResponse(t, rcvdHeader, nil)
+		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		// try to fetch the same file and check the data
 		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
@@ -310,7 +310,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
 		)
 
-		IsTagFoundInResponse(t, rcvdHeader, nil)
+		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
 			fileDownloadResource(rootHash)+"?targets="+targets, http.StatusOK,
@@ -436,7 +436,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 				testOpts...,
 			)
 
-			IsTagFoundInResponse(t, rcvdHeader, nil)
+			isTagFoundInResponse(t, rcvdHeader, nil)
 
 			var downloadPath string
 			if upload.downloadEndpoint != "/bytes" {
