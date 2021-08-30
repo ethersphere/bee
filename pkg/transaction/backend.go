@@ -76,39 +76,39 @@ func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, max
 	}
 }
 
-func WaitBlockAfterTransaction(ctx context.Context, backend Backend, pollingInterval time.Duration, txHash common.Hash, additionalConfirmations uint64) (*types.Header, error) {
+func WaitBlockAfterTransaction(ctx context.Context, backend Backend, rpcBackend RPCBackend, pollingInterval time.Duration, txHash common.Hash, additionalConfirmations uint64) (common.Hash, error) {
 	for {
 		receipt, err := backend.TransactionReceipt(ctx, txHash)
 		if err != nil {
 			if !errors.Is(err, ethereum.NotFound) {
-				return nil, err
+				return common.Hash{}, err
 			}
 			continue
 		}
 
 		bn, err := backend.BlockNumber(ctx)
 		if err != nil {
-			return nil, err
+			return common.Hash{}, err
 		}
 
 		nextBlock := receipt.BlockNumber.Uint64() + 1
 
 		if bn >= nextBlock+additionalConfirmations {
-			header, err := backend.HeaderByNumber(ctx, new(big.Int).SetUint64(nextBlock))
+			hash, err := rpcBackend.BlockHashAt(ctx, new(big.Int).SetUint64(nextBlock))
 			if err != nil {
 				if !errors.Is(err, ethereum.NotFound) {
-					return nil, err
+					return common.Hash{}, err
 				}
 				// in the case where we cannot find the block even though we already saw a higher number we keep on trying
 			} else {
-				return header, nil
+				return hash, nil
 			}
 		}
 
 		select {
 		case <-time.After(pollingInterval):
 		case <-ctx.Done():
-			return nil, errors.New("context timeout")
+			return common.Hash{}, errors.New("context timeout")
 		}
 	}
 }

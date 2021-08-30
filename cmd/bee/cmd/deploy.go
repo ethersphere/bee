@@ -53,7 +53,7 @@ func (c *command) initDeployCmd() error {
 
 			ctx := cmd.Context()
 
-			swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := node.InitChain(
+			swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, rpcBackend, err := node.InitChain(
 				ctx,
 				logger,
 				stateStore,
@@ -106,7 +106,7 @@ func (c *command) initDeployCmd() error {
 
 			blockTime := time.Duration(c.config.GetUint64(optionNameBlockTime)) * time.Second
 
-			blockHash, err := node.GetTxNextBlock(ctx, logger, swapBackend, transactionMonitor, blockTime, txHash, optionBlockHash)
+			blockHash, err := node.GetTxNextBlock(ctx, logger, swapBackend, rpcBackend, blockTime, txHash, optionBlockHash)
 			if err != nil {
 				return err
 			}

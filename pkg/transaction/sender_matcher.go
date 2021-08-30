@@ -16,10 +16,11 @@ import (
 )
 
 type Matcher struct {
-	backend Backend
-	storage storage.StateStorer
-	signer  types.Signer
-	timeNow func() time.Time
+	backend    Backend
+	rpcBackend RPCBackend
+	storage    storage.StateStorer
+	signer     types.Signer
+	timeNow    func() time.Time
 }
 
 const (
@@ -45,12 +46,13 @@ type overlayVerification struct {
 	TimeStamp     time.Time
 }
 
-func NewMatcher(backend Backend, signer types.Signer, storage storage.StateStorer) *Matcher {
+func NewMatcher(backend Backend, rpcBackend RPCBackend, signer types.Signer, storage storage.StateStorer) *Matcher {
 	return &Matcher{
-		storage: storage,
-		backend: backend,
-		signer:  signer,
-		timeNow: time.Now,
+		storage:    storage,
+		backend:    backend,
+		rpcBackend: rpcBackend,
+		signer:     signer,
+		timeNow:    time.Now,
 	}
 }
 
@@ -127,7 +129,8 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 		return nil, err
 	}
 
-	nextBlock, err := m.backend.HeaderByNumber(ctx, big.NewInt(0).Add(receipt.BlockNumber, big.NewInt(1)))
+	nextBlockNumber := big.NewInt(0).Add(receipt.BlockNumber, big.NewInt(1))
+	nextBlock, err := m.backend.HeaderByNumber(ctx, nextBlockNumber)
 	if err != nil {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{
 			TimeStamp: m.timeNow(),
@@ -141,7 +144,11 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 
 	receiptBlockHash := receipt.BlockHash.Bytes()
 	nextBlockParentHash := nextBlock.ParentHash.Bytes()
-	nextBlockHash := nextBlock.Hash().Bytes()
+	nextBlockHashFromBackend, err := m.rpcBackend.BlockHashAt(ctx, nextBlockNumber)
+	if err != nil {
+		return nil, err
+	}
+	nextBlockHash := nextBlockHashFromBackend.Bytes()
 
 	if !bytes.Equal(receiptBlockHash, nextBlockParentHash) {
 		err2 := m.storage.Put(peerOverlayKey(senderOverlay, incomingTx), &overlayVerification{

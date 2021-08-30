@@ -207,6 +207,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var (
 		swapBackend        *ethclient.Client
+		rpcBackend         transaction.RPCBackend
 		overlayEthAddress  common.Address
 		chainID            int64
 		transactionService transaction.Service
@@ -217,7 +218,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
-	swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+	swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, rpcBackend, err = InitChain(
 		p2pCtx,
 		logger,
 		stateStore,
@@ -351,7 +352,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("invalid transaction hash: %w", err)
 	}
 
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, rpcBackend, pollingInterval, txHash, o.BlockHash)
 	if err != nil {
 		return nil, fmt.Errorf("invalid block hash: %w", err)
 	}
@@ -365,7 +366,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	senderMatcher := transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
+	senderMatcher := transaction.NewMatcher(swapBackend, rpcBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
 
 	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress)
 	if err != nil {

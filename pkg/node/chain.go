@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -44,31 +45,32 @@ func InitChain(
 	endpoint string,
 	signer crypto.Signer,
 	pollingInterval time.Duration,
-) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	backend, err := ethclient.Dial(endpoint)
+) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, transaction.RPCBackend, error) {
+	client, err := rpc.Dial(endpoint)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial eth client: %w", err)
+		return nil, common.Address{}, 0, nil, nil, nil, fmt.Errorf("dial eth client: %w", err)
 	}
 
+	backend := ethclient.NewClient(client)
 	chainID, err := backend.ChainID(ctx)
 	if err != nil {
 		logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", endpoint)
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
+		return nil, common.Address{}, 0, nil, nil, nil, fmt.Errorf("get chain id: %w", err)
 	}
 
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
+		return nil, common.Address{}, 0, nil, nil, nil, fmt.Errorf("eth address: %w", err)
 	}
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
 	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
+		return nil, common.Address{}, 0, nil, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
 
-	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
+	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, transaction.NewRPCBackend(client), nil
 }
 
 // InitChequebookFactory will initialize the chequebook factory with the given
@@ -279,7 +281,7 @@ func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString 
 	return txHash.Bytes(), nil
 }
 
-func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transaction.Backend, monitor transaction.Monitor, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
+func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transaction.Backend, rpcBackend transaction.RPCBackend, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
 
 	if blockHash != "" {
 		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
@@ -294,13 +296,12 @@ func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transact
 		return blockHash, nil
 	}
 
-	block, err := transaction.WaitBlockAfterTransaction(ctx, backend, duration, common.BytesToHash(trx), additionalConfirmations)
+	block, err := transaction.WaitBlockAfterTransaction(ctx, backend, rpcBackend, duration, common.BytesToHash(trx), additionalConfirmations)
 	if err != nil {
 		return nil, err
 	}
 
-	hash := block.Hash()
-	hashBytes := hash.Bytes()
+	hashBytes := block.Bytes()
 
 	logger.Infof("using the next block hash from the blockchain %x", hashBytes)
 
