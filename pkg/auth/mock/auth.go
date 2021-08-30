@@ -21,6 +21,6 @@ func (ma *Auth) AddKey(k string) (string, error) {
 	}
 	return ma.AddKeyFunc(k)
 }
-func (ma *Auth) Enforce(string, string, string) (bool, error) {
+func (*Auth) Enforce(string, string, string) (bool, error) {
 	return false, nil
 }
