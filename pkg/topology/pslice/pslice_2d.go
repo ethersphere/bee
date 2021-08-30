@@ -167,5 +167,8 @@ func (s *PSlice) Remove(addr swarm.Address) {
 		return
 	}
 
-	s.peers[po] = append(s.peers[po][:i], s.peers[po][i+1:]...)
+	// replace index with last element
+	s.peers[po][i] = s.peers[po][len(s.peers[po])-1]
+	// reassign without last element
+	s.peers[po] = s.peers[po][:len(s.peers[po])-1]
 }
