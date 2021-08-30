@@ -30,9 +30,7 @@ func TestShallowestEmpty(t *testing.T) {
 	}
 
 	for i, v := range peers {
-		for _, vv := range v {
-			ps.Add(vv)
-		}
+		ps.Add(v...)
 		sd, none := ps.ShallowestEmpty()
 		if i == 15 {
 			if !none {
