@@ -405,29 +405,10 @@ var (
 	bins = int(swarm.MaxBins)
 )
 
-func BenchmarkAdd(b *testing.B) {
-	ps := pslice.NewX(bins, base)
-
-	for i := 0; i < bins; i++ {
-		for j := 0; j < b.N; j++ {
-			ps.Add(test.RandomAddressAt(base, i))
-		}
-	}
-}
 func Benchmark2DAdd(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	for i := 0; i < bins; i++ {
-		for j := 0; j < b.N; j++ {
-			ps.Add(test.RandomAddressAt(base, i))
-		}
-	}
-}
-
-func BenchmarkAddReverse(b *testing.B) {
-	ps := pslice.NewX(bins, base)
-
-	for i := bins - 1; i >= 0; i-- {
 		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
@@ -444,25 +425,6 @@ func Benchmark2DAddReverse(b *testing.B) {
 	}
 }
 
-func BenchmarkRemove(b *testing.B) {
-	ps := pslice.NewX(bins, base)
-
-	var addrs []swarm.Address
-
-	for i := 0; i < bins; i++ {
-		for j := 0; j < b.N; j++ {
-			addr := test.RandomAddressAt(base, i)
-			addrs = append(addrs, addr)
-			ps.Add(addr)
-		}
-	}
-
-	b.ResetTimer()
-
-	for _, addr := range addrs {
-		ps.Remove(addr)
-	}
-}
 func Benchmark2DRemove(b *testing.B) {
 	ps := pslice.New(bins, base)
 
@@ -482,24 +444,6 @@ func Benchmark2DRemove(b *testing.B) {
 		ps.Remove(addr)
 	}
 
-}
-
-func BenchmarkRemoveReverse(b *testing.B) {
-	ps := pslice.NewX(bins, base)
-
-	var addrs []swarm.Address
-
-	for i := bins - 1; i >= 0; i-- {
-		for j := 0; j < b.N; j++ {
-			addr := test.RandomAddressAt(base, i)
-			addrs = append(addrs, addr)
-			ps.Add(addr)
-		}
-	}
-	b.ResetTimer()
-	for _, addr := range addrs {
-		ps.Remove(addr)
-	}
 }
 
 func Benchmark2DRemoveReverse(b *testing.B) {
