@@ -5,7 +5,6 @@
 package pslice
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -20,6 +19,7 @@ type PSlice struct {
 	peers     [][]swarm.Address // the slice of peers
 	baseBytes []byte
 	sync.RWMutex
+	maxBins int
 }
 
 // New creates a new PSlice
@@ -27,6 +27,7 @@ func New(maxBins int, base swarm.Address) *PSlice {
 	return &PSlice{
 		peers:     make([][]swarm.Address, maxBins),
 		baseBytes: base.Bytes(),
+		maxBins:   maxBins,
 	}
 }
 
@@ -36,11 +37,10 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	defer s.Unlock()
 
 	pos := make([]uint8, 0, len(addrs))
-	poCount := make([]int, len(s.peers))
+	poCount := make([]int, s.maxBins)
 
 	for _, addr := range addrs {
 		po := s.po(addr.Bytes())
-		fmt.Println(po)
 		pos = append(pos, po)
 		poCount[po]++
 	}
@@ -67,12 +67,14 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 
 // iterates over all peers from deepest bin to shallowest.
 func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
-	s.RLock()
-	peers := s.peers
-	s.RUnlock()
 
-	for i := len(peers) - 1; i >= 0; i-- {
-		for _, peer := range peers[i] {
+	for i := s.maxBins - 1; i >= 0; i-- {
+
+		s.RLock()
+		peers := s.peers[i]
+		s.RUnlock()
+
+		for _, peer := range peers {
 			stop, next, err := pf(peer, uint8(i))
 			if err != nil {
 				return err
@@ -91,12 +93,15 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 
 // EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
-	s.RLock()
-	peers := s.peers
-	s.RUnlock()
 
-	for i := 0; i < len(peers); i++ {
-		for _, peer := range peers[i] {
+	for i := 0; i < s.maxBins; i++ {
+
+		s.RLock()
+		peers := s.peers[i]
+		s.RUnlock()
+
+		for _, peer := range peers {
+
 			stop, next, err := pf(peer, uint8(i))
 			if err != nil {
 				return err
@@ -117,7 +122,7 @@ func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 	s.RLock()
 	defer s.RUnlock()
 
-	if int(bin) >= len(s.peers) {
+	if int(bin) >= s.maxBins {
 		return nil
 	}
 
@@ -187,8 +192,8 @@ func (s *PSlice) Remove(addr swarm.Address) {
 
 func (s *PSlice) po(peer []byte) uint8 {
 	po := swarm.Proximity(s.baseBytes, peer)
-	if int(po) >= len(s.peers) {
-		return uint8(len(s.peers)) - 1
+	if int(po) >= s.maxBins {
+		return uint8(s.maxBins) - 1
 	}
 	return po
 }
