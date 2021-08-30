@@ -20,7 +20,7 @@ import (
 
 const (
 	defaultENSContractAddress = "00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
-	swarmContentHashPrefix    = "/swarm/"
+	swarmContentHashPrefix    = "bzz://"
 )
 
 // Address is the swarm bzz address.
