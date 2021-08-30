@@ -619,7 +619,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, nil
 			}
 
-			if err := k.connected(ctx, bzzAddress.Overlay); err != nil {
+			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
 				return false, err
 			}
 			k.logger.Tracef("connected to bootnode %s", addr)
@@ -875,17 +875,17 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 				return err
 			}
 			_ = k.p2p.Disconnect(randPeer)
-			return k.connected(ctx, address)
+			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {
 			return topology.ErrOversaturated
 		}
 	}
 
-	return k.connected(ctx, address)
+	return k.onConnected(ctx, address)
 }
 
-func (k *Kad) connected(ctx context.Context, addr swarm.Address) error {
+func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 	if err := k.Announce(ctx, addr, true); err != nil {
 		return err
 	}
