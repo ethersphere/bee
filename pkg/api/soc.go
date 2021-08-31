@@ -5,9 +5,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 
@@ -57,8 +58,13 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	reader := io.LimitReader(r.Body, swarm.ChunkSize+swarm.SpanSize)
+
+	defer r.Body.Close()
+
+	var buf bytes.Buffer
+
+	if _, err := io.Copy(&buf, reader); err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
@@ -68,17 +74,12 @@ func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	data := buf.Bytes()
+
 	if len(data) < swarm.SpanSize {
 		s.logger.Debugf("soc upload: chunk data too short")
 		s.logger.Error("soc upload: %v", errBadRequestParams)
 		jsonhttp.BadRequest(w, "short chunk data")
-		return
-	}
-
-	if len(data) > swarm.ChunkSize+swarm.SpanSize {
-		s.logger.Debugf("soc upload: chunk data exceeds %d bytes", swarm.ChunkSize+swarm.SpanSize)
-		s.logger.Error("soc upload: chunk data error")
-		jsonhttp.RequestEntityTooLarge(w, "payload too large")
 		return
 	}
 
