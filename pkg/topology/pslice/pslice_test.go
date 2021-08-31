@@ -426,7 +426,7 @@ var (
 	bins = int(swarm.MaxBins)
 )
 
-func Benchmark2DAdd(b *testing.B) {
+func BenchmarkAdd(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	for i := 0; i < bins; i++ {
@@ -436,7 +436,7 @@ func Benchmark2DAdd(b *testing.B) {
 	}
 }
 
-func Benchmark2DAddBatch(b *testing.B) {
+func BenchmarkAddBatch(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	var addrs []swarm.Address
@@ -452,7 +452,7 @@ func Benchmark2DAddBatch(b *testing.B) {
 	}
 }
 
-func Benchmark2DAddReverse(b *testing.B) {
+func BenchmarkAddReverse(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	for i := bins - 1; i >= 0; i-- {
@@ -462,7 +462,7 @@ func Benchmark2DAddReverse(b *testing.B) {
 	}
 }
 
-func Benchmark2DRemove(b *testing.B) {
+func BenchmarkRemove(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	var addrs []swarm.Address
@@ -483,7 +483,7 @@ func Benchmark2DRemove(b *testing.B) {
 
 }
 
-func Benchmark2DRemoveReverse(b *testing.B) {
+func BenchmarkRemoveReverse(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	var addrs []swarm.Address
@@ -515,7 +515,7 @@ func BenchmarkEachBin(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})
 	}
