@@ -33,6 +33,17 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
+	// bypass unnecessary allocations below if address count is one
+	if len(addrs) == 1 {
+		addr := addrs[0]
+		po := s.po(addr.Bytes())
+		if e, _ := s.index(addr, po); e {
+			return
+		}
+		s.peers[po] = append(s.peers[po], addr)
+		return
+	}
+
 	addrPo := make([]uint8, 0, len(addrs))
 	binChange := make([]int, s.maxBins)
 	exists := make([]bool, len(addrs))
