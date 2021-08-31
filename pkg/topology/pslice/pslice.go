@@ -96,6 +96,26 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	return nil
 }
 
+func (s *PSlice) BinSize(bin uint8) int {
+
+	s.RLock()
+	defer s.RUnlock()
+
+	b := int(bin)
+	if b >= len(s.bins) {
+		return 0
+	}
+
+	var bEnd int
+	if b == len(s.bins)-1 {
+		bEnd = len(s.peers)
+	} else {
+		bEnd = int(s.bins[b+1])
+	}
+
+	return bEnd - int(s.bins[b])
+}
+
 func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 	s.RLock()
 	defer s.RUnlock()
@@ -148,12 +168,12 @@ func (s *PSlice) Exists(addr swarm.Address) bool {
 	s.RLock()
 	defer s.RUnlock()
 
-	b, _ := s.exists(addr)
+	b, _ := s.index(addr)
 	return b
 }
 
-// checks if a peer exists. must be called under lock.
-func (s *PSlice) exists(addr swarm.Address) (bool, int) {
+// checks if a peer index. must be called under lock.
+func (s *PSlice) index(addr swarm.Address) (bool, int) {
 	if len(s.peers) == 0 {
 		return false, 0
 	}
@@ -174,7 +194,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 
 	for _, addr := range addrs {
 
-		if e, _ := s.exists(addr); e {
+		if e, _ := s.index(addr); e {
 			return
 		}
 
@@ -193,7 +213,7 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
-	e, i := s.exists(addr)
+	e, i := s.index(addr)
 	if !e {
 		return
 	}
