@@ -507,9 +507,8 @@ func BenchmarkEachBin(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	for i := 0; i < bins; i++ {
-		for j := 0; j < 5000; j++ {
-			addr := test.RandomAddressAt(base, i)
-			ps.Add(addr)
+		for j := 0; j < 1000; j++ {
+			ps.Add(test.RandomAddressAt(base, i))
 		}
 	}
 
