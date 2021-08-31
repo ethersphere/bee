@@ -824,19 +824,18 @@ func TestUserAgentLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var (
-		s1Logs bytes.Buffer
-		s2Logs bytes.Buffer
-	)
+	// use concurrent-safe buffers as handlers are logging concurrently
+	s1Logs := new(buffer)
+	s2Logs := new(buffer)
 
-	s1, _ := newService(t, 1, libp2pServiceOpts{
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
 		},
-		Logger: logging.New(&s1Logs, 5),
+		Logger: logging.New(s1Logs, 5),
 	})
-	s2, _ := newService(t, 1, libp2pServiceOpts{
-		Logger: logging.New(&s2Logs, 5),
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		Logger: logging.New(s2Logs, 5),
 	})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -846,11 +845,15 @@ func TestUserAgentLogging(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// wait for peers to connect to make sure that log messages are written
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
+
 	testUserAgentLogLine(t, s1Logs, "(inbound)")
 	testUserAgentLogLine(t, s2Logs, "(outbound)")
 }
 
-func testUserAgentLogLine(t *testing.T, logs bytes.Buffer, substring string) {
+func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 	t.Helper()
 
 	wantUserAgent := libp2p.UserAgent()
@@ -868,19 +871,35 @@ func testUserAgentLogLine(t *testing.T, logs bytes.Buffer, substring string) {
 			}
 			t.Fatal(err)
 		}
-		if strings.Contains(line, logLineMarker) {
-			if strings.Contains(line, substring) {
-				foundLogLine = true
-				if !strings.Contains(line, wantUserAgent) {
-					t.Errorf("log line %q does not contain an expected User Agent %q", line, wantUserAgent)
-				}
+		if strings.Contains(line, logLineMarker) && strings.Contains(line, substring) {
+			foundLogLine = true
+			if !strings.Contains(line, wantUserAgent) {
+				t.Errorf("log line %q does not contain an expected User Agent %q", line, wantUserAgent)
 			}
-			t.Log(line)
 		}
 	}
 	if !foundLogLine {
-		t.Errorf("log line with %q string was not found", logLineMarker)
+		t.Errorf("log line with %q and %q strings was not found", logLineMarker, substring)
 	}
+}
+
+// buffer is a bytes.Buffer with some methods exposed that are safe to be used
+// concurrently.
+type buffer struct {
+	b bytes.Buffer
+	m sync.Mutex
+}
+
+func (b *buffer) ReadString(delim byte) (s string, err error) {
+	b.m.Lock()
+	defer b.m.Unlock()
+	return b.b.ReadString(delim)
+}
+
+func (b *buffer) Write(p []byte) (n int, err error) {
+	b.m.Lock()
+	defer b.m.Unlock()
+	return b.b.Write(p)
 }
 
 func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
