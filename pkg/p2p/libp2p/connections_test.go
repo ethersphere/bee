@@ -871,6 +871,7 @@ func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 			}
 			t.Fatal(err)
 		}
+		t.Log(line)
 		if strings.Contains(line, logLineMarker) && strings.Contains(line, substring) {
 			foundLogLine = true
 			if !strings.Contains(line, wantUserAgent) {
