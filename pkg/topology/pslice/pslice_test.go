@@ -6,6 +6,7 @@ package pslice_test
 
 import (
 	"errors"
+	"math/rand"
 	"sort"
 	"testing"
 
@@ -410,6 +411,22 @@ func Benchmark2DAdd(b *testing.B) {
 		for j := 0; j < b.N; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
+	}
+}
+
+func Benchmark2DAddBatch(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := 0; i < 100000; i++ {
+		addrs = append(addrs, test.RandomAddressAt(base, rand.Intn(bins)))
+	}
+
+	b.ResetTimer()
+
+	for j := 0; j < b.N; j++ {
+		ps.Add(addrs...)
 	}
 }
 
