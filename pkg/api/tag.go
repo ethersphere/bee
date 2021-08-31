@@ -7,7 +7,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
@@ -45,8 +44,11 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 }
 
 func (s *server) createTagHandler(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	tagr := tagRequest{}
+
+	defer r.Body.Close()
+
+	if err := json.NewDecoder(r.Body).Decode(&tagr); err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
@@ -54,17 +56,6 @@ func (s *server) createTagHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("create tag: read request body error")
 		jsonhttp.InternalServerError(w, "cannot read request")
 		return
-	}
-
-	tagr := tagRequest{}
-	if len(body) > 0 {
-		err = json.Unmarshal(body, &tagr)
-		if err != nil {
-			s.logger.Debugf("create tag: unmarshal tag name error: %v", err)
-			s.logger.Errorf("create tag: unmarshal tag name error")
-			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
-			return
-		}
 	}
 
 	tag, err := s.tags.Create(0)
@@ -147,8 +138,11 @@ func (s *server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	tagr := tagRequest{}
+
+	defer r.Body.Close()
+
+	if err := json.NewDecoder(r.Body).Decode(&tagr); err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
@@ -156,17 +150,6 @@ func (s *server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("done split tag: read request body error")
 		jsonhttp.InternalServerError(w, "cannot read request")
 		return
-	}
-
-	tagr := tagRequest{}
-	if len(body) > 0 {
-		err = json.Unmarshal(body, &tagr)
-		if err != nil {
-			s.logger.Debugf("done split tag: unmarshal tag name error: %v", err)
-			s.logger.Errorf("done split tag: unmarshal tag name error")
-			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
-			return
-		}
 	}
 
 	tag, err := s.tags.Get(uint32(id))
