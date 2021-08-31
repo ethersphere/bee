@@ -5,11 +5,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -71,8 +72,13 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	payload, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	reader := io.LimitReader(r.Body, swarm.ChunkSize+swarm.SpanSize)
+
+	defer r.Body.Close()
+
+	var buf bytes.Buffer
+
+	if _, err := io.Copy(&buf, reader); err != nil {
 		s.logger.Debugf("pss read payload: %v", err)
 		s.logger.Error("pss read payload")
 		jsonhttp.InternalServerError(w, nil)
@@ -101,7 +107,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	stamper := postage.NewStamper(i, s.signer)
 
-	err = s.pss.Send(r.Context(), topic, payload, stamper, recipient, targets)
+	err = s.pss.Send(r.Context(), topic, buf.Bytes(), stamper, recipient, targets)
 	if err != nil {
 		s.logger.Debugf("pss send payload: %v. topic: %s", err, topicVar)
 		s.logger.Error("pss send payload")
