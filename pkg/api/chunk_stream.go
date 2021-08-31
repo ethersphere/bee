@@ -124,8 +124,10 @@ func (s *server) handleUploadStream(
 
 		mt, msg, err := conn.ReadMessage()
 		if err != nil {
-			s.logger.Debugf("chunk stream handler: read message error: %v", err)
-			s.logger.Error("chunk stream handler: read message error")
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				s.logger.Debugf("chunk stream handler: read message error: %v", err)
+				s.logger.Error("chunk stream handler: read message error")
+			}
 			return
 		}
 
