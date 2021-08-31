@@ -828,13 +828,13 @@ func TestUserAgentLogging(t *testing.T) {
 	s1Logs := new(buffer)
 	s2Logs := new(buffer)
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+	s1, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
 		},
 		Logger: logging.New(s1Logs, 5),
 	})
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+	s2, _ := newService(t, 1, libp2pServiceOpts{
 		Logger: logging.New(s2Logs, 5),
 	})
 
@@ -845,9 +845,12 @@ func TestUserAgentLogging(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// wait for peers to connect to make sure that log messages are written
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
+	// wait for logs to be written to buffers
+	for t := time.Now().Add(10 * time.Second); time.Now().Before(t); time.Sleep(50 * time.Microsecond) {
+		if s1Logs.Len() > 0 && s2Logs.Len() > 0 {
+			break
+		}
+	}
 
 	testUserAgentLogLine(t, s1Logs, "(inbound)")
 	testUserAgentLogLine(t, s2Logs, "(outbound)")
@@ -863,6 +866,7 @@ func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 
 	logLineMarker := "successfully connected to peer"
 	var foundLogLine bool
+	var lines []string
 	for {
 		line, err := logs.ReadString('\n')
 		if err != nil {
@@ -871,7 +875,7 @@ func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 			}
 			t.Fatal(err)
 		}
-		t.Log(line)
+		lines = append(lines, line)
 		if strings.Contains(line, logLineMarker) && strings.Contains(line, substring) {
 			foundLogLine = true
 			if !strings.Contains(line, wantUserAgent) {
@@ -880,7 +884,7 @@ func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 		}
 	}
 	if !foundLogLine {
-		t.Errorf("log line with %q and %q strings was not found", logLineMarker, substring)
+		t.Errorf("log line with %q and %q strings was not found in %v", logLineMarker, substring, lines)
 	}
 }
 
@@ -891,16 +895,22 @@ type buffer struct {
 	m sync.Mutex
 }
 
-func (b *buffer) ReadString(delim byte) (s string, err error) {
+func (b *buffer) ReadString(delim byte) (string, error) {
 	b.m.Lock()
 	defer b.m.Unlock()
 	return b.b.ReadString(delim)
 }
 
-func (b *buffer) Write(p []byte) (n int, err error) {
+func (b *buffer) Write(p []byte) (int, error) {
 	b.m.Lock()
 	defer b.m.Unlock()
 	return b.b.Write(p)
+}
+
+func (b *buffer) Len() int {
+	b.m.Lock()
+	defer b.m.Unlock()
+	return b.b.Len()
 }
 
 func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
