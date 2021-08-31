@@ -416,17 +416,14 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			// when a full node connects, we gossip about it to the
 			// light nodes so that they can also have a chance at building
 			// a solid topology.
-
-			if i.FullNode {
-				_ = s.lightNodes.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-					go func(addressee, peer swarm.Address) {
-						if err := s.notifier.AnnounceTo(s.ctx, addressee, peer); err != nil {
-							s.logger.Debugf("stream handler: notifier.Announce to light node %s %s: %v", addressee.String(), peer.String(), err)
-						}
-					}(addr, peer.Address)
-					return false, false, nil
-				})
-			}
+			_ = s.lightNodes.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+				go func(addressee, peer swarm.Address) {
+					if err := s.notifier.AnnounceTo(s.ctx, addressee, peer); err != nil {
+						s.logger.Debugf("stream handler: notifier.Announce to light node %s %s: %v", addressee.String(), peer.String(), err)
+					}
+				}(addr, peer.Address)
+				return false, false, nil
+			})
 		}
 	}
 
