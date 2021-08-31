@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -88,8 +87,13 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	reader := io.LimitReader(r.Body, swarm.ChunkSize+swarm.SpanSize)
+
+	defer r.Body.Close()
+
+	var buf bytes.Buffer
+
+	if _, err := io.Copy(&buf, reader); err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
@@ -98,6 +102,8 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 	}
+
+	data := buf.Bytes()
 
 	if len(data) < swarm.SpanSize {
 		s.logger.Debug("chunk upload: not enough data")
