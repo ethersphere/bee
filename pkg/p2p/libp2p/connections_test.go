@@ -875,10 +875,11 @@ func testUserAgentLogLine(t *testing.T, logs bytes.Buffer, substring string) {
 					t.Errorf("log line %q does not contain an expected User Agent %q", line, wantUserAgent)
 				}
 			}
+			t.Log(line)
 		}
 	}
 	if !foundLogLine {
-		t.Errorf("log line with %s string was not found", logLineMarker)
+		t.Errorf("log line with %q string was not found", logLineMarker)
 	}
 }
 
