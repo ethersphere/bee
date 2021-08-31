@@ -502,3 +502,22 @@ func Benchmark2DRemoveReverse(b *testing.B) {
 		ps.Remove(addr)
 	}
 }
+
+func BenchmarkEachBin(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	for i := 0; i < bins; i++ {
+		for j := 0; j < 5000; j++ {
+			addr := test.RandomAddressAt(base, i)
+			ps.Add(addr)
+		}
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+			return false, false, nil
+		})
+	}
+}
