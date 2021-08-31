@@ -163,7 +163,7 @@ func wrapDial(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry
 	return ethCl, registry, nil
 }
 
-func wrapResolve(registry *goens.Registry, addr common.Address, name string) (string, error) {
+func wrapResolve(registry *goens.Registry, _ common.Address, name string) (string, error) {
 	// Ensure the name is registered.
 	ownerAddress, err := registry.Owner(name)
 	if err != nil {
