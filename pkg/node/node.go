@@ -30,6 +30,8 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/chainsync"
+	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -109,6 +111,7 @@ type Bee struct {
 	postageServiceCloser     io.Closer
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
+	chainSyncerCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 }
@@ -700,6 +703,12 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	)
 	b.resolverCloser = multiResolver
 
+	if o.FullNodeMode {
+		cs := chainsync.New(p2ps, swapBackend)
+		dur := time.Minute
+		ccs := chainsyncer.New(swapBackend, cs, p2ps, kad, &dur, logger)
+		b.chainSyncerCloser = ccs
+	}
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
@@ -852,7 +861,11 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		b.recoveryHandleCleanup()
 	}
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
+	go func() {
+		defer wg.Done()
+		tryClose(b.chainSyncerCloser, "chain syncer")
+	}()
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
