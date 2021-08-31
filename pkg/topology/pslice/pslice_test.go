@@ -87,6 +87,25 @@ func TestShallowestEmpty(t *testing.T) {
 	}
 }
 
+func TestNoPanicOnEmptyRemove(t *testing.T) {
+	var ps = pslice.New(4, base)
+
+	addr1 := test.RandomAddressAt(base, 2)
+	addr2 := test.RandomAddressAt(base, 2)
+
+	ps.Remove(addr1)
+
+	ps.Add(addr1)
+	ps.Remove(addr1)
+	chkNotExists(t, ps, addr1)
+
+	ps.Add(addr1)
+	ps.Add(addr2)
+	ps.Remove(addr2)
+	chkExists(t, ps, addr1)
+	chkNotExists(t, ps, addr2)
+}
+
 // TestAddRemove checks that the Add, Remove and Exists methods work as expected.
 func TestAddRemove(t *testing.T) {
 	var (

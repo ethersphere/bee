@@ -22,7 +22,7 @@ type PSlice struct {
 	maxBins int
 }
 
-// New creates a new PSlice
+// New creates a new PSlice.
 func New(maxBins int, base swarm.Address) *PSlice {
 	return &PSlice{
 		peers:     make([][]swarm.Address, maxBins),
@@ -36,16 +36,21 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	s.Lock()
 	defer s.Unlock()
 
-	pos := make([]uint8, 0, len(addrs))
-	poCount := make([]int, s.maxBins)
+	addrPo := make([]uint8, 0, len(addrs))
+	binChange := make([]int, s.maxBins)
+	exists := make([]bool, len(addrs))
 
-	for _, addr := range addrs {
+	for i, addr := range addrs {
 		po := s.po(addr.Bytes())
-		pos = append(pos, po)
-		poCount[po]++
+		addrPo = append(addrPo, po)
+		if e, _ := s.index(addr, po); e {
+			exists[i] = true
+		} else {
+			binChange[po]++
+		}
 	}
 
-	for i, count := range poCount {
+	for i, count := range binChange {
 		peers := s.peers[i]
 		if count > 0 && cap(peers) < len(peers)+count {
 			newPeers := make([]swarm.Address, len(peers), len(peers)+count)
@@ -55,12 +60,11 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	}
 
 	for i, addr := range addrs {
-		po := pos[i]
-
-		if e, _ := s.index(addr, po); e {
+		if exists[i] {
 			continue
 		}
 
+		po := addrPo[i]
 		s.peers[po] = append(s.peers[po], addr)
 	}
 }
@@ -68,13 +72,16 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 // iterates over all peers from deepest bin to shallowest.
 func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 
+	s.RLock()
+	pcopy := make([][]swarm.Address, s.maxBins)
+	for i := range pcopy {
+		pcopy[i] = s.peers[i]
+	}
+	s.RUnlock()
+
 	for i := s.maxBins - 1; i >= 0; i-- {
 
-		s.RLock()
-		peers := s.peers[i]
-		s.RUnlock()
-
-		for _, peer := range peers {
+		for _, peer := range pcopy[i] {
 			stop, next, err := pf(peer, uint8(i))
 			if err != nil {
 				return err
@@ -94,13 +101,16 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 // EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 
+	s.RLock()
+	pcopy := make([][]swarm.Address, s.maxBins)
+	for i := range pcopy {
+		pcopy[i] = s.peers[i]
+	}
+	s.RUnlock()
+
 	for i := 0; i < s.maxBins; i++ {
 
-		s.RLock()
-		peers := s.peers[i]
-		s.RUnlock()
-
-		for _, peer := range peers {
+		for _, peer := range pcopy[i] {
 
 			stop, next, err := pf(peer, uint8(i))
 			if err != nil {
@@ -117,7 +127,7 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 	return nil
 }
 
-// BinPeers returns the slice of peers in a certain bin
+// BinPeers returns the slice of peers in a certain bin.
 func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 	s.RLock()
 	defer s.RUnlock()
@@ -132,7 +142,7 @@ func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 	return ret
 }
 
-// Length returns the number of peers in the Pslice
+// Length returns the number of peers in the Pslice.
 func (s *PSlice) Length() int {
 	s.RLock()
 	defer s.RUnlock()
@@ -184,10 +194,27 @@ func (s *PSlice) Remove(addr swarm.Address) {
 		return
 	}
 
-	// replace index with last element
-	s.peers[po][i] = s.peers[po][len(s.peers[po])-1]
-	// reassign without last element
-	s.peers[po] = s.peers[po][:len(s.peers[po])-1]
+	// Since order of elements does not matter, the optimized removing process
+	// below replaces the index to be removed with the last element of the array,
+	// and shortens the array by one.
+
+	// make copy of the bin slice with one fewer element
+	newLength := len(s.peers[po]) - 1
+	cpy := make([]swarm.Address, newLength)
+	copy(cpy, s.peers[po][:newLength])
+
+	// if the index is the last element, then assign slice and return early
+	if i == newLength {
+		s.peers[po] = cpy
+		return
+	}
+
+	// replace index being removed with last element
+	lastItem := s.peers[po][newLength]
+	cpy[i] = lastItem
+
+	// assign the copy with the index removed back to the original array
+	s.peers[po] = cpy
 }
 
 func (s *PSlice) po(peer []byte) uint8 {
@@ -198,7 +225,7 @@ func (s *PSlice) po(peer []byte) uint8 {
 	return po
 }
 
-// checks if a peer exists. must be called under lock.
+// index returns if a peer exists and the index in the slice.
 func (s *PSlice) index(addr swarm.Address, po uint8) (bool, int) {
 
 	for i, peer := range s.peers[po] {
