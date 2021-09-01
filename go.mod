@@ -22,7 +22,7 @@ require (
 	github.com/kardianos/service v1.2.0
 	github.com/klauspost/cpuid/v2 v2.0.8 // indirect
 	github.com/koron/go-ssdp v0.0.2 // indirect
-	github.com/libp2p/go-libp2p v0.14.3
+	github.com/libp2p/go-libp2p v0.14.4
 	github.com/libp2p/go-libp2p-autonat v0.4.2
 	github.com/libp2p/go-libp2p-core v0.8.5
 	github.com/libp2p/go-libp2p-discovery v0.5.1 // indirect
@@ -30,7 +30,7 @@ require (
 	github.com/libp2p/go-libp2p-quic-transport v0.10.0
 	github.com/libp2p/go-libp2p-swarm v0.5.0
 	github.com/libp2p/go-libp2p-transport-upgrader v0.4.2
-	github.com/libp2p/go-tcp-transport v0.2.3
+	github.com/libp2p/go-tcp-transport v0.2.4
 	github.com/libp2p/go-ws-transport v0.4.0
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
