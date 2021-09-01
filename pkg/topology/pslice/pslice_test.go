@@ -497,6 +497,22 @@ func BenchmarkEachBin(b *testing.B) {
 	}
 }
 
+func BenchmarkEachBinRev(b *testing.B) {
+	ps := pslice.New(bins, base)
+
+	for i := 0; i < bins*perBin; i++ {
+		ps.Add(test.RandomAddress())
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = ps.EachBinRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+			return false, false, nil
+		})
+	}
+}
+
 func BenchmarkAddOld(b *testing.B) {
 	ps := psliceold.New(bins, base)
 
@@ -562,6 +578,22 @@ func BenchmarkEachBinOld(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+			return false, false, nil
+		})
+	}
+}
+
+func BenchmarkEachBinRevOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	for i := 0; i < bins*perBin; i++ {
+		ps.Add(test.RandomAddress())
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = ps.EachBinRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})
 	}
