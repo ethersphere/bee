@@ -109,7 +109,11 @@ func TestDisconnect(t *testing.T) {
 	testErr := errors.New("test error")
 
 	testServer := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address) error {
+		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address, reason string) error {
+			if reason != "user requested disconnect" {
+				return testErr
+			}
+
 			if addr.Equal(address) {
 				return nil
 			}

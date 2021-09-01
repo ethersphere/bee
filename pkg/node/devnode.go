@@ -310,7 +310,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 				mockP2P.WithConnectFunc(func(ctx context.Context, addr multiaddr.Multiaddr) (address *bzz.Address, err error) {
 					return &bzz.Address{}, nil
 				}), mockP2P.WithDisconnectFunc(
-					func(overlay swarm.Address) error {
+					func(swarm.Address, string) error {
 						return nil
 					},
 				), mockP2P.WithAddressesFunc(
