@@ -19,7 +19,7 @@ import (
 type Service struct {
 	addProtocolFunc       func(p2p.ProtocolSpec) error
 	connectFunc           func(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
-	disconnectFunc        func(overlay swarm.Address) error
+	disconnectFunc        func(overlay swarm.Address, reason string) error
 	peersFunc             func() []p2p.Peer
 	blocklistedPeersFunc  func() ([]p2p.Peer, error)
 	addressesFunc         func() ([]ma.Multiaddr, error)
@@ -45,7 +45,7 @@ func WithConnectFunc(f func(ctx context.Context, addr ma.Multiaddr) (address *bz
 }
 
 // WithDisconnectFunc sets the mock implementation of the Disconnect function
-func WithDisconnectFunc(f func(overlay swarm.Address) error) Option {
+func WithDisconnectFunc(f func(overlay swarm.Address, reason string) error) Option {
 	return optionFunc(func(s *Service) {
 		s.disconnectFunc = f
 	})
@@ -115,7 +115,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	return s.connectFunc(ctx, addr)
 }
 
-func (s *Service) Disconnect(overlay swarm.Address) error {
+func (s *Service) Disconnect(overlay swarm.Address, reason string) error {
 	if s.disconnectFunc == nil {
 		return errors.New("function Disconnect not configured")
 	}
@@ -124,7 +124,7 @@ func (s *Service) Disconnect(overlay swarm.Address) error {
 		s.notifierFunc.Disconnected(p2p.Peer{Address: overlay})
 	}
 
-	return s.disconnectFunc(overlay)
+	return s.disconnectFunc(overlay, reason)
 }
 
 func (s *Service) Addresses() ([]ma.Multiaddr, error) {
