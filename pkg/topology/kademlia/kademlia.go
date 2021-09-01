@@ -602,7 +602,7 @@ func (k *Kad) PruneOversaturatedBins(depth uint8) {
 			pseudoAddr := k.commonBinPrefixes[i][j]
 			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
 
-			if len(peers) == 0 {
+			if len(peers) <= 1 {
 				continue
 			}
 
