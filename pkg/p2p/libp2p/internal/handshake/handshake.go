@@ -76,8 +76,8 @@ type Service struct {
 	receivedHandshakes    map[libp2ppeer.ID]struct{}
 	receivedHandshakesMu  sync.Mutex
 	logger                logging.Logger
-
-	network.Notifiee // handshake service can be the receiver for network.Notify
+	libp2pID              libp2ppeer.ID
+	network.Notifiee      // handshake service can be the receiver for network.Notify
 }
 
 // Info contains the information received from the handshake.
@@ -95,7 +95,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -109,6 +109,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		transaction:           transaction,
 		senderMatcher:         isSender,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
+		libp2pID:              ownPeerID,
 		logger:                logger,
 		Notifiee:              new(network.NoopNotifiee),
 	}
@@ -147,6 +148,16 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	observedUnderlay, err := ma.NewMultiaddrBytes(resp.Syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
+	}
+
+	observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
+	if err != nil {
+		return nil, fmt.Errorf("extract addr from P2P: %w", err)
+	}
+
+	if s.libp2pID != observedUnderlayAddrInfo.ID {
+		//NOTE eventually we will return error here, but for now we want to gather some statistics
+		s.logger.Warningf("received peer ID %s does not match ours: %s", observedUnderlayAddrInfo.ID, s.libp2pID)
 	}
 
 	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
