@@ -18,7 +18,7 @@ LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" -X gi
 all: build lint vet test-race binary
 
 .PHONY: binary
-binary: export CGO_ENABLED=0
+binary: CGO_ENABLED=0
 binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
@@ -28,7 +28,17 @@ dist:
 
 .PHONY: beekeeper
 beekeeper:
+ifeq ($(BEEKEEPER_BRANCH), master)
 	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
+else
+	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && cd beekeeper && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
+ifeq ($(BEEKEEPER_USE_SUDO), true)
+	sudo mv beekeeper/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+else
+	mv beekeeper/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+endif
+	rm -rf beekeeper
+endif
 	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
 	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
 
@@ -73,7 +83,7 @@ test:
 	$(GO) test -v -failfast ./...
 
 .PHONY: build
-build: export CGO_ENABLED=0
+build: CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 
