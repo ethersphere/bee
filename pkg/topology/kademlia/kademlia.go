@@ -783,8 +783,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 		return err
 	case !i.Overlay.Equal(peer):
-		_ = k.p2p.Disconnect(peer)
-		_ = k.p2p.Disconnect(i.Overlay)
+		_ = k.p2p.Disconnect(peer, "overlay mismatch")
+		_ = k.p2p.Disconnect(i.Overlay, "overlay mismatch")
 		return errOverlayMismatch
 	}
 
@@ -830,7 +830,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
 		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
-		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
 
 	return err
@@ -882,7 +882,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 			if err != nil {
 				return err
 			}
-			_ = k.p2p.Disconnect(randPeer)
+			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accomodate node")
 			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {

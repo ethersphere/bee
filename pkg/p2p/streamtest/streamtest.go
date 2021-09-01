@@ -399,7 +399,7 @@ func NewRecorderDisconnecter(r *Recorder) *RecorderDisconnecter {
 	}
 }
 
-func (r *RecorderDisconnecter) Disconnect(overlay swarm.Address) error {
+func (r *RecorderDisconnecter) Disconnect(overlay swarm.Address, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
