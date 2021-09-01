@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
+	psliceold "github.com/ethersphere/bee/pkg/topology/pslice/psliceOld"
 )
 
 // TestShallowestEmpty tests that ShallowestEmpty functionality works correctly.
@@ -422,16 +423,27 @@ func chkNotExists(t *testing.T, ps *pslice.PSlice, addrs ...swarm.Address) {
 }
 
 var (
-	base = test.RandomAddress()
-	bins = int(swarm.MaxBins)
+	base   = test.RandomAddress()
+	bins   = int(swarm.MaxBins)
+	perBin = 1000
 )
 
 func BenchmarkAdd(b *testing.B) {
 	ps := pslice.New(bins, base)
 
+	var addrs []swarm.Address
+
 	for i := 0; i < bins; i++ {
-		for j := 0; j < b.N; j++ {
-			ps.Add(test.RandomAddressAt(base, i))
+		for j := 0; j < perBin; j++ {
+			addrs = append(addrs, test.RandomAddressAt(base, i))
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Add(addr)
 		}
 	}
 }
@@ -441,13 +453,13 @@ func BenchmarkAddBatch(b *testing.B) {
 
 	var addrs []swarm.Address
 
-	for i := 0; i < 100000; i++ {
-		addrs = append(addrs, test.RandomAddressAt(base, rand.Intn(bins)))
+	for i := 0; i < perBin; i++ {
+		addrs = append(addrs, test.RandomAddressAt(base, rand.Intn(6)))
 	}
 
 	b.ResetTimer()
 
-	for j := 0; j < b.N; j++ {
+	for n := 0; n < b.N; n++ {
 		ps.Add(addrs...)
 	}
 }
@@ -455,9 +467,19 @@ func BenchmarkAddBatch(b *testing.B) {
 func BenchmarkAddReverse(b *testing.B) {
 	ps := pslice.New(bins, base)
 
+	var addrs []swarm.Address
+
 	for i := bins - 1; i >= 0; i-- {
-		for j := 0; j < b.N; j++ {
-			ps.Add(test.RandomAddressAt(base, i))
+		for j := 0; j < perBin; j++ {
+			addrs = append(addrs, test.RandomAddressAt(base, i))
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Add(addr)
 		}
 	}
 }
@@ -468,19 +490,20 @@ func BenchmarkRemove(b *testing.B) {
 	var addrs []swarm.Address
 
 	for i := 0; i < bins; i++ {
-		for j := 0; j < b.N; j++ {
+		for j := 0; j < perBin; j++ {
 			addr := test.RandomAddressAt(base, i)
-			addrs = append(addrs, addr)
+			addrs = append(addrs, test.RandomAddressAt(base, i))
 			ps.Add(addr)
 		}
 	}
 
 	b.ResetTimer()
 
-	for _, addr := range addrs {
-		ps.Remove(addr)
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Remove(addr)
+		}
 	}
-
 }
 
 func BenchmarkRemoveReverse(b *testing.B) {
@@ -489,7 +512,7 @@ func BenchmarkRemoveReverse(b *testing.B) {
 	var addrs []swarm.Address
 
 	for i := bins - 1; i >= 0; i-- {
-		for j := 0; j < b.N; j++ {
+		for j := 0; j < perBin; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addrs = append(addrs, addr)
 			ps.Add(addr)
@@ -498,8 +521,10 @@ func BenchmarkRemoveReverse(b *testing.B) {
 
 	b.ResetTimer()
 
-	for _, addr := range addrs {
-		ps.Remove(addr)
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Remove(addr)
+		}
 	}
 }
 
@@ -507,14 +532,132 @@ func BenchmarkEachBin(b *testing.B) {
 	ps := pslice.New(bins, base)
 
 	for i := 0; i < bins; i++ {
-		for j := 0; j < 1000; j++ {
+		for j := 0; j < perBin; j++ {
 			ps.Add(test.RandomAddressAt(base, i))
 		}
 	}
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for n := 0; n < b.N; n++ {
+		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+			return false, false, nil
+		})
+	}
+}
+
+func BenchmarkAddOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := 0; i < bins; i++ {
+		for j := 0; j < perBin; j++ {
+			addrs = append(addrs, test.RandomAddressAt(base, i))
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Add(addr)
+		}
+	}
+}
+
+func BenchmarkAddBatchOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := 0; i < perBin; i++ {
+		addrs = append(addrs, test.RandomAddressAt(base, rand.Intn(6)))
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		ps.Add(addrs...)
+	}
+}
+
+func BenchmarkAddReverseOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := bins - 1; i >= 0; i-- {
+		for j := 0; j < perBin; j++ {
+			addrs = append(addrs, test.RandomAddressAt(base, i))
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Add(addr)
+		}
+	}
+}
+
+func BenchmarkRemoveOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := 0; i < bins; i++ {
+		for j := 0; j < perBin; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addrs = append(addrs, test.RandomAddressAt(base, i))
+			ps.Add(addr)
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Remove(addr)
+		}
+	}
+}
+
+func BenchmarkRemoveReverseOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	var addrs []swarm.Address
+
+	for i := bins - 1; i >= 0; i-- {
+		for j := 0; j < perBin; j++ {
+			addr := test.RandomAddressAt(base, i)
+			addrs = append(addrs, addr)
+			ps.Add(addr)
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		for _, addr := range addrs {
+			ps.Remove(addr)
+		}
+	}
+}
+
+func BenchmarkEachBinOld(b *testing.B) {
+	ps := psliceold.New(bins, base)
+
+	for i := 0; i < bins; i++ {
+		for j := 0; j < perBin; j++ {
+			ps.Add(test.RandomAddressAt(base, i))
+		}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
 		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})
