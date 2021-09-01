@@ -1232,6 +1232,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	// check that bin 0 is balanced
 	waitBalanced(t, kad, uint8(0))
 
+	// wait for kademlia connectors to finish
 	time.Sleep(time.Millisecond * 100)
 
 	// check that no pruning has happened
@@ -1254,6 +1255,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	addr := test.RandomAddressAt(base, 6)
 	addOne(t, signer, kad, ab, addr)
 
+	// wait for kademlia connectors to finish
 	time.Sleep(time.Millisecond * 100)
 
 	// check bins have been pruned
