@@ -579,7 +579,7 @@ func (k *Kad) manage() {
 	}
 }
 
-// pruneOversaturatedBins disconnects peers from out of depth, oversaturated bins
+// PruneOversaturatedBins disconnects out of depth peers from oversaturated bins
 // while maintaining the balance of the bin and favoring peers with longers connections
 func (k *Kad) PruneOversaturatedBins(depth uint8) {
 
@@ -591,7 +591,7 @@ func (k *Kad) PruneOversaturatedBins(depth uint8) {
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
 		binPeersCount := len(binPeers)
-		if len(binPeers) < overSaturationPeers {
+		if binPeersCount < overSaturationPeers {
 			continue
 		}
 
@@ -602,19 +602,22 @@ func (k *Kad) PruneOversaturatedBins(depth uint8) {
 			pseudoAddr := k.commonBinPrefixes[i][j]
 			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
 
-			if len(peers) > 1 {
-				var smallestDuration time.Duration
-				var newestPeer swarm.Address
-				for _, peer := range peers {
-					duration := k.collector.Inspect(peer).SessionConnectionDuration
-					if smallestDuration == 0 || duration < smallestDuration {
-						smallestDuration = duration
-						newestPeer = peer
-					}
-				}
-				_ = k.p2p.Disconnect(newestPeer)
-				peersToRemove--
+			if len(peers) == 0 {
+				continue
 			}
+
+			var smallestDuration time.Duration
+			var newestPeer swarm.Address
+			for _, peer := range peers {
+				duration := k.collector.Inspect(peer).SessionConnectionDuration
+				if smallestDuration == 0 || duration < smallestDuration {
+					smallestDuration = duration
+					newestPeer = peer
+				}
+			}
+			err := k.p2p.Disconnect(newestPeer)
+			k.logger.Debugf("prune disconnect fail %v", err)
+			peersToRemove--
 		}
 	}
 }
