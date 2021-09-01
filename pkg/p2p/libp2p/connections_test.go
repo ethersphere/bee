@@ -563,7 +563,7 @@ func TestTopologyAnnounce(t *testing.T) {
 			mtx.Unlock()
 			return nil
 		}
-		n1at = func(context.Context, swarm.Address, swarm.Address, bool) error {
+		n1at = func(context.Context, swarm.Address, swarm.Address) error {
 			mtx.Lock()
 			announceToCalled = true
 			mtx.Unlock()
@@ -914,8 +914,8 @@ func (n *notifiee) Announce(ctx context.Context, a swarm.Address, full bool) err
 	return n.announce(ctx, a, full)
 }
 
-func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool) error {
-	return n.announceTo(ctx, a, b, full)
+func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address) error {
+	return n.announceTo(ctx, a, b)
 }
 
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
@@ -930,10 +930,10 @@ type (
 	cFunc          func(context.Context, p2p.Peer, bool) error
 	dFunc          func(p2p.Peer)
 	announceFunc   func(context.Context, swarm.Address, bool) error
-	announceToFunc func(context.Context, swarm.Address, swarm.Address, bool) error
+	announceToFunc func(context.Context, swarm.Address, swarm.Address) error
 )
 
 var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
 var noopDf = func(p2p.Peer) {}
 var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
-var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
+var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address) error { return nil }

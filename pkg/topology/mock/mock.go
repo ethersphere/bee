@@ -103,7 +103,7 @@ func (d *mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
 	return nil
 }
 
-func (d *mock) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
+func (d *mock) AnnounceTo(_ context.Context, _, _ swarm.Address) error {
 	return nil
 }
 

@@ -687,14 +687,10 @@ func TestAnnounceTo(t *testing.T) {
 	addOne(t, signer, kad, ab, p1)
 	waitConn(t, &conns)
 
-	if err := kad.AnnounceTo(context.Background(), p1, p2, true); err != nil {
+	if err := kad.AnnounceTo(context.Background(), p1, p2); err != nil {
 		t.Fatal(err)
 	}
 	waitBcast(t, disc, p1, p2)
-
-	if err := kad.AnnounceTo(context.Background(), p1, p2, false); err == nil {
-		t.Fatal("expected error")
-	}
 }
 
 func TestBackoff(t *testing.T) {
