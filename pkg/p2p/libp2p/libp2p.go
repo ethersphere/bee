@@ -889,9 +889,6 @@ func (s *Service) peerUserAgent(peerID libp2ppeer.ID) string {
 		// error is ignored as user agent is informative only
 		return ""
 	}
-	if v == nil {
-		return ""
-	}
 	ua, ok := v.(string)
 	if !ok {
 		return ""
