@@ -144,7 +144,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(resp.Syn.ObservedUnderlay)
+	observedUnderlay, err := ma.NewMultiaddrBytes(fullRemoteMABytes)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}

@@ -50,6 +50,10 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	node1AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node1ma)
+	if err != nil {
+		t.Fatal(err)
+	}
 	node2AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node2ma)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +134,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream1, node1AddrInfo.Addrs[0], node1AddrInfo.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +146,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(syn.ObservedUnderlay, node2maBinary) {
+		if !bytes.Equal(syn.ObservedUnderlay, node1maBinary) {
 			t.Fatal("bad syn")
 		}
 
@@ -151,12 +155,20 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(ack.Address.Overlay, node1BzzAddress.Overlay.Bytes()) ||
-			!bytes.Equal(ack.Address.Underlay, node1maBinary) ||
-			!bytes.Equal(ack.Address.Signature, node1BzzAddress.Signature) ||
-			ack.NetworkID != networkID ||
-			ack.FullNode != true {
-			t.Fatal("bad ack")
+		if !bytes.Equal(ack.Address.Overlay, node1BzzAddress.Overlay.Bytes()) {
+			t.Fatal("bad ack - overlay")
+		}
+		if !bytes.Equal(ack.Address.Underlay, node1maBinary) {
+			t.Fatal("bad ack - underlay")
+		}
+		if !bytes.Equal(ack.Address.Signature, node1BzzAddress.Signature) {
+			t.Fatal("bad ack - signature")
+		}
+		if ack.NetworkID != networkID {
+			t.Fatal("bad ack - networkID")
+		}
+		if ack.FullNode != true {
+			t.Fatal("bad ack - full node")
 		}
 
 		if ack.WelcomeMessage != testWelcomeMessage {
