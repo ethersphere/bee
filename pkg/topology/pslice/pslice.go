@@ -80,16 +80,13 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 // iterates over all peers from deepest bin to shallowest.
 func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 
-	s.RLock()
-	pcopy := make([][]swarm.Address, s.maxBins)
-	for i := range pcopy {
-		pcopy[i] = s.peers[i]
-	}
-	s.RUnlock()
-
 	for i := s.maxBins - 1; i >= 0; i-- {
 
-		for _, peer := range pcopy[i] {
+		s.RLock()
+		peers := s.peers[i]
+		s.RUnlock()
+
+		for _, peer := range peers {
 			stop, next, err := pf(peer, uint8(i))
 			if err != nil {
 				return err
@@ -109,16 +106,13 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 // EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 
-	s.RLock()
-	pcopy := make([][]swarm.Address, s.maxBins)
-	for i := range pcopy {
-		pcopy[i] = s.peers[i]
-	}
-	s.RUnlock()
-
 	for i := 0; i < s.maxBins; i++ {
 
-		for _, peer := range pcopy[i] {
+		s.RLock()
+		peers := s.peers[i]
+		s.RUnlock()
+
+		for _, peer := range peers {
 
 			stop, next, err := pf(peer, uint8(i))
 			if err != nil {
