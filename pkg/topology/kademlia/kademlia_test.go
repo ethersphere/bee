@@ -1177,6 +1177,7 @@ func TestStart(t *testing.T) {
 
 func TestOutofDepthPrune(t *testing.T) {
 
+	// this random seed assures bin 0 and 1 are balanced, but not 2
 	rand.Seed(2)
 
 	defer func(p int) {
@@ -1229,8 +1230,12 @@ func TestOutofDepthPrune(t *testing.T) {
 		kDepth(t, kad, i)
 	}
 
-	// check that bin 0 is balanced
-	waitBalanced(t, kad, uint8(0))
+	// check that bin 0, 1 are balanced, but not 2
+	waitBalanced(t, kad, 0)
+	waitBalanced(t, kad, 1)
+	if kad.IsBalanced(2) {
+		t.Fatal("bin 2 should no be balanced")
+	}
 
 	// wait for kademlia connectors to finish
 	time.Sleep(time.Millisecond * 100)
@@ -1246,7 +1251,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	// set prune func to the default
 	pruneMux.Lock()
 	pruneImpl = func(depth uint8) {
-		kad.PruneOversaturatedBins(depth)
+		kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 	}
 	pruneFuncImpl = &(pruneImpl)
 	pruneMux.Unlock()
@@ -1266,8 +1271,9 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 	}
 
-	// check that bin 0 remains balanced after pruning
-	waitBalanced(t, kad, uint8(0))
+	// check that bin 0,1 remains balanced after pruning
+	waitBalanced(t, kad, 0)
+	waitBalanced(t, kad, 1)
 }
 
 func binSizes(kad *kademlia.Kad) []int {

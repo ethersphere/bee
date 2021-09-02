@@ -59,7 +59,7 @@ var (
 type (
 	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 	sanctionedPeerFunc func(peer swarm.Address) bool
-	pruneFunc          func(bin uint8)
+	pruneFunc          func(depth uint8)
 )
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
@@ -149,7 +149,7 @@ func New(
 	}
 
 	if k.pruneFunc == nil {
-		k.pruneFunc = k.PruneOversaturatedBins
+		k.pruneFunc = k.pruneOversaturatedBins
 	}
 
 	if k.bitSuffixLength > 0 {
@@ -581,7 +581,7 @@ func (k *Kad) manage() {
 
 // PruneOversaturatedBins disconnects out of depth peers from oversaturated bins
 // while maintaining the balance of the bin and favoring peers with longers connections
-func (k *Kad) PruneOversaturatedBins(depth uint8) {
+func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 	for i := range k.commonBinPrefixes {
 
@@ -616,7 +616,9 @@ func (k *Kad) PruneOversaturatedBins(depth uint8) {
 				}
 			}
 			err := k.p2p.Disconnect(newestPeer)
-			k.logger.Debugf("prune disconnect fail %v", err)
+			if err != nil {
+				k.logger.Debugf("prune disconnect fail %v", err)
+			}
 			peersToRemove--
 		}
 	}
