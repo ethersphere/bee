@@ -49,7 +49,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		if len(target) > targetMaxLength {
 			s.logger.Debugf("pss send: bad target length: %d", len(target))
 			s.logger.Errorf("pss send: bad target length: %d", len(target))
-			jsonhttp.BadRequest(w, fmt.Sprintf("target exceeds max length of %d", targetMaxLength))
+			jsonhttp.BadRequest(w, fmt.Sprintf("hex string target exceeds max length of %d", targetMaxLength*2))
 			return
 		}
 		targets = append(targets, target)
