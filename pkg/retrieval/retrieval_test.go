@@ -256,11 +256,16 @@ func TestRetrieveChunk(t *testing.T) {
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
-
-		if got, _ := forwarderStore.Has(context.Background(), chunk.Address()); !got {
+		gots := false
+		for i := 0; i < 100; i++ {
+			if gots, _ = forwarderStore.Has(context.Background(), chunk.Address()); gots {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if !gots {
 			t.Fatalf("forwarder did not cache chunk")
 		}
-
 	})
 }
 
