@@ -29,9 +29,9 @@ const (
 )
 
 var (
-	messageTimeout       = 1 * time.Minute
+	messageTimeout       = time.Second * 30
 	limitBurst           = 2
-	limitRate            = time.Minute
+	limitRate            = time.Second * 30
 	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
 

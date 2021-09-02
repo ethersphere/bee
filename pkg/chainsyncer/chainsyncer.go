@@ -21,9 +21,9 @@ import (
 )
 
 var (
-	flagTimeout    = 10 * time.Minute // how long before blocking a flagged peer
-	cleanupTimeout = 5 * time.Minute  // how long before we cleanup a peer
-	blockDuration  = 24 * time.Hour   // how long to blocklist an unresponsive peer for
+	flagTimeout    = 5 * time.Minute // how long before blocking a flagged peer
+	cleanupTimeout = 5 * time.Minute // how long before we cleanup a peer
+	blockDuration  = 24 * time.Hour  // how long to blocklist an unresponsive peer for
 )
 
 type prover interface {
@@ -88,7 +88,7 @@ func (c *C) manage() {
 		select {
 		case <-c.quit:
 			return
-		default:
+		case <-time.After(time.Second * 30): // sleep for a little bit
 		}
 		// go through every peer we are connected to
 		// try to ask about a recent block height.
@@ -99,7 +99,7 @@ func (c *C) manage() {
 		// kick them away.
 		blockHeight, blockHash, err := c.getBlockHeight(ctx)
 		if err != nil {
-			// shutdown
+			continue
 		}
 
 		_ = c.peerIterator.EachPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {

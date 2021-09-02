@@ -705,6 +705,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	if o.FullNodeMode {
 		cs := chainsync.New(p2ps, swapBackend)
+		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
+			return nil, fmt.Errorf("chainsync protocol: %w", err)
+		}
 		dur := time.Minute
 		ccs := chainsyncer.New(swapBackend, cs, p2ps, kad, &dur, logger)
 		b.chainSyncerCloser = ccs
