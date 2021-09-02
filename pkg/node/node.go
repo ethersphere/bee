@@ -367,6 +367,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	senderMatcher := transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
 
+	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress)
+	if err != nil {
+		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
+	}
+
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
