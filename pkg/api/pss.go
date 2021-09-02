@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -42,13 +43,13 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.logger.Debugf("pss send: bad target (%s): %v", target, err)
 			s.logger.Errorf("pss send: bad target (%s): %v", target, err)
-			jsonhttp.BadRequest(w, nil)
+			jsonhttp.BadRequest(w, "target is not valid hex string")
 			return
 		}
 		if len(target) > targetMaxLength {
 			s.logger.Debugf("pss send: bad target length: %d", len(target))
 			s.logger.Errorf("pss send: bad target length: %d", len(target))
-			jsonhttp.BadRequest(w, nil)
+			jsonhttp.BadRequest(w, fmt.Sprintf("hex string target exceeds max length of %d", targetMaxLength*2))
 			return
 		}
 		targets = append(targets, target)
