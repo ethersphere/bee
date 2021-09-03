@@ -12,7 +12,7 @@ BEEKEEPER_BRANCH ?= master
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
-LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" -X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)"
+LDFLAGS ?= -buildid='' -s -w -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" -X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)"
 
 .PHONY: all
 all: build lint vet test-race binary
