@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -26,7 +25,6 @@ var (
 	defaultFlagTimeout = 5 * time.Minute
 	defaultPollEvery   = 1 * time.Minute
 	cleanupTimeout     = 5 * time.Minute // how long before we cleanup a peer
-	blockDuration      = 24 * time.Hour  // how long to blocklist an unresponsive peer for
 	blocksToRemember   = 1000
 )
 
@@ -61,18 +59,18 @@ type Options struct {
 type ChainSyncer struct {
 	backend                transaction.Backend // eth backend
 	prove                  prover              // the chainsync protocol
-	disconnecter           p2p.Disconnecter    // p2p interface to block peers
 	peerIterator           topology.EachPeerer // topology peer iterator
 	peers                  *sync.Map           // list of peers and their metadata
 	pollEvery, flagTimeout time.Duration
 	logger                 logging.Logger
 	lru                    *lru.Cache
+	metrics                metrics
 
 	quit chan struct{}
 	wg   sync.WaitGroup
 }
 
-func New(backend transaction.Backend, p prover, d p2p.Disconnecter, peerIterator topology.EachPeerer, logger logging.Logger, o *Options) (*ChainSyncer, error) {
+func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer, logger logging.Logger, o *Options) (*ChainSyncer, error) {
 	lruCache, err := lru.New(blocksToRemember)
 	if err != nil {
 		return nil, err
@@ -86,13 +84,13 @@ func New(backend transaction.Backend, p prover, d p2p.Disconnecter, peerIterator
 	c := &ChainSyncer{
 		backend:      backend,
 		prove:        p,
-		disconnecter: d,
 		peerIterator: peerIterator,
 		pollEvery:    o.PollEvery,
 		flagTimeout:  o.FlagTimeout,
 		logger:       logger,
 		peers:        &sync.Map{},
 		lru:          lruCache,
+		metrics:      newMetrics(),
 		quit:         make(chan struct{}),
 	}
 	c.wg.Add(1)
@@ -127,6 +125,8 @@ func (c *ChainSyncer) manage() {
 			continue
 		}
 
+		start := time.Now()
+
 		_ = c.peerIterator.EachPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
 			entry, _ := c.peers.LoadOrStore(p.ByteString(), &peer{})
 			e := entry.(*peer)
@@ -137,26 +137,33 @@ func (c *ChainSyncer) manage() {
 				hash, err := c.prove.Prove(ctx, p, blockHeight)
 				if err != nil {
 					c.logger.Infof("chainsync: peer %s failed to prove block %d: %v", p.String(), blockHeight, err)
+					c.metrics.PeerErrors.Inc()
 					e.flag()
 					return
 				}
 				if !bytes.Equal(blockHash, hash) {
 					c.logger.Infof("chainsync: peer %s failed to prove block %d: want block hash %x got %x", p.String(), blockHash, hash)
+					c.metrics.InvalidProofs.Inc()
 					e.flag()
 					return
 				}
 				c.logger.Tracef("chainsync: peer %s proved block %d", p.String(), blockHeight)
+				c.metrics.SyncedPeers.Inc()
 				e.unflag()
 			}()
 			return false, false, nil
 		})
+
 		// wait for all operations to finish
 		wg.Wait()
+
 		select {
 		case <-c.quit:
 			return
 		default:
 		}
+
+		c.metrics.TotalTimeWaiting.Add(float64(time.Since(start)))
 
 		c.cleanup()
 		c.block()
@@ -212,16 +219,16 @@ func (c *ChainSyncer) block() {
 		peer := v.(*peer)
 		if peer.unsynced(now, c.flagTimeout) {
 			// peer designated for blocking
-			c.logger.Infof("chainsync: blocking peer %s, flagged since %s", swarm.NewAddress([]byte(k.(string))).String(), peer.flaggedSince)
+			c.logger.Infof("chainsync: peer %s unsynced, flagged since %s", swarm.NewAddress([]byte(k.(string))).String(), peer.flaggedSince)
+			c.metrics.UnsyncedPeers.Inc()
 			keys = append(keys, k.(string))
 		}
 		return true
 	})
 
-	for _, k := range keys {
-		addr := swarm.NewAddress([]byte(k))
-		if err := c.disconnecter.Blocklist(addr, blockDuration); err != nil {
-			c.logger.Warningf("chainsync: blocking peer %s failed: %v", addr, err)
+	for range keys {
+		if notifyHook != nil {
+			notifyHook()
 		}
 	}
 }
@@ -258,3 +265,5 @@ func (c *ChainSyncer) Close() error {
 	}
 	return nil
 }
+
+var notifyHook func()
