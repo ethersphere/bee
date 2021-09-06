@@ -11,7 +11,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// peerConnInfo groups necessary fields needed to create a connection.
+// generateCommonBinPrefixes generates the common bin prefixes
+// used by the bin balancer.
 func (k *Kad) generateCommonBinPrefixes() {
 	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
 	bitSuffixes := make([]uint8, bitCombinationsCount)
