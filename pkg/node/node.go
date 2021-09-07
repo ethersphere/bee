@@ -702,6 +702,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		multiresolver.WithLogger(o.Logger),
 	)
 	b.resolverCloser = multiResolver
+	var chainSyncer *chainsyncer.ChainSyncer
 
 	if o.FullNodeMode {
 		cs, err := chainsync.New(p2ps, swapBackend)
@@ -712,12 +713,12 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
 
-		ccs, err := chainsyncer.New(swapBackend, cs, kad, logger, nil)
+		chainSyncer, err = chainsyncer.New(swapBackend, cs, kad, logger, nil)
 		if err != nil {
 			return nil, fmt.Errorf("new chainsyncer: %v", err)
 		}
 
-		b.chainSyncerCloser = ccs
+		b.chainSyncerCloser = chainSyncer
 	}
 	var apiService api.Service
 	if o.APIAddr != "" {
@@ -800,7 +801,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if swapService != nil {
 			debugAPIService.MustRegisterMetrics(swapService.Metrics()...)
 		}
-
+		if chainSyncer != nil {
+			debugAPIService.MustRegisterMetrics(chainSyncer.Metrics()...)
+		}
 		// inject dependencies and configure full debug api http path routes
 		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, swapService, chequebookService, batchStore, post, postageContractService, traversalService)
 	}

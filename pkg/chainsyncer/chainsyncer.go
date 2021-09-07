@@ -21,7 +21,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
-var (
+const (
 	defaultFlagTimeout = 5 * time.Minute
 	defaultPollEvery   = 1 * time.Minute
 	cleanupTimeout     = 5 * time.Minute // how long before we cleanup a peer

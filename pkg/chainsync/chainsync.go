@@ -24,17 +24,17 @@ import (
 )
 
 const (
-	protocolName    = "chainsync"
-	protocolVersion = "1.0.0"
-	syncStreamName  = "prove"
+	protocolName     = "chainsync"
+	protocolVersion  = "1.0.0"
+	syncStreamName   = "prove"
+	messageTimeout   = 1 * time.Minute
+	limitBurst       = 2
+	limitRate        = time.Minute
+	blocksToRemember = 1000
 )
 
 var (
-	messageTimeout       = 1 * time.Minute
-	limitBurst           = 2
-	limitRate            = time.Minute
-	ErrRateLimitExceeded = errors.New("rate limit exceeded")
-	blocksToRemember     = 1000
+	errRateLimitExceeded = errors.New("rate limit exceeded")
 )
 
 func (s *ChainSync) Protocol() p2p.ProtocolSpec {
@@ -81,7 +81,7 @@ func New(s p2p.Streamer, backend transaction.Backend) (*ChainSync, error) {
 // current used eth backend.
 func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight uint64) ([]byte, error) {
 	if !s.outLimiter.Allow(peer.ByteString(), 1) {
-		return nil, ErrRateLimitExceeded
+		return nil, errRateLimitExceeded
 	}
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, syncStreamName)
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
 	if !s.inLimiter.Allow(peer.Address.ByteString(), 1) {
 		_ = stream.Reset()
-		return ErrRateLimitExceeded
+		return errRateLimitExceeded
 	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
