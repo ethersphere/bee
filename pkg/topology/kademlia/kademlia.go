@@ -889,7 +889,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 			if err != nil {
 				return err
 			}
-			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accomodate node")
+			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
 			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {
