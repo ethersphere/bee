@@ -87,6 +87,8 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
+	defer stream.Close()
+
 	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
 	defer cancel()
 
@@ -108,6 +110,11 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 }
 
 func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+	if !s.inLimiter.Allow(peer.Address.ByteString(), 1) {
+		_ = stream.Reset()
+		return ErrRateLimitExceeded
+	}
+
 	w, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
 	defer cancel()
@@ -115,11 +122,6 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	if err := r.ReadMsgWithContext(ctx, &describe); err != nil {
 		_ = stream.Reset()
 		return fmt.Errorf("read describe: %w", err)
-	}
-
-	if !s.inLimiter.Allow(peer.Address.ByteString(), 1) {
-		_ = stream.Reset()
-		return ErrRateLimitExceeded
 	}
 
 	height, _ := binary.Uvarint(describe.BlockHeight)
