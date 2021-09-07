@@ -783,8 +783,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 		return err
 	case !i.Overlay.Equal(peer):
-		_ = k.p2p.Disconnect(peer, "overlay mismatch")
-		_ = k.p2p.Disconnect(i.Overlay, "overlay mismatch")
+		_ = k.p2p.Disconnect(peer, errOverlayMismatch.Error())
+		_ = k.p2p.Disconnect(i.Overlay, errOverlayMismatch.Error())
 		return errOverlayMismatch
 	}
 
@@ -882,7 +882,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 			if err != nil {
 				return err
 			}
-			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accomodate node")
+			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
 			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {
