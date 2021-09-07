@@ -28,27 +28,28 @@ const (
 	blocksToRemember   = 1000
 )
 
+// zeroTime exists to avoid unnecessary allocations.
+var zeroTime = time.Time{}
+
 type prover interface {
 	Prove(context.Context, swarm.Address, uint64) ([]byte, error)
 }
 
 type peer struct {
 	lastSeen     time.Time // last time we've seen the peer (used to gc entries)
-	flagged      bool      // indicates whether the peer is actively flagged
 	flaggedSince time.Time // timestamp of the point we've timed-out or got an error from a peer
 }
 
 func (p *peer) flag() {
-	if !p.flagged {
+	if p.flaggedSince.IsZero() {
 		p.flaggedSince = time.Now()
-		p.flagged = true
 	}
 }
 func (p *peer) unflag() {
-	p.flagged = false
+	p.flaggedSince = zeroTime
 }
 func (p *peer) unsynced(now time.Time, flagTimeout time.Duration) bool {
-	return p.flagged && now.After(p.flaggedSince.Add(flagTimeout))
+	return !p.flaggedSince.IsZero() && now.After(p.flaggedSince.Add(flagTimeout))
 }
 
 type Options struct {
