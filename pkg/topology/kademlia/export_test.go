@@ -13,4 +13,5 @@ var (
 	PruneOversaturatedBinsFunc  = func(k *Kad) func(uint8) {
 		return k.pruneOversaturatedBins
 	}
+	GenerateCommonBinPrefixes = generateCommonBinPrefixes
 )

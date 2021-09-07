@@ -1177,9 +1177,6 @@ func TestStart(t *testing.T) {
 
 func TestOutofDepthPrune(t *testing.T) {
 
-	// this random seed assures bin 0 and 1 are balanced, but not 2
-	rand.Seed(2)
-
 	defer func(p int) {
 		*kademlia.SaturationPeers = p
 	}(*kademlia.SaturationPeers)
@@ -1220,11 +1217,16 @@ func TestOutofDepthPrune(t *testing.T) {
 	}
 	defer kad.Close()
 
-	// add peers upto bin 6
+	// bin 0,1 balanced, rest not
 	for i := 0; i < 6; i++ {
-		for j := 0; j < 20; j++ {
-			addr := test.RandomAddressAt(base, i)
-			addOne(t, signer, kad, ab, addr)
+		var peers []swarm.Address
+		if i < 2 {
+			peers = mineBin(t, base, i, 20, true)
+		} else {
+			peers = mineBin(t, base, i, 20, false)
+		}
+		for _, peer := range peers {
+			addOne(t, signer, kad, ab, peer)
 		}
 		time.Sleep(time.Millisecond * 10)
 		kDepth(t, kad, i)
@@ -1237,7 +1239,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		t.Fatal("bin 2 should no be balanced")
 	}
 
-	// wait for kademlia connectors to finish
+	// wait for kademlia connectors and pruning to finish
 	time.Sleep(time.Millisecond * 100)
 
 	// check that no pruning has happened
@@ -1260,7 +1262,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	addr := test.RandomAddressAt(base, 6)
 	addOne(t, signer, kad, ab, addr)
 
-	// wait for kademlia connectors to finish
+	// wait for kademlia connectors and pruning to finish
 	time.Sleep(time.Millisecond * 100)
 
 	// check bins have been pruned
@@ -1274,6 +1276,59 @@ func TestOutofDepthPrune(t *testing.T) {
 	// check that bin 0,1 remains balanced after pruning
 	waitBalanced(t, kad, 0)
 	waitBalanced(t, kad, 1)
+}
+
+func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
+
+	var rndAddrs = make([]swarm.Address, count)
+
+	if count < 8 && isBalanced {
+		t.Fatal("peersCount must be greater than 8 for balanced bins")
+	}
+
+	for i := 0; i < count; i++ {
+		rndAddrs[i] = test.RandomAddressAt(base, bin)
+	}
+
+	if isBalanced {
+		prefixes := kademlia.GenerateCommonBinPrefixes(base, 3)
+		for i := 0; i < 8; i++ {
+			rndAddrs[i] = prefixes[bin][i]
+		}
+	} else {
+		for i := range rndAddrs {
+			bytes := rndAddrs[i].Bytes()
+			setBits(bytes, bin+1, 3, 0) // set 3 bits to '000' to mess with balance
+			rndAddrs[i] = swarm.NewAddress(bytes)
+		}
+	}
+
+	return rndAddrs
+}
+
+func setBits(data []byte, startBit, bitCount int, b int) {
+
+	index := startBit / 8
+	bitPos := startBit % 8
+
+	for bitCount > 0 {
+
+		bitValue := b >> (bitCount - 1)
+
+		if bitValue == 1 {
+			data[index] = data[index] | (1 << (7 - bitPos)) // set bit to 1
+		} else {
+			data[index] = data[index] & (^(1 << (7 - bitPos))) // set bit to 0
+		}
+
+		bitCount--
+		bitPos++
+
+		if bitPos == 8 {
+			bitPos = 0
+			index++
+		}
+	}
 }
 
 func binSizes(kad *kademlia.Kad) []int {

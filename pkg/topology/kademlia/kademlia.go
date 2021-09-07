@@ -151,7 +151,7 @@ func New(
 	}
 
 	if k.bitSuffixLength > 0 {
-		k.generateCommonBinPrefixes()
+		k.commonBinPrefixes = generateCommonBinPrefixes(k.base, k.bitSuffixLength)
 	}
 
 	return k
