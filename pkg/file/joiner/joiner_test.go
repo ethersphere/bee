@@ -7,6 +7,8 @@ package joiner_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -159,6 +161,73 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 	if !bytes.Equal(resultBuffer, firstChunk.Data()[8:]) {
 		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstChunk.Data()[:len(resultBuffer)])
+	}
+}
+
+func TestJoinerMalformed(t *testing.T) {
+	store := mock.NewStorer()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	subTrie := []byte{8085: 1}
+
+	pb := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, false)
+
+	c1addr, _ := builder.FeedPipeline(ctx, pb, bytes.NewReader(subTrie))
+
+	//vars
+	dataSize := 8 + swarm.SectionSize*2
+	spanLength := swarm.ChunkSize * 2
+
+	// chunk1
+	c1data := make([]byte, dataSize)
+
+	binary.LittleEndian.PutUint64(c1data, uint64(spanLength))
+	_, _ = rand.Read(c1data[8:])
+
+	c1chunk := swarm.NewChunk(c1addr, c1data)
+
+	_, err := store.Put(ctx, storage.ModePutUpload, c1chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// chunk2
+	c2data := make([]byte, dataSize)
+
+	binary.LittleEndian.PutUint64(c2data, uint64(spanLength))
+	_, _ = rand.Read(c2data[8:])
+
+	c2key := make([]byte, swarm.SectionSize)
+	_, _ = rand.Read(c2key)
+
+	c2chunk := swarm.NewChunk(swarm.NewAddress(c2key), c2data)
+
+	_, err = store.Put(ctx, storage.ModePutUpload, c2chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//
+	joinReader, l, err := joiner.New(ctx, store, c1chunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l != int64(swarm.ChunkSize*2) {
+		t.Fatalf("expected join data length %d, got %d", swarm.ChunkSize*2, l)
+	}
+
+	resultBuffer := make([]byte, swarm.ChunkSize)
+	n, err := joinReader.Read(resultBuffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(resultBuffer) {
+		t.Fatalf("expected read count %d, got %d", len(resultBuffer), n)
+	}
+	if !bytes.Equal(resultBuffer, c1chunk.Data()[8:]) {
+		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, c1chunk.Data()[:len(resultBuffer)])
 	}
 }
 
