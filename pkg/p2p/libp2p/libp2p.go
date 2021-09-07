@@ -509,7 +509,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				var bpe *p2p.BlockPeerError
 				if errors.As(err, &bpe) {
 					_ = stream.Reset()
-					if err := s.Blocklist(overlay, bpe.Duration()); err != nil {
+					if err := s.Blocklist(overlay, bpe.Duration(), bpe.Error()); err != nil {
 						logger.Debugf("blocklist: could not blocklist peer %s: %v", peerID, err)
 						logger.Errorf("unable to blocklist peer %v", peerID)
 					}
@@ -555,8 +555,8 @@ func (s *Service) NATManager() basichost.NATManager {
 	return s.natManager
 }
 
-func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error {
-	s.logger.Tracef("libp2p blocklist: peer %s for %v", overlay.String(), duration)
+func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
+	s.logger.Tracef("libp2p blocklist: peer %s for %v reason %s", overlay.String(), duration, reason)
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "blocklisting peer")

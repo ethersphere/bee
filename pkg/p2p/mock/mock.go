@@ -26,7 +26,7 @@ type Service struct {
 	setNotifierFunc       func(p2p.PickyNotifier)
 	setWelcomeMessageFunc func(string) error
 	getWelcomeMessageFunc func() string
-	blocklistFunc         func(swarm.Address, time.Duration) error
+	blocklistFunc         func(swarm.Address, time.Duration, string) error
 	welcomeMessage        string
 }
 
@@ -93,7 +93,7 @@ func WithSetWelcomeMessageFunc(f func(string) error) Option {
 	})
 }
 
-func WithBlocklistFunc(f func(swarm.Address, time.Duration) error) Option {
+func WithBlocklistFunc(f func(swarm.Address, time.Duration, string) error) Option {
 	return optionFunc(func(s *Service) {
 		s.blocklistFunc = f
 	})
@@ -168,11 +168,11 @@ func (s *Service) GetWelcomeMessage() string {
 
 func (s *Service) Halt() {}
 
-func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration) error {
+func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	if s.blocklistFunc == nil {
 		return errors.New("function blocklist not configured")
 	}
-	return s.blocklistFunc(overlay, duration)
+	return s.blocklistFunc(overlay, duration, reason)
 }
 
 func (s *Service) SetPickyNotifier(f p2p.PickyNotifier) {
