@@ -49,16 +49,25 @@ type Tags struct {
 	tags       *sync.Map
 	stateStore storage.StateStorer
 	logger     logging.Logger
+	rand       *rand.Rand
+	randM      sync.Mutex
 }
 
 // NewTags creates a tags object
 func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
-	rand.Seed(time.Now().UnixNano())
+
 	return &Tags{
 		tags:       &sync.Map{},
 		stateStore: stateStore,
 		logger:     logger,
+		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
+}
+
+func (ts *Tags) TagUidFunc() uint32 {
+	ts.randM.Lock()
+	defer ts.randM.Unlock()
+	return ts.rand.Uint32()
 }
 
 // Create creates a new tag, stores it by a not yet in use UID and returns it
@@ -69,7 +78,7 @@ func (ts *Tags) Create(total int64) (*Tag, error) {
 	var uid uint32
 
 	for exists {
-		uid = TagUidFunc()
+		uid = ts.TagUidFunc()
 		if _, loaded := ts.tags.Load(uid); !loaded {
 			exists = false
 		}
