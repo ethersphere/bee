@@ -892,7 +892,14 @@ func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duratio
 // provides it. It ignores the default libp2p user agent string
 // "github.com/libp2p/go-libp2p" and returns empty string in that case.
 func (s *Service) peerUserAgent(peerID libp2ppeer.ID) (string, error) {
-	v, err := s.host.Peerstore().Get(peerID, "AgentVersion")
+	var v interface{}
+	var err error
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		v, err = s.host.Peerstore().Get(peerID, "AgentVersion")
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		// error is ignored as user agent is informative only
 		return "", fmt.Errorf("peerstore get AgentVersion: %w", err)
