@@ -533,7 +533,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 					newestPeer = peer
 				}
 			}
-			err := k.p2p.Disconnect(newestPeer)
+			err := k.p2p.Disconnect(newestPeer, "pruned from oversaturated bin")
 			if err != nil {
 				k.logger.Debugf("prune disconnect fail %v", err)
 			}
@@ -783,8 +783,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 		return err
 	case !i.Overlay.Equal(peer):
-		_ = k.p2p.Disconnect(peer)
-		_ = k.p2p.Disconnect(i.Overlay)
+		_ = k.p2p.Disconnect(peer, errOverlayMismatch.Error())
+		_ = k.p2p.Disconnect(i.Overlay, errOverlayMismatch.Error())
 		return errOverlayMismatch
 	}
 
@@ -830,7 +830,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
 		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
-		_ = k.p2p.Disconnect(peer)
+		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
 
 	return err
@@ -882,7 +882,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 			if err != nil {
 				return err
 			}
-			_ = k.p2p.Disconnect(randPeer)
+			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
 			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {
