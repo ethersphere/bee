@@ -48,7 +48,7 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true BEEKEEPER_BRANCH=cluster-v2
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
