@@ -41,7 +41,7 @@ const (
 )
 
 var (
-	dbSchemaCurrent = dbSchemaFlushBlock
+	dbSchemaCurrent = dbSchemaSwapAddr
 )
 
 type migration struct {
@@ -128,12 +128,12 @@ func migrateSwap(s *store) error {
 			addr := common.BytesToAddress([]byte(split[1]))
 			fixed := fmt.Sprintf("%s%x", prefix, addr)
 
-			var chequebookAddress common.Address
-			if err = s.Get(key, &chequebookAddress); err != nil {
+			var val string
+			if err = s.Get(key, &val); err != nil {
 				return err
 			}
 
-			if err = s.Put(fixed, chequebookAddress); err != nil {
+			if err = s.Put(fixed, common.HexToAddress(val)); err != nil {
 				return err
 			}
 
