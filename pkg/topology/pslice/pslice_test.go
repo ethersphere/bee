@@ -12,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
-	psliceold "github.com/ethersphere/bee/pkg/topology/pslice/psliceOld"
 )
 
 // TestShallowestEmpty tests that ShallowestEmpty functionality works correctly.
@@ -499,92 +498,6 @@ func BenchmarkEachBin(b *testing.B) {
 
 func BenchmarkEachBinRev(b *testing.B) {
 	ps := pslice.New(bins, base)
-
-	for i := 0; i < bins*perBin; i++ {
-		ps.Add(test.RandomAddress())
-	}
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		_ = ps.EachBinRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
-			return false, false, nil
-		})
-	}
-}
-
-func BenchmarkAddOld(b *testing.B) {
-	ps := psliceold.New(bins, base)
-
-	var addrs []swarm.Address
-
-	for i := 0; i < bins*perBin; i++ {
-		addrs = append(addrs, test.RandomAddress())
-	}
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		for _, addr := range addrs {
-			ps.Add(addr)
-		}
-	}
-}
-
-func BenchmarkAddBatchOld(b *testing.B) {
-	ps := psliceold.New(bins, base)
-
-	var addrs []swarm.Address
-
-	for i := 0; i < bins*perBin; i++ {
-		addrs = append(addrs, test.RandomAddress())
-	}
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		ps.Add(addrs...)
-	}
-}
-
-func BenchmarkRemoveOld(b *testing.B) {
-	ps := psliceold.New(bins, base)
-
-	var addrs []swarm.Address
-
-	for i := 0; i < bins*perBin; i++ {
-		addr := test.RandomAddress()
-		addrs = append(addrs, test.RandomAddress())
-		ps.Add(addr)
-	}
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		for _, addr := range addrs {
-			ps.Remove(addr)
-		}
-	}
-}
-
-func BenchmarkEachBinOld(b *testing.B) {
-	ps := psliceold.New(bins, base)
-
-	for i := 0; i < bins*perBin; i++ {
-		ps.Add(test.RandomAddress())
-	}
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
-			return false, false, nil
-		})
-	}
-}
-
-func BenchmarkEachBinRevOld(b *testing.B) {
-	ps := psliceold.New(bins, base)
 
 	for i := 0; i < bins*perBin; i++ {
 		ps.Add(test.RandomAddress())
