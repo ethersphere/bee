@@ -13,19 +13,19 @@ import (
 
 // generateCommonBinPrefixes generates the common bin prefixes
 // used by the bin balancer.
-func (k *Kad) generateCommonBinPrefixes() {
-	bitCombinationsCount := int(math.Pow(2, float64(k.bitSuffixLength)))
+func generateCommonBinPrefixes(base swarm.Address, suffixLength int) [][]swarm.Address {
+	bitCombinationsCount := int(math.Pow(2, float64(suffixLength)))
 	bitSuffixes := make([]uint8, bitCombinationsCount)
 
 	for i := 0; i < bitCombinationsCount; i++ {
 		bitSuffixes[i] = uint8(i)
 	}
 
-	addr := swarm.MustParseHexAddress(k.base.String())
+	addr := swarm.MustParseHexAddress(base.String())
 	addrBytes := addr.Bytes()
 	_ = addrBytes
 
-	binPrefixes := k.commonBinPrefixes
+	binPrefixes := make([][]swarm.Address, int(swarm.MaxBins))
 
 	// copy base address
 	for i := range binPrefixes {
@@ -34,8 +34,8 @@ func (k *Kad) generateCommonBinPrefixes() {
 
 	for i := range binPrefixes {
 		for j := range binPrefixes[i] {
-			pseudoAddrBytes := make([]byte, len(k.base.Bytes()))
-			copy(pseudoAddrBytes, k.base.Bytes())
+			pseudoAddrBytes := make([]byte, len(base.Bytes()))
+			copy(pseudoAddrBytes, base.Bytes())
 			binPrefixes[i][j] = swarm.NewAddress(pseudoAddrBytes)
 		}
 	}
@@ -57,8 +57,8 @@ func (k *Kad) generateCommonBinPrefixes() {
 			}
 
 			// set pseudo suffix
-			bitSuffixPos := k.bitSuffixLength - 1
-			for l := i + 1; l < i+k.bitSuffixLength+1; l++ {
+			bitSuffixPos := suffixLength - 1
+			for l := i + 1; l < i+suffixLength+1; l++ {
 				index, pos := l/8, l%8
 
 				if hasBit(bitSuffixes[j], uint8(bitSuffixPos)) {
@@ -71,12 +71,14 @@ func (k *Kad) generateCommonBinPrefixes() {
 			}
 
 			// clear rest of the bits
-			for l := i + k.bitSuffixLength + 1; l < len(pseudoAddrBytes)*8; l++ {
+			for l := i + suffixLength + 1; l < len(pseudoAddrBytes)*8; l++ {
 				index, pos := l/8, l%8
 				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
 			}
 		}
 	}
+
+	return binPrefixes
 }
 
 // Clears the bit at pos in n.
