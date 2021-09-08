@@ -891,7 +891,10 @@ func TestClosestPeer(t *testing.T) {
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
 
-	kad := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), metricsDB, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), metricsDB, logger, kademlia.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -1187,15 +1190,18 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 		}
 	})
 	var (
-		pk, _  = beeCrypto.GenerateSecp256k1Key()                              // random private key
-		signer = beeCrypto.NewDefaultSigner(pk)                                // signer
-		base   = test.RandomAddress()                                          // base address
-		ab     = addressbook.New(mockstate.NewStateStore())                    // address book
-		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter)           // p2p mock
-		logger = logging.New(ioutil.Discard, 0)                                // logger
-		disc   = mock.NewDiscovery()                                           // mock discovery protocol
-		kad    = kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts) // kademlia instance
+		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
+		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
+		base   = test.RandomAddress()                                // base address
+		ab     = addressbook.New(mockstate.NewStateStore())          // address book
+		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock
+		logger = logging.New(ioutil.Discard, 0)                      // logger
+		disc   = mock.NewDiscovery()                                 // mock discovery protocol
 	)
+	kad, err := kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return base, kad, ab, disc, signer
 }
