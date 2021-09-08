@@ -52,7 +52,10 @@ var (
 	_ p2p.DebugService = (*Service)(nil)
 )
 
-const defaultLightNodeLimit = 100
+const (
+	defaultLightNodeLimit = 100
+	peerUserAgentTimeout  = time.Second
+)
 
 type Service struct {
 	ctx               context.Context
@@ -437,7 +440,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	peerUserAgent := appendSpace(s.peerUserAgent(peerID))
+	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 
 	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
 	s.logger.Infof("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.Overlay, i.LightString(), peerUserAgent)
@@ -692,7 +695,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	peerUserAgent := appendSpace(s.peerUserAgent(info.ID))
+	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
 	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
 	s.logger.Infof("successfully connected to peer %s%s%s (outbound)", overlay, i.LightString(), peerUserAgent)
@@ -883,8 +886,26 @@ func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duratio
 // peerUserAgent returns User Agent string of the connected peer if the peer
 // provides it. It ignores the default libp2p user agent string
 // "github.com/libp2p/go-libp2p" and returns empty string in that case.
-func (s *Service) peerUserAgent(peerID libp2ppeer.ID) string {
-	v, err := s.host.Peerstore().Get(peerID, "AgentVersion")
+func (s *Service) peerUserAgent(ctx context.Context, peerID libp2ppeer.ID) string {
+	ctx, cancel := context.WithTimeout(ctx, peerUserAgentTimeout)
+	defer cancel()
+	var (
+		v   interface{}
+		err error
+	)
+	// Peerstore may not contain all keys and values right after the connections is created.
+	// This retry mechanism ensures more reliable user agent propagation.
+	for iterate := true; iterate; {
+		v, err = s.host.Peerstore().Get(peerID, "AgentVersion")
+		if err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			iterate = false
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 	if err != nil {
 		// error is ignored as user agent is informative only
 		return ""
