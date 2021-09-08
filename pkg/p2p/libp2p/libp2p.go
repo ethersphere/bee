@@ -439,6 +439,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerUserAgent, err := s.peerUserAgent(peerID)
 	if err != nil {
+		fmt.Println("got error getting user agent:")
+		fmt.Println(err)
 		s.logger.Debugf("stream handler: inbound peer %s user agent: %w", err)
 	}
 
