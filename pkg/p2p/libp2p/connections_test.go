@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -825,13 +824,8 @@ func TestWithBlocklistStreams(t *testing.T) {
 	expectPeersEventually(t, s2)
 	expectPeersEventually(t, s1)
 }
-func TestUserAgentLogging(t *testing.T) {
-	for i := 0; i < 20; i++ {
-		t.Run(fmt.Sprintf("%d", i), testUserAgentLogging)
-	}
-}
 
-func testUserAgentLogging(t *testing.T) {
+func TestUserAgentLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

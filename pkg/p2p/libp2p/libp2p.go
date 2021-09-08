@@ -437,15 +437,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	peerUserAgent, err := s.peerUserAgent(peerID)
-	if err != nil {
-		fmt.Println("got error getting user agent:")
-		fmt.Println(err)
-		s.logger.Debugf("stream handler: inbound peer %s user agent: %w", err)
-	}
+	peerUserAgent := appendSpace(s.peerUserAgent(peerID))
 
-	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), appendSpace(peerUserAgent))
-	s.logger.Infof("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.Overlay, i.LightString(), appendSpace(peerUserAgent))
+	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
+	s.logger.Infof("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.Overlay, i.LightString(), peerUserAgent)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -697,13 +692,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	peerUserAgent, err := s.peerUserAgent(info.ID)
-	if err != nil {
-		return nil, fmt.Errorf("peer user agent: %w", err)
-	}
+	peerUserAgent := appendSpace(s.peerUserAgent(info.ID))
 
-	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), appendSpace(peerUserAgent))
-	s.logger.Infof("successfully connected to peer %s%s%s (outbound)", overlay, i.LightString(), appendSpace(peerUserAgent))
+	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
+	s.logger.Infof("successfully connected to peer %s%s%s (outbound)", overlay, i.LightString(), peerUserAgent)
 	return i.BzzAddress, nil
 }
 
@@ -891,28 +883,33 @@ func (s *Service) Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duratio
 // peerUserAgent returns User Agent string of the connected peer if the peer
 // provides it. It ignores the default libp2p user agent string
 // "github.com/libp2p/go-libp2p" and returns empty string in that case.
-func (s *Service) peerUserAgent(peerID libp2ppeer.ID) (string, error) {
-	var v interface{}
-	var err error
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+func (s *Service) peerUserAgent(peerID libp2ppeer.ID) string {
+	var (
+		v   interface{}
+		err error
+	)
+	// Peerstore may not contain all keys and values right after the connections is created.
+	// This retry mechanism ensures more reliable user agent propagation.
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
 		v, err = s.host.Peerstore().Get(peerID, "AgentVersion")
 		if err == nil {
 			break
 		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if err != nil {
 		// error is ignored as user agent is informative only
-		return "", fmt.Errorf("peerstore get AgentVersion: %w", err)
+		return ""
 	}
 	ua, ok := v.(string)
 	if !ok {
-		return "", fmt.Errorf("user agent %v is not a string", v)
+		return ""
 	}
 	// Ignore the default user agent.
-	// if ua == "github.com/libp2p/go-libp2p" {
-	// 	return ""
-	// }
-	return ua, nil
+	if ua == "github.com/libp2p/go-libp2p" {
+		return ""
+	}
+	return ua
 }
 
 // appendSpace adds a leading space character if the string is not empty.
