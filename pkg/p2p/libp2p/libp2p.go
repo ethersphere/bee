@@ -342,7 +342,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debugf("stream handler: could not close stream %s: %v", overlay, err)
 			s.logger.Errorf("stream handler: unable to handshake with peer %v", overlay)
-			_ = s.Disconnect(overlay, "unable to handshake")
+			_ = s.Disconnect(overlay, "unable to close handshake stream")
 		}
 		return
 	}
@@ -350,7 +350,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if err = handshakeStream.FullClose(); err != nil {
 		s.logger.Debugf("stream handler: could not close stream %s: %v", overlay, err)
 		s.logger.Errorf("stream handler: unable to handshake with peer %v", overlay)
-		_ = s.Disconnect(overlay, "unable to handshake")
+		_ = s.Disconnect(overlay, "could not fully close stream on handshake")
 		return
 	}
 
@@ -513,7 +513,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 						logger.Debugf("blocklist: could not blocklist peer %s: %v", peerID, err)
 						logger.Errorf("unable to blocklist peer %v", peerID)
 					}
-					logger.Tracef("handler(%s): blocklisted %s reason %s", p.Name, overlay.String(), bpe.Error())
+					logger.Tracef("handler(%s): blocklisted %s", p.Name, overlay.String())
 				}
 				// count unexpected requests
 				if errors.Is(err, p2p.ErrUnexpected) {
@@ -556,10 +556,10 @@ func (s *Service) NATManager() basichost.NATManager {
 }
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
-	s.logger.Tracef("libp2p blocklist: peer %s for %v reason %s", overlay.String(), duration, reason)
+	s.logger.Tracef("libp2p blocklist: peer %s for %v reason: %s", overlay.String(), duration, reason)
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
-		_ = s.Disconnect(overlay, "blocklisting peer")
+		_ = s.Disconnect(overlay, "failed blocklisting peer")
 		return fmt.Errorf("blocklist peer %s: %v", overlay, err)
 	}
 	s.metrics.BlocklistedPeerCount.Inc()
@@ -652,7 +652,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		if err := handshakeStream.FullClose(); err != nil {
-			_ = s.Disconnect(overlay, "failed closing handshake")
+			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
@@ -660,7 +660,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	if err := handshakeStream.FullClose(); err != nil {
-		_ = s.Disconnect(overlay, "failed closing handshake")
+		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
@@ -702,7 +702,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 func (s *Service) Disconnect(overlay swarm.Address, reason string) error {
 	s.metrics.DisconnectCount.Inc()
 
-	s.logger.Debugf("libp2p disconnect: disconnecting peer %s reason %s", overlay, reason)
+	s.logger.Debugf("libp2p disconnect: disconnecting peer %s reason: %s", overlay, reason)
 
 	// found is checked at the bottom of the function
 	found, full, peerID := s.peers.remove(overlay)
