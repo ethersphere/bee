@@ -143,13 +143,12 @@ func TestPeerMetricsCollector(t *testing.T) {
 	if have, want := len(mc.Snapshot(t2, addr)), 1; have != want {
 		t.Fatalf("NewCollector(...): counters length mismatch: have %d; want %d", have, want)
 	}
-	mc.Inspect(addr, func(have *metrics.Snapshot) {
-		want := &metrics.Snapshot{
-			LastSeenTimestamp:       ss.LastSeenTimestamp,
-			ConnectionTotalDuration: 2 * ss.ConnectionTotalDuration, // 2x because we've already logout with t3 and login with t1 again.
-		}
-		if diff := cmp.Diff(have, want); diff != "" {
-			t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
-		}
-	})
+	have = mc.Inspect(addr)
+	want = &metrics.Snapshot{
+		LastSeenTimestamp:       ss.LastSeenTimestamp,
+		ConnectionTotalDuration: 2 * ss.ConnectionTotalDuration, // 2x because we've already logout with t3 and login with t1 again.
+	}
+	if diff := cmp.Diff(have, want); diff != "" {
+		t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
+	}
 }
