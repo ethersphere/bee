@@ -7,7 +7,6 @@ package joiner_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
@@ -25,6 +25,7 @@ import (
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"gitlab.com/nolash/go-mockbytes"
 )
@@ -165,70 +166,47 @@ func TestJoinerWithReference(t *testing.T) {
 }
 
 func TestJoinerMalformed(t *testing.T) {
-	t.Skip()
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	subTrie := []byte{8085: 1}
-
 	pb := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, false)
-
 	c1addr, _ := builder.FeedPipeline(ctx, pb, bytes.NewReader(subTrie))
 
-	//vars
-	dataSize := 8 + swarm.SectionSize*2
-	spanLength := swarm.ChunkSize * 2
-
-	// chunk1
-	c1data := make([]byte, dataSize)
-
-	binary.LittleEndian.PutUint64(c1data, uint64(spanLength))
-	_, _ = rand.Read(c1data[8:])
-
-	c1chunk := swarm.NewChunk(c1addr, c1data)
-
-	_, err := store.Put(ctx, storage.ModePutUpload, c1chunk)
+	chunk2 := testingc.GenerateTestRandomChunk()
+	_, err := store.Put(ctx, storage.ModePutUpload, chunk2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// chunk2
-	c2data := make([]byte, dataSize)
+	// root chunk
+	rootChunkData := make([]byte, 8+64)
+	binary.LittleEndian.PutUint64(rootChunkData[:8], uint64(swarm.ChunkSize*2))
 
-	binary.LittleEndian.PutUint64(c2data, uint64(spanLength))
-	_, _ = rand.Read(c2data[8:])
+	copy(rootChunkData[8:], c1addr.Bytes())
+	copy(rootChunkData[8+32:], chunk2.Address().Bytes())
 
-	c2key := make([]byte, swarm.SectionSize)
-	_, _ = rand.Read(c2key)
-
-	c2chunk := swarm.NewChunk(swarm.NewAddress(c2key), c2data)
-
-	_, err = store.Put(ctx, storage.ModePutUpload, c2chunk)
+	rootChunk, err := cac.NewWithDataSpan(rootChunkData)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	//
-	joinReader, l, err := joiner.New(ctx, store, c1chunk.Address())
+	_, err = store.Put(ctx, storage.ModePutUpload, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l != int64(swarm.ChunkSize*2) {
-		t.Fatalf("expected join data length %d, got %d", swarm.ChunkSize*2, l)
+
+	joinReader, _, err := joiner.New(ctx, store, rootChunk.Address())
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	resultBuffer := make([]byte, swarm.ChunkSize)
-	n, err := joinReader.Read(resultBuffer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != len(resultBuffer) {
-		t.Fatalf("expected read count %d, got %d", len(resultBuffer), n)
-	}
-	if !bytes.Equal(resultBuffer, c1chunk.Data()[8:]) {
-		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, c1chunk.Data()[:len(resultBuffer)])
+	_, err = joinReader.Read(resultBuffer)
+	if !errors.Is(err, joiner.ErrMalformedTrie) {
+		t.Fatalf("expected %v, got %v", joiner.ErrMalformedTrie, err)
 	}
 }
 
