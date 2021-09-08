@@ -533,7 +533,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 					newestPeer = peer
 				}
 			}
-			err := k.p2p.Disconnect(newestPeer)
+			err := k.p2p.Disconnect(newestPeer, "pruned from oversaturated bin")
 			if err != nil {
 				k.logger.Debugf("prune disconnect fail %v", err)
 			}
