@@ -368,7 +368,7 @@ func TestConnectDisconnectEvents(t *testing.T) {
 	expectCounter(t, &dinCount, 0, &countMU)
 	expectCounter(t, &doutCount, 0, &countMU)
 
-	if err := s2.Disconnect(overlay1); err != nil {
+	if err := s2.Disconnect(overlay1, "test disconnect"); err != nil {
 		t.Fatal(err)
 	}
 

@@ -28,6 +28,11 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+const (
+	testDisconnectMsg = "test disconnect"
+	testBlocklistMsg  = "test blocklist"
+)
+
 func TestAddresses(t *testing.T) {
 	s, _ := newService(t, 1, libp2pServiceOpts{})
 
@@ -59,7 +64,7 @@ func TestConnectDisconnect(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
+	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -175,14 +180,14 @@ func TestDoubleDisconnect(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
+	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 		t.Fatal(err)
 	}
 
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
 
-	if err := s2.Disconnect(bzzAddr.Overlay); !errors.Is(err, p2p.ErrPeerNotFound) {
+	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); !errors.Is(err, p2p.ErrPeerNotFound) {
 		t.Errorf("got error %v, want %v", err, p2p.ErrPeerNotFound)
 	}
 
@@ -210,7 +215,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
+	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -225,7 +230,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
+	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +261,7 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
+		if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 			t.Fatal(err)
 		}
 
@@ -294,7 +299,7 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		expectPeers(t, s2, overlay1)
 		expectPeers(t, s1, overlay2)
 
-		if err := s2.Disconnect(overlay1); err != nil {
+		if err := s2.Disconnect(overlay1, testDisconnectMsg); err != nil {
 			t.Fatal(err)
 		}
 
@@ -407,7 +412,7 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	if err := s2.Blocklist(overlay1, 0); err != nil {
+	if err := s2.Blocklist(overlay1, 0, testBlocklistMsg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -511,7 +516,7 @@ func TestTopologyNotifier(t *testing.T) {
 	checkAddressbook(t, ab2, overlay1, addr)
 
 	// s2 disconnects from s1 so s1 disconnect notifiee should be called
-	if err := s2.Disconnect(bzzAddr.Overlay); err != nil {
+	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -540,7 +545,7 @@ func TestTopologyNotifier(t *testing.T) {
 	waitAddrSet(t, &n2connectedPeer.Address, &mtx, overlay1)
 
 	// s1 disconnects from s2 so s2 disconnect notifiee should be called
-	if err := s1.Disconnect(bzzAddr2.Overlay); err != nil {
+	if err := s1.Disconnect(bzzAddr2.Overlay, testDisconnectMsg); err != nil {
 		t.Fatal(err)
 	}
 	expectPeers(t, s1)

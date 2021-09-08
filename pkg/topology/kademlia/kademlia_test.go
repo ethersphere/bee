@@ -1410,7 +1410,7 @@ func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedC
 
 			return bzzAddr, nil
 		}),
-		p2pmock.WithDisconnectFunc(func(swarm.Address) error {
+		p2pmock.WithDisconnectFunc(func(swarm.Address, string) error {
 			if counter != nil {
 				_ = atomic.AddInt32(counter, -1)
 			}

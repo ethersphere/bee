@@ -362,7 +362,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
 			a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
-			_ = a.blocklist(peer, 1)
+			_ = a.blocklist(peer, 1, "failed to refresh")
 			return fmt.Errorf("refresh failure: %w", err)
 		}
 
@@ -1020,7 +1020,7 @@ func (d *debitAction) Cleanup() {
 		d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
 		if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
 			a.metrics.AccountingDisconnectsGhostOverdrawCount.Inc()
-			_ = a.blocklist(d.peer, 1)
+			_ = a.blocklist(d.peer, 1, "ghost overdraw")
 		}
 	}
 }
@@ -1047,14 +1047,14 @@ func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64
 	return kInt, nil
 }
 
-func (a *Accounting) blocklist(peer swarm.Address, multiplier int64) error {
+func (a *Accounting) blocklist(peer swarm.Address, multiplier int64, reason string) error {
 
 	disconnectFor, err := a.blocklistUntil(peer, multiplier)
 	if err != nil {
-		return a.p2p.Blocklist(peer, 1*time.Minute)
+		return a.p2p.Blocklist(peer, 1*time.Minute, reason)
 	}
 
-	return a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
+	return a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, reason)
 }
 
 func (a *Accounting) Connect(peer swarm.Address) {
@@ -1140,7 +1140,7 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 			disconnectFor = int64(60)
 		}
 		accountingPeer.connected = false
-		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second)
+		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "disconnected")
 	}
 }
 
