@@ -372,6 +372,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			// if the node has warmed up AND no other closer peer has been tried
 			if ps.warmedUp() && timeToSkip > 0 {
 				ps.skipList.Add(ch.Address(), peer, timeToSkip)
+				ps.metrics.TotalSkippedPeers.Inc()
 			}
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			if allowedRetries > 0 {
