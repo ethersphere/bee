@@ -90,7 +90,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 	return int(atomic.LoadInt64(&bytesRead)), nil
 }
 
-var ErrMalformedTrie = errors.New("subtrie span is over the limit")
+var ErrMalformedTrie = errors.New("malformed tree")
 
 func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, bytesRead *int64, eg *errgroup.Group) {
 	// we are at a leaf data chunk
