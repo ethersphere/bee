@@ -34,6 +34,7 @@ import (
 // interface.
 func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (chunks []swarm.Chunk, err error) {
 	db.metrics.ModeGetMulti.Inc()
+	db.metrics.ModeGetMultiChunks.Add(float64(len(addrs)))
 	defer totalTimeMetric(db.metrics.TotalTimeGetMulti, time.Now())
 
 	defer func() {
