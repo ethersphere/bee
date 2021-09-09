@@ -244,12 +244,17 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
+	beginning := time.Now()
+	s.logger.Tracef("handshake: beginning: %v", beginning)
+
 	var syn pb.Syn
 	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
 		s.metrics.SynRxFailed.Inc()
+		s.logger.Tracef("handshake: read syn msg error; took: %s", time.Since(beginning))
 		return nil, fmt.Errorf("read syn message: %w", err)
 	}
 	s.metrics.SynRx.Inc()
+	s.logger.Tracef("handshake: read syn msg took: %s", time.Since(beginning))
 
 	observedUnderlay, err := ma.NewMultiaddrBytes(syn.ObservedUnderlay)
 	if err != nil {
@@ -273,6 +278,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	welcomeMessage := s.GetWelcomeMessage()
 
+	start := time.Now()
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
 			ObservedUnderlay: fullRemoteMABytes,
@@ -290,16 +296,22 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		},
 	}); err != nil {
 		s.metrics.SynAckTxFailed.Inc()
+		s.logger.Tracef("handshake: write syn ack msg error; took: %s; total: %s", time.Since(start), time.Since(beginning))
 		return nil, fmt.Errorf("write synack message: %w", err)
 	}
 	s.metrics.SynAckTx.Inc()
+	s.logger.Tracef("handshake: write syn ack msg took: %s; total: %s", time.Since(start), time.Since(beginning))
 
+	start = time.Now()
 	var ack pb.Ack
 	if err := r.ReadMsgWithContext(ctx, &ack); err != nil {
 		s.metrics.AckRxFailed.Inc()
+		s.logger.Tracef("handshake: read ack msg error; took: %s; total: %s", time.Since(start), time.Since(beginning))
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 	s.metrics.AckRx.Inc()
+	s.logger.Tracef("handshake: read ack msg took: %s", time.Since(start))
+	s.logger.Tracef("handshake: ended; took: %v", time.Since(beginning))
 
 	if ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
