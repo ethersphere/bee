@@ -13,11 +13,14 @@ type metrics struct {
 	TotalSent               prometheus.Counter
 	TotalReceived           prometheus.Counter
 	TotalErrors             prometheus.Counter
+	TotalHandlerErrors      prometheus.Counter
 	TotalReplicated         prometheus.Counter
 	TotalReplicatedError    prometheus.Counter
 	TotalSendAttempts       prometheus.Counter
 	TotalFailedSendAttempts prometheus.Counter
 	TotalSkippedPeers       prometheus.Counter
+	TotalOutgoing           prometheus.Counter
+	TotalOutgoingErrors     prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -42,6 +45,13 @@ func newMetrics() metrics {
 			Name:      "total_errors",
 			Help:      "Total no of time error received while sending chunk.",
 		}),
+		TotalHandlerErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_handler_errors",
+			Help:      "Total no of error occurred while handling an incoming delivery (either while storing or forwarding).",
+		}),
+
 		TotalReplicated: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -71,6 +81,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_skipped_peers",
 			Help:      "Total no of peers skipped",
+		}),
+		TotalOutgoing: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_outgoing",
+			Help:      "Total no of chunks requested to be synced (calls on exported PushChunkToClosest)",
+		}),
+		TotalOutgoingErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_outgoing_errors",
+			Help:      "Total no of errors of entire operation to sync a chunk (multiple attempts included)",
 		}),
 	}
 }

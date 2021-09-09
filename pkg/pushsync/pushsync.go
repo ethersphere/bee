@@ -127,7 +127,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer cancel()
 	defer func() {
 		if err != nil {
-			ps.metrics.TotalErrors.Inc()
+			ps.metrics.TotalHandlerErrors.Inc()
 			_ = stream.Reset()
 		} else {
 			_ = stream.FullClose()
@@ -277,8 +277,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
+	ps.metrics.TotalOutgoing.Inc()
 	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
 	if err != nil {
+		ps.metrics.TotalOutgoingErrors.Inc()
 		return nil, err
 	}
 	return &Receipt{
