@@ -14,7 +14,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_BRANCH: "cluster-v2"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,7 +48,7 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true BEEKEEPER_BRANCH=cluster-v2
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
