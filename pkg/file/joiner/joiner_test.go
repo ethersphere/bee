@@ -7,6 +7,7 @@ package joiner_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
@@ -23,6 +25,7 @@ import (
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"gitlab.com/nolash/go-mockbytes"
 )
@@ -159,6 +162,51 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 	if !bytes.Equal(resultBuffer, firstChunk.Data()[8:]) {
 		t.Fatalf("expected resultbuffer %v, got %v", resultBuffer, firstChunk.Data()[:len(resultBuffer)])
+	}
+}
+
+func TestJoinerMalformed(t *testing.T) {
+	store := mock.NewStorer()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	subTrie := []byte{8085: 1}
+	pb := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, false)
+	c1addr, _ := builder.FeedPipeline(ctx, pb, bytes.NewReader(subTrie))
+
+	chunk2 := testingc.GenerateTestRandomChunk()
+	_, err := store.Put(ctx, storage.ModePutUpload, chunk2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// root chunk
+	rootChunkData := make([]byte, 8+64)
+	binary.LittleEndian.PutUint64(rootChunkData[:8], uint64(swarm.ChunkSize*2))
+
+	copy(rootChunkData[8:], c1addr.Bytes())
+	copy(rootChunkData[8+32:], chunk2.Address().Bytes())
+
+	rootChunk, err := cac.NewWithDataSpan(rootChunkData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = store.Put(ctx, storage.ModePutUpload, rootChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	joinReader, _, err := joiner.New(ctx, store, rootChunk.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resultBuffer := make([]byte, swarm.ChunkSize)
+	_, err = joinReader.Read(resultBuffer)
+	if !errors.Is(err, joiner.ErrMalformedTrie) {
+		t.Fatalf("expected %v, got %v", joiner.ErrMalformedTrie, err)
 	}
 }
 
