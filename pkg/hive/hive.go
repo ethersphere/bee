@@ -263,6 +263,12 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	wg := sync.WaitGroup{}
 
 	for _, p := range peers.Peers {
+
+		// if peer exists already, skip validation
+		if _, err := s.addressBook.Get(swarm.NewAddress(p.Overlay)); err == nil {
+			continue
+		}
+
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
