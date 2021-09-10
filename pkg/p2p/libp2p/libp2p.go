@@ -361,10 +361,11 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if i.FullNode {
 
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
-		defer cancel()
+		_, err := s.Ping(ctx, i.BzzAddress.Underlay)
+		cancel()
 
 		// only insert to addressbook if peer is reachable
-		if _, err := s.Ping(ctx, i.BzzAddress.Underlay); err == nil {
+		if err == nil {
 			err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 			if err != nil {
 				s.logger.Debugf("stream handler: addressbook put error %s: %v", peerID, err)
