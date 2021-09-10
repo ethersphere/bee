@@ -55,6 +55,7 @@ var (
 const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
+	pingTimeout           = time.Second * 5
 )
 
 type Service struct {
@@ -358,12 +359,19 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if i.FullNode {
-		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
-		if err != nil {
-			s.logger.Debugf("stream handler: addressbook put error %s: %v", peerID, err)
-			s.logger.Errorf("stream handler: unable to persist peer %v", peerID)
-			_ = s.Disconnect(i.BzzAddress.Overlay, "unable to persist peer in addressbook")
-			return
+
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		defer cancel()
+
+		// only insert to addressbook if peer is reachable
+		if _, err := s.Ping(ctx, i.BzzAddress.Underlay); err == nil {
+			err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
+			if err != nil {
+				s.logger.Debugf("stream handler: addressbook put error %s: %v", peerID, err)
+				s.logger.Errorf("stream handler: unable to persist peer %v", peerID)
+				_ = s.Disconnect(i.BzzAddress.Overlay, "unable to persist peer in addressbook")
+				return
+			}
 		}
 	}
 
