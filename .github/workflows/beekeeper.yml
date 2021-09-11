@@ -90,6 +90,9 @@ jobs:
       - name: Test content availability
         id: content-availability
         run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
+      - name: Test balances
+        id: balances
+        run: beekeeper check --cluster-name local-dns --checks=ci-balances
       - name: Destroy the cluster
         run: |
           beekeeper delete bee-cluster --cluster-name local-dns
