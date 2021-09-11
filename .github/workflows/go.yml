@@ -49,6 +49,9 @@ jobs:
     - name: Vet
       if: matrix.os == 'ubuntu-latest'
       run: make vet
+    - name: Coverage
+      if: matrix.os == 'ubuntu-latest'
+      run: go test -coverprofile=cover.out ./...
     - name: Test with Race Detector
       # do not tests with race detector on windows
       # until the issue with badgerdb memory allocation
@@ -58,14 +61,6 @@ jobs:
     - name: Test
       if: matrix.os == 'windows-latest'
       run: make test
-    - name: DeepSource Coverage
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        go test -coverprofile=cover.out ./...
-        curl https://deepsource.io/cli | sh
-        ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
-      env:
-        DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
     - name: Coveralls
       if: matrix.os == 'ubuntu-latest'
       uses: shogo82148/actions-goveralls@v1
