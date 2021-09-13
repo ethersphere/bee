@@ -66,9 +66,10 @@ type Service struct {
 	peersChan       chan pb.Peers
 	sem             *semaphore.Weighted
 	lru             *lru.Cache // cache for unreachable peers
+	bootnode        bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) (*Service, error) {
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, logger logging.Logger) (*Service, error) {
 	lruCache, err := lru.New(cacheSize)
 	if err != nil {
 		return nil, err
@@ -86,6 +87,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		peersChan:   make(chan pb.Peers),
 		sem:         semaphore.NewWeighted(int64(31)),
 		lru:         lruCache,
+		bootnode:    bootnode,
 	}
 	svc.startCheckPeersHandler()
 	return svc, nil
@@ -270,77 +272,102 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 	var peersToAdd []swarm.Address
 	mtx := sync.Mutex{}
-	wg := sync.WaitGroup{}
 
-	for _, p := range peers.Peers {
-
-		overlay := swarm.NewAddress(p.Overlay)
-		cacheOverlay := overlay.ByteString()[:cachePrefix]
-
-		// cached peer, skip
-		if _, ok := s.lru.Get(cacheOverlay); ok {
-			continue
-		}
-
-		// mark peer as seen
-		_ = s.lru.Add(cacheOverlay, nil)
-
-		// if peer exists already in the addressBook, skip
-		_, err := s.addressBook.Get(overlay)
-		if err == nil {
-			continue
-		} else {
-			s.logger.Errorf("hive: addressbook %v", err)
-		}
-
-		err = s.sem.Acquire(ctx, 1)
-		if err != nil {
-			return
-		}
-
-		wg.Add(1)
-		go func(newPeer *pb.BzzAddress) {
-			defer func() {
-				s.sem.Release(1)
-				wg.Done()
-			}()
-
-			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
+	if s.bootnode {
+		for _, p := range peers.Peers {
+			multiUnderlay, err := ma.NewMultiaddrBytes(p.Underlay)
 			if err != nil {
 				s.logger.Errorf("hive: multi address underlay err: %v", err)
-				return
-			}
-
-			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
-			defer cancel()
-
-			// check if the underlay is usable by doing a raw ping using libp2p
-			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
-				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debugf("hive: peer %s: underlay %s not reachable", hex.EncodeToString(newPeer.Overlay), multiUnderlay)
-				return
+				continue
 			}
 
 			bzzAddress := bzz.Address{
-				Overlay:     swarm.NewAddress(newPeer.Overlay),
+				Overlay:     swarm.NewAddress(p.Overlay),
 				Underlay:    multiUnderlay,
-				Signature:   newPeer.Signature,
-				Transaction: newPeer.Transaction,
+				Signature:   p.Signature,
+				Transaction: p.Transaction,
 			}
 
 			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
 			if err != nil {
-				s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
+				s.logger.Warningf("skipping peer in response %s: %v", p.String(), err)
+				continue
+			}
+
+			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
+		}
+	} else {
+
+		wg := sync.WaitGroup{}
+		for _, p := range peers.Peers {
+
+			overlay := swarm.NewAddress(p.Overlay)
+			cacheOverlay := overlay.ByteString()[:cachePrefix]
+
+			// cached peer, skip
+			if _, ok := s.lru.Get(cacheOverlay); ok {
+				continue
+			}
+
+			// mark peer as seen
+			_ = s.lru.Add(cacheOverlay, nil)
+
+			// if peer exists already in the addressBook, skip
+			_, err := s.addressBook.Get(overlay)
+			if err == nil {
+				continue
+			} else {
+				s.logger.Errorf("hive: addressbook %v", err)
+			}
+
+			err = s.sem.Acquire(ctx, 1)
+			if err != nil {
 				return
 			}
 
-			mtx.Lock()
-			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
-			mtx.Unlock()
-		}(p)
-	}
+			wg.Add(1)
+			go func(newPeer *pb.BzzAddress) {
+				defer func() {
+					s.sem.Release(1)
+					wg.Done()
+				}()
 
-	wg.Wait()
+				multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
+				if err != nil {
+					s.logger.Errorf("hive: multi address underlay err: %v", err)
+					return
+				}
+
+				ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+				defer cancel()
+
+				// check if the underlay is usable by doing a raw ping using libp2p
+				if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
+					s.metrics.UnreachablePeers.Inc()
+					s.logger.Debugf("hive: peer %s: underlay %s not reachable", hex.EncodeToString(newPeer.Overlay), multiUnderlay)
+					return
+				}
+
+				bzzAddress := bzz.Address{
+					Overlay:     swarm.NewAddress(newPeer.Overlay),
+					Underlay:    multiUnderlay,
+					Signature:   newPeer.Signature,
+					Transaction: newPeer.Transaction,
+				}
+
+				err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
+				if err != nil {
+					s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
+					return
+				}
+
+				mtx.Lock()
+				peersToAdd = append(peersToAdd, bzzAddress.Overlay)
+				mtx.Unlock()
+			}(p)
+		}
+		wg.Wait()
+	}
 
 	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
 		s.addPeersHandler(peersToAdd...)
