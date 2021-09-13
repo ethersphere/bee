@@ -126,7 +126,7 @@ func (m *Mock) NeighborhoodDepth() uint8 {
 }
 
 // Connected is called when a peer dials in.
-func (m *Mock) Connected(_ context.Context, peer p2p.Peer, _ bool) error {
+func (m *Mock) Connected(_ context.Context, peer p2p.Peer, _ bool, _ bool) error {
 	m.mtx.Lock()
 	m.peers = append(m.peers, peer.Address)
 	m.mtx.Unlock()

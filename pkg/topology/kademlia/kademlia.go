@@ -628,7 +628,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, nil
 			}
 
-			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
+			if err := k.onConnected(ctx, bzzAddress.Overlay, true); err != nil {
 				return false, err
 			}
 			k.logger.Tracef("connected to bootnode %s", addr)
@@ -872,7 +872,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 // Connected is called when a peer has dialed in.
 // If forceConnection is true `overSaturated` is ignored for non-bootnodes.
-func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) error {
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, reachable bool, forceConnection bool) error {
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
@@ -883,22 +883,24 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 				return err
 			}
 			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
-			return k.onConnected(ctx, address)
+			return k.onConnected(ctx, address, reachable)
 		}
 		if !forceConnection {
 			return topology.ErrOversaturated
 		}
 	}
 
-	return k.onConnected(ctx, address)
+	return k.onConnected(ctx, address, reachable)
 }
 
-func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
+func (k *Kad) onConnected(ctx context.Context, addr swarm.Address, reachable bool) error {
 	if err := k.Announce(ctx, addr, true); err != nil {
 		return err
 	}
 
-	k.knownPeers.Add(addr)
+	if reachable {
+		k.knownPeers.Add(addr)
+	}
 	k.connectedPeers.Add(addr)
 
 	k.metrics.TotalInboundConnections.Inc()

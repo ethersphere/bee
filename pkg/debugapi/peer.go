@@ -35,7 +35,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
+	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true, true); err != nil {
 		_ = s.p2p.Disconnect(bzzAddr.Overlay, "failed to notify topology")
 		s.logger.Debugf("debug api: peer connect handler %s: %v", addr, err)
 		s.logger.Errorf("unable to connect to peer %s", addr)

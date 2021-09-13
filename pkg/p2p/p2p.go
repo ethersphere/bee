@@ -48,7 +48,7 @@ type PickyNotifier interface {
 }
 
 type Notifier interface {
-	Connected(context.Context, Peer, bool) error
+	Connected(context.Context, Peer, bool, bool) error
 	Disconnected(Peer)
 	Announce(ctx context.Context, peer swarm.Address, fullnode bool) error
 	AnnounceTo(ctx context.Context, addressee, peer swarm.Address, fullnode bool) error

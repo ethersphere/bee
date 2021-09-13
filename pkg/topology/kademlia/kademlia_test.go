@@ -1441,7 +1441,7 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 	if err := ab.Put(peer, *bzzAddr); err != nil {
 		t.Fatal(err)
 	}
-	err = k.Connected(context.Background(), p2p.Peer{Address: peer}, false)
+	err = k.Connected(context.Background(), p2p.Peer{Address: peer}, true, false)
 
 	if !errors.Is(err, expErr) {
 		t.Fatalf("expected error %v , got %v", expErr, err)

@@ -358,6 +358,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	var reachable bool
 	if i.FullNode {
 
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
@@ -366,6 +367,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 		// only insert to addressbook if peer is reachable
 		if err == nil {
+			reachable = true
 			err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 			if err != nil {
 				s.logger.Debugf("stream handler: addressbook put error %s: %v", peerID, err)
@@ -373,6 +375,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 				_ = s.Disconnect(i.BzzAddress.Overlay, "unable to persist peer in addressbook")
 				return
 			}
+		} else {
+			s.logger.Errorf("stream handler: peer ping %s: %v", peerID, err)
 		}
 	}
 
@@ -414,7 +418,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 				}
 			}
 		} else {
-			if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
+			if err := s.notifier.Connected(s.ctx, peer, reachable, false); err != nil {
 				s.logger.Debugf("stream handler: notifier.Connected: peer disconnected: %s: %v", i.BzzAddress.Overlay, err)
 				// note: this cannot be unit tested since the node
 				// waiting on handshakeStream.FullClose() on the other side

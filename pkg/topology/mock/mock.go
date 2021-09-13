@@ -82,7 +82,7 @@ func (d *mock) AddPeers(addrs ...swarm.Address) {
 	d.peers = append(d.peers, addrs...)
 }
 
-func (d *mock) Connected(ctx context.Context, peer p2p.Peer, _ bool) error {
+func (d *mock) Connected(ctx context.Context, peer p2p.Peer, _ bool, _ bool) error {
 	d.AddPeers(peer.Address)
 	return nil
 }

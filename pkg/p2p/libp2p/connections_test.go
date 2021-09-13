@@ -448,7 +448,7 @@ func TestTopologyNotifier(t *testing.T) {
 		n2connectedPeer    p2p.Peer
 		n2disconnectedPeer p2p.Peer
 
-		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n1c = func(_ context.Context, p p2p.Peer, _ bool, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
@@ -462,7 +462,7 @@ func TestTopologyNotifier(t *testing.T) {
 			n1disconnectedPeer = p
 		}
 
-		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n2c = func(_ context.Context, p p2p.Peer, _ bool, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
@@ -682,7 +682,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 		n2connectedPeer    p2p.Peer
 		n2disconnectedPeer p2p.Peer
 
-		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n1c = func(_ context.Context, p p2p.Peer, _ bool, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
@@ -691,7 +691,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 		}
 		n1d = func(p p2p.Peer) {}
 
-		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
+		n2c = func(_ context.Context, p p2p.Peer, _ bool, _ bool) error {
 			mtx.Lock()
 			defer mtx.Unlock()
 			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
@@ -999,8 +999,8 @@ type notifiee struct {
 	announceTo   announceToFunc
 }
 
-func (n *notifiee) Connected(c context.Context, p p2p.Peer, f bool) error {
-	return n.connected(c, p, f)
+func (n *notifiee) Connected(c context.Context, p p2p.Peer, r bool, f bool) error {
+	return n.connected(c, p, r, f)
 }
 
 func (n *notifiee) Disconnected(p p2p.Peer) {
@@ -1028,13 +1028,13 @@ func mockAnnouncingNotifier(a announceFunc, at announceToFunc) p2p.PickyNotifier
 }
 
 type (
-	cFunc          func(context.Context, p2p.Peer, bool) error
+	cFunc          func(context.Context, p2p.Peer, bool, bool) error
 	dFunc          func(p2p.Peer)
 	announceFunc   func(context.Context, swarm.Address, bool) error
 	announceToFunc func(context.Context, swarm.Address, swarm.Address, bool) error
 )
 
-var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
+var noopCf = func(context.Context, p2p.Peer, bool, bool) error { return nil }
 var noopDf = func(p2p.Peer) {}
 var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
 var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
