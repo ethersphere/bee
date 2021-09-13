@@ -49,7 +49,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	// new recorder for handling Ping
 	streamer := streamtest.New()
 	// create a hive server that handles the incoming stream
-	server := hive.New(streamer, addressbookclean, networkID, logger)
+	server, _ := hive.New(streamer, addressbookclean, networkID, logger)
 
 	serverAddress := test.RandomAddress()
 
@@ -88,7 +88,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 
 	// create a hive client that will do broadcast
-	client := hive.New(serverRecorder, addressbook, networkID, logger)
+	client, _ := hive.New(serverRecorder, addressbook, networkID, logger)
 	err := client.BroadcastPeers(context.Background(), serverAddress, peers...)
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestBroadcastPeers(t *testing.T) {
 				streamer = streamtest.New()
 			}
 			// create a hive server that handles the incoming stream
-			server := hive.New(streamer, addressbookclean, networkID, logger)
+			server, _ := hive.New(streamer, addressbookclean, networkID, logger)
 
 			// setup the stream recorder to record stream data
 			recorder := streamtest.New(
@@ -237,7 +237,7 @@ func TestBroadcastPeers(t *testing.T) {
 			)
 
 			// create a hive client that will do broadcast
-			client := hive.New(recorder, addressbook, networkID, logger)
+			client, _ := hive.New(recorder, addressbook, networkID, logger)
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}

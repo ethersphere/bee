@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/ratelimit"
 	"github.com/ethersphere/bee/pkg/swarm"
+	lru "github.com/hashicorp/golang-lru"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -39,6 +40,8 @@ const (
 	maxBatchSize           = 30
 	pingTimeout            = time.Second * 5 // time to wait for ping to succeed
 	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
+	cacheSize              = 25000
+	cachePrefix            = 4 // enough bytes (32 bits) to uniquely identify a peer
 )
 
 var (
@@ -62,9 +65,15 @@ type Service struct {
 	wg              sync.WaitGroup
 	peersChan       chan pb.Peers
 	sem             *semaphore.Weighted
+	lru             *lru.Cache // cache for unreachable peers
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) (*Service, error) {
+	lruCache, err := lru.New(cacheSize)
+	if err != nil {
+		return nil, err
+	}
+
 	svc := &Service{
 		streamer:    streamer,
 		logger:      logger,
@@ -76,9 +85,10 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		quit:        make(chan struct{}),
 		peersChan:   make(chan pb.Peers),
 		sem:         semaphore.NewWeighted(int64(31)),
+		lru:         lruCache,
 	}
 	svc.startCheckPeersHandler()
-	return svc
+	return svc, nil
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -264,8 +274,19 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 	for _, p := range peers.Peers {
 
-		// if peer exists already, skip validation
-		if _, err := s.addressBook.Get(swarm.NewAddress(p.Overlay)); err == nil {
+		overlay := swarm.NewAddress(p.Overlay)
+		cacheOverlay := overlay.ByteString()[:cachePrefix]
+
+		// cached peer, skip
+		if _, ok := s.lru.Get(cacheOverlay); ok {
+			continue
+		}
+
+		// mark peer as seen
+		_ = s.lru.Add(cacheOverlay, nil)
+
+		// if peer exists already in the addressBook, skip
+		if _, err := s.addressBook.Get(overlay); err == nil {
 			continue
 		}
 
