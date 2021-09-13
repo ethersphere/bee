@@ -212,6 +212,38 @@ func TestBzzFiles(t *testing.T) {
 		}
 	})
 
+	t.Run("filter out filename path", func(t *testing.T) {
+		fileName := "my-pictures.jpeg"
+		fileNameWithPath := "../../" + fileName
+
+		var resp api.BzzUploadResponse
+
+		_ = jsonhttptest.Request(t, client, http.MethodPost,
+			fileUploadResource+"?name="+fileNameWithPath, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+
+		rootHash := resp.Reference.String()
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet,
+			fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(simpleData),
+		)
+		cd := rcvdHeader.Get("Content-Disposition")
+		_, params, err := mime.ParseMediaType(cd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if params["filename"] != fileName {
+			t.Fatalf("want filename %s, got %s", fileName, params["filename"])
+		}
+		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
+			t.Fatal("Invalid content type detected")
+		}
+	})
+
 	t.Run("check-content-type-detection", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 		rootHash := "4f9146b3813ccbd7ce45a18be23763d7e436ab7a3982ef39961c6f3cd4da1dcf"
