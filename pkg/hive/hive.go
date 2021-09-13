@@ -286,11 +286,14 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		_ = s.lru.Add(cacheOverlay, nil)
 
 		// if peer exists already in the addressBook, skip
-		if _, err := s.addressBook.Get(overlay); err == nil {
+		_, err := s.addressBook.Get(overlay)
+		if err == nil {
 			continue
+		} else {
+			s.logger.Errorf("hive: addressbook %v", err)
 		}
 
-		err := s.sem.Acquire(ctx, 1)
+		err = s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
 		}
