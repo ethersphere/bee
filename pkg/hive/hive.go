@@ -98,11 +98,10 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		bootnode:    bootnode,
 	}
 
-	if bootnode {
-		return svc, nil
+	if !bootnode {
+		svc.startCheckPeersHandler()
 	}
 
-	svc.startCheckPeersHandler()
 	return svc, nil
 }
 
