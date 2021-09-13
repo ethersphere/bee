@@ -307,8 +307,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		_, err := s.addressBook.Get(overlay)
 		if err == nil {
 			continue
-		} else {
-			s.logger.Errorf("hive: addressbook %v", err)
 		}
 
 		err = s.sem.Acquire(ctx, 1)
