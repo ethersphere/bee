@@ -17,6 +17,11 @@ type metrics struct {
 	PeersHandler      prometheus.Counter
 	PeersHandlerPeers prometheus.Counter
 	UnreachablePeers  prometheus.Counter
+
+	PeerConnectAttempts prometheus.Counter
+	PeerUnderlayErr     prometheus.Counter
+	StorePeerErr        prometheus.Counter
+	ReachablePeers      prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -58,6 +63,30 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "unreachable_peers_count",
 			Help:      "Number of peers that are unreachable.",
+		}),
+		PeerConnectAttempts: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "unreachable_peers_count",
+			Help:      "Number of peers that are unreachable.",
+		}),
+		PeerUnderlayErr: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "peer_underlay_err_count",
+			Help:      "Number of errors extacting peer underlay.",
+		}),
+		StorePeerErr: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "store_peer_err_count",
+			Help:      "Number of peers that could not be stored.",
+		}),
+		ReachablePeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "reachable_peers_count",
+			Help:      "Number of peers that are reachable.",
 		}),
 	}
 }
