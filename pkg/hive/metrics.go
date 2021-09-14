@@ -18,7 +18,10 @@ type metrics struct {
 	PeersHandlerPeers prometheus.Counter
 	UnreachablePeers  prometheus.Counter
 
-	PeerConnectAttempts prometheus.Counter
+	PingTime        prometheus.Histogram
+	PingFailureTime prometheus.Histogram
+
+  PeerConnectAttempts prometheus.Counter
 	PeerUnderlayErr     prometheus.Counter
 	StorePeerErr        prometheus.Counter
 	ReachablePeers      prometheus.Counter
@@ -64,6 +67,18 @@ func newMetrics() metrics {
 			Name:      "unreachable_peers_count",
 			Help:      "Number of peers that are unreachable.",
 		}),
+		PingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "ping_time",
+			Help:      "The time spent for pings.",
+		}),
+		PingFailureTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "fail_ping_time",
+			Help:      "The time spent for unsuccessful pings.",
+    }),
 		PeerConnectAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
