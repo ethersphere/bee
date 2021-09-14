@@ -169,7 +169,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 					var err error
 					defer func() {
 						if err != nil {
-							ps.metrics.TotalHandlerRepliationErrors.Inc()
+							ps.metrics.TotalHandlerReplicationErrors.Inc()
 						}
 					}()
 

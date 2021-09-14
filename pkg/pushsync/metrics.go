@@ -10,19 +10,19 @@ import (
 )
 
 type metrics struct {
-	TotalSent                    prometheus.Counter
-	TotalReceived                prometheus.Counter
-	TotalErrors                  prometheus.Counter
-	TotalHandlerErrors           prometheus.Counter
-	TotalReplicated              prometheus.Counter
-	TotalReplicatedError         prometheus.Counter
-	TotalSendAttempts            prometheus.Counter
-	TotalFailedSendAttempts      prometheus.Counter
-	TotalSkippedPeers            prometheus.Counter
-	TotalOutgoing                prometheus.Counter
-	TotalOutgoingErrors          prometheus.Counter
-	InvalidStampErrors           prometheus.Counter
-	TotalHandlerRepliationErrors prometheus.Counter
+	TotalSent                     prometheus.Counter
+	TotalReceived                 prometheus.Counter
+	TotalErrors                   prometheus.Counter
+	TotalHandlerErrors            prometheus.Counter
+	TotalReplicated               prometheus.Counter
+	TotalReplicatedError          prometheus.Counter
+	TotalSendAttempts             prometheus.Counter
+	TotalFailedSendAttempts       prometheus.Counter
+	TotalSkippedPeers             prometheus.Counter
+	TotalOutgoing                 prometheus.Counter
+	TotalOutgoingErrors           prometheus.Counter
+	InvalidStampErrors            prometheus.Counter
+	TotalHandlerReplicationErrors prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -102,7 +102,7 @@ func newMetrics() metrics {
 			Name:      "invalid_stamps",
 			Help:      "No of invalid stamp errors.",
 		}),
-		TotalHandlerRepliationErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalHandlerReplicationErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_replication_handlers_errors",
