@@ -60,7 +60,7 @@ jobs:
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
       - name: Test pingpong
         id: pingpong-1
-        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: timeout 1m until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done;
       - name: Test fullconnectivity
         id: fullconnectivity-1
         run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
