@@ -288,9 +288,9 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			// check if the underlay is usable by doing a raw ping using libp2p
 			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
+				s.metrics.PingTime.Observe(float64(time.Since(start).Milliseconds()))
 				s.metrics.UnreachablePeers.Inc()
 				s.logger.Debugf("hive: peer %s: underlay %s not reachable", hex.EncodeToString(newPeer.Overlay), multiUnderlay)
-				s.metrics.PingTime.Observe(float64(time.Since(start).Milliseconds()))
 				return
 			}
 			s.metrics.PingTime.Observe(float64(time.Since(start).Milliseconds()))
