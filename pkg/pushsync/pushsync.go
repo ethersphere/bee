@@ -164,36 +164,47 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		bytes := chunkAddress.Bytes()
 		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
 			if ps.topologyDriver.IsWithinDepth(chunkAddress) {
-				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
-				defer canceld()
 
-				chunk, err = ps.validStamp(chunk, ch.Stamp)
-				if err != nil {
-					return fmt.Errorf("pushsync valid stamp: %w", err)
-				}
+				return func() error {
+					var err error
+					defer func() {
+						if err != nil {
+							ps.metrics.TotalHandlerRepliationErrors.Inc()
+						}
+					}()
 
-				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
-				if err != nil {
-					return fmt.Errorf("chunk store: %w", err)
-				}
+					ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
+					defer canceld()
 
-				debit, err := ps.accounting.PrepareDebit(p.Address, price)
-				if err != nil {
-					return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
-				}
-				defer debit.Cleanup()
+					chunk, err = ps.validStamp(chunk, ch.Stamp)
+					if err != nil {
+						ps.metrics.InvalidStampErrors.Inc()
+						return fmt.Errorf("pushsync valid stamp: %w", err)
+					}
 
-				// return back receipt
-				signature, err := ps.signer.Sign(bytes)
-				if err != nil {
-					return fmt.Errorf("receipt signature: %w", err)
-				}
-				receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
-				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-				}
+					_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
+					if err != nil {
+						return fmt.Errorf("chunk store: %w", err)
+					}
 
-				return debit.Apply()
+					debit, err := ps.accounting.PrepareDebit(p.Address, price)
+					if err != nil {
+						return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+					}
+					defer debit.Cleanup()
+
+					// return back receipt
+					signature, err := ps.signer.Sign(bytes)
+					if err != nil {
+						return fmt.Errorf("receipt signature: %w", err)
+					}
+					receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
+					if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
+						return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
+					}
+
+					return debit.Apply()
+				}()
 			}
 
 			return ErrOutOfDepthReplication
@@ -206,6 +217,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		chunk, err = ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
+			ps.metrics.InvalidStampErrors.Inc()
 			return fmt.Errorf("pushsync valid stamp: %w", err)
 		}
 
@@ -227,6 +239,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 				chunk, err = ps.validStamp(chunk, ch.Stamp)
 				if err != nil {
+					ps.metrics.InvalidStampErrors.Inc()
 					return fmt.Errorf("pushsync valid stamp: %w", err)
 				}
 
