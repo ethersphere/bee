@@ -67,7 +67,7 @@ func newMetrics() metrics {
 		PeerConnectAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "unreachable_peers_count",
+			Name:      "peer_attempt_count",
 			Help:      "Number of peers that are unreachable.",
 		}),
 		PeerUnderlayErr: prometheus.NewCounter(prometheus.CounterOpts{
