@@ -72,16 +72,9 @@ type Service struct {
 
 func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, logger logging.Logger) (*Service, error) {
 
-	var (
-		lruCache *lru.Cache
-		err      error
-	)
-
-	if !bootnode {
-		lruCache, err = lru.New(cacheSize)
-		if err != nil {
-			return nil, err
-		}
+	lruCache, err := lru.New(cacheSize)
+	if err != nil {
+		return nil, err
 	}
 
 	svc := &Service{
