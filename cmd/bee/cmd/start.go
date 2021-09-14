@@ -8,10 +8,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io/ioutil"
-
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -38,6 +38,9 @@ import (
 const (
 	serviceName = "SwarmBeeSvc"
 )
+
+//go:embed bee-welcome-message.txt
+var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
 
@@ -81,30 +84,7 @@ func (c *command) initStartCmd() (err error) {
 				}
 			}
 
-			beeASCII := `
-Welcome to Swarm.... Bzzz Bzzzz Bzzzz
-                \     /
-            \    o ^ o    /
-              \ (     ) /
-   ____________(%%%%%%%)____________
-  (     /   /  )%%%%%%%(  \   \     )
-  (___/___/__/           \__\___\___)
-     (     /  /(%%%%%%%)\  \     )
-      (__/___/ (%%%%%%%) \___\__)
-              /(       )\
-            /   (%%%%%)   \
-                 (%%%)
-                   !                   `
-
-			fmt.Println(beeASCII)
-			fmt.Print(`
-DISCLAIMER:
-This software is provided to you "as is", use at your own risk and without warranties of any kind.
-It is your responsibility to read and understand how Swarm works and the implications of running this software.
-The usage of Bee involves various risks, including, but not limited to:
-damage to hardware or loss of funds associated with the Ethereum account connected to your node.
-No developers or entity involved will be liable for any claims and damages associated with your use,
-inability to use, or your interaction with other nodes or the software.`)
+			fmt.Print(beeWelcomeMessage)
 
 			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 
