@@ -43,16 +43,15 @@ type transactionMonitor struct {
 	pollingInterval   time.Duration // time between checking for new blocks
 	cancellationDepth uint64        // number of blocks until considering a tx cancellation final
 
-	watches    map[*transactionWatch]struct{} // active watches
-	watchAdded chan struct{}                  // channel to trigger instant pending check
+	watchesByNonce map[uint64]map[common.Hash][]transactionWatch // active watches grouped by nonce and tx hash
+	watchAdded     chan struct{}                                 // channel to trigger instant pending check
 }
 
 type transactionWatch struct {
 	receiptC chan types.Receipt // channel to which the receipt will be written once available
 	errC     chan error         // error channel (primarily for cancelled transactions)
 
-	txHash common.Hash // hash of the transaction to watch
-	nonce  uint64      // nonce of the transaction to watch
+	//txHash common.Hash // hash of the transaction to watch
 }
 
 func NewMonitor(logger logging.Logger, backend Backend, sender common.Address, pollingInterval time.Duration, cancellationDepth uint64) Monitor {
@@ -68,8 +67,8 @@ func NewMonitor(logger logging.Logger, backend Backend, sender common.Address, p
 		pollingInterval:   pollingInterval,
 		cancellationDepth: cancellationDepth,
 
-		watches:    make(map[*transactionWatch]struct{}),
-		watchAdded: make(chan struct{}, 1),
+		watchesByNonce: make(map[uint64]map[common.Hash][]transactionWatch),
+		watchAdded:     make(chan struct{}, 1),
 	}
 
 	t.wg.Add(1)
@@ -87,12 +86,14 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 	receiptC := make(chan types.Receipt, 1)
 	errC := make(chan error, 1)
 
-	tm.watches[&transactionWatch{
+	if _, ok := tm.watchesByNonce[nonce]; !ok {
+		tm.watchesByNonce[nonce] = make(map[common.Hash][]transactionWatch)
+	}
+
+	tm.watchesByNonce[nonce][txHash] = append(tm.watchesByNonce[nonce][txHash], transactionWatch{
 		receiptC: receiptC,
 		errC:     errC,
-		txHash:   txHash,
-		nonce:    nonce,
-	}] = struct{}{}
+	})
 
 	select {
 	case tm.watchAdded <- struct{}{}:
@@ -111,8 +112,12 @@ func (tm *transactionMonitor) watchPending() {
 		tm.lock.Lock()
 		defer tm.lock.Unlock()
 
-		for watch := range tm.watches {
-			watch.errC <- ErrMonitorClosed
+		for _, watches := range tm.watchesByNonce {
+			for _, txMap := range watches {
+				for _, watch := range txMap {
+					watch.errC <- ErrMonitorClosed
+				}
+			}
 		}
 	}()
 
@@ -159,37 +164,25 @@ func (tm *transactionMonitor) watchPending() {
 	}
 }
 
-type watchesWithNonce struct {
-	watches []*transactionWatch
-	nonce   uint64
-}
-
-// potentiallyConfirmedTxs returns all watches with nonce less than what was specified
-func (tm *transactionMonitor) potentiallyConfirmedTxs(nonce uint64) (watches map[common.Hash]*watchesWithNonce) {
+// potentiallyConfirmedTxWatches returns all watches with nonce less than what was specified
+func (tm *transactionMonitor) potentiallyConfirmedTxWatches(nonce uint64) (watches map[uint64]map[common.Hash][]transactionWatch) {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
-	checkTxs := make(map[common.Hash]*watchesWithNonce)
-	for watch := range tm.watches {
-		if watch.nonce < nonce {
-			if c, ok := checkTxs[watch.txHash]; ok {
-				c.watches = append(c.watches, watch)
-			} else {
-				checkTxs[watch.txHash] = &watchesWithNonce{
-					nonce:   watch.nonce,
-					watches: []*transactionWatch{watch},
-				}
-			}
+	potentiallyConfirmedTxWatches := make(map[uint64]map[common.Hash][]transactionWatch)
+	for n, watches := range tm.watchesByNonce {
+		if n < nonce {
+			potentiallyConfirmedTxWatches[n] = watches
 		}
 	}
 
-	return checkTxs
+	return potentiallyConfirmedTxWatches
 }
 
 func (tm *transactionMonitor) hasWatches() bool {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
-	return len(tm.watches) > 0
+	return len(tm.watchesByNonce) > 0
 }
 
 // check pending checks the given block (number) for confirmed or cancelled transactions
@@ -200,40 +193,38 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	}
 
 	// transactions with a nonce lower or equal to what is found on-chain are either confirmed or (at least temporarily) cancelled
-	checkTxs := tm.potentiallyConfirmedTxs(nonce)
+	potentiallyConfirmedTxWatches := tm.potentiallyConfirmedTxWatches(nonce)
 
-	var confirmedTxs []*types.Receipt
-	var potentiallyCancelledTxs []common.Hash
-	for txHash := range checkTxs {
-		receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
-		if receipt != nil {
-			// if we have a receipt we have a confirmation
-			confirmedTxs = append(confirmedTxs, receipt)
-		} else if err == nil || errors.Is(err, ethereum.NotFound) {
-			// if both err and receipt are nil, there is no receipt
-			// we also match for the special error "not found" that some clients return
-			// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
-			potentiallyCancelledTxs = append(potentiallyCancelledTxs, txHash)
-		} else {
-			// any other error is probably a real error
-			return err
+	confirmedNonces := make(map[uint64]*types.Receipt)
+	var cancelledNonces []uint64
+	for nonceGroup, watchMap := range potentiallyConfirmedTxWatches {
+		for txHash := range watchMap {
+			receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
+			if receipt != nil {
+				// if we have a receipt we have a confirmation
+				confirmedNonces[nonceGroup] = receipt
+			} else if err == nil || errors.Is(err, ethereum.NotFound) {
+				// if both err and receipt are nil, there is no receipt
+				// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
+			} else {
+				// any other error is probably a real error
+				return err
+			}
 		}
 	}
 
-	// mark all transactions without receipt whose nonce was already used at least cancellationDepth blocks ago as cancelled
-	var cancelledTxs []common.Hash
-	if len(potentiallyCancelledTxs) > 0 {
+	for nonceGroup := range potentiallyConfirmedTxWatches {
+		if _, ok := confirmedNonces[nonceGroup]; ok {
+			continue
+		}
+
 		oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
 		if err != nil {
 			return err
 		}
 
-		for _, txHash := range potentiallyCancelledTxs {
-			// oldNonce is the nonce of the next tx that could have been included
-			// if this was already larger in the past our transaction becomes impossible
-			if checkTxs[txHash].nonce <= oldNonce {
-				cancelledTxs = append(cancelledTxs, txHash)
-			}
+		if nonceGroup < oldNonce {
+			cancelledNonces = append(cancelledNonces, nonceGroup)
 		}
 	}
 
@@ -241,19 +232,30 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
-	for _, receipt := range confirmedTxs {
-		for _, watch := range checkTxs[receipt.TxHash].watches {
-			watch.receiptC <- *receipt
-			delete(tm.watches, watch)
+	for nonce, receipt := range confirmedNonces {
+		for txHash, watches := range potentiallyConfirmedTxWatches[nonce] {
+			if receipt.TxHash == txHash {
+				for _, watch := range watches {
+					watch.receiptC <- *receipt
+				}
+			} else {
+				for _, watch := range watches {
+					watch.errC <- ErrTransactionCancelled
+				}
+			}
 		}
+		delete(tm.watchesByNonce, nonce)
 	}
 
-	for _, txHash := range cancelledTxs {
-		for _, watch := range checkTxs[txHash].watches {
-			watch.errC <- ErrTransactionCancelled
-			delete(tm.watches, watch)
+	for _, nonce := range cancelledNonces {
+		for _, watches := range tm.watchesByNonce[nonce] {
+			for _, watch := range watches {
+				watch.errC <- ErrTransactionCancelled
+			}
 		}
+		delete(tm.watchesByNonce, nonce)
 	}
+
 	return nil
 }
 
