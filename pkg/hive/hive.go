@@ -270,6 +270,9 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 		wg.Add(1)
 		go func(newPeer *pb.BzzAddress) {
+
+			s.metrics.PeerConnectAttempts.Inc()
+
 			defer func() {
 				s.sem.Release(1)
 				wg.Done()
@@ -277,6 +280,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
 			if err != nil {
+				s.metrics.PeerUnderlayErr.Inc()
 				s.logger.Errorf("hive: multi address underlay err: %v", err)
 				return
 			}
@@ -295,6 +299,8 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			}
 			s.metrics.PingTime.Observe(time.Since(start).Seconds())
 
+			s.metrics.ReachablePeers.Inc()
+
 			bzzAddress := bzz.Address{
 				Overlay:     swarm.NewAddress(newPeer.Overlay),
 				Underlay:    multiUnderlay,
@@ -304,6 +310,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
 			if err != nil {
+				s.metrics.StorePeerErr.Inc()
 				s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
 				return
 			}
