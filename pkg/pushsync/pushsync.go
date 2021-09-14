@@ -395,11 +395,11 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
 	// Reserve to see whether we can make the request
-	err := ps.accounting.Reserve(ctx, peer, receiptPrice)
+	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, originated)
 	if err != nil {
 		return nil, false, fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 	}
-	defer ps.accounting.Release(peer, receiptPrice)
+	defer creditAction.Cleanup()
 
 	stamp, err := ch.Stamp().MarshalBinary()
 	if err != nil {
@@ -444,7 +444,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
-	err = ps.accounting.Credit(peer, receiptPrice, originated)
+	err = creditAction.Apply()
 	if err != nil {
 		return nil, true, err
 	}
@@ -470,12 +470,12 @@ func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk, origin b
 	ctx, cancel := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
 	defer cancel()
 
-	err = ps.accounting.Reserve(ctx, peer, receiptPrice)
+	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, origin)
 	if err != nil {
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
 		return
 	}
-	defer ps.accounting.Release(peer, receiptPrice)
+	defer creditAction.Cleanup()
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -516,7 +516,7 @@ func (ps *PushSync) pushToNeighbour(peer swarm.Address, ch swarm.Chunk, origin b
 		return
 	}
 
-	if err = ps.accounting.Credit(peer, receiptPrice, origin); err != nil {
+	if err = creditAction.Apply(); err != nil {
 		return
 	}
 }
