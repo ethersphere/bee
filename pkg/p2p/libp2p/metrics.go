@@ -93,6 +93,7 @@ func newMetrics() metrics {
 }
 
 func (s *Service) Metrics() []prometheus.Collector {
-	return append(m.PrometheusCollectorsFromFields(s.metrics),
-		m.PrometheusCollectorsFromFields(s.handshakeService.Metrics())...)
+	return m.PrometheusCollectorsFromFields(s.metrics)
+	//return append(m.PrometheusCollectorsFromFields(s.metrics),
+	//m.PrometheusCollectorsFromFields(s.handshakeService.Metrics())...)
 }
