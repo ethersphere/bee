@@ -41,7 +41,8 @@ const (
 	pingTimeout            = time.Second * 5 // time to wait for ping to succeed
 	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
 	cacheSize              = 100000
-	cachePrefix            = swarm.MaxBins / 8 // enough bytes (32 bits) to uniquely identify a peer
+	bitsPerByte            = 8
+	cachePrefix            = swarm.MaxBins / bitsPerByte // enough bytes (32 bits) to uniquely identify a peer
 )
 
 var (
@@ -300,9 +301,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			continue
 		}
 
-		// mark peer as seen
-		_ = s.lru.Add(cacheOverlay, nil)
-
 		// if peer exists already in the addressBook, skip
 		if _, err := s.addressBook.Get(overlay); err == nil {
 			continue
@@ -317,6 +315,8 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		go func(newPeer *pb.BzzAddress) {
 			defer func() {
 				s.sem.Release(1)
+				// mark peer as seen
+				_ = s.lru.Add(cacheOverlay, nil)
 				wg.Done()
 			}()
 
