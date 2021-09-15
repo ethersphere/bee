@@ -496,7 +496,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, logger)
+	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, logger)
+	if err != nil {
+		return nil, fmt.Errorf("hive: %w", err)
+	}
+
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
