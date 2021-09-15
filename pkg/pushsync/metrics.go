@@ -10,19 +10,20 @@ import (
 )
 
 type metrics struct {
-	TotalSent                     prometheus.Counter
-	TotalReceived                 prometheus.Counter
-	TotalErrors                   prometheus.Counter
-	TotalHandlerErrors            prometheus.Counter
-	TotalReplicated               prometheus.Counter
-	TotalReplicatedError          prometheus.Counter
-	TotalSendAttempts             prometheus.Counter
-	TotalFailedSendAttempts       prometheus.Counter
-	TotalSkippedPeers             prometheus.Counter
-	TotalOutgoing                 prometheus.Counter
-	TotalOutgoingErrors           prometheus.Counter
-	InvalidStampErrors            prometheus.Counter
-	TotalHandlerReplicationErrors prometheus.Counter
+	TotalSent                       prometheus.Counter
+	TotalReceived                   prometheus.Counter
+	TotalErrors                     prometheus.Counter
+	TotalHandlerErrors              prometheus.Counter
+	TotalReplicated                 prometheus.Counter
+	TotalReplicatedError            prometheus.Counter
+	TotalSendAttempts               prometheus.Counter
+	TotalFailedSendAttempts         prometheus.Counter
+	TotalSkippedPeers               prometheus.Counter
+	TotalOutgoing                   prometheus.Counter
+	TotalOutgoingErrors             prometheus.Counter
+	InvalidStampErrors              prometheus.Counter
+	TotalHandlerReplicationErrors   prometheus.Counter
+	TotalReplicationFromDistantPeer prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -107,6 +108,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_replication_handlers_errors",
 			Help:      "Total no of errors of pushsync handler neighborhood replication.",
+		}),
+		TotalReplicationFromDistantPeer: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_distant_replications",
+			Help:      "Total no of replication requests received from non closest peers",
 		}),
 	}
 }
