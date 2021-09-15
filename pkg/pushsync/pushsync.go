@@ -175,6 +175,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 				defer span.Finish()
 
+				realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false, swarm.ZeroAddress)
+				if err == nil {
+					if !realClosestPeer.Equal(p.Address) {
+						ps.metrics.TotalReplicationFromDistantPeer.Inc()
+					}
+				}
+
 				chunk, err = ps.validStamp(chunk, ch.Stamp)
 				if err != nil {
 					ps.metrics.InvalidStampErrors.Inc()
