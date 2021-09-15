@@ -325,17 +325,18 @@ func (c *creditAction) Apply() error {
 }
 
 func (c *creditAction) Cleanup() {
-	if !c.applied {
-		c.accountingPeer.lock.Lock()
-		defer c.accountingPeer.lock.Unlock()
+	if c.applied {
+		return
+	}
 
-		// NOTE: this should never happen if Reserve and Release calls are paired.
-		if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
-			c.accounting.logger.Error("attempting to release more balance than was reserved for peer")
-			c.accountingPeer.reservedBalance.SetUint64(0)
-		} else {
-			c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
-		}
+	c.accountingPeer.lock.Lock()
+	defer c.accountingPeer.lock.Unlock()
+
+	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
+		c.accounting.logger.Error("attempting to release more balance than was reserved for peer")
+		c.accountingPeer.reservedBalance.SetUint64(0)
+	} else {
+		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
 	}
 }
 
@@ -1020,16 +1021,18 @@ func (d *debitAction) Apply() error {
 
 // Cleanup reduces shadow reserve if and only if debitaction have not been applied
 func (d *debitAction) Cleanup() {
-	if !d.applied {
-		d.accountingPeer.lock.Lock()
-		defer d.accountingPeer.lock.Unlock()
-		a := d.accounting
-		d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
-		d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
-		if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
-			a.metrics.AccountingDisconnectsGhostOverdrawCount.Inc()
-			_ = a.blocklist(d.peer, 1, "ghost overdraw")
-		}
+	if d.applied {
+		return
+	}
+
+	d.accountingPeer.lock.Lock()
+	defer d.accountingPeer.lock.Unlock()
+	a := d.accounting
+	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
+	d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
+	if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
+		a.metrics.AccountingDisconnectsGhostOverdrawCount.Inc()
+		_ = a.blocklist(d.peer, 1, "ghost overdraw")
 	}
 }
 
