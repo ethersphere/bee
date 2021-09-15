@@ -52,7 +52,7 @@ func newMetrics() metrics {
 		TotalReplicatedAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_replication_attemps",
+			Name:      "total_replication_attempts",
 			Help:      "Total no of replication attempts.",
 		}),
 		TotalReplicatedError: prometheus.NewCounter(prometheus.CounterOpts{
@@ -113,7 +113,7 @@ func newMetrics() metrics {
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "total_hander_time",
+				Name:      "total_handler_time",
 				Help:      "Histogram for time taken for the handler.",
 				Buckets:   []float64{.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20},
 			}, []string{"status"},
