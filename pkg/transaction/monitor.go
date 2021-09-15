@@ -50,8 +50,6 @@ type transactionMonitor struct {
 type transactionWatch struct {
 	receiptC chan types.Receipt // channel to which the receipt will be written once available
 	errC     chan error         // error channel (primarily for cancelled transactions)
-
-	//txHash common.Hash // hash of the transaction to watch
 }
 
 func NewMonitor(logger logging.Logger, backend Backend, sender common.Address, pollingInterval time.Duration, cancellationDepth uint64) Monitor {
@@ -115,7 +113,9 @@ func (tm *transactionMonitor) watchPending() {
 		for _, watches := range tm.watchesByNonce {
 			for _, txMap := range watches {
 				for _, watch := range txMap {
-					watch.errC <- ErrMonitorClosed
+					select {
+					case watch.errC <- ErrMonitorClosed:
+					}
 				}
 			}
 		}
@@ -236,11 +236,15 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 		for txHash, watches := range potentiallyConfirmedTxWatches[nonce] {
 			if receipt.TxHash == txHash {
 				for _, watch := range watches {
-					watch.receiptC <- *receipt
+					select {
+					case watch.receiptC <- *receipt:
+					}
 				}
 			} else {
 				for _, watch := range watches {
-					watch.errC <- ErrTransactionCancelled
+					select {
+					case watch.errC <- ErrTransactionCancelled:
+					}
 				}
 			}
 		}
@@ -250,7 +254,9 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	for _, nonce := range cancelledNonces {
 		for _, watches := range tm.watchesByNonce[nonce] {
 			for _, watch := range watches {
-				watch.errC <- ErrTransactionCancelled
+				select {
+				case watch.errC <- ErrTransactionCancelled:
+				}
 			}
 		}
 		delete(tm.watchesByNonce, nonce)
