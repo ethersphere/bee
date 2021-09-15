@@ -21,28 +21,26 @@ require (
 	github.com/ipfs/go-log v1.0.5 // indirect
 	github.com/ipfs/go-log/v2 v2.3.0 // indirect
 	github.com/kardianos/service v1.2.0
-	github.com/klauspost/cpuid/v2 v2.0.8 // indirect
 	github.com/koron/go-ssdp v0.0.2 // indirect
-	github.com/libp2p/go-libp2p v0.14.4
+	github.com/libp2p/go-libp2p v0.15.0
 	github.com/libp2p/go-libp2p-autonat v0.4.2
-	github.com/libp2p/go-libp2p-core v0.8.5
+	github.com/libp2p/go-libp2p-core v0.9.0
 	github.com/libp2p/go-libp2p-discovery v0.5.1 // indirect
-	github.com/libp2p/go-libp2p-peerstore v0.2.7
-	github.com/libp2p/go-libp2p-quic-transport v0.10.0
-	github.com/libp2p/go-libp2p-swarm v0.5.0
-	github.com/libp2p/go-libp2p-transport-upgrader v0.4.2
-	github.com/libp2p/go-tcp-transport v0.2.4
-	github.com/libp2p/go-ws-transport v0.4.0
+	github.com/libp2p/go-libp2p-peerstore v0.2.8
+	github.com/libp2p/go-libp2p-quic-transport v0.11.2
+	github.com/libp2p/go-libp2p-swarm v0.5.3
+	github.com/libp2p/go-libp2p-transport-upgrader v0.4.6
+	github.com/libp2p/go-tcp-transport v0.2.8
+	github.com/libp2p/go-ws-transport v0.5.0
+	github.com/marten-seemann/qtls v0.10.0 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/mitchellh/mapstructure v1.3.2 // indirect
-	github.com/multiformats/go-multiaddr v0.3.3
+	github.com/multiformats/go-multiaddr v0.4.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multistream v0.2.2
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pelletier/go-toml v1.8.0 // indirect
 	github.com/prometheus/client_golang v1.11.0
-	github.com/prometheus/common v0.29.0 // indirect
-	github.com/prometheus/procfs v0.7.0 // indirect
 	github.com/sirupsen/logrus v1.6.0
 	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spf13/afero v1.3.1 // indirect
@@ -57,11 +55,10 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.3.4
 	github.com/wealdtech/go-ens/v3 v3.5.1
 	gitlab.com/nolash/go-mockbytes v0.0.7
-	go.uber.org/atomic v1.8.0 // indirect
+	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
-	go.uber.org/zap v1.18.1 // indirect
-	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
-	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
+	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
+	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20210816183151-1e6c022a8912
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
