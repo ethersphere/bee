@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/ratelimit"
 	"github.com/ethersphere/bee/pkg/swarm"
+	lru "github.com/hashicorp/golang-lru"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -39,6 +40,9 @@ const (
 	maxBatchSize           = 30
 	pingTimeout            = time.Second * 5 // time to wait for ping to succeed
 	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
+	cacheSize              = 100000
+	bitsPerByte            = 8
+	cachePrefix            = swarm.MaxBins / bitsPerByte // enough bytes (32 bits) to uniquely identify a peer
 )
 
 var (
@@ -62,9 +66,17 @@ type Service struct {
 	wg              sync.WaitGroup
 	peersChan       chan pb.Peers
 	sem             *semaphore.Weighted
+	lru             *lru.Cache // cache for unreachable peers
+	bootnode        bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, logger logging.Logger) *Service {
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, logger logging.Logger) (*Service, error) {
+
+	lruCache, err := lru.New(cacheSize)
+	if err != nil {
+		return nil, err
+	}
+
 	svc := &Service{
 		streamer:    streamer,
 		logger:      logger,
@@ -76,9 +88,15 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		quit:        make(chan struct{}),
 		peersChan:   make(chan pb.Peers),
 		sem:         semaphore.NewWeighted(int64(31)),
+		lru:         lruCache,
+		bootnode:    bootnode,
 	}
-	svc.startCheckPeersHandler()
-	return svc
+
+	if !bootnode {
+		svc.startCheckPeersHandler()
+	}
+
+	return svc, nil
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -207,6 +225,10 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
 
+	if s.bootnode {
+		return nil
+	}
+
 	select {
 	case s.peersChan <- peersReq:
 	case <-s.quit:
@@ -263,6 +285,20 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	wg := sync.WaitGroup{}
 
 	for _, p := range peers.Peers {
+
+		overlay := swarm.NewAddress(p.Overlay)
+		cacheOverlay := overlay.ByteString()[:cachePrefix]
+
+		// cached peer, skip
+		if _, ok := s.lru.Get(cacheOverlay); ok {
+			continue
+		}
+
+		// if peer exists already in the addressBook, skip
+		if _, err := s.addressBook.Get(overlay); err == nil {
+			continue
+		}
+
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
@@ -275,6 +311,8 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			defer func() {
 				s.sem.Release(1)
+				// mark peer as seen
+				_ = s.lru.Add(cacheOverlay, nil)
 				wg.Done()
 			}()
 
@@ -320,7 +358,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			mtx.Unlock()
 		}(p)
 	}
-
 	wg.Wait()
 
 	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
