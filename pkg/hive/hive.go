@@ -296,6 +296,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 		// if peer exists already in the addressBook, skip
 		if _, err := s.addressBook.Get(overlay); err == nil {
+			_ = s.lru.Add(cacheOverlay, nil)
 			continue
 		}
 
