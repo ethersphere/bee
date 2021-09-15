@@ -306,7 +306,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		}
 
 		wg.Add(1)
-		go func(newPeer *pb.BzzAddress) {
+		go func(newPeer *pb.BzzAddress, cacheOverlay string) {
 
 			s.metrics.PeerConnectAttempts.Inc()
 
@@ -357,7 +357,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			mtx.Lock()
 			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
 			mtx.Unlock()
-		}(p)
+		}(p, cacheOverlay)
 	}
 	wg.Wait()
 
