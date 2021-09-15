@@ -10,17 +10,19 @@ import (
 )
 
 type metrics struct {
-	TotalSent               prometheus.Counter
-	TotalReceived           prometheus.Counter
-	TotalErrors             prometheus.Counter
-	TotalHandlerErrors      prometheus.Counter
-	TotalReplicated         prometheus.Counter
-	TotalReplicatedError    prometheus.Counter
-	TotalSendAttempts       prometheus.Counter
-	TotalFailedSendAttempts prometheus.Counter
-	TotalSkippedPeers       prometheus.Counter
-	TotalOutgoing           prometheus.Counter
-	TotalOutgoingErrors     prometheus.Counter
+	TotalSent                     prometheus.Counter
+	TotalReceived                 prometheus.Counter
+	TotalErrors                   prometheus.Counter
+	TotalHandlerErrors            prometheus.Counter
+	TotalReplicated               prometheus.Counter
+	TotalReplicatedError          prometheus.Counter
+	TotalSendAttempts             prometheus.Counter
+	TotalFailedSendAttempts       prometheus.Counter
+	TotalSkippedPeers             prometheus.Counter
+	TotalOutgoing                 prometheus.Counter
+	TotalOutgoingErrors           prometheus.Counter
+	InvalidStampErrors            prometheus.Counter
+	TotalHandlerReplicationErrors prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -93,6 +95,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_outgoing_errors",
 			Help:      "Total no of errors of entire operation to sync a chunk (multiple attempts included)",
+		}),
+		InvalidStampErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "invalid_stamps",
+			Help:      "No of invalid stamp errors.",
+		}),
+		TotalHandlerReplicationErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_replication_handlers_errors",
+			Help:      "Total no of errors of pushsync handler neighborhood replication.",
 		}),
 	}
 }
