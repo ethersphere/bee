@@ -200,15 +200,17 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 	for nonceGroup, watchMap := range potentiallyConfirmedTxWatches {
 		for txHash := range watchMap {
 			receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
+			if err != nil {
+				if errors.Is(err, ethereum.NotFound) {
+					// if both err and receipt are nil, there is no receipt
+					// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
+					continue
+				}
+				return err
+			}
 			if receipt != nil {
 				// if we have a receipt we have a confirmation
 				confirmedNonces[nonceGroup] = receipt
-			} else if err == nil || errors.Is(err, ethereum.NotFound) {
-				// if both err and receipt are nil, there is no receipt
-				// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
-			} else {
-				// any other error is probably a real error
-				return err
 			}
 		}
 	}
