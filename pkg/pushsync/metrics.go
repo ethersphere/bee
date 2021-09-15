@@ -12,9 +12,8 @@ import (
 type metrics struct {
 	TotalSent                     prometheus.Counter
 	TotalReceived                 prometheus.Counter
-	TotalErrors                   prometheus.Counter
 	TotalHandlerErrors            prometheus.Counter
-	TotalReplicated               prometheus.Counter
+	TotalReplicatedAttempts       prometheus.Counter
 	TotalReplicatedError          prometheus.Counter
 	TotalSendAttempts             prometheus.Counter
 	TotalFailedSendAttempts       prometheus.Counter
@@ -23,6 +22,9 @@ type metrics struct {
 	TotalOutgoingErrors           prometheus.Counter
 	InvalidStampErrors            prometheus.Counter
 	TotalHandlerReplicationErrors prometheus.Counter
+	Storer                        prometheus.Counter
+	TotalHandlerTime              prometheus.HistogramVec
+	PushToPeerTime                prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -41,24 +43,17 @@ func newMetrics() metrics {
 			Name:      "total_received",
 			Help:      "Total chunks received.",
 		}),
-		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_errors",
-			Help:      "Total no of time error received while sending chunk.",
-		}),
 		TotalHandlerErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_handler_errors",
 			Help:      "Total no of error occurred while handling an incoming delivery (either while storing or forwarding).",
 		}),
-
-		TotalReplicated: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalReplicatedAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_replication",
-			Help:      "Total no of successfully sent replication chunks.",
+			Name:      "total_replication_attemps",
+			Help:      "Total no of replication attempts.",
 		}),
 		TotalReplicatedError: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -108,6 +103,30 @@ func newMetrics() metrics {
 			Name:      "total_replication_handlers_errors",
 			Help:      "Total no of errors of pushsync handler neighborhood replication.",
 		}),
+		Storer: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "storer",
+			Help:      "No of times the peer is a storer node.",
+		}),
+		TotalHandlerTime: *prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "total_hander_time",
+				Help:      "Histogram for time taken for the handler.",
+				Buckets:   []float64{.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20},
+			}, []string{"status"},
+		),
+		PushToPeerTime: *prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "push_peer_time",
+				Help:      "Histogram for time taken to push a chunk to a peer.",
+				Buckets:   []float64{.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20},
+			}, []string{"bin", "attempted", "status"},
+		),
 	}
 }
 
