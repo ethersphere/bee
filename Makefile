@@ -72,7 +72,11 @@ vet:
 
 .PHONY: test-race
 test-race:
+ifdef cover
+	$(GO) test -race -failfast -coverprofile=cover.out -v ./...
+else
 	$(GO) test -race -failfast -v ./...
+endif
 
 .PHONY: test-integration
 test-integration:
