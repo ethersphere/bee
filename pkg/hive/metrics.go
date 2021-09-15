@@ -21,7 +21,7 @@ type metrics struct {
 	PingTime        prometheus.Histogram
 	PingFailureTime prometheus.Histogram
 
-  PeerConnectAttempts prometheus.Counter
+	PeerConnectAttempts prometheus.Counter
 	PeerUnderlayErr     prometheus.Counter
 	StorePeerErr        prometheus.Counter
 	ReachablePeers      prometheus.Counter
@@ -78,7 +78,7 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "fail_ping_time",
 			Help:      "The time spent for unsuccessful pings.",
-    }),
+		}),
 		PeerConnectAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
