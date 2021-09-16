@@ -1282,24 +1282,15 @@ func TestOutofDepthPrune(t *testing.T) {
 }
 
 func TestBootnodeProtectedNodes(t *testing.T) {
-	defer func(p int) {
-		*kademlia.BootnodeOverSaturationPeers = p
-	}(*kademlia.BootnodeOverSaturationPeers)
+	defer func(a, b, c, d int) {
+		*kademlia.BootnodeOverSaturationPeers = a
+		*kademlia.SaturationPeers = b
+		*kademlia.LowWaterMark = c
+		*kademlia.QuickSaturationPeers = d
+	}(*kademlia.BootnodeOverSaturationPeers, *kademlia.SaturationPeers, *kademlia.LowWaterMark, *kademlia.QuickSaturationPeers)
 	*kademlia.BootnodeOverSaturationPeers = 1
-
-	defer func(p int) {
-		*kademlia.SaturationPeers = p
-	}(*kademlia.SaturationPeers)
 	*kademlia.SaturationPeers = 1
-
-	defer func(p int) {
-		*kademlia.LowWaterMark = p
-	}(*kademlia.LowWaterMark)
 	*kademlia.LowWaterMark = 0
-
-	defer func(p int) {
-		*kademlia.QuickSaturationPeers = p
-	}(*kademlia.QuickSaturationPeers)
 	*kademlia.QuickSaturationPeers = 1
 
 	// create base and protected nodes addresses
@@ -1313,8 +1304,8 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	var (
 		conns                 int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer = newTestKademliaWithAddr(t, base, &conns, nil, kademlia.Options{
-			BootnodeMode:   true,
-			ProtectedNodes: protected,
+			BootnodeMode: true,
+			StaticNodes:  protected,
 		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
