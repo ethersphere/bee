@@ -75,6 +75,7 @@ const (
 	optionNameResync                     = "resync"
 	optionNamePProfBlock                 = "pprof-profile"
 	optionNamePProfMutex                 = "pprof-mutex"
+	optionNameProtectedNodes             = "protected-nodes"
 )
 
 func init() {
@@ -260,6 +261,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameResync, false, "forces the node to resync postage contract data")
 	cmd.Flags().Bool(optionNamePProfBlock, false, "enable pprof block profile")
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
+	cmd.Flags().StringSlice(optionNameProtectedNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
