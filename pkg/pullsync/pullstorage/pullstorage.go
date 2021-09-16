@@ -58,7 +58,7 @@ func New(storer storage.Storer) *PullStorer {
 }
 
 // IntervalChunks collects chunk for a requested interval.
-func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chs []swarm.Address, topmost uint64, err error) {
+func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
 
 	type result struct {
 		chs     []swarm.Address
@@ -68,6 +68,10 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 	defer s.metrics.TotalSubscribePullRequestsComplete.Inc()
 
 	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (interface{}, error) {
+		var (
+			chs     []swarm.Address
+			topmost uint64
+		)
 		// call iterator, iterate either until upper bound or limit reached
 		// return addresses, topmost is the topmost bin ID
 		var (
