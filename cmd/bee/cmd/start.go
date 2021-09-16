@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
@@ -137,7 +138,16 @@ func (c *command) initStartCmd() (err error) {
 				tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
 			}
 
-			staticNodes := c.config.GetStringSlice(optionNameStaticNodes)
+			var staticNodes []swarm.Address
+
+			for _, p := range c.config.GetStringSlice(optionNameStaticNodes) {
+				addr, err := swarm.ParseHexAddress(p)
+				if err != nil {
+					return errors.New("invalid swarm address configured for static node")
+				}
+
+				staticNodes = append(staticNodes, addr)
+			}
 			if len(staticNodes) > 0 && !bootNode {
 				return errors.New("static nodes can only be configured on bootnodes")
 			}
