@@ -137,6 +137,11 @@ func (c *command) initStartCmd() (err error) {
 				tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
 			}
 
+			protectedNodes := c.config.GetStringSlice(optionNameProtectedNodes)
+			if len(protectedNodes) > 0 && !bootNode {
+				return errors.New("protected nodes can only be configured on bootnodes")
+			}
+
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
@@ -182,6 +187,7 @@ func (c *command) initStartCmd() (err error) {
 				Resync:                     c.config.GetBool(optionNameResync),
 				BlockProfile:               c.config.GetBool(optionNamePProfBlock),
 				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
+				ProtectedNodes:             protectedNodes,
 			})
 			if err != nil {
 				return err
