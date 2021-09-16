@@ -9,6 +9,7 @@ import (
 	random "crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"time"
@@ -892,7 +893,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get random peer to kick-out: %w", topology.ErrOversaturated)
 			}
 			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
 			return k.onConnected(ctx, address)
@@ -1350,11 +1351,13 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	peers := k.connectedPeers.BinPeers(bin)
 
-	for idx, p := range peers {
+	for idx := 0; idx < len(peers); {
 		// do not consider protected peers
-		if k.isProtected(p) {
+		if k.isProtected(peers[idx]) {
 			peers = append(peers[:idx], peers[idx+1:]...)
+			continue
 		}
+		idx++
 	}
 
 	if len(peers) == 0 {
