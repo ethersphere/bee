@@ -28,7 +28,6 @@ import (
 )
 
 const (
-	nnLowWatermark         = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	maxConnAttempts        = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootNodeAttempts    = 3 // how many attempts to dial to boot-nodes before giving up
 	defaultBitSuffixLength = 3 // the number of bits used to create pseudo addresses for balancing
@@ -39,6 +38,7 @@ const (
 )
 
 var (
+	nnLowWatermark              = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	quickSaturationPeers        = 4
 	saturationPeers             = 8
 	overSaturationPeers         = 20
@@ -70,6 +70,7 @@ type Options struct {
 	BootnodeMode    bool
 	BitSuffixLength int
 	PruneFunc       pruneFunc
+	ProtectedNodes  []swarm.Address
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -101,6 +102,7 @@ type Kad struct {
 	metrics           metrics
 	pruneFunc         pruneFunc // pluggable prune function
 	pinger            pingpong.Interface
+	protectedNodes    []swarm.Address
 }
 
 // New returns a new Kademlia.
@@ -155,6 +157,7 @@ func New(
 		metrics:           newMetrics(),
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
+		protectedNodes:    o.ProtectedNodes,
 	}
 
 	if k.pruneFunc == nil {
@@ -761,7 +764,7 @@ func recalcDepth(peers *pslice.PSlice, radius uint8) uint8 {
 
 	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
 		peersCtr++
-		if peersCtr >= nnLowWatermark {
+		if peersCtr >= uint(nnLowWatermark) {
 			candidate = po
 			return true, false, nil
 		}
@@ -918,6 +921,15 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 	return false
 }
 
+func (k *Kad) isProtected(overlay swarm.Address) bool {
+	for _, addr := range k.protectedNodes {
+		if addr.Equal(overlay) {
+			return true
+		}
+	}
+	return false
+}
+
 // Connected is called when a peer has dialed in.
 // If forceConnection is true `overSaturated` is ignored for non-bootnodes.
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) error {
@@ -926,12 +938,16 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 
 	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
 		if k.bootnode {
-			randPeer, err := k.randomPeer(po)
-			if err != nil {
-				return err
+			for i := 0; i < bootNodeOverSaturationPeers; i++ {
+				randPeer, err := k.randomPeer(po)
+				if err != nil {
+					return err
+				}
+				if !k.isProtected(randPeer) {
+					_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
+					return k.onConnected(ctx, address)
+				}
 			}
-			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
-			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {
 			return topology.ErrOversaturated
