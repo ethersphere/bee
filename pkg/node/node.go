@@ -161,7 +161,7 @@ type Options struct {
 	Resync                     bool
 	BlockProfile               bool
 	MutexProfile               bool
-	ProtectedNodes             []string
+	StaticNodes                []string
 }
 
 const (
@@ -520,9 +520,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		bootnodes = append(bootnodes, addr)
 	}
 
-	var protectedNodes []swarm.Address
+	var staticNodes []swarm.Address
 
-	for _, p := range o.ProtectedNodes {
+	for _, p := range o.StaticNodes {
 		addr, err := swarm.ParseHexAddress(p)
 		if err != nil {
 			logger.Debugf("invalid swarm address %s: %v", p, err)
@@ -530,7 +530,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			continue
 		}
 
-		protectedNodes = append(protectedNodes, addr)
+		staticNodes = append(staticNodes, addr)
 	}
 
 	var swapService *swap.Service
@@ -541,7 +541,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger,
-		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, ProtectedNodes: protectedNodes})
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: staticNodes})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}

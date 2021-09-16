@@ -69,7 +69,7 @@ type Options struct {
 	BootnodeMode    bool
 	BitSuffixLength int
 	PruneFunc       pruneFunc
-	ProtectedNodes  []swarm.Address
+	StaticNodes     []swarm.Address
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -100,7 +100,7 @@ type Kad struct {
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
 	pruneFunc         pruneFunc // pluggable prune function
-	protectedNodes    []swarm.Address
+	staticNodes       []swarm.Address
 }
 
 // New returns a new Kademlia.
@@ -153,7 +153,7 @@ func New(
 		wg:                sync.WaitGroup{},
 		metrics:           newMetrics(),
 		pruneFunc:         o.PruneFunc,
-		protectedNodes:    o.ProtectedNodes,
+		staticNodes:       o.StaticNodes,
 	}
 
 	if k.pruneFunc == nil {
@@ -874,7 +874,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 }
 
 func (k *Kad) isProtected(overlay swarm.Address) bool {
-	for _, addr := range k.protectedNodes {
+	for _, addr := range k.staticNodes {
 		if addr.Equal(overlay) {
 			return true
 		}
@@ -890,16 +890,12 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 
 	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
 		if k.bootnode {
-			for i := 0; i < bootNodeOverSaturationPeers; i++ {
-				randPeer, err := k.randomPeer(po)
-				if err != nil {
-					return err
-				}
-				if !k.isProtected(randPeer) {
-					_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
-					return k.onConnected(ctx, address)
-				}
+			randPeer, err := k.randomPeer(po)
+			if err != nil {
+				return err
 			}
+			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
+			return k.onConnected(ctx, address)
 		}
 		if !forceConnection {
 			return topology.ErrOversaturated
@@ -1353,6 +1349,13 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	peers := k.connectedPeers.BinPeers(bin)
+
+	for idx, p := range peers {
+		// do not consider protected peers
+		if k.isProtected(p) {
+			peers = append(peers[:idx], peers[idx+1:]...)
+		}
+	}
 
 	if len(peers) == 0 {
 		return swarm.ZeroAddress, errEmptyBin
