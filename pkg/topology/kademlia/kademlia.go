@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -99,6 +100,7 @@ type Kad struct {
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
 	pruneFunc         pruneFunc // pluggable prune function
+	pinger            pingpong.Interface
 }
 
 // New returns a new Kademlia.
@@ -107,6 +109,7 @@ func New(
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2p p2p.Service,
+	pinger pingpong.Interface,
 	metricsDB *shed.DB,
 	logger logging.Logger,
 	o Options,
@@ -151,6 +154,7 @@ func New(
 		wg:                sync.WaitGroup{},
 		metrics:           newMetrics(),
 		pruneFunc:         o.PruneFunc,
+		pinger:            pinger,
 	}
 
 	if k.pruneFunc == nil {
@@ -437,6 +441,25 @@ func (k *Kad) manage() {
 		}
 	}()
 
+	k.wg.Add(1)
+	go func() {
+		defer k.wg.Done()
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
+			case <-time.After(1 * time.Second):
+				k.wg.Add(1)
+				go func() {
+					defer k.wg.Done()
+					k.recordPeerLatencies(ctx)
+				}()
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-k.quit:
@@ -496,7 +519,32 @@ func (k *Kad) manage() {
 	}
 }
 
-// PruneOversaturatedBins disconnects out of depth peers from oversaturated bins
+// recordPeerLatencies tries to record the average
+// peer latencies from the p2p layer.
+func (k *Kad) recordPeerLatencies(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+
+	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			l, err := k.pinger.Ping(ctx, addr, "ping")
+			if err != nil {
+				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
+				return
+			}
+			k.collector.Record(addr, im.PeerLatency(l))
+			v := k.collector.Inspect(addr).LatencyEWMA
+			k.metrics.PeerLatencyEWMA.Observe(v.Seconds())
+		}()
+		return false, false, nil
+	})
+	wg.Wait()
+}
+
+// pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
 // while maintaining the balance of the bin and favoring peers with longers connections
 func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
@@ -1363,5 +1411,6 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
+		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
 	}
 }
