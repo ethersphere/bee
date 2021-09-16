@@ -54,10 +54,7 @@ jobs:
       # until the issue with badgerdb memory allocation
       # is solved in this case
       if: matrix.os != 'windows-latest'
-      run: make test-race
-    - name: Coverage
-      if: matrix.os == 'ubuntu-latest'
-      run: go test -coverprofile=cover.out ./...
+      run: make cover=1 test-race
     - name: Test
       if: matrix.os == 'windows-latest'
       run: make test
