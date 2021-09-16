@@ -143,7 +143,7 @@ func (c *command) initStartCmd() (err error) {
 			for _, p := range c.config.GetStringSlice(optionNameStaticNodes) {
 				addr, err := swarm.ParseHexAddress(p)
 				if err != nil {
-					return errors.New("invalid swarm address configured for static node")
+					return fmt.Errorf("invalid swarm address %q configured for static node", p)
 				}
 
 				staticNodes = append(staticNodes, addr)
