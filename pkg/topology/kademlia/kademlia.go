@@ -430,7 +430,7 @@ func (k *Kad) manage() {
 					k.metrics.InternalMetricsFlushTotalErrors.Inc()
 					k.logger.Debugf("kademlia: unable to flush metrics counters to the persistent store: %v", err)
 				} else {
-					k.metrics.InternalMetricsFlushTime.Observe(float64(time.Since(start).Nanoseconds()))
+					k.metrics.InternalMetricsFlushTime.Observe(time.Since(start).Seconds())
 					k.logger.Tracef("kademlia: took %s to flush", time.Since(start))
 				}
 			}
@@ -586,7 +586,7 @@ func (k *Kad) Start(_ context.Context) error {
 			return
 		}
 		k.AddPeers(addresses...)
-		k.metrics.StartAddAddressBookOverlaysTime.Observe(float64(time.Since(start).Nanoseconds()))
+		k.metrics.StartAddAddressBookOverlaysTime.Observe(time.Since(start).Seconds())
 	}()
 
 	// trigger the first manage loop immediately so that
