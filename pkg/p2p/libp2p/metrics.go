@@ -23,6 +23,7 @@ type metrics struct {
 	ConnectBreakerCount        prometheus.Counter
 	UnexpectedProtocolReqCount prometheus.Counter
 	KickedOutPeersCount        prometheus.Counter
+	HeadersExchangeDuration    prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -88,6 +89,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "kickedout_peers_count",
 			Help:      "Number of total kicked-out peers.",
+		}),
+		HeadersExchangeDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "headers_exchange_duration",
+			Help:      "The duration spent exchanging the headers.",
 		}),
 	}
 }
