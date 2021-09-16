@@ -115,6 +115,7 @@ func (tm *transactionMonitor) watchPending() {
 				for _, watch := range txMap {
 					select {
 					case watch.errC <- ErrMonitorClosed:
+					default:
 					}
 				}
 			}
@@ -240,12 +241,14 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 				for _, watch := range watches {
 					select {
 					case watch.receiptC <- *receipt:
+					default:
 					}
 				}
 			} else {
 				for _, watch := range watches {
 					select {
 					case watch.errC <- ErrTransactionCancelled:
+					default:
 					}
 				}
 			}
@@ -258,6 +261,7 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 			for _, watch := range watches {
 				select {
 				case watch.errC <- ErrTransactionCancelled:
+				default:
 				}
 			}
 		}
