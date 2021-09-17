@@ -24,6 +24,9 @@ type metrics struct {
 	InvalidStampErrors              prometheus.Counter
 	TotalHandlerReplicationErrors   prometheus.Counter
 	TotalReplicationFromDistantPeer prometheus.Counter
+	TotalReplicationFromClosestPeer prometheus.Counter
+	TotalReplication                prometheus.Counter
+	TotalOutsideReplication         prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -113,7 +116,25 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_distant_replications",
-			Help:      "Total no of replication requests received from non closest peers",
+			Help:      "Total no of replication requests received from non closest peer to chunk",
+		}),
+		TotalReplicationFromClosestPeer: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_closest_replications",
+			Help:      "Total no of replication requests received from closest peer to chunk",
+		}),
+		TotalReplication: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_replications",
+			Help:      "Total no of replication requests received",
+		}),
+		TotalOutsideReplication: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_out_of_neighborhood_replications",
+			Help:      "Total no of replication requests received that do not fall in neighborhood",
 		}),
 	}
 }
