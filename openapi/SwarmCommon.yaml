@@ -102,15 +102,15 @@ components:
               connected:
                 type: integer
               disconnectedPeers:
-                type: object
-                additionalProperties:
+                type: array
+                items:
                   type: object
                   properties:
                     address:
                       $ref: "#/components/schemas/SwarmAddress"
               connectedPeers:
-                type: object
-                additionalProperties:
+                type: array
+                items:
                   type: object
                   properties:
                     address:
