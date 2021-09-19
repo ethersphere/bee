@@ -103,8 +103,18 @@ components:
                 type: integer
               disconnectedPeers:
                 type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    address:
+                      $ref: "#/components/schemas/SwarmAddress"
               connectedPeers:
                 type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    address:
+                      $ref: "#/components/schemas/SwarmAddress"
 
     Cheque:
       type: object
