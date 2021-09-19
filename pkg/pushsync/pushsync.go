@@ -178,22 +178,24 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 				defer span.Finish()
 
+				ps.metrics.HandlerReplication.Inc()
+
 				chunk, err = ps.validStamp(chunk, ch.Stamp)
 				if err != nil {
 					ps.metrics.InvalidStampErrors.Inc()
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
+					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("pushsync valid stamp: %w", err)
 				}
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
+					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("chunk store: %w", err)
 				}
 
 				debit, err := ps.accounting.PrepareDebit(p.Address, price)
 				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
+					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 				}
 				defer debit.Cleanup()
@@ -201,18 +203,18 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				// return back receipt
 				signature, err := ps.signer.Sign(bytes)
 				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
+					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("receipt signature: %w", err)
 				}
 				receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
 				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
+					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 				}
 
 				err = debit.Apply()
 				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
+					ps.metrics.HandlerReplicationErrors.Inc()
 				}
 				return err
 			}
@@ -224,6 +226,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// forwarding replication
 	storedChunk := false
 	if ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
+
+		ps.metrics.Forwarder.Inc()
 
 		chunk, err = ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
