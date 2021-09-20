@@ -58,13 +58,6 @@ jobs:
     - name: Test
       if: matrix.os == 'windows-latest'
       run: make test
-    - name: Coveralls
-      if: matrix.os == 'ubuntu-latest'
-      uses: shogo82148/actions-goveralls@v1
-      with:
-        path-to-profile: cover.out
-      env:
-        COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
     - name: Trigger Beekeeper
       if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
       uses: peter-evans/repository-dispatch@v1
