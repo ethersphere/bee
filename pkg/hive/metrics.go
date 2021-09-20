@@ -17,6 +17,9 @@ type metrics struct {
 	PeersHandler      prometheus.Counter
 	PeersHandlerPeers prometheus.Counter
 	UnreachablePeers  prometheus.Counter
+
+	SeenNetworkAddresses        prometheus.Counter
+	SeenPrivateNetworkAddresses prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -58,6 +61,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "unreachable_peers_count",
 			Help:      "Number of peers that are unreachable.",
+		}),
+		SeenNetworkAddresses: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "seen_network_addresses_count",
+			Help:      "Number of seen network addresses.",
+		}),
+		SeenPrivateNetworkAddresses: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "seen_private_network_addresses_count",
+			Help:      "Number of seen private network addresses.",
 		}),
 	}
 }

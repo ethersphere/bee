@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/ratelimit"
 	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
@@ -279,6 +281,31 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			if err != nil {
 				s.logger.Errorf("hive: multi address underlay err: %v", err)
 				return
+			}
+
+			addr := multiUnderlay
+			for _, proto := range addr.Protocols() {
+				switch proto.Code {
+				case ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
+					s.logger.Tracef("hive: DNS address found %s", addr)
+					_, host, err := manet.DialArgs(addr)
+					if err != nil {
+						s.logger.Errorf("hive: fail to get dial args: %v", err)
+					}
+					ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+					if err != nil {
+						s.logger.Errorf("hive: unable to resolve IP address: %v", err)
+					}
+					s.logger.Tracef("hive: DNS records found %v for address %v", ips, addr)
+					if len(ips) == 0 {
+						addr = nil
+					}
+				}
+			}
+			s.metrics.SeenNetworkAddresses.Inc()
+			if addr != nil && manet.IsPrivateAddr(addr) {
+				s.metrics.SeenPrivateNetworkAddresses.Inc()
+				s.logger.Tracef("hive: connection from private network address: %s", addr)
 			}
 
 			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
