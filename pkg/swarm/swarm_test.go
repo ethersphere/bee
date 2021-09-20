@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -98,4 +99,14 @@ func TestAddress_MemberOf(t *testing.T) {
 		t.Fatal("expected addr not member")
 	}
 
+}
+
+func TestCloser(t *testing.T) {
+	a := swarm.MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000")
+	x := swarm.MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000")
+	y := swarm.MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000")
+
+	if !x.Closer(a, y) {
+		log.Fatal("x is closer")
+	}
 }
