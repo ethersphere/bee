@@ -12,11 +12,11 @@ import (
 type metrics struct {
 	TotalSent                prometheus.Counter
 	TotalReceived            prometheus.Counter
-	TotalHandlerErrors       prometheus.Counter
+	TotalHandlerErrors       prometheus.CounterVec
 	TotalReplicatedAttempts  prometheus.Counter
 	TotalReplicatedError     prometheus.Counter
 	TotalSendAttempts        prometheus.Counter
-	TotalFailedSendAttempts  prometheus.Counter
+	TotalFailedSendAttempts  prometheus.CounterVec
 	TotalSkippedPeers        prometheus.Counter
 	TotalOutgoing            prometheus.Counter
 	TotalOutgoingErrors      prometheus.Counter
@@ -45,12 +45,14 @@ func newMetrics() metrics {
 			Name:      "total_received",
 			Help:      "Total chunks received.",
 		}),
-		TotalHandlerErrors: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_handler_errors",
-			Help:      "Total no of error occurred while handling an incoming delivery (either while storing or forwarding).",
-		}),
+		TotalHandlerErrors: *prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "total_handler_errors",
+				Help:      "Total no of error occurred while handling an incoming delivery (either while storing or forwarding).",
+			}, []string{"error"},
+		),
 		TotalReplicatedAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -69,12 +71,14 @@ func newMetrics() metrics {
 			Name:      "total_send_attempts",
 			Help:      "Total no of attempts to push chunk.",
 		}),
-		TotalFailedSendAttempts: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_failed_send_attempts",
-			Help:      "Total no of failed attempts to push chunk.",
-		}),
+		TotalFailedSendAttempts: *prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "total_failed_send_attempts",
+				Help:      "Total no of failed attempts to push chunk.",
+			}, []string{"error"},
+		),
 		TotalSkippedPeers: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -129,7 +133,7 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "total_handler_time",
 				Help:      "Histogram for time taken for the handler.",
-				Buckets:   []float64{.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20},
+				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
 			}, []string{"status"},
 		),
 		PushToPeerTime: *prometheus.NewHistogramVec(
@@ -138,7 +142,7 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "push_peer_time",
 				Help:      "Histogram for time taken to push a chunk to a peer.",
-				Buckets:   []float64{.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20},
+				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
 			}, []string{"bin", "attempted", "status"},
 		),
 	}
