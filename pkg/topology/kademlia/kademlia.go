@@ -59,6 +59,7 @@ type (
 	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice) (saturated bool, oversaturated bool)
 	sanctionedPeerFunc func(peer swarm.Address) bool
 	pruneFunc          func(depth uint8)
+	staticPeerFunc     func(peer swarm.Address) bool
 )
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
@@ -101,7 +102,7 @@ type Kad struct {
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
 	pruneFunc         pruneFunc // pluggable prune function
-	staticNodes       []swarm.Address
+	staticPeer        staticPeerFunc
 }
 
 // New returns a new Kademlia.
@@ -119,7 +120,7 @@ func New(
 		if o.BootnodeMode {
 			os = bootNodeOverSaturationPeers
 		}
-		o.SaturationFunc = binSaturated(os)
+		o.SaturationFunc = binSaturated(os, isStaticPeer(o.StaticNodes))
 	}
 	if o.BitSuffixLength == 0 {
 		o.BitSuffixLength = defaultBitSuffixLength
@@ -154,7 +155,7 @@ func New(
 		wg:                sync.WaitGroup{},
 		metrics:           newMetrics(),
 		pruneFunc:         o.PruneFunc,
-		staticNodes:       o.StaticNodes,
+		staticPeer:        isStaticPeer(o.StaticNodes),
 	}
 
 	if k.pruneFunc == nil {
@@ -650,7 +651,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(oversaturationAmount int) binSaturationFunc {
+func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSaturationFunc {
 	return func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
 		potentialDepth := recalcDepth(peers, swarm.MaxPO)
 
@@ -667,8 +668,8 @@ func binSaturated(oversaturationAmount int) binSaturationFunc {
 		// gaps measurement)
 
 		size := 0
-		_ = connected.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
-			if po == bin {
+		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+			if po == bin && !staticNode(addr) {
 				size++
 			}
 			return false, false, nil
@@ -874,13 +875,16 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 	return false
 }
 
-func (k *Kad) isProtected(overlay swarm.Address) bool {
-	for _, addr := range k.staticNodes {
-		if addr.Equal(overlay) {
-			return true
+func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool {
+	return func(overlay swarm.Address) bool {
+		for _, addr := range staticNodes {
+			if addr.Equal(overlay) {
+				return true
+			}
 		}
+		return false
+
 	}
-	return false
 }
 
 // Connected is called when a peer has dialed in.
@@ -892,15 +896,13 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
-			// For the rare case where we have an oversaturated bin with all protected peers
-			// we still want to be able to connect to this peer but we cannot kick anyone out
-			if err != nil && !errors.Is(err, topology.ErrProtectedOversaturation) {
+			if err != nil {
 				return fmt.Errorf("failed to get random peer to kick-out: %w", err)
-			} else if err == nil {
-				_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
-				return k.onConnected(ctx, address)
 			}
-		} else if !forceConnection {
+			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
+			return k.onConnected(ctx, address)
+		}
+		if !forceConnection {
 			return topology.ErrOversaturated
 		}
 	}
@@ -1352,18 +1354,10 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	peers := k.connectedPeers.BinPeers(bin)
-	// The following case should ideally never happen as this function is used to find a
-	// random peer to kick out and this is required only when the bin is oversaturated.
-	// Only reason why this would happen is if usage of randomPeer is wrong or somehow
-	// we manage to disconnect from oversaturation amount of peers from the time we check the
-	// bin and call this function.
-	if len(peers) == 0 {
-		return swarm.ZeroAddress, errEmptyBin
-	}
 
 	for idx := 0; idx < len(peers); {
 		// do not consider protected peers
-		if k.isProtected(peers[idx]) {
+		if k.staticPeer(peers[idx]) {
 			peers = append(peers[:idx], peers[idx+1:]...)
 			continue
 		}
@@ -1371,10 +1365,7 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	}
 
 	if len(peers) == 0 {
-		// For the rare case when we are oversaturated with protected nodes in a single
-		// bin, we will return a different error and caller can handle this in whichever
-		// way he chooses
-		return swarm.ZeroAddress, topology.ErrProtectedOversaturation
+		return swarm.ZeroAddress, errEmptyBin
 	}
 
 	rndIndx, err := random.Int(random.Reader, big.NewInt(int64(len(peers))))
