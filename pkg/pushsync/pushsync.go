@@ -213,7 +213,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// forwarding replication
 	storedChunk := false
-	if ps.topologyDriver.IsWithinDepth(chunkAddress) {
+	if ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 
 		chunk, err = ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
