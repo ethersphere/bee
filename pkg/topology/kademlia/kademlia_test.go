@@ -1330,13 +1330,50 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 
 	for k := 0; k < 5; k++ {
 		// further connections should succeed outside of depth
+		addr := test.RandomAddressAt(base, k)
+		// if error is not as specified, connectOne goes fatal
+		connectOne(t, signer, kad, ab, addr, nil)
+		// see depth is still as expected
+		kDepth(t, kad, 5)
+	}
+	// ensure protected node was not kicked out and we have more than oversaturation
+	// amount
+	sizes := binSizes(kad)
+	for k := 0; k < 5; k++ {
+		if sizes[k] != 2 {
+			t.Fatalf("invalid bin size expected 2 found %d", sizes[k])
+		}
+	}
+	for k := 0; k < 5; k++ {
+		// further connections should succeed outside of depth
 		for l := 0; l < 3; l++ {
 			addr := test.RandomAddressAt(base, k)
 			// if error is not as specified, connectOne goes fatal
-			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
+			connectOne(t, signer, kad, ab, addr, nil)
 		}
 		// see depth is still as expected
 		kDepth(t, kad, 5)
+	}
+	// ensure unprotected nodes are kicked out to make room for new peers and protected
+	// nodes are still present
+	sizes = binSizes(kad)
+	for k := 0; k < 5; k++ {
+		if sizes[k] != 2 {
+			t.Fatalf("invalid bin size expected 2 found %d", sizes[k])
+		}
+	}
+	for _, pn := range protected {
+		found := false
+		_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if addr.Equal(pn) {
+				found = true
+				return true, false, nil
+			}
+			return false, false, nil
+		})
+		if !found {
+			t.Fatalf("protected node %s not found in connected list", pn)
+		}
 	}
 }
 

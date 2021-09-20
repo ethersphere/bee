@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("no peer found")
-	ErrWantSelf      = errors.New("node wants self")
-	ErrOversaturated = errors.New("oversaturated")
+	ErrNotFound                = errors.New("no peer found")
+	ErrWantSelf                = errors.New("node wants self")
+	ErrOversaturated           = errors.New("oversaturated")
+	ErrProtectedOversaturation = errors.New("oversaturated with protected nodes")
 )
 
 type Driver interface {
