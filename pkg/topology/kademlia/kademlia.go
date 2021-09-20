@@ -1058,19 +1058,13 @@ func closestPeerFunc(closest *swarm.Address, addr swarm.Address, spf sanctionedP
 			*closest = peer
 			return false, false, nil
 		}
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+
+		dcmp, err := peer.Closer(addr, *closest)
 		if err != nil {
 			return false, false, err
 		}
-		switch dcmp {
-		case 0:
-			// do nothing
-		case -1:
-			// current peer is closer
+		if dcmp {
 			*closest = peer
-		case 1:
-			// closest is already closer to chunk
-			// do nothing
 		}
 		return false, false, nil
 	}
@@ -1100,19 +1094,12 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 			closest = peer
 		}
 
-		dcmp, err := swarm.DistanceCmp(addr.Bytes(), closest.Bytes(), peer.Bytes())
+		dcmp, err := peer.Closer(addr, closest)
 		if err != nil {
 			return false, false, err
 		}
-		switch dcmp {
-		case 0:
-			// do nothing
-		case -1:
-			// current peer is closer
+		if dcmp {
 			closest = peer
-		case 1:
-			// closest is already closer to chunk
-			// do nothing
 		}
 		return false, false, nil
 	})

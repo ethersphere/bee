@@ -120,12 +120,9 @@ func (a Address) MarshalJSON() ([]byte, error) {
 }
 
 // Closer returns if x is closer to a than y
-func (x Address) Closer(a Address, y Address) bool {
+func (x Address) Closer(a Address, y Address) (bool, error) {
 	cmp, err := DistanceCmp(a.b, x.b, y.b)
-	if err != nil {
-		return false
-	}
-	return cmp == 1
+	return cmp == 1, err
 }
 
 // ZeroAddress is the address that has no value.
