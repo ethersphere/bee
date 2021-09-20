@@ -220,19 +220,18 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// forwarding replication
 	storedChunk := false
-	if ps.topologyDriver.IsWithinDepth(chunkAddress) {
+	if ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 
 		chunk, err = ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
 			ps.metrics.InvalidStampErrors.Inc()
-			return fmt.Errorf("pushsync valid stamp: %w", err)
-		}
-
-		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
-		if err != nil {
-			ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
 		} else {
-			storedChunk = true
+			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
+			if err != nil {
+				ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
+			} else {
+				storedChunk = true
+			}
 		}
 	}
 
