@@ -129,7 +129,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer func() {
 		if err != nil {
 			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-			ps.metrics.TotalHandlerErrors.WithLabelValues(err.Error()).Inc()
+			ps.metrics.TotalHandlerErrors.Inc()
 			_ = stream.Reset()
 		} else {
 			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
@@ -405,7 +405,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				ps.skipList.Add(ch.Address(), peer, timeToSkip)
 				ps.metrics.TotalSkippedPeers.Inc()
 			}
-			ps.metrics.TotalFailedSendAttempts.WithLabelValues(err.Error()).Inc()
+			ps.metrics.TotalFailedSendAttempts.Inc()
 			if allowedRetries > 0 {
 				continue
 			}
