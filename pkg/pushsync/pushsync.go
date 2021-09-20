@@ -128,11 +128,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer cancel()
 	defer func() {
 		if err != nil {
-			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
+			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			ps.metrics.TotalHandlerErrors.Inc()
 			_ = stream.Reset()
 		} else {
-			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
+			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
 			_ = stream.FullClose()
 		}
 	}()
@@ -220,8 +220,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	storedChunk := false
 	if ps.topologyDriver.IsWithinDepth(chunkAddress) {
 
-		ps.metrics.Forwarder.Inc()
-
 		chunk, err = ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
 			ps.metrics.InvalidStampErrors.Inc()
@@ -276,9 +274,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			return debit.Apply()
 		}
+
+		ps.metrics.Forwarder.Inc()
+
 		return fmt.Errorf("handler: push to closest: %w", err)
 
 	}
+
+	ps.metrics.Forwarder.Inc()
 
 	debit, err := ps.accounting.PrepareDebit(p.Address, price)
 	if err != nil {
