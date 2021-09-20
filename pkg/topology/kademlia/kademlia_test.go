@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
+	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -891,8 +892,11 @@ func TestClosestPeer(t *testing.T) {
 
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
+	ppm := pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+		return 0, nil
+	})
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), metricsDB, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), ppm, metricsDB, logger, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1281,6 +1285,53 @@ func TestOutofDepthPrune(t *testing.T) {
 	waitBalanced(t, kad, 1)
 }
 
+// TestLatency tests that kademlia polls peers for latency.
+func TestLatency(t *testing.T) {
+	var (
+		logger = logging.New(ioutil.Discard, 0)
+		base   = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+		p1     = test.RandomAddress()
+
+		disc  = mock.NewDiscovery()
+		ab    = addressbook.New(mockstate.NewStateStore())
+		doneC = make(chan struct{})
+		once  sync.Once
+		ppm   = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+			once.Do(func() { close(doneC) })
+			return 0, nil
+		})
+	)
+	metricsDB, err := shed.NewDB("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := metricsDB.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), ppm, metricsDB, logger, kademlia.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	pk, _ := beeCrypto.GenerateSecp256k1Key()
+	signer := beeCrypto.NewDefaultSigner(pk)
+	addOne(t, signer, kad, ab, p1)
+
+	waitPeers(t, kad, 1)
+	select {
+	case <-doneC:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for ping")
+	}
+}
+
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
 
 	var rndAddrs = make([]swarm.Address, count)
@@ -1365,8 +1416,11 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock
 		logger = logging.New(ioutil.Discard, 0)                      // logger
 		disc   = mock.NewDiscovery()                                 // mock discovery protocol
+		ppm    = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+			return 0, nil
+		})
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, ppm, metricsDB, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,6 +50,8 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t1 = time.Now()               // Login time.
 		t2 = t1.Add(10 * time.Second) // Snapshot time.
 		t3 = t2.Add(55 * time.Second) // Logout time.
+		t4 = 10 * time.Millisecond    // Latency duration.
+		t5 = 100 * time.Millisecond   // Next latency duration sample.
 	)
 
 	// Inc session conn retry.
@@ -112,6 +114,20 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 	if have, want := ss.SessionConnectionDuration, t3.Sub(t1); have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %q; want %q", addr, have, want)
+	}
+
+	// Latency
+	mc.Record(addr, metrics.PeerLatency(t4))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.LatencyEWMA, t4; have != want {
+		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %d; want %d", addr, have, want)
+	}
+	// check ewma calculation
+	mc.Record(addr, metrics.PeerLatency(t5))
+	ss = snapshot(t, mc, t2, addr)
+	wantEWMA := 19 * time.Millisecond
+	if have, want := ss.LatencyEWMA, wantEWMA; have != want {
+		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %d; want %d", addr, have, want)
 	}
 
 	// Inspect.
