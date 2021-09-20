@@ -900,8 +900,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 				_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
 				return k.onConnected(ctx, address)
 			}
-		}
-		if !forceConnection && !k.bootnode {
+		} else if !forceConnection {
 			return topology.ErrOversaturated
 		}
 	}
@@ -1353,10 +1352,10 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	peers := k.connectedPeers.BinPeers(bin)
-	// This should ideally never happen as randomPeer is used to find a random peer
-	// to kick out. This is required only when the bin is oversaturated. Only reason
-	// why this would happen is if usage of randomPeer is wrong or somehow we manage
-	// to disconnect from oversaturation amount of peers from the time we check the
+	// The following case should ideally never happen as this function is used to find a
+	// random peer to kick out and this is required only when the bin is oversaturated.
+	// Only reason why this would happen is if usage of randomPeer is wrong or somehow
+	// we manage to disconnect from oversaturation amount of peers from the time we check the
 	// bin and call this function.
 	if len(peers) == 0 {
 		return swarm.ZeroAddress, errEmptyBin
