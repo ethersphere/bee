@@ -43,13 +43,12 @@ const (
 )
 
 var (
-	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
-	ErrNoPush                = errors.New("could not push chunk")
-	ErrWarmup                = errors.New("node warmup time not complete")
+	ErrNoPush = errors.New("could not push chunk")
+	ErrWarmup = errors.New("node warmup time not complete")
 
 	defaultTTL                      = 20 * time.Second // request time to live
 	sanctionWait                    = 5 * time.Minute
-	timeToWaitForPushsyncToNeighbor = 3 * time.Second // time to wait to get a receipt for a chunk
+	timeToWaitForPushsyncToNeighbor = 5 * time.Second // time to wait to get a receipt for a chunk
 	nPeersToPushsync                = 3               // number of peers to replicate to as receipt is sent upstream
 )
 
@@ -167,54 +166,47 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if p.FullNode {
 		bytes := chunkAddress.Bytes()
 		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-			if ps.topologyDriver.IsWithinDepth(chunkAddress) {
 
-				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
-				defer canceld()
+			span, _, ctxd := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+			defer span.Finish()
 
-				span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
-				defer span.Finish()
-
-				chunk, err = ps.validStamp(chunk, ch.Stamp)
-				if err != nil {
-					ps.metrics.InvalidStampErrors.Inc()
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
-					return fmt.Errorf("pushsync valid stamp: %w", err)
-				}
-
-				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
-				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
-					return fmt.Errorf("chunk store: %w", err)
-				}
-
-				debit, err := ps.accounting.PrepareDebit(p.Address, price)
-				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
-					return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
-				}
-				defer debit.Cleanup()
-
-				// return back receipt
-				signature, err := ps.signer.Sign(bytes)
-				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
-					return fmt.Errorf("receipt signature: %w", err)
-				}
-				receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
-				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
-					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-				}
-
-				err = debit.Apply()
-				if err != nil {
-					ps.metrics.TotalHandlerReplicationErrors.Inc()
-				}
-				return err
+			chunk, err = ps.validStamp(chunk, ch.Stamp)
+			if err != nil {
+				ps.metrics.InvalidStampErrors.Inc()
+				ps.metrics.TotalHandlerReplicationErrors.Inc()
+				return fmt.Errorf("pushsync valid stamp: %w", err)
 			}
 
-			return ErrOutOfDepthReplication
+			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
+			if err != nil {
+				ps.metrics.TotalHandlerReplicationErrors.Inc()
+				return fmt.Errorf("chunk store: %w", err)
+			}
+
+			debit, err := ps.accounting.PrepareDebit(p.Address, price)
+			if err != nil {
+				ps.metrics.TotalHandlerReplicationErrors.Inc()
+				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+			}
+			defer debit.Cleanup()
+
+			// return back receipt
+			signature, err := ps.signer.Sign(bytes)
+			if err != nil {
+				ps.metrics.TotalHandlerReplicationErrors.Inc()
+				return fmt.Errorf("receipt signature: %w", err)
+			}
+			receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
+			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
+				ps.metrics.TotalHandlerReplicationErrors.Inc()
+				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
+			}
+
+			err = debit.Apply()
+			if err != nil {
+				ps.metrics.TotalHandlerReplicationErrors.Inc()
+			}
+			return err
 		}
 	}
 
