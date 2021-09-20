@@ -107,7 +107,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "handler_replication",
-			Help:      "Total no of attemps of pushsync handler neighborhood replication.",
+			Help:      "Total no of attempts of pushsync handler neighborhood replication.",
 		}),
 		HandlerReplicationErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
