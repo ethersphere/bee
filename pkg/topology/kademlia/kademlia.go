@@ -940,13 +940,16 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
-			if err != nil {
-				return fmt.Errorf("failed to get random peer to kick-out: %w", topology.ErrOversaturated)
+			// For the rare case where we have an oversaturated bin with all protected peers
+			// we still want to be able to connect to this peer but we cannot kick anyone out
+			if err != nil && !errors.Is(err, topology.ErrProtectedOversaturation) {
+				return fmt.Errorf("failed to get random peer to kick-out: %w", err)
+			} else if err == nil {
+				_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
+				return k.onConnected(ctx, address)
 			}
-			_ = k.p2p.Disconnect(randPeer, "kicking out random peer to accommodate node")
-			return k.onConnected(ctx, address)
 		}
-		if !forceConnection {
+		if !forceConnection && !k.bootnode {
 			return topology.ErrOversaturated
 		}
 	}
@@ -1398,6 +1401,14 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	peers := k.connectedPeers.BinPeers(bin)
+	// This should ideally never happen as randomPeer is used to find a random peer
+	// to kick out. This is required only when the bin is oversaturated. Only reason
+	// why this would happen is if usage of randomPeer is wrong or somehow we manage
+	// to disconnect from oversaturation amount of peers from the time we check the
+	// bin and call this function.
+	if len(peers) == 0 {
+		return swarm.ZeroAddress, errEmptyBin
+	}
 
 	for idx := 0; idx < len(peers); {
 		// do not consider protected peers
@@ -1409,7 +1420,10 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	}
 
 	if len(peers) == 0 {
-		return swarm.ZeroAddress, errEmptyBin
+		// For the rare case when we are oversaturated with protected nodes in a single
+		// bin, we will return a different error and caller can handle this in whichever
+		// way he chooses
+		return swarm.ZeroAddress, topology.ErrProtectedOversaturation
 	}
 
 	rndIndx, err := random.Int(random.Reader, big.NewInt(int64(len(peers))))
