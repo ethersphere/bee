@@ -362,11 +362,11 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 			closest = peer
 			return false, false, nil
 		}
-		dcmp, err := peer.Closer(addr, closest)
+		closer, err := peer.Closer(addr, closest)
 		if err != nil {
 			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
 		}
-		if dcmp {
+		if closer {
 			closest = peer
 		}
 		return false, false, nil
@@ -383,11 +383,11 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		return closest, nil
 	}
 
-	dcmp, err := closest.Closer(addr, s.addr)
+	closer, err := closest.Closer(addr, s.addr)
 	if err != nil {
 		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), s.addr.String(), err)
 	}
-	if dcmp {
+	if closer {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 

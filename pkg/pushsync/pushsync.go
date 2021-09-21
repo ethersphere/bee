@@ -168,7 +168,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
-		if cmp, _ := p.Address.Closer(chunkAddress, ps.address); cmp {
+		if closer, _ := p.Address.Closer(chunkAddress, ps.address); closer {
 			if ps.topologyDriver.IsWithinDepth(chunkAddress) {
 
 				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
@@ -366,7 +366,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 					// here we skip the peer if the peer is closer to the chunk than us
 					// we replicate with peers that are further away than us because we are the storer
-					if cmp, _ := peer.Closer(ch.Address(), ps.address); cmp {
+					if closer, _ := peer.Closer(ch.Address(), ps.address); closer {
 						return false, false, nil
 					}
 
