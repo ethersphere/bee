@@ -323,7 +323,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		BlockHash: r.BlockHash}, nil
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool, origin swarm.Address) (*pb.Receipt, error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool, originAddr swarm.Address) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
@@ -334,19 +334,23 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		skipPeers      []swarm.Address
 	)
 
-	if retryAllowed {
+	if origin {
 		// only originator retries
 		allowedRetries = maxPeers
 	}
 
 	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
+
+		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
+
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, fullSkipList...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
 			// if ErrWantSelf is returned, it means we are the closest peer.
 			if errors.Is(err, topology.ErrWantSelf) {
+
 				if !ps.warmedUp() {
 					return nil, ErrWarmup
 				}
@@ -355,28 +359,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 					return nil, ErrOutOfDepthStoring
 				}
 
-				count := 0
-				// Push the chunk to some peers in the neighborhood in parallel for replication.
-				// Any errors here should NOT impact the rest of the handler.
-				_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
-					// skip forwarding peer
-					if peer.Equal(origin) {
-						return false, false, nil
-					}
-
-					// here we skip the peer if the peer is closer to the chunk than us
-					// we replicate with peers that are further away than us because we are the storer
-					if closer, _ := peer.Closer(ch.Address(), ps.address); closer {
-						return false, false, nil
-					}
-
-					if count == nPeersToPushsync {
-						return true, false, nil
-					}
-					count++
-					go ps.pushToNeighbour(ctx, peer, ch, retryAllowed)
-					return false, false, nil
-				})
+				ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
 				return nil, err
 			}
 			return nil, fmt.Errorf("closest peer: %w", err)
@@ -387,7 +370,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		defer canceld()
 
 		now := time.Now()
-		r, attempted, err := ps.pushPeer(ctxd, peer, ch, retryAllowed)
+		r, attempted, err := ps.pushPeer(ctxd, peer, ch, origin)
 		ps.measurePushPeer(now, peer, attempted, err)
 
 		// attempted is true if we get past accounting and actually attempt
@@ -439,7 +422,7 @@ func (ps *PushSync) measurePushPeer(t time.Time, peer swarm.Address, attempted b
 		Observe(time.Since(t).Seconds())
 }
 
-func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, originated bool) (*pb.Receipt, bool, error) {
+func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) (*pb.Receipt, bool, error) {
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
@@ -493,12 +476,44 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 		return nil, true, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
-	err = ps.accounting.Credit(peer, receiptPrice, originated)
+	err = ps.accounting.Credit(peer, receiptPrice, origin)
 	if err != nil {
 		return nil, true, err
 	}
 
 	return &receipt, true, nil
+}
+
+func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Address, ch swarm.Chunk, origin bool, originAddr swarm.Address) {
+	count := 0
+	// Push the chunk to some peers in the neighborhood in parallel for replication.
+	// Any errors here should NOT impact the rest of the handler.
+	_ = ps.topologyDriver.EachPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		// skip forwarding peer
+		if peer.Equal(originAddr) {
+			return false, false, nil
+		}
+
+		// skip skiplisted peers
+		for _, s := range skiplist {
+			if peer.Equal(s) {
+				return false, false, nil
+			}
+		}
+
+		// here we skip the peer if the peer is closer to the chunk than us
+		// we replicate with peers that are further away than us because we are the storer
+		if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
+			return false, false, nil
+		}
+
+		if count == nPeersToPushsync {
+			return true, false, nil
+		}
+		count++
+		go ps.pushToNeighbour(ctx, peer, ch, origin)
+		return false, false, nil
+	})
 }
 
 // pushToNeighbour handles in-neighborhood replication for a single peer.
