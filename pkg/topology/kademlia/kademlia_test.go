@@ -544,64 +544,63 @@ func TestOversaturationBootnode(t *testing.T) {
 	}
 }
 
-// func TestBootnodeMaxConnections(t *testing.T) {
-// 	defer func(p int) {
-// 		*kademlia.BootnodeOverSaturationPeers = p
-// 	}(*kademlia.BootnodeOverSaturationPeers)
-// 	*kademlia.BootnodeOverSaturationPeers = 4
+func TestBootnodeMaxConnections(t *testing.T) {
 
-// 	defer func(p int) {
-// 		*kademlia.SaturationPeers = p
-// 	}(*kademlia.SaturationPeers)
-// 	*kademlia.SaturationPeers = 4
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
 
-// 	var (
-// 		conns                    int32 // how many connect calls were made to the p2p mock
-// 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
-// 	)
-// 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			BootnodeMode:       true,
+			OverSaturationCalc: func(uint8) int { return 4 },
+		})
+	)
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
-// 	if err := kad.Start(context.Background()); err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	defer kad.Close()
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
 
-// 	// Add maximum accepted number of peers up until bin 5 without problems
-// 	for i := 0; i < 6; i++ {
-// 		for j := 0; j < *kademlia.BootnodeOverSaturationPeers; j++ {
-// 			addr := test.RandomAddressAt(base, i)
-// 			// if error is not nil as specified, connectOne goes fatal
-// 			connectOne(t, signer, kad, ab, addr, nil)
-// 		}
-// 		// see depth is limited to currently added peers proximity
-// 		kDepth(t, kad, i)
-// 	}
+	// Add maximum accepted number of peers up until bin 5 without problems
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 4; j++ {
+			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
 
-// 	// see depth is 5
-// 	kDepth(t, kad, 5)
+	// see depth is 5
+	kDepth(t, kad, 5)
 
-// 	depth := 5
-// 	outSideDepthPeers := 5
+	depth := 5
+	outSideDepthPeers := 5
 
-// 	for k := 0; k < depth; k++ {
-// 		// further connections should succeed outside of depth
-// 		for l := 0; l < outSideDepthPeers; l++ {
-// 			addr := test.RandomAddressAt(base, k)
-// 			// if error is not as specified, connectOne goes fatal
-// 			connectOne(t, signer, kad, ab, addr, nil)
-// 			// check that pick works correctly
-// 			if !kad.Pick(p2p.Peer{Address: addr}) {
-// 				t.Fatal("should pick the peer but didnt")
-// 			}
-// 		}
-// 	}
+	for k := 0; k < depth; k++ {
+		// further connections should succeed outside of depth
+		for l := 0; l < outSideDepthPeers; l++ {
+			addr := test.RandomAddressAt(base, k)
+			// if error is not as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+			// check that pick works correctly
+			if !kad.Pick(p2p.Peer{Address: addr}) {
+				t.Fatal("should pick the peer but didnt")
+			}
+		}
+	}
 
-// 	got := atomic.LoadInt32(&conns)
-// 	want := -int32(depth * outSideDepthPeers)
-// 	if got != want {
-// 		t.Fatalf("got %d, want %d", got, want)
-// 	}
-// }
+	got := atomic.LoadInt32(&conns)
+	want := -int32(depth * outSideDepthPeers)
+	if got != want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+}
 
 // TestNotifierHooks tests that the Connected/Disconnected hooks
 // result in the correct behavior once called.
