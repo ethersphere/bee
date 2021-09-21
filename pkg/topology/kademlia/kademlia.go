@@ -138,9 +138,7 @@ func New(
 ) (*Kad, error) {
 
 	if o.OverSaturationCalc == nil {
-		o.OverSaturationCalc = func(bin uint8) int {
-			return int(math.Exp(-float64(bin)/8.0)) * 50
-		}
+		o.OverSaturationCalc = defaultOverSaturationCalc
 	}
 
 	o.SaturationFunc = binSaturated(o.OverSaturationCalc, isStaticPeer(o.StaticNodes))
@@ -209,6 +207,12 @@ func New(
 
 	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(0)
 	return k, nil
+}
+
+// produces oversaturation values using an exponential decay formula, sequence is as follows:
+// bin 0 -> 50, 44, 39, 34, 30, 27
+func defaultOverSaturationCalc(bin uint8) int {
+	return int(math.Round(50 * math.Exp(-float64(bin)/8.0)))
 }
 
 type peerConnInfo struct {
