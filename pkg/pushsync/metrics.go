@@ -10,23 +10,27 @@ import (
 )
 
 type metrics struct {
-	TotalSent                prometheus.Counter
-	TotalReceived            prometheus.Counter
-	TotalHandlerErrors       prometheus.Counter
-	TotalReplicatedAttempts  prometheus.Counter
-	TotalReplicatedError     prometheus.Counter
-	TotalSendAttempts        prometheus.Counter
-	TotalFailedSendAttempts  prometheus.Counter
-	TotalSkippedPeers        prometheus.Counter
-	TotalOutgoing            prometheus.Counter
-	TotalOutgoingErrors      prometheus.Counter
-	InvalidStampErrors       prometheus.Counter
-	HandlerReplication       prometheus.Counter
-	HandlerReplicationErrors prometheus.Counter
-	Forwarder                prometheus.Counter
-	Storer                   prometheus.Counter
-	TotalHandlerTime         prometheus.HistogramVec
-	PushToPeerTime           prometheus.HistogramVec
+	TotalSent                       prometheus.Counter
+	TotalReceived                   prometheus.Counter
+	TotalHandlerErrors              prometheus.Counter
+	TotalReplicatedAttempts         prometheus.Counter
+	TotalReplicatedError            prometheus.Counter
+	TotalSendAttempts               prometheus.Counter
+	TotalFailedSendAttempts         prometheus.Counter
+	TotalSkippedPeers               prometheus.Counter
+	TotalOutgoing                   prometheus.Counter
+	TotalOutgoingErrors             prometheus.Counter
+	InvalidStampErrors              prometheus.Counter
+	HandlerReplication              prometheus.Counter
+	HandlerReplicationErrors        prometheus.Counter
+	Forwarder                       prometheus.Counter
+	Storer                          prometheus.Counter
+	TotalHandlerTime                prometheus.HistogramVec
+	PushToPeerTime                  prometheus.HistogramVec
+	TotalReplicationFromDistantPeer prometheus.Counter
+	TotalReplicationFromClosestPeer prometheus.Counter
+	TotalReplication                prometheus.Counter
+	TotalOutsideReplication         prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -141,6 +145,30 @@ func newMetrics() metrics {
 				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
 			}, []string{"bin", "attempted", "status"},
 		),
+		TotalReplicationFromDistantPeer: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_distant_replications",
+			Help:      "Total no of replication requests received from non closest peer to chunk",
+		}),
+		TotalReplicationFromClosestPeer: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_closest_replications",
+			Help:      "Total no of replication requests received from closest peer to chunk",
+		}),
+		TotalReplication: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_replications",
+			Help:      "Total no of replication requests received",
+		}),
+		TotalOutsideReplication: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_out_of_neighborhood_replications",
+			Help:      "Total no of replication requests received that do not fall in neighborhood",
+		}),
 	}
 }
 
