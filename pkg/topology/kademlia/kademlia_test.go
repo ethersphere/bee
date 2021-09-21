@@ -56,7 +56,8 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			OverSaturationCalc: func(uint8) int { return 20 },
 		})
 	)
 
@@ -606,15 +607,12 @@ func TestBinSaturation(t *testing.T) {
 }
 
 func TestOversaturation(t *testing.T) {
-	defer func(p int) {
-		*kademlia.OverSaturationPeers = p
-	}(*kademlia.OverSaturationPeers)
-	*kademlia.OverSaturationPeers = 8
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			OverSaturationCalc: func(uint8) int { return 8 },
 		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
@@ -626,7 +624,7 @@ func TestOversaturation(t *testing.T) {
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
-		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
+		for j := 0; j < 8; j++ {
 			addr := test.RandomAddressAt(base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -664,10 +662,6 @@ func TestOversaturation(t *testing.T) {
 }
 
 func TestOversaturationBootnode(t *testing.T) {
-	defer func(p int) {
-		*kademlia.OverSaturationPeers = p
-	}(*kademlia.OverSaturationPeers)
-	*kademlia.OverSaturationPeers = 4
 
 	defer func(p int) {
 		*kademlia.SaturationPeers = p
@@ -677,8 +671,9 @@ func TestOversaturationBootnode(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BootnodeMode:     true,
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			BootnodeMode:       true,
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			OverSaturationCalc: func(uint8) int { return 4 },
 		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
@@ -690,7 +685,7 @@ func TestOversaturationBootnode(t *testing.T) {
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
-		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
+		for j := 0; j < 4; j++ {
 			addr := test.RandomAddressAt(base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -728,10 +723,6 @@ func TestOversaturationBootnode(t *testing.T) {
 }
 
 func TestBootnodeMaxConnections(t *testing.T) {
-	defer func(p int) {
-		*kademlia.BootnodeOverSaturationPeers = p
-	}(*kademlia.BootnodeOverSaturationPeers)
-	*kademlia.BootnodeOverSaturationPeers = 4
 
 	defer func(p int) {
 		*kademlia.SaturationPeers = p
@@ -741,8 +732,9 @@ func TestBootnodeMaxConnections(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BootnodeMode:     true,
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			BootnodeMode:       true,
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			OverSaturationCalc: func(uint8) int { return 4 },
 		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
@@ -754,7 +746,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
-		for j := 0; j < *kademlia.BootnodeOverSaturationPeers; j++ {
+		for j := 0; j < 4; j++ {
 			addr := test.RandomAddressAt(base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -1376,11 +1368,6 @@ func TestOutofDepthPrune(t *testing.T) {
 	}(*kademlia.SaturationPeers)
 	*kademlia.SaturationPeers = 4
 
-	defer func(p int) {
-		*kademlia.OverSaturationPeers = p
-	}(*kademlia.OverSaturationPeers)
-	*kademlia.OverSaturationPeers = 8
-
 	var (
 		conns, failedConns int32 // how many connect calls were made to the p2p mock
 
@@ -1394,8 +1381,9 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			PruneFunc:        pruneFunc,
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			PruneFunc:          pruneFunc,
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			OverSaturationCalc: func(uint8) int { return 8 },
 		})
 	)
 
@@ -1440,8 +1428,8 @@ func TestOutofDepthPrune(t *testing.T) {
 	// check that no pruning has happened
 	bins := binSizes(kad)
 	for i := 0; i < 6; i++ {
-		if bins[i] <= *kademlia.OverSaturationPeers {
-			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], *kademlia.OverSaturationPeers)
+		if bins[i] <= 8 {
+			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], 8)
 		}
 	}
 
@@ -1463,8 +1451,8 @@ func TestOutofDepthPrune(t *testing.T) {
 	// check bins have been pruned
 	bins = binSizes(kad)
 	for i := uint8(0); i < 5; i++ {
-		if bins[i] != *kademlia.OverSaturationPeers {
-			t.Fatalf("bin %d, got %d, want %d", i, bins[i], *kademlia.OverSaturationPeers)
+		if bins[i] != 8 {
+			t.Fatalf("bin %d, got %d, want %d", i, bins[i], 8)
 		}
 	}
 
@@ -1526,13 +1514,11 @@ func TestLatency(t *testing.T) {
 }
 
 func TestBootnodeProtectedNodes(t *testing.T) {
-	defer func(a, b, c, d int) {
-		*kademlia.BootnodeOverSaturationPeers = a
-		*kademlia.SaturationPeers = b
-		*kademlia.LowWaterMark = c
-		*kademlia.QuickSaturationPeers = d
-	}(*kademlia.BootnodeOverSaturationPeers, *kademlia.SaturationPeers, *kademlia.LowWaterMark, *kademlia.QuickSaturationPeers)
-	*kademlia.BootnodeOverSaturationPeers = 1
+	defer func(a, b, c int) {
+		*kademlia.SaturationPeers = a
+		*kademlia.LowWaterMark = b
+		*kademlia.QuickSaturationPeers = c
+	}(*kademlia.SaturationPeers, *kademlia.LowWaterMark, *kademlia.QuickSaturationPeers)
 	*kademlia.SaturationPeers = 1
 	*kademlia.LowWaterMark = 0
 	*kademlia.QuickSaturationPeers = 1
@@ -1548,16 +1534,17 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	var (
 		conns                 int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer = newTestKademliaWithAddr(t, base, &conns, nil, kademlia.Options{
-			BootnodeMode:     true,
-			StaticNodes:      protected,
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			BootnodeMode:       true,
+			StaticNodes:        protected,
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			OverSaturationCalc: func(uint8) int { return 1 },
 		})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
-		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
+		for j := 0; j < 20; j++ {
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, protected[i], nil)
 		}
