@@ -169,9 +169,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
-		bytes := chunkAddress.Bytes()
-		if dcmp, _ := swarm.DistanceCmp(bytes, p.Address.Bytes(), ps.address.Bytes()); dcmp == 1 {
-			ps.metrics.TotalReplication.Inc()
+		if closer, _ := p.Address.Closer(chunkAddress, ps.address); closer {
 			if ps.topologyDriver.IsWithinDepth(chunkAddress) {
 
 				ctxd, canceld := context.WithTimeout(context.Background(), timeToWaitForPushsyncToNeighbor)
@@ -211,12 +209,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				defer debit.Cleanup()
 
 				// return back receipt
-				signature, err := ps.signer.Sign(bytes)
+				signature, err := ps.signer.Sign(chunkAddress.Bytes())
 				if err != nil {
 					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("receipt signature: %w", err)
 				}
-				receipt := pb.Receipt{Address: bytes, Signature: signature, BlockHash: ps.blockHash}
+				receipt := pb.Receipt{Address: chunkAddress.Bytes(), Signature: signature, BlockHash: ps.blockHash}
 				if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 					ps.metrics.HandlerReplicationErrors.Inc()
 					return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
@@ -368,7 +366,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 
 					// here we skip the peer if the peer is closer to the chunk than us
 					// we replicate with peers that are further away than us because we are the storer
-					if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
+					if closer, _ := peer.Closer(ch.Address(), ps.address); closer {
 						return false, false, nil
 					}
 
