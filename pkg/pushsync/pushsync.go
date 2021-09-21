@@ -277,7 +277,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
+	r, err := ps.originPushToClosest(ctx, ch)
 	if err != nil {
 		return nil, err
 	}
@@ -285,6 +285,114 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		Address:   swarm.NewAddress(r.Address),
 		Signature: r.Signature,
 		BlockHash: r.BlockHash}, nil
+}
+
+func (ps *PushSync) originPushToClosest(ctx context.Context, ch swarm.Chunk) (*pb.Receipt, error) {
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	defer span.Finish()
+	defer ps.skipList.PruneExpired()
+
+	var (
+		includeSelf   = ps.isFullNode
+		skipPeers     []swarm.Address
+		N             = 5
+		rC            = make(chan *pb.Receipt)
+		doneC         = make(chan struct{})
+		wg            sync.WaitGroup
+		sched         = false
+		ctxd, canceld = context.WithTimeout(ctx, defaultTTL)
+	)
+
+	defer canceld()
+
+	for i := 0; i < N; i++ {
+		// find the next closest peer
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
+		if err != nil {
+			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
+			// in which case we should return immediately.
+			// if ErrWantSelf is returned, it means we are the closest peer.
+			if errors.Is(err, topology.ErrWantSelf) {
+				if !ps.warmedUp() {
+					return nil, ErrWarmup
+				}
+
+				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+					return nil, ErrNoPush
+				}
+
+				count := 0
+				// Push the chunk to some peers in the neighborhood in parallel for replication.
+				// Any errors here should NOT impact the rest of the handler.
+				_ = ps.topologyDriver.EachNeighbor(func(peer swarm.Address, po uint8) (bool, bool, error) {
+					// skip forwarding peer
+
+					// here we skip the peer if the peer is closer to the chunk than us
+					// we replicate with peers that are further away than us because we are the storer
+					if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
+						return false, false, nil
+					}
+
+					if count == nPeersToPushsync {
+						return true, false, nil
+					}
+					count++
+					go ps.pushToNeighbour(peer, ch, true)
+					return false, false, nil
+				})
+				return nil, err
+			}
+			return nil, fmt.Errorf("closest peer: %w", err)
+		}
+		ps.metrics.TotalSendAttempts.Inc()
+		wg.Add(1)
+		skipPeers = append(skipPeers, peer)
+		sched = true
+		go func(peer swarm.Address) {
+			defer wg.Done()
+			r, _, err := ps.pushPeer(ctxd, peer, ch, true)
+			// attempted is true if we get past accounting and actually attempt
+			// to send the request to the peer. If we dont get past accounting, we
+			// should not count the retry and try with a different peer again
+			if err != nil {
+				var timeToSkip time.Duration
+				switch {
+				case errors.Is(err, accounting.ErrOverdraft):
+					skipPeers = append(skipPeers, peer)
+				default:
+					timeToSkip = sanctionWait
+				}
+
+				logger.Debugf("pushsync: could not push to peer %s: %v", peer, err)
+
+				// if the node has warmed up AND no other closer peer has been tried
+				if ps.warmedUp() && timeToSkip > 0 {
+					ps.skipList.Add(ch.Address(), peer, timeToSkip)
+				}
+				ps.metrics.TotalFailedSendAttempts.Inc()
+				return
+			}
+			select {
+			case rC <- r:
+			default:
+			}
+		}(peer)
+	}
+	if sched {
+		go func() {
+			wg.Wait()
+			close(doneC)
+		}()
+	}
+
+	select {
+	case <-doneC:
+		return nil, ErrNoPush
+	case <-ctxd.Done():
+		return nil, ctxd.Err()
+	case r := <-rC:
+		return r, nil
+	}
 }
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool, origin swarm.Address) (*pb.Receipt, error) {
