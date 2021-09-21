@@ -294,7 +294,6 @@ func (ps *PushSync) originPushToClosest(ctx context.Context, ch swarm.Chunk) (*p
 
 	var (
 		includeSelf = ps.isFullNode
-		skipPeers   []swarm.Address
 	)
 
 	var N = 5
@@ -305,9 +304,11 @@ func (ps *PushSync) originPushToClosest(ctx context.Context, ch swarm.Chunk) (*p
 	ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 	defer canceld()
 
+	var closestPeers []swarm.Address
+
 	for i := 0; i < N; i++ {
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, ps.skipList.ChunkSkipPeers(ch.Address())...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
@@ -344,9 +345,18 @@ func (ps *PushSync) originPushToClosest(ctx context.Context, ch swarm.Chunk) (*p
 			}
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
+
+		closestPeers = append(closestPeers, peer)
+	}
+
+	if len(closestPeers) > 3 {
+		closestPeers = append([]swarm.Address{}, closestPeers[0], closestPeers[len(closestPeers)/2], closestPeers[len(closestPeers)-1])
+	}
+
+	for _, peer := range closestPeers {
+
 		ps.metrics.TotalSendAttempts.Inc()
 		wg.Add(1)
-		skipPeers = append(skipPeers, peer)
 		sched = true
 		go func(peer swarm.Address) {
 			defer wg.Done()
@@ -358,7 +368,6 @@ func (ps *PushSync) originPushToClosest(ctx context.Context, ch swarm.Chunk) (*p
 				var timeToSkip time.Duration
 				switch {
 				case errors.Is(err, accounting.ErrOverdraft):
-					skipPeers = append(skipPeers, peer)
 				default:
 					timeToSkip = sanctionWait
 				}
@@ -378,6 +387,7 @@ func (ps *PushSync) originPushToClosest(ctx context.Context, ch swarm.Chunk) (*p
 			}
 		}(peer)
 	}
+
 	if sched {
 		go func() {
 			wg.Wait()
