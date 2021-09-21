@@ -13,4 +13,5 @@ var (
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
+	DefaultOverSaturationCalc = defaultOverSaturationCalc
 )

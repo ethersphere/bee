@@ -1417,6 +1417,15 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	}
 }
 
+func TestDefaultOverSaturationCalc(t *testing.T) {
+	nums := []int{50, 44, 39, 34, 30, 27, 24, 21, 18, 16, 14, 13, 11, 10}
+	for i, n := range nums {
+		if got := kademlia.DefaultOverSaturationCalc(uint8(i)); got != n {
+			t.Fatalf("want %d, got %d", n, got)
+		}
+	}
+}
+
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
 
 	var rndAddrs = make([]swarm.Address, count)
