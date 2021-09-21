@@ -45,6 +45,7 @@ const (
 var (
 	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
 	ErrNoPush                = errors.New("could not push chunk")
+	ErrOutOfDepthStoring     = errors.New("storing outside of the neighborhood")
 	ErrWarmup                = errors.New("node warmup time not complete")
 
 	defaultTTL                      = 20 * time.Second // request time to live
@@ -193,7 +194,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				if err != nil {
 					ps.metrics.InvalidStampErrors.Inc()
 					ps.metrics.HandlerReplicationErrors.Inc()
-					return fmt.Errorf("pushsync valid stamp: %w", err)
+					return fmt.Errorf("pushsync replication valid stamp: %w", err)
 				}
 
 				_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
@@ -239,6 +240,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		chunk, err = ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
 			ps.metrics.InvalidStampErrors.Inc()
+			ps.logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
 		} else {
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 			if err != nil {
@@ -254,11 +256,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if errors.Is(err, topology.ErrWantSelf) {
 			ps.metrics.Storer.Inc()
 			if !storedChunk {
-
 				chunk, err = ps.validStamp(chunk, ch.Stamp)
 				if err != nil {
 					ps.metrics.InvalidStampErrors.Inc()
-					return fmt.Errorf("pushsync valid stamp: %w", err)
+					return fmt.Errorf("pushsync storer valid stamp: %w", err)
 				}
 
 				_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
@@ -290,7 +291,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		ps.metrics.Forwarder.Inc()
 
 		return fmt.Errorf("handler: push to closest: %w", err)
-
 	}
 
 	ps.metrics.Forwarder.Inc()
@@ -354,7 +354,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				}
 
 				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					return nil, ErrNoPush
+					return nil, ErrOutOfDepthStoring
 				}
 
 				count := 0
@@ -413,6 +413,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 			if ps.warmedUp() && timeToSkip > 0 {
 				ps.skipList.Add(ch.Address(), peer, timeToSkip)
 				ps.metrics.TotalSkippedPeers.Inc()
+				logger.Debugf("pushsync: adding to skiplist peer %s", peer.String())
 			}
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			if allowedRetries > 0 {
