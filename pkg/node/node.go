@@ -161,6 +161,7 @@ type Options struct {
 	Resync                     bool
 	BlockProfile               bool
 	MutexProfile               bool
+	StaticNodes                []swarm.Address
 }
 
 const (
@@ -526,7 +527,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, logger, kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode})
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, logger,
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}
