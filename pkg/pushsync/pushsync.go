@@ -192,13 +192,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync replication valid stamp: %w", err)
 			}
 
-			chunk, err = ps.validStamp(chunk, ch.Stamp)
-			if err != nil {
-				ps.metrics.InvalidStampErrors.Inc()
-				ps.metrics.HandlerReplicationErrors.Inc()
-				return fmt.Errorf("pushsync valid stamp: %w", err)
-			}
-
 			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 			if err != nil {
 				ps.metrics.HandlerReplicationErrors.Inc()
@@ -218,6 +211,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				ps.metrics.HandlerReplicationErrors.Inc()
 				return fmt.Errorf("receipt signature: %w", err)
 			}
+
 			receipt := pb.Receipt{Address: chunkAddress.Bytes(), Signature: signature, BlockHash: ps.blockHash}
 			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
 				ps.metrics.HandlerReplicationErrors.Inc()
