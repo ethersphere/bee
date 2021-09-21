@@ -10,19 +10,23 @@ import (
 )
 
 type metrics struct {
-	TotalSent                     prometheus.Counter
-	TotalReceived                 prometheus.Counter
-	TotalErrors                   prometheus.Counter
-	TotalHandlerErrors            prometheus.Counter
-	TotalReplicated               prometheus.Counter
-	TotalReplicatedError          prometheus.Counter
-	TotalSendAttempts             prometheus.Counter
-	TotalFailedSendAttempts       prometheus.Counter
-	TotalSkippedPeers             prometheus.Counter
-	TotalOutgoing                 prometheus.Counter
-	TotalOutgoingErrors           prometheus.Counter
-	InvalidStampErrors            prometheus.Counter
-	TotalHandlerReplicationErrors prometheus.Counter
+	TotalSent                prometheus.Counter
+	TotalReceived            prometheus.Counter
+	TotalHandlerErrors       prometheus.Counter
+	TotalReplicatedAttempts  prometheus.Counter
+	TotalReplicatedError     prometheus.Counter
+	TotalSendAttempts        prometheus.Counter
+	TotalFailedSendAttempts  prometheus.Counter
+	TotalSkippedPeers        prometheus.Counter
+	TotalOutgoing            prometheus.Counter
+	TotalOutgoingErrors      prometheus.Counter
+	InvalidStampErrors       prometheus.Counter
+	HandlerReplication       prometheus.Counter
+	HandlerReplicationErrors prometheus.Counter
+	Forwarder                prometheus.Counter
+	Storer                   prometheus.Counter
+	TotalHandlerTime         prometheus.HistogramVec
+	PushToPeerTime           prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -41,24 +45,17 @@ func newMetrics() metrics {
 			Name:      "total_received",
 			Help:      "Total chunks received.",
 		}),
-		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_errors",
-			Help:      "Total no of time error received while sending chunk.",
-		}),
 		TotalHandlerErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_handler_errors",
 			Help:      "Total no of error occurred while handling an incoming delivery (either while storing or forwarding).",
 		}),
-
-		TotalReplicated: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalReplicatedAttempts: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_replication",
-			Help:      "Total no of successfully sent replication chunks.",
+			Name:      "total_replication_attempts",
+			Help:      "Total no of replication attempts.",
 		}),
 		TotalReplicatedError: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -102,12 +99,48 @@ func newMetrics() metrics {
 			Name:      "invalid_stamps",
 			Help:      "No of invalid stamp errors.",
 		}),
-		TotalHandlerReplicationErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		HandlerReplication: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "total_replication_handlers_errors",
+			Name:      "handler_replication",
+			Help:      "Total no of attempts of pushsync handler neighborhood replication.",
+		}),
+		HandlerReplicationErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "handler_replication_errors",
 			Help:      "Total no of errors of pushsync handler neighborhood replication.",
 		}),
+		Forwarder: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "forwarder",
+			Help:      "No of times the peer is a forwarder node.",
+		}),
+		Storer: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "storer",
+			Help:      "No of times the peer is a storer node.",
+		}),
+		TotalHandlerTime: *prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "total_handler_time",
+				Help:      "Histogram for time taken for the handler.",
+				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
+			}, []string{"status"},
+		),
+		PushToPeerTime: *prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "push_peer_time",
+				Help:      "Histogram for time taken to push a chunk to a peer.",
+				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
+			}, []string{"bin", "attempted", "status"},
+		),
 	}
 }
 
