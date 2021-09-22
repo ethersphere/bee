@@ -40,6 +40,7 @@ var schemaMigrations = []migration{
 	{schemaName: DBSchemaCode, fn: func(*DB) error { return nil }},
 	{schemaName: DBSchemaYuj, fn: migrateYuj},
 	{schemaName: DBSchemaBatchIndex, fn: migrateBatchIndex},
+	{schemaName: DBSchemaDeadPush, fn: migrateDeadPush},
 }
 
 func (db *DB) migrate(schemaName string) error {
