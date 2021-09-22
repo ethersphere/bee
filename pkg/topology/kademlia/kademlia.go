@@ -192,6 +192,10 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 	for i := range k.commonBinPrefixes {
 
+		if k.IsBalanced(uint8(i)) {
+			continue
+		}
+
 		binPeersLength := k.knownPeers.BinSize(uint8(i))
 
 		// balancer should skip on bins where neighborhood connector would connect to peers anyway
@@ -261,10 +265,9 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	var currentPo uint8 = 0
 
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		depth := k.NeighborhoodDepth()
 
 		// out of depth, skip bin
-		if po < depth {
+		if po < k.NeighborhoodDepth() {
 			return false, true, nil
 		}
 
@@ -1196,8 +1199,6 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 
 // IsBalanced returns if Kademlia is balanced to bin.
 func (k *Kad) IsBalanced(bin uint8) bool {
-	k.depthMu.RLock()
-	defer k.depthMu.RUnlock()
 
 	if int(bin) > len(k.commonBinPrefixes) {
 		return false
