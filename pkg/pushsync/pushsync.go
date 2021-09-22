@@ -38,8 +38,8 @@ const (
 )
 
 const (
-	maxPeers    = 3
-	maxAttempts = 16
+	maxPeers               = 3
+	maxAttemptsWithoutPush = 16
 )
 
 var (
@@ -323,23 +323,19 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 		BlockHash: r.BlockHash}, nil
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllowed bool, origin swarm.Address) (*pb.Receipt, error) {
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, isOrigin bool, origin swarm.Address) (*pb.Receipt, error) {
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
 
 	var (
-		allowedRetries = 1
+		allowedRetries = 3
 		includeSelf    = ps.isFullNode
 		skipPeers      []swarm.Address
 	)
 
-	if retryAllowed {
-		// only originator retries
-		allowedRetries = maxPeers
-	}
+	for i := 0; i < maxAttemptsWithoutPush; i++ {
 
-	for i := maxAttempts; allowedRetries > 0 && i > 0; i-- {
 		// find the next closest peer
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
 		if err != nil {
@@ -374,20 +370,21 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 						return true, false, nil
 					}
 					count++
-					go ps.pushToNeighbour(ctx, peer, ch, retryAllowed)
+					go ps.pushToNeighbour(ctx, peer, ch, isOrigin)
 					return false, false, nil
 				})
 				return nil, err
 			}
 			return nil, fmt.Errorf("closest peer: %w", err)
 		}
+
 		ps.metrics.TotalSendAttempts.Inc()
 
 		ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
 		defer canceld()
 
 		now := time.Now()
-		r, attempted, err := ps.pushPeer(ctxd, peer, ch, retryAllowed)
+		r, attempted, err := ps.pushPeer(ctxd, peer, ch, isOrigin)
 		ps.measurePushPeer(now, peer, attempted, err)
 
 		// attempted is true if we get past accounting and actually attempt
@@ -396,6 +393,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 		if attempted {
 			allowedRetries--
 		}
+
 		if err != nil {
 			var timeToSkip time.Duration
 			switch {
@@ -414,13 +412,16 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, retryAllo
 				logger.Debugf("pushsync: adding to skiplist peer %s", peer.String())
 			}
 			ps.metrics.TotalFailedSendAttempts.Inc()
+
 			if allowedRetries > 0 {
 				continue
 			}
+
 			return nil, err
 		}
 
 		ps.skipList.PruneChunk(ch.Address())
+
 		return r, nil
 	}
 
