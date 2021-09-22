@@ -466,20 +466,22 @@ func (k *Kad) manage() {
 		}
 	}()
 
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
-		for {
-			select {
-			case <-k.halt:
-				return
-			case <-k.quit:
-				return
-			case <-time.After(15 * time.Minute):
-				k.pruneFunc(k.NeighborhoodDepth(), extraPeersToPrune)
+	if !k.bootnode {
+		k.wg.Add(1)
+		go func() {
+			defer k.wg.Done()
+			for {
+				select {
+				case <-k.halt:
+					return
+				case <-k.quit:
+					return
+				case <-time.After(15 * time.Minute):
+					k.pruneFunc(k.NeighborhoodDepth(), extraPeersToPrune)
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	for {
 		select {
