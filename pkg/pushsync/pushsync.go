@@ -38,7 +38,7 @@ const (
 )
 
 const (
-	maxAttemps             = 3
+	maxAttempts            = 3
 	maxAttemptsWithoutPush = 16
 )
 
@@ -329,7 +329,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, isOrigin 
 	defer ps.skipList.PruneExpired()
 
 	var (
-		allowedRetries = maxAttemps
+		allowedRetries = maxAttempts
 		includeSelf    = ps.isFullNode
 		skipPeers      []swarm.Address
 	)
