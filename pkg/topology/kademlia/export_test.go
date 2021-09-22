@@ -15,6 +15,7 @@ var (
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
+	ExtraPeersToPrune         = &extraPeersToPrune
 )
 
 const (
