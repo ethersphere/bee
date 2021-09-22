@@ -74,7 +74,7 @@ var (
 type (
 	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool
 	sanctionedPeerFunc func(peer swarm.Address) bool
-	pruneFunc          func(depth uint8)
+	pruneFunc          func(depth uint8, cap int)
 	staticPeerFunc     func(peer swarm.Address) bool
 	peerFilterFunc     func(peer swarm.Address) bool
 )
@@ -591,6 +591,21 @@ func (k *Kad) manage() {
 		}
 	}()
 
+	k.wg.Add(1)
+	go func() {
+		defer k.wg.Done()
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
+			case <-time.After(15 * time.Minute):
+				k.pruneFunc(k.NeighborhoodDepth(), extraPeersToPrune)
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-k.quit:
@@ -708,7 +723,7 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 
 // pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
 // while maintaining the balance of the bin and favoring peers with longers connections
-func (k *Kad) pruneOversaturatedBins(depth uint8) {
+func (k *Kad) pruneOversaturatedBins(depth uint8, extraCap int) {
 
 	for i := range k.commonBinPrefixes {
 
@@ -723,7 +738,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
 
-		peersToRemove := binPeersCount - (k.opt.OverSaturationPeers + extraPeersToPrune)
+		peersToRemove := binPeersCount - (k.opt.OverSaturationPeers + extraCap)
 
 		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
 

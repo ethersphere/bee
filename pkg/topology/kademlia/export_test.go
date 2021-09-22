@@ -11,11 +11,10 @@ import (
 )
 
 var (
-	PruneOversaturatedBinsFunc = func(k *Kad) func(uint8) {
+	PruneOversaturatedBinsFunc = func(k *Kad) func(uint8, int) {
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
-	ExtraPeersToPrune         = &extraPeersToPrune
 )
 
 const (
