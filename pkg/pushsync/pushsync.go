@@ -503,7 +503,7 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 
 		// here we skip the peer if the peer is closer to the chunk than us
 		// we replicate with peers that are further away than us because we are the storer
-		if dcmp, _ := swarm.DistanceCmp(ch.Address().Bytes(), peer.Bytes(), ps.address.Bytes()); dcmp == 1 {
+		if closer, _ := peer.Closer(ch.Address(), ps.address); closer {
 			return false, false, nil
 		}
 
