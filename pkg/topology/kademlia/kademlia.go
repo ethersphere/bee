@@ -47,6 +47,7 @@ var (
 	shortRetry                  = 30 * time.Second
 	timeToRetry                 = 2 * shortRetry
 	broadcastBinSize            = 4
+	extraPeersToPrune           = 5
 )
 
 var (
@@ -566,7 +567,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
 
-		peersToRemove := binPeersCount - overSaturationPeers
+		peersToRemove := binPeersCount - (overSaturationPeers + extraPeersToPrune)
 
 		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
 

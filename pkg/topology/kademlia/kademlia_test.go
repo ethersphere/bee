@@ -1194,6 +1194,11 @@ func TestOutofDepthPrune(t *testing.T) {
 	}(*kademlia.OverSaturationPeers)
 	*kademlia.OverSaturationPeers = 8
 
+	defer func(p int) {
+		*kademlia.ExtraPeersToPrune = p
+	}(*kademlia.ExtraPeersToPrune)
+	*kademlia.ExtraPeersToPrune = 0
+
 	var (
 		conns, failedConns int32 // how many connect calls were made to the p2p mock
 
