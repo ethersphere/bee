@@ -1202,13 +1202,13 @@ func TestOutofDepthPrune(t *testing.T) {
 	var (
 		conns, failedConns int32 // how many connect calls were made to the p2p mock
 
-		pruneFuncImpl *func(uint8)
+		pruneFuncImpl *func(uint8, int)
 		pruneMux      = sync.Mutex{}
-		pruneFunc     = func(depth uint8) {
+		pruneFunc     = func(depth uint8, cap int) {
 			pruneMux.Lock()
 			defer pruneMux.Unlock()
 			f := *pruneFuncImpl
-			f(depth)
+			f(depth, cap)
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
@@ -1220,7 +1220,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 	// implement empty prune func
 	pruneMux.Lock()
-	pruneImpl := func(uint8) {}
+	pruneImpl := func(uint8, int) {}
 	pruneFuncImpl = &(pruneImpl)
 	pruneMux.Unlock()
 
@@ -1264,8 +1264,8 @@ func TestOutofDepthPrune(t *testing.T) {
 
 	// set prune func to the default
 	pruneMux.Lock()
-	pruneImpl = func(depth uint8) {
-		kademlia.PruneOversaturatedBinsFunc(kad)(depth)
+	pruneImpl = func(depth uint8, cap int) {
+		kademlia.PruneOversaturatedBinsFunc(kad)(depth, cap)
 	}
 	pruneFuncImpl = &(pruneImpl)
 	pruneMux.Unlock()

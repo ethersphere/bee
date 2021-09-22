@@ -11,7 +11,7 @@ var (
 	OverSaturationPeers         = &overSaturationPeers
 	BootnodeOverSaturationPeers = &bootNodeOverSaturationPeers
 	LowWaterMark                = &nnLowWatermark
-	PruneOversaturatedBinsFunc  = func(k *Kad) func(uint8) {
+	PruneOversaturatedBinsFunc  = func(k *Kad) func(uint8, int) {
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
