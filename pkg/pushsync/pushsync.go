@@ -38,7 +38,7 @@ const (
 )
 
 const (
-	maxPeers               = 3
+	maxAttemps             = 3
 	maxAttemptsWithoutPush = 16
 )
 
@@ -329,15 +329,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, isOrigin 
 	defer ps.skipList.PruneExpired()
 
 	var (
-		allowedRetries = 3
+		allowedRetries = maxAttemps
 		includeSelf    = ps.isFullNode
 		skipPeers      []swarm.Address
 	)
 
 	for i := 0; i < maxAttemptsWithoutPush; i++ {
 
+		skipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
+
 		// find the next closest peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, append(append([]swarm.Address{}, ps.skipList.ChunkSkipPeers(ch.Address())...), skipPeers...)...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, skipList...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
