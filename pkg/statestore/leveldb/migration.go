@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 var (
@@ -128,15 +129,31 @@ func migrateSwap(s *store) error {
 				return errors.New("no peer in key")
 			}
 
+			if len(split[1]) != 20 {
+				s.logger.Debugf("skipping already migrated key %s", key)
+				continue
+			}
+
 			addr := common.BytesToAddress([]byte(split[1]))
 			fixed := fmt.Sprintf("%s%x", prefix, addr)
 
 			var val string
+			if err = s.Get(fixed, &val); err == nil {
+				s.logger.Debugf("skipping duplicate key %s", key)
+				if err = s.Delete(key); err != nil {
+					return err
+				}
+				continue
+			}
+			if !errors.Is(err, storage.ErrNotFound) {
+				return err
+			}
+
 			if err = s.Get(key, &val); err != nil {
 				return err
 			}
 
-			if err = s.Put(fixed, common.HexToAddress(val)); err != nil {
+			if err = s.Put(fixed, val); err != nil {
 				return err
 			}
 
