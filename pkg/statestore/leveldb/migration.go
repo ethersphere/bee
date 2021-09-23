@@ -129,7 +129,7 @@ func migrateSwap(s *store) error {
 			}
 
 			if len(split[1]) != 20 {
-				s.logger.Debugf("skipping already migrated key %s", string(key))
+				s.logger.Debugf("skipping already migrated key %s", key)
 				continue
 			}
 
@@ -138,7 +138,7 @@ func migrateSwap(s *store) error {
 
 			var val string
 			if err = s.Get(fixed, &val); err == nil {
-				s.logger.Debugf("skipping duplicate key %s", string(key))
+				s.logger.Debugf("skipping duplicate key %s", key)
 				if err = s.Delete(key); err != nil {
 					return err
 				}
