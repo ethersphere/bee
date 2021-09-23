@@ -136,7 +136,7 @@ func migrateSwap(s *store) error {
 				return err
 			}
 
-			if err = s.Put(fixed, common.HexToAddress(val)); err != nil {
+			if err = s.Put(fixed, val); err != nil {
 				return err
 			}
 
