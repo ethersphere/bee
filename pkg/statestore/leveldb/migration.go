@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
@@ -41,10 +42,11 @@ const (
 	dbSchemaFlushBlock      = "flushblock"
 	dbSchemaSwapAddr        = "swapaddr"
 	dBSchemaKademliaMetrics = "kademlia-metrics"
+	dbSchemaSwapRestore     = "swaprestore"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaKademliaMetrics
+	dbSchemaCurrent = dbSchemaSwapRestore
 )
 
 type migration struct {
@@ -62,6 +64,7 @@ var schemaMigrations = []migration{
 	{name: dbSchemaFlushBlock, fn: migrateFB},
 	{name: dbSchemaSwapAddr, fn: migrateSwap},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
+	{name: dbSchemaSwapRestore, fn: migrateSwapRestore},
 }
 
 func migrateFB(s *store) error {
@@ -112,6 +115,103 @@ func migrateGrace(s *store) error {
 		s.logger.Debugf("deleted key %s", v)
 	}
 	s.logger.Debugf("deleted keys: %d", len(collectedKeys))
+
+	return nil
+}
+
+func migrateSwapRestore(s *store) error {
+	const swapPeerBeneficiaryPrefix = "swap_peer_beneficiary_"
+	const swapBeneficiaryPeerPrefix = "swap_beneficiary_peer_"
+	const swapPeerChequebookPrefix = "swap_peer_chequebook_"
+	const swapChequebookPeerPrefix = "swap_chequebook_peer_"
+
+	keys, err := collectKeys(s, swapPeerBeneficiaryPrefix)
+	if err != nil {
+		return err
+	}
+
+	m := make(map[common.Address]swarm.Address)
+
+	for _, key := range keys {
+		split := strings.SplitAfter(key, swapPeerBeneficiaryPrefix)
+		if len(split) != 2 {
+			return errors.New("no peer in key")
+		}
+
+		swarmAddr, err := swarm.ParseHexAddress(split[1])
+		if err != nil {
+			return err
+		}
+
+		var beneficiary common.Address
+		err = s.Get(key, &beneficiary)
+		if err != nil {
+			return err
+		}
+
+		m[beneficiary] = swarmAddr
+	}
+
+	keys, err = collectKeys(s, swapBeneficiaryPeerPrefix)
+	if err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if s.Delete(key); err != nil {
+			return err
+		}
+	}
+
+	for k, v := range m {
+		if err = s.Put(fmt.Sprintf("%s%x", swapBeneficiaryPeerPrefix, k), v); err != nil {
+			return err
+		}
+	}
+
+	keys, err = collectKeys(s, swapChequebookPeerPrefix)
+	if err != nil {
+		return err
+	}
+
+	m = make(map[common.Address]swarm.Address)
+
+	for _, key := range keys {
+		split := strings.SplitAfter(key, swapChequebookPeerPrefix)
+		if len(split) != 2 {
+			return errors.New("no peer in key")
+		}
+
+		swarmAddr, err := swarm.ParseHexAddress(split[1])
+		if err != nil {
+			return err
+		}
+
+		var chequebook common.Address
+		err = s.Get(key, &chequebook)
+		if err != nil {
+			return err
+		}
+
+		m[chequebook] = swarmAddr
+	}
+
+	keys, err = collectKeys(s, swapPeerChequebookPrefix)
+	if err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if s.Delete(key); err != nil {
+			return err
+		}
+	}
+
+	for k, v := range m {
+		if err = s.Put(fmt.Sprintf("%s%x", swapPeerChequebookPrefix, k), v); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
