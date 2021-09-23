@@ -128,10 +128,23 @@ func migrateSwap(s *store) error {
 				return errors.New("no peer in key")
 			}
 
+			if len(split[1]) != 20 {
+				s.logger.Debugf("skipping already migrated key %s", string(key))
+				continue
+			}
+
 			addr := common.BytesToAddress([]byte(split[1]))
 			fixed := fmt.Sprintf("%s%x", prefix, addr)
 
 			var val string
+			if err = s.Get(fixed, &val); err == nil {
+				s.logger.Debugf("skipping duplicate key %s", string(key))
+				if err = s.Delete(key); err != nil {
+					return err
+				}
+				continue
+			}
+
 			if err = s.Get(key, &val); err != nil {
 				return err
 			}
