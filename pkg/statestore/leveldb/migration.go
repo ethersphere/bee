@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 var (
@@ -143,6 +144,9 @@ func migrateSwap(s *store) error {
 					return err
 				}
 				continue
+			}
+			if !errors.Is(err, storage.ErrNotFound) {
+				return err
 			}
 
 			if err = s.Get(key, &val); err != nil {
