@@ -227,6 +227,10 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 	if err != nil {
 		return 0, err
 	}
+	err = db.pushIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0, err
+	}
 	err = db.pullIndex.DeleteInBatch(batch, item)
 	if err != nil {
 		return 0, err
