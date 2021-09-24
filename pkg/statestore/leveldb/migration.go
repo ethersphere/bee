@@ -42,11 +42,10 @@ const (
 	dbSchemaFlushBlock      = "flushblock"
 	dbSchemaSwapAddr        = "swapaddr"
 	dBSchemaKademliaMetrics = "kademlia-metrics"
-	dbSchemaSwapRestore     = "swaprestore"
 )
 
 var (
-	dbSchemaCurrent = dbSchemaSwapRestore
+	dbSchemaCurrent = dBSchemaKademliaMetrics
 )
 
 type migration struct {
@@ -62,9 +61,8 @@ var schemaMigrations = []migration{
 	{name: dbSchemaCleanInterval, fn: migrateGrace},
 	{name: dbSchemaNoStamp, fn: migrateStamp},
 	{name: dbSchemaFlushBlock, fn: migrateFB},
-	{name: dbSchemaSwapAddr, fn: migrateSwap},
+	{name: dbSchemaSwapAddr, fn: migrateSwapRestore},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
-	{name: dbSchemaSwapRestore, fn: migrateSwapRestore},
 }
 
 func migrateFB(s *store) error {

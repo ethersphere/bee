@@ -76,6 +76,10 @@ func NewStateStore(path string, l logging.Logger) (storage.StateStorer, error) {
 }
 
 func migrate(s *store) error {
+	err := s.putSchemaName(dbSchemaFlushBlock)
+	if err != nil {
+		return err
+	}
 	sn, err := s.getSchemaName()
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
