@@ -6,6 +6,7 @@ package blocker_test
 
 import (
 	"io/ioutil"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,18 +19,22 @@ import (
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
 
+	mux := sync.Mutex{}
 	blocked := make(map[string]time.Duration)
 
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
+		mux.Lock()
 		blocked[a.ByteString()] = d
+		mux.Unlock()
+
 		return nil
 	})
 
 	logger := logging.New(ioutil.Discard, 0)
 
-	flagTime := time.Millisecond * 50
-	checkTime := time.Millisecond * 75
-	blockTime := time.Millisecond * 100
+	flagTime := time.Millisecond * 25
+	checkTime := time.Millisecond * 100
+	blockTime := time.Second
 
 	b := blocker.New(mock, flagTime, blockTime, logger)
 
@@ -47,7 +52,9 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	b.Flag(addr) // check thats this flag call does not overide previous call
 	<-check
 
+	mux.Lock()
 	blockedTime, ok := blocked[addr.ByteString()]
+	mux.Unlock()
 	if !ok {
 		t.Fatal("address should be blocked")
 	}
@@ -59,18 +66,21 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 
 func TestUnflagBeforeBlock(t *testing.T) {
 
+	mux := sync.Mutex{}
 	blocked := make(map[string]time.Duration)
 
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
+		mux.Lock()
 		blocked[a.ByteString()] = d
+		mux.Unlock()
 		return nil
 	})
 
 	logger := logging.New(ioutil.Discard, 0)
 
-	flagTime := time.Millisecond * 50
-	checkTime := time.Millisecond * 75
-	blockTime := time.Millisecond * 100
+	flagTime := time.Millisecond * 25
+	checkTime := time.Millisecond * 100
+	blockTime := time.Second
 
 	b := blocker.New(mock, flagTime, blockTime, logger)
 
@@ -85,7 +95,10 @@ func TestUnflagBeforeBlock(t *testing.T) {
 
 	time.Sleep(checkTime)
 
+	mux.Lock()
 	_, ok := blocked[addr.ByteString()]
+	mux.Unlock()
+
 	if ok {
 		t.Fatal("address should not be blocked")
 	}
