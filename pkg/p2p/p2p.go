@@ -43,8 +43,12 @@ type Halter interface {
 
 // PickyNotifier can decide whether a peer should be picked
 type PickyNotifier interface {
-	Pick(Peer) bool
+	Picker
 	Notifier
+}
+
+type Picker interface {
+	Pick(Peer) bool
 }
 
 type Notifier interface {
