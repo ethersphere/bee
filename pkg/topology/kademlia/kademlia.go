@@ -158,12 +158,10 @@ func New(
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
-		wg:                sync.WaitGroup{},
 		metrics:           newMetrics(),
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(o.StaticNodes),
-		bgBroadcastWg:     sync.WaitGroup{},
 	}
 
 	if k.pruneFunc == nil {
