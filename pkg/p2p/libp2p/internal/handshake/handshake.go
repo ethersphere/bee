@@ -52,6 +52,9 @@ var (
 
 	// ErrWelcomeMessageLength is returned if the welcome message is longer than the maximum length
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
+
+	// ErrPicker is returned if the picker (kademlia) rejects the peer
+	ErrPicker = fmt.Errorf("picker rejection")
 )
 
 // AdvertisableAddressResolver can Resolve a Multiaddress.
@@ -79,6 +82,7 @@ type Service struct {
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	network.Notifiee      // handshake service can be the receiver for network.Notify
+	picker                p2p.Picker
 }
 
 // Info contains the information received from the handshake.
@@ -118,6 +122,10 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 	svc.welcomeMessage.Store(welcomeMessage)
 
 	return svc, nil
+}
+
+func (s *Service) SetPicker(n p2p.Picker) {
+	s.picker = n
 }
 
 // Handshake initiates a handshake with a peer.
@@ -306,6 +314,12 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	}
 
 	overlay := swarm.NewAddress(ack.Address.Overlay)
+
+	if s.picker != nil {
+		if !s.picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
+			return nil, ErrPicker
+		}
+	}
 
 	blockHash, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, overlay)
 	if err != nil {
