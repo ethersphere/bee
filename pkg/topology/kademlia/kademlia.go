@@ -740,7 +740,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8, extraCap int) {
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
 
-		peersToRemove := binPeersCount - (k.opt.OverSaturationPeers + extraCap)
+		peersToRemove := (binPeersCount - k.opt.OverSaturationPeers) + extraCap
 
 		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
 
