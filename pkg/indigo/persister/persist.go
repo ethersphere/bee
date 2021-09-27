@@ -13,7 +13,7 @@ import (
 // LoadSaver to be implemented as thin wrappers around persistent key-value storage
 type LoadSaver interface {
 	Load(ctx context.Context, reference []byte) (data []byte, err error) // retrieve nodes for read only operations only
-	Save(ctx context.Context, data []byte) (reference []byte, err error) // persist nodes for write operations
+	Save(ctx context.Context, data []byte) (reference []byte, err error) // persists nodes out of scopc	qfor write operations
 	io.Closer
 }
 

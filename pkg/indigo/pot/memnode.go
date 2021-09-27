@@ -7,32 +7,41 @@ type MemNode struct {
 
 var _ Node = (*MemNode)(nil)
 
-func NewMemNode(e Entry) *MemNode {
-	return &MemNode{pin: e}
-}
+// func NewMemNode(e Entry) *MemNode {
+// 	return &MemNode{pin: e}
+// }
 
-// Child node at PO po
-func (n *MemNode) Fork(po int) Node {
+// Fork returns child node corresponding to the fork at PO po
+func (n *MemNode) Fork(po int) CNode {
 	for _, cn := range n.forks {
-		if cn.cur == po {
-			return cn.Node
+		if cn.At == po {
+			return cn
 		}
-		if cn.cur > po {
+		if cn.At > po {
 			break
 		}
 	}
-	return nil
+	return CNode{}
 }
 
-// append a CNode
+func (n *MemNode) LastFork(from int) (cn CNode) {
+	_ = n.Iter(from, func(c CNode) (bool, error) {
+		cn = c
+		return false, nil
+	})
+	return cn
+}
+
+// Append appends a CNode to the forks of MemNode n
 func (n *MemNode) Append(cn CNode) {
 	n.forks = append(n.forks, cn)
 }
 
-// iterate over children starting at PO po
+// Iter iterates over children starting at PO po and applies f to them
+// the iterator before completion if the function applied returns true (stop) or an error
 func (n *MemNode) Iter(po int, f func(CNode) (bool, error)) error {
 	for _, cn := range n.forks {
-		if cn.cur >= po {
+		if cn.At >= po {
 			if stop, err := f(cn); err != nil || stop {
 				return err
 			}

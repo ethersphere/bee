@@ -47,6 +47,9 @@ func New(dir, name string, entryf func() pot.Entry) (*Index, error) {
 	return index, nil
 }
 
+// this forever loop is a locking mechanism for the pot index
+// it allows only a single write operation at a time but multiple reads
+//
 func (idx *Index) start(root pot.Node) {
 	write := idx.write
 	quit := idx.quit
@@ -67,7 +70,7 @@ func (idx *Index) start(root pot.Node) {
 			}
 			write = idx.write
 		case idx.read <- root:
-		case write <- root:
+		case write <- root: // write locks the pot until they recept or despara
 			write = nil
 		}
 	}
@@ -75,13 +78,13 @@ func (idx *Index) start(root pot.Node) {
 
 func (idx *Index) Add(ctx context.Context, e pot.Entry) {
 	root := <-idx.write
-	root = pot.Update(root.New(), pot.NewCNode(root, 0), e.Key(), func(_ pot.Entry) pot.Entry { return e })
+	root = pot.Add(root, e)
 	idx.update <- root
 }
 
 func (idx *Index) Delete(ctx context.Context, k []byte) {
 	root := <-idx.write
-	root = pot.Update(root.New(), pot.NewCNode(root, 0), k, func(_ pot.Entry) pot.Entry { return nil })
+	root = pot.Delete(root, k)
 	idx.update <- root
 }
 
@@ -92,4 +95,7 @@ func (idx *Index) Find(ctx context.Context, k []byte) (pot.Entry, error) {
 func (idx *Index) Close() error {
 	close(idx.quit)
 	return idx.ls.Close()
+}
+func (idx *Index) Iter(f func(pot.Entry)) {
+	pot.Iter(pot.NewCNode(<-idx.read, 0), f)
 }

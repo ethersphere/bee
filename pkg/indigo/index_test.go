@@ -3,10 +3,14 @@ package indigo_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/indigo"
 	"github.com/ethersphere/bee/pkg/indigo/pot"
@@ -33,6 +37,10 @@ func newMockEntry(t *testing.T) *mockEntry {
 
 func (m *mockEntry) Key() []byte {
 	return m.key
+}
+
+func (m *mockEntry) String() string {
+	return fmt.Sprintf("%d", m.val)
 }
 
 func (m *mockEntry) Equal(n pot.Entry) bool {
@@ -62,9 +70,8 @@ func TestUpdateCorrectness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// missing := newMockEntry(t)
-	want := newMockEntry(t)
-	want2 := newMockEntry(t)
+	want := newDetMockEntry(0)
+	want2 := newDetMockEntry(1)
 	ctx := context.Background()
 	t.Run("not found on empty index", func(t *testing.T) {
 		checkNotFound(t, ctx, idx, want)
@@ -117,6 +124,170 @@ func TestUpdateCorrectness(t *testing.T) {
 	})
 }
 
+func TestIterate(t *testing.T) {
+	count := 20
+	idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	for i := 0; i < count; i++ {
+		idx.Add(ctx, newDetMockEntry(i))
+		n := 0
+		idx.Iter(func(e pot.Entry) { n++ })
+		if n != i+1 {
+			t.Fatalf("incorrect number of items. want %d, got %d", i+1, n)
+		}
+	}
+}
+
+type testIndex struct {
+	mu *sync.Mutex
+	*indigo.Index
+	errc    chan error
+	deleted map[int]struct{}
+}
+
+func TestConcurrency(t *testing.T) {
+	count := 10
+	index, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer index.Close()
+
+	idx := &testIndex{
+		mu:      &sync.Mutex{},
+		Index:   index,
+		deleted: make(map[int]struct{}),
+		errc:    make(chan error),
+	}
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	top := make(chan int)
+	go func() {
+		defer close(top)
+		for i := 0; i < count; i++ {
+			idx.Add(ctx, newDetMockEntry(i))
+			if i%5 == 1 {
+				// select {
+				// case top <- i:
+				// case <-ctx.Done():
+				// 	return
+				// }
+				idx.deleteRandomEntry(ctx, i)
+			}
+		}
+	}()
+	j := 0
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		max, more := <-top
+		for more {
+			j++
+			wg.Add(1)
+			go func(max int) {
+				defer wg.Done()
+				if err := idx.findRandomEntry(ctx, max); err != nil {
+					select {
+					case idx.errc <- err:
+					case <-ctx.Done():
+					}
+					return
+				}
+			}(max)
+			select {
+			case max, more = <-top:
+				// if max > 0 {
+				// 	idx.deleteRandomEntry(ctx, max)
+				// }
+			default:
+			}
+		}
+	}()
+	go func() {
+		wg.Wait()
+		close(idx.errc)
+	}()
+	select {
+	case err = <-idx.errc:
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+	t.Logf("processed %d retrievals\n", j)
+	t.Log(idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (idx *testIndex) String() string {
+	s := fmt.Sprintln("deleted", idx.deleted)
+	idx.Iter(func(e pot.Entry) { s = fmt.Sprintf("%s %d", s, e.(*mockEntry).val) })
+	return s
+}
+
+func (idx *testIndex) deleteRandomEntry(ctx context.Context, max int) {
+	n := int(rand.Int31n(int32(max)))
+	want := newDetMockEntry(n)
+	idx.mu.Lock()
+	fmt.Printf("current:\n%v", idx)
+	b := 0
+	idx.Iter(func(_ pot.Entry) { b++ })
+	idx.deleted[n] = struct{}{}
+	idx.Delete(ctx, want.key)
+	a := 0
+	idx.Iter(func(_ pot.Entry) { a++ })
+	if a != b && a+1 != b {
+		fmt.Printf("current:\n%v", idx)
+		panic("oops")
+	}
+	fmt.Printf("deleted %d\n", n)
+	idx.mu.Unlock()
+}
+
+func (idx *testIndex) findRandomEntry(ctx context.Context, max int) error {
+	n := int(rand.Int31n(int32(max)))
+	want := newDetMockEntry(n)
+	idx.mu.Lock()
+	e, err := idx.Find(ctx, want.key)
+	if errors.Is(err, pot.ErrNotFound) {
+		err = nil
+		if _, found := idx.deleted[n]; !found {
+			err = fmt.Errorf("item %d not found in store", n)
+		}
+	}
+	idx.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if e == nil {
+		return nil
+	}
+	got := e.(*mockEntry)
+	if !eq(want, got) {
+		return fmt.Errorf("mismatch. want %v, got %v", want, got)
+	}
+	return nil
+}
+
+func newDetMockEntry(n int) *mockEntry {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, uint32(n))
+	hasher := sha256.New()
+	if _, err := hasher.Write(buf); err != nil {
+		panic(err.Error())
+	}
+	return &mockEntry{hasher.Sum(nil), int(n)}
+}
+
 func checkFound(t *testing.T, ctx context.Context, idx *indigo.Index, want *mockEntry) {
 	t.Helper()
 	e, err := idx.Find(ctx, want.Key())
@@ -125,16 +296,18 @@ func checkFound(t *testing.T, ctx context.Context, idx *indigo.Index, want *mock
 	}
 	got, ok := e.(*mockEntry)
 	if !ok {
+		_ = e.(*mockEntry)
 		t.Fatalf("incorrect value")
 	}
 	if !eq(want, got) {
 		t.Fatalf("mismatch. want %v, got %v", want, got)
 	}
 }
+
 func checkNotFound(t *testing.T, ctx context.Context, idx *indigo.Index, want *mockEntry) {
 	t.Helper()
 	_, err := idx.Find(ctx, want.Key())
 	if !errors.Is(err, pot.ErrNotFound) {
-		t.Fatalf("incorrect error returned. want %v, got %v", pot.ErrNotFound, err)
+		t.Fatalf("incorrect error returned for %d. want %v, got %v", want.val, pot.ErrNotFound, err)
 	}
 }

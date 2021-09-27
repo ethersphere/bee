@@ -1,9 +1,9 @@
 package pot
 
 import (
-	"bytes"
 	"encoding"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -18,26 +18,25 @@ type Entry interface {
 	Equal(Entry) bool
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+	fmt.Stringer
 }
 
 // Node is an interface for pot nodes
 // implementations
 type Node interface {
-	Fork(po int) Node                               // Child node at PO po
-	Append(CNode)                                   // append a CNode
-	Iter(po int, f func(CNode) (bool, error)) error // iterate over children starting at PO po
-	Pin(Entry)                                      // pin an entry to the node
-	New() Node                                      // constructs a new Node
-	Entry() Entry                                   // reconstructs the entry pinned to the Node
+	Fork(po int) CNode                                // Child node at PO po
+	Append(CNode)                                     // append a CNode
+	Iter(from int, f func(CNode) (bool, error)) error // iterate over children starting at PO from
+	Pin(Entry)                                        // pin an entry to the node
+	New() Node                                        // constructs a new Node
+	Entry() Entry                                     // reconstructs the entry pinned to the Node
 	// Size() int                                      // returns the number of entries under the node
 	io.Closer
 }
 
-type Op func(Node, CNode, CNode) Node
-
 type CNode struct {
-	cur int
-	Node
+	At   int
+	Node Node
 }
 
 func NewCNode(n Node, i int) CNode {
@@ -47,98 +46,45 @@ func NewCNode(n Node, i int) CNode {
 	return CNode{i, n}
 }
 
-// Wedge
-func Wedge(b Node, n, m CNode) Node {
-	b.Pin(n.Entry())
-	Append(b, n.Node, n.cur, m.cur)
-	b.Append(m)
-	Append(b, n.Node, m.cur+1, MaxDepth)
-	return b
+// Delete returns a delta for CNode c such that it instructs the Updater to remove the entry pinned to c's Node
+// func (c CNode) Delete() Delta {
+// 	return Delta{c.Node.Entry().Key(), func(_ Entry) Entry { return nil }}
+// }
+
+// Next returns a CNode, that is the view of the same Node from a po following the At of the receiver CNode
+func (c CNode) Next() CNode {
+	return CNode{c.At + 1, c.Node}
 }
 
-// Whirl
-func Whirl(b Node, n, m CNode) Node {
-	Append(b, n.Node, n.cur, m.cur)
-	b.Append(CNode{m.cur, n.Node})
-	b.Pin(m.Entry())
-	return b
+func isNil(c interface{}) bool {
+	return c == nil
 }
 
-// Whack
-func Whack(b Node, n, m CNode) Node {
-	m = LastAt(n, m)
-	Append(b, n.Node, n.cur, m.cur)
-	b.Pin(m.Entry())
-	Append(b, m.Node, m.cur+1, MaxDepth)
-	return b
+func Equal(a, b Entry) bool {
+	return isNil(a) == isNil(b) && (isNil(a) || a.Equal(b))
 }
 
-// Update
-func Update(b Node, n CNode, k []byte, eqf func(Entry) Entry) Node {
-	if n.Node == nil {
-		b.Pin(eqf(nil))
-		return b
+func EntryOf(n Node) Entry {
+	if n == nil {
+		return nil
 	}
-	if IsToPrune(n, k, eqf) {
-		return b.New()
-	}
-	e := n.Entry()
-	at := PO(e.Key(), k, n.cur)
-	if at == MaxDepth {
-		entry := eqf(e)
-		if entry == nil {
-			return Whack(b, n, CNode{MaxDepth, nil})
-		}
-		if entry.Equal(e) {
-			return nil
-		}
-		return Whack(b, n, CNode{MaxDepth, Pin(b, entry)})
-	}
-	m := n.Fork(at)
-	if m == nil {
-		entry := eqf(nil)
-		if entry == nil {
-			return nil
-		}
-		return Whirl(b, n, CNode{at, Pin(b, entry)})
-	}
-	nn := CNode{at, m}
-	if IsToPrune(nn, k, eqf) {
-		return Whack(b, n, CNode{at, n})
-	}
-	return Update(Whirl(b, n, nn), nn, k, eqf)
+	return n.Entry()
 }
 
-func LastAt(n, m CNode) (k CNode) {
-	if m.Node != nil {
-		return m
-	}
-	_ = n.Iter(n.cur, func(c CNode) (bool, error) {
-		k = c
-		return k.cur < m.cur, nil
-	})
-	return k
+// Pin pins an entry to a node and returns the node
+func Pin(n Node, e Entry) Node {
+	n.Pin(e)
+	return n
 }
 
-func IsToPrune(n CNode, k []byte, eqf func(Entry) Entry) bool {
-	if !Singleton(n.Node, n.cur) {
-		return false
-	}
-	e := n.Entry()
-	return eqf(e) == nil && bytes.Equal(e.Key(), k)
-}
-
-func Singleton(n Node, from int) (r bool) {
-	_ = n.Iter(from, func(k CNode) (bool, error) {
-		r = true
-		return true, nil
-	})
-	return !r
+// Empty
+func Empty(n Node) bool {
+	return n == nil
 }
 
 func Append(b, n Node, from, to int) {
 	_ = n.Iter(from, func(k CNode) (bool, error) {
-		if k.cur < to {
+		if k.At < to {
 			b.Append(k)
 			return false, nil
 		}
@@ -146,31 +92,35 @@ func Append(b, n Node, from, to int) {
 	})
 }
 
-func Pin(n Node, e Entry) Node {
-	k := n.New()
-	k.Pin(e)
-	return k
-}
-
-func Call(nodes []CNode, o []Op) {}
-
 func Find(n Node, k []byte) (Entry, error) {
-	return find(n, k, 0)
+	return find(CNode{0, n}, k)
 }
 
-func find(n Node, k []byte, at int) (Entry, error) {
-	if n == nil {
+func FindNext(n CNode, k []byte) (m CNode, b bool) {
+	po, match := Compare(n.Node, k, n.At)
+	if !match {
+		m = n.Node.Fork(po)
+	}
+	return m, match
+}
+
+func find(n CNode, k []byte) (Entry, error) {
+	if Empty(n.Node) || n.Node.Entry() == nil {
 		return nil, ErrNotFound
 	}
-	e := n.Entry()
-	if e == nil {
-		return nil, ErrNotFound
+	m, match := FindNext(n, k)
+	if match {
+		return n.Node.Entry(), nil
 	}
-	if bytes.Equal(e.Key(), k) {
-		return e, nil
-	}
-	at = PO(e.Key(), k, at)
-	return find(n.Fork(at), k, at)
+	return find(m, k)
+}
+
+// Compare compares the key of a CNode with a key, assuming the two match on a prefix of length po
+// it returns the proximity order quantifying the distance of the two keys plus
+// a boolean second return value which is true if the keys exactly match
+func Compare(n Node, k []byte, at int) (po int, match bool) {
+	po = PO(n.Entry().Key(), k, at)
+	return po, po == MaxDepth
 }
 
 // po returns the proximity order of two fixed length byte sequences
@@ -192,4 +142,12 @@ func PO(one, other []byte, pos int) int {
 		}
 	}
 	return len(one) * 8
+}
+
+func Iter(n CNode, f func(Entry)) {
+	f(n.Node.Entry())
+	_ = n.Node.Iter(n.At, func(c CNode) (bool, error) {
+		Iter(c.Next(), f)
+		return false, nil
+	})
 }

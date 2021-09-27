@@ -27,8 +27,13 @@ func (n *DBNode) Close() error {
 }
 
 // Child node at PO po
-func (n *DBNode) Fork(po int) Node {
+func (n *DBNode) Fork(po int) CNode {
 	return n.Node().Fork(po)
+}
+
+// Child node at PO po
+func (n *DBNode) LastFork(from int) CNode {
+	return n.Node().LastFork(from)
 }
 
 // append a CNode
@@ -96,7 +101,7 @@ func (n *DBNode) MarshalBinary() ([]byte, error) {
 	copy(buf[4:], entry)
 	ctx := context.Background()
 	err = n.Node().Iter(0, func(cn CNode) (bool, error) {
-		buf = append(buf, uint8(cn.cur))
+		buf = append(buf, uint8(cn.At))
 		ref, err := persister.Reference(ctx, cn.Node.(persister.TreeNode))
 		if err != nil {
 			return true, err
@@ -120,7 +125,7 @@ func (n *DBNode) UnmarshalBinary(buf []byte) error {
 	for i := 4 + l; i < uint32(len(buf)); i += 10 {
 		m := n.New()
 		m.(persister.TreeNode).SetReference(buf[i+1 : i+10])
-		cn := CNode{cur: int(uint8(buf[i])), Node: m}
+		cn := CNode{int(uint8(buf[i])), m}
 		n.node.Append(cn)
 	}
 	return nil
