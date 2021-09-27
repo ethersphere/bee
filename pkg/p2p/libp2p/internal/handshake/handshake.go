@@ -53,7 +53,7 @@ var (
 	// ErrWelcomeMessageLength is returned if the welcome message is longer than the maximum length
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
 
-	// ErrWelcomeMessageLength is returned if the welcome message is longer than the maximum length
+	// ErrPicker is returned if the picker (kademlia) rejects the peer
 	ErrPickyNotifier = fmt.Errorf("picky notifier")
 )
 
@@ -82,7 +82,7 @@ type Service struct {
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	network.Notifiee      // handshake service can be the receiver for network.Notify
-	notifier              p2p.PickyNotifier
+	picker                p2p.Picker
 }
 
 // Info contains the information received from the handshake.
@@ -124,8 +124,8 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 	return svc, nil
 }
 
-func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
-	s.notifier = n
+func (s *Service) SetPicker(n p2p.Picker) {
+	s.picker = n
 }
 
 // Handshake initiates a handshake with a peer.
@@ -315,8 +315,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	overlay := swarm.NewAddress(ack.Address.Overlay)
 
-	if s.notifier != nil {
-		if !s.notifier.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
+	if s.picker != nil {
+		if !s.picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
 			s.logger.Warningf("handshake handler: don't want incoming peer %s", overlay)
 			return nil, ErrPickyNotifier
 		}

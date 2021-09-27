@@ -438,7 +438,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
-	s.handshakeService.SetPickyNotifier(n)
+	s.handshakeService.SetPicker(n)
 	s.notifier = n
 }
 
