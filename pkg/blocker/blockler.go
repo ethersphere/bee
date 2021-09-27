@@ -14,10 +14,13 @@ import (
 )
 
 type peer struct {
-	flagged    bool      // indicates whether the peer is actively flagged
 	blockAfter time.Time // timestamp of the point we've timed-out or got an error from a peer
 	addr       swarm.Address
 }
+
+var (
+	wakeupTime time.Duration = time.Second * 10
+)
 
 type Blocker struct {
 	mux           sync.Mutex
@@ -53,18 +56,9 @@ func (b *Blocker) run() {
 		select {
 		case <-b.quit:
 			return
-		case <-b.wakeupCh:
-			<-time.After(b.flagTimeout)
+		case <-time.After(wakeupTime):
 			b.block()
 		}
-	}
-}
-
-func (b *Blocker) wakeup() {
-
-	select {
-	case b.wakeupCh <- struct{}{}:
-	default:
 	}
 }
 
@@ -73,11 +67,10 @@ func (b *Blocker) block() {
 	defer b.mux.Unlock()
 
 	for key, peer := range b.peers {
-		if peer.flagged && time.Now().After(peer.blockAfter) {
+		if !peer.blockAfter.IsZero() && time.Now().After(peer.blockAfter) {
 			if err := b.disconnector.Blocklist(peer.addr, b.blockDuration, "blocker: flag timeout"); err != nil {
 				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.addr, err)
 			}
-
 			delete(b.peers, key)
 		}
 	}
@@ -90,19 +83,15 @@ func (b *Blocker) Flag(addr swarm.Address) {
 	p, ok := b.peers[addr.ByteString()]
 
 	if ok {
-		if !p.flagged {
+		if p.blockAfter.IsZero() {
 			p.blockAfter = time.Now().Add(b.flagTimeout)
-			p.flagged = true
 		}
 	} else {
 		b.peers[addr.ByteString()] = &peer{
 			blockAfter: time.Now().Add(b.flagTimeout),
-			flagged:    true,
 			addr:       addr,
 		}
 	}
-
-	b.wakeup()
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
@@ -112,7 +101,9 @@ func (b *Blocker) Unflag(addr swarm.Address) {
 	delete(b.peers, addr.ByteString())
 }
 
+// Closed will exit the worker loop.
+// must be called only once.
 func (b *Blocker) Close() error {
-	close(b.quit)
+	b.quit <- struct{}{}
 	return nil
 }
