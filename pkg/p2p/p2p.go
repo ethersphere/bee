@@ -36,7 +36,7 @@ type Disconnecter interface {
 
 type Blocklister interface {
 	// Blocklist will disconnect a peer and put it on a blocklist (blocking in & out connections) for provided duration
-	// duration 0 is treated as an infinite duration
+	// Duration 0 is treated as an infinite duration.
 	Blocklist(overlay swarm.Address, duration time.Duration, reason string) error
 }
 
