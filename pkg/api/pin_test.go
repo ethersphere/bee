@@ -6,7 +6,7 @@ package api_test
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -86,9 +86,9 @@ func TestPinHandlers(t *testing.T) {
 		client, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,
 			Traversal: traversal.New(storerMock),
-			Tags:      tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
+			Tags:      tags.NewTags(statestore.NewStateStore(), logging.New(io.Discard, 0)),
 			Pinning:   pinning.NewServiceMock(),
-			Logger:    logging.New(ioutil.Discard, 5),
+			Logger:    logging.New(io.Discard, 5),
 			Post:      mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)

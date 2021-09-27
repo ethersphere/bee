@@ -7,7 +7,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,7 +268,7 @@ func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
 	var logger logging.Logger
 	switch verbosity {
 	case "0", "silent":
-		logger = logging.New(ioutil.Discard, 0)
+		logger = logging.New(io.Discard, 0)
 	case "1", "error":
 		logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
 	case "2", "warn":

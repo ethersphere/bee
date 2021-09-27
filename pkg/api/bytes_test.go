@@ -7,7 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -36,10 +36,10 @@ func TestBytes(t *testing.T) {
 	var (
 		storerMock   = mock.NewStorer()
 		pinningMock  = pinning.NewServiceMock()
-		logger       = logging.New(ioutil.Discard, 0)
+		logger       = logging.New(io.Discard, 0)
 		client, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
-			Tags:    tags.NewTags(statestore.NewStateStore(), logging.New(ioutil.Discard, 0)),
+			Tags:    tags.NewTags(statestore.NewStateStore(), logging.New(io.Discard, 0)),
 			Pinning: pinningMock,
 			Logger:  logger,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
@@ -111,7 +111,7 @@ func TestBytes(t *testing.T) {
 
 	t.Run("download", func(t *testing.T) {
 		resp := request(t, client, http.MethodGet, resource+"/"+expHash, nil, http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
 		}

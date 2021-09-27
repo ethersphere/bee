@@ -11,7 +11,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -325,7 +324,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	if p := c.config.GetString(optionNamePassword); p != "" {
 		password = p
 	} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
-		b, err := ioutil.ReadFile(pf)
+		b, err := os.ReadFile(pf)
 		if err != nil {
 			return nil, err
 		}

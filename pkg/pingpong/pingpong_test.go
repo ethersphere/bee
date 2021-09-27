@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"runtime"
 	"testing"
 	"time"
@@ -24,7 +24,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// create a pingpong server that handles the incoming stream
 	server := pingpong.New(nil, logger, nil)
