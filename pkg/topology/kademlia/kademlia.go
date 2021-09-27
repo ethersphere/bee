@@ -1092,17 +1092,15 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swa
 
 		if closest.IsZero() {
 			closest = peer
+			return false, false, nil
 		}
 
-		closer, err := peer.Closer(addr, closest)
-		if err != nil {
-			return false, false, err
-		}
-		if closer {
+		if closer, _ := peer.Closer(addr, closest); closer {
 			closest = peer
 		}
 		return false, false, nil
 	})
+
 	if err != nil {
 		return swarm.Address{}, err
 	}
