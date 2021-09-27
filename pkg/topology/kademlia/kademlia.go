@@ -872,6 +872,13 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 				// about lightnodes to others.
 				continue
 			}
+			// if kademlia is closing, dont enqueue anymore broadcast requests
+			select {
+			case <-k.bgBroadcastCtx.Done():
+				// we will not interfere with the announce operation by returning here
+				continue
+			default:
+			}
 			k.bgBroadcastWg.Add(1)
 			go func(connectedPeer swarm.Address) {
 				defer k.bgBroadcastWg.Done()
