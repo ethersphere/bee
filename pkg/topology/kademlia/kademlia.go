@@ -105,6 +105,9 @@ type Kad struct {
 	pruneFunc         pruneFunc // pluggable prune function
 	pinger            pingpong.Interface
 	staticPeer        staticPeerFunc
+	bgBroadcastCtx    context.Context
+	bgBroadcastCancel context.CancelFunc
+	bgBroadcastWg     sync.WaitGroup
 }
 
 // New returns a new Kademlia.
@@ -155,7 +158,6 @@ func New(
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
-		wg:                sync.WaitGroup{},
 		metrics:           newMetrics(),
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
@@ -169,6 +171,8 @@ func New(
 	if k.bitSuffixLength > 0 {
 		k.commonBinPrefixes = generateCommonBinPrefixes(k.base, k.bitSuffixLength)
 	}
+
+	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
 	return k, nil
 }
@@ -868,8 +872,22 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 				// about lightnodes to others.
 				continue
 			}
+			// if kademlia is closing, dont enqueue anymore broadcast requests
+			select {
+			case <-k.bgBroadcastCtx.Done():
+				// we will not interfere with the announce operation by returning here
+				continue
+			default:
+			}
+			k.bgBroadcastWg.Add(1)
 			go func(connectedPeer swarm.Address) {
-				if err := k.discovery.BroadcastPeers(ctx, connectedPeer, peer); err != nil {
+				defer k.bgBroadcastWg.Done()
+
+				// Create a new deadline ctx to prevent goroutine pile up
+				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
+				defer cCancel()
+
+				if err := k.discovery.BroadcastPeers(cCtx, connectedPeer, peer); err != nil {
 					k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, connectedPeer, err)
 				}
 			}(connectedPeer)
@@ -1341,15 +1359,29 @@ func (k *Kad) Close() error {
 	close(k.quit)
 	cc := make(chan struct{})
 
+	k.bgBroadcastCancel()
+	bgBroadcastDone := make(chan struct{})
+
 	go func() {
 		k.wg.Wait()
 		close(cc)
+	}()
+
+	go func() {
+		k.bgBroadcastWg.Wait()
+		close(bgBroadcastDone)
 	}()
 
 	select {
 	case <-cc:
 	case <-time.After(peerConnectionAttemptTimeout):
 		k.logger.Warning("kademlia shutting down with announce goroutines")
+	}
+
+	select {
+	case <-bgBroadcastDone:
+	case <-time.After(time.Second * 5):
+		k.logger.Warning("kademlia shutting down with unfinished broadcasts")
 	}
 
 	select {

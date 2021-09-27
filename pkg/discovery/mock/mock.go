@@ -12,18 +12,39 @@ import (
 )
 
 type Discovery struct {
-	mtx     sync.Mutex
-	ctr     int //how many ops
-	records map[string][]swarm.Address
+	mtx           sync.Mutex
+	ctr           int //how many ops
+	records       map[string][]swarm.Address
+	broadcastFunc func(context.Context, swarm.Address, ...swarm.Address) error
 }
 
-func NewDiscovery() *Discovery {
-	return &Discovery{
+type Option interface {
+	apply(*Discovery)
+}
+type optionFunc func(*Discovery)
+
+func (f optionFunc) apply(r *Discovery) { f(r) }
+
+func WithBroadcastPeers(f func(context.Context, swarm.Address, ...swarm.Address) error) optionFunc {
+	return optionFunc(func(r *Discovery) {
+		r.broadcastFunc = f
+	})
+}
+
+func NewDiscovery(opts ...Option) *Discovery {
+	d := &Discovery{
 		records: make(map[string][]swarm.Address),
 	}
+	for _, opt := range opts {
+		opt.apply(d)
+	}
+	return d
 }
 
 func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
+	if d.broadcastFunc != nil {
+		return d.broadcastFunc(ctx, addressee, peers...)
+	}
 	for _, peer := range peers {
 		d.mtx.Lock()
 		d.records[addressee.String()] = append(d.records[addressee.String()], peer)
