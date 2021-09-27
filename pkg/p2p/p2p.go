@@ -30,7 +30,7 @@ type Service interface {
 }
 
 type Disconnecter interface {
-	Disconnect(overlay swarm.Address) error
+	Disconnect(overlay swarm.Address, reason string) error
 	Blocklister
 }
 

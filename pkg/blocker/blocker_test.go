@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package blocker_test
 
 import (
@@ -16,7 +20,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 
 	blocked := make(map[string]time.Duration)
 
-	mock := mockBlockLister(func(a swarm.Address, d time.Duration) error {
+	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
 		blocked[a.ByteString()] = d
 		return nil
 	})
@@ -36,7 +40,12 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 		t.Fatal("blocker did not wait flag duration")
 	}
 
-	time.Sleep(checkTime)
+	midway := time.After(flagTime / 2)
+	check := time.After(checkTime)
+
+	<-midway
+	b.Flag(addr) // check thats this flag call does not overide previous call
+	<-check
 
 	blockedTime, ok := blocked[addr.ByteString()]
 	if !ok {
@@ -52,7 +61,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 
 	blocked := make(map[string]time.Duration)
 
-	mock := mockBlockLister(func(a swarm.Address, d time.Duration) error {
+	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
 		blocked[a.ByteString()] = d
 		return nil
 	})
@@ -83,15 +92,15 @@ func TestUnflagBeforeBlock(t *testing.T) {
 }
 
 type blocklister struct {
-	blocklistFunc func(swarm.Address, time.Duration) error
+	blocklistFunc func(swarm.Address, time.Duration, string) error
 }
 
-func mockBlockLister(f func(swarm.Address, time.Duration) error) *blocklister {
+func mockBlockLister(f func(swarm.Address, time.Duration, string) error) *blocklister {
 	return &blocklister{
 		blocklistFunc: f,
 	}
 }
 
-func (b *blocklister) Blocklist(addr swarm.Address, t time.Duration) error {
-	return b.blocklistFunc(addr, t)
+func (b *blocklister) Blocklist(addr swarm.Address, t time.Duration, r string) error {
+	return b.blocklistFunc(addr, t, r)
 }

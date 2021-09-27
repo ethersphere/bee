@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package blocker
 
 import (
@@ -8,12 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-// var (
-// 	flagTimeout    = 5 * time.Minute // how long before blocking a flagged peer
-// 	cleanupTimeout = 5 * time.Minute // how long before we cleanup a peer
-// 	blockDuration  = time.Hour       // how long to blocklist an unresponsive peer for
-// )
 
 type peer struct {
 	flagged    bool      // indicates whether the peer is actively flagged
@@ -76,8 +74,8 @@ func (b *Blocker) block() {
 	defer b.mux.Unlock()
 
 	for key, peer := range b.peers {
-		if time.Now().After(peer.blockAfter) {
-			if err := b.disconnector.Blocklist(peer.addr, b.blockDuration); err != nil {
+		if peer.flagged && time.Now().After(peer.blockAfter) {
+			if err := b.disconnector.Blocklist(peer.addr, b.blockDuration, "blocker: flag timeout"); err != nil {
 				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.addr, err)
 			}
 
