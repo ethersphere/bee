@@ -1365,6 +1365,7 @@ func (k *Kad) Halt() {
 func (k *Kad) Close() error {
 	k.logger.Info("kademlia shutting down")
 	close(k.quit)
+	_ = k.blocker.Close()
 	cc := make(chan struct{})
 
 	k.bgBroadcastCancel()

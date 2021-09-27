@@ -26,9 +26,8 @@ type Blocker struct {
 	blockDuration time.Duration // how long to blocklist a bad peer
 	peers         map[string]*peer
 	logger        logging.Logger
-	wakeup        chan struct{}
+	wakeupCh      chan struct{}
 	quit          chan struct{}
-	waitingNext   bool
 }
 
 func New(dis p2p.Blocklister, flagTimeout, blockDuration time.Duration, logger logging.Logger) *Blocker {
@@ -38,7 +37,7 @@ func New(dis p2p.Blocklister, flagTimeout, blockDuration time.Duration, logger l
 		flagTimeout:   flagTimeout,
 		blockDuration: blockDuration,
 		peers:         map[string]*peer{},
-		wakeup:        make(chan struct{}),
+		wakeupCh:      make(chan struct{}),
 		quit:          make(chan struct{}),
 		logger:        logger,
 	}
@@ -54,18 +53,18 @@ func (b *Blocker) run() {
 		select {
 		case <-b.quit:
 			return
-		case <-b.wakeup:
-
-			if b.waitingNext {
-				continue
-			}
-
-			b.waitingNext = true
-			go func() {
-				<-time.After(b.flagTimeout)
-				b.block()
-			}()
+		case <-b.wakeupCh:
+			<-time.After(b.flagTimeout)
+			b.block()
 		}
+	}
+}
+
+func (b *Blocker) wakeup() {
+
+	select {
+	case b.wakeupCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -82,8 +81,6 @@ func (b *Blocker) block() {
 			delete(b.peers, key)
 		}
 	}
-
-	b.waitingNext = false
 }
 
 func (b *Blocker) Flag(addr swarm.Address) {
@@ -105,7 +102,7 @@ func (b *Blocker) Flag(addr swarm.Address) {
 		}
 	}
 
-	b.wakeup <- struct{}{}
+	b.wakeup()
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
