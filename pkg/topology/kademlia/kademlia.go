@@ -476,7 +476,7 @@ func (k *Kad) manage() {
 					return
 				case <-k.quit:
 					return
-				case <-time.After(15 * time.Minute):
+				case <-time.After(5 * time.Minute):
 					k.pruneFunc(k.NeighborhoodDepth(), extraPeersToPrune)
 				}
 			}
