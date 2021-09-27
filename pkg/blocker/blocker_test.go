@@ -19,6 +19,9 @@ import (
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
 
+	defer func(t time.Duration) {
+		*blocker.WakeupTime = t
+	}(*blocker.WakeupTime)
 	*blocker.WakeupTime = time.Millisecond
 
 	mux := sync.Mutex{}
@@ -39,6 +42,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	blockTime := time.Second
 
 	b := blocker.New(mock, flagTime, blockTime, logger)
+	defer b.Close()
 	// wait for worker loop to start
 	time.Sleep(time.Millisecond * 50)
 
@@ -66,12 +70,13 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	if blockedTime != blockTime {
 		t.Fatalf("block time: want %v, got %v", blockTime, blockedTime)
 	}
-
-	b.Close()
 }
 
 func TestUnflagBeforeBlock(t *testing.T) {
 
+	defer func(t time.Duration) {
+		*blocker.WakeupTime = t
+	}(*blocker.WakeupTime)
 	*blocker.WakeupTime = time.Millisecond
 
 	mux := sync.Mutex{}
@@ -91,6 +96,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	blockTime := time.Second
 
 	b := blocker.New(mock, flagTime, blockTime, logger)
+	defer b.Close()
 	// wait for worker loop to start
 	time.Sleep(time.Millisecond * 50)
 
@@ -112,8 +118,6 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	if ok {
 		t.Fatal("address should not be blocked")
 	}
-
-	b.Close()
 }
 
 type blocklister struct {
