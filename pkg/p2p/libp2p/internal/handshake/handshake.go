@@ -54,7 +54,7 @@ var (
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
 
 	// ErrPicker is returned if the picker (kademlia) rejects the peer
-	ErrPickyNotifier = fmt.Errorf("picky notifier")
+	ErrPicker = fmt.Errorf("picker rejection")
 )
 
 // AdvertisableAddressResolver can Resolve a Multiaddress.
@@ -317,8 +317,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	if s.picker != nil {
 		if !s.picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
-			s.logger.Warningf("handshake handler: don't want incoming peer %s", overlay)
-			return nil, ErrPickyNotifier
+			return nil, ErrPicker
 		}
 	}
 
