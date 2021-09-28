@@ -38,8 +38,9 @@ const (
 
 	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
 
-	flagTimeout   = 5 * time.Minute // how long before blocking a flagged peer
-	blockDuration = time.Hour       // how long to blocklist an unresponsive peer for
+	flagTimeout      = 5 * time.Minute  // how long before blocking a flagged peer
+	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
+	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
 )
 
 var (
@@ -167,7 +168,7 @@ func New(
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(o.StaticNodes),
-		blocker:           blocker.New(p2p, flagTimeout, blockDuration, logger),
+		blocker:           blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, logger),
 	}
 
 	if k.pruneFunc == nil {
