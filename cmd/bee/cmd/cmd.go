@@ -76,6 +76,7 @@ const (
 	optionNamePProfBlock                 = "pprof-profile"
 	optionNamePProfMutex                 = "pprof-mutex"
 	optionNameStaticNodes                = "static-nodes"
+	optionNameAllowPrivateCIDRs          = "allow-private-cidrs"
 )
 
 func init() {
@@ -262,6 +263,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNamePProfBlock, false, "enable pprof block profile")
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
+	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

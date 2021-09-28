@@ -162,6 +162,7 @@ type Options struct {
 	BlockProfile               bool
 	MutexProfile               bool
 	StaticNodes                []swarm.Address
+	AllowPrivateCIDRs          bool
 }
 
 const (
@@ -497,7 +498,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, logger)
+	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
 	if err != nil {
 		return nil, fmt.Errorf("hive: %w", err)
 	}
