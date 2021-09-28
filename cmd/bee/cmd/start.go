@@ -198,6 +198,7 @@ func (c *command) initStartCmd() (err error) {
 				BlockProfile:               c.config.GetBool(optionNamePProfBlock),
 				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
 				StaticNodes:                staticNodes,
+				AllowPrivateCIDRs:          c.config.GetBool(optionNameAllowPrivateCIDRs),
 			})
 			if err != nil {
 				return err
