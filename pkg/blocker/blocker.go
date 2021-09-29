@@ -114,6 +114,5 @@ func (b *Blocker) Unflag(addr swarm.Address) {
 func (b *Blocker) Close() error {
 	close(b.quit)
 	b.closeWg.Wait()
-	b.peers = nil
 	return nil
 }
