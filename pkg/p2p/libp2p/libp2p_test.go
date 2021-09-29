@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"io/ioutil"
+	"io"
 	"sort"
 	"testing"
 	"time"
@@ -54,7 +54,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	addr := ":0"
 
 	if o.Logger == nil {
-		o.Logger = logging.New(ioutil.Discard, 0)
+		o.Logger = logging.New(io.Discard, 0)
 	}
 
 	statestore := mock.NewStateStore()

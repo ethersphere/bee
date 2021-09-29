@@ -6,7 +6,7 @@ package addresses_test
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -67,7 +67,7 @@ func TestAddressesGetterIterateChunkAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = file.JoinReadAll(ctx, j, ioutil.Discard)
+	_, err = file.JoinReadAll(ctx, j, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

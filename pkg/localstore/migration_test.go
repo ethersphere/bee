@@ -17,7 +17,7 @@
 package localstore
 
 import (
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"strings"
@@ -48,7 +48,7 @@ func TestOneMigration(t *testing.T) {
 		}},
 	}
 
-	dir, err := ioutil.TempDir("", "localstore-test")
+	dir, err := os.MkdirTemp("", "localstore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)
@@ -136,7 +136,7 @@ func TestManyMigrations(t *testing.T) {
 		}},
 	}
 
-	dir, err := ioutil.TempDir("", "localstore-test")
+	dir, err := os.MkdirTemp("", "localstore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestManyMigrations(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)
@@ -216,7 +216,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 		}},
 	}
 
-	dir, err := ioutil.TempDir("", "localstore-test")
+	dir, err := os.MkdirTemp("", "localstore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)
@@ -276,7 +276,7 @@ func TestMigrationErrorTo(t *testing.T) {
 		}},
 	}
 
-	dir, err := ioutil.TempDir("", "localstore-test")
+	dir, err := os.MkdirTemp("", "localstore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestMigrationErrorTo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)

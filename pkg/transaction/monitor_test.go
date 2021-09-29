@@ -6,7 +6,7 @@ package transaction_test
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 
@@ -18,7 +18,7 @@ import (
 )
 
 func TestMonitorWatchTransaction(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	txHash := common.HexToHash("0xabcd")
 	nonce := uint64(10)
 	sender := common.HexToAddress("0xffee")

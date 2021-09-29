@@ -9,7 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"testing"
 
@@ -71,7 +71,7 @@ func signerMockForTransaction(signedTx *types.Transaction, sender common.Address
 }
 
 func TestTransactionSend(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	sender := common.HexToAddress("0xddff")
 	recipient := common.HexToAddress("0xabcd")
 	txData := common.Hex2Bytes("0xabcdee")
@@ -343,7 +343,7 @@ func TestTransactionSend(t *testing.T) {
 }
 
 func TestTransactionWaitForReceipt(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	txHash := common.HexToHash("0xabcdee")
 	chainID := big.NewInt(5)
 	nonce := uint64(10)
@@ -401,7 +401,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 }
 
 func TestTransactionResend(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	recipient := common.HexToAddress("0xbbbddd")
 	chainID := big.NewInt(5)
 	nonce := uint64(10)
@@ -460,7 +460,7 @@ func TestTransactionResend(t *testing.T) {
 }
 
 func TestTransactionCancel(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	recipient := common.HexToAddress("0xbbbddd")
 	chainID := big.NewInt(5)
 	nonce := uint64(10)

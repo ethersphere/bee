@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"testing"
@@ -31,7 +31,7 @@ func TestSOC(t *testing.T) {
 		testData       = []byte("foo")
 		socResource    = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
 		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(ioutil.Discard, 0)
+		logger         = logging.New(io.Discard, 0)
 		tag            = tags.NewTags(mockStatestore, logger)
 		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		mockStorer     = mock.NewStorer()
@@ -109,7 +109,7 @@ func TestSOC(t *testing.T) {
 		// try to fetch the same chunk
 		rsrc := fmt.Sprintf("/chunks/" + s.Address().String())
 		resp := request(t, client, http.MethodGet, rsrc, nil, http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -7,7 +7,7 @@ package debugapi_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -26,7 +26,7 @@ func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 
 func TestTags(t *testing.T) {
 	var (
-		logger         = logging.New(ioutil.Discard, 0)
+		logger         = logging.New(io.Discard, 0)
 		chunk          = testingc.GenerateTestRandomChunk()
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()

@@ -7,7 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -38,7 +38,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		resourceTargets = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
 		chunk           = testingc.GenerateTestRandomChunk()
 		statestoreMock  = statestore.NewStateStore()
-		logger          = logging.New(ioutil.Discard, 0)
+		logger          = logging.New(io.Discard, 0)
 		tag             = tags.NewTags(statestoreMock, logger)
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()
@@ -69,7 +69,7 @@ func TestChunkUploadDownload(t *testing.T) {
 
 		// try to fetch the same chunk
 		resp := request(t, client, http.MethodGet, chunksResource(chunk.Address()), nil, http.StatusOK)
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
 		}

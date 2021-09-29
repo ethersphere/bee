@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -83,7 +82,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		o.Logger = logging.New(ioutil.Discard, 0)
+		o.Logger = logging.New(io.Discard, 0)
 	}
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
@@ -159,7 +158,7 @@ func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func(
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
-	log := logging.New(ioutil.Discard, 0)
+	log := logging.New(io.Discard, 0)
 
 	testCases := []struct {
 		desc       string
@@ -277,7 +276,7 @@ func TestPostageHeaderError(t *testing.T) {
 	var (
 		mockStorer     = mock.NewStorer()
 		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(ioutil.Discard, 5)
+		logger         = logging.New(io.Discard, 5)
 		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _   = newTestServer(t, testServerOptions{
 			Storer: mockStorer,

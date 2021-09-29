@@ -10,7 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -40,7 +40,7 @@ var (
 func TestDelivery(t *testing.T) {
 	var (
 		chunk                = testingc.FixtureChunk("0033")
-		logger               = logging.New(ioutil.Discard, 0)
+		logger               = logging.New(io.Discard, 0)
 		mockStorer           = storemock.NewStorer()
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
@@ -151,7 +151,7 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 
 	var (
-		logger = logging.New(ioutil.Discard, 0)
+		logger = logging.New(io.Discard, 0)
 		pricer = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
 
@@ -270,7 +270,7 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")

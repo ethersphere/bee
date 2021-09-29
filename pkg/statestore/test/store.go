@@ -6,7 +6,6 @@ package test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -47,7 +46,7 @@ func (st *Serializing) UnmarshalBinary(data []byte) (err error) {
 // It tests that values persist across sessions.
 func RunPersist(t *testing.T, f func(t *testing.T, dir string) storage.StateStorer) {
 	t.Helper()
-	dir, err := ioutil.TempDir("", "statestore_test")
+	dir, err := os.MkdirTemp("", "statestore_test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,6 @@
 package intervalstore
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -33,7 +32,7 @@ func TestInmemoryStore(t *testing.T) {
 
 // TestDBStore tests basic functionality of DBStore.
 func TestDBStore(t *testing.T) {
-	dir, err := ioutil.TempDir("", "intervals_test_db_store")
+	dir, err := os.MkdirTemp("", "intervals_test_db_store")
 	if err != nil {
 		panic(err)
 	}

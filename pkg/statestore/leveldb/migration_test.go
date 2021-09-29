@@ -19,7 +19,7 @@ package leveldb
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -51,7 +51,7 @@ func TestOneMigration(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
@@ -134,7 +134,7 @@ func TestManyMigrations(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
@@ -209,7 +209,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 		}},
 	}
 	dir := t.TempDir()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
@@ -260,7 +260,7 @@ func TestMigrationErrorTo(t *testing.T) {
 		}},
 	}
 	dir := t.TempDir()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)
@@ -288,7 +288,7 @@ func TestMigrationErrorTo(t *testing.T) {
 
 func TestMigrationSwap(t *testing.T) {
 	dir := t.TempDir()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	// start the fresh statestore with the sanctuary schema name
 	db, err := NewStateStore(dir, logger)

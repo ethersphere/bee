@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"math/rand"
 	"os"
@@ -27,7 +27,7 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 	t.Helper()
 	// we cannot  use the mock statestore here since the iterator is not giving the right order
 	// must use the leveldb statestore
-	dir, err := ioutil.TempDir("", "batchstore_test")
+	dir, err := os.MkdirTemp("", "batchstore_test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 			t.Fatal(err)
 		}
 	})
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -738,7 +738,7 @@ func TestUnreserveItemSequence(t *testing.T) {
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	initBatchDepth := uint8(8)
 
-	dir, err := ioutil.TempDir("", "batchstore_test")
+	dir, err := os.MkdirTemp("", "batchstore_test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,7 +747,7 @@ func TestUnreserveItemSequence(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"sync"
 	"testing"
@@ -27,7 +27,7 @@ var addr common.Address = common.HexToAddress("abcdef")
 var postageStampAddress common.Address = common.HexToAddress("eeee")
 
 func TestListener(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	blockNumber := uint64(500)
 	timeout := 5 * time.Second
 	// test that when the listener gets a certain event
