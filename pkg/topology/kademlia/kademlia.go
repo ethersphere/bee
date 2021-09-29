@@ -35,7 +35,8 @@ const (
 
 	addPeerBatchSize = 500
 
-	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
+	peerConnectionAttemptTimeout = 5 * time.Second  // timeout for establishing a new connection with peer.
+	peerPingPollTime             = 10 * time.Second // how often to ping a peer
 )
 
 var (
@@ -459,7 +460,7 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(peerPingPollTime):
 				k.wg.Add(1)
 				go func() {
 					defer k.wg.Done()
@@ -531,7 +532,7 @@ func (k *Kad) manage() {
 // recordPeerLatencies tries to record the average
 // peer latencies from the p2p layer.
 func (k *Kad) recordPeerLatencies(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, peerPingPollTime)
 	defer cancel()
 	var wg sync.WaitGroup
 
