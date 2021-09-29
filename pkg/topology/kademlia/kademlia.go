@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
+	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -36,6 +37,10 @@ const (
 	addPeerBatchSize = 500
 
 	peerConnectionAttemptTimeout = 5 * time.Second // Timeout for establishing a new connection with peer.
+
+	flagTimeout      = 5 * time.Minute  // how long before blocking a flagged peer
+	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
+	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
 )
 
 var (
@@ -108,6 +113,7 @@ type Kad struct {
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
 	bgBroadcastWg     sync.WaitGroup
+	blocker           *blocker.Blocker
 }
 
 // New returns a new Kademlia.
@@ -162,6 +168,7 @@ func New(
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(o.StaticNodes),
+		blocker:           blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, logger),
 	}
 
 	if k.pruneFunc == nil {
@@ -542,8 +549,10 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 			l, err := k.pinger.Ping(ctx, addr, "ping")
 			if err != nil {
 				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
+				k.blocker.Flag(addr)
 				return
 			}
+			k.blocker.Unflag(addr)
 			k.collector.Record(addr, im.PeerLatency(l))
 			v := k.collector.Inspect(addr).LatencyEWMA
 			k.metrics.PeerLatencyEWMA.Observe(v.Seconds())
@@ -1357,6 +1366,7 @@ func (k *Kad) Halt() {
 func (k *Kad) Close() error {
 	k.logger.Info("kademlia shutting down")
 	close(k.quit)
+	_ = k.blocker.Close()
 	cc := make(chan struct{})
 
 	k.bgBroadcastCancel()
