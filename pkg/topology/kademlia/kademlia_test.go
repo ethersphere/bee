@@ -1287,6 +1287,11 @@ func TestOutofDepthPrune(t *testing.T) {
 
 // TestLatency tests that kademlia polls peers for latency.
 func TestLatency(t *testing.T) {
+	defer func(d time.Duration) {
+		*kademlia.PeerPingPollTime = d
+	}(*kademlia.PeerPingPollTime)
+
+	*kademlia.PeerPingPollTime = 1 * time.Second
 	var (
 		logger = logging.New(io.Discard, 0)
 		base   = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000

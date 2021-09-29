@@ -15,4 +15,5 @@ var (
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
+	PeerPingPollTime          = &peerPingPollTime
 )
