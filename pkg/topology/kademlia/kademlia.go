@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -1388,23 +1389,41 @@ func (k *Kad) Close() error {
 		close(bgBroadcastDone)
 	}()
 
-	select {
-	case <-cc:
-	case <-time.After(peerConnectionAttemptTimeout):
-		k.logger.Warning("kademlia shutting down with announce goroutines")
-	}
+	eg := errgroup.Group{}
 
-	select {
-	case <-bgBroadcastDone:
-	case <-time.After(time.Second * 5):
-		k.logger.Warning("kademlia shutting down with unfinished broadcasts")
-	}
+	errTimeout := errors.New("timeout")
 
-	select {
-	case <-k.done:
-	case <-time.After(5 * time.Second):
-		k.logger.Warning("kademlia manage loop did not shut down properly")
-	}
+	eg.Go(func() error {
+		select {
+		case <-cc:
+		case <-time.After(peerConnectionAttemptTimeout):
+			k.logger.Warning("kademlia shutting down with announce goroutines")
+			return errTimeout
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		select {
+		case <-bgBroadcastDone:
+		case <-time.After(time.Second * 5):
+			k.logger.Warning("kademlia shutting down with unfinished broadcasts")
+			return errTimeout
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		select {
+		case <-k.done:
+		case <-time.After(time.Second * 5):
+			k.logger.Warning("kademlia manage loop did not shut down properly")
+			return errTimeout
+		}
+		return nil
+	})
+
+	err := eg.Wait()
 
 	k.logger.Info("kademlia persisting peer metrics")
 	start := time.Now()
@@ -1413,7 +1432,7 @@ func (k *Kad) Close() error {
 	}
 	k.logger.Debugf("kademlia: Finalize(...) took %v", time.Since(start))
 
-	return nil
+	return err
 }
 
 func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
