@@ -1423,7 +1423,6 @@ func (k *Kad) Close() error {
 	start := time.Now()
 	if err := k.collector.Finalize(start, false); err != nil {
 		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
-		return err
 	}
 	k.logger.Debugf("kademlia: Finalize(...) took %v", time.Since(start))
 
