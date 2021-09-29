@@ -108,6 +108,8 @@ components:
                   properties:
                     address:
                       $ref: "#/components/schemas/SwarmAddress"
+                    metrics:
+                      $ref: "#/components/schemas/PeerMetricsView"
               connectedPeers:
                 type: array
                 items:
@@ -115,6 +117,9 @@ components:
                   properties:
                     address:
                       $ref: "#/components/schemas/SwarmAddress"
+                    metrics:
+                      $ref: "#/components/schemas/PeerMetricsView"
+
 
     Cheque:
       type: object
@@ -254,6 +259,28 @@ components:
     P2PUnderlay:
       type: string
       example: "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAmTm17toLDaPYzRyjKn27iCB76yjKnJ5DjQXneFmifFvaX"
+
+    PeerMetricsView:
+      type: object
+      properties:
+        lastSeenTimestamp:
+          type: integer
+          nullable: false
+        sessionConnectionRetry:
+          type: integer
+          nullable: false
+        connectionTotalDuration:
+          type: number
+          nullable: false
+        sessionConnectionDuration:
+          type: number
+          nullable: false
+        sessionConnectionDirection:
+          type: string
+          nullable: false
+        latencyEWMA:
+          type: integer
+          nullable: false
 
     Peers:
       type: object
