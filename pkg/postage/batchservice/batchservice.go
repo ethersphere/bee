@@ -110,7 +110,9 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 	}
 
 	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
-		svc.batchListener.HandleCreate(b)
+		if err := svc.batchListener.HandleCreate(b); err != nil {
+			return fmt.Errorf("create batch: %w", err)
+		}
 	}
 
 	cs, err := svc.updateChecksum(txHash)
