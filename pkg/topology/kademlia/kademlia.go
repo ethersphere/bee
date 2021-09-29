@@ -35,8 +35,7 @@ const (
 
 	addPeerBatchSize = 500
 
-	peerConnectionAttemptTimeout = 5 * time.Second  // timeout for establishing a new connection with peer.
-	peerPingPollTime             = 10 * time.Second // how often to ping a peer
+	peerConnectionAttemptTimeout = 5 * time.Second // timeout for establishing a new connection with peer.
 )
 
 var (
@@ -48,6 +47,7 @@ var (
 	shortRetry                  = 30 * time.Second
 	timeToRetry                 = 2 * shortRetry
 	broadcastBinSize            = 4
+	peerPingPollTime            = 10 * time.Second // how often to ping a peer
 )
 
 var (
@@ -415,9 +415,13 @@ func (k *Kad) manage() {
 	defer close(k.done)
 	defer k.logger.Debugf("kademlia manage loop exited")
 
+	timer := time.NewTimer(0)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-k.quit
+		if !timer.Stop() {
+			<-timer.C
+		}
 		cancel()
 	}()
 
@@ -460,12 +464,13 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
-			case <-time.After(peerPingPollTime):
+			case <-timer.C:
 				k.wg.Add(1)
 				go func() {
 					defer k.wg.Done()
 					k.recordPeerLatencies(ctx)
 				}()
+				_ = timer.Reset(peerPingPollTime)
 			}
 		}
 	}()
