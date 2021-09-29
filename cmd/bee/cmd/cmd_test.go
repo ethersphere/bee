@@ -6,7 +6,6 @@ package cmd_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -16,7 +15,7 @@ import (
 var homeDir string
 
 func TestMain(m *testing.M) {
-	dir, err := ioutil.TempDir("", "bee-cmd-")
+	dir, err := os.MkdirTemp("", "bee-cmd-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

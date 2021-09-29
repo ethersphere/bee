@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -876,7 +876,7 @@ func TestClosestPeer(t *testing.T) {
 	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
 		{
@@ -1288,7 +1288,7 @@ func TestOutofDepthPrune(t *testing.T) {
 // TestLatency tests that kademlia polls peers for latency.
 func TestLatency(t *testing.T) {
 	var (
-		logger = logging.New(ioutil.Discard, 0)
+		logger = logging.New(io.Discard, 0)
 		base   = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 		p1     = test.RandomAddress()
 
@@ -1567,7 +1567,7 @@ func newTestKademliaWithAddrDiscovery(
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
 		ab     = addressbook.New(mockstate.NewStateStore())          // address book
 		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock
-		logger = logging.New(ioutil.Discard, 0)                      // logger
+		logger = logging.New(io.Discard, 0)                          // logger
 		ppm    = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
 			return 0, nil
 		})

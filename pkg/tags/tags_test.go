@@ -19,7 +19,7 @@ package tags
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"io"
 	"sort"
 	"testing"
 	"time"
@@ -31,7 +31,7 @@ import (
 
 func TestAll(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	ts := NewTags(mockStatestore, logger)
 	if _, err := ts.Create(1); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestAll(t *testing.T) {
 
 func TestListAll(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 
 	ts1 := NewTags(mockStatestore, logger)
 
@@ -144,7 +144,7 @@ func TestListAll(t *testing.T) {
 
 func TestPersistence(t *testing.T) {
 	mockStatestore := statestore.NewStateStore()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	ts := NewTags(mockStatestore, logger)
 	ta, err := ts.Create(1)
 	if err != nil {

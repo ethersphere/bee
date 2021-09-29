@@ -9,9 +9,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"math/big"
 
-	"io/ioutil"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -32,7 +32,7 @@ func TestEmitCheques(t *testing.T) {
 
 	// Test negotiating / sending cheques
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
@@ -147,7 +147,7 @@ func TestEmitCheques(t *testing.T) {
 }
 
 func TestCantEmitChequeRateMismatch(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
@@ -211,7 +211,7 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 
 func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
@@ -274,7 +274,7 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 }
 
 func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()

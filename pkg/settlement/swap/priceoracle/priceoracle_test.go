@@ -6,7 +6,7 @@ package priceoracle_test
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"testing"
 
@@ -33,7 +33,7 @@ func TestExchangeGetPrice(t *testing.T) {
 	expectedDeduce.FillBytes(result[32:64])
 
 	ex := priceoracle.New(
-		logging.New(ioutil.Discard, 0),
+		logging.New(io.Discard, 0),
 		priceOracleAddress,
 		transactionmock.New(
 			transactionmock.WithABICall(
