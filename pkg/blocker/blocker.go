@@ -28,6 +28,7 @@ type Blocker struct {
 	logger        logging.Logger
 	wakeupCh      chan struct{}
 	quit          chan struct{}
+	closeWg       sync.WaitGroup
 }
 
 func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, logger logging.Logger) *Blocker {
@@ -41,15 +42,17 @@ func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Durati
 		wakeupCh:      make(chan struct{}),
 		quit:          make(chan struct{}),
 		logger:        logger,
+		closeWg:       sync.WaitGroup{},
 	}
 
+	b.closeWg.Add(1)
 	go b.run()
 
 	return b
 }
 
 func (b *Blocker) run() {
-
+	defer b.closeWg.Done()
 	for {
 		select {
 		case <-b.quit:
@@ -65,6 +68,13 @@ func (b *Blocker) block() {
 	defer b.mux.Unlock()
 
 	for key, peer := range b.peers {
+
+		select {
+		case <-b.quit:
+			return
+		default:
+		}
+
 		if !peer.blockAfter.IsZero() && time.Now().After(peer.blockAfter) {
 			if err := b.disconnector.Blocklist(peer.addr, b.blockDuration, "blocker: flag timeout"); err != nil {
 				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.addr, err)
@@ -103,5 +113,6 @@ func (b *Blocker) Unflag(addr swarm.Address) {
 // must be called only once.
 func (b *Blocker) Close() error {
 	close(b.quit)
+	b.closeWg.Wait()
 	return nil
 }
