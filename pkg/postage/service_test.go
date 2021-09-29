@@ -28,7 +28,10 @@ func TestSaveLoad(t *testing.T) {
 			t.Fatal(err)
 		}
 		for i := 0; i < 16; i++ {
-			_ = ps.Add(newTestStampIssuer(t, 1000))
+			err = ps.Add(newTestStampIssuer(t, 1000))
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		if err := ps.Close(); err != nil {
 			t.Fatal(err)
@@ -81,7 +84,10 @@ func TestGetStampIssuer(t *testing.T) {
 		if i > 3 {
 			shift = uint64(i)
 		}
-		_ = ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8, validBlockNumber+shift, true))
+		err = ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8, validBlockNumber+shift, true))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:4] {
@@ -111,7 +117,10 @@ func TestGetStampIssuer(t *testing.T) {
 	t.Run("recovered", func(t *testing.T) {
 		b := postagetesting.MustNewBatch()
 		b.Start = validBlockNumber
-		_ = ps.HandleCreate(b)
+		err = ps.HandleCreate(b)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
 		st, err := ps.GetStampIssuer(b.ID)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
