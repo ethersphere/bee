@@ -51,7 +51,7 @@ type Listener interface {
 }
 
 type BatchEventListener interface {
-	HandleCreate(*Batch)
+	HandleCreate(*Batch) error
 	HandleTopUp(id []byte, newBalance *big.Int)
 	HandleDepthIncrease(id []byte, newDepth uint8, normalisedBalance *big.Int)
 }

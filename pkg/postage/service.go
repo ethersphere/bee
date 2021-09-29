@@ -31,7 +31,7 @@ var (
 
 // Service is the postage service interface.
 type Service interface {
-	Add(*StampIssuer)
+	Add(*StampIssuer) error
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, error)
 	IssuerUsable(*StampIssuer) bool
@@ -76,16 +76,21 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 }
 
 // Add adds a stamp issuer to the active issuers.
-func (ps *service) Add(st *StampIssuer) {
+func (ps *service) Add(st *StampIssuer) error {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
 	if ps.add(st) {
-		ps.store.Put(ps.keyForIndex(len(ps.issuers)), st)
+		if err := ps.store.Put(ps.keyForIndex(len(ps.issuers)), st); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 // add adds a stamp issuer to the active issuers and returns false if it is already present.
 func (ps *service) add(st *StampIssuer) bool {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(st.data.BatchID, v.data.BatchID) {
@@ -100,8 +105,8 @@ func (ps *service) add(st *StampIssuer) bool {
 // HandleCreate implements the BatchEventListener interface. This is fired on receiving
 // a batch creation event from the blockchain listener to ensure that if a stamp
 // issuer was not created initially, we will create it here.
-func (ps *service) HandleCreate(b *Batch) {
-	ps.Add(NewStampIssuer(
+func (ps *service) HandleCreate(b *Batch) error {
+	return ps.Add(NewStampIssuer(
 		"recovered",
 		string(b.Owner),
 		b.ID,
