@@ -70,22 +70,31 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		if err != nil {
 			return nil, err
 		}
-		s.Add(st)
+		_ = s.add(st)
 	}
 	return s, nil
 }
 
 // Add adds a stamp issuer to the active issuers.
 func (ps *service) Add(st *StampIssuer) {
+	if ps.add(st) {
+		ps.store.Put(ps.keyForIndex(len(ps.issuers)), st)
+	}
+}
+
+// add adds a stamp issuer to the active issuers and returns false if it is already present.
+func (ps *service) add(st *StampIssuer) bool {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(st.data.BatchID, v.data.BatchID) {
-			return
+			return false
 		}
 	}
 	ps.issuers = append(ps.issuers, st)
+
+	return true
 }
 
 // HandleCreate implements the BatchEventListener interface. This is fired on receiving
