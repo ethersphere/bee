@@ -19,7 +19,7 @@ type peer struct {
 }
 
 type Blocker struct {
-	mux           sync.Mutex
+	mu            sync.Mutex
 	disconnector  p2p.Blocklister
 	flagTimeout   time.Duration // how long before blocking a flagged peer
 	blockDuration time.Duration // how long to blocklist a bad peer
@@ -64,8 +64,8 @@ func (b *Blocker) run() {
 }
 
 func (b *Blocker) block() {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for key, peer := range b.peers {
 
@@ -85,8 +85,8 @@ func (b *Blocker) block() {
 }
 
 func (b *Blocker) Flag(addr swarm.Address) {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	p, ok := b.peers[addr.ByteString()]
 
@@ -103,8 +103,8 @@ func (b *Blocker) Flag(addr swarm.Address) {
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	delete(b.peers, addr.ByteString())
 }

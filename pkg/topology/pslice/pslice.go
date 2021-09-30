@@ -15,8 +15,8 @@ import (
 type PSlice struct {
 	peers     [][]swarm.Address // the slice of peers
 	baseBytes []byte
-	sync.RWMutex
-	maxBins int
+	mu        sync.RWMutex
+	maxBins   int
 }
 
 // New creates a new PSlice.
@@ -30,8 +30,8 @@ func New(maxBins int, base swarm.Address) *PSlice {
 
 // Add a peer at a certain PO.
 func (s *PSlice) Add(addrs ...swarm.Address) {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// bypass unnecessary allocations below if address count is one
 	if len(addrs) == 1 {
@@ -82,9 +82,9 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 
 	for i := s.maxBins - 1; i >= 0; i-- {
 
-		s.RLock()
+		s.mu.RLock()
 		peers := s.peers[i]
-		s.RUnlock()
+		s.mu.RUnlock()
 
 		for _, peer := range peers {
 			stop, next, err := pf(peer, uint8(i))
@@ -108,9 +108,9 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 
 	for i := 0; i < s.maxBins; i++ {
 
-		s.RLock()
+		s.mu.RLock()
 		peers := s.peers[i]
-		s.RUnlock()
+		s.mu.RUnlock()
 
 		for _, peer := range peers {
 
@@ -135,8 +135,8 @@ func (s *PSlice) BinSize(bin uint8) int {
 		return 0
 	}
 
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return len(s.peers[bin])
 }
@@ -147,8 +147,8 @@ func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 		return nil
 	}
 
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	ret := make([]swarm.Address, len(s.peers[bin]))
 	copy(ret, s.peers[bin])
@@ -158,8 +158,8 @@ func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
 
 // Length returns the number of peers in the Pslice.
 func (s *PSlice) Length() int {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	var ret int
 
@@ -173,8 +173,8 @@ func (s *PSlice) Length() int {
 // ShallowestEmpty returns the shallowest empty bin if one exists.
 // If such bin does not exists, returns true as bool value.
 func (s *PSlice) ShallowestEmpty() (uint8, bool) {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	for i, peers := range s.peers {
 
@@ -189,8 +189,8 @@ func (s *PSlice) ShallowestEmpty() (uint8, bool) {
 
 // Exists checks if a peer exists.
 func (s *PSlice) Exists(addr swarm.Address) bool {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	e, _ := s.index(addr, s.po(addr.Bytes()))
 	return e
@@ -198,8 +198,8 @@ func (s *PSlice) Exists(addr swarm.Address) bool {
 
 // Remove a peer at a certain PO.
 func (s *PSlice) Remove(addr swarm.Address) {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	po := s.po(addr.Bytes())
 
