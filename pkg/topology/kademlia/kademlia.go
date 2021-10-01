@@ -502,6 +502,16 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
+				k.depthMu.Lock()
+				depth := k.depth
+				radius := k.radius
+				k.depthMu.Unlock()
+
+				k.metrics.CurrentDepth.Set(float64(depth))
+				k.metrics.CurrentRadius.Set(float64(radius))
+				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
+				k.metrics.CurrentlyConnectedPeers.Set(float64(k.connectedPeers.Length()))
+
 				continue
 			}
 
