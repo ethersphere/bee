@@ -13,24 +13,24 @@ import (
 )
 
 type Index struct {
-	fh     io.ReadWriteCloser
-	entryf func() pot.Entry
 	ls     persister.LoadSaver
+	fh     io.ReadWriteCloser
+	mode   *pot.PersistedPot
 	read   chan pot.Node
 	write  chan pot.Node
 	update chan pot.Node
 	quit   chan struct{}
 }
 
-func New(dir, name string, entryf func() pot.Entry) (*Index, error) {
+func New(dir, name string, entryf func() pot.Entry, mode pot.Mode) (*Index, error) {
 	ls, err := NewLoadSaver(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	index := &Index{
-		entryf: entryf,
 		ls:     ls,
+		mode:   pot.NewPersistedPot(mode, entryf),
 		read:   make(chan pot.Node),
 		write:  make(chan pot.Node),
 		update: make(chan pot.Node),
@@ -41,8 +41,12 @@ func New(dir, name string, entryf func() pot.Entry) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := pot.NewDBNode(ls, index.entryf)
-	root.SetReference(ref)
+	root := index.mode.NewFromReference(ref)
+	if len(ref) > 0 {
+		if err := persister.Load(context.Background(), index.ls, root); err != nil {
+			return nil, err
+		}
+	}
 	go index.start(root)
 	return index, nil
 }
@@ -78,13 +82,13 @@ func (idx *Index) start(root pot.Node) {
 
 func (idx *Index) Add(ctx context.Context, e pot.Entry) {
 	root := <-idx.write
-	root = pot.Add(root, e)
+	root = pot.Add(root, e, &pot.SingleOrder{})
 	idx.update <- root
 }
 
 func (idx *Index) Delete(ctx context.Context, k []byte) {
 	root := <-idx.write
-	root = pot.Delete(root, k)
+	root = pot.Delete(root, k, &pot.SingleOrder{})
 	idx.update <- root
 }
 

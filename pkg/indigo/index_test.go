@@ -66,7 +66,7 @@ func (m *mockEntry) UnmarshalBinary(buf []byte) error {
 }
 
 func TestUpdateCorrectness(t *testing.T) {
-	idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} })
+	idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} }, &pot.SingleOrder{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestUpdateCorrectness(t *testing.T) {
 
 func TestIterate(t *testing.T) {
 	count := 20
-	idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} })
+	idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} }, &pot.SingleOrder{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ type testIndex struct {
 
 func TestConcurrency(t *testing.T) {
 	count := 10
-	index, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} })
+	index, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} }, &pot.SingleOrder{})
 	if err != nil {
 		t.Fatal(err)
 	}

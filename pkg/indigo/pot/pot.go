@@ -4,7 +4,6 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"io"
 )
 
 const MaxDepth = 256
@@ -25,13 +24,11 @@ type Entry interface {
 // implementations
 type Node interface {
 	Fork(po int) CNode                                // Child node at PO po
-	Append(CNode)                                     // append a CNode
+	Append(CNode) Node                                // append a CNode
 	Iter(from int, f func(CNode) (bool, error)) error // iterate over children starting at PO from
-	Pin(Entry)                                        // pin an entry to the node
-	New() Node                                        // constructs a new Node
+	Pin(Entry) Node                                   // pin an entry to the node
 	Entry() Entry                                     // reconstructs the entry pinned to the Node
-	// Size() int                                      // returns the number of entries under the node
-	io.Closer
+	// Size() int                                     // returns the number of entries under the node
 }
 
 type CNode struct {
@@ -82,14 +79,15 @@ func Empty(n Node) bool {
 	return n == nil
 }
 
-func Append(b, n Node, from, to int) {
+func Append(b, n Node, from, to int) Node {
 	_ = n.Iter(from, func(k CNode) (bool, error) {
 		if k.At < to {
-			b.Append(k)
+			b = b.Append(k)
 			return false, nil
 		}
 		return true, nil
 	})
+	return b
 }
 
 func Find(n Node, k []byte) (Entry, error) {
@@ -113,6 +111,14 @@ func find(n CNode, k []byte) (Entry, error) {
 		return n.Node.Entry(), nil
 	}
 	return find(m, k)
+}
+
+func FindFork(n CNode, f func(CNode) bool) (m CNode) {
+	_ = n.Node.Iter(n.At, func(c CNode) (bool, error) {
+		m = c
+		return f(m), nil
+	})
+	return m
 }
 
 // Compare compares the key of a CNode with a key, assuming the two match on a prefix of length po

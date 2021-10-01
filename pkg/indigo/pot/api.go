@@ -1,99 +1,72 @@
 package pot
 
-func Add(root Node, e Entry) Node {
-	Update(root.New(), NewCNode(root, 0), Delta{e.Key(), func(_ Entry) Entry { return e }})
+func Add(root Node, e Entry, mode Mode) Node {
+	return Update(mode.New(), NewCNode(root, 0), Step{
+		Key:    e.Key(),
+		Update: func(_ Entry) Entry { return e },
+	}, mode)
 }
 
-func Delete(root Node, k []byte) Node {
-	Update(root.New(), NewCNode(root, 0), Delta{k, func(_ Entry) Entry { return nil }})
+func Delete(root Node, k []byte, mode Mode) Node {
+	return Update(mode.New(), NewCNode(root, 0), Step{
+		Key:    k,
+		Update: func(_ Entry) Entry { return nil },
+	}, mode)
 }
 
+type SingleOrder struct{}
 
-func update(next Step, acc Node, n CNode) Node {
-	m := next.Node()
-	op, stop := nextF(next)
-	switch op := next.Op();op  {
-	case Wedge:
-		return Wedge(acc, n, update(next.Next(), acc.New(), m))
-	case Whirl, Whack_:
-		return update(next.Next(), op(acc, n, m), m)
-	default:
-		return nil
-	}
+var _ Mode = (*SingleOrder)(nil)
+
+func (_ SingleOrder) Pack(n Node) Node {
+	return n
 }
 
-func Update(b Node, n CNode, delta Delta) Node {
-	update(acc Node, n CNode, step Step, k []byte, delta Delta, po int, match bool) Node 
-	
+func (_ SingleOrder) Unpack(n Node) Node {
+	return n
 }
 
-func Next(s Step) Op {
-	switch {
-	case change.Start():
-		case change.None():
-			return nil
-		case m == nil :
-			change.Terminal():			
-			m = 
-		case change.Deleted():
-			acc = Whirl(acc, n, m)
-		default:
-		}
-	}
-
-
-	po, match = Compare(n.Node, k, n.At)				
-	m := n
-	var orig Entry
-	if !match {
-		m = n.Fork(po)
-		if !Empty(m) {
-			orig = m.Node.Entry()
-		}
-	}
-	change := 
-	return Update(acc, n, change, k, delta.Apply(orig))
+func (_ SingleOrder) Down(_ CNode) bool {
+	return false
 }
 
+func (_ SingleOrder) Up(_ CNode) bool {
+	return false
+}
 
+// constructs a new Node
+func (_ SingleOrder) New() Node {
+	return &MemNode{}
+}
 
 // Update
-// func Update(b Node, n CNode, delta Delta) Node {
-// 	if Empty(n.Node) {
-// 		return Pin(b, delta.Apply(nil).Val)
-// 	}
-// 	po, match := Compare(n.Node, delta.Key, n.At-1)
-// 	if match {
-// 		change := delta.Apply(n.Node.Entry())
-// 		switch {
-// 		case change.Deleted:
-// 			last := n.Node.LastFork(n.At)
-// 			if last.Node == nil { // is singleton
-// 				return b
-// 			}
-// 			return Update(Whack(b, n, last), last.Next(), last.Delete())
+func Update(acc Node, cn CNode, step Step, mode Mode) Node {
+	cm := step.CNode
+	if Empty(cn.Node) {
+		cn.Node = mode.New()
+	}
+	if step.Match() {
+		if step.Unchanged() {
+			return nil
+		}
+		if step.Deletion() {
+			return Whack(acc, cn, cm)
+		}
+		if Empty(cm.Node) {
+		}
+		return Pin(acc, step.After)
+	}
+	if Empty(cm.Node) {
+		if step.Deletion() {
+			return nil
+		}
+		return Whirl(acc, cn, cm)
+	}
 
-// 		case change.None:
-// 			return nil
-// 		default:
-// 			return Whack(b, n, CNode{po, Pin(b.New(), change.Entry)})
-// 		}
-// 	}
-// 	m := n.Node.Fork(po)
-// 	if Empty(m.Node) {
-// 		change := delta.Apply(nil)
-// 		if change.Deleted {
-// 			return nil
-// 		}
-// 		return Whirl(b, n, CNode{po, Pin(b.New(), change.Entry)})
-// 	}
-// 	return Update(Whirl(b, n, m), m.Next(), delta)
-// }
+	nextStep := step.Next(mode)
+	if step.Deletion() || !mode.Down(cm) {
+		return mode.Pack(Update(Whirl(acc, cn, cm), cm.Next(), nextStep, mode))
+	}
+	return Wedge(acc, cn, CNode{cm.At, mode.Pack(Update(mode.New(), cm, nextStep, mode))})
 
-
-// weave
-func weave(acc Node, n CNode, stop func(CNode) bool) Step {
-	AppendTill(acc, n, n.At, )
 }
-
-

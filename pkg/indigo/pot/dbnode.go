@@ -11,71 +11,42 @@ var _ Node = (*DBNode)(nil)
 var _ persister.TreeNode = (*DBNode)(nil)
 
 type DBNode struct {
+	ref []byte
+	*MemNode
+	entryf func() Entry
+}
+
+type PersistedPot struct {
+	Mode
 	ls     persister.LoadSaver
 	entryf func() Entry
-	ref    []byte
-	node   *MemNode
-}
-
-// func NewDBNode(ref []byte, ls persister.LoadSaver) *DBNode {
-// 	return &DBNode{ref: ref, ls: ls, node: &MemNode{}}
-// }
-
-// Close is noop for memory node
-func (n *DBNode) Close() error {
-	return n.ls.Close()
-}
-
-// Child node at PO po
-func (n *DBNode) Fork(po int) CNode {
-	return n.Node().Fork(po)
-}
-
-// Child node at PO po
-func (n *DBNode) LastFork(from int) CNode {
-	return n.Node().LastFork(from)
-}
-
-// append a CNode
-func (n *DBNode) Append(cn CNode) {
-	n.Node().Append(cn)
-}
-
-// iterate over children starting at PO po
-func (n *DBNode) Iter(po int, f func(CNode) (bool, error)) error {
-	return n.Node().Iter(po, f)
-}
-
-// pin an entry to the node
-func (n *DBNode) Pin(e Entry) {
-	n.Node().Pin(e)
 }
 
 // constructs a new Node
-func NewDBNode(ls persister.LoadSaver, entryf func() Entry) *DBNode {
-	return &DBNode{ls: ls, entryf: entryf}
+func NewPersistedPot(mode Mode, entryf func() Entry) *PersistedPot {
+	return &PersistedPot{Mode: mode, entryf: entryf}
 }
 
-// constructs a new Node
-func (n *DBNode) New() Node {
-	return NewDBNode(n.ls, n.entryf)
+func (pm *PersistedPot) NewFromReference(ref []byte) *DBNode {
+	return &DBNode{entryf: pm.entryf, ref: ref, MemNode: &MemNode{}}
 }
 
-// reconstructs the entry pinned to the Node
-func (n *DBNode) Entry() Entry {
-	return n.Node().Entry()
+func (pm *PersistedPot) Pack(n Node) Node {
+	_, _ = persister.Save(context.Background(), pm.ls, n.(persister.TreeNode))
+	return n
 }
 
-// reconstructs the entry pinned to the Node
-func (n *DBNode) Node() *MemNode {
-	if n.node == nil {
-		if len(n.ref) == 0 {
-			n.node = &MemNode{}
-			return n.node
-		}
-		persister.Load(context.Background(), n)
+func (pm *PersistedPot) Unpack(n Node) Node {
+	tn := n.(persister.TreeNode)
+	if len(tn.Reference()) > 0 {
+		_ = persister.Load(context.Background(), pm.ls, tn)
 	}
-	return n.node
+	return n
+}
+
+// constructs a new Node
+func (pm *PersistedPot) New() Node {
+	return &DBNode{entryf: pm.entryf}
 }
 
 func (n *DBNode) Reference() []byte {
@@ -86,8 +57,12 @@ func (n *DBNode) SetReference(ref []byte) {
 	n.ref = ref
 }
 
-func (n *DBNode) LoadSaver() persister.LoadSaver {
-	return n.ls
+// iterate over children
+func (n *DBNode) Children(f func(persister.TreeNode) error) error {
+	g := func(cn CNode) (bool, error) {
+		return false, f(cn.Node.(*DBNode))
+	}
+	return n.Iter(0, g)
 }
 
 func (n *DBNode) MarshalBinary() ([]byte, error) {
@@ -99,14 +74,9 @@ func (n *DBNode) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, l+4)
 	binary.BigEndian.PutUint32(buf, uint32(l))
 	copy(buf[4:], entry)
-	ctx := context.Background()
-	err = n.Node().Iter(0, func(cn CNode) (bool, error) {
+	err = n.Iter(0, func(cn CNode) (bool, error) {
 		buf = append(buf, uint8(cn.At))
-		ref, err := persister.Reference(ctx, cn.Node.(persister.TreeNode))
-		if err != nil {
-			return true, err
-		}
-		buf = append(buf, ref...)
+		buf = append(buf, cn.Node.(*DBNode).Reference()...)
 		return false, nil
 	})
 	if err != nil {
@@ -121,16 +91,11 @@ func (n *DBNode) UnmarshalBinary(buf []byte) error {
 	if err := e.UnmarshalBinary(buf[4 : 4+l]); err != nil {
 		return err
 	}
-	n.node.pin = e
+	n.Pin(e)
 	for i := 4 + l; i < uint32(len(buf)); i += 10 {
-		m := n.New()
-		m.(persister.TreeNode).SetReference(buf[i+1 : i+10])
+		m := &DBNode{ref: buf[i+1 : i+10], entryf: n.entryf}
 		cn := CNode{int(uint8(buf[i])), m}
-		n.node.Append(cn)
+		n.Append(cn)
 	}
 	return nil
-}
-
-func SetReference(n persister.TreeNode, ref []byte) {
-	n.SetReference(ref)
 }

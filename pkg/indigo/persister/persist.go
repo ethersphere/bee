@@ -21,27 +21,14 @@ type LoadSaver interface {
 type TreeNode interface {
 	Reference() []byte
 	SetReference([]byte)
-	LoadSaver() LoadSaver
+	Children(func(TreeNode) error) error
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }
 
-// Reference saves the node if it has no reference and saves the sets the resulting reference
-func Reference(ctx context.Context, n TreeNode) ([]byte, error) {
-	if ref := n.Reference(); len(ref) > 0 {
-		return ref, nil
-	}
-	ref, err := Save(ctx, n)
-	if err != nil {
-		return nil, err
-	}
-	n.SetReference(ref)
-	return ref, nil
-}
-
 // Load uses a Loader to unmarshal a tree node from a reference
-func Load(ctx context.Context, n TreeNode) error {
-	b, err := n.LoadSaver().Load(ctx, n.Reference())
+func Load(ctx context.Context, ls LoadSaver, n TreeNode) error {
+	b, err := ls.Load(ctx, n.Reference())
 	if err != nil {
 		return err
 	}
@@ -49,10 +36,25 @@ func Load(ctx context.Context, n TreeNode) error {
 }
 
 // Save persists a trie recursively  traversing the nodes
-func Save(ctx context.Context, n TreeNode) ([]byte, error) {
+func Save(ctx context.Context, ls LoadSaver, n TreeNode) ([]byte, error) {
+	if ref := n.Reference(); len(ref) > 0 {
+		return ref, nil
+	}
+	f := func(tn TreeNode) error {
+		_, err := Save(ctx, ls, tn)
+		return err
+	}
+	if err := n.Children(f); err != nil {
+		return nil, err
+	}
 	bytes, err := n.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	return n.LoadSaver().Save(ctx, bytes)
+	ref, err := ls.Save(ctx, bytes)
+	if err != nil {
+		return nil, err
+	}
+	n.SetReference(ref)
+	return ref, nil
 }
