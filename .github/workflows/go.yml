@@ -58,6 +58,12 @@ jobs:
     - name: Test
       if: matrix.os == 'windows-latest'
       run: make test
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: true
+        files: ./cover.out
     - name: Coveralls
       if: matrix.os == 'ubuntu-latest'
       uses: shogo82148/actions-goveralls@v1
