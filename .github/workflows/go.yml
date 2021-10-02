@@ -59,6 +59,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: make test
     - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v2
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
