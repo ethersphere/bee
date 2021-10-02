@@ -15,6 +15,7 @@ jobs:
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
       BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_METRICS_ENABLED: false
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
