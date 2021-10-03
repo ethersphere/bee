@@ -35,7 +35,7 @@ func PermissionCheckHandler(auth auth) func(h http.Handler) http.Handler {
 
 			allowed, err := auth.Enforce(apiKey, r.URL.Path, r.Method)
 			if err != nil {
-				jsonhttp.InternalServerError(w, "Validate security token")
+				jsonhttp.InternalServerError(w, "Permission denied")
 				return
 			}
 

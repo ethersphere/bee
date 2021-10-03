@@ -5,50 +5,42 @@
 package auth_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/auth"
 )
 
-const oneHour = 1 * time.Hour
-
 const (
-	username     = "test"
-	passwordHash = "$2a$12$mZIODMvjsiS2VdK1xgI1cOTizhGVNoVz2Xn48H8ddFFLzX2B3lD3m"
+	encryptionKey = "mZIODMvjsiS2VdK1xgI1cOTizhGVNoVz"
+	passwordHash  = "$2a$12$mZIODMvjsiS2VdK1xgI1cOTizhGVNoVz2Xn48H8ddFFLzX2B3lD3m"
 )
 
 func TestAuthorize(t *testing.T) {
-	a, err := auth.New(username, passwordHash, oneHour)
+	a, err := auth.New(encryptionKey, passwordHash)
 	if err != nil {
 		t.Error(err)
 	}
 
 	tt := []struct {
-		desc       string
-		user, pass string
-		expected   bool
+		desc     string
+		pass     string
+		expected bool
 	}{
 		{
 			desc:     "correct credentials",
-			user:     "test",
 			pass:     "test",
 			expected: true,
 		}, {
-			desc:     "wrong name",
-			user:     "bad",
-			pass:     "test",
-			expected: false,
-		}, {
 			desc:     "wrong password",
-			user:     "test",
-			pass:     "bad",
+			pass:     "notTest",
 			expected: false,
 		},
 	}
 	for _, tC := range tt {
 		t.Run(tC.desc, func(t *testing.T) {
-			res := a.Authorize(tC.user, tC.pass)
+			res := a.Authorize(tC.pass)
 			if res != tC.expected {
 				t.Error("unexpected result", res)
 			}
@@ -56,40 +48,22 @@ func TestAuthorize(t *testing.T) {
 	}
 }
 
-func TestEnforceWithNonExistentApiKey(t *testing.T) {
-	a, err := auth.New(username, passwordHash, oneHour)
-	if err != nil {
-		t.Error(err)
-	}
-
-	result, err := a.Enforce("non-existent", "/resource", "GET")
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
-
-	if result {
-		t.Errorf("expected %v, got %v", false, result)
-	}
-}
-
 func TestExpiry(t *testing.T) {
-	oneMili := 1 * time.Millisecond
-
-	a, err := auth.New(username, passwordHash, oneMili)
+	a, err := auth.New(encryptionKey, passwordHash)
 	if err != nil {
 		t.Error(err)
 	}
 
-	key, err := a.AddKey("role0")
+	key, err := a.GenerateKey("role0", 1)
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
 
-	time.Sleep(oneMili)
+	time.Sleep(2 * time.Second)
 
 	result, err := a.Enforce(key, "/bytes/1", "GET")
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
+	if !errors.Is(err, auth.ErrTokenExpired) {
+		t.Errorf("expected token expired error, got: %v", err)
 	}
 
 	if result {
@@ -98,7 +72,7 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestEnforce(t *testing.T) {
-	a, err := auth.New(username, passwordHash, oneHour)
+	a, err := auth.New(encryptionKey, passwordHash)
 	if err != nil {
 		t.Error(err)
 	}
@@ -137,7 +111,7 @@ func TestEnforce(t *testing.T) {
 
 	for _, tC := range tt {
 		t.Run(tC.desc, func(t *testing.T) {
-			apiKey, err := a.AddKey(tC.role)
+			apiKey, err := a.GenerateKey(tC.role, 1)
 
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
