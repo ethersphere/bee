@@ -5,17 +5,17 @@
 package mock
 
 type Auth struct {
-	AuthorizeFunc func(string, string) bool
+	AuthorizeFunc func(string) bool
 	AddKeyFunc    func(string) (string, error)
 }
 
-func (ma *Auth) Authorize(u, p string) bool {
+func (ma *Auth) Authorize(u string) bool {
 	if ma.AuthorizeFunc == nil {
 		return true
 	}
-	return ma.AuthorizeFunc(u, p)
+	return ma.AuthorizeFunc(u)
 }
-func (ma *Auth) AddKey(k string) (string, error) {
+func (ma *Auth) GenerateKey(k string) (string, error) {
 	if ma.AddKeyFunc == nil {
 		return "", nil
 	}

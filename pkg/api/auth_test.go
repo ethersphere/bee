@@ -22,8 +22,8 @@ func TestAuth(t *testing.T) {
 		resource      = "/auth"
 		logger        = logging.New(ioutil.Discard, 0)
 		authenticator = &mock.Auth{
-			AuthorizeFunc: func(s1, s2 string) bool { return true },
-			AddKeyFunc:    func(s string) (string, error) { return "123", nil },
+			AuthorizeFunc: func(string) bool { return true },
+			AddKeyFunc:    func(string) (string, error) { return "123", nil },
 		}
 		client, _, _ = newTestServer(t, testServerOptions{
 			Logger:        logger,
@@ -70,9 +70,7 @@ func TestAuth(t *testing.T) {
 	})
 	t.Run("unauthorized", func(t *testing.T) {
 		original := authenticator.AuthorizeFunc
-		authenticator.AuthorizeFunc = func(s1, s2 string) bool {
-			return false
-		}
+		authenticator.AuthorizeFunc = func(string) bool { return false }
 		defer func() {
 			authenticator.AuthorizeFunc = original
 		}()

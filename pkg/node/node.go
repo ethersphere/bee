@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -166,7 +165,7 @@ type Options struct {
 	StaticNodes                []swarm.Address
 	AllowPrivateCIDRs          bool
 	Restricted                 bool
-	AdminUsername              string
+	TokenEncryptionKey         string
 	AdminPasswordHash          string
 }
 
@@ -248,10 +247,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var authenticator *auth.Authenticator
 
-	expiry := time.Duration(math.MaxInt64) // TODO make configurable
-
 	if o.Restricted {
-		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")

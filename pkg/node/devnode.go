@@ -79,7 +79,7 @@ type DevOptions struct {
 	DBBlockCacheCapacity     uint64
 	DBDisableSeeksCompaction bool
 	Restricted               bool
-	AdminUsername            string
+	TokenEncryptionKey       string
 	AdminPasswordHash        string
 }
 
@@ -117,10 +117,8 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	var authenticator *auth.Authenticator
 
-	expiry := 1 * time.Hour
-
 	if o.Restricted {
-		if authenticator, err = auth.New(o.AdminUsername, o.AdminPasswordHash, expiry); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")

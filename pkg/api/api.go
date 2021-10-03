@@ -90,8 +90,8 @@ type Service interface {
 }
 
 type authenticator interface {
-	Authorize(string, string) bool
-	AddKey(string) (string, error)
+	Authorize(string) bool
+	GenerateKey(string) (string, error)
 	Enforce(string, string, string) (bool, error)
 }
 
@@ -258,11 +258,12 @@ type authKeyResponse struct {
 }
 
 type roleRequest struct {
-	Role string `json:"role"`
+	Role   string `json:"role"`
+	Expiry int    `json:"expiry"`
 }
 
 func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
-	user, pass, ok := r.BasicAuth()
+	_, pass, ok := r.BasicAuth()
 
 	if !ok {
 		s.logger.Error("api: auth handler: missing basic auth")
@@ -271,7 +272,7 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.auth.Authorize(user, pass) {
+	if !s.auth.Authorize(pass) {
 		s.logger.Error("api: auth handler: unauthorized")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		jsonhttp.Unauthorized(w, "Unauthorized")
@@ -294,7 +295,7 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := s.auth.AddKey(role.Role)
+	key, err := s.auth.GenerateKey(role.Role)
 	if err != nil {
 		s.logger.Debugf("api: auth handler: add auth key: %v", err)
 		s.logger.Error("api: auth handler: add auth key")
