@@ -38,7 +38,7 @@ import (
 
 type authenticator interface {
 	Authorize(string) bool
-	GenerateKey(string) (string, error)
+	GenerateKey(string, int) (string, error)
 	Enforce(string, string, string) (bool, error)
 }
 
