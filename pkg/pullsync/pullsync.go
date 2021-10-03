@@ -35,6 +35,8 @@ const (
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
+
+	logMore = false
 )
 
 var (
@@ -71,7 +73,7 @@ type Syncer struct {
 	validStamp postage.ValidStampFn
 
 	ruidMtx sync.Mutex
-	ruidCtx map[uint32]func()
+	ruidCtx map[string]map[uint32]func()
 
 	Interface
 	io.Closer
@@ -85,7 +87,7 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		unwrap:     unwrap,
 		validStamp: validStamp,
 		logger:     logger,
-		ruidCtx:    make(map[uint32]func()),
+		ruidCtx:    make(map[string]map[uint32]func()),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
 	}
@@ -117,6 +119,7 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+	var ru pb.Ruid
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return 0, 0, fmt.Errorf("new stream: %w", err)
@@ -124,12 +127,14 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			if logMore {
+				s.logger.Debugf("pullsync: error syncing peer %s ruid %d bin %d from %d to %d: %v", peer.String(), ru.Ruid, bin, from, to, err)
+			}
 		} else {
 			go stream.FullClose()
 		}
 	}()
 
-	var ru pb.Ruid
 	b := make([]byte, 4)
 	_, err = rand.Read(b)
 	if err != nil {
@@ -137,6 +142,9 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	ru.Ruid = binary.BigEndian.Uint32(b)
+	if logMore {
+		s.logger.Debugf("pullsync: syncing peer %s ruid %d bin %d from %d to %d, ruid %d", peer.String(), ru.Ruid, bin, from, to, ru.Ruid)
+	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -229,7 +237,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			s.logger.Debugf("unverified chunk: %v", err)
+			s.logger.Debugf("pullsync: unverified stamp: %v", err)
 			continue
 		}
 
@@ -274,10 +282,20 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 	if err := r.ReadMsgWithContext(ctx, &ru); err != nil {
 		return fmt.Errorf("send ruid: %w", err)
 	}
-
+	if logMore {
+		s.logger.Debugf("pullsync: peer %s pulling with ruid %d", p.Address.String(), ru.Ruid)
+	}
 	ctx, cancel := context.WithCancel(ctx)
+
 	s.ruidMtx.Lock()
-	s.ruidCtx[ru.Ruid] = cancel
+	if _, ok := s.ruidCtx[p.Address.ByteString()]; !ok {
+		s.ruidCtx[p.Address.ByteString()] = make(map[uint32]func())
+	}
+	if c, ok := s.ruidCtx[p.Address.ByteString()][ru.Ruid]; ok {
+		s.metrics.DuplicateRuidCounter.Inc()
+		c()
+	}
+	s.ruidCtx[p.Address.ByteString()][ru.Ruid] = cancel
 	s.ruidMtx.Unlock()
 	cc := make(chan struct{})
 	defer close(cc)
@@ -289,7 +307,10 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		}
 		cancel()
 		s.ruidMtx.Lock()
-		delete(s.ruidCtx, ru.Ruid)
+		delete(s.ruidCtx[p.Address.ByteString()], ru.Ruid)
+		if len(s.ruidCtx[p.Address.ByteString()]) == 0 {
+			delete(s.ruidCtx, p.Address.ByteString())
+		}
 		s.ruidMtx.Unlock()
 	}()
 
@@ -393,9 +414,15 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
+	if logMore {
+		s.logger.Debugf("pullsync: getting cursors from peer %s", peer.String())
+	}
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			if logMore {
+				s.logger.Debugf("pullsync: error getting cursors from peer %s: %v", peer.String(), err)
+			}
 		} else {
 			go stream.FullClose()
 		}
@@ -419,9 +446,15 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 
 func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	w, r := protobuf.NewWriterAndReader(stream)
+	if logMore {
+		s.logger.Debugf("pullsync: peer %s wants cursors", p.Address.String())
+	}
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			if logMore {
+				s.logger.Debugf("pullsync: error getting cursors for peer %s: %v", p.Address.String(), err)
+			}
 		} else {
 			_ = stream.FullClose()
 		}
@@ -451,11 +484,16 @@ func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
-
+	if logMore {
+		s.logger.Debugf("pullsync: sending ruid %d cancellation to %s", ruid, peer.String())
+	}
 	w := protobuf.NewWriter(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			if logMore {
+				s.logger.Debugf("pullsync: error sending ruid %d cancellation to %s: %v", ruid, peer.String(), err)
+			}
 		} else {
 			go stream.FullClose()
 		}
@@ -475,26 +513,36 @@ func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32
 // handler handles an incoming request to explicitly cancel a ruid
 func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	r := protobuf.NewReader(stream)
+	var c pb.Cancel
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
+			if logMore {
+				s.logger.Debugf("pullsync: peer %d failed cancelling %d: %v", p.Address.String(), c.Ruid, err)
+			}
 		} else {
 			_ = stream.FullClose()
 		}
 	}()
 
-	var c pb.Cancel
 	if err := r.ReadMsgWithContext(ctx, &c); err != nil {
 		return fmt.Errorf("read cancel: %w", err)
+	}
+
+	if logMore {
+		s.logger.Debugf("pullsync: peer %d cancelling %d", p.Address.String(), c.Ruid)
 	}
 
 	s.ruidMtx.Lock()
 	defer s.ruidMtx.Unlock()
 
-	if cancel, ok := s.ruidCtx[c.Ruid]; ok {
+	if cancel, ok := s.ruidCtx[p.Address.ByteString()][c.Ruid]; ok {
 		cancel()
+		delete(s.ruidCtx[p.Address.ByteString()], c.Ruid)
+		if len(s.ruidCtx[p.Address.ByteString()]) == 0 {
+			delete(s.ruidCtx, p.Address.ByteString())
+		}
 	}
-	delete(s.ruidCtx, c.Ruid)
 	return nil
 }
 
@@ -509,8 +557,10 @@ func (s *Syncer) Close() error {
 
 	// cancel all contexts
 	s.ruidMtx.Lock()
-	for _, c := range s.ruidCtx {
-		c()
+	for _, peer := range s.ruidCtx {
+		for _, c := range peer {
+			c()
+		}
 	}
 	s.ruidMtx.Unlock()
 

@@ -10,10 +10,11 @@ import (
 )
 
 type metrics struct {
-	OfferCounter    prometheus.Counter // number of chunks offered
-	WantCounter     prometheus.Counter // number of chunks wanted
-	DeliveryCounter prometheus.Counter // number of chunk deliveries
-	DbOpsCounter    prometheus.Counter // number of db ops
+	OfferCounter         prometheus.Counter // number of chunks offered
+	WantCounter          prometheus.Counter // number of chunks wanted
+	DeliveryCounter      prometheus.Counter // number of chunk deliveries
+	DbOpsCounter         prometheus.Counter // number of db ops
+	DuplicateRuidCounter prometheus.Counter //number of duplicate RUID requests we got
 }
 
 func newMetrics() metrics {
@@ -43,7 +44,14 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "db_ops",
 			Help:      "Total Db Ops.",
-		})}
+		}),
+		DuplicateRuidCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "duplicate_ruids",
+			Help:      "Total duplicate RUIDs.",
+		}),
+	}
 }
 
 func (s *Syncer) Metrics() []prometheus.Collector {
