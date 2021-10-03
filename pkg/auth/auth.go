@@ -73,11 +73,9 @@ func (a *Authenticator) Authorize(password string) bool {
 }
 
 func (a *Authenticator) GenerateKey(role string, expires int) (string, error) {
-	now := time.Now()
-
 	ar := authRecord{
 		Role:   role,
-		Expiry: now.Add(time.Second * time.Duration(expires)),
+		Expiry: time.Now().Add(time.Second * time.Duration(expires)),
 	}
 
 	data, err := json.Marshal(ar)
@@ -85,7 +83,10 @@ func (a *Authenticator) GenerateKey(role string, expires int) (string, error) {
 		return "", err
 	}
 
-	encryptedBytes := a.ciph.encrypt(data)
+	encryptedBytes, err := a.ciph.encrypt(data)
+	if err != nil {
+		return "", err
+	}
 
 	apiKey := base64.StdEncoding.EncodeToString(encryptedBytes)
 
@@ -100,7 +101,10 @@ func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
 		return false, err
 	}
 
-	decryptedBytes := a.ciph.decrypt(decoded)
+	decryptedBytes, err := a.ciph.decrypt(decoded)
+	if err != nil {
+		return false, err
+	}
 
 	var ar authRecord
 	if err := json.Unmarshal(decryptedBytes, &ar); err != nil {
@@ -198,21 +202,21 @@ func newEncrypter(key []byte) *encrypter {
 	}
 }
 
-func (e encrypter) encrypt(data []byte) []byte {
+func (e encrypter) encrypt(data []byte) ([]byte, error) {
 	nonce := make([]byte, e.gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		panic(err)
+		return nil, err
 	}
 	ciphertext := e.gcm.Seal(nonce, nonce, data, nil)
-	return ciphertext
+	return ciphertext, nil
 }
 
-func (e encrypter) decrypt(data []byte) []byte {
+func (e encrypter) decrypt(data []byte) ([]byte, error) {
 	nonceSize := e.gcm.NonceSize()
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := e.gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
-	return plaintext
+	return plaintext, nil
 }
