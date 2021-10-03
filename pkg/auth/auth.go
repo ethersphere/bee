@@ -5,8 +5,15 @@
 package auth
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
 	"time"
 
 	"github.com/casbin/casbin/v2"
@@ -15,21 +22,17 @@ import (
 )
 
 type authRecord struct {
-	role   string
-	expiry time.Time
+	Role   string    `json:"role"`
+	Expiry time.Time `json:"expiry"`
 }
 
-type apiKeys map[string]authRecord
-
 type Authenticator struct {
-	username     string
 	passwordHash []byte
-	keys         apiKeys
-	expires      time.Duration
+	ciph         *encrypter
 	enforcer     *casbin.Enforcer
 }
 
-func New(username, passwordHash string, expires time.Duration) (*Authenticator, error) {
+func New(encryptionKey, passwordHash string) (*Authenticator, error) {
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
@@ -57,57 +60,58 @@ func New(username, passwordHash string, expires time.Duration) (*Authenticator, 
 	}
 
 	auth := Authenticator{
-		username:     username,
-		passwordHash: []byte(passwordHash),
-		keys:         make(apiKeys),
-		expires:      expires,
 		enforcer:     e,
+		passwordHash: []byte(passwordHash),
+		ciph:         newEncrypter([]byte(encryptionKey)),
 	}
 
 	return &auth, nil
 }
 
-func (a *Authenticator) Authorize(username, password string) bool {
-	if a.username != username {
-		return false
-	}
+func (a *Authenticator) Authorize(password string) bool {
 	return nil == bcrypt.CompareHashAndPassword(a.passwordHash, []byte(password))
 }
 
-func (a *Authenticator) AddKey(role string) (string, error) {
+func (a *Authenticator) GenerateKey(role string, expires int) (string, error) {
 	now := time.Now()
 
 	ar := authRecord{
-		role:   role,
-		expiry: now.Add(a.expires),
+		Role:   role,
+		Expiry: now.Add(time.Second * time.Duration(expires)),
 	}
 
-	b := make([]byte, 16)
-
-	_, err := rand.Read(b)
+	data, err := json.Marshal(ar)
 	if err != nil {
 		return "", err
 	}
 
-	apiKey := base64.URLEncoding.EncodeToString(b)
+	encryptedBytes := a.ciph.encrypt(data)
 
-	a.keys[apiKey] = ar
+	apiKey := base64.StdEncoding.EncodeToString(encryptedBytes)
 
 	return apiKey, nil
 }
 
+var ErrTokenExpired = errors.New("token expired")
+
 func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
-	authRecord, found := a.keys[apiKey]
-	if !found {
-		return false, nil
+	decoded, err := base64.StdEncoding.DecodeString(apiKey)
+	if err != nil {
+		return false, err
 	}
 
-	if time.Now().After(authRecord.expiry) {
-		delete(a.keys, apiKey)
-		return false, nil
+	decryptedBytes := a.ciph.decrypt(decoded)
+
+	var ar authRecord
+	if err := json.Unmarshal(decryptedBytes, &ar); err != nil {
+		return false, err
 	}
 
-	allow, err := a.enforcer.Enforce(authRecord.role, obj, act)
+	if time.Now().After(ar.Expiry) {
+		return false, ErrTokenExpired
+	}
+
+	allow, err := a.enforcer.Enforce(ar.Role, obj, act)
 	if err != nil {
 		return false, err
 	}
@@ -170,4 +174,45 @@ func applyPolicies(e *casbin.Enforcer) error {
 	})
 
 	return err
+}
+
+type encrypter struct {
+	gcm cipher.AEAD
+}
+
+func newEncrypter(key []byte) *encrypter {
+	hasher := md5.New()
+	hasher.Write(key)
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	block, err := aes.NewCipher([]byte(hash))
+	if err != nil {
+		panic(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err)
+	}
+
+	return &encrypter{
+		gcm: gcm,
+	}
+}
+
+func (e encrypter) encrypt(data []byte) []byte {
+	nonce := make([]byte, e.gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		panic(err)
+	}
+	ciphertext := e.gcm.Seal(nonce, nonce, data, nil)
+	return ciphertext
+}
+
+func (e encrypter) decrypt(data []byte) []byte {
+	nonceSize := e.gcm.NonceSize()
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := e.gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		panic(err.Error())
+	}
+	return plaintext
 }
