@@ -91,7 +91,7 @@ type Service interface {
 
 type authenticator interface {
 	Authorize(string) bool
-	GenerateKey(string) (string, error)
+	GenerateKey(string, int) (string, error)
 	Enforce(string, string, string) (bool, error)
 }
 
@@ -253,11 +253,11 @@ func requestPostageBatchId(r *http.Request) ([]byte, error) {
 	return nil, errInvalidPostageBatch
 }
 
-type authKeyResponse struct {
+type securityTokenRsp struct {
 	Key string `json:"key"`
 }
 
-type roleRequest struct {
+type securityTokenReq struct {
 	Role   string `json:"role"`
 	Expiry int    `json:"expiry"`
 }
@@ -287,15 +287,15 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var role roleRequest
-	if err = json.Unmarshal(body, &role); err != nil {
+	var payload securityTokenReq
+	if err = json.Unmarshal(body, &payload); err != nil {
 		s.logger.Debugf("api: auth handler: unmarshal request body: %v", err)
 		s.logger.Error("api: auth handler: unmarshal request body")
 		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
 	}
 
-	key, err := s.auth.GenerateKey(role.Role)
+	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
 	if err != nil {
 		s.logger.Debugf("api: auth handler: add auth key: %v", err)
 		s.logger.Error("api: auth handler: add auth key")
@@ -303,7 +303,7 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.Created(w, authKeyResponse{
+	jsonhttp.Created(w, securityTokenRsp{
 		Key: key,
 	})
 }

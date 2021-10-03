@@ -15,7 +15,7 @@ func (ma *Auth) Authorize(u string) bool {
 	}
 	return ma.AuthorizeFunc(u)
 }
-func (ma *Auth) GenerateKey(k string) (string, error) {
+func (ma *Auth) GenerateKey(k string, _ int) (string, error) {
 	if ma.AddKeyFunc == nil {
 		return "", nil
 	}
