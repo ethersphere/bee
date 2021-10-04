@@ -52,7 +52,6 @@ jobs:
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
-          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -76,32 +75,6 @@ jobs:
         run: |
           beekeeper delete bee-cluster --cluster-name local-clef
           make beelocal ACTION=uninstall
-      - name: Retag Docker image and push for cache
-        if: success()
-        run: |
-          docker tag k3d-registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee
-          docker push ghcr.io/ethersphere/bee
-      - name: Retag Docker image and push
-        if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        run: |
-          docker tag k3d-registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
-          docker tag k3d-registry.localhost:5000/ethersphere/bee:latest quay.io/ethersphere/bee:latest
-          printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
-          docker push ethersphere/bee:latest
-          docker push quay.io/ethersphere/bee:latest
-          echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
-      - name: Set IMAGE_DIGEST variable
-        if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
-      - name: Trigger ArgoCD
-        if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        uses: peter-evans/repository-dispatch@v1
-        with:
-          token: ${{ secrets.REPO_GHA_PAT }}
-          repository: ethersphere/bee-argo
-          event-type: trigger-argo
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
       - name: Debug workflow if failed
         if: failure()
         run: |
