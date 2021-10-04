@@ -82,7 +82,7 @@ func (r Reachability) String() string {
 }
 
 type ReachabilityTracker interface {
-	UpdateReachability(Reachability)
+	UpdateReachability(string)
 }
 
 type Notifier interface {
