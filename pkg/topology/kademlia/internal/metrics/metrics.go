@@ -15,8 +15,11 @@ import (
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/syndtr/goleveldb/leveldb"
 )
+
+const ewmaSmoothing = 0.1
 
 // PeerConnectionDirection represents peer connection direction.
 type PeerConnectionDirection string
@@ -29,13 +32,11 @@ const (
 // PeerReachabilityStatus represents the peer reachability status.
 type PeerReachabilityStatus string
 
-const (
-	PeerReachabilityStatusUnknown PeerReachabilityStatus = "unknown"
-	PeerReachabilityStatusPrivate PeerReachabilityStatus = "private"
-	PeerReachabilityStatusPublic  PeerReachabilityStatus = "public"
+var (
+	PeerReachabilityStatusUnknown = PeerReachabilityStatus(network.ReachabilityUnknown.String())
+	PeerReachabilityStatusPrivate = PeerReachabilityStatus(network.ReachabilityPrivate.String())
+	PeerReachabilityStatusPublic  = PeerReachabilityStatus(network.ReachabilityPrivate.String())
 )
-
-const ewmaSmoothing = 0.1
 
 // RecordOp is a definition of a peer metrics Record
 // operation whose execution modifies a specific metrics.

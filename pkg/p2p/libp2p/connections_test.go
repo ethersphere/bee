@@ -1007,7 +1007,7 @@ func (n *notifiee) Disconnected(p p2p.Peer) {
 	n.disconnected(p)
 }
 
-func (n *notifiee) Pick(p p2p.Peer) bool {
+func (n *notifiee) Pick(p2p.Peer) bool {
 	return n.pick
 }
 
