@@ -8,7 +8,6 @@ package p2p
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"time"
 
@@ -19,41 +18,12 @@ import (
 )
 
 // ReachabilityStatus represents the node reachability status.
-type ReachabilityStatus int
-
-// String implements the fmt.Stringer interface.
-func (rs ReachabilityStatus) String() string {
-	str := [...]string{reachabilityUnknown, reachabilityPublic, reachabilityPrivate}
-	if rs < 0 || int(rs) >= len(str) {
-		return "(unrecognized)"
-	}
-	return str[rs]
-}
-
-// ParseReachabilityStatus tries to parse reachability status from the given string.
-func ParseReachabilityStatus(s string) (ReachabilityStatus, error) {
-	switch s {
-	case reachabilityUnknown:
-		return ReachabilityStatusUnknown, nil
-	case reachabilityPublic:
-		return ReachabilityStatusPublic, nil
-	case reachabilityPrivate:
-		return ReachabilityStatusPrivate, nil
-	}
-	return -1, fmt.Errorf("unrecognized reachability status: %q", s)
-}
+type ReachabilityStatus network.Reachability
 
 const (
 	ReachabilityStatusUnknown = ReachabilityStatus(network.ReachabilityUnknown)
 	ReachabilityStatusPublic  = ReachabilityStatus(network.ReachabilityPublic)
 	ReachabilityStatusPrivate = ReachabilityStatus(network.ReachabilityPrivate)
-)
-
-var (
-	// String representations of the ReachabilityStatus.
-	reachabilityUnknown = network.ReachabilityUnknown.String()
-	reachabilityPublic  = network.ReachabilityPublic.String()
-	reachabilityPrivate = network.ReachabilityPrivate.String()
 )
 
 // Service provides methods to handle p2p Peers and Protocols.
