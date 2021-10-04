@@ -311,11 +311,7 @@ func (s *Service) startReachabilityTracker() error {
 				return
 			case e := <-sub.Out():
 				if r, ok := e.(event.EvtLocalReachabilityChanged); ok {
-					rs, err := p2p.ParseReachabilityStatus(r.Reachability.String())
-					if err != nil {
-						s.logger.Errorf("reachability tracker: unable parse reachability: %v", err)
-					}
-					s.notifier.UpdateReachability(rs)
+					s.notifier.UpdateReachability(p2p.ReachabilityStatus(r.Reachability))
 				}
 			}
 		}
