@@ -31,6 +31,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
@@ -281,6 +282,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
+	if err := s.startReachabilityTracker(); err != nil {
+		return nil, err
+	}
+
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -290,6 +295,27 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry)       // update peer registry on network events
 	h.Network().Notify(s.handshakeService) // update handshake service on network events
 	return s, nil
+}
+
+func (s *Service) startReachabilityTracker() error {
+	sub, err := s.host.EventBus().Subscribe([]interface{}{new(event.EvtLocalReachabilityChanged)})
+	if err != nil {
+		return fmt.Errorf("failed subscribing to reachability event %w", err)
+	}
+
+	go func() {
+		defer sub.Close()
+		for {
+			select {
+			case <-s.ctx.Done():
+			case e := <-sub.Out():
+				if r, ok := e.(event.EvtLocalReachabilityChanged); ok {
+					s.notifier.UpdateReachability(p2p.Reachability(r.Reachability))
+				}
+			}
+		}
+	}()
+	return nil
 }
 
 func (s *Service) handleIncoming(stream network.Stream) {

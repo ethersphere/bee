@@ -1215,6 +1215,9 @@ func (k *Kad) SetPeerReachability(addr swarm.Address, isReachable bool) {
 	k.collector.Record(addr, im.PeerReachability(isReachable))
 }
 
+// Update our own reachability status
+func (k *Kad) UpdateReachability(status p2p.Reachability) {}
+
 // SubscribePeersChange returns the channel that signals when the connected peers
 // set changes. Returned function is safe to be called multiple times.
 func (k *Kad) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {

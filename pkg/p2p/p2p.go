@@ -49,6 +49,7 @@ type Halter interface {
 type PickyNotifier interface {
 	Picker
 	Notifier
+	ReachabilityTracker
 }
 
 type Picker interface {
@@ -62,6 +63,26 @@ type ReachableNotifier interface {
 type Reacher interface {
 	Connected(swarm.Address, ma.Multiaddr)
 	Disconnected(swarm.Address)
+}
+
+type Reachability int
+
+const (
+	Unknown Reachability = iota
+	Private
+	Public
+)
+
+func (r Reachability) String() string {
+	str := [...]string{"Unknown", "Public", "Private"}
+	if r < 0 || int(r) >= len(str) {
+		return "(unrecognized)"
+	}
+	return str[r]
+}
+
+type ReachabilityTracker interface {
+	UpdateReachability(Reachability)
 }
 
 type Notifier interface {
