@@ -8,7 +8,7 @@ on:
       - '**'
 
 jobs:
-  beekeeper:
+  beekeeper_si:
     name: Integration tests (storage incentives)
     env:
       REPLICA: 3
