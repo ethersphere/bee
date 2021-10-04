@@ -1192,12 +1192,27 @@ func (k *Kad) EachNeighborRev(f topology.EachPeerFunc) error {
 
 // EachPeer iterates from closest bin to farthest.
 func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
-	return k.connectedPeers.EachBin(f)
+	return k.connectedPeers.EachBin(k.onlyReachable(f))
 }
 
 // EachPeerRev iterates from farthest bin to closest.
 func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
-	return k.connectedPeers.EachBinRev(f)
+	return k.connectedPeers.EachBinRev(k.onlyReachable(f))
+}
+
+// onlyReachable wraps the iterator func to filer-out unreachable peers.
+func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
+	return func(addr swarm.Address, po uint8) (bool, bool, error) {
+		if !k.collector.Inspect(addr).IsReachable {
+			return false, false, nil
+		}
+		return f(addr, po)
+	}
+}
+
+// SetPeerReachability sets the peer reachability status.
+func (k *Kad) SetPeerReachability(addr swarm.Address, isReachable bool) {
+	k.collector.Record(addr, im.PeerReachability(isReachable))
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
@@ -1500,5 +1515,6 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
+		IsReachable:                ss.IsReachable,
 	}
 }

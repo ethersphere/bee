@@ -80,6 +80,7 @@ type MetricSnapshotView struct {
 	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
 	LatencyEWMA                int64   `json:"latencyEWMA"`
+	IsReachable                bool    `json:"isReachable"`
 }
 
 type BinInfo struct {
