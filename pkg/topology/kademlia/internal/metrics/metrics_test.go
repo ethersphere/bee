@@ -116,18 +116,27 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %q; want %q", addr, have, want)
 	}
 
-	// Latency
+	// Latency.
 	mc.Record(addr, metrics.PeerLatency(t4))
 	ss = snapshot(t, mc, t2, addr)
 	if have, want := ss.LatencyEWMA, t4; have != want {
 		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %d; want %d", addr, have, want)
 	}
-	// check ewma calculation
 	mc.Record(addr, metrics.PeerLatency(t5))
 	ss = snapshot(t, mc, t2, addr)
-	wantEWMA := 19 * time.Millisecond
-	if have, want := ss.LatencyEWMA, wantEWMA; have != want {
+	if have, want := ss.LatencyEWMA, 19*time.Millisecond; have != want {
 		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %d; want %d", addr, have, want)
+	}
+
+	// Reachability.
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.IsReachable, false; have != want {
+		t.Fatalf("Snapshot(%q, ...): is reachable status mismatch: have %t; want %t", addr, have, want)
+	}
+	mc.Record(addr, metrics.PeerReachability(true))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.IsReachable, true; have != want {
+		t.Fatalf("Snapshot(%q, ...): is reachable status mismatch: have %t; want %t", addr, have, want)
 	}
 
 	// Inspect.
