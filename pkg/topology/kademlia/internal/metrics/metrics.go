@@ -109,6 +109,16 @@ func PeerLatency(t time.Duration) RecordOp {
 	}
 }
 
+// PeerReachability records the last peer reachability status.
+func PeerReachability(isReachable bool) RecordOp {
+	return func(cs *Counters) {
+		cs.Lock()
+		defer cs.Unlock()
+
+		cs.isReachable = isReachable
+	}
+}
+
 // Snapshot represents a snapshot of peers' metrics counters.
 type Snapshot struct {
 	LastSeenTimestamp          int64
@@ -117,6 +127,7 @@ type Snapshot struct {
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
+	IsReachable                bool
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
@@ -148,8 +159,8 @@ type Counters struct {
 	sessionConnRetry     uint64
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
-
-	latencyEWMA time.Duration
+	latencyEWMA          time.Duration
+	isReachable          bool
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -197,6 +208,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDuration:  sessionConnDuration,
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
+		IsReachable:                cs.isReachable,
 	}
 }
 
