@@ -2,7 +2,7 @@
 
 [![Go](https://github.com/ethersphere/bee/workflows/Go/badge.svg)](https://github.com/ethersphere/bee/actions)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ethersphere/bee.svg)](https://pkg.go.dev/github.com/ethersphere/bee)
-[![Coverage Status](https://coveralls.io/repos/github/ethersphere/bee/badge.svg)](https://coveralls.io/github/ethersphere/bee)
+[![codecov](https://codecov.io/gh/ethersphere/bee/branch/master/graph/badge.svg?token=63RNRLO3RU)](https://codecov.io/gh/ethersphere/bee)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ethersphere/bee)](https://goreportcard.com/report/github.com/ethersphere/bee)
 [![API OpenAPI Specs](https://img.shields.io/badge/openapi-api-blue)](https://docs.ethswarm.org/api/)
 [![Debug API OpenAPI Specs](https://img.shields.io/badge/openapi-debugapi-lightblue)](https://docs.ethswarm.org/debug-api/)
