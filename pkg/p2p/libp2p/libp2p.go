@@ -80,6 +80,7 @@ type Service struct {
 	lightNodes        lightnodes
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
+	reacher           p2p.Reacher
 }
 
 type lightnodes interface {
@@ -419,6 +420,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	if s.reacher != nil {
+		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+	}
+
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 
 	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
@@ -428,6 +433,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
 	s.notifier = n
+}
+
+func (s *Service) SetReacher(r p2p.Reacher) {
+	s.reacher = r
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -677,6 +686,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
+	s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+
 	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
 	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
@@ -711,6 +722,9 @@ func (s *Service) Disconnect(overlay swarm.Address, reason string) error {
 	}
 	if s.lightNodes != nil {
 		s.lightNodes.Disconnected(peer)
+	}
+	if s.reacher != nil {
+		s.reacher.Disconnected(overlay)
 	}
 
 	if !found {
@@ -748,6 +762,9 @@ func (s *Service) disconnected(address swarm.Address) {
 	}
 	if s.lightNodes != nil {
 		s.lightNodes.Disconnected(peer)
+	}
+	if s.reacher != nil {
+		s.reacher.Disconnected(address)
 	}
 }
 

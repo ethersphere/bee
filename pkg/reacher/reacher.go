@@ -1,0 +1,165 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Reacher package runs a background worker that will ping peers
+// from an internal queue and report back the reachability to some notifier
+package reacher
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
+	ma "github.com/multiformats/go-multiaddr"
+)
+
+const (
+	pingTimeoutMin  = time.Second * 2
+	pingTimeoutMax  = time.Second * 5
+	pingMaxAttempts = 3
+	workers         = 8
+)
+
+type peer struct {
+	overlay swarm.Address
+	addr    ma.Multiaddr
+}
+
+type reacher struct {
+	mu    sync.Mutex
+	queue []peer
+
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	work      chan struct{}
+
+	pinger   p2p.Pinger
+	notifier p2p.ReachableNotifier
+
+	wg sync.WaitGroup
+
+	metrics metrics
+}
+
+func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r := &reacher{
+		work:      make(chan struct{}, 1),
+		pinger:    streamer,
+		notifier:  notifier,
+		wg:        sync.WaitGroup{},
+		ctx:       ctx,
+		ctxCancel: cancel,
+		metrics:   newMetrics(),
+	}
+
+	r.wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go r.worker()
+	}
+
+	return r
+}
+
+func (r *reacher) worker() {
+
+	defer r.wg.Done()
+
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-r.work:
+			r.ping()
+		}
+	}
+}
+
+func (r *reacher) ping() {
+
+	for {
+
+		r.mu.Lock()
+		if len(r.queue) == 0 {
+			r.mu.Unlock()
+			return
+		}
+		p := r.queue[0]
+		r.queue = r.queue[1:]
+		r.mu.Unlock()
+
+		timeout := pingTimeoutMin
+		attempts := 0
+
+		for {
+
+			select {
+			case <-r.ctx.Done():
+				return
+			default:
+			}
+
+			attempts++
+
+			now := time.Now()
+
+			ctxt, cancel := context.WithTimeout(r.ctx, timeout)
+			_, err := r.pinger.Ping(ctxt, p.addr)
+			cancel()
+
+			if err == nil {
+				r.metrics.Pings.WithLabelValues("success").Inc()
+				r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
+				r.notifier.Reachable(p.overlay, true)
+				break
+			}
+
+			r.metrics.Pings.WithLabelValues("failure").Inc()
+			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
+
+			if attempts == pingMaxAttempts {
+				r.notifier.Reachable(p.overlay, false)
+				break
+			}
+
+			timeout *= 2
+			if timeout > pingTimeoutMax {
+				timeout = pingTimeoutMax
+			}
+		}
+	}
+}
+
+func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+	r.mu.Lock()
+	r.queue = append(r.queue, peer{overlay: overlay, addr: addr})
+	r.mu.Unlock()
+
+	select {
+	case r.work <- struct{}{}:
+	default:
+	}
+}
+
+func (r *reacher) Disconnected(overlay swarm.Address) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for i, p := range r.queue {
+		if p.overlay.Equal(overlay) {
+			r.queue = append(r.queue[:i], r.queue[i+1:]...)
+			return
+		}
+	}
+}
+
+func (r *reacher) Close() error {
+	r.ctxCancel()
+	r.wg.Wait()
+	return nil
+}
