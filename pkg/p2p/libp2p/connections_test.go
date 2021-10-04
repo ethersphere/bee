@@ -887,7 +887,10 @@ func TestReachabilityUpdate(t *testing.T) {
 		}
 	}))
 
-	emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+	err := emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+	if err != nil {
+		t.Fatal(err)
+	}
 	<-firstUpdate
 
 	secondUpdate := make(chan struct{})
@@ -897,7 +900,10 @@ func TestReachabilityUpdate(t *testing.T) {
 		}
 	}))
 
-	emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	err = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	if err != nil {
+		t.Fatal(err)
+	}
 	<-secondUpdate
 }
 
@@ -1060,8 +1066,9 @@ func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool
 	return n.announceTo(ctx, a, b, full)
 }
 
-func (n *notifiee) UpdateReachability(r string) {
+func (n *notifiee) UpdateReachability(r string) error {
 	n.updateReachability(r)
+	return nil
 }
 
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {

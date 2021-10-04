@@ -310,7 +310,10 @@ func (s *Service) startReachabilityTracker() error {
 				return
 			case e := <-sub.Out():
 				if r, ok := e.(event.EvtLocalReachabilityChanged); ok {
-					s.notifier.UpdateReachability(r.Reachability.String())
+					err := s.notifier.UpdateReachability(r.Reachability.String())
+					if err != nil {
+						s.logger.Errorf("reachability tracker: unable to update reachability: %v", err)
+					}
 				}
 			}
 		}

@@ -57,7 +57,7 @@ type Picker interface {
 }
 
 type ReachabilityTracker interface {
-	UpdateReachability(string)
+	UpdateReachability(string) error
 }
 
 type Notifier interface {
