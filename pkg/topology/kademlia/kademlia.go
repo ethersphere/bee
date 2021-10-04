@@ -1203,7 +1203,7 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
 // onlyReachable wraps the iterator func to filer-out unreachable peers.
 func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
 	return func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if !k.collector.Inspect(addr).IsReachable {
+		if k.collector.Inspect(addr).ReachabilityStatus != im.PeerReachabilityStatusPublic {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1211,12 +1211,14 @@ func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
 }
 
 // SetPeerReachability sets the peer reachability status.
-func (k *Kad) SetPeerReachability(addr swarm.Address, isReachable bool) {
-	k.collector.Record(addr, im.PeerReachability(isReachable))
+func (k *Kad) SetPeerReachability(addr swarm.Address, status string) {
+	k.collector.Record(addr, im.PeerReachability(im.PeerReachabilityStatus(status)))
 }
 
-// Update our own reachability status
-func (k *Kad) UpdateReachability(status p2p.Reachability) {}
+// UpdateReachability updates our own reachability status.
+func (k *Kad) UpdateReachability(status string) {
+	k.SetPeerReachability(k.base, status)
+}
 
 // SubscribePeersChange returns the channel that signals when the connected peers
 // set changes. Returned function is safe to be called multiple times.
@@ -1518,6 +1520,6 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
-		IsReachable:                ss.IsReachable,
+		Reachability:               string(ss.ReachabilityStatus),
 	}
 }
