@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
@@ -130,12 +131,12 @@ func TestPeerMetricsCollector(t *testing.T) {
 
 	// Reachability.
 	ss = snapshot(t, mc, t2, addr)
-	if have, want := ss.Reachability, metrics.ReachabilityStatusUnknown; have != want {
+	if have, want := ss.Reachability, p2p.ReachabilityStatusUnknown; have != want {
 		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
 	}
-	mc.Record(addr, metrics.PeerReachability(metrics.ReachabilityStatusPublic))
+	mc.Record(addr, metrics.PeerReachability(p2p.ReachabilityStatusPublic))
 	ss = snapshot(t, mc, t2, addr)
-	if have, want := ss.Reachability, metrics.ReachabilityStatusPublic; have != want {
+	if have, want := ss.Reachability, p2p.ReachabilityStatusPublic; have != want {
 		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
 	}
 
