@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -30,12 +29,39 @@ const (
 )
 
 // PeerReachabilityStatus represents the peer reachability status.
-type PeerReachabilityStatus string
+type PeerReachabilityStatus int
 
-var (
-	PeerReachabilityStatusUnknown = PeerReachabilityStatus(network.ReachabilityUnknown.String())
-	PeerReachabilityStatusPrivate = PeerReachabilityStatus(network.ReachabilityPrivate.String())
-	PeerReachabilityStatusPublic  = PeerReachabilityStatus(network.ReachabilityPrivate.String())
+// String implements the fmt.Stringer interface.
+func (rs PeerReachabilityStatus) String() string {
+	str := [...]string{reachabilityUnknown, reachabilityPublic, reachabilityPrivate}
+	if rs < 0 || int(rs) >= len(str) {
+		return "(unrecognized)"
+	}
+	return str[rs]
+}
+
+// ParseReachabilityStatus tries to parse reachability status from the given string.
+func ParseReachabilityStatus(s string) (PeerReachabilityStatus, error) {
+	switch s {
+	case reachabilityUnknown:
+		return PeerReachabilityStatusUnknown, nil
+	case reachabilityPublic:
+		return PeerReachabilityStatusPublic, nil
+	case reachabilityPrivate:
+		return PeerReachabilityStatusPrivate, nil
+	}
+	return -1, fmt.Errorf("unrecognized reachability status: %q", s)
+}
+
+const (
+	PeerReachabilityStatusUnknown PeerReachabilityStatus = 0 // Mirrors the network.ReachabilityUnknown.
+	PeerReachabilityStatusPublic  PeerReachabilityStatus = 1 // Mirrors the network.ReachabilityPublic.
+	PeerReachabilityStatusPrivate PeerReachabilityStatus = 2 // Mirrors the network.ReachabilityPrivate.
+
+	// String representations of the PeerReachabilityStatus.
+	reachabilityUnknown = "Unknown"
+	reachabilityPublic  = "Public"
+	reachabilityPrivate = "Private"
 )
 
 // RecordOp is a definition of a peer metrics Record
@@ -46,7 +72,7 @@ type RecordOp func(*Counters)
 // the second it'll set the direction of the session connection to the given
 // value. The force flag will force the peer re-login if he's already logged in.
 // The time is set as Unix timestamp ignoring the timezone. The operation will
-// panics if the given time is before the Unix epoch.
+// panic if the given time is before the Unix epoch.
 func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()

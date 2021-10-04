@@ -1211,13 +1211,18 @@ func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
 }
 
 // SetPeerReachability sets the peer reachability status.
-func (k *Kad) SetPeerReachability(addr swarm.Address, status string) {
-	k.collector.Record(addr, im.PeerReachability(im.PeerReachabilityStatus(status)))
+func (k *Kad) SetPeerReachability(addr swarm.Address, status string) error {
+	rs, err := im.ParseReachabilityStatus(status)
+	if err != nil {
+		return err
+	}
+	k.collector.Record(addr, im.PeerReachability(rs))
+	return nil
 }
 
 // UpdateReachability updates our own reachability status.
-func (k *Kad) UpdateReachability(status string) {
-	k.SetPeerReachability(k.base, status)
+func (k *Kad) UpdateReachability(status string) error {
+	return k.SetPeerReachability(k.base, status)
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
@@ -1520,6 +1525,6 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
-		Reachability:               string(ss.ReachabilityStatus),
+		Reachability:               ss.ReachabilityStatus.String(),
 	}
 }
