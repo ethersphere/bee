@@ -277,6 +277,10 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 
 	ctx, cancel := context.WithCancel(ctx)
 	s.ruidMtx.Lock()
+	if c, ok := s.ruidCtx[ru.Ruid]; ok {
+		s.metrics.DuplicateRuidCounter.Inc()
+		c()
+	}
 	s.ruidCtx[ru.Ruid] = cancel
 	s.ruidMtx.Unlock()
 	cc := make(chan struct{})
