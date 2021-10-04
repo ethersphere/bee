@@ -49,7 +49,7 @@ type Halter interface {
 type PickyNotifier interface {
 	Picker
 	Notifier
-	ReachabilityTracker
+	ReachabilityUpdater
 }
 
 type Picker interface {
@@ -81,7 +81,7 @@ func (r Reachability) String() string {
 	return str[r]
 }
 
-type ReachabilityTracker interface {
+type ReachabilityUpdater interface {
 	UpdateReachability(string) error
 }
 
