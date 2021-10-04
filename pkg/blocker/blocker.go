@@ -88,12 +88,10 @@ func (b *Blocker) Flag(addr swarm.Address) {
 	b.mux.Lock()
 	defer b.mux.Unlock()
 
-	p, ok := b.peers[addr.ByteString()]
+	_, ok := b.peers[addr.ByteString()]
 
 	if ok {
-		if p.blockAfter.IsZero() {
-			p.blockAfter = time.Now().Add(b.flagTimeout)
-		}
+		return
 	} else {
 		b.peers[addr.ByteString()] = &peer{
 			blockAfter: time.Now().Add(b.flagTimeout),
