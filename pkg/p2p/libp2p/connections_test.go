@@ -23,8 +23,15 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	"github.com/libp2p/go-eventbus"
+	libp2pm "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/event"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/mux"
+	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
+	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -861,6 +868,39 @@ func TestUserAgentLogging(t *testing.T) {
 	testUserAgentLogLine(t, s2Logs, "(outbound)")
 }
 
+func TestReachabilityUpdate(t *testing.T) {
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.WithHostFactory(
+			func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(context.TODO(), swarmt.GenSwarm(t, context.TODO()), &bhost.HostOpts{})
+			},
+		),
+	})
+	defer s1.Close()
+
+	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+
+	firstUpdate := make(chan struct{})
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(r string) {
+		if r == "Public" {
+			close(firstUpdate)
+		}
+	}))
+
+	emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+	<-firstUpdate
+
+	secondUpdate := make(chan struct{})
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(r string) {
+		if r == "Private" {
+			close(secondUpdate)
+		}
+	}))
+
+	emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	<-secondUpdate
+}
+
 func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 	t.Helper()
 
@@ -992,11 +1032,12 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 }
 
 type notifiee struct {
-	connected    cFunc
-	disconnected dFunc
-	pick         bool
-	announce     announceFunc
-	announceTo   announceToFunc
+	connected          cFunc
+	disconnected       dFunc
+	pick               bool
+	announce           announceFunc
+	announceTo         announceToFunc
+	updateReachability reachabilityFunc
 }
 
 func (n *notifiee) Connected(c context.Context, p p2p.Peer, f bool) error {
@@ -1019,22 +1060,53 @@ func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool
 	return n.announceTo(ctx, a, b, full)
 }
 
+func (n *notifiee) UpdateReachability(r string) {
+	n.updateReachability(r)
+}
+
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
-	return &notifiee{connected: c, disconnected: d, pick: pick, announce: noopAnnounce, announceTo: noopAnnounceTo}
+	return &notifiee{
+		connected:          c,
+		disconnected:       d,
+		pick:               pick,
+		announce:           noopAnnounce,
+		announceTo:         noopAnnounceTo,
+		updateReachability: noopReachability,
+	}
 }
 
 func mockAnnouncingNotifier(a announceFunc, at announceToFunc) p2p.PickyNotifier {
-	return &notifiee{connected: noopCf, disconnected: noopDf, pick: true, announce: a, announceTo: at}
+	return &notifiee{
+		connected:          noopCf,
+		disconnected:       noopDf,
+		pick:               true,
+		announce:           a,
+		announceTo:         at,
+		updateReachability: noopReachability,
+	}
+}
+
+func mockReachabilityNotifier(r reachabilityFunc) p2p.PickyNotifier {
+	return &notifiee{
+		connected:          noopCf,
+		disconnected:       noopDf,
+		pick:               true,
+		announce:           noopAnnounce,
+		announceTo:         noopAnnounceTo,
+		updateReachability: r,
+	}
 }
 
 type (
-	cFunc          func(context.Context, p2p.Peer, bool) error
-	dFunc          func(p2p.Peer)
-	announceFunc   func(context.Context, swarm.Address, bool) error
-	announceToFunc func(context.Context, swarm.Address, swarm.Address, bool) error
+	cFunc            func(context.Context, p2p.Peer, bool) error
+	dFunc            func(p2p.Peer)
+	announceFunc     func(context.Context, swarm.Address, bool) error
+	announceToFunc   func(context.Context, swarm.Address, swarm.Address, bool) error
+	reachabilityFunc func(string)
 )
 
 var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
 var noopDf = func(p2p.Peer) {}
 var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
 var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
+var noopReachability = func(string) {}
