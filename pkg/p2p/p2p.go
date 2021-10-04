@@ -55,6 +55,15 @@ type Picker interface {
 	Pick(Peer) bool
 }
 
+type ReachableNotifier interface {
+	Reachable(swarm.Address, bool)
+}
+
+type Reacher interface {
+	Connected(swarm.Address, ma.Multiaddr)
+	Disconnected(swarm.Address)
+}
+
 type Notifier interface {
 	Connected(context.Context, Peer, bool) error
 	Disconnected(Peer)
