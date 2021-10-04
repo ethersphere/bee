@@ -130,13 +130,13 @@ func TestPeerMetricsCollector(t *testing.T) {
 
 	// Reachability.
 	ss = snapshot(t, mc, t2, addr)
-	if have, want := ss.ReachabilityStatus, metrics.PeerReachabilityStatusUnknown; have != want {
-		t.Fatalf("Snapshot(%q, ...): is eachability status mismatch: have %q; want %q", addr, have, want)
+	if have, want := ss.Reachability, metrics.ReachabilityStatusUnknown; have != want {
+		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
 	}
-	mc.Record(addr, metrics.PeerReachability(metrics.PeerReachabilityStatusPublic))
+	mc.Record(addr, metrics.PeerReachability(metrics.ReachabilityStatusPublic))
 	ss = snapshot(t, mc, t2, addr)
-	if have, want := ss.ReachabilityStatus, metrics.PeerReachabilityStatusPublic; have != want {
-		t.Fatalf("Snapshot(%q, ...): is eachability status mismatch: have %q; want %q", addr, have, want)
+	if have, want := ss.Reachability, metrics.ReachabilityStatusPublic; have != want {
+		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
 	}
 
 	// Inspect.
