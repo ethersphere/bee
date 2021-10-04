@@ -24,9 +24,18 @@ type PeerConnectionDirection string
 const (
 	PeerConnectionDirectionInbound  PeerConnectionDirection = "inbound"
 	PeerConnectionDirectionOutbound PeerConnectionDirection = "outbound"
-
-	ewmaSmoothing = 0.1
 )
+
+// PeerReachabilityStatus represents the peer reachability status.
+type PeerReachabilityStatus string
+
+const (
+	PeerReachabilityStatusUnknown PeerReachabilityStatus = "unknown"
+	PeerReachabilityStatusPrivate PeerReachabilityStatus = "private"
+	PeerReachabilityStatusPublic  PeerReachabilityStatus = "public"
+)
+
+const ewmaSmoothing = 0.1
 
 // RecordOp is a definition of a peer metrics Record
 // operation whose execution modifies a specific metrics.
@@ -110,12 +119,12 @@ func PeerLatency(t time.Duration) RecordOp {
 }
 
 // PeerReachability records the last peer reachability status.
-func PeerReachability(isReachable bool) RecordOp {
+func PeerReachability(s PeerReachabilityStatus) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
 
-		cs.isReachable = isReachable
+		cs.ReachabilityStatus = s
 	}
 }
 
@@ -127,7 +136,7 @@ type Snapshot struct {
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
-	IsReachable                bool
+	ReachabilityStatus         PeerReachabilityStatus
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
@@ -160,7 +169,7 @@ type Counters struct {
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
 	latencyEWMA          time.Duration
-	isReachable          bool
+	ReachabilityStatus   PeerReachabilityStatus
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -208,7 +217,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDuration:  sessionConnDuration,
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
-		IsReachable:                cs.isReachable,
+		ReachabilityStatus:         cs.ReachabilityStatus,
 	}
 }
 

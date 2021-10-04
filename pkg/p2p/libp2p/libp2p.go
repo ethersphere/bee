@@ -307,9 +307,10 @@ func (s *Service) startReachabilityTracker() error {
 		for {
 			select {
 			case <-s.ctx.Done():
+				return
 			case e := <-sub.Out():
 				if r, ok := e.(event.EvtLocalReachabilityChanged); ok {
-					s.notifier.UpdateReachability(p2p.Reachability(r.Reachability))
+					s.notifier.UpdateReachability(r.Reachability.String())
 				}
 			}
 		}
