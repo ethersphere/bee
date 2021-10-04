@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -26,42 +27,6 @@ type PeerConnectionDirection string
 const (
 	PeerConnectionDirectionInbound  PeerConnectionDirection = "inbound"
 	PeerConnectionDirectionOutbound PeerConnectionDirection = "outbound"
-)
-
-// ReachabilityStatus represents the peer reachability status.
-type ReachabilityStatus int
-
-// String implements the fmt.Stringer interface.
-func (rs ReachabilityStatus) String() string {
-	str := [...]string{reachabilityUnknown, reachabilityPublic, reachabilityPrivate}
-	if rs < 0 || int(rs) >= len(str) {
-		return "(unrecognized)"
-	}
-	return str[rs]
-}
-
-// ParseReachabilityStatus tries to parse reachability status from the given string.
-func ParseReachabilityStatus(s string) (ReachabilityStatus, error) {
-	switch s {
-	case reachabilityUnknown:
-		return ReachabilityStatusUnknown, nil
-	case reachabilityPublic:
-		return ReachabilityStatusPublic, nil
-	case reachabilityPrivate:
-		return ReachabilityStatusPrivate, nil
-	}
-	return -1, fmt.Errorf("unrecognized reachability status: %q", s)
-}
-
-const (
-	ReachabilityStatusUnknown ReachabilityStatus = 0 // Mirrors the network.ReachabilityUnknown.
-	ReachabilityStatusPublic  ReachabilityStatus = 1 // Mirrors the network.ReachabilityPublic.
-	ReachabilityStatusPrivate ReachabilityStatus = 2 // Mirrors the network.ReachabilityPrivate.
-
-	// String representations of the ReachabilityStatus.
-	reachabilityUnknown = "Unknown"
-	reachabilityPublic  = "Public"
-	reachabilityPrivate = "Private"
 )
 
 // RecordOp is a definition of a peer metrics Record
@@ -145,8 +110,8 @@ func PeerLatency(t time.Duration) RecordOp {
 	}
 }
 
-// PeerReachability records the last peer reachability status.
-func PeerReachability(s ReachabilityStatus) RecordOp {
+// PeerReachability updates the last reachability status.
+func PeerReachability(s p2p.ReachabilityStatus) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
@@ -163,11 +128,11 @@ type Snapshot struct {
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
-	Reachability               ReachabilityStatus
+	Reachability               p2p.ReachabilityStatus
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
-// peer which has at maximum one session connection attempt but it still isn't
+// peer which has at maximum one session connection attempt, but it still isn't
 // logged in.
 func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
 	return ss.LastSeenTimestamp == 0 && ss.SessionConnectionRetry <= 1
@@ -196,7 +161,7 @@ type Counters struct {
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
 	latencyEWMA          time.Duration
-	ReachabilityStatus   ReachabilityStatus
+	ReachabilityStatus   p2p.ReachabilityStatus
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.

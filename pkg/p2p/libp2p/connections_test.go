@@ -881,8 +881,8 @@ func TestReachabilityUpdate(t *testing.T) {
 	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 
 	firstUpdate := make(chan struct{})
-	s1.SetPickyNotifier(mockReachabilityNotifier(func(r string) {
-		if r == "Public" {
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
+		if status == p2p.ReachabilityStatusPublic {
 			close(firstUpdate)
 		}
 	}))
@@ -894,8 +894,8 @@ func TestReachabilityUpdate(t *testing.T) {
 	<-firstUpdate
 
 	secondUpdate := make(chan struct{})
-	s1.SetPickyNotifier(mockReachabilityNotifier(func(r string) {
-		if r == "Private" {
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
+		if status == p2p.ReachabilityStatusPrivate {
 			close(secondUpdate)
 		}
 	}))
@@ -1066,9 +1066,8 @@ func (n *notifiee) AnnounceTo(ctx context.Context, a, b swarm.Address, full bool
 	return n.announceTo(ctx, a, b, full)
 }
 
-func (n *notifiee) UpdateReachability(r string) error {
-	n.updateReachability(r)
-	return nil
+func (n *notifiee) UpdateReachability(status p2p.ReachabilityStatus) {
+	n.updateReachability(status)
 }
 
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
@@ -1109,11 +1108,11 @@ type (
 	dFunc            func(p2p.Peer)
 	announceFunc     func(context.Context, swarm.Address, bool) error
 	announceToFunc   func(context.Context, swarm.Address, swarm.Address, bool) error
-	reachabilityFunc func(string)
+	reachabilityFunc func(p2p.ReachabilityStatus)
 )
 
 var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
 var noopDf = func(p2p.Peer) {}
 var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
 var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
-var noopReachability = func(string) {}
+var noopReachability = func(p2p.ReachabilityStatus) {}
