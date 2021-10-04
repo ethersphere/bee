@@ -8,7 +8,7 @@ on:
       - '**'
 
 jobs:
-  beekeeper:
+  beekeeper_clef:
     name: Integration tests (clef enabled)
     env:
       REPLICA: 3
