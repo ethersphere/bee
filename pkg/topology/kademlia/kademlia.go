@@ -116,7 +116,7 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	bgBroadcastWg     sync.WaitGroup
 	blocker           *blocker.Blocker
-	reachability      im.ReachabilityStatus
+	reachability      p2p.ReachabilityStatus
 }
 
 // New returns a new Kademlia.
@@ -1204,7 +1204,7 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
 // onlyReachable wraps the iterator func to filer-out unreachable peers.
 func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
 	return func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if k.collector.Inspect(addr).Reachability != im.ReachabilityStatusPublic {
+		if k.collector.Inspect(addr).Reachability != p2p.ReachabilityStatusPublic {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1212,23 +1212,13 @@ func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
 }
 
 // SetPeerReachability sets the peer reachability status.
-func (k *Kad) SetPeerReachability(addr swarm.Address, status string) error {
-	rs, err := im.ParseReachabilityStatus(status)
-	if err != nil {
-		return err
-	}
-	k.collector.Record(addr, im.PeerReachability(rs))
-	return nil
+func (k *Kad) SetPeerReachability(addr swarm.Address, status p2p.ReachabilityStatus) {
+	k.collector.Record(addr, im.PeerReachability(status))
 }
 
 // UpdateReachability updates node reachability status.
-func (k *Kad) UpdateReachability(status string) error {
-	rs, err := im.ParseReachabilityStatus(status)
-	if err != nil {
-		return err
-	}
-	k.reachability = rs
-	return nil
+func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
+	k.reachability = status
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
