@@ -49,14 +49,14 @@ type Halter interface {
 type PickyNotifier interface {
 	Picker
 	Notifier
-	ReachabilityTracker
+	ReachabilityUpdater
 }
 
 type Picker interface {
 	Pick(Peer) bool
 }
 
-type ReachabilityTracker interface {
+type ReachabilityUpdater interface {
 	UpdateReachability(string) error
 }
 

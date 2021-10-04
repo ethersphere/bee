@@ -28,11 +28,11 @@ const (
 	PeerConnectionDirectionOutbound PeerConnectionDirection = "outbound"
 )
 
-// PeerReachabilityStatus represents the peer reachability status.
-type PeerReachabilityStatus int
+// ReachabilityStatus represents the peer reachability status.
+type ReachabilityStatus int
 
 // String implements the fmt.Stringer interface.
-func (rs PeerReachabilityStatus) String() string {
+func (rs ReachabilityStatus) String() string {
 	str := [...]string{reachabilityUnknown, reachabilityPublic, reachabilityPrivate}
 	if rs < 0 || int(rs) >= len(str) {
 		return "(unrecognized)"
@@ -41,24 +41,24 @@ func (rs PeerReachabilityStatus) String() string {
 }
 
 // ParseReachabilityStatus tries to parse reachability status from the given string.
-func ParseReachabilityStatus(s string) (PeerReachabilityStatus, error) {
+func ParseReachabilityStatus(s string) (ReachabilityStatus, error) {
 	switch s {
 	case reachabilityUnknown:
-		return PeerReachabilityStatusUnknown, nil
+		return ReachabilityStatusUnknown, nil
 	case reachabilityPublic:
-		return PeerReachabilityStatusPublic, nil
+		return ReachabilityStatusPublic, nil
 	case reachabilityPrivate:
-		return PeerReachabilityStatusPrivate, nil
+		return ReachabilityStatusPrivate, nil
 	}
 	return -1, fmt.Errorf("unrecognized reachability status: %q", s)
 }
 
 const (
-	PeerReachabilityStatusUnknown PeerReachabilityStatus = 0 // Mirrors the network.ReachabilityUnknown.
-	PeerReachabilityStatusPublic  PeerReachabilityStatus = 1 // Mirrors the network.ReachabilityPublic.
-	PeerReachabilityStatusPrivate PeerReachabilityStatus = 2 // Mirrors the network.ReachabilityPrivate.
+	ReachabilityStatusUnknown ReachabilityStatus = 0 // Mirrors the network.ReachabilityUnknown.
+	ReachabilityStatusPublic  ReachabilityStatus = 1 // Mirrors the network.ReachabilityPublic.
+	ReachabilityStatusPrivate ReachabilityStatus = 2 // Mirrors the network.ReachabilityPrivate.
 
-	// String representations of the PeerReachabilityStatus.
+	// String representations of the ReachabilityStatus.
 	reachabilityUnknown = "Unknown"
 	reachabilityPublic  = "Public"
 	reachabilityPrivate = "Private"
@@ -146,7 +146,7 @@ func PeerLatency(t time.Duration) RecordOp {
 }
 
 // PeerReachability records the last peer reachability status.
-func PeerReachability(s PeerReachabilityStatus) RecordOp {
+func PeerReachability(s ReachabilityStatus) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
@@ -163,7 +163,7 @@ type Snapshot struct {
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
-	ReachabilityStatus         PeerReachabilityStatus
+	Reachability               ReachabilityStatus
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
@@ -196,7 +196,7 @@ type Counters struct {
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
 	latencyEWMA          time.Duration
-	ReachabilityStatus   PeerReachabilityStatus
+	ReachabilityStatus   ReachabilityStatus
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -244,7 +244,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDuration:  sessionConnDuration,
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
-		ReachabilityStatus:         cs.ReachabilityStatus,
+		Reachability:               cs.ReachabilityStatus,
 	}
 }
 

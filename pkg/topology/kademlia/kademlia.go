@@ -116,6 +116,7 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	bgBroadcastWg     sync.WaitGroup
 	blocker           *blocker.Blocker
+	reachability      im.ReachabilityStatus
 }
 
 // New returns a new Kademlia.
@@ -1203,7 +1204,7 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
 // onlyReachable wraps the iterator func to filer-out unreachable peers.
 func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
 	return func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if k.collector.Inspect(addr).ReachabilityStatus != im.PeerReachabilityStatusPublic {
+		if k.collector.Inspect(addr).Reachability != im.ReachabilityStatusPublic {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1220,9 +1221,14 @@ func (k *Kad) SetPeerReachability(addr swarm.Address, status string) error {
 	return nil
 }
 
-// UpdateReachability updates our own reachability status.
+// UpdateReachability updates node reachability status.
 func (k *Kad) UpdateReachability(status string) error {
-	return k.SetPeerReachability(k.base, status)
+	rs, err := im.ParseReachabilityStatus(status)
+	if err != nil {
+		return err
+	}
+	k.reachability = rs
+	return nil
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
@@ -1349,6 +1355,7 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		Timestamp:      time.Now(),
 		NNLowWatermark: nnLowWatermark,
 		Depth:          k.NeighborhoodDepth(),
+		Reachability:   k.reachability.String(),
 		Bins: topology.KadBins{
 			Bin0:  infos[0],
 			Bin1:  infos[1],
@@ -1525,6 +1532,6 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
-		Reachability:               ss.ReachabilityStatus.String(),
+		Reachability:               ss.Reachability.String(),
 	}
 }
