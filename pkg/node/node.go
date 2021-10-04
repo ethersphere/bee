@@ -685,7 +685,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode {
-		pullerService := puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
