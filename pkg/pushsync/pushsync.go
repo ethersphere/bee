@@ -33,7 +33,7 @@ import (
 
 const (
 	protocolName    = "pushsync"
-	protocolVersion = "1.0.0"
+	protocolVersion = "1.1.0"
 	streamName      = "pushsync"
 )
 
@@ -179,7 +179,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 			defer span.Finish()
 
-			realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false)
+			realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false, topology.Filter{Reachable: true})
 			if err == nil {
 				if !realClosestPeer.Equal(p.Address) {
 					ps.metrics.TotalReplicationFromDistantPeer.Inc()
@@ -342,7 +342,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
 
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, fullSkipList...)
+		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
@@ -510,7 +510,7 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 		count++
 		go ps.pushToNeighbour(ctx, peer, ch, origin)
 		return false, false, nil
-	})
+	}, topology.Filter{Reachable: true})
 }
 
 // pushToNeighbour handles in-neighborhood replication for a single peer.
