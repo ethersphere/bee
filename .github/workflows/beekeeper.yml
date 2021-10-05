@@ -52,6 +52,7 @@ jobs:
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare local cluster
         run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -169,6 +170,7 @@ jobs:
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -257,6 +259,7 @@ jobs:
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
       - name: Prepare testing cluster (storage incentives setup)
         run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout 10m make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -265,6 +268,7 @@ jobs:
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
+          make beelocal ACTION=add-hosts
           timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
       - name: Test pingpong
         id: pingpong
@@ -328,12 +332,12 @@ jobs:
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Build image
         run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           timeout 10m make beelocal ACTION=build OPTS='ci skip-vet skip-push'
       - name: Retag Docker image and push for cache
         if: success()
         run: |
           docker tag k3d-registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee
-          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           docker push ghcr.io/ethersphere/bee
       - name: Retag Docker image and push
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
@@ -356,4 +360,3 @@ jobs:
           repository: ethersphere/bee-argo
           event-type: trigger-argo
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
-
