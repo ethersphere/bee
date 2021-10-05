@@ -43,7 +43,6 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/reacher"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -534,7 +533,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}
-	p2ps.SetReacher(reacher.New(p2ps, kad))
 
 	b.topologyCloser = kad
 	b.topologyHalter = kad
