@@ -1485,6 +1485,89 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 	}
 }
 
+func TestIteratorOpts(t *testing.T) {
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
+	)
+
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 4; j++ {
+			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
+
+	// randomly mark some nodes as reachable
+	totalReachable := 0
+	reachable := make(map[string]struct{})
+	_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		if randBool.Bool() {
+			kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
+			reachable[addr.ByteString()] = struct{}{}
+			totalReachable++
+		}
+		return false, false, nil
+	})
+
+	t.Run("EachPeer reachable", func(t *testing.T) {
+		count := 0
+		err := kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, exists := reachable[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			count++
+			return false, false, nil
+		}, topology.ReachablePeers)
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+		if count != totalReachable {
+			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalReachable)
+		}
+	})
+
+	t.Run("EachPeerRev reachable", func(t *testing.T) {
+		count := 0
+		err := kad.EachPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, exists := reachable[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			count++
+			return false, false, nil
+		}, topology.ReachablePeers)
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+		if count != totalReachable {
+			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalReachable)
+		}
+	})
+}
+
+type boolgen struct {
+	src       rand.Source
+	cache     int64
+	remaining int
+}
+
+func (b *boolgen) Bool() bool {
+	if b.remaining == 0 {
+		b.cache, b.remaining = b.src.Int63(), 63
+	}
+
+	result := b.cache&0x01 == 1
+	b.cache >>= 1
+	b.remaining--
+
+	return result
+}
+
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
 
 	var rndAddrs = make([]swarm.Address, count)
