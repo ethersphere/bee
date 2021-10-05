@@ -44,13 +44,13 @@ type reacher struct {
 	metrics metrics
 }
 
-func New(pinger p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
+func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r := &reacher{
 		work:      make(chan struct{}, 1),
-		pinger:    pinger,
+		pinger:    streamer,
 		notifier:  notifier,
 		wg:        sync.WaitGroup{},
 		ctx:       ctx,
@@ -115,7 +115,7 @@ func (r *reacher) ping() {
 			if err == nil {
 				r.metrics.Pings.WithLabelValues("success").Inc()
 				r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-				r.notifier.Reachable(p.overlay, true)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 				break
 			}
 
@@ -123,7 +123,7 @@ func (r *reacher) ping() {
 			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 
 			if attempts == pingMaxAttempts {
-				r.notifier.Reachable(p.overlay, false)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
 				break
 			}
 

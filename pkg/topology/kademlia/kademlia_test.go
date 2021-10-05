@@ -1508,7 +1508,7 @@ func TestIteratorOpts(t *testing.T) {
 	reachable := make(map[string]struct{})
 	_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 		if randBool.Bool() {
-			kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
+			kad.Reachable(addr, p2p.ReachabilityStatusPublic)
 			reachable[addr.ByteString()] = struct{}{}
 			totalReachable++
 		}

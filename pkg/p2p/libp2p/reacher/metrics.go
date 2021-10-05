@@ -22,13 +22,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pings",
-			Help:      "The number of pings made.",
+			Help:      "Ping counter.",
 		}, []string{"status"}),
 		PingTime: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "ping_duration",
-			Help:      "The duration of a ping.",
+			Name:      "ping_timer",
+			Help:      "Ping timer.",
 		}, []string{"status"}),
 	}
 }
