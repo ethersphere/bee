@@ -115,7 +115,7 @@ func (r *reacher) ping() {
 			if err == nil {
 				r.metrics.Pings.WithLabelValues("success").Inc()
 				r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-				r.notifier.Reachable(p.overlay, true)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 				break
 			}
 
@@ -123,7 +123,7 @@ func (r *reacher) ping() {
 			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 
 			if attempts == pingMaxAttempts {
-				r.notifier.Reachable(p.overlay, false)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
 				break
 			}
 
