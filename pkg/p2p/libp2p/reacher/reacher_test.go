@@ -11,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/reacher"
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/reacher"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	ma "github.com/multiformats/go-multiaddr"
@@ -20,8 +21,8 @@ import (
 func TestPingSuccess(t *testing.T) {
 
 	var (
-		got  = false
-		want = true
+		got  = p2p.ReachabilityStatusPrivate
+		want = p2p.ReachabilityStatusPublic
 		mu   = sync.Mutex{}
 	)
 
@@ -29,7 +30,7 @@ func TestPingSuccess(t *testing.T) {
 		return 0, nil
 	}
 
-	reachableFunc := func(addr swarm.Address, b bool) {
+	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
 		mu.Lock()
 		got = b
 		mu.Unlock()
@@ -56,8 +57,8 @@ func TestPingSuccess(t *testing.T) {
 func TestPingFailure(t *testing.T) {
 
 	var (
-		got  = true
-		want = false
+		got  = p2p.ReachabilityStatusPublic
+		want = p2p.ReachabilityStatusPrivate
 		mu   = sync.Mutex{}
 	)
 
@@ -65,7 +66,7 @@ func TestPingFailure(t *testing.T) {
 		return 0, errors.New("test error")
 	}
 
-	reachableFunc := func(addr swarm.Address, b bool) {
+	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
 		mu.Lock()
 		got = b
 		mu.Unlock()
@@ -102,7 +103,7 @@ func TestDisconnected(t *testing.T) {
 		return 0, nil
 	}
 
-	reachableFunc := func(addr swarm.Address, b bool) {
+	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
 		mu.Lock()
 		if addr.Equal(overlay) {
 			seenOverlay = true
@@ -130,10 +131,10 @@ func TestDisconnected(t *testing.T) {
 
 type mock struct {
 	pingFunc      func(context.Context, ma.Multiaddr) (time.Duration, error)
-	reachableFunc func(swarm.Address, bool)
+	reachableFunc func(swarm.Address, p2p.ReachabilityStatus)
 }
 
-func newMock(ping func(context.Context, ma.Multiaddr) (time.Duration, error), reach func(swarm.Address, bool)) *mock {
+func newMock(ping func(context.Context, ma.Multiaddr) (time.Duration, error), reach func(swarm.Address, p2p.ReachabilityStatus)) *mock {
 	return &mock{
 		pingFunc:      ping,
 		reachableFunc: reach,
@@ -144,6 +145,6 @@ func (m *mock) Ping(ctx context.Context, addr ma.Multiaddr) (time.Duration, erro
 	return m.pingFunc(ctx, addr)
 }
 
-func (m *mock) Reachable(addr swarm.Address, b bool) {
-	m.reachableFunc(addr, b)
+func (m *mock) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
+	m.reachableFunc(addr, status)
 }
