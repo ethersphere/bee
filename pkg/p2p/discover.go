@@ -14,8 +14,15 @@ import (
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
+func isDNSProtocol(protoString string) bool {
+	if protoString == "dnsaddr" || protoString == "dns" || protoString == "dns4" || protoString == "dns6" {
+		return true
+	}
+	return false
+}
+
 func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool, error)) (bool, error) {
-	if comp, _ := ma.SplitFirst(addr); comp.Protocol().Name != "dnsaddr" {
+	if comp, _ := ma.SplitFirst(addr); !isDNSProtocol(comp.Protocol().Name) {
 		return f(addr)
 	}
 
