@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
@@ -116,18 +117,27 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %q; want %q", addr, have, want)
 	}
 
-	// Latency
+	// Latency.
 	mc.Record(addr, metrics.PeerLatency(t4))
 	ss = snapshot(t, mc, t2, addr)
 	if have, want := ss.LatencyEWMA, t4; have != want {
 		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %d; want %d", addr, have, want)
 	}
-	// check ewma calculation
 	mc.Record(addr, metrics.PeerLatency(t5))
 	ss = snapshot(t, mc, t2, addr)
-	wantEWMA := 19 * time.Millisecond
-	if have, want := ss.LatencyEWMA, wantEWMA; have != want {
+	if have, want := ss.LatencyEWMA, 19*time.Millisecond; have != want {
 		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %d; want %d", addr, have, want)
+	}
+
+	// Reachability.
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.Reachability, p2p.ReachabilityStatusUnknown; have != want {
+		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
+	}
+	mc.Record(addr, metrics.PeerReachability(p2p.ReachabilityStatusPublic))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.Reachability, p2p.ReachabilityStatusPublic; have != want {
+		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
 	}
 
 	// Inspect.
