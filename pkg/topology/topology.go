@@ -49,9 +49,9 @@ type ClosestPeerer interface {
 
 type EachPeerer interface {
 	// EachPeer iterates from closest bin to farthest
-	EachPeer(EachPeerFunc) error
+	EachPeer(EachPeerFunc, ...IteratorOpt) error
 	// EachPeerRev iterates from farthest bin to closest
-	EachPeerRev(EachPeerFunc) error
+	EachPeerRev(EachPeerFunc, ...IteratorOpt) error
 }
 
 type EachNeighbor interface {
@@ -62,6 +62,19 @@ type EachNeighbor interface {
 	// IsWithinDepth checks if an address is the within neighborhood.
 	IsWithinDepth(swarm.Address) bool
 }
+
+// IteratorOpt is used to configure filters for the Peer iterators
+type IteratorOpt func(*Filter)
+
+// Filter defines the different filters that can be used with the Peer iterators
+type Filter struct {
+	Reachable bool
+}
+
+var (
+	// Option to be used to obtain only publicly reachable peers
+	ReachablePeers IteratorOpt = func(f *Filter) { f.Reachable = true }
+)
 
 // EachPeerFunc is a callback that is called with a peer and its PO
 type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
