@@ -13,7 +13,22 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/libp2p/go-libp2p-core/network"
 	ma "github.com/multiformats/go-multiaddr"
+)
+
+// ReachabilityStatus represents the node reachability status.
+type ReachabilityStatus network.Reachability
+
+// String implements the fmt.Stringer interface.
+func (rs ReachabilityStatus) String() string {
+	return network.Reachability(rs).String()
+}
+
+const (
+	ReachabilityStatusUnknown = ReachabilityStatus(network.ReachabilityUnknown)
+	ReachabilityStatusPublic  = ReachabilityStatus(network.ReachabilityPublic)
+	ReachabilityStatusPrivate = ReachabilityStatus(network.ReachabilityPrivate)
 )
 
 // Service provides methods to handle p2p Peers and Protocols.
@@ -49,6 +64,7 @@ type Halter interface {
 type PickyNotifier interface {
 	Picker
 	Notifier
+	ReachabilityUpdater
 }
 
 type Picker interface {
@@ -62,6 +78,10 @@ type ReachableNotifier interface {
 type Reacher interface {
 	Connected(swarm.Address, ma.Multiaddr)
 	Disconnected(swarm.Address)
+}
+
+type ReachabilityUpdater interface {
+	UpdateReachability(ReachabilityStatus)
 }
 
 type Notifier interface {
