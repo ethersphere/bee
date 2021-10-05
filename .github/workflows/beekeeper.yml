@@ -95,10 +95,6 @@ jobs:
       - name: Test content availability
         id: content-availability
         run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
-      # - name: Destroy the cluster
-      #   run: |
-      #     beekeeper delete bee-cluster --cluster-name local-dns
-      #     make beelocal ACTION=uninstall
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -190,10 +186,6 @@ jobs:
       - name: Test settlements
         id: settlements
         run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
-      # - name: Destroy the cluster
-      #   run: |
-      #     beekeeper delete bee-cluster --cluster-name local-clef
-      #     make beelocal ACTION=uninstall
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -276,10 +268,6 @@ jobs:
       - name: Test gc
         id: gc-chunk
         run: beekeeper check --cluster-name local-gc --checks=ci-gc
-      # - name: Destroy the cluster
-      #   run: |
-      #     beekeeper delete bee-cluster --cluster-name local-gc
-      #     make beelocal ACTION=uninstall
       - name: Debug workflow if failed
         if: failure()
         run: |
