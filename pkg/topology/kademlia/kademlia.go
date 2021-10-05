@@ -116,6 +116,7 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	bgBroadcastWg     sync.WaitGroup
 	blocker           *blocker.Blocker
+	reachability      p2p.ReachabilityStatus
 }
 
 // New returns a new Kademlia.
@@ -1199,13 +1200,43 @@ func (k *Kad) EachNeighborRev(f topology.EachPeerFunc) error {
 }
 
 // EachPeer iterates from closest bin to farthest.
-func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
-	return k.connectedPeers.EachBin(f)
+func (k *Kad) EachPeer(f topology.EachPeerFunc, opts ...topology.IteratorOpt) error {
+	filter := filterFromOpts(opts)
+	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		if filter.Reachable && k.collector.Inspect(addr).Reachability != p2p.ReachabilityStatusPublic {
+			return false, false, nil
+		}
+		return f(addr, po)
+	})
 }
 
 // EachPeerRev iterates from farthest bin to closest.
-func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
-	return k.connectedPeers.EachBinRev(f)
+func (k *Kad) EachPeerRev(f topology.EachPeerFunc, opts ...topology.IteratorOpt) error {
+	filter := filterFromOpts(opts)
+	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		if filter.Reachable && k.collector.Inspect(addr).Reachability != p2p.ReachabilityStatusPublic {
+			return false, false, nil
+		}
+		return f(addr, po)
+	})
+}
+
+func filterFromOpts(opts []topology.IteratorOpt) *topology.Filter {
+	f := new(topology.Filter)
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
+}
+
+// SetPeerReachability sets the peer reachability status.
+func (k *Kad) SetPeerReachability(addr swarm.Address, status p2p.ReachabilityStatus) {
+	k.collector.Record(addr, im.PeerReachability(status))
+}
+
+// UpdateReachability updates node reachability status.
+func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
+	k.reachability = status
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
@@ -1332,6 +1363,7 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		Timestamp:      time.Now(),
 		NNLowWatermark: nnLowWatermark,
 		Depth:          k.NeighborhoodDepth(),
+		Reachability:   k.reachability.String(),
 		Bins: topology.KadBins{
 			Bin0:  infos[0],
 			Bin1:  infos[1],
@@ -1508,5 +1540,6 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
+		Reachability:               ss.Reachability.String(),
 	}
 }

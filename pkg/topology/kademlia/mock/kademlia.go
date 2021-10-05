@@ -82,7 +82,7 @@ func (m *Mock) EachNeighborRev(topology.EachPeerFunc) error {
 }
 
 // EachPeer iterates from closest bin to farthest
-func (m *Mock) EachPeer(f topology.EachPeerFunc) error {
+func (m *Mock) EachPeer(f topology.EachPeerFunc, _ ...topology.IteratorOpt) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -99,7 +99,7 @@ func (m *Mock) EachPeer(f topology.EachPeerFunc) error {
 }
 
 // EachPeerRev iterates from farthest bin to closest
-func (m *Mock) EachPeerRev(f topology.EachPeerFunc) error {
+func (m *Mock) EachPeerRev(f topology.EachPeerFunc, _ ...topology.IteratorOpt) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, v := range m.eachPeerRev {

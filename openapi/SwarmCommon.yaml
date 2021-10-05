@@ -92,6 +92,8 @@ components:
           type: integer
         depth:
           type: integer
+        reachability:
+          type: string
         bins:
           type: object
           additionalProperties:
@@ -280,6 +282,9 @@ components:
           nullable: false
         latencyEWMA:
           type: integer
+          nullable: false
+        reachability:
+          type: string
           nullable: false
 
     Peers:
