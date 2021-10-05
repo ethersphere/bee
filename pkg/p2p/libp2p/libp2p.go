@@ -698,7 +698,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+	if s.reacher != nil {
+		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
