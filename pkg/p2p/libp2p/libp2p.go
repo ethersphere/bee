@@ -464,10 +464,6 @@ func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.notifier = n
 }
 
-func (s *Service) SetReacher(r p2p.Reacher) {
-	s.reacher = r
-}
-
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
 		ss := ss
