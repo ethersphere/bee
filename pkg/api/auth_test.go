@@ -93,7 +93,7 @@ func TestAuth(t *testing.T) {
 		}()
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusInternalServerError,
 			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
-			jsonhttptest.WithJSONRequestBody(api.RoleRequest{
+			jsonhttptest.WithJSONRequestBody(api.SecurityTokenRequest{
 				Role: "role0",
 			}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -105,10 +105,10 @@ func TestAuth(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
-			jsonhttptest.WithJSONRequestBody(api.RoleRequest{
+			jsonhttptest.WithJSONRequestBody(api.SecurityTokenRequest{
 				Role: "role0",
 			}),
-			jsonhttptest.WithExpectedJSONResponse(api.AuthKeyResponse{
+			jsonhttptest.WithExpectedJSONResponse(api.SecurityTokenResponse{
 				Key: "123",
 			}),
 		)

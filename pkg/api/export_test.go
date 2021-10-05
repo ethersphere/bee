@@ -21,8 +21,8 @@ type (
 	PostageStampResponse  = postageStampResponse
 	PostageStampsResponse = postageStampsResponse
 	IsRetrievableResponse = isRetrievableResponse
-	AuthKeyResponse       = securityTokenRsp
-	RoleRequest           = securityTokenReq
+	SecurityTokenResponse = securityTokenRsp
+	SecurityTokenRequest  = securityTokenReq
 )
 
 var (

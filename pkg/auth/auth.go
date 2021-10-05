@@ -59,10 +59,15 @@ func New(encryptionKey, passwordHash string) (*Authenticator, error) {
 		return nil, err
 	}
 
+	ciph, err := newEncrypter([]byte(encryptionKey))
+	if err != nil {
+		return nil, err
+	}
+
 	auth := Authenticator{
 		enforcer:     e,
+		ciph:         ciph,
 		passwordHash: []byte(passwordHash),
-		ciph:         newEncrypter([]byte(encryptionKey)),
 	}
 
 	return &auth, nil
@@ -184,22 +189,25 @@ type encrypter struct {
 	gcm cipher.AEAD
 }
 
-func newEncrypter(key []byte) *encrypter {
+func newEncrypter(key []byte) (*encrypter, error) {
 	hasher := md5.New()
-	hasher.Write(key)
+	_, err := hasher.Write(key)
+	if err != nil {
+		return nil, err
+	}
 	hash := hex.EncodeToString(hasher.Sum(nil))
 	block, err := aes.NewCipher([]byte(hash))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return &encrypter{
 		gcm: gcm,
-	}
+	}, nil
 }
 
 func (e encrypter) encrypt(data []byte) ([]byte, error) {
