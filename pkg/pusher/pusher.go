@@ -267,16 +267,22 @@ LOOP:
 					if err == nil && t != nil {
 						err = t.Inc(tags.StateSynced)
 						if err != nil {
-							err = fmt.Errorf("pusher: increment synced: %v", err)
+							err = fmt.Errorf("increment synced: %v", err)
+							logger.Tracef("pusher: chunk %s tag error: %v", ch.Address().String(), err)
+							err = nil
 							return
 						}
 						if wantSelf {
 							err = t.Inc(tags.StateSent)
 							if err != nil {
-								err = fmt.Errorf("pusher: increment sent: %w", err)
+								err = fmt.Errorf("increment sent: %v", err)
+								logger.Tracef("pusher: chunk %s tag error: %v", ch.Address().String(), err)
+								err = nil
 								return
 							}
 						}
+					} else {
+						err = nil // don't fail because of a tag error
 					}
 				}
 
