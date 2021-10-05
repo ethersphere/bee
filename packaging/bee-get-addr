@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ ! `id -u` -eq 0 ] ; then
+if [ ! "$(id -u)" -eq 0 ] ; then
     echo "
 This script requires root priviledges, use sudo.
 "
@@ -34,3 +34,5 @@ See the docs for more at https://docs.ethswarm.org/docs/.
         "
         ;;
 esac
+
+chown -R bee:bee /var/lib/bee
