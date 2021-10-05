@@ -415,6 +415,10 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			}
 			return
 		}
+		if top == math.MaxUint64 {
+			p.metrics.MaxUintErrCounter.Inc()
+			return
+		}
 		err = p.addPeerInterval(peer, bin, from, top)
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
