@@ -36,7 +36,7 @@ const (
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
 
-	logMore = false
+	logMore = false // enable this for more logging
 )
 
 var (
