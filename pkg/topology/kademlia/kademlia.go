@@ -714,8 +714,12 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
 				return false, err
 			}
+
+			k.metrics.TotalOutboundConnections.Inc()
+			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 			k.logger.Tracef("connected to bootnode %s", addr)
 			connected++
+
 			// connect to max 3 bootnodes
 			return connected >= 3, nil
 		}); err != nil && !errors.Is(err, context.Canceled) {
@@ -981,7 +985,14 @@ func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool 
 
 // Connected is called when a peer has dialed in.
 // If forceConnection is true `overSaturated` is ignored for non-bootnodes.
-func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) error {
+func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) (err error) {
+	defer func() {
+		if err == nil {
+			k.metrics.TotalInboundConnections.Inc()
+			k.collector.Record(peer.Address, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound))
+		}
+	}()
+
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
@@ -1009,9 +1020,6 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 	k.knownPeers.Add(addr)
 	k.connectedPeers.Add(addr)
-
-	k.metrics.TotalInboundConnections.Inc()
-	k.collector.Record(addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound))
 
 	k.waitNext.Remove(addr)
 
