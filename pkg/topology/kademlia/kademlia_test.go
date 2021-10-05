@@ -1504,10 +1504,9 @@ func TestIteratorOpts(t *testing.T) {
 	}
 
 	// randomly mark some nodes as reachable
-	totalPeers, totalReachable := 0, 0
+	totalReachable := 0
 	reachable := make(map[string]struct{})
 	_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-		totalPeers++
 		if randBool.Bool() {
 			kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
 			reachable[addr.ByteString()] = struct{}{}
@@ -1516,12 +1515,10 @@ func TestIteratorOpts(t *testing.T) {
 		return false, false, nil
 	})
 
-	fmt.Println(totalPeers, totalReachable)
-
 	t.Run("EachPeer reachable", func(t *testing.T) {
 		count := 0
 		err := kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-			if _, notExists := reachable[addr.ByteString()]; !notExists {
+			if _, exists := reachable[addr.ByteString()]; !exists {
 				t.Fatal("iterator returned incorrect peer")
 			}
 			count++
@@ -1538,7 +1535,7 @@ func TestIteratorOpts(t *testing.T) {
 	t.Run("EachPeerRev reachable", func(t *testing.T) {
 		count := 0
 		err := kad.EachPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-			if _, notExists := reachable[addr.ByteString()]; !notExists {
+			if _, exists := reachable[addr.ByteString()]; !exists {
 				t.Fatal("iterator returned incorrect peer")
 			}
 			count++
