@@ -1192,23 +1192,33 @@ func (k *Kad) EachNeighborRev(f topology.EachPeerFunc) error {
 }
 
 // EachPeer iterates from closest bin to farthest.
-func (k *Kad) EachPeer(f topology.EachPeerFunc) error {
-	return k.connectedPeers.EachBin(k.onlyReachable(f))
-}
-
-// EachPeerRev iterates from farthest bin to closest.
-func (k *Kad) EachPeerRev(f topology.EachPeerFunc) error {
-	return k.connectedPeers.EachBinRev(k.onlyReachable(f))
-}
-
-// onlyReachable wraps the iterator func to filer-out unreachable peers.
-func (k *Kad) onlyReachable(f topology.EachPeerFunc) topology.EachPeerFunc {
-	return func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if k.collector.Inspect(addr).Reachability != p2p.ReachabilityStatusPublic {
+func (k *Kad) EachPeer(f topology.EachPeerFunc, opts ...topology.IteratorOpt) error {
+	filter := filterFromOpts(opts)
+	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		if filter.Reachable && k.collector.Inspect(addr).Reachability != p2p.ReachabilityStatusPublic {
 			return false, false, nil
 		}
 		return f(addr, po)
+	})
+}
+
+// EachPeerRev iterates from farthest bin to closest.
+func (k *Kad) EachPeerRev(f topology.EachPeerFunc, opts ...topology.IteratorOpt) error {
+	filter := filterFromOpts(opts)
+	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		if filter.Reachable && k.collector.Inspect(addr).Reachability != p2p.ReachabilityStatusPublic {
+			return false, false, nil
+		}
+		return f(addr, po)
+	})
+}
+
+func filterFromOpts(opts []topology.IteratorOpt) *topology.Filter {
+	f := new(topology.Filter)
+	for _, opt := range opts {
+		opt(f)
 	}
+	return f
 }
 
 // SetPeerReachability sets the peer reachability status.

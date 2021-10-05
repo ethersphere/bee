@@ -1234,7 +1234,6 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 		for _, peer := range peers {
 			addOne(t, signer, kad, ab, peer)
-			kad.SetPeerReachability(peer, p2p.ReachabilityStatusPublic)
 		}
 		time.Sleep(time.Millisecond * 10)
 		kDepth(t, kad, i)
@@ -1329,7 +1328,6 @@ func TestLatency(t *testing.T) {
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	signer := beeCrypto.NewDefaultSigner(pk)
 	addOne(t, signer, kad, ab, p1)
-	kad.SetPeerReachability(p1, p2p.ReachabilityStatusPublic)
 
 	waitPeers(t, kad, 1)
 	select {
@@ -1373,7 +1371,6 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, protected[i], nil)
-			kad.SetPeerReachability(protected[i], p2p.ReachabilityStatusPublic)
 		}
 		// see depth is limited to currently added peers proximity
 		kDepth(t, kad, i)
@@ -1387,7 +1384,6 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		addr := test.RandomAddressAt(base, k)
 		// if error is not as specified, connectOne goes fatal
 		connectOne(t, signer, kad, ab, addr, nil)
-		kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
 		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
@@ -1405,7 +1401,6 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			addr := test.RandomAddressAt(base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
-			kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
 		}
 		// see depth is still as expected
 		kDepth(t, kad, 5)
@@ -1488,6 +1483,92 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 	case <-time.After(time.Millisecond * 100):
 		t.Fatal("background broadcast did not exit on close")
 	}
+}
+
+func TestIteratorOpts(t *testing.T) {
+	var (
+		conns                    int32 // how many connect calls were made to the p2p mock
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
+	)
+
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 4; j++ {
+			addr := test.RandomAddressAt(base, i)
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
+
+	// randomly mark some nodes as reachable
+	totalPeers, totalReachable := 0, 0
+	reachable := make(map[string]struct{})
+	_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		totalPeers++
+		if randBool.Bool() {
+			kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
+			reachable[addr.ByteString()] = struct{}{}
+			totalReachable++
+		}
+		return false, false, nil
+	})
+
+	fmt.Println(totalPeers, totalReachable)
+
+	t.Run("EachPeer reachable", func(t *testing.T) {
+		count := 0
+		err := kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, notExists := reachable[addr.ByteString()]; !notExists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			count++
+			return false, false, nil
+		}, topology.ReachablePeers)
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+		if count != totalReachable {
+			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalReachable)
+		}
+	})
+
+	t.Run("EachPeerRev reachable", func(t *testing.T) {
+		count := 0
+		err := kad.EachPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, notExists := reachable[addr.ByteString()]; !notExists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			count++
+			return false, false, nil
+		}, topology.ReachablePeers)
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+		if count != totalReachable {
+			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalReachable)
+		}
+	})
+}
+
+type boolgen struct {
+	src       rand.Source
+	cache     int64
+	remaining int
+}
+
+func (b *boolgen) Bool() bool {
+	if b.remaining == 0 {
+		b.cache, b.remaining = b.src.Int63(), 63
+	}
+
+	result := b.cache&0x01 == 1
+	b.cache >>= 1
+	b.remaining--
+
+	return result
 }
 
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
