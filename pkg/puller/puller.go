@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	logMore = false // enable this to get more logging
+	logMore = true // enable this to get more logging
 )
 
 type Options struct {
