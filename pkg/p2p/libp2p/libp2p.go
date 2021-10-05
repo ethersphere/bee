@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/reacher"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -471,7 +472,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
-	// s.reacher = reacher.New(s, n)
+	s.reacher = reacher.New(s, n)
 	s.notifier = n
 }
 
