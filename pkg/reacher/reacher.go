@@ -44,13 +44,13 @@ type reacher struct {
 	metrics metrics
 }
 
-func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
+func New(pinger p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r := &reacher{
 		work:      make(chan struct{}, 1),
-		pinger:    streamer,
+		pinger:    pinger,
 		notifier:  notifier,
 		wg:        sync.WaitGroup{},
 		ctx:       ctx,
