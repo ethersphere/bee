@@ -60,27 +60,15 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 
 	r.wg.Add(workers)
 	for i := 0; i < workers; i++ {
-		go r.worker()
+		go r.ping()
 	}
 
 	return r
 }
 
-func (r *reacher) worker() {
+func (r *reacher) ping() {
 
 	defer r.wg.Done()
-
-	for {
-		select {
-		case <-r.ctx.Done():
-			return
-		case <-r.work:
-			r.ping()
-		}
-	}
-}
-
-func (r *reacher) ping() {
 
 	for {
 
