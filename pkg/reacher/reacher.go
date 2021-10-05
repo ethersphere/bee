@@ -11,18 +11,16 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sync/semaphore"
-
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 const (
-	pingTimeoutMin = time.Second * 2
-	pingTimeoutMax = time.Second * 5
-	pingMaxAttemps = 3
-	maxWorkers     = 16
+	pingTimeoutMin  = time.Second * 2
+	pingTimeoutMax  = time.Second * 5
+	pingMaxAttempts = 3
+	workers         = 8
 )
 
 type peer struct {
@@ -34,15 +32,16 @@ type reacher struct {
 	mu    sync.Mutex
 	queue []peer
 
-	ctx      context.Context
-	ctxClose context.CancelFunc
-	run      chan struct{}
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	run       chan struct{}
 
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
 
-	wg  sync.WaitGroup
-	sem *semaphore.Weighted
+	wg sync.WaitGroup
+
+	metrics metrics
 }
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
@@ -50,17 +49,19 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r := &reacher{
-		run:      make(chan struct{}, 1),
-		pinger:   streamer,
-		notifier: notifier,
-		wg:       sync.WaitGroup{},
-		sem:      semaphore.NewWeighted(maxWorkers),
-		ctx:      ctx,
-		ctxClose: cancel,
+		run:       make(chan struct{}, 1),
+		pinger:    streamer,
+		notifier:  notifier,
+		wg:        sync.WaitGroup{},
+		ctx:       ctx,
+		ctxCancel: cancel,
+		metrics:   newMetrics(),
 	}
 
-	r.wg.Add(1)
-	go r.worker()
+	r.wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go r.worker()
+	}
 
 	return r
 }
@@ -74,18 +75,12 @@ func (r *reacher) worker() {
 		case <-r.ctx.Done():
 			return
 		case <-r.run:
-			if err := r.sem.Acquire(r.ctx, 1); err == nil {
-				r.wg.Add(1)
-				go r.ping()
-			}
+			r.work()
 		}
 	}
 }
 
-func (r *reacher) ping() {
-
-	defer r.wg.Done()
-	defer r.sem.Release(1)
+func (r *reacher) work() {
 
 	for {
 
@@ -111,16 +106,23 @@ func (r *reacher) ping() {
 
 			attempts++
 
+			now := time.Now()
+
 			ctxt, cancel := context.WithTimeout(r.ctx, timeout)
 			_, err := r.pinger.Ping(ctxt, p.addr)
 			cancel()
 
 			if err == nil {
+				r.metrics.Pings.WithLabelValues("success").Inc()
+				r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
 				r.notifier.Reachable(p.overlay, true)
 				break
 			}
 
-			if attempts == pingMaxAttemps {
+			r.metrics.Pings.WithLabelValues("failure").Inc()
+			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
+
+			if attempts == pingMaxAttempts {
 				r.notifier.Reachable(p.overlay, false)
 				break
 			}
@@ -157,7 +159,7 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 }
 
 func (r *reacher) Close() error {
-	r.ctxClose()
+	r.ctxCancel()
 	r.wg.Wait()
 	return nil
 }

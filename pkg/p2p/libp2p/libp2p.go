@@ -698,6 +698,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
+	s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+
 	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
 	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
