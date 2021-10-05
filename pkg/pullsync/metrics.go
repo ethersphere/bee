@@ -10,42 +10,42 @@ import (
 )
 
 type metrics struct {
-	OfferCounter         prometheus.Counter // number of chunks offered
-	WantCounter          prometheus.Counter // number of chunks wanted
-	DeliveryCounter      prometheus.Counter // number of chunk deliveries
-	DbOpsCounter         prometheus.Counter // number of db ops
-	DuplicateRuidCounter prometheus.Counter //number of duplicate RUID requests we got
+	Offered       prometheus.Counter // number of chunks offered
+	Wanted        prometheus.Counter // number of chunks wanted
+	Delivered     prometheus.Counter // number of chunk deliveries
+	DbOps         prometheus.Counter // number of db ops
+	DuplicateRuid prometheus.Counter //number of duplicate RUID requests we got
 }
 
 func newMetrics() metrics {
 	subsystem := "pullsync"
 
 	return metrics{
-		OfferCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		Offered: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_offered",
 			Help:      "Total chunks offered.",
 		}),
-		WantCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		Wanted: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_wanted",
 			Help:      "Total chunks wanted.",
 		}),
-		DeliveryCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		Delivered: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_delivered",
 			Help:      "Total chunks delivered.",
 		}),
-		DbOpsCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		DbOps: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "db_ops",
 			Help:      "Total Db Ops.",
 		}),
-		DuplicateRuidCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		DuplicateRuid: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "duplicate_ruids",

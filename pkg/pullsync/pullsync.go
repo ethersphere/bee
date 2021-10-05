@@ -190,8 +190,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			s.logger.Errorf("syncer got a zero address hash on offer")
 			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
 		}
-		s.metrics.OfferCounter.Inc()
-		s.metrics.DbOpsCounter.Inc()
+		s.metrics.Offered.Inc()
+		s.metrics.DbOps.Inc()
 		have, err := s.storage.Has(ctx, a)
 		if err != nil {
 			return 0, ru.Ruid, fmt.Errorf("storage has: %w", err)
@@ -199,7 +199,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if !have {
 			wantChunks[a.String()] = struct{}{}
 			ctr++
-			s.metrics.WantCounter.Inc()
+			s.metrics.Wanted.Inc()
 			bv.Set(i / swarm.HashSize)
 		}
 	}
@@ -233,7 +233,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		delete(wantChunks, addr.String())
-		s.metrics.DeliveryCounter.Inc()
+		s.metrics.Delivered.Inc()
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
@@ -251,7 +251,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		chunksToPut = append(chunksToPut, chunk)
 	}
 	if len(chunksToPut) > 0 {
-		s.metrics.DbOpsCounter.Inc()
+		s.metrics.DbOps.Inc()
 		if ierr := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); ierr != nil {
 			if err != nil {
 				ierr = fmt.Errorf(", sync err: %w", err)
@@ -292,7 +292,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		s.ruidCtx[p.Address.ByteString()] = make(map[uint32]func())
 	}
 	if c, ok := s.ruidCtx[p.Address.ByteString()][ru.Ruid]; ok {
-		s.metrics.DuplicateRuidCounter.Inc()
+		s.metrics.DuplicateRuid.Inc()
 		c()
 	}
 	s.ruidCtx[p.Address.ByteString()][ru.Ruid] = cancel
@@ -405,7 +405,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addrs = append(addrs, a)
 		}
 	}
-	s.metrics.DbOpsCounter.Inc()
+	s.metrics.DbOps.Inc()
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
 }
 
@@ -466,7 +466,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
-	s.metrics.DbOpsCounter.Inc()
+	s.metrics.DbOps.Inc()
 	ints, err := s.storage.Cursors(ctx)
 	if err != nil {
 		return err
@@ -518,7 +518,7 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		if err != nil {
 			_ = stream.Reset()
 			if logMore {
-				s.logger.Debugf("pullsync: peer %d failed cancelling %d: %v", p.Address.String(), c.Ruid, err)
+				s.logger.Debugf("pullsync: peer %s failed cancelling %d: %v", p.Address.String(), c.Ruid, err)
 			}
 		} else {
 			_ = stream.FullClose()
@@ -530,7 +530,7 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	if logMore {
-		s.logger.Debugf("pullsync: peer %d cancelling %d", p.Address.String(), c.Ruid)
+		s.logger.Debugf("pullsync: peer %s cancelling %d", p.Address.String(), c.Ruid)
 	}
 
 	s.ruidMtx.Lock()
