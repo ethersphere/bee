@@ -298,38 +298,9 @@ jobs:
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
   retag:
     name: Retag and Trigger ArgoCD
+    needs: [beekeeper, beekeeper_si, beekeeper_clef]
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for integration test1
-        uses: fountainhead/action-wait-for-check@v1.0.0
-        id: wait-1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: beekeeper
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Do something with a failing build
-        if: steps.wait-1.outputs.conclusion == 'failure'
-        run: exit 1
-      - name: Wait for integration test2
-        uses: fountainhead/action-wait-for-check@v1.0.0
-        id: wait-2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: beekeeper_si
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Do something with a failing build
-        if: steps.wait-2.conclusion == 'failure'
-        run: exit 1
-      - name: Wait for integration test3
-        uses: fountainhead/action-wait-for-check@v1.0.0
-        id: wait-3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: beekeeper_clef
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Do something with a failing build
-        if: steps.wait-3.conclusion == 'failure'
-        run: exit 1
       - name: Fail intentionally
         run: exit 1
       - name: Retag Docker image and push for cache
