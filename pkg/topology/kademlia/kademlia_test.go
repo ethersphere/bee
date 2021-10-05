@@ -1234,6 +1234,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 		for _, peer := range peers {
 			addOne(t, signer, kad, ab, peer)
+			kad.SetPeerReachability(peer, p2p.ReachabilityStatusPublic)
 		}
 		time.Sleep(time.Millisecond * 10)
 		kDepth(t, kad, i)
@@ -1328,6 +1329,7 @@ func TestLatency(t *testing.T) {
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	signer := beeCrypto.NewDefaultSigner(pk)
 	addOne(t, signer, kad, ab, p1)
+	kad.SetPeerReachability(p1, p2p.ReachabilityStatusPublic)
 
 	waitPeers(t, kad, 1)
 	select {
@@ -1371,6 +1373,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, protected[i], nil)
+			kad.SetPeerReachability(protected[i], p2p.ReachabilityStatusPublic)
 		}
 		// see depth is limited to currently added peers proximity
 		kDepth(t, kad, i)
@@ -1384,6 +1387,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		addr := test.RandomAddressAt(base, k)
 		// if error is not as specified, connectOne goes fatal
 		connectOne(t, signer, kad, ab, addr, nil)
+		kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
 		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
@@ -1401,6 +1405,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			addr := test.RandomAddressAt(base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
+			kad.SetPeerReachability(addr, p2p.ReachabilityStatusPublic)
 		}
 		// see depth is still as expected
 		kDepth(t, kad, 5)
