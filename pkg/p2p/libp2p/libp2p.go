@@ -23,7 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/reacher"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
