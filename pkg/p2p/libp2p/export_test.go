@@ -22,6 +22,10 @@ func (s *Service) NewStreamForPeerID(peerID libp2ppeer.ID, protocolName, protoco
 	return s.newStreamForPeerID(context.Background(), peerID, protocolName, protocolVersion, streamName)
 }
 
+func (s *Service) Host() host.Host {
+	return s.host
+}
+
 type StaticAddressResolver = staticAddressResolver
 
 var NewStaticAddressResolver = newStaticAddressResolver
