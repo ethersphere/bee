@@ -1044,6 +1044,7 @@ type notifiee struct {
 	announce           announceFunc
 	announceTo         announceToFunc
 	updateReachability reachabilityFunc
+	reachable          reachableFunc
 }
 
 func (n *notifiee) Connected(c context.Context, p p2p.Peer, f bool) error {
@@ -1070,6 +1071,10 @@ func (n *notifiee) UpdateReachability(status p2p.ReachabilityStatus) {
 	n.updateReachability(status)
 }
 
+func (n *notifiee) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
+	n.reachable(addr, status)
+}
+
 func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
 	return &notifiee{
 		connected:          c,
@@ -1078,6 +1083,7 @@ func mockNotifier(c cFunc, d dFunc, pick bool) p2p.PickyNotifier {
 		announce:           noopAnnounce,
 		announceTo:         noopAnnounceTo,
 		updateReachability: noopReachability,
+		reachable:          noopReachable,
 	}
 }
 
@@ -1089,6 +1095,7 @@ func mockAnnouncingNotifier(a announceFunc, at announceToFunc) p2p.PickyNotifier
 		announce:           a,
 		announceTo:         at,
 		updateReachability: noopReachability,
+		reachable:          noopReachable,
 	}
 }
 
@@ -1100,6 +1107,7 @@ func mockReachabilityNotifier(r reachabilityFunc) p2p.PickyNotifier {
 		announce:           noopAnnounce,
 		announceTo:         noopAnnounceTo,
 		updateReachability: r,
+		reachable:          noopReachable,
 	}
 }
 
@@ -1109,6 +1117,7 @@ type (
 	announceFunc     func(context.Context, swarm.Address, bool) error
 	announceToFunc   func(context.Context, swarm.Address, swarm.Address, bool) error
 	reachabilityFunc func(p2p.ReachabilityStatus)
+	reachableFunc    func(swarm.Address, p2p.ReachabilityStatus)
 )
 
 var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
@@ -1116,3 +1125,21 @@ var noopDf = func(p2p.Peer) {}
 var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
 var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
 var noopReachability = func(p2p.ReachabilityStatus) {}
+var noopReachable = func(swarm.Address, p2p.ReachabilityStatus) {}
+
+/*
+type reacher struct {
+	connected    func(swarm.Address, ma.Multiaddr)
+	disconnected func(swarm.Address)
+}
+
+func (r *reacher) Connected(sa swarm.Address, maa ma.Multiaddr) { r.connected(sa, maa) }
+func (r *reacher) Disconnected(sa swarm.Address)                { r.disconnected(sa) }
+
+func mockReacher() p2p.Reacher {
+	return &reacher{
+		connected:    func(a swarm.Address, m ma.Multiaddr) {},
+		disconnected: func(a swarm.Address) {},
+	}
+}
+*/

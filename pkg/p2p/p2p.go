@@ -65,6 +65,7 @@ type PickyNotifier interface {
 	Picker
 	Notifier
 	ReachabilityUpdater
+	ReachableNotifier
 }
 
 type Picker interface {
@@ -72,7 +73,7 @@ type Picker interface {
 }
 
 type ReachableNotifier interface {
-	Reachable(swarm.Address, bool)
+	Reachable(swarm.Address, ReachabilityStatus)
 }
 
 type Reacher interface {
