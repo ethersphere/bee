@@ -1126,20 +1126,3 @@ var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil
 var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
 var noopReachability = func(p2p.ReachabilityStatus) {}
 var noopReachable = func(swarm.Address, p2p.ReachabilityStatus) {}
-
-/*
-type reacher struct {
-	connected    func(swarm.Address, ma.Multiaddr)
-	disconnected func(swarm.Address)
-}
-
-func (r *reacher) Connected(sa swarm.Address, maa ma.Multiaddr) { r.connected(sa, maa) }
-func (r *reacher) Disconnected(sa swarm.Address)                { r.disconnected(sa) }
-
-func mockReacher() p2p.Reacher {
-	return &reacher{
-		connected:    func(a swarm.Address, m ma.Multiaddr) {},
-		disconnected: func(a swarm.Address) {},
-	}
-}
-*/
