@@ -1230,7 +1230,7 @@ func filterFromOpts(opts []topology.IteratorOpt) *topology.Filter {
 }
 
 // SetPeerReachability sets the peer reachability status.
-func (k *Kad) SetPeerReachability(addr swarm.Address, status p2p.ReachabilityStatus) {
+func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
 }
 

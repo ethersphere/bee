@@ -49,20 +49,22 @@ jobs:
     - name: Vet
       if: matrix.os == 'ubuntu-latest'
       run: make vet
-    - name: Test with race detector & code coverage
-      if: matrix.os == 'ubuntu-latest'
-      # only generate code coverage profile on ubuntu
+    - name: Test with Race Detector
+      # do not tests with race detector on windows
+      # until the issue with badgerdb memory allocation
+      # is solved in this case
+      if: matrix.os != 'windows-latest'
       run: make cover=1 test-race
-    - name: Test with race detector
-      if: matrix.os != 'ubuntu-latest'
-      run: make test-race
-    - name: Upload coverage to Codecov
+    - name: Test
+      if: matrix.os == 'windows-latest'
+      run: make test
+    - name: Coveralls
       if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v2
+      uses: shogo82148/actions-goveralls@v1
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        fail_ci_if_error: true
-        files: ./cover.out
+        path-to-profile: cover.out
+      env:
+        COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
     - name: Trigger Beekeeper
       if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
       uses: peter-evans/repository-dispatch@v1
