@@ -1219,14 +1219,6 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter *topology.Filter) erro
 	})
 }
 
-// func filterFromOpts(opts []topology.IteratorOpt) *topology.Filter {
-// 	f := new(topology.Filter)
-// 	for _, opt := range opts {
-// 		opt(f)
-// 	}
-// 	return f
-// }
-
 // SetPeerReachability sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
