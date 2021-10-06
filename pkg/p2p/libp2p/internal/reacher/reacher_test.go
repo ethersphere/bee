@@ -7,7 +7,6 @@ package reacher_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,19 +20,19 @@ import (
 func TestPingSuccess(t *testing.T) {
 
 	var (
-		got  = p2p.ReachabilityStatusPrivate
 		want = p2p.ReachabilityStatusPublic
-		mu   = sync.Mutex{}
+		done = make(chan struct{})
 	)
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
 		return 0, nil
 	}
 
-	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		mu.Lock()
-		got = b
-		mu.Unlock()
+	reachableFunc := func(addr swarm.Address, got p2p.ReachabilityStatus) {
+		if got != want {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+		close(done)
 	}
 
 	mock := newMock(pingFunc, reachableFunc)
@@ -47,19 +46,18 @@ func TestPingSuccess(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
 
-	mu.Lock()
-	defer mu.Unlock()
-	if got != want {
-		t.Fatalf("got %v, want %v", got, want)
+	select {
+	case <-time.After(time.Second):
+		t.Fatalf("test time out")
+	case <-done:
 	}
 }
 
 func TestPingFailure(t *testing.T) {
 
 	var (
-		got  = p2p.ReachabilityStatusPublic
 		want = p2p.ReachabilityStatusPrivate
-		mu   = sync.Mutex{}
+		done = make(chan struct{})
 	)
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
@@ -67,9 +65,10 @@ func TestPingFailure(t *testing.T) {
 	}
 
 	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		mu.Lock()
-		got = b
-		mu.Unlock()
+		if b != want {
+			t.Fatalf("got %v, want %v", b, want)
+		}
+		close(done)
 	}
 
 	mock := newMock(pingFunc, reachableFunc)
@@ -81,34 +80,28 @@ func TestPingFailure(t *testing.T) {
 
 	r.Connected(overlay, nil)
 
-	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
-
-	mu.Lock()
-	defer mu.Unlock()
-	if got != want {
-		t.Fatalf("got %v, want %v", got, want)
+	select {
+	case <-time.After(time.Second):
+		t.Fatalf("test time out")
+	case <-done:
 	}
 }
 
 func TestDisconnected(t *testing.T) {
 
 	var (
-		overlay     = test.RandomAddress()
-		seenOverlay = false
-		mu          = sync.Mutex{}
+		overlay = test.RandomAddress()
 	)
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
-		time.Sleep(time.Millisecond * 5)
+		time.Sleep(time.Millisecond * 10) // sleep between calls
 		return 0, nil
 	}
 
 	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		mu.Lock()
 		if addr.Equal(overlay) {
-			seenOverlay = true
+			t.Fatalf("overlay should be disconnected")
 		}
-		mu.Unlock()
 	}
 
 	mock := newMock(pingFunc, reachableFunc)
@@ -120,13 +113,7 @@ func TestDisconnected(t *testing.T) {
 	r.Connected(overlay, nil)
 	r.Disconnected(overlay)
 
-	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
-
-	mu.Lock()
-	defer mu.Unlock()
-	if seenOverlay {
-		t.Fatalf("got %v, want %v", seenOverlay, false)
-	}
+	time.Sleep(time.Millisecond * 100) // wait for reachable func to be called
 }
 
 type mock struct {
