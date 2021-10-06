@@ -279,10 +279,7 @@ func collectKeysExcept(s *Store, prefix []string) (keys []string, err error) {
 func collectKeys(s *Store, prefix string, invert bool) (keys []string, err error) {
 	if err := s.Iterate(prefix, func(k, v []byte) (bool, error) {
 		stk := string(k)
-		if invert && !strings.HasPrefix(stk, prefix) {
-
-		}
-		if !invert && strings.HasPrefix(stk, prefix) {
+		if strings.HasPrefix(stk, prefix) {
 			keys = append(keys, stk)
 		}
 		return false, nil
