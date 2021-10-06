@@ -72,10 +72,16 @@ func (r *reacher) ping() {
 
 	for {
 
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-r.work:
+		}
+
 		r.mu.Lock()
 		if len(r.queue) == 0 {
 			r.mu.Unlock()
-			return
+			continue
 		}
 		p := r.queue[0]
 		r.queue = r.queue[1:]
