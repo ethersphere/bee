@@ -40,6 +40,7 @@ func init() {
 }
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+var defaultFilter = &topology.Filter{}
 
 // TestNeighborhoodDepth tests that the kademlia depth changes correctly
 // according to the change to known peers slice. This inadvertently tests
@@ -621,7 +622,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, signer, kad, ab, peer, nil)
 
-	p, err := kad.ClosestPeer(addr, true)
+	p, err := kad.ClosestPeer(addr, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +633,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(p2p.Peer{Address: peer})
-	_, err = kad.ClosestPeer(addr, true)
+	_, err = kad.ClosestPeer(addr, true, nil)
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -958,7 +959,7 @@ func TestClosestPeer(t *testing.T) {
 			includeSelf:  false,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf)
+		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf, nil)
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
@@ -1421,7 +1422,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 				return true, false, nil
 			}
 			return false, false, nil
-		})
+		}, defaultFilter)
 		if !found {
 			t.Fatalf("protected node %s not found in connected list", pn)
 		}
@@ -1513,7 +1514,7 @@ func TestIteratorOpts(t *testing.T) {
 			totalReachable++
 		}
 		return false, false, nil
-	})
+	}, defaultFilter)
 
 	t.Run("EachPeer reachable", func(t *testing.T) {
 		count := 0
@@ -1523,7 +1524,7 @@ func TestIteratorOpts(t *testing.T) {
 			}
 			count++
 			return false, false, nil
-		}, topology.ReachablePeers)
+		}, &topology.Filter{Reachable: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1540,7 +1541,7 @@ func TestIteratorOpts(t *testing.T) {
 			}
 			count++
 			return false, false, nil
-		}, topology.ReachablePeers)
+		}, &topology.Filter{Reachable: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1627,7 +1628,7 @@ func binSizes(kad *kademlia.Kad) []int {
 	_ = kad.EachPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 		bins[u]++
 		return false, false, nil
-	})
+	}, defaultFilter)
 
 	return bins
 }
@@ -1843,7 +1844,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
 			return false, false, nil
-		})
+		}, defaultFilter)
 		if i == peers {
 			return
 		}

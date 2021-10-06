@@ -44,14 +44,14 @@ type ClosestPeerer interface {
 	// given chunk address.
 	// This function will ignore peers with addresses provided in skipPeers.
 	// Returns topology.ErrWantSelf in case base is the closest to the address.
-	ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestPeer(addr swarm.Address, includeSelf bool, f *Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 type EachPeerer interface {
 	// EachPeer iterates from closest bin to farthest
-	EachPeer(EachPeerFunc, ...IteratorOpt) error
+	EachPeer(EachPeerFunc, *Filter) error
 	// EachPeerRev iterates from farthest bin to closest
-	EachPeerRev(EachPeerFunc, ...IteratorOpt) error
+	EachPeerRev(EachPeerFunc, *Filter) error
 }
 
 type EachNeighbor interface {
