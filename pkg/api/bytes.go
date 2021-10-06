@@ -35,7 +35,15 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("bytes upload: postage batch id:%v", err)
+		logger.Error("bytes upload: postage batch id")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	putter, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
 	if err != nil {
 		logger.Debugf("bytes upload: get putter:%v", err)
 		logger.Error("bytes upload: putter")
@@ -66,7 +74,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
-
 	p := requestPipelineFn(putter, r)
 	address, err := p(ctx, r.Body)
 	if err != nil {
@@ -78,6 +85,12 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(w, nil)
 		}
+		return
+	}
+	if err = putter.eg.Wait(); err != nil {
+		logger.Debugf("bytes upload: sync chunks: %v", err)
+		logger.Error("bytes upload: sync chunks")
+		jsonhttp.InternalServerError(w, nil)
 		return
 	}
 
