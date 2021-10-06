@@ -114,7 +114,6 @@ type Kad struct {
 	staticPeer        staticPeerFunc
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
-	bgBroadcastWg     sync.WaitGroup
 	blocker           *blocker.Blocker
 }
 
@@ -909,9 +908,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 				continue
 			default:
 			}
-			k.bgBroadcastWg.Add(1)
 			go func(connectedPeer swarm.Address) {
-				defer k.bgBroadcastWg.Done()
 
 				// Create a new deadline ctx to prevent goroutine pile up
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
@@ -1400,11 +1397,6 @@ func (k *Kad) Close() error {
 	go func() {
 		k.wg.Wait()
 		close(cc)
-	}()
-
-	go func() {
-		k.bgBroadcastWg.Wait()
-		close(bgBroadcastDone)
 	}()
 
 	eg := errgroup.Group{}
