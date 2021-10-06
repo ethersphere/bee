@@ -111,7 +111,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ *topology.Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
@@ -177,7 +177,7 @@ func (m *mock) IsWithinDepth(addr swarm.Address) bool {
 }
 
 func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {
-	return m.EachPeer(f, nil)
+	return m.EachPeer(f, topology.Filter{})
 }
 
 func (*mock) EachNeighborRev(topology.EachPeerFunc) error {
@@ -185,7 +185,7 @@ func (*mock) EachNeighborRev(topology.EachPeerFunc) error {
 }
 
 // EachPeer iterates from closest bin to farthest
-func (d *mock) EachPeer(f topology.EachPeerFunc, _ *topology.Filter) (err error) {
+func (d *mock) EachPeer(f topology.EachPeerFunc, _ topology.Filter) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
@@ -204,7 +204,7 @@ func (d *mock) EachPeer(f topology.EachPeerFunc, _ *topology.Filter) (err error)
 }
 
 // EachPeerRev iterates from farthest bin to closest
-func (d *mock) EachPeerRev(f topology.EachPeerFunc, _ *topology.Filter) (err error) {
+func (d *mock) EachPeerRev(f topology.EachPeerFunc, _ topology.Filter) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 

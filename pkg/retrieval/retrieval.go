@@ -370,7 +370,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 			closest = peer
 		}
 		return false, false, nil
-	}, &topology.Filter{Reachable: true})
+	}, topology.Filter{Reachable: true})
 	if err != nil {
 		return swarm.Address{}, err
 	}

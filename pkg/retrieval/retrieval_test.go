@@ -537,10 +537,10 @@ type mockPeerSuggester struct {
 	eachPeerRevFunc func(f topology.EachPeerFunc) error
 }
 
-func (s mockPeerSuggester) EachPeer(_ topology.EachPeerFunc, _ *topology.Filter) error {
+func (s mockPeerSuggester) EachPeer(_ topology.EachPeerFunc, _ topology.Filter) error {
 	return errors.New("not implemented")
 }
-func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc, _ *topology.Filter) error {
+func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc, _ topology.Filter) error {
 	return s.eachPeerRevFunc(f)
 }
 
