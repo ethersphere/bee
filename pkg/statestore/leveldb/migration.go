@@ -49,13 +49,13 @@ var (
 
 type migration struct {
 	name string               // name of the schema
-	fn   func(s *store) error // the migration function that needs to be performed in order to get to the current schema name
+	fn   func(s *Store) error // the migration function that needs to be performed in order to get to the current schema name
 }
 
 // schemaMigrations contains an ordered list of the database schemes, that is
 // in order to run data migrations in the correct sequence
 var schemaMigrations = []migration{
-	{name: dbSchemaGrace, fn: func(s *store) error { return nil }},
+	{name: dbSchemaGrace, fn: func(s *Store) error { return nil }},
 	{name: dbSchemaDrain, fn: migrateGrace},
 	{name: dbSchemaCleanInterval, fn: migrateGrace},
 	{name: dbSchemaNoStamp, fn: migrateStamp},
@@ -64,7 +64,7 @@ var schemaMigrations = []migration{
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
 }
 
-func migrateFB(s *store) error {
+func migrateFB(s *Store) error {
 	collectedKeys, err := collectKeys(s, "blocklist-")
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func migrateFB(s *store) error {
 	return deleteKeys(s, collectedKeys)
 }
 
-func migrateStamp(s *store) error {
+func migrateStamp(s *Store) error {
 	for _, pfx := range []string{"postage", "batchstore", "addressbook_entry_"} {
 		collectedKeys, err := collectKeys(s, pfx)
 		if err != nil {
@@ -86,7 +86,7 @@ func migrateStamp(s *store) error {
 	return nil
 }
 
-func migrateGrace(s *store) error {
+func migrateGrace(s *Store) error {
 	var collectedKeys []string
 	mgfn := func(k, v []byte) (bool, error) {
 		stk := string(k)
@@ -116,7 +116,7 @@ func migrateGrace(s *store) error {
 	return nil
 }
 
-func migrateSwap(s *store) error {
+func migrateSwap(s *Store) error {
 	migratePrefix := func(prefix string) error {
 		keys, err := collectKeys(s, prefix)
 		if err != nil {
@@ -173,7 +173,7 @@ func migrateSwap(s *store) error {
 
 // migrateKademliaMetrics removes all old existing
 // kademlia metrics database content.
-func migrateKademliaMetrics(s *store) error {
+func migrateKademliaMetrics(s *Store) error {
 	for _, prefix := range []string{"peer-last-seen-timestamp", "peer-total-connection-duration"} {
 		start := time.Now()
 		s.logger.Debugf("removing kademlia %q metrics", prefix)
@@ -192,7 +192,7 @@ func migrateKademliaMetrics(s *store) error {
 	return nil
 }
 
-func (s *store) migrate(schemaName string) error {
+func (s *Store) migrate(schemaName string) error {
 	migrations, err := getMigrations(schemaName, dbSchemaCurrent, schemaMigrations, s)
 	if err != nil {
 		return fmt.Errorf("error getting migrations for current schema (%s): %w", schemaName, err)
@@ -225,7 +225,7 @@ func (s *store) migrate(schemaName string) error {
 // getMigrations returns an ordered list of migrations that need be executed
 // with no errors in order to bring the statestore to the most up-to-date
 // schema definition
-func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration, store *store) (migrations []migration, err error) {
+func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []migration, store *Store) (migrations []migration, err error) {
 	foundCurrent := false
 	foundTarget := false
 	if currentSchema == dbSchemaCurrent {
@@ -256,10 +256,17 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 	return migrations, nil
 }
 
-func collectKeys(s *store, prefix string) (keys []string, err error) {
-	if err := s.Iterate(prefix, func(k, v []byte) (bool, error) {
+func collectKeysExcept(s *Store, prefix []string) (keys []string, err error) {
+	if err := s.Iterate("", func(k, v []byte) (bool, error) {
 		stk := string(k)
-		if strings.HasPrefix(stk, prefix) {
+		has := false
+		for _, v := range prefix {
+			if strings.HasPrefix(stk, v) {
+				has = true
+				break
+			}
+		}
+		if !has {
 			keys = append(keys, stk)
 		}
 		return false, nil
@@ -269,7 +276,23 @@ func collectKeys(s *store, prefix string) (keys []string, err error) {
 	return keys, nil
 }
 
-func deleteKeys(s *store, keys []string) error {
+func collectKeys(s *Store, prefix string, invert bool) (keys []string, err error) {
+	if err := s.Iterate(prefix, func(k, v []byte) (bool, error) {
+		stk := string(k)
+		if invert && !strings.HasPrefix(stk, prefix) {
+
+		}
+		if !invert && strings.HasPrefix(stk, prefix) {
+			keys = append(keys, stk)
+		}
+		return false, nil
+	}); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func deleteKeys(s *Store, keys []string) error {
 	for _, v := range keys {
 		err := s.Delete(v)
 		if err != nil {
@@ -279,4 +302,15 @@ func deleteKeys(s *store, keys []string) error {
 	}
 	s.logger.Debugf("deleted keys: %d", len(keys))
 	return nil
+}
+
+// Nuke the store so that only the bare essential entries are
+// left. Careful!
+func (s *Store) Nuke() error {
+	prefixes := []string{"accounting", "pseudosettle", "swap"}
+	k, err := collectKeysExcept(s, prefixes)
+	if err != nil {
+		return fmt.Errorf("collect keys except: %w", err)
+	}
+	return deleteKeys(s, k)
 }
