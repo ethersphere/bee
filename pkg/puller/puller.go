@@ -167,7 +167,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 				// map, leading to cancelling of its running syncing contexts.
 
 				return false, false, nil
-			})
+			}, &topology.Filter{Reachable: true})
 
 			p.syncPeersMtx.Unlock()
 
