@@ -19,13 +19,13 @@ import (
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
 
-	mu := sync.Mutex{}
+	mux := sync.Mutex{}
 	blocked := make(map[string]time.Duration)
 
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-		mu.Lock()
+		mux.Lock()
 		blocked[a.ByteString()] = d
-		mu.Unlock()
+		mux.Unlock()
 
 		return nil
 	})
@@ -41,12 +41,9 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	addr := test.RandomAddress()
 	b.Flag(addr)
 
-	mu.Lock()
 	if _, ok := blocked[addr.ByteString()]; ok {
-		mu.Unlock()
 		t.Fatal("blocker did not wait flag duration")
 	}
-	mu.Unlock()
 
 	midway := time.After(flagTime / 2)
 	check := time.After(checkTime)
@@ -55,9 +52,9 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	b.Flag(addr) // check thats this flag call does not overide previous call
 	<-check
 
-	mu.Lock()
+	mux.Lock()
 	blockedTime, ok := blocked[addr.ByteString()]
-	mu.Unlock()
+	mux.Unlock()
 	if !ok {
 		t.Fatal("address should be blocked")
 	}
@@ -71,13 +68,13 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 
 func TestUnflagBeforeBlock(t *testing.T) {
 
-	mu := sync.Mutex{}
+	mux := sync.Mutex{}
 	blocked := make(map[string]time.Duration)
 
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-		mu.Lock()
+		mux.Lock()
 		blocked[a.ByteString()] = d
-		mu.Unlock()
+		mux.Unlock()
 		return nil
 	})
 
@@ -92,20 +89,17 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	addr := test.RandomAddress()
 	b.Flag(addr)
 
-	mu.Lock()
 	if _, ok := blocked[addr.ByteString()]; ok {
-		mu.Unlock()
 		t.Fatal("blocker did not wait flag duration")
 	}
-	mu.Unlock()
 
 	b.Unflag(addr)
 
 	time.Sleep(checkTime)
 
-	mu.Lock()
+	mux.Lock()
 	_, ok := blocked[addr.ByteString()]
-	mu.Unlock()
+	mux.Unlock()
 
 	if ok {
 		t.Fatal("address should not be blocked")
