@@ -26,6 +26,7 @@ func (c *command) initDBCmd() {
 
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
+	dbNukeCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }

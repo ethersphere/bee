@@ -77,7 +77,6 @@ const (
 	optionNamePProfMutex                 = "pprof-mutex"
 	optionNameStaticNodes                = "static-nodes"
 	optionNameAllowPrivateCIDRs          = "allow-private-cidrs"
-	optionNameNukeStorage                = "nuke-storage"
 	optionNameSleepAfter                 = "sleep-after"
 )
 

@@ -276,7 +276,7 @@ func collectKeysExcept(s *Store, prefix []string) (keys []string, err error) {
 	return keys, nil
 }
 
-func collectKeys(s *Store, prefix string, invert bool) (keys []string, err error) {
+func collectKeys(s *Store, prefix string) (keys []string, err error) {
 	if err := s.Iterate(prefix, func(k, v []byte) (bool, error) {
 		stk := string(k)
 		if strings.HasPrefix(stk, prefix) {
