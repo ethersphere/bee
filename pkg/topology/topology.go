@@ -63,18 +63,10 @@ type EachNeighbor interface {
 	IsWithinDepth(swarm.Address) bool
 }
 
-// IteratorOpt is used to configure filters for the Peer iterators
-type IteratorOpt func(*Filter)
-
 // Filter defines the different filters that can be used with the Peer iterators
 type Filter struct {
 	Reachable bool
 }
-
-var (
-	// Option to be used to obtain only publicly reachable peers
-	ReachablePeers IteratorOpt = func(f *Filter) { f.Reachable = true }
-)
 
 // EachPeerFunc is a callback that is called with a peer and its PO
 type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
