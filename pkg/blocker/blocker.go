@@ -91,8 +91,13 @@ func (b *Blocker) Flag(addr swarm.Address) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if _, ok := b.peers[addr.ByteString()]; !ok {
-		b.metrics.Flag.Inc()
+	p, ok := b.peers[addr.ByteString()]
+
+	if ok {
+		if p.blockAfter.IsZero() {
+			p.blockAfter = time.Now().Add(b.flagTimeout)
+		}
+	} else {
 		b.peers[addr.ByteString()] = &peer{
 			blockAfter: time.Now().Add(b.flagTimeout),
 			addr:       addr,
