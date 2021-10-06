@@ -40,7 +40,6 @@ func init() {
 }
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
-var defaultFilter = &topology.Filter{}
 
 // TestNeighborhoodDepth tests that the kademlia depth changes correctly
 // according to the change to known peers slice. This inadvertently tests
@@ -1422,7 +1421,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 				return true, false, nil
 			}
 			return false, false, nil
-		}, defaultFilter)
+		}, nil)
 		if !found {
 			t.Fatalf("protected node %s not found in connected list", pn)
 		}
@@ -1514,7 +1513,7 @@ func TestIteratorOpts(t *testing.T) {
 			totalReachable++
 		}
 		return false, false, nil
-	}, defaultFilter)
+	}, nil)
 
 	t.Run("EachPeer reachable", func(t *testing.T) {
 		count := 0
@@ -1628,7 +1627,7 @@ func binSizes(kad *kademlia.Kad) []int {
 	_ = kad.EachPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 		bins[u]++
 		return false, false, nil
-	}, defaultFilter)
+	}, nil)
 
 	return bins
 }
@@ -1844,7 +1843,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
 			return false, false, nil
-		}, defaultFilter)
+		}, nil)
 		if i == peers {
 			return
 		}
