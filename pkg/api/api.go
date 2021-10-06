@@ -34,6 +34,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -41,6 +42,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -112,6 +114,7 @@ type server struct {
 	signer          crypto.Signer
 	post            postage.Service
 	postageContract postagecontract.Interface
+	chunkPushC      chan *pusher.Op
 	Options
 	http.Handler
 	metrics metrics
@@ -133,7 +136,7 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) (Service, <-chan *pusher.Op) {
 	s := &server{
 		auth:            auth,
 		tags:            tags,
@@ -146,6 +149,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		post:            post,
 		postageContract: postageContract,
 		steward:         steward,
+		chunkPushC:      make(chan *pusher.Op),
 		signer:          signer,
 		Options:         o,
 		logger:          logger,
@@ -156,7 +160,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 
 	s.setupRouting()
 
-	return s
+	return s, s.chunkPushC
 }
 
 // Close hangs up running websockets on shutdown.
@@ -440,6 +444,57 @@ func equalASCIIFold(s, t string) bool {
 		}
 	}
 	return s == t
+}
+
+type pushStamperPutter struct {
+	storage.Storer
+	stamper postage.Stamper
+	eg      errgroup.Group
+	c       chan *pusher.Op
+	sem     chan struct{}
+}
+
+func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
+	i, err := post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	stamper := postage.NewStamper(i, signer)
+	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, 20)}, nil
+}
+
+func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
+	exists = make([]bool, len(chs))
+
+	for i, c := range chs {
+		// skips chunk we already know about
+		has, err := p.Storer.Has(ctx, c.Address())
+		if err != nil {
+			return nil, err
+		}
+		if has || containsChunk(c.Address(), chs[:i]...) {
+			exists[i] = true
+			continue
+		}
+		stamp, err := p.stamper.Stamp(c.Address())
+		if err != nil {
+			return nil, err
+		}
+
+		func(ch swarm.Chunk) {
+			p.sem <- struct{}{}
+			p.eg.Go(func() error {
+				errc := make(chan error, 1)
+				// note: shutdown might be tricky, we need to pass the quit channel
+				// from the api here so that the putter knows not to keep on sending stuff
+				// and just returns an error... or?
+				p.c <- &pusher.Op{Chunk: ch, Err: errc}
+				return <-errc
+			})
+		}(c.WithStamp(stamp))
+	}
+	return exists, nil
 }
 
 type stamperPutter struct {

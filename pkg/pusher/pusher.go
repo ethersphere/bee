@@ -29,6 +29,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type Op struct {
+	Chunk swarm.Chunk
+	Err   chan error
+}
+
 type Service struct {
 	networkID         uint64
 	storer            storage.Storer
@@ -43,6 +48,7 @@ type Service struct {
 	inflight          *inflight
 	attempts          *attempts
 	sem               chan struct{}
+	apiC              <-chan *Op
 }
 
 var (
@@ -114,6 +120,38 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		return ctx, logger
 	}
 
+	push := func(ch swarm.Chunk, errc chan<- error) {
+		s.metrics.TotalToPush.Inc()
+		ctx, logger := ctxLogger()
+		startTime := time.Now()
+		wg.Add(1)
+		go func(ctx context.Context, ch swarm.Chunk) {
+			defer func() {
+				wg.Done()
+				<-s.sem
+			}()
+			if err := s.pushChunk(ctx, ch, logger); err != nil {
+				// warning: ugly flow control
+				// if errc is set it means we are in a direct push,
+				// we therefore communicate the error into the channel
+				// otherwise we assume this is a buffered upload and
+				// therefore we repeat().
+				if errc != nil {
+					errc <- err
+				}
+				repeat()
+				s.metrics.TotalErrors.Inc()
+				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+				logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
+				return
+			}
+			if errc != nil {
+				errc <- nil
+			}
+			s.metrics.TotalSynced.Inc()
+		}(ctx, ch)
+	}
+
 	go func() {
 		for {
 			select {
@@ -129,43 +167,49 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	for ch := range chunks {
-		// If the stamp is invalid, the chunk is not synced with the network
-		// since other nodes would reject the chunk, so the chunk is marked as
-		// synced which makes it available to the node but not to the network
-		if err := s.valid(ch); err != nil {
-			logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
-			if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-				s.logger.Errorf("pusher: set sync: %w", err)
-			}
-			continue
-		}
+	var (
+		ch swarm.Chunk
+		ok bool
+		op *Op
+	)
+
+	defer wg.Wait()
+	for {
 		select {
-		case s.sem <- struct{}{}:
+		case ch, ok = <-chunks:
+			if !ok {
+				chunks = nil
+				continue
+			}
+
+			select {
+			case s.sem <- struct{}{}:
+			case <-s.quit:
+				return
+			}
+
+			// If the stamp is invalid, the chunk is not synced with the network
+			// since other nodes would reject the chunk, so the chunk is marked as
+			// synced which makes it available to the node but not to the network
+			if err := s.valid(ch); err != nil {
+				logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
+				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
+					s.logger.Errorf("pusher: set sync: %w", err)
+				}
+			}
+			push(ch, nil)
+		case op = <-s.apiC:
+			select {
+			case s.sem <- struct{}{}:
+			case <-s.quit:
+				return
+			}
+
+			push(op.Chunk, op.Err)
 		case <-s.quit:
 			return
 		}
-		s.metrics.TotalToPush.Inc()
-		ctx, logger := ctxLogger()
-		startTime := time.Now()
-		wg.Add(1)
-		go func(ctx context.Context, ch swarm.Chunk) {
-			defer func() {
-				wg.Done()
-				<-s.sem
-			}()
-			if err := s.pushChunk(ctx, ch, logger); err != nil {
-				repeat()
-				s.metrics.TotalErrors.Inc()
-				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-				logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
-				return
-			}
-			s.metrics.TotalSynced.Inc()
-		}(ctx, ch)
 	}
-
-	wg.Wait()
 }
 
 func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.Entry) error {
@@ -248,6 +292,10 @@ func (s *Service) valid(ch swarm.Chunk) error {
 		return fmt.Errorf("pusher: valid stamp: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) SetApiC(c <-chan *Op) {
+	s.apiC = c
 }
 
 func (s *Service) Close() error {
