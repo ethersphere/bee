@@ -171,12 +171,12 @@ func New(
 		staticPeer:        isStaticPeer(o.StaticNodes),
 	}
 
-	disconnectCallBack := func(a swarm.Address) {
+	blocklistCallback := func(a swarm.Address) {
 		k.logger.Debugf("kademlia: disconnecting peer %s for ping failure", a.String())
 		k.metrics.Blocklist.Inc()
 	}
 
-	k.blocker = blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, disconnectCallBack, logger)
+	k.blocker = blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger)
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins
