@@ -89,7 +89,7 @@ func (b *Blocker) block() {
 	}
 }
 
-func (b *Blocker) Flag(addr swarm.Address) bool {
+func (b *Blocker) Flag(addr swarm.Address) {
 	b.mux.Lock()
 	defer b.mux.Unlock()
 
@@ -98,10 +98,7 @@ func (b *Blocker) Flag(addr swarm.Address) bool {
 			blockAfter: time.Now().Add(b.flagTimeout),
 			addr:       addr,
 		}
-		return true
 	}
-
-	return false
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
