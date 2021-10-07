@@ -142,5 +142,5 @@ func newMetrics() metrics {
 
 // Metrics returns set of prometheus collectors.
 func (k *Kad) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(k.metrics)
+	return append(m.PrometheusCollectorsFromFields(k.metrics), k.blocker.Metrics()...)
 }
