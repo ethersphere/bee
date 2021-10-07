@@ -172,7 +172,7 @@ func New(
 	}
 
 	disconnectCallBack := func(a swarm.Address) {
-		k.logger.Debugf("kademlia: disconnecting peer %s for ping failure")
+		k.logger.Debugf("kademlia: disconnecting peer %s for ping failure", a.String())
 		k.metrics.Blocklist.Inc()
 	}
 
@@ -571,9 +571,8 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 			l, err := k.pinger.Ping(ctx, addr, "ping")
 			if err != nil {
 				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
-				if firstFlag := k.blocker.Flag(addr); firstFlag {
-					k.metrics.Flag.Inc()
-				}
+				k.blocker.Flag(addr)
+				k.metrics.Flag.Inc()
 				return
 			}
 			k.blocker.Unflag(addr)

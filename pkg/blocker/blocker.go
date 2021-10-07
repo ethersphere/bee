@@ -98,10 +98,7 @@ func (b *Blocker) Flag(addr swarm.Address) {
 			blockAfter: time.Now().Add(b.flagTimeout),
 			addr:       addr,
 		}
-		return true
 	}
-
-	return false
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
