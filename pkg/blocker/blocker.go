@@ -19,32 +19,32 @@ type peer struct {
 }
 
 type Blocker struct {
-	mu            sync.Mutex
-	disconnector  p2p.Blocklister
-	flagTimeout   time.Duration // how long before blocking a flagged peer
-	blockDuration time.Duration // how long to blocklist a bad peer
-	workerWakeup  time.Duration // how long to blocklist a bad peer
-	peers         map[string]*peer
-	logger        logging.Logger
-	wakeupCh      chan struct{}
-	quit          chan struct{}
-	closeWg       sync.WaitGroup
-	metrics       metrics
+	mux                sync.Mutex
+	disconnector       p2p.Blocklister
+	flagTimeout        time.Duration // how long before blocking a flagged peer
+	blockDuration      time.Duration // how long to blocklist a bad peer
+	workerWakeup       time.Duration // how long to blocklist a bad peer
+	peers              map[string]*peer
+	logger             logging.Logger
+	wakeupCh           chan struct{}
+	quit               chan struct{}
+	closeWg            sync.WaitGroup
+	disconnectCallback func(swarm.Address)
 }
 
-func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, logger logging.Logger) *Blocker {
+func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, callback func(swarm.Address), logger logging.Logger) *Blocker {
 
 	b := &Blocker{
-		disconnector:  dis,
-		flagTimeout:   flagTimeout,
-		blockDuration: blockDuration,
-		workerWakeup:  wakeUpTime,
-		peers:         map[string]*peer{},
-		wakeupCh:      make(chan struct{}),
-		quit:          make(chan struct{}),
-		logger:        logger,
-		closeWg:       sync.WaitGroup{},
-		metrics:       newMetrics(),
+		disconnector:       dis,
+		flagTimeout:        flagTimeout,
+		blockDuration:      blockDuration,
+		workerWakeup:       wakeUpTime,
+		peers:              map[string]*peer{},
+		wakeupCh:           make(chan struct{}),
+		quit:               make(chan struct{}),
+		logger:             logger,
+		closeWg:            sync.WaitGroup{},
+		disconnectCallback: callback,
 	}
 
 	b.closeWg.Add(1)
@@ -78,9 +78,11 @@ func (b *Blocker) block() {
 		}
 
 		if !peer.blockAfter.IsZero() && time.Now().After(peer.blockAfter) {
-			b.metrics.Blocklist.Inc()
 			if err := b.disconnector.Blocklist(peer.addr, b.blockDuration, "blocker: flag timeout"); err != nil {
 				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.addr, err)
+			}
+			if b.disconnectCallback != nil {
+				b.disconnectCallback(peer.addr)
 			}
 			delete(b.peers, key)
 		}
@@ -92,19 +94,19 @@ func (b *Blocker) Flag(addr swarm.Address) {
 	defer b.mu.Unlock()
 
 	if _, ok := b.peers[addr.ByteString()]; !ok {
-		b.metrics.Flag.Inc()
 		b.peers[addr.ByteString()] = &peer{
 			blockAfter: time.Now().Add(b.flagTimeout),
 			addr:       addr,
 		}
+		return true
 	}
+
+	return false
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	b.metrics.Unflag.Inc()
 
 	delete(b.peers, addr.ByteString())
 }
