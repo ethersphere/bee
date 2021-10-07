@@ -919,7 +919,7 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}()
 	go func() {
 		defer wg.Done()
-		tryClose(b.hiveCloser, "pull sync")
+		tryClose(b.hiveCloser, "hive")
 	}()
 
 	wg.Wait()
