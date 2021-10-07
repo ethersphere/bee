@@ -114,7 +114,6 @@ type Kad struct {
 	staticPeer        staticPeerFunc
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
-	bgBroadcastWg     sync.WaitGroup
 	blocker           *blocker.Blocker
 }
 
@@ -909,9 +908,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 				continue
 			default:
 			}
-			k.bgBroadcastWg.Add(1)
 			go func(connectedPeer swarm.Address) {
-				defer k.bgBroadcastWg.Done()
 
 				// Create a new deadline ctx to prevent goroutine pile up
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
@@ -1395,16 +1392,10 @@ func (k *Kad) Close() error {
 	cc := make(chan struct{})
 
 	k.bgBroadcastCancel()
-	bgBroadcastDone := make(chan struct{})
 
 	go func() {
 		k.wg.Wait()
 		close(cc)
-	}()
-
-	go func() {
-		k.bgBroadcastWg.Wait()
-		close(bgBroadcastDone)
 	}()
 
 	eg := errgroup.Group{}
@@ -1416,16 +1407,6 @@ func (k *Kad) Close() error {
 		case <-cc:
 		case <-time.After(peerConnectionAttemptTimeout):
 			k.logger.Warning("kademlia shutting down with announce goroutines")
-			return errTimeout
-		}
-		return nil
-	})
-
-	eg.Go(func() error {
-		select {
-		case <-bgBroadcastDone:
-		case <-time.After(time.Second * 5):
-			k.logger.Warning("kademlia shutting down with unfinished broadcasts")
 			return errTimeout
 		}
 		return nil

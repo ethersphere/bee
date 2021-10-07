@@ -73,7 +73,6 @@ type Service struct {
 }
 
 func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger logging.Logger) (*Service, error) {
-
 	lruCache, err := lru.New(cacheSize)
 	if err != nil {
 		return nil, err
