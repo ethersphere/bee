@@ -33,6 +33,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *reacher) Metrics() []prometheus.Collector {
+func (s *Reacher) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

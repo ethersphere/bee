@@ -28,7 +28,7 @@ type peer struct {
 	addr    ma.Multiaddr
 }
 
-type reacher struct {
+type Reacher struct {
 	mu    sync.Mutex
 	queue []peer
 
@@ -44,11 +44,11 @@ type reacher struct {
 	metrics metrics
 }
 
-func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
+func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *Reacher {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	r := &reacher{
+	r := &Reacher{
 		work:      make(chan struct{}, 1),
 		pinger:    streamer,
 		notifier:  notifier,
@@ -66,7 +66,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 	return r
 }
 
-func (r *reacher) ping() {
+func (r *Reacher) ping() {
 
 	defer r.wg.Done()
 
@@ -129,7 +129,7 @@ func (r *reacher) ping() {
 	}
 }
 
-func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+func (r *Reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
 	r.queue = append(r.queue, peer{overlay: overlay, addr: addr})
 	r.mu.Unlock()
@@ -140,7 +140,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	}
 }
 
-func (r *reacher) Disconnected(overlay swarm.Address) {
+func (r *Reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -152,7 +152,7 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	}
 }
 
-func (r *reacher) Close() error {
+func (r *Reacher) Close() error {
 	r.ctxCancel()
 	r.wg.Wait()
 	return nil

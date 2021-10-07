@@ -6,6 +6,7 @@ package libp2p
 
 import (
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -100,5 +101,13 @@ func newMetrics() metrics {
 }
 
 func (s *Service) Metrics() []prometheus.Collector {
-	return append(m.PrometheusCollectorsFromFields(s.metrics), s.handshakeService.Metrics()...)
+
+	m := m.PrometheusCollectorsFromFields(s.metrics)
+	m = append(m, s.handshakeService.Metrics()...)
+
+	if r, ok := s.reacher.(*reacher.Reacher); ok {
+		m = append(m, r.Metrics()...)
+	}
+
+	return m
 }
