@@ -29,6 +29,7 @@ type Blocker struct {
 	wakeupCh      chan struct{}
 	quit          chan struct{}
 	closeWg       sync.WaitGroup
+	metrics       metrics
 }
 
 func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, logger logging.Logger) *Blocker {
@@ -43,6 +44,7 @@ func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Durati
 		quit:          make(chan struct{}),
 		logger:        logger,
 		closeWg:       sync.WaitGroup{},
+		metrics:       newMetrics(),
 	}
 
 	b.closeWg.Add(1)
@@ -76,6 +78,7 @@ func (b *Blocker) block() {
 		}
 
 		if !peer.blockAfter.IsZero() && time.Now().After(peer.blockAfter) {
+			b.metrics.Blocklist.Inc()
 			if err := b.disconnector.Blocklist(peer.addr, b.blockDuration, "blocker: flag timeout"); err != nil {
 				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.addr, err)
 			}
@@ -89,6 +92,7 @@ func (b *Blocker) Flag(addr swarm.Address) {
 	defer b.mux.Unlock()
 
 	if _, ok := b.peers[addr.ByteString()]; !ok {
+		b.metrics.Flag.Inc()
 		b.peers[addr.ByteString()] = &peer{
 			blockAfter: time.Now().Add(b.flagTimeout),
 			addr:       addr,
@@ -99,6 +103,8 @@ func (b *Blocker) Flag(addr swarm.Address) {
 func (b *Blocker) Unflag(addr swarm.Address) {
 	b.mux.Lock()
 	defer b.mux.Unlock()
+
+	b.metrics.Unflag.Inc()
 
 	delete(b.peers, addr.ByteString())
 }
