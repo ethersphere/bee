@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
+	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -875,7 +876,7 @@ func TestClosestPeer(t *testing.T) {
 	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
 		{
@@ -891,8 +892,11 @@ func TestClosestPeer(t *testing.T) {
 
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
+	ppm := pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+		return 0, nil
+	})
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), metricsDB, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), ppm, metricsDB, logger, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1281,6 +1285,206 @@ func TestOutofDepthPrune(t *testing.T) {
 	waitBalanced(t, kad, 1)
 }
 
+// TestLatency tests that kademlia polls peers for latency.
+func TestLatency(t *testing.T) {
+	defer func(d time.Duration) {
+		*kademlia.PeerPingPollTime = d
+	}(*kademlia.PeerPingPollTime)
+
+	*kademlia.PeerPingPollTime = 1 * time.Second
+	var (
+		logger = logging.New(io.Discard, 0)
+		base   = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
+		p1     = test.RandomAddress()
+
+		disc  = mock.NewDiscovery()
+		ab    = addressbook.New(mockstate.NewStateStore())
+		doneC = make(chan struct{})
+		once  sync.Once
+		ppm   = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+			once.Do(func() { close(doneC) })
+			return 0, nil
+		})
+	)
+	metricsDB, err := shed.NewDB("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := metricsDB.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), ppm, metricsDB, logger, kademlia.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer kad.Close()
+
+	pk, _ := beeCrypto.GenerateSecp256k1Key()
+	signer := beeCrypto.NewDefaultSigner(pk)
+	addOne(t, signer, kad, ab, p1)
+
+	waitPeers(t, kad, 1)
+	select {
+	case <-doneC:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for ping")
+	}
+}
+
+func TestBootnodeProtectedNodes(t *testing.T) {
+	defer func(a, b, c, d int) {
+		*kademlia.BootnodeOverSaturationPeers = a
+		*kademlia.SaturationPeers = b
+		*kademlia.LowWaterMark = c
+		*kademlia.QuickSaturationPeers = d
+	}(*kademlia.BootnodeOverSaturationPeers, *kademlia.SaturationPeers, *kademlia.LowWaterMark, *kademlia.QuickSaturationPeers)
+	*kademlia.BootnodeOverSaturationPeers = 1
+	*kademlia.SaturationPeers = 1
+	*kademlia.LowWaterMark = 0
+	*kademlia.QuickSaturationPeers = 1
+
+	// create base and protected nodes addresses
+	base := test.RandomAddress()
+	protected := make([]swarm.Address, 6)
+	for i := 0; i < 6; i++ {
+		addr := test.RandomAddressAt(base, i)
+		protected[i] = addr
+	}
+
+	var (
+		conns                 int32 // how many connect calls were made to the p2p mock
+		_, kad, ab, _, signer = newTestKademliaWithAddr(t, base, &conns, nil, kademlia.Options{
+			BootnodeMode: true,
+			StaticNodes:  protected,
+		})
+	)
+
+	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
+	// Add maximum accepted number of peers up until bin 5 without problems
+	for i := 0; i < 6; i++ {
+		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
+			// if error is not nil as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, protected[i], nil)
+		}
+		// see depth is limited to currently added peers proximity
+		kDepth(t, kad, i)
+	}
+
+	// see depth is 5
+	kDepth(t, kad, 5)
+
+	for k := 0; k < 5; k++ {
+		// further connections should succeed outside of depth
+		addr := test.RandomAddressAt(base, k)
+		// if error is not as specified, connectOne goes fatal
+		connectOne(t, signer, kad, ab, addr, nil)
+		// see depth is still as expected
+		kDepth(t, kad, 5)
+	}
+	// ensure protected node was not kicked out and we have more than oversaturation
+	// amount
+	sizes := binSizes(kad)
+	for k := 0; k < 5; k++ {
+		if sizes[k] != 2 {
+			t.Fatalf("invalid bin size expected 2 found %d", sizes[k])
+		}
+	}
+	for k := 0; k < 5; k++ {
+		// further connections should succeed outside of depth
+		for l := 0; l < 3; l++ {
+			addr := test.RandomAddressAt(base, k)
+			// if error is not as specified, connectOne goes fatal
+			connectOne(t, signer, kad, ab, addr, nil)
+		}
+		// see depth is still as expected
+		kDepth(t, kad, 5)
+	}
+	// ensure unprotected nodes are kicked out to make room for new peers and protected
+	// nodes are still present
+	sizes = binSizes(kad)
+	for k := 0; k < 5; k++ {
+		if sizes[k] != 2 {
+			t.Fatalf("invalid bin size expected 2 found %d", sizes[k])
+		}
+	}
+	for _, pn := range protected {
+		found := false
+		_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if addr.Equal(pn) {
+				found = true
+				return true, false, nil
+			}
+			return false, false, nil
+		})
+		if !found {
+			t.Fatalf("protected node %s not found in connected list", pn)
+		}
+	}
+}
+
+func TestAnnounceBgBroadcast(t *testing.T) {
+	var (
+		conns  int32
+		bgDone = make(chan struct{})
+		p1, p2 = test.RandomAddress(), test.RandomAddress()
+		disc   = mock.NewDiscovery(
+			mock.WithBroadcastPeers(func(ctx context.Context, p swarm.Address, _ ...swarm.Address) error {
+				// For the broadcast back to connected peer return early
+				if p.Equal(p2) {
+					return nil
+				}
+				defer close(bgDone)
+				<-ctx.Done()
+				return ctx.Err()
+			}),
+		)
+		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// first add a peer from AddPeers, wait for the connection
+	addOne(t, signer, kad, ab, p1)
+	waitConn(t, &conns)
+
+	// Create a context to cancel and call Announce manually. On the cancellation of
+	// this context ensure that the BroadcastPeers call in the background is unaffected
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := kad.Announce(ctx, p2, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// cancellation should not close background broadcast
+	cancel()
+
+	select {
+	case <-bgDone:
+		t.Fatal("background broadcast exited")
+	case <-time.After(time.Millisecond * 100):
+	}
+
+	// All background broadcasts will be cancelled on Close. Ensure that the BroadcastPeers
+	// call gets the context cancellation
+	if err := kad.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-bgDone:
+	case <-time.After(time.Millisecond * 100):
+		t.Fatal("background broadcast did not exit on close")
+	}
+}
+
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
 
 	var rndAddrs = make([]swarm.Address, count)
@@ -1345,7 +1549,13 @@ func binSizes(kad *kademlia.Kad) []int {
 	return bins
 }
 
-func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademliaWithAddrDiscovery(
+	t *testing.T,
+	base swarm.Address,
+	disc *mock.Discovery,
+	connCounter, failedConnCounter *int32,
+	kadOpts kademlia.Options,
+) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
 	metricsDB, err := shed.NewDB("", nil)
@@ -1360,13 +1570,14 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 	var (
 		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
-		base   = test.RandomAddress()                                // base address
 		ab     = addressbook.New(mockstate.NewStateStore())          // address book
 		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock
-		logger = logging.New(ioutil.Discard, 0)                      // logger
-		disc   = mock.NewDiscovery()                                 // mock discovery protocol
+		logger = logging.New(io.Discard, 0)                          // logger
+		ppm    = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+			return 0, nil
+		})
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, ppm, metricsDB, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1374,6 +1585,33 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 	p2p.SetPickyNotifier(kad)
 
 	return base, kad, ab, disc, signer
+}
+
+func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+	t.Helper()
+
+	base := test.RandomAddress()
+	disc := mock.NewDiscovery() // mock discovery protocol
+	return newTestKademliaWithAddrDiscovery(t, base, disc, connCounter, failedConnCounter, kadOpts)
+}
+
+func newTestKademliaWithAddr(t *testing.T, base swarm.Address, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+	t.Helper()
+
+	disc := mock.NewDiscovery() // mock discovery protocol
+	return newTestKademliaWithAddrDiscovery(t, base, disc, connCounter, failedConnCounter, kadOpts)
+}
+
+func newTestKademliaWithDiscovery(
+	t *testing.T,
+	disc *mock.Discovery,
+	connCounter, failedConnCounter *int32,
+	kadOpts kademlia.Options,
+) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+	t.Helper()
+
+	base := test.RandomAddress()
+	return newTestKademliaWithAddrDiscovery(t, base, disc, connCounter, failedConnCounter, kadOpts)
 }
 
 func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {

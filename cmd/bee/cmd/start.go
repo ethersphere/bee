@@ -11,7 +11,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +55,7 @@ func (c *command) initStartCmd() (err error) {
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 
 			go startTimeBomb(logger)
@@ -137,6 +137,20 @@ func (c *command) initStartCmd() (err error) {
 				tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
 			}
 
+			var staticNodes []swarm.Address
+
+			for _, p := range c.config.GetStringSlice(optionNameStaticNodes) {
+				addr, err := swarm.ParseHexAddress(p)
+				if err != nil {
+					return fmt.Errorf("invalid swarm address %q configured for static node", p)
+				}
+
+				staticNodes = append(staticNodes, addr)
+			}
+			if len(staticNodes) > 0 && !bootNode {
+				return errors.New("static nodes can only be configured on bootnodes")
+			}
+
 			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
@@ -182,6 +196,8 @@ func (c *command) initStartCmd() (err error) {
 				Resync:                     c.config.GetBool(optionNameResync),
 				BlockProfile:               c.config.GetBool(optionNamePProfBlock),
 				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
+				StaticNodes:                staticNodes,
+				AllowPrivateCIDRs:          c.config.GetBool(optionNameAllowPrivateCIDRs),
 			})
 			if err != nil {
 				return err
@@ -309,7 +325,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 	if p := c.config.GetString(optionNamePassword); p != "" {
 		password = p
 	} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
-		b, err := ioutil.ReadFile(pf)
+		b, err := os.ReadFile(pf)
 		if err != nil {
 			return nil, err
 		}

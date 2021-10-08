@@ -9,7 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -190,7 +190,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 func newRetrievingNetstore(rec recovery.Callback, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	return retrieve, store, netstore.New(store, validStamp, rec, retrieve, logger)
 }
 

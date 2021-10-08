@@ -331,15 +331,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if s.notifier != nil {
-		if !s.notifier.Pick(p2p.Peer{Address: overlay, FullNode: i.FullNode}) {
-			s.logger.Warningf("stream handler: don't want incoming peer %s. disconnecting", overlay)
-			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
-			return
-		}
-	}
-
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		s.logger.Debugf("stream handler: peer %s already exists", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
@@ -447,6 +438,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
+	s.handshakeService.SetPicker(n)
 	s.notifier = n
 }
 
@@ -565,7 +557,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "failed blocklisting peer")
-		return fmt.Errorf("blocklist peer %s: %v", overlay, err)
+		return fmt.Errorf("blocklist peer %s: %w", overlay, err)
 	}
 	s.metrics.BlocklistedPeerCount.Inc()
 

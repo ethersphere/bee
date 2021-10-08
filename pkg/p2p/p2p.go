@@ -31,8 +31,12 @@ type Service interface {
 
 type Disconnecter interface {
 	Disconnect(overlay swarm.Address, reason string) error
+	Blocklister
+}
+
+type Blocklister interface {
 	// Blocklist will disconnect a peer and put it on a blocklist (blocking in & out connections) for provided duration
-	// duration 0 is treated as an infinite duration
+	// Duration 0 is treated as an infinite duration.
 	Blocklist(overlay swarm.Address, duration time.Duration, reason string) error
 }
 
@@ -43,8 +47,12 @@ type Halter interface {
 
 // PickyNotifier can decide whether a peer should be picked
 type PickyNotifier interface {
-	Pick(Peer) bool
+	Picker
 	Notifier
+}
+
+type Picker interface {
+	Pick(Peer) bool
 }
 
 type Notifier interface {

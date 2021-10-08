@@ -79,6 +79,7 @@ type MetricSnapshotView struct {
 	ConnectionTotalDuration    float64 `json:"connectionTotalDuration"`
 	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
+	LatencyEWMA                int64   `json:"latencyEWMA"`
 }
 
 type BinInfo struct {

@@ -7,7 +7,7 @@ package pss_test
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 
@@ -32,7 +32,7 @@ func TestSend(t *testing.T) {
 		storedChunk = chunk
 		return nil, nil
 	})
-	p := pss.New(nil, logging.New(ioutil.Discard, 0))
+	p := pss.New(nil, logging.New(io.Discard, 0))
 	p.SetPushSyncer(pushSyncService)
 
 	target := pss.Target([]byte{1}) // arbitrary test target
@@ -81,7 +81,7 @@ func TestDeliver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := pss.New(privkey, logging.New(ioutil.Discard, 0))
+	p := pss.New(privkey, logging.New(io.Discard, 0))
 
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
@@ -136,7 +136,7 @@ func TestRegister(t *testing.T) {
 	}
 	recipient := &privkey.PublicKey
 	var (
-		p       = pss.New(privkey, logging.New(ioutil.Discard, 0))
+		p       = pss.New(privkey, logging.New(io.Discard, 0))
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0

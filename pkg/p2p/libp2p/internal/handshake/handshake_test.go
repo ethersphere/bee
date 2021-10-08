@@ -9,13 +9,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/mock"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
@@ -31,7 +32,7 @@ func TestHandshake(t *testing.T) {
 		testWelcomeMessage = "HelloWorld"
 	)
 
-	logger := logging.New(ioutil.Discard, 0)
+	logger := logging.New(io.Discard, 0)
 	networkID := uint64(3)
 
 	node1ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
@@ -173,6 +174,47 @@ func TestHandshake(t *testing.T) {
 
 		if ack.WelcomeMessage != testWelcomeMessage {
 			t.Fatalf("Bad ack welcome message: want %s, got %s", testWelcomeMessage, ack.WelcomeMessage)
+		}
+	})
+
+	t.Run("Handshake - picker error", func(t *testing.T) {
+
+		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", node1AddrInfo.ID, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		handshakeService.SetPicker(mockPicker(func(p p2p.Peer) bool { return false }))
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			ObservedUnderlay: node1maBinary,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.WriteMsg(&pb.Ack{
+			Address: &pb.BzzAddress{
+				Underlay:  node2maBinary,
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node2BzzAddress.Signature,
+			},
+			NetworkID:   networkID,
+			Transaction: trxHash,
+			FullNode:    true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		expectedErr := handshake.ErrPicker
+		if !errors.Is(err, expectedErr) {
+			t.Fatal("expected:", expectedErr, "got:", err)
 		}
 	})
 
@@ -726,6 +768,18 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("expected nil res")
 		}
 	})
+}
+
+func mockPicker(f func(p2p.Peer) bool) p2p.Picker {
+	return &picker{pickerFunc: f}
+}
+
+type picker struct {
+	pickerFunc func(p2p.Peer) bool
+}
+
+func (p *picker) Pick(peer p2p.Peer) bool {
+	return p.pickerFunc(peer)
 }
 
 // testInfo validates if two Info instances are equal.
