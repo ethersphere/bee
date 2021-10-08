@@ -303,11 +303,22 @@ func deleteKeys(s *Store, keys []string) error {
 
 // Nuke the store so that only the bare essential entries are
 // left. Careful!
-func (s *Store) Nuke() error {
-	prefixes := []string{"accounting", "pseudosettle", "swap"}
+func (s *Store) Nuke(forgetOverlay bool) error {
+	prefixes := []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay"}
 	k, err := collectKeysExcept(s, prefixes)
 	if err != nil {
 		return fmt.Errorf("collect keys except: %w", err)
 	}
-	return deleteKeys(s, k)
+	if err = deleteKeys(s, k); err != nil {
+		return err
+	}
+	if forgetOverlay {
+		if err = s.Delete("swap_chequebook_transaction_deployment"); err != nil {
+			return err
+		}
+		if err = s.Delete("non-mineable-overlay"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
