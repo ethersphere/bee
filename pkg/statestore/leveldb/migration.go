@@ -304,10 +304,14 @@ func deleteKeys(s *Store, keys []string) error {
 // Nuke the store so that only the bare essential entries are
 // left. Careful!
 func (s *Store) Nuke() error {
-	prefixes := []string{"accounting", "pseudosettle", "swap"}
-	k, err := collectKeysExcept(s, prefixes)
+	var (
+		keys     []string
+		prefixes = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay"}
+		err      error
+	)
+	keys, err = collectKeysExcept(s, prefixes)
 	if err != nil {
 		return fmt.Errorf("collect keys except: %w", err)
 	}
-	return deleteKeys(s, k)
+	return deleteKeys(s, keys)
 }

@@ -18,6 +18,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const optionNameForgetOverlay = "forget-overlay"
+
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
 		Use:   "db",
@@ -195,10 +197,26 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			statestorePath := filepath.Join(dataDir, "statestore")
+
+			forgetOverlay, err := cmd.Flags().GetBool(optionNameForgetOverlay)
+			if err != nil {
+				return fmt.Errorf("get forget overlay: %w", err)
+			}
+
+			if forgetOverlay {
+				err = os.RemoveAll(localstorePath)
+				if err != nil {
+					return fmt.Errorf("statestore delete: %w", err)
+				}
+				// all done, return early
+				return nil
+			}
+
 			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}
+
 			if err = stateStore.Nuke(); err != nil {
 				return fmt.Errorf("statestore nuke: %w", err)
 			}
@@ -206,6 +224,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 		}}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
+	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
