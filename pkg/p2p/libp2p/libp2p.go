@@ -557,7 +557,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "failed blocklisting peer")
-		return fmt.Errorf("blocklist peer %s: %v", overlay, err)
+		return fmt.Errorf("blocklist peer %s: %w", overlay, err)
 	}
 	s.metrics.BlocklistedPeerCount.Inc()
 

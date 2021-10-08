@@ -567,7 +567,7 @@ func readPullSubscriptionBin(ctx context.Context, db *DB, bin uint8, ch <-chan s
 						Address: addr.Bytes(),
 					})
 					if err != nil {
-						err = fmt.Errorf("got chunk (bin id %v in bin %v) from retrieval index %s: %v", i, bin, addrs[bin][i], err)
+						err = fmt.Errorf("got chunk (bin id %v in bin %v) from retrieval index %s: %w", i, bin, addrs[bin][i], err)
 					} else if got.BinID != want.BinID {
 						err = fmt.Errorf("got chunk bin id %v in bin %v %v, want %v", i, bin, got, want)
 					}

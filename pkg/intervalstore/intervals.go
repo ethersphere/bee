@@ -221,11 +221,11 @@ func (i *Intervals) UnmarshalBinary(data []byte) (err error) {
 		}
 		start, err := strconv.ParseUint(string(r[0]), 36, 64)
 		if err != nil {
-			return fmt.Errorf("parsing the first element in range %d: %v", j, err)
+			return fmt.Errorf("parsing the first element in range %d: %w", j, err)
 		}
 		end, err := strconv.ParseUint(string(r[1]), 36, 64)
 		if err != nil {
-			return fmt.Errorf("parsing the second element in range %d: %v", j, err)
+			return fmt.Errorf("parsing the second element in range %d: %w", j, err)
 		}
 		i.add(start, end)
 	}

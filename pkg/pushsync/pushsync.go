@@ -458,7 +458,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.C
 	if err == nil && t != nil {
 		err = t.Inc(tags.StateSent)
 		if err != nil {
-			return nil, true, fmt.Errorf("tag %d increment: %v", ch.TagID(), err)
+			return nil, true, fmt.Errorf("tag %d increment: %w", ch.TagID(), err)
 		}
 	}
 
