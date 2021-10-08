@@ -228,7 +228,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
-			return fmt.Errorf("failed to settle with peer %v: %v", peer, err)
+			return fmt.Errorf("failed to settle with peer %v: %w", peer, err)
 		}
 
 		increasedExpectedDebt, _, err = a.getIncreasedExpectedDebt(peer, accountingPeer, bigPrice)
@@ -525,14 +525,14 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
 		if err != nil {
-			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
 
 		if _, ok := s[addr.String()]; !ok {
 			var storevalue *big.Int
 			err = a.store.Get(peerBalanceKey(addr), &storevalue)
 			if err != nil {
-				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
+				return false, fmt.Errorf("get peer %s balance: %w", addr.String(), err)
 			}
 
 			s[addr.String()] = storevalue
@@ -555,12 +555,12 @@ func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
 	err := a.store.Iterate(balancesPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := balanceKeyPeer(key)
 		if err != nil {
-			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
 		if _, ok := s[addr.String()]; !ok {
 			value, err := a.CompensatedBalance(addr)
 			if err != nil {
-				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
+				return false, fmt.Errorf("get peer %s balance: %w", addr.String(), err)
 			}
 
 			s[addr.String()] = value
@@ -576,12 +576,12 @@ func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
 	err = a.store.Iterate(balancesSurplusPrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := surplusBalanceKeyPeer(key)
 		if err != nil {
-			return false, fmt.Errorf("parse address from key: %s: %v", string(key), err)
+			return false, fmt.Errorf("parse address from key: %s: %w", string(key), err)
 		}
 		if _, ok := s[addr.String()]; !ok {
 			value, err := a.CompensatedBalance(addr)
 			if err != nil {
-				return false, fmt.Errorf("get peer %s balance: %v", addr.String(), err)
+				return false, fmt.Errorf("get peer %s balance: %w", addr.String(), err)
 			}
 
 			s[addr.String()] = value

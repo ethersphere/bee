@@ -38,17 +38,17 @@ func dbExportCmd(cmd *cobra.Command) {
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %v", err)
+				return fmt.Errorf("get verbosity: %w", err)
 			}
 			v = strings.ToLower(v)
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
-				return fmt.Errorf("get data-dir: %v", err)
+				return fmt.Errorf("get data-dir: %w", err)
 			}
 			if dataDir == "" {
 				return errors.New("no data-dir provided")
@@ -69,14 +69,14 @@ func dbExportCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Create(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening output file: %s", err)
+					return fmt.Errorf("error opening output file: %w", err)
 				}
 				defer f.Close()
 				out = f
 			}
 			c, err := storer.Export(out)
 			if err != nil {
-				return fmt.Errorf("error exporting database: %v", err)
+				return fmt.Errorf("error exporting database: %w", err)
 			}
 
 			logger.Infof("database exported %d records successfully", c)
@@ -99,16 +99,16 @@ func dbImportCmd(cmd *cobra.Command) {
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %v", err)
+				return fmt.Errorf("get verbosity: %w", err)
 			}
 			v = strings.ToLower(v)
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
-				return fmt.Errorf("get data-dir: %v", err)
+				return fmt.Errorf("get data-dir: %w", err)
 			}
 			if dataDir == "" {
 				return errors.New("no data-dir provided")
@@ -129,14 +129,14 @@ func dbImportCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Open(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening input file: %s", err)
+					return fmt.Errorf("error opening input file: %w", err)
 				}
 				defer f.Close()
 				in = f
 			}
 			c, err := storer.Import(cmd.Context(), in)
 			if err != nil {
-				return fmt.Errorf("error importing database: %v", err)
+				return fmt.Errorf("error importing database: %w", err)
 			}
 
 			fmt.Printf("database imported %d records successfully\n", c)
