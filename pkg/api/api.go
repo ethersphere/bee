@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
@@ -92,7 +93,7 @@ type Service interface {
 type authenticator interface {
 	Authorize(string) bool
 	GenerateKey(string, int) (string, error)
-	RefreshKey(string) (string, error)
+	RefreshKey(string, int) (string, error)
 	Enforce(string, string, string) (bool, error)
 }
 
@@ -298,9 +299,9 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 
 	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
 	if err != nil {
-		s.logger.Debugf("api: auth handler: add auth key: %v", err)
-		s.logger.Error("api: auth handler: add auth key")
-		jsonhttp.InternalServerError(w, err)
+		s.logger.Debugf("api: auth handler: add auth token: %v", err)
+		s.logger.Error("api: auth handler: add auth token")
+		jsonhttp.InternalServerError(w, "Error generating authorization token")
 		return
 	}
 
@@ -323,13 +324,36 @@ func (s *server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := keys[1]
+	authToken := keys[1]
 
-	key, err := s.auth.RefreshKey(apiKey)
+	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debugf("api: auth handler: add auth key: %v", err)
-		s.logger.Error("api: auth handler: add auth key")
-		jsonhttp.InternalServerError(w, err)
+		s.logger.Debugf("api: auth handler: read request body: %v", err)
+		s.logger.Error("api: auth handler: read request body")
+		jsonhttp.BadRequest(w, "Read request body")
+		return
+	}
+
+	var payload securityTokenReq
+	if err = json.Unmarshal(body, &payload); err != nil {
+		s.logger.Debugf("api: auth handler: unmarshal request body: %v", err)
+		s.logger.Error("api: auth handler: unmarshal request body")
+		jsonhttp.BadRequest(w, "Unmarshal json body")
+		return
+	}
+
+	key, err := s.auth.RefreshKey(authToken, payload.Expiry)
+	if errors.Is(err, auth.ErrTokenExpired) {
+		s.logger.Debugf("api: auth handler: refresh key: %v", err)
+		s.logger.Error("api: auth handler: refresh key")
+		jsonhttp.BadRequest(w, err)
+		return
+	}
+
+	if err != nil {
+		s.logger.Debugf("api: auth handler: refresh token: %v", err)
+		s.logger.Error("api: auth handler: refresh token")
+		jsonhttp.InternalServerError(w, "Error refreshing authorization token")
 		return
 	}
 
