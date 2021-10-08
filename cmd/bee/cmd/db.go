@@ -159,23 +159,23 @@ func dbNukeCmd(cmd *cobra.Command) {
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %v", err)
+				return fmt.Errorf("get verbosity: %w", err)
 			}
 			v = strings.ToLower(v)
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
 			if err != nil {
-				logger.Errorf("getting sleep value: %v", err)
+				logger.Errorf("getting sleep value: %w", err)
 			}
 
 			defer time.Sleep(d)
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
-				return fmt.Errorf("get data-dir: %v", err)
+				return fmt.Errorf("get data-dir: %w", err)
 			}
 			if dataDir == "" {
 				return errors.New("no data-dir provided")

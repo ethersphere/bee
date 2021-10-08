@@ -23,7 +23,7 @@ import (
 
 var _ storage.StateStorer = (*Store)(nil)
 
-// store uses LevelDB to store values.
+// Store uses LevelDB to store values.
 type Store struct {
 	db     *leveldb.DB
 	logger logging.Logger
