@@ -54,6 +54,13 @@ func (s *server) setupRouting() {
 				web.FinalHandlerFunc(s.authHandler),
 			),
 		})
+		router.Handle("/refresh", jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				s.newTracingHandler("auth"),
+				jsonhttp.NewMaxBodyBytesHandler(512),
+				web.FinalHandlerFunc(s.refreshHandler),
+			),
+		})
 	}
 
 	handle("/bytes", jsonhttp.MethodHandler{

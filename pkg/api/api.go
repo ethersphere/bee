@@ -92,6 +92,7 @@ type Service interface {
 type authenticator interface {
 	Authorize(string) bool
 	GenerateKey(string, int) (string, error)
+	RefreshKey(string) (string, error)
 	Enforce(string, string, string) (bool, error)
 }
 
@@ -296,6 +297,35 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
+	if err != nil {
+		s.logger.Debugf("api: auth handler: add auth key: %v", err)
+		s.logger.Error("api: auth handler: add auth key")
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	jsonhttp.Created(w, securityTokenRsp{
+		Key: key,
+	})
+}
+
+func (s *server) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	reqToken := r.Header.Get("Authorization")
+	if !strings.HasPrefix(reqToken, "Bearer ") {
+		jsonhttp.Forbidden(w, "Missing bearer token")
+		return
+	}
+
+	keys := strings.Split(reqToken, "Bearer ")
+
+	if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
+		jsonhttp.Forbidden(w, "Missing security token")
+		return
+	}
+
+	apiKey := keys[1]
+
+	key, err := s.auth.RefreshKey(apiKey)
 	if err != nil {
 		s.logger.Debugf("api: auth handler: add auth key: %v", err)
 		s.logger.Error("api: auth handler: add auth key")

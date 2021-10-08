@@ -22,8 +22,8 @@ func TestAuth(t *testing.T) {
 		resource      = "/auth"
 		logger        = logging.New(ioutil.Discard, 0)
 		authenticator = &mock.Auth{
-			AuthorizeFunc: func(string) bool { return true },
-			AddKeyFunc:    func(string) (string, error) { return "123", nil },
+			AuthorizeFunc:   func(string) bool { return true },
+			GenerateKeyFunc: func(string) (string, error) { return "123", nil },
 		}
 		client, _, _ = newTestServer(t, testServerOptions{
 			Logger:        logger,
@@ -84,12 +84,12 @@ func TestAuth(t *testing.T) {
 		)
 	})
 	t.Run("failed to add key", func(t *testing.T) {
-		original := authenticator.AddKeyFunc
-		authenticator.AddKeyFunc = func(s string) (string, error) {
+		original := authenticator.GenerateKeyFunc
+		authenticator.GenerateKeyFunc = func(s string) (string, error) {
 			return "", errors.New("error adding key")
 		}
 		defer func() {
-			authenticator.AddKeyFunc = original
+			authenticator.GenerateKeyFunc = original
 		}()
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusInternalServerError,
 			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
