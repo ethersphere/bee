@@ -98,6 +98,43 @@ func (a *Authenticator) GenerateKey(role string, expires int) (string, error) {
 	return apiKey, nil
 }
 
+func (a *Authenticator) RefreshKey(apiKey string) (string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(apiKey)
+	if err != nil {
+		return "", err
+	}
+
+	decryptedBytes, err := a.ciph.decrypt(decoded)
+	if err != nil {
+		return "", err
+	}
+
+	var ar authRecord
+	if err := json.Unmarshal(decryptedBytes, &ar); err != nil {
+		return "", err
+	}
+
+	if time.Now().After(ar.Expiry) {
+		return "", ErrTokenExpired
+	}
+
+	ar.Expiry = time.Now().Add(1 * time.Hour)
+
+	data, err := json.Marshal(ar)
+	if err != nil {
+		return "", err
+	}
+
+	encryptedBytes, err := a.ciph.encrypt(data)
+	if err != nil {
+		return "", err
+	}
+
+	apiKey = base64.StdEncoding.EncodeToString(encryptedBytes)
+
+	return apiKey, nil
+}
+
 var ErrTokenExpired = errors.New("token expired")
 
 func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
