@@ -35,16 +35,8 @@ var (
 
 // Interface is the Accounting interface.
 type Interface interface {
-	// Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
-	// Returns an error if the operation risks exceeding the disconnect threshold or an attempted settlement failed.
-	//
-	// This has to be called (always in combination with Release) before a
 	// Credit action to prevent overspending in case of concurrent requests.
-	Reserve(ctx context.Context, peer swarm.Address, price uint64) error
-	// Release releases the reserved funds.
-	Release(peer swarm.Address, price uint64)
-	// Credit increases the balance the peer has with us (we "pay" the peer).
-	Credit(peer swarm.Address, price uint64, originated bool) error
+	PrepareCredit(peer swarm.Address, price uint64, originated bool) (Action, error)
 	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing a possibly credited part of reserve on the other side.
 	PrepareDebit(peer swarm.Address, price uint64) (Action, error)
 	// Balance returns the current balance for the given peer.
@@ -73,6 +65,16 @@ type debitAction struct {
 	price          *big.Int
 	peer           swarm.Address
 	accountingPeer *accountingPeer
+	applied        bool
+}
+
+// creditAction represents a future debit
+type creditAction struct {
+	accounting     *Accounting
+	price          *big.Int
+	peer           swarm.Address
+	accountingPeer *accountingPeer
+	originated     bool
 	applied        bool
 }
 
@@ -191,15 +193,14 @@ func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer
 	return new(big.Int).Add(expectedDebt, additionalDebt), currentBalance, nil
 }
 
-// Reserve reserves a portion of the balance for peer and attempts settlements if necessary.
-func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
+func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated bool) (Action, error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
 	if !accountingPeer.connected {
-		return fmt.Errorf("connection not initialized yet")
+		return nil, fmt.Errorf("connection not initialized yet")
 	}
 
 	a.metrics.AccountingReserveCount.Inc()
@@ -215,7 +216,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
 	increasedExpectedDebt, currentBalance, err := a.getIncreasedExpectedDebt(peer, accountingPeer, bigPrice)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
 	// in other words this the debt the other node sees if everything pending is successful
@@ -228,12 +229,12 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
-			return fmt.Errorf("failed to settle with peer %v: %w", peer, err)
+			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
 		}
 
 		increasedExpectedDebt, _, err = a.getIncreasedExpectedDebt(peer, accountingPeer, bigPrice)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -241,40 +242,24 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	// this can happen if there is a large number of concurrent requests to the same peer
 	if increasedExpectedDebt.Cmp(accountingPeer.paymentThreshold) > 0 {
 		a.metrics.AccountingBlocksCount.Inc()
-		return ErrOverdraft
+		return nil, ErrOverdraft
 	}
 
 	accountingPeer.reservedBalance = new(big.Int).Add(accountingPeer.reservedBalance, bigPrice)
-	return nil
+	return &creditAction{
+		accounting:     a,
+		price:          bigPrice,
+		peer:           peer,
+		accountingPeer: accountingPeer,
+		originated:     originated,
+	}, nil
 }
 
-// Release releases reserved funds.
-func (a *Accounting) Release(peer swarm.Address, price uint64) {
-	accountingPeer := a.getAccountingPeer(peer)
+func (c *creditAction) Apply() error {
+	c.accountingPeer.lock.Lock()
+	defer c.accountingPeer.lock.Unlock()
 
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
-	bigPrice := new(big.Int).SetUint64(price)
-
-	// NOTE: this should never happen if Reserve and Release calls are paired.
-	if bigPrice.Cmp(accountingPeer.reservedBalance) > 0 {
-		a.logger.Error("attempting to release more balance than was reserved for peer")
-		accountingPeer.reservedBalance.SetUint64(0)
-	} else {
-		accountingPeer.reservedBalance.Sub(accountingPeer.reservedBalance, bigPrice)
-	}
-}
-
-// Credit increases the amount of credit we have with the given peer
-// (and decreases existing debt).
-func (a *Accounting) Credit(peer swarm.Address, price uint64, originated bool) error {
-	accountingPeer := a.getAccountingPeer(peer)
-
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
-
-	currentBalance, err := a.Balance(peer)
+	currentBalance, err := c.accounting.Balance(c.peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
 			return fmt.Errorf("failed to load balance: %w", err)
@@ -282,31 +267,31 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64, originated bool) e
 	}
 
 	// Calculate next balance by decreasing current balance with the price we credit
-	nextBalance := new(big.Int).Sub(currentBalance, new(big.Int).SetUint64(price))
+	nextBalance := new(big.Int).Sub(currentBalance, c.price)
 
-	a.logger.Tracef("crediting peer %v with price %d, new balance is %d", peer, price, nextBalance)
+	c.accounting.logger.Tracef("crediting peer %v with price %d, new balance is %d", c.peer, c.price, nextBalance)
 
-	err = a.store.Put(peerBalanceKey(peer), nextBalance)
+	err = c.accounting.store.Put(peerBalanceKey(c.peer), nextBalance)
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
 
-	a.metrics.TotalCreditedAmount.Add(float64(price))
-	a.metrics.CreditEventsCount.Inc()
+	c.accounting.metrics.TotalCreditedAmount.Add(float64(c.price.Int64()))
+	c.accounting.metrics.CreditEventsCount.Inc()
 
-	if !originated {
+	if !c.originated {
 		return nil
 	}
 
-	originBalance, err := a.OriginatedBalance(peer)
+	originBalance, err := c.accounting.OriginatedBalance(c.peer)
 	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
 		return fmt.Errorf("failed to load originated balance: %w", err)
 	}
 
 	// Calculate next balance by decreasing current balance with the price we credit
-	nextOriginBalance := new(big.Int).Sub(originBalance, new(big.Int).SetUint64(price))
+	nextOriginBalance := new(big.Int).Sub(originBalance, c.price)
 
-	a.logger.Tracef("crediting peer %v with price %d, new originated balance is %d", peer, price, nextOriginBalance)
+	c.accounting.logger.Tracef("crediting peer %v with price %d, new originated balance is %d", c.peer, c.price, nextOriginBalance)
 
 	zero := big.NewInt(0)
 	// only consider negative balance for limiting originated balance
@@ -317,18 +302,42 @@ func (a *Accounting) Credit(peer swarm.Address, price uint64, originated bool) e
 	// If originated balance is more into the negative domain, set it to balance
 	if nextOriginBalance.Cmp(nextBalance) < 0 {
 		nextOriginBalance.Set(nextBalance)
-		a.logger.Tracef("decreasing originated balance to peer %v to current balance %d", peer, nextOriginBalance)
+		c.accounting.logger.Tracef("decreasing originated balance to peer %v to current balance %d", c.peer, nextOriginBalance)
 	}
 
-	err = a.store.Put(originatedBalanceKey(peer), nextOriginBalance)
+	err = c.accounting.store.Put(originatedBalanceKey(c.peer), nextOriginBalance)
 	if err != nil {
 		return fmt.Errorf("failed to persist originated balance: %w", err)
 	}
 
-	a.metrics.TotalOriginatedCreditedAmount.Add(float64(price))
-	a.metrics.OriginatedCreditEventsCount.Inc()
+	c.accounting.metrics.TotalOriginatedCreditedAmount.Add(float64(c.price.Int64()))
+	c.accounting.metrics.OriginatedCreditEventsCount.Inc()
 
+	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
+		c.accounting.logger.Error("attempting to release more balance than was reserved for peer")
+		c.accountingPeer.reservedBalance.SetUint64(0)
+	} else {
+		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
+	}
+
+	c.applied = true
 	return nil
+}
+
+func (c *creditAction) Cleanup() {
+	if c.applied {
+		return
+	}
+
+	c.accountingPeer.lock.Lock()
+	defer c.accountingPeer.lock.Unlock()
+
+	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
+		c.accounting.logger.Error("attempting to release more balance than was reserved for peer")
+		c.accountingPeer.reservedBalance.SetUint64(0)
+	} else {
+		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
+	}
 }
 
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
@@ -1012,16 +1021,18 @@ func (d *debitAction) Apply() error {
 
 // Cleanup reduces shadow reserve if and only if debitaction have not been applied
 func (d *debitAction) Cleanup() {
-	if !d.applied {
-		d.accountingPeer.lock.Lock()
-		defer d.accountingPeer.lock.Unlock()
-		a := d.accounting
-		d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
-		d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
-		if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
-			a.metrics.AccountingDisconnectsGhostOverdrawCount.Inc()
-			_ = a.blocklist(d.peer, 1, "ghost overdraw")
-		}
+	if d.applied {
+		return
+	}
+
+	d.accountingPeer.lock.Lock()
+	defer d.accountingPeer.lock.Unlock()
+	a := d.accounting
+	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
+	d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
+	if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
+		a.metrics.AccountingDisconnectsGhostOverdrawCount.Inc()
+		_ = a.blocklist(d.peer, 1, "ghost overdraw")
 	}
 }
 

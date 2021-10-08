@@ -7,7 +7,6 @@
 package mock
 
 import (
-	"context"
 	"math/big"
 	"sync"
 
@@ -19,10 +18,8 @@ import (
 type Service struct {
 	lock                    sync.Mutex
 	balances                map[string]*big.Int
-	reserveFunc             func(ctx context.Context, peer swarm.Address, price uint64) error
-	releaseFunc             func(peer swarm.Address, price uint64)
-	creditFunc              func(peer swarm.Address, price uint64, orig bool) error
 	prepareDebitFunc        func(peer swarm.Address, price uint64) (accounting.Action, error)
+	prepareCreditFunc       func(peer swarm.Address, price uint64, originated bool) (accounting.Action, error)
 	balanceFunc             func(swarm.Address) (*big.Int, error)
 	shadowBalanceFunc       func(swarm.Address) (*big.Int, error)
 	balancesFunc            func() (map[string]*big.Int, error)
@@ -39,31 +36,24 @@ type debitAction struct {
 	applied    bool
 }
 
-// WithReserveFunc sets the mock Reserve function
-func WithReserveFunc(f func(ctx context.Context, peer swarm.Address, price uint64) error) Option {
-	return optionFunc(func(s *Service) {
-		s.reserveFunc = f
-	})
-}
-
-// WithReleaseFunc sets the mock Release function
-func WithReleaseFunc(f func(peer swarm.Address, price uint64)) Option {
-	return optionFunc(func(s *Service) {
-		s.releaseFunc = f
-	})
-}
-
-// WithCreditFunc sets the mock Credit function
-func WithCreditFunc(f func(peer swarm.Address, price uint64, orig bool) error) Option {
-	return optionFunc(func(s *Service) {
-		s.creditFunc = f
-	})
+type creditAction struct {
+	accounting *Service
+	price      *big.Int
+	peer       swarm.Address
+	applied    bool
 }
 
 // WithDebitFunc sets the mock Debit function
 func WithPrepareDebitFunc(f func(peer swarm.Address, price uint64) (accounting.Action, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.prepareDebitFunc = f
+	})
+}
+
+// WithDebitFunc sets the mock Debit function
+func WithPrepareCreditFunc(f func(peer swarm.Address, price uint64, originated bool) (accounting.Action, error)) Option {
+	return optionFunc(func(s *Service) {
+		s.prepareCreditFunc = f
 	})
 }
 
@@ -103,7 +93,7 @@ func WithBalanceSurplusFunc(f func(swarm.Address) (*big.Int, error)) Option {
 }
 
 // NewAccounting creates the mock accounting implementation
-func NewAccounting(opts ...Option) accounting.Interface {
+func NewAccounting(opts ...Option) *Service {
 	mock := new(Service)
 	mock.balances = make(map[string]*big.Int)
 	for _, o := range opts {
@@ -112,35 +102,13 @@ func NewAccounting(opts ...Option) accounting.Interface {
 	return mock
 }
 
-// Reserve is the mock function wrapper that calls the set implementation
-func (s *Service) Reserve(ctx context.Context, peer swarm.Address, price uint64) error {
-	if s.reserveFunc != nil {
-		return s.reserveFunc(ctx, peer, price)
+func (s *Service) MakeCreditAction(peer swarm.Address, price uint64) accounting.Action {
+	return &creditAction{
+		accounting: s,
+		price:      new(big.Int).SetUint64(price),
+		peer:       peer,
+		applied:    false,
 	}
-	return nil
-}
-
-// Release is the mock function wrapper that calls the set implementation
-func (s *Service) Release(peer swarm.Address, price uint64) {
-	if s.releaseFunc != nil {
-		s.releaseFunc(peer, price)
-	}
-}
-
-// Credit is the mock function wrapper that calls the set implementation
-func (s *Service) Credit(peer swarm.Address, price uint64, orig bool) error {
-	if s.creditFunc != nil {
-		return s.creditFunc(peer, price, orig)
-	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if bal, ok := s.balances[peer.String()]; ok {
-		s.balances[peer.String()] = new(big.Int).Sub(bal, new(big.Int).SetUint64(price))
-	} else {
-		s.balances[peer.String()] = big.NewInt(-int64(price))
-	}
-	return nil
 }
 
 // Debit is the mock function wrapper that calls the set implementation
@@ -156,7 +124,14 @@ func (s *Service) PrepareDebit(peer swarm.Address, price uint64) (accounting.Act
 		peer:       peer,
 		applied:    false,
 	}, nil
+}
 
+func (s *Service) PrepareCredit(peer swarm.Address, price uint64, originated bool) (accounting.Action, error) {
+	if s.prepareCreditFunc != nil {
+		return s.prepareCreditFunc(peer, price, originated)
+	}
+
+	return s.MakeCreditAction(peer, price), nil
 }
 
 func (a *debitAction) Apply() error {
@@ -167,6 +142,21 @@ func (a *debitAction) Apply() error {
 		a.accounting.balances[a.peer.String()] = new(big.Int).Add(bal, new(big.Int).Set(a.price))
 	} else {
 		a.accounting.balances[a.peer.String()] = new(big.Int).Set(a.price)
+	}
+
+	return nil
+}
+
+func (a *creditAction) Cleanup() {}
+
+func (a *creditAction) Apply() error {
+	a.accounting.lock.Lock()
+	defer a.accounting.lock.Unlock()
+
+	if bal, ok := a.accounting.balances[a.peer.String()]; ok {
+		a.accounting.balances[a.peer.String()] = new(big.Int).Sub(bal, new(big.Int).Set(a.price))
+	} else {
+		a.accounting.balances[a.peer.String()] = new(big.Int).Neg(a.price)
 	}
 
 	return nil
