@@ -21,7 +21,7 @@ func (ma *Auth) GenerateKey(k string, _ int) (string, error) {
 	}
 	return ma.GenerateKeyFunc(k)
 }
-func (ma *Auth) RefreshKey(k string) (string, error) {
+func (ma *Auth) RefreshKey(k string, _ int) (string, error) {
 	if ma.GenerateKeyFunc == nil {
 		return "", nil
 	}
