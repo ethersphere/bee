@@ -55,7 +55,7 @@ func (c *command) initStartCmd() (err error) {
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 
 			go startTimeBomb(logger)

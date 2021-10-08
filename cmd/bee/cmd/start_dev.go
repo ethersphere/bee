@@ -7,7 +7,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-
 	"os"
 	"os/signal"
 	"strings"
@@ -32,7 +31,7 @@ func (c *command) initStartDevCmd() (err error) {
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 
 			isWindowsService, err := isWindowsService()

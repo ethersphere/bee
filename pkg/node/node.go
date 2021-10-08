@@ -722,7 +722,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if o.FullNodeMode {
 		cs, err := chainsync.New(p2ps, swapBackend)
 		if err != nil {
-			return nil, fmt.Errorf("new chainsync: %v", err)
+			return nil, fmt.Errorf("new chainsync: %w", err)
 		}
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
@@ -730,7 +730,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 		chainSyncer, err = chainsyncer.New(swapBackend, cs, kad, logger, nil)
 		if err != nil {
-			return nil, fmt.Errorf("new chainsyncer: %v", err)
+			return nil, fmt.Errorf("new chainsyncer: %w", err)
 		}
 
 		b.chainSyncerCloser = chainSyncer

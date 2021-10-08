@@ -24,7 +24,7 @@ func (c *command) initInitCmd() (err error) {
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 			_, err = c.configureSigner(cmd, logger)
 			if err != nil {

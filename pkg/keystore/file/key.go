@@ -139,11 +139,11 @@ func decryptData(v keyCripto, password string) ([]byte, error) {
 
 	mac, err := hex.DecodeString(v.MAC)
 	if err != nil {
-		return nil, fmt.Errorf("hex decode mac: %s", err)
+		return nil, fmt.Errorf("hex decode mac: %w", err)
 	}
 	cipherText, err := hex.DecodeString(v.CipherText)
 	if err != nil {
-		return nil, fmt.Errorf("hex decode cipher text: %s", err)
+		return nil, fmt.Errorf("hex decode cipher text: %w", err)
 	}
 	derivedKey, err := getKDFKey(v, []byte(password))
 	if err != nil {
@@ -156,7 +156,7 @@ func decryptData(v keyCripto, password string) ([]byte, error) {
 
 	iv, err := hex.DecodeString(v.CipherParams.IV)
 	if err != nil {
-		return nil, fmt.Errorf("hex decode IV cipher parameter: %s", err)
+		return nil, fmt.Errorf("hex decode IV cipher parameter: %w", err)
 	}
 	data, err := aesCTRXOR(derivedKey[:16], cipherText, iv)
 	if err != nil {
@@ -182,7 +182,7 @@ func getKDFKey(v keyCripto, password []byte) ([]byte, error) {
 	}
 	salt, err := hex.DecodeString(v.KDFParams.Salt)
 	if err != nil {
-		return nil, fmt.Errorf("hex decode salt: %s", err)
+		return nil, fmt.Errorf("hex decode salt: %w", err)
 	}
 	return scrypt.Key(
 		password,
