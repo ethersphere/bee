@@ -463,12 +463,13 @@ func TestPushChunkToClosestFailedAttemptRetry(t *testing.T) {
 		streamtest.WithBaseAddr(pivotNode),
 	)
 
-	pivotAccounting := accountingmock.NewAccounting(
-		accountingmock.WithReserveFunc(func(ctx context.Context, peer swarm.Address, price uint64) error {
+	var pivotAccounting *accountingmock.Service
+	pivotAccounting = accountingmock.NewAccounting(
+		accountingmock.WithPrepareCreditFunc(func(peer swarm.Address, price uint64, originated bool) (accounting.Action, error) {
 			if peer.String() == peer4.String() {
-				return nil
+				return pivotAccounting.MakeCreditAction(peer, price), nil
 			}
-			return errors.New("unable to reserve")
+			return nil, errors.New("unable to reserve")
 		}),
 	)
 
