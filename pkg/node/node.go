@@ -727,8 +727,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
-
-		chainSyncer, err = chainsyncer.New(swapBackend, cs, kad, logger, nil)
+		chainSyncer, err = chainsyncer.New(swapBackend, cs, kad, p2ps, logger, nil)
 		if err != nil {
 			return nil, fmt.Errorf("new chainsyncer: %w", err)
 		}

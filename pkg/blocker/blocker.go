@@ -33,7 +33,6 @@ type Blocker struct {
 }
 
 func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, logger logging.Logger) *Blocker {
-
 	b := &Blocker{
 		disconnector:  dis,
 		flagTimeout:   flagTimeout,
