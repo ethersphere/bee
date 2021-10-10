@@ -55,7 +55,9 @@ func TestNeighborhoodDepth(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // initial tests do not check for radius
@@ -204,8 +206,10 @@ func TestNeighborhoodDepth(t *testing.T) {
 func TestEachNeighbor(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
-		peers                    []swarm.Address
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
+		peers []swarm.Address
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -271,7 +275,10 @@ func TestManage(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = *kademlia.QuickSaturationPeers
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			BitSuffixLength:  -1,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -317,18 +324,21 @@ func TestManageWithBalancing(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice) (bool, bool)
-		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) (bool, bool)
+		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice, filter kademlia.PeerFilterFunc) (bool, bool) {
 			f := *saturationFuncImpl
-			return f(bin, peers, connected)
+			return f(bin, peers, connected, filter)
 		}
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{SaturationFunc: saturationFunc, BitSuffixLength: 2})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			SaturationFunc: saturationFunc, BitSuffixLength: 2,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
 	// implement saturation function (while having access to Kademlia instance)
-	sfImpl := func(bin uint8, peers, connected *pslice.PSlice) (bool, bool) {
+	sfImpl := func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) (bool, bool) {
 		return kad.IsBalanced(bin), false
 	}
 	saturationFuncImpl = &sfImpl
@@ -384,7 +394,10 @@ func TestBinSaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BitSuffixLength: -1})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			BitSuffixLength:  -1,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -436,7 +449,9 @@ func TestOversaturation(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
@@ -497,7 +512,10 @@ func TestOversaturationBootnode(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			BootnodeMode:     true,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
@@ -558,7 +576,10 @@ func TestBootnodeMaxConnections(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{BootnodeMode: true})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			BootnodeMode:     true,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+		})
 	)
 	kad.SetRadius(swarm.MaxPO) // don't use radius for checks
 
@@ -1207,7 +1228,8 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			PruneFunc: pruneFunc,
+			PruneFunc:        pruneFunc,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -1360,8 +1382,9 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	var (
 		conns                 int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer = newTestKademliaWithAddr(t, base, &conns, nil, kademlia.Options{
-			BootnodeMode: true,
-			StaticNodes:  protected,
+			BootnodeMode:     true,
+			StaticNodes:      protected,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -1499,8 +1522,6 @@ func TestIteratorOpts(t *testing.T) {
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
 		}
-		// see depth is limited to currently added peers proximity
-		kDepth(t, kad, i)
 	}
 
 	// randomly mark some nodes as reachable
