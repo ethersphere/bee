@@ -203,6 +203,21 @@ func (s *store) evictExpired() error {
 	return s.delete(toDelete...)
 }
 
+func (s *store) adjustRadius() {
+	if s.rs.Available > 0 {
+		rd := s.rs.Radius - 1
+		for {
+			sz := s.rs.sizeRadius(rd)
+			if Capacity-sz >= s.rs.Available {
+				s.rs.Radius = rd
+			} else {
+				return
+			}
+			rd--
+		}
+	}
+}
+
 // tier represents the sections of the reserve that can be  described as value intervals
 // 0 - out of the reserve
 // 1 - within reserve radius = depth (inner half)
@@ -243,6 +258,13 @@ func (rs *reserveState) size(depth uint8, t tier) int64 {
 		// case is unreserved
 		return 0
 	}
+}
+
+// sizeRadius returns the nominal amount of chunks a node is
+// responsible given a hypothetical radius.
+func (rs *reserveState) sizeRadius(r uint8) int64 {
+	size := exp2(uint(r - 1))
+	return size
 }
 
 // tier returns which tier a value falls into
