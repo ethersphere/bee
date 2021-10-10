@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/prometheus/client_golang/prometheus"
@@ -235,7 +236,11 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 					return err
 				}
 				if err = l.processEvent(e, updater); err != nil {
-					return err
+					// if we have a zero value batch - silence & log then move on
+					if !errors.Is(err, batchservice.ErrZeroValueBatch) {
+						return err
+					}
+					l.logger.Debugf("listener: %v", err)
 				}
 				totalTimeMetric(l.metrics.EventProcessDuration, startEv)
 			}
