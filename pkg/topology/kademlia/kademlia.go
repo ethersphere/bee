@@ -822,7 +822,10 @@ func recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint
 		shallowestUnsaturated = shallowestEmpty
 	}
 
-	_ = peers.EachBin(func(_ swarm.Address, po uint8) (bool, bool, error) {
+	_ = peers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+		if filter(addr) {
+			return false, false, nil
+		}
 		peersCtr++
 		if peersCtr >= uint(nnLowWatermark) {
 			candidate = po
