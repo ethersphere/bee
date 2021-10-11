@@ -44,14 +44,14 @@ type ClosestPeerer interface {
 	// given chunk address.
 	// This function will ignore peers with addresses provided in skipPeers.
 	// Returns topology.ErrWantSelf in case base is the closest to the address.
-	ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestPeer(addr swarm.Address, includeSelf bool, f Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 type EachPeerer interface {
 	// EachPeer iterates from closest bin to farthest
-	EachPeer(EachPeerFunc, ...IteratorOpt) error
+	EachPeer(EachPeerFunc, Filter) error
 	// EachPeerRev iterates from farthest bin to closest
-	EachPeerRev(EachPeerFunc, ...IteratorOpt) error
+	EachPeerRev(EachPeerFunc, Filter) error
 }
 
 type EachNeighbor interface {
@@ -63,18 +63,10 @@ type EachNeighbor interface {
 	IsWithinDepth(swarm.Address) bool
 }
 
-// IteratorOpt is used to configure filters for the Peer iterators
-type IteratorOpt func(*Filter)
-
 // Filter defines the different filters that can be used with the Peer iterators
 type Filter struct {
 	Reachable bool
 }
-
-var (
-	// Option to be used to obtain only publicly reachable peers
-	ReachablePeers IteratorOpt = func(f *Filter) { f.Reachable = true }
-)
 
 // EachPeerFunc is a callback that is called with a peer and its PO
 type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
