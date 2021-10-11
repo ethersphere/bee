@@ -173,7 +173,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				logger.Errorf("getting sleep value: %w", err)
 			}
 
-			defer time.Sleep(d)
+			defer func() { time.Sleep(d) }()
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
@@ -204,7 +204,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			if forgetOverlay {
-				err = os.RemoveAll(localstorePath)
+				err = os.RemoveAll(statestorePath)
 				if err != nil {
 					return fmt.Errorf("statestore delete: %w", err)
 				}
@@ -216,6 +216,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}
+
+			logger.Warningf("Proceeding with statestore nuke...")
 
 			if err = stateStore.Nuke(); err != nil {
 				return fmt.Errorf("statestore nuke: %w", err)
