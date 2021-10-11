@@ -664,7 +664,7 @@ func (k *Kad) Start(_ context.Context) error {
 			return false, nil
 		})
 		if err != nil {
-			k.logger.Errorf("addressbook overlays: %w", err)
+			k.logger.Errorf("addressbook overlays: %v", err)
 			return
 		}
 		k.AddPeers(addresses...)
