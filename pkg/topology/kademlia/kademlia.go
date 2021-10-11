@@ -64,11 +64,11 @@ var (
 )
 
 type (
-	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter PeerFilterFunc) (saturated bool, oversaturated bool)
+	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) (saturated bool, oversaturated bool)
 	sanctionedPeerFunc func(peer swarm.Address) bool
 	pruneFunc          func(depth uint8)
 	staticPeerFunc     func(peer swarm.Address) bool
-	PeerFilterFunc     func(peer swarm.Address) bool
+	peerFilterFunc     func(peer swarm.Address) bool
 )
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
@@ -81,7 +81,7 @@ type Options struct {
 	BitSuffixLength  int
 	PruneFunc        pruneFunc
 	StaticNodes      []swarm.Address
-	ReachabilityFunc PeerFilterFunc
+	ReachabilityFunc peerFilterFunc
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -119,7 +119,7 @@ type Kad struct {
 	bgBroadcastWg     sync.WaitGroup
 	blocker           *blocker.Blocker
 	reachability      p2p.ReachabilityStatus
-	peerFilter        PeerFilterFunc
+	peerFilter        peerFilterFunc
 }
 
 // New returns a new Kademlia.
@@ -743,7 +743,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
 func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSaturationFunc {
-	return func(bin uint8, peers, connected *pslice.PSlice, filter PeerFilterFunc) (bool, bool) {
+	return func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) (bool, bool) {
 		potentialDepth := recalcDepth(peers, swarm.MaxPO, filter)
 
 		// short circuit for bins which are >= depth
@@ -783,7 +783,7 @@ func (k *Kad) reachabilityFilter(addr swarm.Address) bool {
 }
 
 // recalcDepth calculates and returns the kademlia depth.
-func recalcDepth(peers *pslice.PSlice, radius uint8, filter PeerFilterFunc) uint8 {
+func recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint8 {
 	// handle edge case separately
 	if peers.Length() <= nnLowWatermark {
 		return 0
