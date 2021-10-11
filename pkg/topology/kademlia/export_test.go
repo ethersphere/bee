@@ -17,3 +17,5 @@ var (
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
 	PeerPingPollTime          = &peerPingPollTime
 )
+
+type PeerFilterFunc = peerFilterFunc
