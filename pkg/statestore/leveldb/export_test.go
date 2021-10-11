@@ -2,6 +2,6 @@ package leveldb
 
 var DbSchemaCurrent = dbSchemaCurrent
 
-func (s *store) GetSchemaName() (string, error) {
+func (s *Store) GetSchemaName() (string, error) {
 	return s.getSchemaName()
 }

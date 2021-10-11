@@ -68,10 +68,7 @@ func TestGetSchemaName(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	sn := store.(interface {
-		GetSchemaName() (string, error)
-	})
-	n, err := sn.GetSchemaName() // expect current
+	n, err := store.GetSchemaName() // expect current
 	if err != nil {
 		t.Fatal(err)
 	}
