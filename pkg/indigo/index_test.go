@@ -90,23 +90,24 @@ func TestUpdateCorrectness(t *testing.T) {
 	})
 	t.Run("add 2 items to empty index and find them", func(t *testing.T) {
 		idx.Add(ctx, want)
-		idx.Add(ctx, want2)
-		checkFound(t, ctx, idx, want2)
 		checkFound(t, ctx, idx, want)
+		idx.Add(ctx, want2)
+		checkFound(t, ctx, idx, want)
+		checkFound(t, ctx, idx, want2)
 	})
 	t.Run("delete first item and not find it", func(t *testing.T) {
 		idx.Delete(ctx, want.Key())
-		checkFound(t, ctx, idx, want2)
 		checkNotFound(t, ctx, idx, want)
+		checkFound(t, ctx, idx, want2)
 	})
-	t.Run("readd first item and find both", func(t *testing.T) {
+	t.Run("once again add first item and find both", func(t *testing.T) {
 		idx.Add(ctx, want)
 		checkFound(t, ctx, idx, want2)
 		checkFound(t, ctx, idx, want)
 	})
 	t.Run("delete latest added item and find only item 2", func(t *testing.T) {
 		idx.Delete(ctx, want.Key())
-		checkFound(t, ctx, idx, want2)
+ 		checkFound(t, ctx, idx, want2)
 		checkNotFound(t, ctx, idx, want)
 	})
 	wantMod := &mockEntry{key: want.key, val: want.val + 1}
@@ -290,6 +291,7 @@ func newDetMockEntry(n int) *mockEntry {
 
 func checkFound(t *testing.T, ctx context.Context, idx *indigo.Index, want *mockEntry) {
 	t.Helper()
+	fmt.Println(idx.Root())
 	e, err := idx.Find(ctx, want.Key())
 	if err != nil {
 		t.Fatal(err)

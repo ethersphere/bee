@@ -17,12 +17,21 @@ func (n *MemNode) Fork(po int) CNode {
 			break
 		}
 	}
-	return CNode{}
+	return CNode{po, nil}
 }
 
 // Append appends a CNode to the forks of MemNode n
 func (n *MemNode) Append(cn CNode) Node {
-	n.forks = append(n.forks, cn)
+	i := 0
+	for ; i < len(n.forks); i++ {
+		if n.forks[i].At >= cn.At {
+			break
+		}
+	}
+	n.forks = n.forks[:i]
+	if cn.Node != nil {
+		n.forks = append(n.forks, cn)
+	}
 	return n
 }
 

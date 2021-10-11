@@ -1,17 +1,25 @@
 package pot
 
+import (
+	"context"
+
+	"github.com/ethersphere/bee/pkg/indigo/persister"
+)
+
 func Add(root Node, e Entry, mode Mode) Node {
-	return Update(mode.New(), NewCNode(root, 0), Step{
-		Key:    e.Key(),
-		Update: func(_ Entry) Entry { return e },
-	}, mode)
+	return Update(mode.New(), CNode{0, root}, e.Key(), func(Entry) Entry { return e }, mode)
 }
 
 func Delete(root Node, k []byte, mode Mode) Node {
-	return Update(mode.New(), NewCNode(root, 0), Step{
-		Key:    k,
-		Update: func(_ Entry) Entry { return nil },
-	}, mode)
+	return Update(mode.New(), CNode{0, root}, k, func(Entry) Entry { return nil }, mode)
+}
+
+type Mode interface {
+	New() Node // consructor
+	Pack(Node) Node
+	Unpack(Node) Node
+	Down(CNode) bool // to determine which entry should be promoted
+	Up(CNode) bool   // to determine which node/entry to promote after deletion
 }
 
 type SingleOrder struct{}
@@ -39,34 +47,35 @@ func (_ SingleOrder) New() Node {
 	return &MemNode{}
 }
 
-// Update
-func Update(acc Node, cn CNode, step Step, mode Mode) Node {
-	cm := step.CNode
-	if Empty(cn.Node) {
-		cn.Node = mode.New()
-	}
-	if step.Match() {
-		if step.Unchanged() {
-			return nil
-		}
-		if step.Deletion() {
-			return Whack(acc, cn, cm)
-		}
-		if Empty(cm.Node) {
-		}
-		return Pin(acc, step.After)
-	}
-	if Empty(cm.Node) {
-		if step.Deletion() {
-			return nil
-		}
-		return Whirl(acc, cn, cm)
-	}
+type PersistedPot struct {
+	Mode
+	ls     persister.LoadSaver
+	entryf func() Entry
+}
 
-	nextStep := step.Next(mode)
-	if step.Deletion() || !mode.Down(cm) {
-		return mode.Pack(Update(Whirl(acc, cn, cm), cm.Next(), nextStep, mode))
-	}
-	return Wedge(acc, cn, CNode{cm.At, mode.Pack(Update(mode.New(), cm, nextStep, mode))})
+// constructs a new Node
+func NewPersistedPot(mode Mode, entryf func() Entry) *PersistedPot {
+	return &PersistedPot{Mode: mode, entryf: entryf}
+}
 
+func (pm *PersistedPot) NewFromReference(ref []byte) *DBNode {
+	return &DBNode{entryf: pm.entryf, ref: ref, MemNode: &MemNode{}}
+}
+
+func (pm *PersistedPot) Pack(n Node) Node {
+	_, _ = persister.Save(context.Background(), pm.ls, n.(persister.TreeNode))
+	return n
+}
+
+func (pm *PersistedPot) Unpack(n Node) Node {
+	tn := n.(persister.TreeNode)
+	if len(tn.Reference()) > 0 {
+		_ = persister.Load(context.Background(), pm.ls, tn)
+	}
+	return n
+}
+
+// constructs a new Node
+func (pm *PersistedPot) New() Node {
+	return &DBNode{entryf: pm.entryf}
 }

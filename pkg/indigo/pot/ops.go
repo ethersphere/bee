@@ -1,87 +1,89 @@
 package pot
 
-// type Delta struct {
-// 	Key []byte
-// 	F   func(Entry) Entry
-// }
-
-// // Apply applies the function to the entry
-// func (delta Delta) Apply(po int, n Node) Step {
-// 	e := EntryOf(n)
-// 	return Step{e, delta.F(e), po, n}
-// }
-
-// type Op int
-
-// const (
-// 	Whirl_ Op = iota
-// 	Whack_
-// 	Wedge_
-// )
-
-type Step struct {
-	Mode   Mode
-	Key    []byte
-	Update func(Entry) Entry
-	After  Entry
-	Before Entry
-	CNode  CNode
-}
-
-func (s Step) Unchanged() bool {
-	return Equal(s.Before, s.After)
-}
-
-func (s Step) Match() bool {
-	return s.CNode.At == MaxDepth
-}
-
-func (s Step) Deletion() bool {
-	return s.After == nil
-}
-
-func (s Step) NextCNode(mode Mode) CNode {
-	if s.Deletion() {
-		return FindFork(s.CNode, mode.Up)
-	}
-	cm, _ := FindNext(s.CNode, s.Key)
-	return cm
-}
-
-func (s Step) Next(mode Mode) Step {
-	cn := s.NextCNode(mode)
-	mode.Unpack(cn.Node)
-	ns := Step{
-		CNode: cn,
-		Key:   s.Key,
-	}
-	if ns.Match() {
-		ns.Before = cn.Node.Entry()
-		ns.After = s.Update(ns.Before)
-		ns.Update = s.Update
-	}
-	return ns
-}
-
 // Wedge
 func Wedge(acc Node, n, m CNode) Node {
-	return acc.Append(m).Pin(n.Node.Entry())
+	acc = Append(acc, n.Node, n.At, m.At)
+	acc = acc.Append(m).Pin(n.Node.Entry())
+	return Append(acc, n.Node, m.At+1, MaxDepth)
 }
 
 // Whirl
 func Whirl(acc Node, n, m CNode) Node {
-	return acc.Append(CNode{m.At, n.Node}).Pin(m.Node.Entry())
+	acc = Append(acc, n.Node, n.At, m.At)
+	acc = acc.Append(CNode{m.At, n.Node})
+	return acc.Pin(m.Node.Entry())
 }
 
 // Whack
 func Whack(acc Node, n, m CNode) Node {
+	acc = Append(acc, n.Node, n.At, m.At)
+	acc = acc.Append(CNode{m.At, n.Node})
+	acc = Append(acc, m.Node, m.At+1, MaxDepth)
 	return acc.Pin(m.Node.Entry())
 }
 
-type Mode interface {
-	New() Node // consructor
-	Pack(Node) Node
-	Unpack(Node) Node
-	Down(CNode) bool // to determine which entry should be promoted
-	Up(CNode) bool   // to determine which node/entry to promote after deletion
+// Update
+func Update(acc Node, cn CNode, k []byte, eqf func(Entry) Entry, mode Mode) Node {
+	return mode.Pack(update(acc, cn, k, eqf, mode))
+}
+
+func update(acc Node, cn CNode, k []byte, eqf func(Entry) Entry, mode Mode) Node {
+	if Empty(cn.Node) {
+		e := eqf(nil)
+		if e == nil {
+			return nil
+		}
+		return acc.Pin(e)
+	}
+	cm, match := FindNext(cn, k)
+	if match {
+		orig := cn.Node.Entry()
+		entry := eqf(orig)
+		if entry == nil {
+			res := Pull(acc, cn, mode)
+			if Empty(res) {
+				return mode.New()
+			}
+			return res
+		}
+		if entry.Equal(orig) {
+			return nil
+		}
+		return Whack(acc, cn, CNode{MaxDepth, mode.New().Pin(entry)})
+	}
+	if Empty(cm.Node) {
+		entry := eqf(nil)
+		if entry == nil {
+			return nil
+		}
+		return Whirl(acc, cn, CNode{cm.At, mode.New().Pin(entry)})
+	}
+	if mode.Down(cm) {
+		res := Update(mode.New(), cm, k, eqf, mode)
+		if res == nil {
+			return nil
+		}
+		return Wedge(acc, cn, CNode{cm.At, res})
+	}
+	res := update(Whirl(acc, cn, cm), cm.Next(), k, eqf, mode)
+	if res == nil {
+		return nil
+	}
+	if res.Entry() == nil {
+		acc = acc.Append(CNode{cm.At, nil})
+		return acc.Pin(cn.Node.Entry())
+	}
+	return res
+}
+
+func Pull(acc Node, cn CNode, mode Mode) Node {
+	cm := FindFork(cn, mode.Up)
+	if Empty(cm.Node) {
+		return nil
+	}
+	res := Pull(mode.New(), cm.Next(), mode)
+	if res == nil {
+		return acc.Pin(cm.Node.Entry())
+	}
+	return Whack(acc, CNode{cm.At, res}, cn.Next())
 }

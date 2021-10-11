@@ -101,5 +101,13 @@ func (idx *Index) Close() error {
 	return idx.ls.Close()
 }
 func (idx *Index) Iter(f func(pot.Entry)) {
-	pot.Iter(pot.NewCNode(<-idx.read, 0), f)
+	pot.Iter(pot.CNode{At: 0, Node: <-idx.read}, f)
+}
+
+func (idx *Index) Root() pot.Node {
+	return <-idx.read
+}
+
+func (idx *Index) String() string {
+	return idx.Root().String()
 }

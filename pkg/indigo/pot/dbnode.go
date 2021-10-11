@@ -1,7 +1,6 @@
 package pot
 
 import (
-	"context"
 	"encoding/binary"
 
 	"github.com/ethersphere/bee/pkg/indigo/persister"
@@ -14,39 +13,6 @@ type DBNode struct {
 	ref []byte
 	*MemNode
 	entryf func() Entry
-}
-
-type PersistedPot struct {
-	Mode
-	ls     persister.LoadSaver
-	entryf func() Entry
-}
-
-// constructs a new Node
-func NewPersistedPot(mode Mode, entryf func() Entry) *PersistedPot {
-	return &PersistedPot{Mode: mode, entryf: entryf}
-}
-
-func (pm *PersistedPot) NewFromReference(ref []byte) *DBNode {
-	return &DBNode{entryf: pm.entryf, ref: ref, MemNode: &MemNode{}}
-}
-
-func (pm *PersistedPot) Pack(n Node) Node {
-	_, _ = persister.Save(context.Background(), pm.ls, n.(persister.TreeNode))
-	return n
-}
-
-func (pm *PersistedPot) Unpack(n Node) Node {
-	tn := n.(persister.TreeNode)
-	if len(tn.Reference()) > 0 {
-		_ = persister.Load(context.Background(), pm.ls, tn)
-	}
-	return n
-}
-
-// constructs a new Node
-func (pm *PersistedPot) New() Node {
-	return &DBNode{entryf: pm.entryf}
 }
 
 func (n *DBNode) Reference() []byte {

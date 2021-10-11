@@ -30,6 +30,8 @@ func BenchmarkWrap(b *testing.B) {
 		depth  int
 	}{
 		{1, 1},
+		{1, 2},
+		{1, 3},
 		{256, 2},
 		{8, 1},
 		{256, 1},

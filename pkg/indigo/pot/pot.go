@@ -2,6 +2,7 @@ package pot
 
 import (
 	"encoding"
+	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -29,24 +30,13 @@ type Node interface {
 	Pin(Entry) Node                                   // pin an entry to the node
 	Entry() Entry                                     // reconstructs the entry pinned to the Node
 	// Size() int                                     // returns the number of entries under the node
+	fmt.Stringer
 }
 
 type CNode struct {
 	At   int
 	Node Node
 }
-
-func NewCNode(n Node, i int) CNode {
-	if n.Entry() == nil {
-		n = nil
-	}
-	return CNode{i, n}
-}
-
-// Delete returns a delta for CNode c such that it instructs the Updater to remove the entry pinned to c's Node
-// func (c CNode) Delete() Delta {
-// 	return Delta{c.Node.Entry().Key(), func(_ Entry) Entry { return nil }}
-// }
 
 // Next returns a CNode, that is the view of the same Node from a po following the At of the receiver CNode
 func (c CNode) Next() CNode {
@@ -76,7 +66,7 @@ func Pin(n Node, e Entry) Node {
 
 // Empty
 func Empty(n Node) bool {
-	return n == nil
+	return n == nil || n.Entry() == nil
 }
 
 func Append(b, n Node, from, to int) Node {
@@ -94,16 +84,16 @@ func Find(n Node, k []byte) (Entry, error) {
 	return find(CNode{0, n}, k)
 }
 
-func FindNext(n CNode, k []byte) (m CNode, b bool) {
-	po, match := Compare(n.Node, k, n.At)
-	if !match {
-		m = n.Node.Fork(po)
+func FindNext(n CNode, k []byte) (CNode, bool) {
+	po := Compare(n.Node, k, n.At)
+	if po < MaxDepth {
+		return n.Node.Fork(po), false
 	}
-	return m, match
+	return CNode{MaxDepth, nil}, true
 }
 
 func find(n CNode, k []byte) (Entry, error) {
-	if Empty(n.Node) || n.Node.Entry() == nil {
+	if Empty(n.Node) {
 		return nil, ErrNotFound
 	}
 	m, match := FindNext(n, k)
@@ -124,9 +114,8 @@ func FindFork(n CNode, f func(CNode) bool) (m CNode) {
 // Compare compares the key of a CNode with a key, assuming the two match on a prefix of length po
 // it returns the proximity order quantifying the distance of the two keys plus
 // a boolean second return value which is true if the keys exactly match
-func Compare(n Node, k []byte, at int) (po int, match bool) {
-	po = PO(n.Entry().Key(), k, at)
-	return po, po == MaxDepth
+func Compare(n Node, k []byte, at int) int {
+	return PO(n.Entry().Key(), k, at)
 }
 
 // po returns the proximity order of two fixed length byte sequences
@@ -156,4 +145,24 @@ func Iter(n CNode, f func(Entry)) {
 		Iter(c.Next(), f)
 		return false, nil
 	})
+}
+
+var indent = "                                                 "
+
+func (m *MemNode) String() string {
+	return stringf(m, 0)
+}
+
+func stringf(m Node, i int) string {
+	if m == nil {
+		return "nil"
+	}
+	j := 0
+	s := fmt.Sprintf("K: %b, V: %s\n", binary.BigEndian.Uint32(m.Entry().Key()[:4])>>24, m.Entry())
+	m.Iter(0, func(c CNode) (bool, error) {
+		s = fmt.Sprintf("%s\n%s> %d - %d - %s\n", s, indent[:i*2], j, c.At, stringf(c.Node, i+1))
+		j++
+		return false, nil
+	})
+	return s
 }
