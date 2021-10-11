@@ -77,6 +77,7 @@ const (
 	optionNamePProfMutex                 = "pprof-mutex"
 	optionNameStaticNodes                = "static-nodes"
 	optionNameAllowPrivateCIDRs          = "allow-private-cidrs"
+	optionNameSleepAfter                 = "sleep-after"
 )
 
 func init() {
