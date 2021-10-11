@@ -5,6 +5,7 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -34,8 +35,13 @@ func PermissionCheckHandler(auth auth) func(h http.Handler) http.Handler {
 			apiKey := keys[1]
 
 			allowed, err := auth.Enforce(apiKey, r.URL.Path, r.Method)
+			if errors.Is(err, ErrTokenExpired) {
+				jsonhttp.Forbidden(w, "Token expired")
+				return
+			}
+
 			if err != nil {
-				jsonhttp.InternalServerError(w, "Permission denied")
+				jsonhttp.InternalServerError(w, "Error occured when validating the security token")
 				return
 			}
 

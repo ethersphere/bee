@@ -248,7 +248,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
