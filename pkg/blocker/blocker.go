@@ -19,7 +19,7 @@ type peer struct {
 }
 
 type Blocker struct {
-	mux               sync.Mutex
+	mu                sync.Mutex
 	disconnector      p2p.Blocklister
 	flagTimeout       time.Duration // how long before blocking a flagged peer
 	blockDuration     time.Duration // how long to blocklist a bad peer
