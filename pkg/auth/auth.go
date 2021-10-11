@@ -14,9 +14,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"time"
 
 	"github.com/casbin/casbin/v2"
+	"github.com/ethersphere/bee/pkg/logging"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -29,10 +31,15 @@ type Authenticator struct {
 	passwordHash []byte
 	ciph         *encrypter
 	enforcer     *casbin.Enforcer
+	log          logging.Logger
 }
 
-func New(encryptionKey, passwordHash string) (*Authenticator, error) {
-	e, err := casbin.NewEnforcer("/home/anatol/swarm/bee/security.conf", "/home/anatol/swarm/bee/policy.csv")
+func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authenticator, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	e, err := casbin.NewEnforcer(dir+"/bee/security.conf", dir+"/bee/policy.csv")
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +53,7 @@ func New(encryptionKey, passwordHash string) (*Authenticator, error) {
 		enforcer:     e,
 		ciph:         ciph,
 		passwordHash: []byte(passwordHash),
+		log:          logger,
 	}
 
 	return &auth, nil
@@ -118,25 +126,30 @@ func (a *Authenticator) RefreshKey(apiKey string, expiry int) (string, error) {
 func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
 	decoded, err := base64.StdEncoding.DecodeString(apiKey)
 	if err != nil {
+		a.log.Error("decode token", err)
 		return false, err
 	}
 
 	decryptedBytes, err := a.ciph.decrypt(decoded)
 	if err != nil {
+		a.log.Error("decrypt token", err)
 		return false, err
 	}
 
 	var ar authRecord
 	if err := json.Unmarshal(decryptedBytes, &ar); err != nil {
+		a.log.Error("unmarshal token", err)
 		return false, err
 	}
 
 	if time.Now().After(ar.Expiry) {
+		a.log.Error("token expired")
 		return false, ErrTokenExpired
 	}
 
 	allow, err := a.enforcer.Enforce(ar.Role, obj, act)
 	if err != nil {
+		a.log.Error("enforce", err)
 		return false, err
 	}
 
