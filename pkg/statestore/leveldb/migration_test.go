@@ -40,11 +40,11 @@ func TestOneMigration(t *testing.T) {
 	ran := false
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: dbSchemaCode, fn: func(db *store) error {
+		{name: dbSchemaCode, fn: func(db *Store) error {
 			shouldNotRun = true // this should not be executed
 			return nil
 		}},
-		{name: dbSchemaNext, fn: func(db *store) error {
+		{name: dbSchemaNext, fn: func(db *Store) error {
 			ran = true
 			return nil
 		}},
@@ -71,11 +71,8 @@ func TestOneMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sn := db.(interface {
-		GetSchemaName() (string, error)
-	})
 
-	schemaName, err := sn.GetSchemaName()
+	schemaName, err := db.GetSchemaName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,23 +108,23 @@ func TestManyMigrations(t *testing.T) {
 	executionOrder := []int{-1, -1, -1, -1}
 
 	schemaMigrations = []migration{
-		{name: dbSchemaCode, fn: func(db *store) error {
+		{name: dbSchemaCode, fn: func(db *Store) error {
 			shouldNotRun = true // this should not be executed
 			return nil
 		}},
-		{name: "keju", fn: func(db *store) error {
+		{name: "keju", fn: func(db *Store) error {
 			executionOrder[0] = 0
 			return nil
 		}},
-		{name: "coconut", fn: func(db *store) error {
+		{name: "coconut", fn: func(db *Store) error {
 			executionOrder[1] = 1
 			return nil
 		}},
-		{name: "mango", fn: func(db *store) error {
+		{name: "mango", fn: func(db *Store) error {
 			executionOrder[2] = 2
 			return nil
 		}},
-		{name: "salvation", fn: func(db *store) error {
+		{name: "salvation", fn: func(db *Store) error {
 			executionOrder[3] = 3
 			return nil
 		}},
@@ -155,11 +152,7 @@ func TestManyMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sn := db.(interface {
-		GetSchemaName() (string, error)
-	})
-
-	schemaName, err := sn.GetSchemaName()
+	schemaName, err := db.GetSchemaName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,15 +188,15 @@ func TestMigrationErrorFrom(t *testing.T) {
 
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: "langur", fn: func(db *store) error {
+		{name: "langur", fn: func(db *Store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "coconut", fn: func(db *store) error {
+		{name: "coconut", fn: func(db *Store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "chutney", fn: func(db *store) error {
+		{name: "chutney", fn: func(db *Store) error {
 			shouldNotRun = true
 			return nil
 		}},
@@ -246,15 +239,15 @@ func TestMigrationErrorTo(t *testing.T) {
 
 	shouldNotRun := false
 	schemaMigrations = []migration{
-		{name: "langur", fn: func(db *store) error {
+		{name: "langur", fn: func(db *Store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "coconut", fn: func(db *store) error {
+		{name: "coconut", fn: func(db *Store) error {
 			shouldNotRun = true
 			return nil
 		}},
-		{name: "chutney", fn: func(db *store) error {
+		{name: "chutney", fn: func(db *Store) error {
 			shouldNotRun = true
 			return nil
 		}},
@@ -311,7 +304,7 @@ func TestMigrationSwap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = migrateSwap(db.(*store)); err != nil {
+	if err = migrateSwap(db); err != nil {
 		t.Fatal(err)
 	}
 

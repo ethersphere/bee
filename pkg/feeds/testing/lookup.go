@@ -37,7 +37,7 @@ func (t *Timeout) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addr
 		}
 		return ch, err
 	}
-	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond) // skipcq: GSC-G404
+	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 	return ch, nil
 }
 
@@ -142,7 +142,7 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 	for j := 0; j < len(ats)-1; j++ {
 		at := ats[j]
 		diff := ats[j+1] - at
-		for now := at; now < ats[j+1]; now += int64(rand.Intn(int(diff)) + 1) { // skipcq: GSC-G404
+		for now := at; now < ats[j+1]; now += int64(rand.Intn(int(diff)) + 1) {
 			after := int64(0)
 			ch, current, next, err := finder.At(ctx, now, after)
 			if err != nil {
@@ -198,7 +198,7 @@ func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds
 			var i int64
 			var n int
 			nextf := func() (bool, int64) {
-				i += int64(rand.Intn(1<<10) + 1) // skipcq: GSC-G404
+				i += int64(rand.Intn(1<<10) + 1)
 				n++
 				return n == 40, i
 			}

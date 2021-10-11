@@ -14,7 +14,7 @@ import (
 // NewChainState will create a new ChainState with random values.
 func NewChainState() *postage.ChainState {
 	return &postage.ChainState{
-		Block:        rand.Uint64(), // skipcq: GSC-G404
+		Block:        rand.Uint64(),
 		CurrentPrice: NewBigInt(),
 		TotalAmount:  NewBigInt(),
 	}

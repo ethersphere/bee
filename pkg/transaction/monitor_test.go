@@ -209,7 +209,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		receiptC3, errC3, err := monitor.WatchTransaction(txHash3, nonce)
+		receiptC3, errC3, err := monitor.WatchTransaction(txHash3, nonce+1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -293,7 +293,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 							{
 								BlockNumber: 1 + cancellationDepth + 1,
 								Account:     sender,
-							}: nonce + 1,
+							}: nonce + 2,
 						},
 					},
 				),
@@ -308,7 +308,7 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		receiptC2, errC2, err := monitor.WatchTransaction(txHash2, nonce)
+		receiptC2, errC2, err := monitor.WatchTransaction(txHash2, nonce+1)
 		if err != nil {
 			t.Fatal(err)
 		}

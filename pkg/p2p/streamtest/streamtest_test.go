@@ -382,7 +382,7 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 
 		// stream should be closed and read should return EOF
 		if _, err := rw.ReadString('\n'); err != io.EOF {
-			return fmt.Errorf("got error %v, want %v", err, io.EOF)
+			return fmt.Errorf("got error %v, want %w", err, io.EOF)
 		}
 
 		return nil

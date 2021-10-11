@@ -33,7 +33,6 @@ type Blocker struct {
 }
 
 func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, callback func(swarm.Address), logger logging.Logger) *Blocker {
-
 	b := &Blocker{
 		disconnector:      dis,
 		flagTimeout:       flagTimeout,
@@ -66,8 +65,8 @@ func (b *Blocker) run() {
 }
 
 func (b *Blocker) block() {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for key, peer := range b.peers {
 
@@ -90,8 +89,8 @@ func (b *Blocker) block() {
 }
 
 func (b *Blocker) Flag(addr swarm.Address) {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	if _, ok := b.peers[addr.ByteString()]; !ok {
 		b.peers[addr.ByteString()] = &peer{
@@ -102,8 +101,8 @@ func (b *Blocker) Flag(addr swarm.Address) {
 }
 
 func (b *Blocker) Unflag(addr swarm.Address) {
-	b.mux.Lock()
-	defer b.mux.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	delete(b.peers, addr.ByteString())
 }

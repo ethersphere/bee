@@ -11,10 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/localstore"
+	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/spf13/cobra"
 )
+
+const optionNameForgetOverlay = "forget-overlay"
 
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
@@ -24,6 +28,7 @@ func (c *command) initDBCmd() {
 
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
+	dbNukeCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -38,17 +43,17 @@ func dbExportCmd(cmd *cobra.Command) {
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %v", err)
+				return fmt.Errorf("get verbosity: %w", err)
 			}
 			v = strings.ToLower(v)
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
-				return fmt.Errorf("get data-dir: %v", err)
+				return fmt.Errorf("get data-dir: %w", err)
 			}
 			if dataDir == "" {
 				return errors.New("no data-dir provided")
@@ -69,14 +74,14 @@ func dbExportCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Create(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening output file: %s", err)
+					return fmt.Errorf("error opening output file: %w", err)
 				}
 				defer f.Close()
 				out = f
 			}
 			c, err := storer.Export(out)
 			if err != nil {
-				return fmt.Errorf("error exporting database: %v", err)
+				return fmt.Errorf("error exporting database: %w", err)
 			}
 
 			logger.Infof("database exported %d records successfully", c)
@@ -99,16 +104,16 @@ func dbImportCmd(cmd *cobra.Command) {
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %v", err)
+				return fmt.Errorf("get verbosity: %w", err)
 			}
 			v = strings.ToLower(v)
 			logger, err := newLogger(cmd, v)
 			if err != nil {
-				return fmt.Errorf("new logger: %v", err)
+				return fmt.Errorf("new logger: %w", err)
 			}
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
-				return fmt.Errorf("get data-dir: %v", err)
+				return fmt.Errorf("get data-dir: %w", err)
 			}
 			if dataDir == "" {
 				return errors.New("no data-dir provided")
@@ -129,14 +134,14 @@ func dbImportCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Open(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening input file: %s", err)
+					return fmt.Errorf("error opening input file: %w", err)
 				}
 				defer f.Close()
 				in = f
 			}
 			c, err := storer.Import(cmd.Context(), in)
 			if err != nil {
-				return fmt.Errorf("error importing database: %v", err)
+				return fmt.Errorf("error importing database: %w", err)
 			}
 
 			fmt.Printf("database imported %d records successfully\n", c)
@@ -146,5 +151,82 @@ func dbImportCmd(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
+}
+
+func dbNukeCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "nuke",
+		Short: "Nuke the DB and the relevant statestore entries so that bee resyncs all data next time it boots up.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Errorf("getting sleep value: %w", err)
+			}
+
+			defer func() { time.Sleep(d) }()
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Warningf("Starting to nuke the DB with data-dir at %s", dataDir)
+			logger.Warningf("This process will erase all persisted chunks in your local storage!")
+			logger.Warningf("It will NOT discriminate any pinned content, in case you were wondering.")
+			logger.Warningf("You have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			time.Sleep(10 * time.Second)
+			logger.Warningf("Proceeding with database nuke...")
+
+			localstorePath := filepath.Join(dataDir, "localstore")
+			err = os.RemoveAll(localstorePath)
+			if err != nil {
+				return fmt.Errorf("localstore delete: %w", err)
+			}
+
+			statestorePath := filepath.Join(dataDir, "statestore")
+
+			forgetOverlay, err := cmd.Flags().GetBool(optionNameForgetOverlay)
+			if err != nil {
+				return fmt.Errorf("get forget overlay: %w", err)
+			}
+
+			if forgetOverlay {
+				err = os.RemoveAll(statestorePath)
+				if err != nil {
+					return fmt.Errorf("statestore delete: %w", err)
+				}
+				// all done, return early
+				return nil
+			}
+
+			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
+			if err != nil {
+				return fmt.Errorf("new statestore: %w", err)
+			}
+
+			logger.Warningf("Proceeding with statestore nuke...")
+
+			if err = stateStore.Nuke(); err != nil {
+				return fmt.Errorf("statestore nuke: %w", err)
+			}
+			return nil
+		}}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
+	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
