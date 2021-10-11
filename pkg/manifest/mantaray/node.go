@@ -110,12 +110,12 @@ func (n *Node) makeWithMetadata() {
 }
 
 //nolint,unused
-func (n *Node) makeNotValue() { // skipcq: SCC-U1000
+func (n *Node) makeNotValue() {
 	n.nodeType = (nodeTypeMask ^ nodeTypeValue) & n.nodeType
 }
 
 //nolint,unused
-func (n *Node) makeNotEdge() { // skipcq: SCC-U1000
+func (n *Node) makeNotEdge() {
 	n.nodeType = (nodeTypeMask ^ nodeTypeEdge) & n.nodeType
 }
 
@@ -124,7 +124,7 @@ func (n *Node) makeNotWithPathSeparator() {
 }
 
 //nolint,unused
-func (n *Node) makeNotWithMetadata() { // skipcq: SCC-U1000
+func (n *Node) makeNotWithMetadata() {
 	n.nodeType = (nodeTypeMask ^ nodeTypeWithMetadata) & n.nodeType
 }
 

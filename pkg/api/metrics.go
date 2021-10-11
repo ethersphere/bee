@@ -84,7 +84,7 @@ type UpgradedResponseWriter interface {
 	http.Flusher
 	// staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler
 	// nolint:staticcheck
-	http.CloseNotifier // skipcq: SCC-SA1019
+	http.CloseNotifier
 }
 
 type responseWriter struct {
