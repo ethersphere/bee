@@ -9,6 +9,12 @@ BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
 
+GO_MIN_VERSION ?= "1.17"
+GO_BUILD_VERSION ?= "1.17.2"
+GO_MOD_ENABLED_VERSION ?= "1.12"
+GO_MOD_VERSION ?= "$(shell go mod edit -print | awk '/^go[ \t]+[0-9]+\.[0-9]+(\.[0-9]+)?[ \t]*$$/{print $$2}')"
+GO_SYSTEM_VERSION ?= "$(shell go version | awk '{ gsub(/go/, "", $$3); print $$3 }')"
+
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
@@ -88,8 +94,15 @@ test:
 
 .PHONY: build
 build: CGO_ENABLED=0
+build: check-version
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
+
+.PHONY: check-version
+check-version:
+	[[ ${GO_SYSTEM_VERSION} < ${GO_MOD_ENABLED_VERSION} ]] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is too old and does not support go modules. Please use at least ${GO_MIN_VERSION}." && exit 1; exit 0
+	[[ ${GO_SYSTEM_VERSION} < ${GO_MIN_VERSION} ]] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is below the minimum required version (${GO_MIN_VERSION}) and therefore will not build correctly." && exit 1; exit 0
+	[[ ! ${GO_BUILD_VERSION} =~ ^${GO_MOD_VERSION} ]] && echo "The version of Golang mod (${GO_MOD_VERSION}) does not match required version (${GO_BUILD_VERSION})." && exit 1; exit 0;
 
 .PHONY: githooks
 githooks:
