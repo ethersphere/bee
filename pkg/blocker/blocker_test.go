@@ -36,7 +36,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	checkTime := time.Millisecond * 100
 	blockTime := time.Second
 
-	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, logger)
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 
 	addr := test.RandomAddress()
 	b.Flag(addr)
@@ -87,7 +87,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	checkTime := time.Millisecond * 100
 	blockTime := time.Second
 
-	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, logger)
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 
 	addr := test.RandomAddress()
 	b.Flag(addr)

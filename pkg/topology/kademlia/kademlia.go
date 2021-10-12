@@ -169,8 +169,14 @@ func New(
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(o.StaticNodes),
-		blocker:           blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, logger),
 	}
+
+	blocklistCallback := func(a swarm.Address) {
+		k.logger.Debugf("kademlia: disconnecting peer %s for ping failure", a.String())
+		k.metrics.Blocklist.Inc()
+	}
+
+	k.blocker = blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger)
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins
@@ -566,9 +572,11 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 			if err != nil {
 				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
 				k.blocker.Flag(addr)
+				k.metrics.Flag.Inc()
 				return
 			}
 			k.blocker.Unflag(addr)
+			k.metrics.Unflag.Inc()
 			k.collector.Record(addr, im.PeerLatency(l))
 			v := k.collector.Inspect(addr).LatencyEWMA
 			k.metrics.PeerLatencyEWMA.Observe(v.Seconds())
