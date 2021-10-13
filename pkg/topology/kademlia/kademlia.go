@@ -919,7 +919,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 
-		connectedPeers, err := randomSubset(k.connectedPeers.BinPeers(bin), broadcastBinSize)
+		connectedPeers, err := randomSubset(k.binReachablePeers(bin), broadcastBinSize)
 		if err != nil {
 			return err
 		}
@@ -1001,6 +1001,26 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 	}
 	k.metrics.PickCallsFalse.Inc()
 	return false
+}
+
+func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
+
+	_ = k.EachPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
+
+		if po == bin {
+			peers = append(peers, p)
+			return false, false, nil
+		}
+
+		if po > bin {
+			return true, false, nil
+		}
+
+		return false, true, nil
+
+	}, topology.Filter{Reachable: true})
+
+	return
 }
 
 func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool {
@@ -1263,6 +1283,7 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 
 // UpdateReachability updates node reachability status.
 func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
+	k.logger.Infof("kademlia: updated reachability to %s", status.String())
 	k.reachability = status
 }
 
