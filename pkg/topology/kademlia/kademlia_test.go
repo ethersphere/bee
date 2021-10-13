@@ -829,8 +829,10 @@ func TestNotifierHooks(t *testing.T) {
 func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
-		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
-		p1, p2, p3               = test.RandomAddress(), test.RandomAddress(), test.RandomAddress()
+		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			ReachabilityFunc: func(peer swarm.Address) bool { return false },
+		})
+		p1, p2, p3 = test.RandomAddress(), test.RandomAddress(), test.RandomAddress()
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -1631,7 +1633,9 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 				return ctx.Err()
 			}),
 		)
-		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{})
+		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
+			ReachabilityFunc: func(swarm.Address) bool { return false },
+		})
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
