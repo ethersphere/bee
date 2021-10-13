@@ -44,8 +44,6 @@ func TestPingSuccess(t *testing.T) {
 
 	r.Connected(overlay, nil)
 
-	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
-
 	select {
 	case <-time.After(time.Second):
 		t.Fatalf("test time out")
