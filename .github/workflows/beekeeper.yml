@@ -16,7 +16,6 @@ jobs:
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
       BEEKEEPER_BRANCH: "master"
       BEEKEEPER_METRICS_ENABLED: false
-      REACHABILITY_OVERRIDE_PUBLIC: false
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
