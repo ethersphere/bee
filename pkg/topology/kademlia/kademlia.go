@@ -173,7 +173,6 @@ func New(
 		pruneFunc:         o.PruneFunc,
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(o.StaticNodes),
-		blocker:           blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, logger),
 		peerFilter:        o.ReachabilityFunc,
 	}
 
