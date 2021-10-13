@@ -327,36 +327,6 @@ func TestDifferentNetworkIDs(t *testing.T) {
 	expectPeers(t, s2)
 }
 
-func TestConnectWithEnabledQUICAndWSTransports(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2p.Options{
-			EnableQUIC: true,
-			EnableWS:   true,
-			FullNode:   true,
-		},
-	})
-
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2p.Options{
-			EnableQUIC: true,
-			EnableWS:   true,
-			FullNode:   true,
-		},
-	})
-
-	addr := serviceUnderlayAddress(t, s1)
-
-	if _, err := s2.Connect(ctx, addr); err != nil {
-		t.Fatal(err)
-	}
-
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
-}
-
 // TestConnectRepeatHandshake tests if handshake was attempted more then once by the same peer
 func TestConnectRepeatHandshake(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
