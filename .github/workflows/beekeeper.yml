@@ -66,6 +66,20 @@ jobs:
       - name: Test pingpong
         id: pingpong
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements
+        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Test pss
+        id: pss
+        run: beekeeper check --cluster-name local-dns --checks=ci-pss
+      - name: Test soc
+        id: soc
+        run: beekeeper check --cluster-name local-dns --checks=ci-soc
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
