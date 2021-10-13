@@ -50,8 +50,9 @@ import (
 )
 
 var (
-	_ p2p.Service      = (*Service)(nil)
-	_ p2p.DebugService = (*Service)(nil)
+	_                    p2p.Service      = (*Service)(nil)
+	_                    p2p.DebugService = (*Service)(nil)
+	reachabilityOverride                  = ""
 )
 
 const (
@@ -213,7 +214,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	if _, err = autonat.New(ctx, h, autonat.EnableService(dialer.Network()), autonat.WithReachability(network.ReachabilityPublic)); err != nil {
+	var autonatOpts = []autonat.Option{autonat.EnableService(dialer.Network())}
+	if reachabilityOverride == "public" {
+		fmt.Println("public reachability")
+		autonatOpts = append(autonatOpts, autonat.WithReachability(network.ReachabilityPublic))
+	}
+	if _, err = autonat.New(ctx, h, autonatOpts...); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
