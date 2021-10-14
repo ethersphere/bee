@@ -1279,12 +1279,14 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 		k.depthMu.Unlock()
 		k.notifyManageLoop()
 	}
+	k.metrics.PeersReachabilityStatus.WithLabelValues(status.String()).Inc()
 }
 
 // UpdateReachability updates node reachability status.
 func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	k.logger.Infof("kademlia: updated reachability to %s", status.String())
 	k.reachability = status
+	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
