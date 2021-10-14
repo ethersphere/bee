@@ -561,6 +561,15 @@ func (k *Kad) manage() {
 				}
 				k.logger.Debug("kademlia: no connected peers, trying bootnodes")
 				k.connectBootNodes(ctx)
+			} else {
+				ss := k.collector.Snapshot(time.Now())
+				if err := k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+					status := ss[addr.ByteString()].Reachability.String()
+					k.metrics.PeersReachabilityStatus.WithLabelValues(status).Inc()
+					return false, false, nil
+				}); err != nil {
+					k.logger.Errorf("kademlia: unable to set peers reachability status: %v", err)
+				}
 			}
 		}
 	}
@@ -1285,6 +1294,7 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	k.logger.Infof("kademlia: updated reachability to %s", status.String())
 	k.reachability = status
+	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
