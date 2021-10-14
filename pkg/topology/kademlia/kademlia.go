@@ -11,7 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -863,7 +865,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
 
 		ss := k.collector.Inspect(peer)
-		quickPrune := ss == nil || ss.HasAtMaxOneConnectionAttempt()
+		quickPrune := (ss == nil || ss.HasAtMaxOneConnectionAttempt()) && isNetworkError(err)
 		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
@@ -1498,4 +1500,27 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
 	}
+}
+
+// isNetworkError is checking various conditions that relate to network problems.
+func isNetworkError(err error) bool {
+	var netOpErr *net.OpError
+	if errors.As(err, &netOpErr) {
+		if netOpErr.Op == "dial" {
+			return true
+		}
+		if netOpErr.Op == "read" {
+			return true
+		}
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	if errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	if errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+	return false
 }
