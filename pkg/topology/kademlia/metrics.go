@@ -31,6 +31,7 @@ type metrics struct {
 	Flag                                  prometheus.Counter
 	Unflag                                prometheus.Counter
 	Blocklist                             prometheus.Counter
+	ReachabilityStatus                    *prometheus.GaugeVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -158,6 +159,15 @@ func newMetrics() metrics {
 			Name:      "blocklist",
 			Help:      "The nubmer of times peers have been blocklisted.",
 		}),
+		ReachabilityStatus: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reachability_status",
+				Help:      "The reachability status of the node.",
+			},
+			[]string{"reachability_status"},
+		),
 	}
 }
 
