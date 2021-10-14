@@ -1504,24 +1504,23 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 
 // isNetworkError is checking various conditions that relate to network problems.
 func isNetworkError(err error) bool {
-	switch t := err.(type) {
-	case *net.OpError:
-		if t.Op == "dial" {
+	var netOpErr *net.OpError
+	if errors.As(err, &netOpErr) {
+		if netOpErr.Op == "dial" {
 			return true
 		}
-		if t.Op == "read" {
+		if netOpErr.Op == "read" {
 			return true
 		}
-	case syscall.Errno:
-		if t == syscall.ECONNREFUSED {
-			return true
-		}
-		if t == syscall.EPIPE {
-			return true
-		}
-		if t == syscall.ETIMEDOUT {
-			return true
-		}
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	if errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	if errors.Is(err, syscall.ETIMEDOUT) {
+		return true
 	}
 	return false
 }
