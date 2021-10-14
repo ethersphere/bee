@@ -128,7 +128,6 @@ type Options struct {
 	Addr                       string
 	NATAddr                    string
 	EnableWS                   bool
-	EnableQUIC                 bool
 	WelcomeMessage             string
 	Bootnodes                  []string
 	CORSAllowedOrigins         []string
@@ -381,7 +380,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
-		EnableQUIC:     o.EnableQUIC,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       o.FullNodeMode,
 		Transaction:    txHash,

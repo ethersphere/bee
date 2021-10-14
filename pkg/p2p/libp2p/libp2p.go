@@ -37,7 +37,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
-	libp2pquic "github.com/libp2p/go-libp2p-quic-transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -95,7 +94,6 @@ type Options struct {
 	PrivateKey     *ecdsa.PrivateKey
 	NATAddr        string
 	EnableWS       bool
-	EnableQUIC     bool
 	FullNode       bool
 	LightNodeLimit int
 	WelcomeMessage string
@@ -129,18 +127,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 		}
-		if o.EnableQUIC {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/udp/%s/quic", ip4Addr, port))
-		}
 	}
 
 	if ip6Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
-		}
-		if o.EnableQUIC {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/quic", ip6Addr, port))
 		}
 	}
 
@@ -182,10 +174,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
-	}
-
-	if o.EnableQUIC {
-		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
 	}
 
 	opts = append(opts, transports...)

@@ -163,7 +163,6 @@ func (c *command) initStartCmd() (err error) {
 				Addr:                       c.config.GetString(optionNameP2PAddr),
 				NATAddr:                    c.config.GetString(optionNameNATAddr),
 				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
-				EnableQUIC:                 c.config.GetBool(optionNameP2PQUICEnable),
 				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
 				Bootnodes:                  networkConfig.bootNodes,
 				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
