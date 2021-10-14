@@ -131,8 +131,15 @@ func (r *reacher) ping() {
 
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, p := range r.queue {
+		if p.overlay.Equal(overlay) {
+			return
+		}
+	}
+
 	r.queue = append(r.queue, peer{overlay: overlay, addr: addr})
-	r.mu.Unlock()
 
 	select {
 	case r.work <- struct{}{}:
