@@ -575,13 +575,19 @@ func (k *Kad) manage() {
 				k.logger.Debug("kademlia: no connected peers, trying bootnodes")
 				k.connectBootNodes(ctx)
 			} else {
+				rs := make(map[string]float64)
 				ss := k.collector.Snapshot(time.Now())
+
 				if err := k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 					status := ss[addr.ByteString()].Reachability.String()
-					k.metrics.PeersReachabilityStatus.WithLabelValues(status).Inc()
+					rs[status]++
 					return false, false, nil
 				}); err != nil {
 					k.logger.Errorf("kademlia: unable to set peers reachability status: %v", err)
+				}
+
+				for status, count := range rs {
+					k.metrics.PeersReachabilityStatus.WithLabelValues(status).Set(count)
 				}
 			}
 		}
