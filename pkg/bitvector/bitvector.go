@@ -60,8 +60,7 @@ func (bv *BitVector) Get(i int) bool {
 // Set sets the bit corresponding to the index in the bitvector, counted from left to right
 func (bv *BitVector) Set(i int) {
 	bi := i / 8
-	cv := bv.Get(i)
-	if cv != true {
+	if !bv.Get(i) {
 		bv.b[bi] ^= 0x1 << uint8(i%8)
 	}
 }
