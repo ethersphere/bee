@@ -79,17 +79,7 @@ func TestBitvectorGetSet(t *testing.T) {
 					if !bv.Get(j) {
 						t.Errorf("element on index %v is not set to true", i)
 					}
-				} else {
-					if bv.Get(j) {
-						t.Errorf("element on index %v is not false", i)
-					}
 				}
-			}
-
-			bv.Unset(i)
-
-			if bv.Get(i) {
-				t.Errorf("element on index %v is not set to false", i)
 			}
 		}
 	}
@@ -103,44 +93,5 @@ func TestBitvectorNewFromBytesGet(t *testing.T) {
 	}
 	if !bv.Get(3) {
 		t.Fatalf("element 3 is not set to true: state %08b", bv.b[0])
-	}
-}
-
-// TestBitVectorString tests that string representation of bit vector is correct
-func TestBitVectorString(t *testing.T) {
-	b := []byte{0xa5, 0x81}
-	expect := "1010010110000001"
-	bv, err := NewFromBytes(b, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bv.String() != expect {
-		t.Fatalf("bitvector string fail: got %s, expect %s", bv.String(), expect)
-	}
-}
-
-// TestBitVectorSetUnsetBytes tests that setting and unsetting by byte slice modifies the bit vector correctly
-func TestBitVectorSetBytes(t *testing.T) {
-	b := []byte{0xff, 0xff}
-	cb := []byte{0xa5, 0x81}
-	expectUnset := "0101101001111110"
-	expectReset := "1111111111111111"
-	bv, err := NewFromBytes(b, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = bv.UnsetBytes(cb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bv.String() != expectUnset {
-		t.Fatalf("bitvector unset bytes fail: got %s, expect %s", bv.String(), expectUnset)
-	}
-	err = bv.SetBytes(cb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bv.String() != expectReset {
-		t.Fatalf("bitvector reset bytes fail: got %s, expect %s", bv.String(), expectReset)
 	}
 }

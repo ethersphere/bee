@@ -58,66 +58,11 @@ func (bv *BitVector) Get(i int) bool {
 }
 
 // Set sets the bit corresponding to the index in the bitvector, counted from left to right
-func (bv *BitVector) set(i int, v bool) {
+func (bv *BitVector) Set(i int) {
 	bi := i / 8
-	cv := bv.Get(i)
-	if cv != v {
+	if !bv.Get(i) {
 		bv.b[bi] ^= 0x1 << uint8(i%8)
 	}
-}
-
-// Set sets the bit corresponding to the index in the bitvector, counted from left to right
-func (bv *BitVector) Set(i int) {
-	bv.set(i, true)
-}
-
-// Unset UNSETS the corresponding bit, counted from left to right
-func (bv *BitVector) Unset(i int) {
-	bv.set(i, false)
-}
-
-// SetBytes sets all bits in the bitvector that are set in the argument
-//
-// The argument must be the same as the bitvector length
-func (bv *BitVector) SetBytes(bs []byte) error {
-	if len(bs) != bv.len {
-		return errors.New("invalid length")
-	}
-	for i := 0; i < bv.len*8; i++ {
-		bi := i / 8
-		if bs[bi]&(0x01<<uint(i%8)) > 0 {
-			bv.set(i, true)
-		}
-	}
-	return nil
-}
-
-// UnsetBytes UNSETS all bits in the bitvector that are set in the argument
-//
-// The argument must be the same as the bitvector length
-func (bv *BitVector) UnsetBytes(bs []byte) error {
-	if len(bs) != bv.len {
-		return errors.New("invalid length")
-	}
-	for i := 0; i < bv.len*8; i++ {
-		bi := i / 8
-		if bs[bi]&(0x01<<uint(i%8)) > 0 {
-			bv.set(i, false)
-		}
-	}
-	return nil
-}
-
-// String implements Stringer interface
-func (bv *BitVector) String() (s string) {
-	for i := 0; i < bv.len*8; i++ {
-		if bv.Get(i) {
-			s += "1"
-		} else {
-			s += "0"
-		}
-	}
-	return s
 }
 
 // Bytes retrieves the underlying bytes of the bitvector
