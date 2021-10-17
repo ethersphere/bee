@@ -12,9 +12,12 @@ import (
 	"errors"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -24,32 +27,14 @@ import (
 const (
 	defaultFlagTimeout = 5 * time.Minute
 	defaultPollEvery   = 1 * time.Minute
-	cleanupTimeout     = 5 * time.Minute // how long before we cleanup a peer
 	blocksToRemember   = 1000
-)
 
-// zeroTime exists to avoid unnecessary allocations.
-var zeroTime = time.Time{}
+	blockDuration = 24 * time.Hour
+	pollTime      = 1 * time.Second
+)
 
 type prover interface {
 	Prove(context.Context, swarm.Address, uint64) ([]byte, error)
-}
-
-type peer struct {
-	lastSeen     time.Time // last time we've seen the peer (used to gc entries)
-	flaggedSince time.Time // timestamp of the point we've timed-out or got an error from a peer
-}
-
-func (p *peer) flag() {
-	if p.flaggedSince.IsZero() {
-		p.flaggedSince = time.Now()
-	}
-}
-func (p *peer) unflag() {
-	p.flaggedSince = zeroTime
-}
-func (p *peer) unsynced(now time.Time, flagTimeout time.Duration) bool {
-	return !p.flaggedSince.IsZero() && now.After(p.flaggedSince.Add(flagTimeout))
 }
 
 type Options struct {
@@ -61,17 +46,17 @@ type ChainSyncer struct {
 	backend                transaction.Backend // eth backend
 	prove                  prover              // the chainsync protocol
 	peerIterator           topology.EachPeerer // topology peer iterator
-	peers                  *sync.Map           // list of peers and their metadata
 	pollEvery, flagTimeout time.Duration
 	logger                 logging.Logger
 	lru                    *lru.Cache
+	blocker                *blocker.Blocker
 	metrics                metrics
 
 	quit chan struct{}
 	wg   sync.WaitGroup
 }
 
-func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer, logger logging.Logger, o *Options) (*ChainSyncer, error) {
+func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer, disconnecter p2p.Disconnecter, logger logging.Logger, o *Options) (*ChainSyncer, error) {
 	lruCache, err := lru.New(blocksToRemember)
 	if err != nil {
 		return nil, err
@@ -82,6 +67,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 			PollEvery:   defaultPollEvery,
 		}
 	}
+
 	c := &ChainSyncer{
 		backend:      backend,
 		prove:        p,
@@ -89,11 +75,17 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		pollEvery:    o.PollEvery,
 		flagTimeout:  o.FlagTimeout,
 		logger:       logger,
-		peers:        &sync.Map{},
 		lru:          lruCache,
 		metrics:      newMetrics(),
 		quit:         make(chan struct{}),
 	}
+
+	cb := func(a swarm.Address) {
+		c.logger.Warningf("chainsyncer: peer %s is unsynced and will be temporarily blocklisted", a.String())
+		c.metrics.UnsyncedPeers.Inc()
+	}
+	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, pollTime, cb, logger)
+
 	c.wg.Add(1)
 	go c.manage()
 	return c, nil
@@ -106,7 +98,11 @@ func (c *ChainSyncer) manage() {
 		<-c.quit
 		cancel()
 	}()
-	var wg sync.WaitGroup
+	var (
+		wg        sync.WaitGroup
+		positives int32
+		items     int
+	)
 	for {
 		select {
 		case <-c.quit:
@@ -127,36 +123,38 @@ func (c *ChainSyncer) manage() {
 		}
 
 		start := time.Now()
-
+		items = 0
+		positives = 0
 		_ = c.peerIterator.EachPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
-			entry, _ := c.peers.LoadOrStore(p.ByteString(), &peer{})
-			e := entry.(*peer)
-			e.lastSeen = time.Now()
 			wg.Add(1)
-			go func() {
+			items++
+			go func(p swarm.Address) {
 				defer wg.Done()
 				hash, err := c.prove.Prove(ctx, p, blockHeight)
 				if err != nil {
 					c.logger.Infof("chainsync: peer %s failed to prove block %d: %v", p.String(), blockHeight, err)
 					c.metrics.PeerErrors.Inc()
-					e.flag()
+					c.blocker.Flag(p)
 					return
 				}
 				if !bytes.Equal(blockHash, hash) {
 					c.logger.Infof("chainsync: peer %s failed to prove block %d: want block hash %x got %x", p.String(), blockHash, hash)
 					c.metrics.InvalidProofs.Inc()
-					e.flag()
+					c.blocker.Flag(p)
 					return
 				}
 				c.logger.Tracef("chainsync: peer %s proved block %d", p.String(), blockHeight)
 				c.metrics.SyncedPeers.Inc()
-				e.unflag()
-			}()
+				c.blocker.Unflag(p)
+				atomic.AddInt32(&positives, 1)
+			}(p)
 			return false, false, nil
 		})
 
 		// wait for all operations to finish
 		wg.Wait()
+
+		c.metrics.PositiveProofs.Set(float64(positives) / float64(items))
 
 		select {
 		case <-c.quit:
@@ -165,9 +163,6 @@ func (c *ChainSyncer) manage() {
 		}
 
 		c.metrics.TotalTimeWaiting.Add(float64(time.Since(start)))
-
-		c.cleanup()
-		c.block()
 	}
 }
 
@@ -212,45 +207,6 @@ func (c *ChainSyncer) getBlockHeight(ctx context.Context) (uint64, []byte, error
 	return current, blockHash, nil
 }
 
-// block unsynced peers
-func (c *ChainSyncer) block() {
-	now := time.Now()
-	var keys []string
-	c.peers.Range(func(k, v interface{}) bool {
-		peer := v.(*peer)
-		if peer.unsynced(now, c.flagTimeout) {
-			// peer designated for blocking
-			c.logger.Infof("chainsync: peer %s unsynced, flagged since %s", swarm.NewAddress([]byte(k.(string))).String(), peer.flaggedSince)
-			c.metrics.UnsyncedPeers.Inc()
-			keys = append(keys, k.(string))
-		}
-		return true
-	})
-
-	for range keys {
-		if notifyHook != nil {
-			notifyHook()
-		}
-	}
-}
-
-// cleanup old peers
-func (c *ChainSyncer) cleanup() {
-	now := time.Now()
-	var keys []string
-	c.peers.Range(func(k, v interface{}) bool {
-		peer := v.(*peer)
-		if now.After(peer.lastSeen.Add(cleanupTimeout)) {
-			keys = append(keys, k.(string))
-		}
-		return true
-	})
-
-	for _, k := range keys {
-		c.peers.Delete(k)
-	}
-}
-
 func (c *ChainSyncer) Close() error {
 	done := make(chan struct{})
 	go func() {
@@ -266,5 +222,3 @@ func (c *ChainSyncer) Close() error {
 	}
 	return nil
 }
-
-var notifyHook func()
