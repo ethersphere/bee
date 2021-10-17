@@ -40,21 +40,19 @@ func TestChainsyncer(t *testing.T) {
 		p              = &prover{f: func(_ swarm.Address, _ uint64) ([]byte, error) {
 			return proofBlockHash, proofError
 		}}
-		d2 = func() {
+		d = &m{f: func(_ swarm.Address, _ time.Duration) {
 			select {
 			case blockC <- struct{}{}:
 			default:
 			}
-		}
+		}}
 	)
 
 	newChainSyncerTest := func(e error, blockHash []byte, cb func()) func(*testing.T) {
 		proofError = e
 		proofBlockHash = blockHash
 		return func(t *testing.T) {
-			cleanup := chainsyncer.SetNotifyHook(d2)
-			defer cleanup()
-			cs, err := chainsyncer.New(backend, p, topology, logger, &chainsyncer.Options{
+			cs, err := chainsyncer.New(backend, p, topology, d, logger, &chainsyncer.Options{
 				FlagTimeout: 100 * time.Millisecond,
 				PollEvery:   50 * time.Millisecond,
 			})
@@ -98,4 +96,16 @@ type prover struct {
 
 func (p *prover) Prove(_ context.Context, a swarm.Address, b uint64) ([]byte, error) {
 	return p.f(a, b)
+}
+
+type m struct {
+	f func(swarm.Address, time.Duration)
+}
+
+func (m *m) Disconnect(overlay swarm.Address, reason string) error {
+	panic("not implemented")
+}
+func (m *m) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
+	m.f(overlay, duration)
+	return nil
 }
