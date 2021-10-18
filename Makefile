@@ -100,9 +100,9 @@ build:
 
 .PHONY: check-version
 check-version:
-	[[ ${GO_SYSTEM_VERSION} < ${GO_MOD_ENABLED_VERSION} ]] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is too old and does not support go modules. Please use at least ${GO_MIN_VERSION}." && exit 1; exit 0
-	[[ ${GO_SYSTEM_VERSION} < ${GO_MIN_VERSION} ]] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is below the minimum required version (${GO_MIN_VERSION}) and therefore will not build correctly." && exit 1; exit 0
-	[[ ! ${GO_BUILD_VERSION} =~ ^${GO_MOD_VERSION} ]] && echo "The version of Golang mod (${GO_MOD_VERSION}) does not match required version (${GO_BUILD_VERSION})." && exit 1; exit 0;
+	[ ${GO_SYSTEM_VERSION} \< ${GO_MOD_ENABLED_VERSION} ] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is too old and does not support go modules. Please use at least ${GO_MIN_VERSION}." && exit 1; exit 0
+	[ ${GO_SYSTEM_VERSION} \< ${GO_MIN_VERSION} ] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is below the minimum required version (${GO_MIN_VERSION}) and therefore will not build correctly." && exit 1; exit 0
+	if ! expr ${GO_BUILD_VERSION} : ^${GO_MOD_VERSION} 1>/dev/null; then echo "The version of Golang mod (${GO_MOD_VERSION}) does not match required version (${GO_BUILD_VERSION})." && exit 1; fi
 
 .PHONY: githooks
 githooks:
