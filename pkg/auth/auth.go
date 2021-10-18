@@ -23,8 +23,8 @@ import (
 )
 
 type authRecord struct {
-	Role   string    `json:"role"`
-	Expiry time.Time `json:"expiry"`
+	Role   string    `json:"r"`
+	Expiry time.Time `json:"e"`
 }
 
 type Authenticator struct {
