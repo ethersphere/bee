@@ -128,7 +128,7 @@ func New(
 	base swarm.Address,
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
-	p2p p2p.Service,
+	p2pSvc p2p.Service,
 	pinger pingpong.Interface,
 	metricsDB *shed.DB,
 	logger logging.Logger,
@@ -156,7 +156,7 @@ func New(
 		base:              base,
 		discovery:         discovery,
 		addressBook:       addressbook,
-		p2p:               p2p,
+		p2p:               p2pSvc,
 		saturationFunc:    o.SaturationFunc,
 		bitSuffixLength:   o.BitSuffixLength,
 		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
@@ -183,7 +183,7 @@ func New(
 		k.metrics.Blocklist.Inc()
 	}
 
-	k.blocker = blocker.New(p2p, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger)
+	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger)
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins
@@ -199,6 +199,7 @@ func New(
 
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
+	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(0)
 	return k, nil
 }
 
