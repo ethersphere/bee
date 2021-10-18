@@ -70,7 +70,7 @@ func TestDB_SubscribePush(t *testing.T) {
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	ch, stop := db.SubscribePush(ctx)
+	ch, _, stop := db.SubscribePush(ctx, func(_ []byte) bool { return false })
 	defer stop()
 
 	// receive and validate addresses from the subscription
@@ -183,7 +183,7 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 	// start a number of subscriptions
 	// that all of them will write every addresses error to errChan
 	for j := 0; j < subsCount; j++ {
-		ch, stop := db.SubscribePush(ctx)
+		ch, _, stop := db.SubscribePush(ctx, func(_ []byte) bool { return false })
 		defer stop()
 
 		// receive and validate addresses from the subscription
@@ -231,4 +231,66 @@ func TestDB_SubscribePush_multiple(t *testing.T) {
 	wantedChunksCount := len(addrs) * subsCount
 
 	checkErrChan(ctx, t, errChan, wantedChunksCount)
+}
+
+// TestDB_SubscribePush_iterator_restart tests that the
+// iterator restart functionality works correctly.
+func TestDB_SubscribePush_iterator_restart(t *testing.T) {
+	db := newTestDB(t, nil)
+
+	addrs := make([]swarm.Address, 0)
+	var addrsMu sync.Mutex
+
+	uploadRandomChunks := func(count int) {
+		addrsMu.Lock()
+		defer addrsMu.Unlock()
+
+		for i := 0; i < count; i++ {
+			ch := generateTestRandomChunk()
+
+			_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			addrs = append(addrs, ch.Address())
+		}
+	}
+
+	uploadRandomChunks(10)
+
+	// set a timeout on subscription
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	skip := false
+	ch, restart, stop := db.SubscribePush(ctx, func(addr []byte) bool {
+		// in a later case we would like to skip the first item
+		if skip && bytes.Equal(addr, addrs[0].Bytes()) {
+			return true
+		}
+		return false
+	})
+	defer stop()
+
+	consume := func(start int) {
+		for i := start; i < len(addrs); i++ {
+			got := <-ch
+			want := addrs[i]
+			if !got.Address().Equal(want) {
+				t.Fatalf("got wrong chunk %v address on subscription %s, want %s", i, got, want)
+			}
+		}
+	}
+	consume(0) //first pass
+	restart()  // trigger again and expect all 10 entries to be iterated on
+	consume(0)
+
+	skip = true // expect that first item is skipped
+	restart()
+	consume(1)
+
+	skip = false // now reset again, expect 10 entries
+	restart()
+	consume(0)
 }
