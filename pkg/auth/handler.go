@@ -41,7 +41,7 @@ func PermissionCheckHandler(auth auth) func(h http.Handler) http.Handler {
 			}
 
 			if err != nil {
-				jsonhttp.InternalServerError(w, "Error occured while validating the security token")
+				jsonhttp.InternalServerError(w, "Error occurred while validating the security token")
 				return
 			}
 
