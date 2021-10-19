@@ -26,6 +26,7 @@ type Entry interface {
 type Node interface {
 	Fork(po int) CNode                                // Child node at PO po
 	Append(CNode) Node                                // append a CNode
+	Truncate(i int) Node                              // truncate fork list
 	Iter(from int, f func(CNode) (bool, error)) error // iterate over children starting at PO from
 	Pin(Entry) Node                                   // pin an entry to the node
 	Entry() Entry                                     // reconstructs the entry pinned to the Node
@@ -51,6 +52,20 @@ func Equal(a, b Entry) bool {
 	return isNil(a) == isNil(b) && (isNil(a) || a.Equal(b))
 }
 
+func KeyOf(n Node) []byte {
+	if Empty(n) {
+		return nil
+	}
+	return n.Entry().Key()
+}
+
+func Label(k []byte) string {
+	if len(k) == 0 {
+		return "none"
+	}
+	return fmt.Sprintf("%08b", binary.BigEndian.Uint32(k[:4])>>24)
+}
+
 func EntryOf(n Node) Entry {
 	if n == nil {
 		return nil
@@ -70,6 +85,7 @@ func Empty(n Node) bool {
 }
 
 func Append(b, n Node, from, to int) Node {
+	b.Truncate(from)
 	_ = n.Iter(from, func(k CNode) (bool, error) {
 		if k.At < to {
 			b = b.Append(k)
@@ -104,9 +120,13 @@ func find(n CNode, k []byte) (Entry, error) {
 }
 
 func FindFork(n CNode, f func(CNode) bool) (m CNode) {
-	_ = n.Node.Iter(n.At, func(c CNode) (bool, error) {
-		m = c
-		return f(m), nil
+	_ = n.Node.Iter(n.At, func(c CNode) (stop bool, err error) {
+		if f == nil {
+			m = c
+		} else {
+			stop = f(m)
+		}
+		return stop, nil
 	})
 	return m
 }
@@ -147,22 +167,26 @@ func Iter(n CNode, f func(Entry)) {
 	})
 }
 
-var indent = "                                                 "
+var indent = "                                                                              "
 
 func (m *MemNode) String() string {
-	return stringf(m, 0)
+	return CNode{0, m}.string(0)
 }
 
-func stringf(m Node, i int) string {
-	if m == nil {
+func (n CNode) string(i int) string {
+	if i > 20 {
+		return "..."
+	}
+	if n.Node == nil {
 		return "nil"
 	}
 	j := 0
-	s := fmt.Sprintf("K: %b, V: %s\n", binary.BigEndian.Uint32(m.Entry().Key()[:4])>>24, m.Entry())
-	m.Iter(0, func(c CNode) (bool, error) {
-		s = fmt.Sprintf("%s\n%s> %d - %d - %s\n", s, indent[:i*2], j, c.At, stringf(c.Node, i+1))
+	s := fmt.Sprintf("K: %s, V: %s\n", Label(KeyOf(n.Node)), n.Node.Entry())
+	n.Node.Iter(n.At, func(c CNode) (bool, error) {
+		s = fmt.Sprintf("%s%s> %d, %d - %d - %s", s, indent[:i], i, j, c.At, c.Next().string(i+1))
 		j++
 		return false, nil
 	})
+
 	return s
 }

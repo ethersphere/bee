@@ -107,7 +107,7 @@ func TestUpdateCorrectness(t *testing.T) {
 	})
 	t.Run("delete latest added item and find only item 2", func(t *testing.T) {
 		idx.Delete(ctx, want.Key())
- 		checkFound(t, ctx, idx, want2)
+		checkFound(t, ctx, idx, want2)
 		checkNotFound(t, ctx, idx, want)
 	})
 	wantMod := &mockEntry{key: want.key, val: want.val + 1}
@@ -122,6 +122,45 @@ func TestUpdateCorrectness(t *testing.T) {
 		idx.Add(ctx, want2Mod)
 		checkFound(t, ctx, idx, wantMod)
 		checkFound(t, ctx, idx, want2Mod)
+	})
+}
+
+func TestEdgeCasesCorrectness(t *testing.T) {
+
+	ctx := context.Background()
+
+	t.Run("not found on empty index", func(t *testing.T) {
+		idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} }, &pot.SingleOrder{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ints := []int{0, 1, 2}
+		entries := make([]*mockEntry, 3)
+		for i, j := range ints {
+			entry := newDetMockEntry(j)
+			idx.Add(ctx, entry)
+			entries[i] = entry
+		}
+		idx.Delete(ctx, entries[1].Key())
+		checkNotFound(t, ctx, idx, entries[1])
+		checkFound(t, ctx, idx, entries[2])
+	})
+	t.Run("not found on empty index", func(t *testing.T) {
+		idx, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} }, &pot.SingleOrder{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ints := []int{5, 4, 7, 8}
+		entries := make([]*mockEntry, 4)
+		for i, j := range ints {
+			entry := newDetMockEntry(j)
+			idx.Add(ctx, entry)
+			entries[i] = entry
+		}
+		idx.Delete(ctx, entries[1].Key())
+		checkFound(t, ctx, idx, entries[2])
+		checkFound(t, ctx, idx, entries[0])
+		checkFound(t, ctx, idx, entries[3])
 	})
 }
 
@@ -153,7 +192,7 @@ type testIndex struct {
 }
 
 func TestConcurrency(t *testing.T) {
-	count := 10
+	count := 1000
 	index, err := indigo.New(t.TempDir(), "test", func() pot.Entry { return &mockEntry{} }, &pot.SingleOrder{})
 	if err != nil {
 		t.Fatal(err)
@@ -168,20 +207,19 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 110*time.Second)
 	defer cancel()
 	top := make(chan int)
 	go func() {
 		defer close(top)
 		for i := 0; i < count; i++ {
 			idx.Add(ctx, newDetMockEntry(i))
-			if i%5 == 1 {
-				// select {
-				// case top <- i:
-				// case <-ctx.Done():
-				// 	return
-				// }
-				idx.deleteRandomEntry(ctx, i)
+			if i%5 == 4 {
+				select {
+				case top <- i:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -206,9 +244,9 @@ func TestConcurrency(t *testing.T) {
 			}(max)
 			select {
 			case max, more = <-top:
-				// if max > 0 {
-				// 	idx.deleteRandomEntry(ctx, max)
-				// }
+				if max > 0 {
+					idx.deleteRandomEntry(ctx, max)
+				}
 			default:
 			}
 		}
@@ -223,7 +261,6 @@ func TestConcurrency(t *testing.T) {
 		err = ctx.Err()
 	}
 	t.Logf("processed %d retrievals\n", j)
-	t.Log(idx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,18 +276,19 @@ func (idx *testIndex) deleteRandomEntry(ctx context.Context, max int) {
 	n := int(rand.Int31n(int32(max)))
 	want := newDetMockEntry(n)
 	idx.mu.Lock()
-	fmt.Printf("current:\n%v", idx)
-	b := 0
-	idx.Iter(func(_ pot.Entry) { b++ })
 	idx.deleted[n] = struct{}{}
 	idx.Delete(ctx, want.key)
-	a := 0
-	idx.Iter(func(_ pot.Entry) { a++ })
-	if a != b && a+1 != b {
-		fmt.Printf("current:\n%v", idx)
-		panic("oops")
+	for m := 0; m < max; m++ {
+		want := newDetMockEntry(m)
+		_, found := idx.deleted[m]
+		_, err := idx.Find(ctx, want.key)
+		if errors.Is(err, pot.ErrNotFound) && !found {
+			panic(fmt.Sprintf("item %d not found in store\n%s\n", m, idx.Root()))
+		}
+		if found && err == nil {
+			panic(fmt.Sprintf("deleted item %d found in store\n%s\n", m, idx.Root()))
+		}
 	}
-	fmt.Printf("deleted %d\n", n)
 	idx.mu.Unlock()
 }
 
@@ -291,7 +329,6 @@ func newDetMockEntry(n int) *mockEntry {
 
 func checkFound(t *testing.T, ctx context.Context, idx *indigo.Index, want *mockEntry) {
 	t.Helper()
-	fmt.Println(idx.Root())
 	e, err := idx.Find(ctx, want.Key())
 	if err != nil {
 		t.Fatal(err)

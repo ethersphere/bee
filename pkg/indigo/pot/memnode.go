@@ -22,15 +22,22 @@ func (n *MemNode) Fork(po int) CNode {
 
 // Append appends a CNode to the forks of MemNode n
 func (n *MemNode) Append(cn CNode) Node {
-	i := 0
-	for ; i < len(n.forks); i++ {
-		if n.forks[i].At >= cn.At {
-			break
+	n.forks = append(n.forks, cn)
+	return n
+}
+
+// Append appends a CNode to the forks of MemNode n
+func (n *MemNode) Truncate(i int) Node {
+	j := 0
+	n.Iter(0, func(cn CNode) (bool, error) {
+		if cn.At >= i {
+			return true, nil
 		}
-	}
-	n.forks = n.forks[:i]
-	if cn.Node != nil {
-		n.forks = append(n.forks, cn)
+		j++
+		return false, nil
+	})
+	if j < len(n.forks) {
+		n.forks = n.forks[:j]
 	}
 	return n
 }

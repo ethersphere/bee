@@ -18,8 +18,8 @@ type Mode interface {
 	New() Node // consructor
 	Pack(Node) Node
 	Unpack(Node) Node
-	Down(CNode) bool // to determine which entry should be promoted
-	Up(CNode) bool   // to determine which node/entry to promote after deletion
+	Down(CNode) bool      // to determine which entry should be promoted
+	Up() func(CNode) bool // to determine which node/entry to promote after deletion
 }
 
 type SingleOrder struct{}
@@ -38,8 +38,8 @@ func (_ SingleOrder) Down(_ CNode) bool {
 	return false
 }
 
-func (_ SingleOrder) Up(_ CNode) bool {
-	return false
+func (_ SingleOrder) Up() func(CNode) bool {
+	return nil
 }
 
 // constructs a new Node
