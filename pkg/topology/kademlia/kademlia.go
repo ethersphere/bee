@@ -188,7 +188,7 @@ func New(
 	}
 
 	if k.peerFilter == nil {
-		k.peerFilter = k.reachabilityFilter
+		k.peerFilter = k.peerUnreachable
 	}
 
 	if k.bitSuffixLength > 0 {
@@ -793,7 +793,8 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSatura
 	}
 }
 
-func (k *Kad) reachabilityFilter(addr swarm.Address) bool {
+// reachabilityFilter returns true if the addr is not reachable.
+func (k *Kad) peerUnreachable(addr swarm.Address) bool {
 	ss := k.collector.Inspect(addr)
 	// if there is no entry yet, consider the peer as not reachable
 	if ss == nil {

@@ -298,7 +298,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
-	if err := s.startReachabilityTracker(); err != nil {
+	if err := s.reachabilityWorker(); err != nil {
 		return nil, err
 	}
 
@@ -313,7 +313,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	return s, nil
 }
 
-func (s *Service) startReachabilityTracker() error {
+func (s *Service) reachabilityWorker() error {
 	sub, err := s.host.EventBus().Subscribe([]interface{}{new(event.EvtLocalReachabilityChanged)})
 	if err != nil {
 		return fmt.Errorf("failed subscribing to reachability event %w", err)
