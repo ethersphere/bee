@@ -58,6 +58,8 @@ func TestPingFailure(t *testing.T) {
 		done = make(chan struct{})
 	)
 
+	*reacher.RetryAfter = 0
+
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
 		return 0, errors.New("test error")
 	}
@@ -74,9 +76,7 @@ func TestPingFailure(t *testing.T) {
 	r := reacher.New(mock, mock)
 	defer r.Close()
 
-	overlay := test.RandomAddress()
-
-	r.Connected(overlay, nil)
+	r.Connected(test.RandomAddress(), nil)
 
 	select {
 	case <-time.After(time.Second * 5):

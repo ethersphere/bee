@@ -17,20 +17,23 @@ import (
 )
 
 const (
-	pingTimeoutMin  = time.Second * 2
-	pingTimeoutMax  = time.Second * 5
+	pingTimeout     = time.Second * 5
 	pingMaxAttempts = 3
 	workers         = 8
 )
 
+var retryAfterDuration = time.Second * 15
+
 type peer struct {
-	overlay swarm.Address
-	addr    ma.Multiaddr
+	overlay    swarm.Address
+	addr       ma.Multiaddr
+	retryAfter time.Time
+	attempts   int
 }
 
 type reacher struct {
 	mu    sync.Mutex
-	queue []peer
+	queue []*peer
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -71,61 +74,87 @@ func (r *reacher) ping() {
 
 	for {
 
-		select {
-		case <-r.ctx.Done():
-			return
-		case <-r.work:
+		p, sleepForNext := r.popNextPeer()
+
+		if p == nil {
+
+			if sleepForNext == 0 {
+				// wait for a new entry to the queue
+				select {
+				case <-r.ctx.Done():
+					return
+				case <-r.work:
+					continue
+				}
+			} else {
+				// wait for the next peer retry after
+				select {
+				case <-r.ctx.Done():
+					return
+				case <-r.work:
+					continue
+				case <-time.After(sleepForNext):
+					continue
+				}
+			}
 		}
 
-		r.mu.Lock()
-		if len(r.queue) == 0 {
-			r.mu.Unlock()
+		now := time.Now()
+
+		ctxt, cancel := context.WithTimeout(r.ctx, pingTimeout)
+		_, err := r.pinger.Ping(ctxt, p.addr)
+		cancel()
+
+		p.attempts++
+
+		if err == nil {
+			r.metrics.Pings.WithLabelValues("success").Inc()
+			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
+			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 			continue
 		}
-		p := r.queue[0]
-		r.queue = r.queue[1:]
+
+		r.metrics.Pings.WithLabelValues("failure").Inc()
+		r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
+
+		if p.attempts >= pingMaxAttempts {
+			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+			continue
+		}
+
+		// re-add peer to the queue
+		p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(p.attempts))
+		r.mu.Lock()
+		r.queue = append(r.queue, p)
 		r.mu.Unlock()
 
-		timeout := pingTimeoutMin
-		attempts := 0
+	}
+}
 
-		for {
+func (r *reacher) popNextPeer() (*peer, time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-			select {
-			case <-r.ctx.Done():
-				return
-			default:
-			}
+	if len(r.queue) == 0 {
+		return nil, 0
+	}
 
-			attempts++
+	now := time.Now()
+	nextClosest := r.queue[0].retryAfter
 
-			now := time.Now()
+	for i, p := range r.queue {
+		if now.After(p.retryAfter) {
+			r.queue = append(r.queue[:i], r.queue[i+1:]...)
+			return p, 0
+		}
 
-			ctxt, cancel := context.WithTimeout(r.ctx, timeout)
-			_, err := r.pinger.Ping(ctxt, p.addr)
-			cancel()
-
-			if err == nil {
-				r.metrics.Pings.WithLabelValues("success").Inc()
-				r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
-				break
-			}
-
-			r.metrics.Pings.WithLabelValues("failure").Inc()
-			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-
-			if attempts == pingMaxAttempts {
-				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
-				break
-			}
-
-			timeout *= 2
-			if timeout > pingTimeoutMax {
-				timeout = pingTimeoutMax
-			}
+		// find the peer with the earliest retry after
+		if p.retryAfter.Before(nextClosest) {
+			nextClosest = p.retryAfter
 		}
 	}
+
+	return nil, nextClosest.Sub(now)
 }
 
 // Connected adds a new peer to the queue for testing reachability.
@@ -139,7 +168,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		}
 	}
 
-	r.queue = append(r.queue, peer{overlay: overlay, addr: addr})
+	r.queue = append(r.queue, &peer{overlay: overlay, addr: addr})
 
 	select {
 	case r.work <- struct{}{}:
