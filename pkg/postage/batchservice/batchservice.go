@@ -23,6 +23,8 @@ const (
 	checksumDBKey = "batchservice_checksum"
 )
 
+var ErrZeroValueBatch = errors.New("low balance batch")
+
 type batchService struct {
 	stateStore    storage.StateStorer
 	storer        postage.Storer
@@ -94,6 +96,13 @@ func New(
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
 func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error {
+	// don't add batches which have value which equals total cumulative
+	// payout or that are going to expire already within the next couple of blocks
+	val := big.NewInt(0).Add(svc.storer.GetChainState().TotalAmount, svc.storer.GetChainState().CurrentPrice)
+	if normalisedBalance.Cmp(val) <= 0 {
+		// don't do anything
+		return fmt.Errorf("batch service: batch %x: %w", id, ErrZeroValueBatch)
+	}
 	b := &postage.Batch{
 		ID:          id,
 		Owner:       owner,

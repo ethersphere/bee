@@ -87,6 +87,16 @@ func TestBatchServiceCreate(t *testing.T) {
 		}
 	})
 
+	validateNoBatch := func(t *testing.T, testBatch *postage.Batch, st *mock.BatchStore) {
+		got, err := st.Exists(testBatch.ID)
+		if err != nil {
+			t.Fatalf("batch store get: %v", err)
+		}
+		if got {
+			t.Fatalf("expected batch not to exist")
+		}
+	}
+
 	validateBatch := func(t *testing.T, testBatch *postage.Batch, st *mock.BatchStore) {
 		got, err := st.Get(testBatch.ID)
 		if err != nil {
@@ -125,7 +135,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatchListener,
 			mock.WithChainState(testChainState),
 		)
-
+		testBatch.Value.Add(testChainState.TotalAmount, big.NewInt(0).Mul(testChainState.CurrentPrice, big.NewInt(2)))
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
@@ -158,6 +168,8 @@ func TestBatchServiceCreate(t *testing.T) {
 			mock.WithChainState(testChainState),
 		)
 
+		testBatch.Value.Add(testChainState.TotalAmount, big.NewInt(0).Mul(testChainState.CurrentPrice, big.NewInt(2)))
+
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
@@ -175,6 +187,36 @@ func TestBatchServiceCreate(t *testing.T) {
 
 		validateBatch(t, testBatch, batchStore)
 	})
+
+	t.Run("batch with near-zero val rejected", func(t *testing.T) {
+		testBatch := postagetesting.MustNewBatch()
+		testBatchListener := &mockBatchListener{}
+		svc, batchStore, _ := newTestStoreAndServiceWithListener(
+			t,
+			testBatch.Owner,
+			testBatchListener,
+			mock.WithChainState(testChainState),
+		)
+
+		vv := big.NewInt(0).Add(testChainState.CurrentPrice, testChainState.TotalAmount)
+		if err := svc.Create(
+			testBatch.ID,
+			testBatch.Owner,
+			vv,
+			testBatch.Depth,
+			testBatch.BucketDepth,
+			testBatch.Immutable,
+			testTxHash,
+		); !errors.Is(err, batchservice.ErrZeroValueBatch) {
+			t.Fatalf("got error %v", err)
+		}
+		if testBatchListener.createCount != 0 {
+			t.Fatalf("unexpected batch listener count, exp %d found %d", 0, testBatchListener.createCount)
+		}
+
+		validateNoBatch(t, testBatch, batchStore)
+	})
+
 }
 
 func TestBatchServiceTopUp(t *testing.T) {
