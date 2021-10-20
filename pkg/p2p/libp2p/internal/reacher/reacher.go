@@ -128,6 +128,7 @@ func (r *reacher) ping() {
 	}
 }
 
+// Connected adds a new peer to the queue for testing reachability.
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -146,6 +147,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	}
 }
 
+// Disconnected removes a peer from the queue.
 func (r *reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -158,6 +160,7 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	}
 }
 
+// Close stops the worker. Must be called once.
 func (r *reacher) Close() error {
 	r.ctxCancel()
 	r.wg.Wait()

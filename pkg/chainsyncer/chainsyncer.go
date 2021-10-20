@@ -153,7 +153,7 @@ func (c *ChainSyncer) manage() {
 				e.unflag()
 			}()
 			return false, false, nil
-		}, topology.Filter{})
+		}, topology.Filter{Reachable: true})
 
 		// wait for all operations to finish
 		wg.Wait()

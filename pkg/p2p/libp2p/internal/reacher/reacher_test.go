@@ -45,7 +45,7 @@ func TestPingSuccess(t *testing.T) {
 	r.Connected(overlay, nil)
 
 	select {
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		t.Fatalf("test time out")
 	case <-done:
 	}
@@ -79,7 +79,7 @@ func TestPingFailure(t *testing.T) {
 	r.Connected(overlay, nil)
 
 	select {
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		t.Fatalf("test time out")
 	case <-done:
 	}
@@ -88,16 +88,15 @@ func TestPingFailure(t *testing.T) {
 func TestDisconnected(t *testing.T) {
 
 	var (
-		overlay = test.RandomAddress()
+		disconnectedOverlay = test.RandomAddress()
 	)
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
-		time.Sleep(time.Millisecond * 10) // sleep between calls
 		return 0, nil
 	}
 
 	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		if addr.Equal(overlay) {
+		if addr.Equal(disconnectedOverlay) {
 			t.Fatalf("overlay should be disconnected")
 		}
 	}
@@ -108,8 +107,8 @@ func TestDisconnected(t *testing.T) {
 	defer r.Close()
 
 	r.Connected(test.RandomAddress(), nil)
-	r.Connected(overlay, nil)
-	r.Disconnected(overlay)
+	r.Connected(disconnectedOverlay, nil)
+	r.Disconnected(disconnectedOverlay)
 
 	time.Sleep(time.Millisecond * 100) // wait for reachable func to be called
 }
