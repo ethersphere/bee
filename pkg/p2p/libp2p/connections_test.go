@@ -889,7 +889,12 @@ func TestReachabilityUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-firstUpdate
+
+	select {
+	case <-firstUpdate:
+	case <-time.After(time.Second):
+		t.Fatalf("test timed out")
+	}
 
 	secondUpdate := make(chan struct{})
 	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
@@ -902,7 +907,12 @@ func TestReachabilityUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-secondUpdate
+
+	select {
+	case <-secondUpdate:
+	case <-time.After(time.Second):
+		t.Fatalf("test timed out")
+	}
 }
 
 func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {

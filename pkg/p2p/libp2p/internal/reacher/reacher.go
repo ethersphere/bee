@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Reacher package runs a background worker that will ping peers
-// from an internal queue and report back the reachability to some notifier
+// from an internal queue and report back the reachability to some notifier.
 package reacher
 
 import (
@@ -52,7 +52,6 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 		work:      make(chan struct{}, 1),
 		pinger:    streamer,
 		notifier:  notifier,
-		wg:        sync.WaitGroup{},
 		ctx:       ctx,
 		ctxCancel: cancel,
 		metrics:   newMetrics(),
