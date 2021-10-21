@@ -147,6 +147,7 @@ func (r *reacher) ping() {
 		if p.state != cleanup { // check if there was a Disconnected call
 			p.state = waiting
 			p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
+			r.moreWork()
 		}
 		r.mu.Unlock()
 	}
@@ -210,6 +211,10 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
 	}
 
+	r.moreWork()
+}
+
+func (r *reacher) moreWork() {
 	select {
 	case r.work <- struct{}{}:
 	default:
