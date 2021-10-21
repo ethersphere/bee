@@ -103,27 +103,24 @@ func TestDisconnected(t *testing.T) {
 
 	/*
 		Because the Disconnected is called after Connected, it may be that one of the workers
-		have picked up the peer before Disconnected. So to test that the Disconnected really works,
+		have picked up the peer already. So to test that the Disconnected really works,
 		if the ping function pings the peer we are trying to disconnect, we return an error
 		which triggers another attempt in the future, where there should be enough time
 		between attempts for the peer to be removed.
 	*/
+	var errs atomic.Int64
 	pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
 		if a != nil && a.Equal(disconnectedMa) {
+			errs.Inc()
+			if errs.Load() > 1 {
+				t.Fatalf("overlay should be disconnected already")
+			}
 			return 0, errors.New("test error")
 		}
 		return 0, nil
 	}
 
-	var errors atomic.Int64
-	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		if addr.Equal(disconnectedOverlay) {
-			errors.Inc()
-		}
-		if errors.Load() > 1 {
-			t.Fatalf("overlay should be disconnected already")
-		}
-	}
+	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {}
 
 	mock := newMock(pingFunc, reachableFunc)
 
