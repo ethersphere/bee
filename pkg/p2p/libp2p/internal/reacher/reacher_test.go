@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	ma "github.com/multiformats/go-multiaddr"
+	"go.uber.org/atomic"
 )
 
 func TestPingSuccess(t *testing.T) {
@@ -61,7 +62,7 @@ func TestPingFailure(t *testing.T) {
 	defer func(t time.Duration) {
 		*reacher.RetryAfter = t
 	}(*reacher.RetryAfter)
-	*reacher.RetryAfter = 0
+	*reacher.RetryAfter = time.Millisecond
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
 		return 0, errors.New("test error")
@@ -92,15 +93,35 @@ func TestDisconnected(t *testing.T) {
 
 	var (
 		disconnectedOverlay = test.RandomAddress()
+		disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 	)
 
-	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
+	defer func(t time.Duration) {
+		*reacher.RetryAfter = t
+	}(*reacher.RetryAfter)
+	*reacher.RetryAfter = time.Millisecond * 10
+
+	/*
+		Because the Disconnected is called after Connected, it may be that one of the workers
+		have picked up the peer. So to test that the Disconnected really removes the
+		peer, if the ping function pings the peer we are trying to disconnect, we return an error
+		which triggers another attempt in the future. , which should be enough time
+		between attempts for the Disconnected to remove the peer.
+	*/
+	pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
+		if a != nil && a.Equal(disconnectedMa) {
+			return 0, errors.New("test error")
+		}
 		return 0, nil
 	}
 
+	var errors atomic.Int64
 	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
 		if addr.Equal(disconnectedOverlay) {
-			t.Fatalf("overlay should be disconnected")
+			errors.Inc()
+		}
+		if errors.Load() > 1 {
+			t.Fatalf("overlay should be disconnected already 3")
 		}
 	}
 
@@ -110,10 +131,10 @@ func TestDisconnected(t *testing.T) {
 	defer r.Close()
 
 	r.Connected(test.RandomAddress(), nil)
-	r.Connected(disconnectedOverlay, nil)
+	r.Connected(disconnectedOverlay, disconnectedMa)
 	r.Disconnected(disconnectedOverlay)
 
-	time.Sleep(time.Millisecond * 100) // wait for reachable func to be called
+	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
 }
 
 type mock struct {

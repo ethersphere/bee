@@ -24,16 +24,25 @@ const (
 
 var retryAfterDuration = time.Second * 15
 
+type peerState int
+
+const (
+	waiting peerState = iota
+	inProgress
+	cleanup
+)
+
 type peer struct {
 	overlay    swarm.Address
 	addr       ma.Multiaddr
 	retryAfter time.Time
 	attempts   int
+	state      peerState
 }
 
 type reacher struct {
 	mu    sync.Mutex
-	queue []*peer
+	peers map[string]*peer
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -54,6 +63,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 	r := &reacher{
 		work:      make(chan struct{}, 1),
 		pinger:    streamer,
+		peers:     make(map[string]*peer),
 		notifier:  notifier,
 		ctx:       ctx,
 		ctxCancel: cancel,
@@ -74,7 +84,7 @@ func (r *reacher) ping() {
 
 	for {
 
-		p, sleepForNext := r.popNextPeer()
+		p, sleepForNext := r.nextPeer()
 
 		// if no peer is returned, wait until either the
 		// next entry to the queue or the closest retry-after time.
@@ -100,19 +110,19 @@ func (r *reacher) ping() {
 			}
 		}
 
+		attempts := r.peerIncAttempt(p)
 		now := time.Now()
 
 		ctxt, cancel := context.WithTimeout(r.ctx, pingTimeout)
 		_, err := r.pinger.Ping(ctxt, p.addr)
 		cancel()
 
-		p.attempts++
-
 		// ping was successful
 		if err == nil {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
+			r.notifier.Reachable(r.peerOverlay(p), p2p.ReachabilityStatusPublic)
+			r.peerState(p, cleanup)
 			continue
 		}
 
@@ -120,48 +130,84 @@ func (r *reacher) ping() {
 		r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 
 		// max attempts have been reached
-		if p.attempts >= pingMaxAttempts {
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+		if attempts >= pingMaxAttempts {
+			r.notifier.Reachable(r.peerOverlay(p), p2p.ReachabilityStatusPrivate)
+			r.peerState(p, cleanup)
 			continue
 		}
 
-		// re-add peer to the queue to re-attempt the ping, with increased retry-after duration
-		p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(p.attempts))
-		r.mu.Lock()
-		r.queue = append(r.queue, p)
-		r.mu.Unlock()
-
+		// mark peer as 'waiting' and increase retry-after duration
+		r.peerState(p, waiting)
+		r.peerRetryAfter(p, time.Now().Add(retryAfterDuration*time.Duration(attempts)))
 	}
 }
 
-func (r *reacher) popNextPeer() (*peer, time.Duration) {
+func (r *reacher) peerIncAttempt(p *peer) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p.attempts++
+	return p.attempts
+}
+
+func (r *reacher) peerState(p *peer, s peerState) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p.state = s
+}
+
+func (r *reacher) peerOverlay(p *peer) swarm.Address {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return p.overlay
+}
+
+func (r *reacher) peerRetryAfter(p *peer, t time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p.retryAfter = t
+}
+
+func (r *reacher) nextPeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.queue) == 0 {
+	if len(r.peers) == 0 {
 		return nil, 0
 	}
 
 	now := time.Now()
-	nextClosest := r.queue[0].retryAfter
+	nextClosest := time.Time{}
 
-	for i, p := range r.queue {
+	for o, p := range r.peers {
+
+		if p.state == cleanup {
+			delete(r.peers, o)
+			continue
+		}
+
+		if p.state == inProgress {
+			continue
+		}
 
 		// here, retry after is in the past so we can ping this peer
 		if now.After(p.retryAfter) {
-			r.queue[i] = nil
-			r.queue = append(r.queue[:i], r.queue[i+1:]...)
+			p.state = inProgress
 			return p, 0
 		}
 
 		// here, we find the peer with the earliest retry after
-		if p.retryAfter.Before(nextClosest) {
+		if nextClosest.IsZero() || p.retryAfter.Before(nextClosest) {
 			nextClosest = p.retryAfter
 		}
 	}
 
-	// return the time to wait until the closest retry after
+	if nextClosest.IsZero() {
+		return nil, 0
+	}
+
 	return nil, nextClosest.Sub(now)
+
+	// return the time to wait until the closest retry after
 }
 
 // Connected adds a new peer to the queue for testing reachability.
@@ -169,14 +215,9 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// if peer is already in the queue, return early
-	for _, p := range r.queue {
-		if p.overlay.Equal(overlay) {
-			return
-		}
+	if _, ok := r.peers[overlay.ByteString()]; !ok {
+		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
 	}
-
-	r.queue = append(r.queue, &peer{overlay: overlay, addr: addr})
 
 	select {
 	case r.work <- struct{}{}:
@@ -189,11 +230,8 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for i, p := range r.queue {
-		if p.overlay.Equal(overlay) {
-			r.queue = append(r.queue[:i], r.queue[i+1:]...)
-			return
-		}
+	if p, ok := r.peers[overlay.ByteString()]; ok {
+		p.state = cleanup
 	}
 }
 
