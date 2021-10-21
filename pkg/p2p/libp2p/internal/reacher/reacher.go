@@ -149,6 +149,7 @@ func (r *reacher) popNextPeer() (*peer, time.Duration) {
 
 		// here, retry after is in the past so we can ping this peer
 		if now.After(p.retryAfter) {
+			r.queue[i] = nil
 			r.queue = append(r.queue[:i], r.queue[i+1:]...)
 			return p, 0
 		}
