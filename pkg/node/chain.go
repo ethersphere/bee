@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/transaction/wrapped"
 )
 
 const (
@@ -44,11 +45,14 @@ func InitChain(
 	endpoint string,
 	signer crypto.Signer,
 	pollingInterval time.Duration,
-) (*ethclient.Client, common.Address, int64, transaction.Monitor, transaction.Service, error) {
+) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
+	var backend transaction.Backend
 	backend, err := ethclient.Dial(endpoint)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial eth client: %w", err)
 	}
+
+	backend = wrapped.NewBackend(backend)
 
 	chainID, err := backend.ChainID(ctx)
 	if err != nil {
@@ -75,7 +79,7 @@ func InitChain(
 // chain backend.
 func InitChequebookFactory(
 	logger logging.Logger,
-	backend *ethclient.Client,
+	backend transaction.Backend,
 	chainID int64,
 	transactionService transaction.Service,
 	factoryAddress string,
@@ -129,7 +133,7 @@ func InitChequebookService(
 	stateStore storage.StateStorer,
 	signer crypto.Signer,
 	chainID int64,
-	backend *ethclient.Client,
+	backend transaction.Backend,
 	overlayEthAddress common.Address,
 	transactionService transaction.Service,
 	chequebookFactory chequebook.Factory,
