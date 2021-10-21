@@ -210,10 +210,6 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
 	}
 
-	r.moreWork()
-}
-
-func (r *reacher) moreWork() {
 	select {
 	case r.work <- struct{}{}:
 	default:
