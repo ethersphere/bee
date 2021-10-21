@@ -142,12 +142,11 @@ func (r *reacher) ping() {
 			continue
 		}
 
-		// mark peer as 'waiting' and increase retry-after duration
+		// mark peer as 'waiting', increase retry-after duration, and notify workers about more work
 		r.mu.Lock()
 		if p.state != cleanup { // check if there was a Disconnected call
 			p.state = waiting
 			p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
-			r.moreWork()
 		}
 		r.mu.Unlock()
 	}
