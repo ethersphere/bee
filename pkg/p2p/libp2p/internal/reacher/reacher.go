@@ -33,7 +33,7 @@ type peer struct {
 
 type reacher struct {
 	mu    sync.Mutex
-	queue []*peer
+	queue []peer
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -74,11 +74,11 @@ func (r *reacher) ping() {
 
 	for {
 
-		p, sleepForNext := r.popNextPeer()
+		p, found, sleepForNext := r.popNextPeer()
 
 		// if no peer is returned, wait until either the
 		// next entry to the queue or the closest retry-after time.
-		if p == nil {
+		if !found {
 			if sleepForNext == 0 {
 				// wait for a new entry to the queue
 				select {
@@ -130,16 +130,15 @@ func (r *reacher) ping() {
 		r.mu.Lock()
 		r.queue = append(r.queue, p)
 		r.mu.Unlock()
-
 	}
 }
 
-func (r *reacher) popNextPeer() (*peer, time.Duration) {
+func (r *reacher) popNextPeer() (peer, bool, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if len(r.queue) == 0 {
-		return nil, 0
+		return peer{}, false, 0
 	}
 
 	now := time.Now()
@@ -150,7 +149,7 @@ func (r *reacher) popNextPeer() (*peer, time.Duration) {
 		// here, retry after is in the past so we can ping this peer
 		if now.After(p.retryAfter) {
 			r.queue = append(r.queue[:i], r.queue[i+1:]...)
-			return p, 0
+			return p, true, 0
 		}
 
 		// here, we find the peer with the earliest retry after
@@ -160,7 +159,7 @@ func (r *reacher) popNextPeer() (*peer, time.Duration) {
 	}
 
 	// return the time to wait until the closest retry after
-	return nil, nextClosest.Sub(now)
+	return peer{}, false, nextClosest.Sub(now)
 }
 
 // Connected adds a new peer to the queue for testing reachability.
@@ -175,7 +174,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		}
 	}
 
-	r.queue = append(r.queue, &peer{overlay: overlay, addr: addr})
+	r.queue = append(r.queue, peer{overlay: overlay, addr: addr})
 
 	select {
 	case r.work <- struct{}{}:
