@@ -103,10 +103,10 @@ func TestDisconnected(t *testing.T) {
 
 	/*
 		Because the Disconnected is called after Connected, it may be that one of the workers
-		have picked up the peer. So to test that the Disconnected really removes the
-		peer, if the ping function pings the peer we are trying to disconnect, we return an error
-		which triggers another attempt in the future. , which should be enough time
-		between attempts for the Disconnected to remove the peer.
+		have picked up the peer before Disconnected. So to test that the Disconnected really works,
+		if the ping function pings the peer we are trying to disconnect, we return an error
+		which triggers another attempt in the future, where there should be enough time
+		between attempts for the peer to be removed.
 	*/
 	pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
 		if a != nil && a.Equal(disconnectedMa) {
@@ -121,7 +121,7 @@ func TestDisconnected(t *testing.T) {
 			errors.Inc()
 		}
 		if errors.Load() > 1 {
-			t.Fatalf("overlay should be disconnected already 3")
+			t.Fatalf("overlay should be disconnected already")
 		}
 	}
 

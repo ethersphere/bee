@@ -110,8 +110,14 @@ func (r *reacher) ping() {
 			}
 		}
 
-		attempts := r.peerIncAttempt(p)
-		now := time.Now()
+		r.mu.Lock()
+		p.attempts++
+		var (
+			overlay  = p.overlay
+			attempts = p.attempts
+			now      = time.Now()
+		)
+		r.mu.Unlock()
 
 		ctxt, cancel := context.WithTimeout(r.ctx, pingTimeout)
 		_, err := r.pinger.Ping(ctxt, p.addr)
@@ -121,7 +127,7 @@ func (r *reacher) ping() {
 		if err == nil {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(r.peerOverlay(p), p2p.ReachabilityStatusPublic)
+			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPublic)
 			r.peerState(p, cleanup)
 			continue
 		}
@@ -131,40 +137,25 @@ func (r *reacher) ping() {
 
 		// max attempts have been reached
 		if attempts >= pingMaxAttempts {
-			r.notifier.Reachable(r.peerOverlay(p), p2p.ReachabilityStatusPrivate)
+			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPrivate)
 			r.peerState(p, cleanup)
 			continue
 		}
 
 		// mark peer as 'waiting' and increase retry-after duration
-		r.peerState(p, waiting)
-		r.peerRetryAfter(p, time.Now().Add(retryAfterDuration*time.Duration(attempts)))
+		r.mu.Lock()
+		if p.state != cleanup { // check if there was a Disconnected call
+			p.state = waiting
+			p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
+		}
+		r.mu.Unlock()
 	}
-}
-
-func (r *reacher) peerIncAttempt(p *peer) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	p.attempts++
-	return p.attempts
 }
 
 func (r *reacher) peerState(p *peer, s peerState) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p.state = s
-}
-
-func (r *reacher) peerOverlay(p *peer) swarm.Address {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return p.overlay
-}
-
-func (r *reacher) peerRetryAfter(p *peer, t time.Time) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	p.retryAfter = t
 }
 
 func (r *reacher) nextPeer() (*peer, time.Duration) {
