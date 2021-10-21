@@ -76,8 +76,9 @@ func (r *reacher) ping() {
 
 		p, sleepForNext := r.popNextPeer()
 
+		// if no peer is returned, wait until either the
+		// next entry to the queue or the closest retry-after time.
 		if p == nil {
-
 			if sleepForNext == 0 {
 				// wait for a new entry to the queue
 				select {
@@ -107,6 +108,7 @@ func (r *reacher) ping() {
 
 		p.attempts++
 
+		// ping was successful
 		if err == nil {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
@@ -117,12 +119,13 @@ func (r *reacher) ping() {
 		r.metrics.Pings.WithLabelValues("failure").Inc()
 		r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 
+		// max attempts have been reached
 		if p.attempts >= pingMaxAttempts {
 			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
 			continue
 		}
 
-		// re-add peer to the queue
+		// re-add peer to the queue to re-attempt the ping, with increased retry-after duration
 		p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(p.attempts))
 		r.mu.Lock()
 		r.queue = append(r.queue, p)
@@ -143,17 +146,20 @@ func (r *reacher) popNextPeer() (*peer, time.Duration) {
 	nextClosest := r.queue[0].retryAfter
 
 	for i, p := range r.queue {
+
+		// here, retry after is in the past so we can ping this peer
 		if now.After(p.retryAfter) {
 			r.queue = append(r.queue[:i], r.queue[i+1:]...)
 			return p, 0
 		}
 
-		// find the peer with the earliest retry after
+		// here, we find the peer with the earliest retry after
 		if p.retryAfter.Before(nextClosest) {
 			nextClosest = p.retryAfter
 		}
 	}
 
+	// return the time to wait until the closest retry after
 	return nil, nextClosest.Sub(now)
 }
 
@@ -162,6 +168,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// if peer is already in the queue, return early
 	for _, p := range r.queue {
 		if p.overlay.Equal(overlay) {
 			return
