@@ -692,7 +692,9 @@ func (k *Kad) Start(_ context.Context) error {
 
 func (k *Kad) previouslyConnected() []swarm.Address {
 
-	ss := k.collector.Snapshot(time.Now())
+	now := time.Now()
+	ss := k.collector.Snapshot(now)
+	k.logger.Tracef("kademlia: getting metrics snapshot took %s", time.Since(now))
 
 	var peers []swarm.Address
 
