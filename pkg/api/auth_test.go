@@ -97,7 +97,7 @@ func TestAuth(t *testing.T) {
 				Role: "role0",
 			}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "error adding key",
+				Message: "Error generating authorization token",
 				Code:    http.StatusInternalServerError,
 			}),
 		)
