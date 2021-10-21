@@ -14,10 +14,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"time"
 
 	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/model"
 	"github.com/ethersphere/bee/pkg/logging"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -35,12 +35,29 @@ type Authenticator struct {
 }
 
 func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authenticator, error) {
-	dir, err := os.UserConfigDir()
+	m, err := model.NewModelFromString(`
+	[request_definition]
+	r = sub, obj, act
+
+	[policy_definition]
+	p = sub, obj, act
+
+	[policy_effect]
+	e = some(where (p.eft == allow))
+
+	[matchers]
+	m = r.sub == p.sub && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)`)
+
 	if err != nil {
 		return nil, err
 	}
-	e, err := casbin.NewEnforcer(dir+"/bee/security.conf", dir+"/bee/policy.csv")
+
+	e, err := casbin.NewEnforcer(m)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := applyPolicies(e); err != nil {
 		return nil, err
 	}
 
@@ -198,4 +215,61 @@ func (e encrypter) decrypt(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return plaintext, nil
+}
+
+func applyPolicies(e *casbin.Enforcer) error {
+	_, err := e.AddPolicies([][]string{
+		{"role0", "/bytes/*", "GET"},
+		{"role1", "/bytes", "POST"},
+		{"role0", "/chunks/*", "GET"},
+		{"role1", "/chunks", "POST"},
+		{"role0", "/bzz/*", "GET"},
+		{"role1", "/bzz/*", "PATCH"},
+		{"role1", "/bzz", "POST"},
+		{"role0", "/bzz/*/*", "GET"},
+		{"role1", "/tags", "(GET)|(POST)"},
+		{"role1", "/tags/*", "(GET)|(DELETE)|(PATCH)"},
+		{"role1", "/pins/*", "(GET)|(DELETE)|(POST)"},
+		{"role2", "/pins", "GET"},
+		{"role1", "/pss/send/*", "POST"},
+		{"role0", "/pss/subscribe/*", "GET"},
+		{"role1", "/soc/*/*", "POST"},
+		{"role1", "/feeds/*/*", "POST"},
+		{"role0", "/feeds/*/*", "GET"},
+		{"role2", "/stamps", "GET"},
+		{"role2", "/stamps/*", "GET"},
+		{"role2", "/stamps/*/*", "POST"},
+		{"role2", "/addresses", "GET"},
+		{"role2", "/blocklist", "GET"},
+		{"role2", "/connect/*", "POST"},
+		{"role2", "/peers", "GET"},
+		{"role2", "/peers/*", "DELETE"},
+		{"role2", "/pingpong/*", "POST"},
+		{"role2", "/topology", "GET"},
+		{"role2", "/welcome-message", "(GET)|(POST)"},
+		{"role2", "/balances", "GET"},
+		{"role2", "/balances/*", "GET"},
+		{"role2", "/chequebook/cashout/*", "GET"},
+		{"role3", "/chequebook/cashout/*", "POST"},
+		{"role3", "/chequebook/withdraw", "POST"},
+		{"role3", "/chequebook/deposit", "POST"},
+		{"role2", "/chequebook/cheque/*", "GET"},
+		{"role2", "/chequebook/cheque", "GET"},
+		{"role2", "/chequebook/address", "GET"},
+		{"role2", "/chequebook/balance", "GET"},
+		{"role2", "/chunks/*", "(GET)|(DELETE)"},
+		{"role2", "/reservestate", "GET"},
+		{"role2", "/chainstate", "GET"},
+		{"role2", "/settlements/*", "GET"},
+		{"role2", "/settlements", "GET"},
+		{"role2", "/transactions", "GET"},
+		{"role0", "/transactions/*", "GET"},
+		{"role3", "/transactions/*", "(POST)|(DELETE)"},
+		{"role0", "/consumed", "GET"},
+		{"role0", "/consumed/*", "GET"},
+		{"role0", "/chunks/stream", "GET"},
+		{"role0", "/stewardship/*", "PUT"},
+	})
+
+	return err
 }
