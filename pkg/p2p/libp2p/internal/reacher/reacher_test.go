@@ -99,7 +99,7 @@ func TestDisconnected(t *testing.T) {
 	defer func(t time.Duration) {
 		*reacher.RetryAfter = t
 	}(*reacher.RetryAfter)
-	*reacher.RetryAfter = time.Millisecond * 10
+	*reacher.RetryAfter = time.Millisecond
 
 	/*
 		Because the Disconnected is called after Connected, it may be that one of the workers
