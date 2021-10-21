@@ -46,7 +46,7 @@ func TestPingSuccess(t *testing.T) {
 
 	select {
 	case <-time.After(time.Second * 5):
-		t.Fatalf("test time out")
+		t.Fatalf("test timed out")
 	case <-done:
 	}
 }
@@ -58,6 +58,9 @@ func TestPingFailure(t *testing.T) {
 		done = make(chan struct{})
 	)
 
+	defer func(t time.Duration) {
+		*reacher.RetryAfter = t
+	}(*reacher.RetryAfter)
 	*reacher.RetryAfter = 0
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
@@ -80,7 +83,7 @@ func TestPingFailure(t *testing.T) {
 
 	select {
 	case <-time.After(time.Second * 5):
-		t.Fatalf("test time out")
+		t.Fatalf("test timed out")
 	case <-done:
 	}
 }
