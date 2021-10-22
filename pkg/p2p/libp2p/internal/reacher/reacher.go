@@ -50,8 +50,7 @@ type reacher struct {
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
 
-	wg sync.WaitGroup
-
+	wg      sync.WaitGroup
 	metrics metrics
 }
 
@@ -94,30 +93,33 @@ func (r *reacher) manage() {
 	for {
 
 		p, tryAfter := r.tryAcquirePeer()
-		// if no peer is returned, wait until either more work
-		// or the closest retry-after time.
-		if p == nil {
-			if tryAfter == 0 {
-				// wait for a new entry to the queue
-				select {
-				case <-r.quit:
-					return
-				case <-r.work:
-					continue
-				}
-			} else {
-				// wait for the next peer retry after
-				select {
-				case <-r.quit:
-					return
-				case <-r.work:
-					continue
-				case <-time.After(tryAfter):
-					continue
-				}
+
+		// if no peer is returned,
+		// wait until either more work or the closest retry-after time.
+
+		// wait for work and tryAfter
+		if tryAfter > 0 {
+			select {
+			case <-r.quit:
+				return
+			case <-r.work:
+				continue
+			case <-time.After(tryAfter):
+				continue
 			}
 		}
 
+		// wait for work
+		if p == nil {
+			select {
+			case <-r.quit:
+				return
+			case <-r.work:
+				continue
+			}
+		}
+
+		// send p to channel
 		select {
 		case <-r.quit:
 			return
@@ -176,19 +178,9 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 	}
 }
 
-func (r *reacher) peerState(p *peer, s peerState) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	p.state = s
-}
-
 func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	if len(r.peers) == 0 {
-		return nil, 0
-	}
 
 	now := time.Now()
 	nextClosest := time.Time{}
@@ -229,6 +221,12 @@ func (r *reacher) notifyManage() {
 	case r.work <- struct{}{}:
 	default:
 	}
+}
+
+func (r *reacher) peerState(p *peer, s peerState) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p.state = s
 }
 
 // Connected adds a new peer to the queue for testing reachability.
