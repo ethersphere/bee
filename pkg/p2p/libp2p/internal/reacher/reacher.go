@@ -84,12 +84,12 @@ func (r *reacher) ping() {
 
 	for {
 
-		p, sleepForNext := r.nextPeer()
+		p, tryAfter := r.tryAcquirePeer()
 
 		// if no peer is returned, wait until either the
 		// next entry to the queue or the closest retry-after time.
 		if p == nil {
-			if sleepForNext == 0 {
+			if tryAfter == 0 {
 				// wait for a new entry to the queue
 				select {
 				case <-r.ctx.Done():
@@ -104,7 +104,7 @@ func (r *reacher) ping() {
 					return
 				case <-r.work:
 					continue
-				case <-time.After(sleepForNext):
+				case <-time.After(tryAfter):
 					continue
 				}
 			}
@@ -158,7 +158,7 @@ func (r *reacher) peerState(p *peer, s peerState) {
 	p.state = s
 }
 
-func (r *reacher) nextPeer() (*peer, time.Duration) {
+func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
