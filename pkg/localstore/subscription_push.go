@@ -30,14 +30,15 @@ import (
 // Returned stop function will terminate current and further iterations, and also it will close
 // the returned channel without any errors. Make sure that you check the second returned parameter
 // from the channel to stop iteration when its value is false.
-func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func()) {
+func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, reset, stop func()) {
 	db.metrics.SubscribePush.Inc()
 
 	chunks := make(chan swarm.Chunk)
-	trigger := make(chan bool, 1)
+	trigger := make(chan struct{}, 1)
+	resetC := make(chan struct{}, 1)
 
 	// send signal for the initial iteration
-	trigger <- true
+	trigger <- struct{}{}
 
 	db.pushTriggersMu.Lock()
 	db.pushTriggers = append(db.pushTriggers, trigger)
@@ -58,14 +59,31 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 		var sinceItem *shed.Item
 		for {
 			select {
-			case restart := <-trigger:
-				if restart {
-					sinceItem = nil
+			case <-stopChan:
+				// terminate the subscription
+				// on stop
+				return
+			case <-db.close:
+				// terminate the subscription
+				// on database close
+				return
+			case <-ctx.Done():
+				err := ctx.Err()
+				if err != nil {
+					db.logger.Debugf("localstore push subscription iteration: %v", err)
 				}
+				return
+			case <-resetC:
+				sinceItem = nil
+				select {
+				case trigger <- struct{}{}:
+				default:
+				}
+			case <-trigger:
 				// iterate until:
 				// - last index Item is reached
 				// - subscription stop is called
-				// - context is done.met
+				// - context is done
 				db.metrics.SubscribePushIteration.Inc()
 
 				iterStart := time.Now()
@@ -114,20 +132,6 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 					return
 				}
 
-			case <-stopChan:
-				// terminate the subscription
-				// on stop
-				return
-			case <-db.close:
-				// terminate the subscription
-				// on database close
-				return
-			case <-ctx.Done():
-				err := ctx.Err()
-				if err != nil {
-					db.logger.Debugf("localstore push subscription iteration: %v", err)
-				}
-				return
 			}
 		}
 	}()
@@ -142,19 +146,18 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 
 		for i, t := range db.pushTriggers {
 			if t == trigger {
-				// if t == in {
 				db.pushTriggers = append(db.pushTriggers[:i], db.pushTriggers[i+1:]...)
 				break
 			}
 		}
 	}
-	repeat = func() {
+	reset = func() {
 		select {
-		case trigger <- true:
+		case resetC <- struct{}{}:
 		default:
 		}
 	}
-	return chunks, repeat, stop
+	return chunks, reset, stop
 }
 
 // triggerPushSubscriptions is used internally for starting iterations
@@ -165,7 +168,7 @@ func (db *DB) triggerPushSubscriptions() {
 	defer db.pushTriggersMu.RUnlock()
 	for _, t := range db.pushTriggers {
 		select {
-		case t <- false:
+		case t <- struct{}{}:
 		default:
 		}
 	}

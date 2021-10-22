@@ -75,7 +75,7 @@ type DB struct {
 	// push syncing index
 	pushIndex shed.Index
 	// push syncing subscriptions triggers
-	pushTriggers   []chan<- bool
+	pushTriggers   []chan<- struct{}
 	pushTriggersMu sync.RWMutex
 
 	// pull syncing index
@@ -418,7 +418,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 	// create a push syncing triggers used by SubscribePush function
-	db.pushTriggers = make([]chan<- bool, 0)
+	db.pushTriggers = make([]chan<- struct{}, 0)
 	// gc index for removable chunk ordered by ascending last access time
 	db.gcIndex, err = db.shed.NewIndex("AccessTimestamp|BinID|Hash->BatchID|BatchIndex", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
