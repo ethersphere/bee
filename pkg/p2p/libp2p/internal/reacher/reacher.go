@@ -44,9 +44,8 @@ type reacher struct {
 	mu    sync.Mutex
 	peers map[string]*peer
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	work      chan struct{}
+	work chan struct{}
+	quit chan struct{}
 
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
@@ -58,41 +57,50 @@ type reacher struct {
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	r := &reacher{
-		work:      make(chan struct{}, 1),
-		pinger:    streamer,
-		peers:     make(map[string]*peer),
-		notifier:  notifier,
-		ctx:       ctx,
-		ctxCancel: cancel,
-		metrics:   newMetrics(),
+		work:     make(chan struct{}, 1),
+		quit:     make(chan struct{}),
+		pinger:   streamer,
+		peers:    make(map[string]*peer),
+		notifier: notifier,
+		metrics:  newMetrics(),
 	}
 
-	r.wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go r.ping()
-	}
+	r.wg.Add(1)
+	go r.manage()
 
 	return r
 }
 
-func (r *reacher) ping() {
+func (r *reacher) manage() {
 
 	defer r.wg.Done()
+
+	c := make(chan *peer)
+	defer close(c)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		<-r.quit
+		cancel()
+	}()
+
+	r.wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go r.ping(c, ctx)
+	}
 
 	for {
 
 		p, tryAfter := r.tryAcquirePeer()
-
-		// if no peer is returned, wait until either the
-		// next entry to the queue or the closest retry-after time.
+		// if no peer is returned, wait until either more work
+		// or the closest retry-after time.
 		if p == nil {
 			if tryAfter == 0 {
 				// wait for a new entry to the queue
 				select {
-				case <-r.ctx.Done():
+				case <-r.quit:
 					return
 				case <-r.work:
 					continue
@@ -100,7 +108,7 @@ func (r *reacher) ping() {
 			} else {
 				// wait for the next peer retry after
 				select {
-				case <-r.ctx.Done():
+				case <-r.quit:
 					return
 				case <-r.work:
 					continue
@@ -109,6 +117,20 @@ func (r *reacher) ping() {
 				}
 			}
 		}
+
+		select {
+		case <-r.quit:
+			return
+		case c <- p:
+		}
+	}
+}
+
+func (r *reacher) ping(c chan *peer, ctx context.Context) {
+
+	defer r.wg.Done()
+
+	for p := range c {
 
 		r.mu.Lock()
 		p.attempts++
@@ -119,7 +141,7 @@ func (r *reacher) ping() {
 		)
 		r.mu.Unlock()
 
-		ctxt, cancel := context.WithTimeout(r.ctx, pingTimeout)
+		ctxt, cancel := context.WithTimeout(ctx, pingTimeout)
 		_, err := r.pinger.Ping(ctxt, p.addr)
 		cancel()
 
@@ -149,6 +171,8 @@ func (r *reacher) ping() {
 			p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
 		}
 		r.mu.Unlock()
+
+		r.notifyManage()
 	}
 }
 
@@ -196,9 +220,15 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 		return nil, 0
 	}
 
-	return nil, nextClosest.Sub(now)
-
 	// return the time to wait until the closest retry after
+	return nil, time.Until(nextClosest)
+}
+
+func (r *reacher) notifyManage() {
+	select {
+	case r.work <- struct{}{}:
+	default:
+	}
 }
 
 // Connected adds a new peer to the queue for testing reachability.
@@ -210,10 +240,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
 	}
 
-	select {
-	case r.work <- struct{}{}:
-	default:
-	}
+	r.notifyManage()
 }
 
 // Disconnected removes a peer from the queue.
@@ -228,7 +255,7 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 
 // Close stops the worker. Must be called once.
 func (r *reacher) Close() error {
-	r.ctxCancel()
+	close(r.quit)
 	r.wg.Wait()
 	return nil
 }
