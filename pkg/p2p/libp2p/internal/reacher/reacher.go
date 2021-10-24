@@ -79,11 +79,7 @@ func (r *reacher) manage() {
 	defer close(c)
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		<-r.quit
-		cancel()
-	}()
+	defer cancel()
 
 	r.wg.Add(workers)
 	for i := 0; i < workers; i++ {
@@ -249,6 +245,8 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	if p, ok := r.peers[overlay.ByteString()]; ok {
 		p.state = cleanup
 	}
+
+	r.notifyManage()
 }
 
 // Close stops the worker. Must be called once.
