@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -44,7 +43,7 @@ var (
 )
 
 type BlockHeightContractFilterer interface {
-	bind.ContractFilterer
+	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error)
 	BlockNumber(context.Context) (uint64, error)
 }
 
