@@ -163,3 +163,10 @@ func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, 
 func (m *simulatedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (m *simulatedBackend) ChainID(ctx context.Context) (*big.Int, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *simulatedBackend) Close() {
+}
