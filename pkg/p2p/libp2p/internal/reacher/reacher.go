@@ -29,7 +29,6 @@ type peerState int
 const (
 	waiting peerState = iota
 	inProgress
-	cleanup
 )
 
 type peer struct {
@@ -148,7 +147,7 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
 			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPublic)
-			r.peerState(p, cleanup)
+			r.deletePeer(p)
 			continue
 		}
 
@@ -158,16 +157,14 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		// max attempts have been reached
 		if attempts >= pingMaxAttempts {
 			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPrivate)
-			r.peerState(p, cleanup)
+			r.deletePeer(p)
 			continue
 		}
 
 		// mark peer as 'waiting', increase retry-after duration, and notify workers about more work
 		r.mu.Lock()
-		if p.state != cleanup { // check if there was a Disconnected call
-			p.state = waiting
-			p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
-		}
+		p.state = waiting
+		p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
 		r.mu.Unlock()
 
 		r.notifyManage()
@@ -181,12 +178,7 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	now := time.Now()
 	nextClosest := time.Time{}
 
-	for o, p := range r.peers {
-
-		if p.state == cleanup {
-			delete(r.peers, o)
-			continue
-		}
+	for _, p := range r.peers {
 
 		if p.state == inProgress {
 			continue
@@ -219,10 +211,11 @@ func (r *reacher) notifyManage() {
 	}
 }
 
-func (r *reacher) peerState(p *peer, s peerState) {
+func (r *reacher) deletePeer(p *peer) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	p.state = s
+
+	delete(r.peers, p.overlay.ByteString())
 }
 
 // Connected adds a new peer to the queue for testing reachability.
@@ -242,11 +235,7 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if p, ok := r.peers[overlay.ByteString()]; ok {
-		p.state = cleanup
-	}
-
-	r.notifyManage()
+	delete(r.peers, overlay.ByteString())
 }
 
 // Close stops the worker. Must be called once.
