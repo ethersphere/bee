@@ -80,10 +80,16 @@ func (a *Authenticator) Authorize(password string) bool {
 	return nil == bcrypt.CompareHashAndPassword(a.passwordHash, []byte(password))
 }
 
-func (a *Authenticator) GenerateKey(role string, expires int) (string, error) {
+var ErrExpiry = errors.New("expiry duration must be a positive number")
+
+func (a *Authenticator) GenerateKey(role string, expiryDuration int) (string, error) {
+	if expiryDuration == 0 {
+		return "", ErrExpiry
+	}
+
 	ar := authRecord{
 		Role:   role,
-		Expiry: time.Now().Add(time.Second * time.Duration(expires)),
+		Expiry: time.Now().Add(time.Second * time.Duration(expiryDuration)),
 	}
 
 	data, err := json.Marshal(ar)
@@ -103,7 +109,11 @@ func (a *Authenticator) GenerateKey(role string, expires int) (string, error) {
 
 var ErrTokenExpired = errors.New("token expired")
 
-func (a *Authenticator) RefreshKey(apiKey string, expiry int) (string, error) {
+func (a *Authenticator) RefreshKey(apiKey string, expiryDuration int) (string, error) {
+	if expiryDuration == 0 {
+		return "", ErrExpiry
+	}
+
 	decoded, err := base64.StdEncoding.DecodeString(apiKey)
 	if err != nil {
 		return "", err
@@ -123,7 +133,7 @@ func (a *Authenticator) RefreshKey(apiKey string, expiry int) (string, error) {
 		return "", ErrTokenExpired
 	}
 
-	ar.Expiry = time.Now().Add(time.Duration(expiry) * time.Second)
+	ar.Expiry = time.Now().Add(time.Duration(expiryDuration) * time.Second)
 
 	data, err := json.Marshal(ar)
 	if err != nil {
@@ -226,6 +236,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"role0", "/bzz/*", "GET"},
 		{"role1", "/bzz/*", "PATCH"},
 		{"role1", "/bzz", "POST"},
+		{"role1", "/bzz\\?*", "POST"},
 		{"role0", "/bzz/*/*", "GET"},
 		{"role1", "/tags", "(GET)|(POST)"},
 		{"role1", "/tags/*", "(GET)|(DELETE)|(PATCH)"},
