@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/coreos/go-semver v0.3.0
-	github.com/ethereum/go-ethereum v1.10.8
+	github.com/ethereum/go-ethereum v1.10.11
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
 	github.com/ethersphere/go-storage-incentives-abi v0.3.0
 	github.com/ethersphere/go-sw3-abi v0.4.0
@@ -32,7 +32,6 @@ require (
 	github.com/libp2p/go-tcp-transport v0.2.8
 	github.com/libp2p/go-ws-transport v0.5.0
 	github.com/miekg/dns v1.1.43 // indirect
-	github.com/mitchellh/mapstructure v1.3.2 // indirect
 	github.com/multiformats/go-multiaddr v0.4.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multistream v0.2.2
@@ -99,7 +98,7 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect
-	github.com/karalabe/usb v0.0.0-20210518091819-4ea20957c210 // indirect
+	github.com/karalabe/usb v0.0.0-20211005121534-4c5740d64559 // indirect
 	github.com/klauspost/compress v1.11.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
@@ -142,6 +141,7 @@ require (
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
+	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.0.3 // indirect
 	github.com/multiformats/go-base36 v0.1.0 // indirect
