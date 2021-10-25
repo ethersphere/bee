@@ -6,7 +6,7 @@ package api_test
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -20,7 +20,7 @@ import (
 func TestAuth(t *testing.T) {
 	var (
 		resource      = "/auth"
-		logger        = logging.New(ioutil.Discard, 0)
+		logger        = logging.New(io.Discard, 0)
 		authenticator = &mock.Auth{
 			AuthorizeFunc:   func(string) bool { return true },
 			GenerateKeyFunc: func(string) (string, error) { return "123", nil },
