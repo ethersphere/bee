@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -47,16 +48,24 @@ func InitChain(
 	pollingInterval time.Duration,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	var backend transaction.Backend
-	backend, err := ethclient.Dial(endpoint)
+	rpcClient, err := rpc.DialContext(ctx, endpoint)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial eth client: %w", err)
 	}
 
-	backend = wrapped.NewBackend(backend)
+	var versionString string
+	err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
+	if err != nil {
+		logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", endpoint)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth client get version: %w", err)
+	}
+
+	logger.Infof("connected to ethereum node: %s", versionString)
+
+	backend = wrapped.NewBackend(ethclient.NewClient(rpcClient))
 
 	chainID, err := backend.ChainID(ctx)
 	if err != nil {
-		logger.Infof("could not connect to backend at %v. In a swap-enabled network a working blockchain node (for goerli network in production) is required. Check your node or specify another node using --swap-endpoint.", endpoint)
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
 	}
 
