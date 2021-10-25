@@ -7,8 +7,8 @@ package chainsyncer_test
 import (
 	"context"
 	"errors"
+	"io/ioutil"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -24,7 +24,7 @@ import (
 func TestChainsyncer(t *testing.T) {
 	var (
 		expBlockHash    = common.HexToHash("0x9de2787d1d80a6164f4bc6359d9017131cbc14402ee0704bff0c6d691701c1dc").Bytes()
-		logger          = logging.New(os.Stdout, 0)
+		logger          = logging.New(ioutil.Discard, 0)
 		trxBlock        = common.HexToHash("0x2")
 		blockC          = make(chan struct{})
 		nextBlockHeader = &types.Header{ParentHash: trxBlock}
@@ -53,8 +53,9 @@ func TestChainsyncer(t *testing.T) {
 		proofBlockHash = blockHash
 		return func(t *testing.T) {
 			cs, err := chainsyncer.New(backend, p, topology, d, logger, &chainsyncer.Options{
-				FlagTimeout: 100 * time.Millisecond,
-				PollEvery:   50 * time.Millisecond,
+				FlagTimeout:     500 * time.Millisecond,
+				PollEvery:       100 * time.Millisecond,
+				BlockerPollTime: 100 * time.Millisecond,
 			})
 			if err != nil {
 				t.Fatal(err)
