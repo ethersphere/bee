@@ -72,7 +72,6 @@ jobs:
       - name: Test settlements
         id: settlements
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
-        continue-on-error: true
       - name: Sleep for time allowance to replenish
         run: sleep 2
       - name: Test pss
@@ -82,15 +81,12 @@ jobs:
       - name: Test soc
         id: soc
         run: beekeeper check --cluster-name local-dns --checks=ci-soc
-        continue-on-error: true
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
-        continue-on-error: true
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-        continue-on-error: true
       - name: Test retrieval
         id: retrieval
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
@@ -98,10 +94,12 @@ jobs:
       - name: Test manifest
         id: manifest
         run: beekeeper check --cluster-name local-dns --checks=ci-manifest
-        continue-on-error: true
       - name: Test content availability
         id: content-availability
         run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
+      - name: Test authenticate
+        id: authenticate
+        run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -329,10 +327,6 @@ jobs:
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
           timeout 10m make beelocal ACTION=build OPTS='ci skip-vet skip-push'
-      - name: Test authenticate
-        id: authenticate
-        run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
-        continue-on-error: true
       - name: Retag Docker image and push for cache
         if: success()
         run: |
