@@ -48,7 +48,7 @@ func TestChainsyncer(t *testing.T) {
 		}}
 	)
 
-	newChainSyncerTest := func(e error, blockHash []byte, cb func()) func(*testing.T) {
+	newChainSyncerTest := func(e error, blockHash []byte, cb func(*testing.T)) func(*testing.T) {
 		proofError = e
 		proofBlockHash = blockHash
 		return func(t *testing.T) {
@@ -61,11 +61,11 @@ func TestChainsyncer(t *testing.T) {
 			}
 
 			defer cs.Close()
-			cb()
+			cb(t)
 		}
 	}
 
-	t.Run("prover error", newChainSyncerTest(proofError, proofBlockHash, func() {
+	t.Run("prover error", newChainSyncerTest(proofError, proofBlockHash, func(t *testing.T) {
 		select {
 		case <-blockC:
 		case <-time.After(5 * time.Second):
@@ -73,7 +73,7 @@ func TestChainsyncer(t *testing.T) {
 		}
 	}))
 
-	t.Run("blockhash mismatch", newChainSyncerTest(nil, proofBlockHash, func() {
+	t.Run("blockhash mismatch", newChainSyncerTest(nil, proofBlockHash, func(t *testing.T) {
 		select {
 		case <-blockC:
 		case <-time.After(5 * time.Second):
@@ -81,7 +81,7 @@ func TestChainsyncer(t *testing.T) {
 		}
 	}))
 
-	t.Run("all good", newChainSyncerTest(nil, expBlockHash, func() {
+	t.Run("all good", newChainSyncerTest(nil, expBlockHash, func(t *testing.T) {
 		select {
 		case <-blockC:
 			t.Fatal("blocklisting occurred but should not have")
