@@ -164,8 +164,9 @@ type Options struct {
 }
 
 const (
-	refreshRate = int64(4500000)
-	basePrice   = 10000
+	refreshRate      = int64(4500000)
+	lightRefreshRate = int64(450000)
+	basePrice        = 10000
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
@@ -609,7 +610,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.accountingCloser = acc
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, big.NewInt(refreshRate), p2ps)
+	var enforcedRefreshRate *big.Int
+
+	if o.FullNodeMode {
+		enforcedRefreshRate = big.NewInt(refreshRate)
+	} else {
+		enforcedRefreshRate = big.NewInt(lightRefreshRate)
+	}
+
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
