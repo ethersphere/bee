@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Reacher package runs a background worker that will ping peers
-// from an internal queue and report back the reachability to some notifier.
+// from an internal queue and report back the reachability to the notifier.
 package reacher
 
 import (
