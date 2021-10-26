@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	ma "github.com/multiformats/go-multiaddr"
+	"go.uber.org/atomic"
 )
 
 func TestPingSuccess(t *testing.T) {
@@ -45,8 +46,8 @@ func TestPingSuccess(t *testing.T) {
 	r.Connected(overlay, nil)
 
 	select {
-	case <-time.After(time.Second):
-		t.Fatalf("test time out")
+	case <-time.After(time.Second * 5):
+		t.Fatalf("test timed out")
 	case <-done:
 	}
 }
@@ -57,6 +58,11 @@ func TestPingFailure(t *testing.T) {
 		want = p2p.ReachabilityStatusPrivate
 		done = make(chan struct{})
 	)
+
+	defer func(t time.Duration) {
+		*reacher.RetryAfter = t
+	}(*reacher.RetryAfter)
+	*reacher.RetryAfter = time.Millisecond
 
 	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
 		return 0, errors.New("test error")
@@ -74,13 +80,11 @@ func TestPingFailure(t *testing.T) {
 	r := reacher.New(mock, mock)
 	defer r.Close()
 
-	overlay := test.RandomAddress()
-
-	r.Connected(overlay, nil)
+	r.Connected(test.RandomAddress(), nil)
 
 	select {
-	case <-time.After(time.Second):
-		t.Fatalf("test time out")
+	case <-time.After(time.Second * 5):
+		t.Fatalf("test timed out")
 	case <-done:
 	}
 }
@@ -88,19 +92,34 @@ func TestPingFailure(t *testing.T) {
 func TestDisconnected(t *testing.T) {
 
 	var (
-		overlay = test.RandomAddress()
+		disconnectedOverlay = test.RandomAddress()
+		disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 	)
 
-	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
-		time.Sleep(time.Millisecond * 10) // sleep between calls
+	defer func(t time.Duration) {
+		*reacher.RetryAfter = t
+	}(*reacher.RetryAfter)
+	*reacher.RetryAfter = time.Millisecond * 5
+
+	/*
+		Because the Disconnected is called after Connected, it may be that one of the workers
+		have picked up the peer already. So to test that the Disconnected really works,
+		if the ping function pings the peer we are trying to disconnect, we return an error
+		which triggers another attempt in the future, which by the, the peer should already be removed.
+	*/
+	var errs atomic.Int64
+	pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
+		if a != nil && a.Equal(disconnectedMa) {
+			errs.Inc()
+			if errs.Load() > 1 {
+				t.Fatalf("overlay should be disconnected already")
+			}
+			return 0, errors.New("test error")
+		}
 		return 0, nil
 	}
 
-	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		if addr.Equal(overlay) {
-			t.Fatalf("overlay should be disconnected")
-		}
-	}
+	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {}
 
 	mock := newMock(pingFunc, reachableFunc)
 
@@ -108,10 +127,10 @@ func TestDisconnected(t *testing.T) {
 	defer r.Close()
 
 	r.Connected(test.RandomAddress(), nil)
-	r.Connected(overlay, nil)
-	r.Disconnected(overlay)
+	r.Connected(disconnectedOverlay, disconnectedMa)
+	r.Disconnected(disconnectedOverlay)
 
-	time.Sleep(time.Millisecond * 100) // wait for reachable func to be called
+	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
 }
 
 type mock struct {

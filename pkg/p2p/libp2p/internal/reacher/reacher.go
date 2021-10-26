@@ -17,149 +17,230 @@ import (
 )
 
 const (
-	pingTimeoutMin  = time.Second * 2
-	pingTimeoutMax  = time.Second * 5
+	pingTimeout     = time.Second * 5
 	pingMaxAttempts = 3
 	workers         = 8
 )
 
+var retryAfterDuration = time.Second * 15
+
+type peerState int
+
+const (
+	waiting peerState = iota
+	inProgress
+)
+
 type peer struct {
-	overlay swarm.Address
-	addr    ma.Multiaddr
+	overlay    swarm.Address
+	addr       ma.Multiaddr
+	retryAfter time.Time
+	attempts   int
+	state      peerState
 }
 
 type reacher struct {
 	mu    sync.Mutex
-	queue []peer
+	peers map[string]*peer
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	work      chan struct{}
+	work chan struct{}
+	quit chan struct{}
 
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
 
-	wg sync.WaitGroup
-
+	wg      sync.WaitGroup
 	metrics metrics
 }
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	r := &reacher{
-		work:      make(chan struct{}, 1),
-		pinger:    streamer,
-		notifier:  notifier,
-		ctx:       ctx,
-		ctxCancel: cancel,
-		metrics:   newMetrics(),
+		work:     make(chan struct{}, 1),
+		quit:     make(chan struct{}),
+		pinger:   streamer,
+		peers:    make(map[string]*peer),
+		notifier: notifier,
+		metrics:  newMetrics(),
 	}
 
-	r.wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go r.ping()
-	}
+	r.wg.Add(1)
+	go r.manage()
 
 	return r
 }
 
-func (r *reacher) ping() {
+func (r *reacher) manage() {
 
 	defer r.wg.Done()
 
+	c := make(chan *peer)
+	defer close(c)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	r.wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go r.ping(c, ctx)
+	}
+
 	for {
 
-		select {
-		case <-r.ctx.Done():
-			return
-		case <-r.work:
-		}
+		p, tryAfter := r.tryAcquirePeer()
 
-		r.mu.Lock()
-		if len(r.queue) == 0 {
-			r.mu.Unlock()
-			continue
-		}
-		p := r.queue[0]
-		r.queue = r.queue[1:]
-		r.mu.Unlock()
+		// if no peer is returned,
+		// wait until either more work or the closest retry-after time.
 
-		timeout := pingTimeoutMin
-		attempts := 0
-
-		for {
-
+		// wait for work and tryAfter
+		if tryAfter > 0 {
 			select {
-			case <-r.ctx.Done():
+			case <-r.quit:
 				return
-			default:
+			case <-r.work:
+				continue
+			case <-time.After(tryAfter):
+				continue
 			}
+		}
 
-			attempts++
-
-			now := time.Now()
-
-			ctxt, cancel := context.WithTimeout(r.ctx, timeout)
-			_, err := r.pinger.Ping(ctxt, p.addr)
-			cancel()
-
-			if err == nil {
-				r.metrics.Pings.WithLabelValues("success").Inc()
-				r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
-				break
+		// wait for work
+		if p == nil {
+			select {
+			case <-r.quit:
+				return
+			case <-r.work:
+				continue
 			}
+		}
 
-			r.metrics.Pings.WithLabelValues("failure").Inc()
-			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-
-			if attempts == pingMaxAttempts {
-				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
-				break
-			}
-
-			timeout *= 2
-			if timeout > pingTimeoutMax {
-				timeout = pingTimeoutMax
-			}
+		// send p to channel
+		select {
+		case <-r.quit:
+			return
+		case c <- p:
 		}
 	}
 }
 
-func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+func (r *reacher) ping(c chan *peer, ctx context.Context) {
+
+	defer r.wg.Done()
+
+	for p := range c {
+
+		r.mu.Lock()
+		p.attempts++
+		var (
+			overlay  = p.overlay
+			attempts = p.attempts
+			now      = time.Now()
+		)
+		r.mu.Unlock()
+
+		ctxt, cancel := context.WithTimeout(ctx, pingTimeout)
+		_, err := r.pinger.Ping(ctxt, p.addr)
+		cancel()
+
+		// ping was successful
+		if err == nil {
+			r.metrics.Pings.WithLabelValues("success").Inc()
+			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
+			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPublic)
+			r.deletePeer(p)
+			continue
+		}
+
+		r.metrics.Pings.WithLabelValues("failure").Inc()
+		r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
+
+		// max attempts have been reached
+		if attempts >= pingMaxAttempts {
+			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPrivate)
+			r.deletePeer(p)
+			continue
+		}
+
+		// mark peer as 'waiting', increase retry-after duration, and notify workers about more work
+		r.mu.Lock()
+		p.state = waiting
+		p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
+		r.mu.Unlock()
+
+		r.notifyManage()
+	}
+}
+
+func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for _, p := range r.queue {
-		if p.overlay.Equal(overlay) {
-			return
+	now := time.Now()
+	nextClosest := time.Time{}
+
+	for _, p := range r.peers {
+
+		if p.state == inProgress {
+			continue
+		}
+
+		// here, retry after is in the past so we can ping this peer
+		if now.After(p.retryAfter) {
+			p.state = inProgress
+			return p, 0
+		}
+
+		// here, we find the peer with the earliest retry after
+		if nextClosest.IsZero() || p.retryAfter.Before(nextClosest) {
+			nextClosest = p.retryAfter
 		}
 	}
 
-	r.queue = append(r.queue, peer{overlay: overlay, addr: addr})
+	if nextClosest.IsZero() {
+		return nil, 0
+	}
 
+	// return the time to wait until the closest retry after
+	return nil, time.Until(nextClosest)
+}
+
+func (r *reacher) notifyManage() {
 	select {
 	case r.work <- struct{}{}:
 	default:
 	}
 }
 
+func (r *reacher) deletePeer(p *peer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.peers, p.overlay.ByteString())
+}
+
+// Connected adds a new peer to the queue for testing reachability.
+func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.peers[overlay.ByteString()]; !ok {
+		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
+	}
+
+	r.notifyManage()
+}
+
+// Disconnected removes a peer from the queue.
 func (r *reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for i, p := range r.queue {
-		if p.overlay.Equal(overlay) {
-			r.queue = append(r.queue[:i], r.queue[i+1:]...)
-			return
-		}
-	}
+	delete(r.peers, overlay.ByteString())
 }
 
+// Close stops the worker. Must be called once.
 func (r *reacher) Close() error {
-	r.ctxCancel()
+	close(r.quit)
 	r.wg.Wait()
 	return nil
 }
