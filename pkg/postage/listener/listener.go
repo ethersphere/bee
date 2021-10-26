@@ -270,7 +270,16 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				return
 			}
 
-			l.logger.Errorf("failed syncing event listener, retrying err: %v", err)
+			retryAfter := time.Duration(l.blockTime) * time.Second * time.Duration(i+1)
+
+			l.logger.Errorf("failed syncing event listener, retrying in %s err: %v", retryAfter, err)
+
+			select {
+			case <-l.quit:
+				return
+			case <-time.After(retryAfter):
+				continue
+			}
 		}
 
 		l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)

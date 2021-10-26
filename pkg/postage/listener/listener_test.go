@@ -260,7 +260,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			WithBlockNumberError(errors.New("dummy error")),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner)
+		l := listener.New(logger, mf, postageStampAddress, 0, shutdowner)
 		l.Listen(0, ev)
 
 		start := time.Now()
