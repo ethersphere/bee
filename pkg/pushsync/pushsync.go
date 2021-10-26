@@ -33,7 +33,7 @@ import (
 
 const (
 	protocolName    = "pushsync"
-	protocolVersion = "1.0.0"
+	protocolVersion = "1.1.0"
 	streamName      = "pushsync"
 )
 
