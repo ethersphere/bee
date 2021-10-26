@@ -77,7 +77,6 @@ jobs:
       - name: Test pss
         id: pss
         run: beekeeper check --cluster-name local-dns --checks=ci-pss
-        continue-on-error: true
       - name: Test soc
         id: soc
         run: beekeeper check --cluster-name local-dns --checks=ci-soc
@@ -90,7 +89,6 @@ jobs:
       - name: Test retrieval
         id: retrieval
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
-        continue-on-error: true
       - name: Test manifest
         id: manifest
         run: beekeeper check --cluster-name local-dns --checks=ci-manifest
