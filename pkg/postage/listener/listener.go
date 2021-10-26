@@ -263,15 +263,22 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	go func() {
 
 		var err error
-		for i := 0; i < maxListenAttempts; i++ {
+		var attempts = 0
+		for {
+
+			attempts++
+
 			// context cancelled is returned on shutdown,
 			// therefore we do nothing here
 			if err = listenf(); err == nil || errors.Is(err, context.Canceled) {
 				return
 			}
 
-			retryAfter := time.Duration(l.blockTime) * time.Second * time.Duration(i+1)
+			if attempts >= maxListenAttempts {
+				break
+			}
 
+			retryAfter := time.Duration(l.blockTime) * time.Second * time.Duration(attempts)
 			l.logger.Errorf("failed syncing event listener, retrying in %s err: %v", retryAfter, err)
 
 			select {
