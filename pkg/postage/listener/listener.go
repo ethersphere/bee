@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	blockPage = 5000 // how many blocks to sync every time we page
-	tailSize  = 4    // how many blocks to tail from the tip of the chain
+	blockPage         = 5000 // how many blocks to sync every time we page
+	tailSize          = 4    // how many blocks to tail from the tip of the chain
+	maxListenAttempts = 3
 )
 
 var (
@@ -176,8 +177,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 
-	l.wg.Add(1)
 	listenf := func() error {
+		l.wg.Add(1)
 		defer l.wg.Done()
 		for {
 			select {
@@ -260,19 +261,21 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	}
 
 	go func() {
-		err := listenf()
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				// context cancelled is returned on shutdown,
-				// therefore we do nothing here
+
+		var err error
+		for i := 0; i < maxListenAttempts; i++ {
+			// context cancelled is returned on shutdown,
+			// therefore we do nothing here
+			if err = listenf(); err == nil || errors.Is(err, context.Canceled) {
 				return
 			}
-			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
-			if l.shutdowner != nil {
-				err = l.shutdowner.Shutdown(context.Background())
-				if err != nil {
-					l.logger.Errorf("failed shutting down node: %v", err)
-				}
+		}
+
+		l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
+		if l.shutdowner != nil {
+			err = l.shutdowner.Shutdown(context.Background())
+			if err != nil {
+				l.logger.Errorf("failed shutting down node: %v", err)
 			}
 		}
 	}()
