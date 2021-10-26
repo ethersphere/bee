@@ -90,6 +90,12 @@ func TestEnforce(t *testing.T) {
 			resource: "/pingpong/someone",
 			action:   "POST",
 			expected: true,
+		}, {
+			desc:     "success with query param",
+			role:     "role1",
+			resource: "/bzz?name=some-name",
+			action:   "POST",
+			expected: true,
 		},
 		{
 			desc:     "bad role",

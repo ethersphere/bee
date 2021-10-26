@@ -46,7 +46,7 @@ func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authentica
 	e = some(where (p.eft == allow))
 
 	[matchers]
-	m = r.sub == p.sub && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)`)
+	m = r.sub == p.sub && (keyMatch(r.obj, p.obj) || keyMatch(r.obj, '/v1'+p.obj)) && regexMatch(r.act, p.act)`)
 
 	if err != nil {
 		return nil, err
@@ -236,9 +236,11 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"role0", "/bzz/*", "GET"},
 		{"role1", "/bzz/*", "PATCH"},
 		{"role1", "/bzz", "POST"},
-		{"role1", "/bzz\\?*", "POST"},
+		{"role1", "/bzz?*", "POST"},
 		{"role0", "/bzz/*/*", "GET"},
-		{"role1", "/tags", "(GET)|(POST)"},
+		{"role1", "/tags", "GET"},
+		{"role1", "/tags?*", "GET"},
+		{"role1", "/tags", "POST"},
 		{"role1", "/tags/*", "(GET)|(DELETE)|(PATCH)"},
 		{"role1", "/pins/*", "(GET)|(DELETE)|(POST)"},
 		{"role2", "/pins", "GET"},
@@ -263,7 +265,9 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"role2", "/chequebook/cashout/*", "GET"},
 		{"role3", "/chequebook/cashout/*", "POST"},
 		{"role3", "/chequebook/withdraw", "POST"},
+		{"role3", "/chequebook/withdraw?*", "POST"},
 		{"role3", "/chequebook/deposit", "POST"},
+		{"role3", "/chequebook/deposit?*", "POST"},
 		{"role2", "/chequebook/cheque/*", "GET"},
 		{"role2", "/chequebook/cheque", "GET"},
 		{"role2", "/chequebook/address", "GET"},
