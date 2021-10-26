@@ -269,6 +269,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			if err = listenf(); err == nil || errors.Is(err, context.Canceled) {
 				return
 			}
+
+			l.logger.Errorf("failed syncing event listener, retrying err: %v", err)
 		}
 
 		l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
