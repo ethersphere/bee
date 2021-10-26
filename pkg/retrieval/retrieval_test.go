@@ -95,7 +95,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(vstamp, stamp) {
 		t.Fatal("stamp mismatch")
 	}
-	records, err := recorder.Records(serverAddr, "retrieval", "1.0.0", "retrieval")
+	records, err := recorder.Records(serverAddr, "retrieval", "1.1.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
 	}
