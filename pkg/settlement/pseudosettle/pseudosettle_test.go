@@ -97,6 +97,7 @@ func (t *testObserver) Release(peer swarm.Address, amount uint64) {
 }
 
 var testRefreshRate = int64(10000)
+var testRefreshRateLight = int64(1000)
 
 func TestPayment(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
@@ -105,12 +106,12 @@ func TestPayment(t *testing.T) {
 	defer storeRecipient.Close()
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
-	peer := p2p.Peer{Address: peerID}
+	peer := p2p.Peer{Address: peerID, FullNode: true}
 
 	debt := int64(10000)
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
-	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), mockp2p.New())
+	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(observer)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
@@ -126,7 +127,7 @@ func TestPayment(t *testing.T) {
 	defer storePayer.Close()
 
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
-	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), mockp2p.New())
+	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(observer2)
 
 	amount := big.NewInt(debt)
@@ -225,12 +226,12 @@ func TestTimeLimitedPayment(t *testing.T) {
 	defer storeRecipient.Close()
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
-	peer := p2p.Peer{Address: peerID}
+	peer := p2p.Peer{Address: peerID, FullNode: true}
 
 	debt := testRefreshRate
 
 	observer := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
-	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), mockp2p.New())
+	recipient := pseudosettle.New(nil, logger, storeRecipient, observer, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(observer)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
@@ -246,7 +247,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 	defer storePayer.Close()
 
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
-	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), mockp2p.New())
+	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(observer2)
 
 	payer.SetTime(int64(10000))
