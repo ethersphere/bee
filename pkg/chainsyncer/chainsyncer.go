@@ -101,21 +101,21 @@ func (c *ChainSyncer) manage() {
 		o           sync.Once
 		positives   int32
 		items       int
-		timer       = time.NewTimer(0)
+		ticker      = time.NewTicker(1 * time.Nanosecond)
 	)
 	go func() {
 		<-c.quit
 		cancel()
-		_ = timer.Stop()
+		ticker.Stop()
 	}()
 
 	for {
 		select {
 		case <-c.quit:
 			return
-		case <-timer.C:
+		case <-ticker.C:
 			o.Do(func() {
-				timer.Reset(c.pollEvery)
+				ticker.Reset(c.pollEvery)
 			})
 		}
 		// go through every peer we are connected to
