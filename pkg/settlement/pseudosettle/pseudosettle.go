@@ -39,20 +39,22 @@ var (
 )
 
 type Service struct {
-	streamer    p2p.Streamer
-	logger      logging.Logger
-	store       storage.StateStorer
-	accounting  settlement.Accounting
-	metrics     metrics
-	refreshRate *big.Int
-	p2pService  p2p.Service
-	timeNow     func() time.Time
-	peersMu     sync.Mutex
-	peers       map[string]*pseudoSettlePeer
+	streamer         p2p.Streamer
+	logger           logging.Logger
+	store            storage.StateStorer
+	accounting       settlement.Accounting
+	metrics          metrics
+	refreshRate      *big.Int
+	lightRefreshRate *big.Int
+	p2pService       p2p.Service
+	timeNow          func() time.Time
+	peersMu          sync.Mutex
+	peers            map[string]*pseudoSettlePeer
 }
 
 type pseudoSettlePeer struct {
-	lock sync.Mutex // lock to be held during receiving a payment from this peer
+	lock     sync.Mutex // lock to be held during receiving a payment from this peer
+	fullNode bool
 }
 
 type lastPayment struct {
@@ -61,17 +63,18 @@ type lastPayment struct {
 	Total          *big.Int
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accounting settlement.Accounting, refreshRate *big.Int, p2pService p2p.Service) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accounting settlement.Accounting, refreshRate, lightRefreshRate *big.Int, p2pService p2p.Service) *Service {
 	return &Service{
-		streamer:    streamer,
-		logger:      logger,
-		metrics:     newMetrics(),
-		store:       store,
-		accounting:  accounting,
-		p2pService:  p2pService,
-		refreshRate: refreshRate,
-		timeNow:     time.Now,
-		peers:       make(map[string]*pseudoSettlePeer),
+		streamer:         streamer,
+		logger:           logger,
+		metrics:          newMetrics(),
+		store:            store,
+		accounting:       accounting,
+		p2pService:       p2pService,
+		refreshRate:      refreshRate,
+		lightRefreshRate: lightRefreshRate,
+		timeNow:          time.Now,
+		peers:            make(map[string]*pseudoSettlePeer),
 	}
 }
 
@@ -98,7 +101,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 
 	_, ok := s.peers[p.Address.String()]
 	if !ok {
-		peerData := &pseudoSettlePeer{}
+		peerData := &pseudoSettlePeer{fullNode: p.FullNode}
 		s.peers[p.Address.String()] = peerData
 	}
 
@@ -132,7 +135,7 @@ func totalKeyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
 
 // peerAllowance computes the maximum incoming payment value we accept
 // this is the time based allowance or the peers actual debt, whichever is less
-func (s *Service) peerAllowance(peer swarm.Address) (limit *big.Int, stamp int64, err error) {
+func (s *Service) peerAllowance(peer swarm.Address, fullNode bool) (limit *big.Int, stamp int64, err error) {
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(peer, SettlementReceivedPrefix), &lastTime)
 	if err != nil {
@@ -147,7 +150,15 @@ func (s *Service) peerAllowance(peer swarm.Address) (limit *big.Int, stamp int64
 		return nil, 0, ErrSettlementTooSoon
 	}
 
-	maxAllowance := new(big.Int).Mul(big.NewInt(currentTime-lastTime.Timestamp), s.refreshRate)
+	var refreshRateUsed *big.Int
+
+	if fullNode {
+		refreshRateUsed = s.refreshRate
+	} else {
+		refreshRateUsed = s.lightRefreshRate
+	}
+
+	maxAllowance := new(big.Int).Mul(big.NewInt(currentTime-lastTime.Timestamp), refreshRateUsed)
 
 	peerDebt, err := s.accounting.PeerDebt(peer)
 	if err != nil {
@@ -182,16 +193,15 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.peersMu.Lock()
 	pseudoSettlePeer, ok := s.peers[p.Address.String()]
+	s.peersMu.Unlock()
 	if !ok {
-		s.peersMu.Unlock()
 		return ErrNoPseudoSettlePeer
 	}
-	s.peersMu.Unlock()
 
 	pseudoSettlePeer.lock.Lock()
 	defer pseudoSettlePeer.lock.Unlock()
 
-	allowance, timestamp, err := s.peerAllowance(p.Address)
+	allowance, timestamp, err := s.peerAllowance(p.Address, pseudoSettlePeer.fullNode)
 	if err != nil {
 		return err
 	}
