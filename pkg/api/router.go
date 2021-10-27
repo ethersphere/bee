@@ -507,6 +507,10 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/accounting", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
 	})
+
+	handle("/accounting", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.accountingInfoHandler),
+	})
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
