@@ -14,7 +14,11 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+<<<<<<< HEAD
       BEEKEEPER_BRANCH: "thr_d"
+=======
+      BEEKEEPER_BRANCH: "acc_upd"
+>>>>>>> 91ec44d6 (feat: increase paymentthresholds for long standing connections)
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -135,7 +139,11 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+<<<<<<< HEAD
       BEEKEEPER_BRANCH: "thr_d"
+=======
+      BEEKEEPER_BRANCH: "acc_upd"
+>>>>>>> 91ec44d6 (feat: increase paymentthresholds for long standing connections)
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -220,7 +228,11 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+<<<<<<< HEAD
       BEEKEEPER_BRANCH: "thr_d"
+=======
+      BEEKEEPER_BRANCH: "acc_upd"
+>>>>>>> 91ec44d6 (feat: increase paymentthresholds for long standing connections)
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
