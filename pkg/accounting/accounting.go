@@ -705,6 +705,7 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 	s := make(map[string]PeerInfo)
 
 	a.accountingPeersMu.Lock()
+
 	accountingPeersList := make(map[string]*accountingPeer)
 	for peer, accountingPeer := range a.accountingPeers {
 		accountingPeersList[peer] = accountingPeer
