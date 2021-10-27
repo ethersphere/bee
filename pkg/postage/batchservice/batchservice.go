@@ -207,6 +207,9 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	if blockNumber == cs.Block {
 		return nil
 	}
+	if blockNumber < cs.Block {
+		return fmt.Errorf("batch service: block number moved backwards from %d to %d", cs.Block, blockNumber)
+	}
 	diff := big.NewInt(0).SetUint64(blockNumber - cs.Block)
 
 	cs.TotalAmount.Add(cs.TotalAmount, diff.Mul(diff, cs.CurrentPrice))
