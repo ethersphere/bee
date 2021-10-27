@@ -12,7 +12,6 @@ type (
 	SocPostResponse       = socPostResponse
 	FeedReferenceResponse = feedReferenceResponse
 	BzzUploadResponse     = bzzUploadResponse
-	TagResponse           = tagResponse
 	DebugTagResponse      = debugTagResponse
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
@@ -86,6 +85,7 @@ type (
 	TransactionInfo                   = transactionInfo
 	TransactionPendingList            = transactionPendingList
 	TransactionHashResponse           = transactionHashResponse
+	TagResponse                       = tagResponse
 	ReserveStateResponse              = reserveStateResponse
 	ChainStateResponse                = chainStateResponse
 	PostageCreateResponse             = postageCreateResponse
