@@ -30,6 +30,7 @@ var (
 	testPaymentTolerance = int64(10)
 	testPaymentEarly     = int64(10)
 	testPaymentThreshold = big.NewInt(10000)
+	testLightFactor      = int64(10)
 )
 
 type paymentCall struct {
@@ -55,7 +56,9 @@ func TestAccountingAddBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +73,8 @@ func TestAccountingAddBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
-	acc.Connect(peer2Addr)
+	acc.Connect(peer1Addr, true)
+	acc.Connect(peer2Addr, true)
 
 	bookings := []booking{
 		{peer: peer1Addr, price: 100, expectedBalance: 100},
@@ -122,7 +125,9 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +143,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	bookings := []booking{
 		// originated credit
@@ -238,7 +243,9 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,8 +260,8 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
-	acc.Connect(peer2Addr)
+	acc.Connect(peer1Addr, true)
+	acc.Connect(peer2Addr, true)
 
 	peer1DebitAmount := testPrice
 	debitAction, err := acc.PrepareDebit(peer1Addr, peer1DebitAmount)
@@ -277,7 +284,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 	creditAction.Cleanup()
 
-	acc, err = accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	acc, err = accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +315,9 @@ func TestAccountingReserve(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +327,7 @@ func TestAccountingReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	_, err = acc.PrepareCredit(peer1Addr, testPaymentThreshold.Uint64()+1, true)
 	if err == nil {
@@ -337,7 +346,9 @@ func TestAccountingDisconnect(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +358,7 @@ func TestAccountingDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	// put the peer 1 unit away from disconnect
 	debitAction, err := acc.PrepareDebit(peer1Addr, (testPaymentThreshold.Uint64()*(100+uint64(testPaymentTolerance))/100)-1)
@@ -384,7 +395,9 @@ func TestAccountingCallSettlement(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +420,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	requestPrice := testPaymentThreshold.Uint64() - 1000
 
@@ -508,7 +521,9 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +547,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	requestPrice := testPaymentThreshold.Uint64() - 1000
 
@@ -627,7 +642,9 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,7 +668,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	requestPrice := testPaymentThreshold.Uint64() - 1000
 
@@ -769,7 +786,9 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	debt := uint64(500)
 	earlyPayment := int64(10)
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, earlyPayment, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -788,7 +807,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	creditAction, err := acc.PrepareCredit(peer1Addr, debt, true)
 	if err != nil {
@@ -834,7 +853,9 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -842,7 +863,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	// Try Debiting a large amount to peer so balance is large positive
 	debitAction, err := acc.PrepareDebit(peer1Addr, testPaymentThreshold.Uint64()-1)
@@ -957,7 +978,9 @@ func TestAccountingNotifyPaymentReceived(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +990,7 @@ func TestAccountingNotifyPaymentReceived(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	debtAmount := uint64(100)
 	debitAction, err := acc.PrepareDebit(peer1Addr, debtAmount)
@@ -1022,7 +1045,7 @@ func TestAccountingConnected(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), p2pmock.New())
+	_, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1045,7 +1068,7 @@ func TestAccountingConnected(t *testing.T) {
 		t.Fatalf("paid to wrong peer. got %v wanted %v", pricing.peer, peer1Addr)
 	}
 
-	if pricing.paymentThreshold != testPaymentThreshold {
+	if pricing.paymentThreshold.Cmp(testPaymentThreshold) != 0 {
 		t.Fatalf("paid wrong amount. got %d wanted %d", pricing.paymentThreshold, testPaymentThreshold)
 	}
 }
@@ -1058,7 +1081,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, 0, logger, store, pricing, big.NewInt(testRefreshRate), p2pmock.New())
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1077,7 +1100,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	debt := uint64(50)
 	lowerThreshold := uint64(100)
@@ -1122,13 +1145,13 @@ func TestAccountingPeerDebt(t *testing.T) {
 
 	pricing := &pricingMock{}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, 0, logger, store, pricing, big.NewInt(testRefreshRate), p2pmock.New())
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	peer1Addr := swarm.MustParseHexAddress("00112233")
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	debt := uint64(1000)
 	debitAction, err := acc.PrepareDebit(peer1Addr, debt)
@@ -1149,7 +1172,7 @@ func TestAccountingPeerDebt(t *testing.T) {
 	}
 
 	peer2Addr := swarm.MustParseHexAddress("11112233")
-	acc.Connect(peer2Addr)
+	acc.Connect(peer2Addr, true)
 	creditAction, err := acc.PrepareCredit(peer2Addr, 500, true)
 	if err != nil {
 		t.Fatal(err)
@@ -1182,7 +1205,9 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	store := mock.NewStateStore()
 	defer store.Close()
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(1), p2pmock.New())
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(1), testLightFactor, p2pmock.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1206,7 +1231,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acc.Connect(peer1Addr)
+	acc.Connect(peer1Addr, true)
 
 	requestPrice := testPaymentThreshold.Uint64() - 100
 
@@ -1311,7 +1336,9 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 		return nil
 	}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New(p2pmock.WithBlocklistFunc(f)))
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New(p2pmock.WithBlocklistFunc(f)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1323,7 +1350,7 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acc.Connect(peer)
+	acc.Connect(peer, true)
 
 	requestPrice := testPaymentThreshold.Uint64()
 
@@ -1385,7 +1412,9 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 		return nil
 	}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New(p2pmock.WithBlocklistFunc(f)))
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New(p2pmock.WithBlocklistFunc(f)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1397,7 +1426,7 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acc.Connect(peer)
+	acc.Connect(peer, true)
 
 	requestPrice := testPaymentThreshold.Uint64()
 
@@ -1455,7 +1484,9 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 		return nil
 	}
 
-	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, nil, big.NewInt(testRefreshRate), p2pmock.New(p2pmock.WithBlocklistFunc(f)))
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New(p2pmock.WithBlocklistFunc(f)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1467,7 +1498,8 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acc.Connect(peer)
+
+	acc.Connect(peer, true)
 
 	requestPrice := testPaymentThreshold.Uint64()
 
@@ -1505,7 +1537,7 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
 	}
 
-	acc.Connect(peer)
+	acc.Connect(peer, true)
 
 	balance, err := acc.Balance(peer)
 	if err != nil {
@@ -1523,6 +1555,188 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 
 	if surplusBalance.Int64() != 0 {
 		t.Fatalf("surplus balance for peer %v not as expected got %d, wanted 0", peer.String(), balance)
+	}
+
+}
+
+func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64), fullNode bool, testPayThreshold *big.Int, testGrowth int64) {
+
+	logger := logging.New(io.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, testPayThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	acc.Connect(peer1Addr, fullNode)
+
+	checkPaymentThreshold := new(big.Int).Set(testPayThreshold)
+
+	// Simulate first 18 threshold upgrades
+	for j := 0; j < 18; j++ {
+		for i := 0; i < 100; i++ {
+
+			// expect no change in threshold while less than 100 seconds worth of refreshment rate was settled
+			settleFunc(t, acc, peer1Addr, testGrowth-1)
+
+			if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
+				t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
+			}
+
+		}
+
+		// Cumulative settled debt is now "checkpoint - 100 + j" ( j < 18 )
+
+		// Expect increase after 100 seconds of refreshment is crossed
+
+		checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testGrowth))
+
+		// Cross
+		settleFunc(t, acc, peer1Addr, 101)
+
+		// Cumulative settled debt is now "checkpoint + j + 1" ( j < 18 )
+
+		// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
+		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
+			t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
+		}
+
+	}
+
+	// Simulate first exponential checkpoint
+
+	// Expect no increase for the next 179 seconds of refreshment
+
+	for k := 0; k < 1799; k++ {
+
+		settleFunc(t, acc, peer1Addr, testGrowth)
+
+		// Check threshold have not been updated
+		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
+			t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
+		}
+
+	}
+
+	// Expect increase after the 1800th second worth of refreshment settled
+
+	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testGrowth))
+
+	settleFunc(t, acc, peer1Addr, testGrowth)
+
+	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
+	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
+		t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
+	}
+
+	// Simulate second exponential checkpoint
+
+	// Expect no increase for another 3599 seconds of refreshments
+
+	for k := 0; k < 3599; k++ {
+
+		settleFunc(t, acc, peer1Addr, testGrowth)
+
+		// Check threshold have not been updated
+		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
+			t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
+		}
+
+	}
+
+	// Expect increase after the 360th second worth of refreshment settled
+
+	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testGrowth))
+
+	settleFunc(t, acc, peer1Addr, testGrowth)
+
+	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
+	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
+		t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
+	}
+
+}
+
+func TestAccountingRefreshGrowingThresholds(t *testing.T) {
+
+	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, true, testPaymentThreshold, testRefreshRate)
+
+}
+
+func TestAccountingRefreshGrowingThresholdsLight(t *testing.T) {
+
+	lightPaymentThresholdDefault := new(big.Int).Div(testPaymentThreshold, big.NewInt(testLightFactor))
+	lightRefreshRate := testRefreshRate / testLightFactor
+
+	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, false, lightPaymentThresholdDefault, lightRefreshRate)
+
+}
+
+func TestAccountingSwapGrowingThresholds(t *testing.T) {
+
+	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, true, testPaymentThreshold, testRefreshRate)
+
+}
+
+func TestAccountingSwapGrowingThresholdsLight(t *testing.T) {
+
+	lightPaymentThresholdDefault := new(big.Int).Div(testPaymentThreshold, big.NewInt(testLightFactor))
+	lightRefreshRate := testRefreshRate / testLightFactor
+
+	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, false, lightPaymentThresholdDefault, lightRefreshRate)
+
+}
+
+func debitAndRefresh(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64) {
+	// Create debt
+	debitAction, err := acc.PrepareDebit(peer1Addr, uint64(debitRefresh))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = debitAction.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
+	debitAction.Cleanup()
+
+	// Refresh
+	err = acc.NotifyRefreshmentReceived(peer1Addr, big.NewInt(debitRefresh))
+	if err != nil {
+		t.Fatalf("unexpected error from NotifyRefreshmentReceived: %v", err)
+	}
+
+}
+
+func debitAndReceivePayment(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64) {
+	// Create debt
+	debitAction, err := acc.PrepareDebit(peer1Addr, uint64(debitRefresh))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = debitAction.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
+	debitAction.Cleanup()
+
+	// Refresh
+	err = acc.NotifyPaymentReceived(peer1Addr, big.NewInt(debitRefresh))
+	if err != nil {
+		t.Fatalf("unexpected error from NotifyRefreshmentReceived: %v", err)
 	}
 
 }
