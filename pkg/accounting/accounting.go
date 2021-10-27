@@ -23,6 +23,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	linearCheckpointNumber = 1800
+	linearCheckpointStep   = 100
+)
+
 var (
 	_                        Interface = (*Accounting)(nil)
 	balancesPrefix                     = "accounting_balance_"
@@ -50,6 +55,8 @@ type Interface interface {
 	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
 	CompensatedBalances() (map[string]*big.Int, error)
+	// PeerAccounting returns the associated values for all known peers
+	PeerAccounting() (map[string]PeerInfo, error)
 }
 
 // Action represents an accounting action that can be applied
@@ -92,11 +99,16 @@ type accountingPeer struct {
 	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
 	ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
 	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
-	earlyPayment                   *big.Int
-	refreshTimestamp               int64 // last time we attempted time-based settlement
-	paymentOngoing                 bool  // indicate if we are currently settling with the peer
-	lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
-	connected                      bool
+	earlyPayment                   *big.Int   // individual early payment threshold calculated from from payment threshold and early payment percentage
+	paymentThresholdForPeer        *big.Int   // individual payment threshold at which the peer is expected to pay
+	disconnectLimit                *big.Int   // individual disconnect threshold calculated from tolerance and payment threshold for peer
+	refreshTimestamp               int64      // last time we attempted time-based settlement
+	paymentOngoing                 bool       // indicate if we are currently settling with the peer
+	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
+	connected                      bool       // indicates whether the peer is currently connected
+	fullNode                       bool       // the peer connected as full node or light node
+	totalDebtRepay                 *big.Int   // since being connected, amount of cumulative debt settled by the peer
+	thresholdGrowAt                *big.Int   // cumulative debt to be settled by the peer in order to give threshold upgrade
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -120,14 +132,22 @@ type Accounting struct {
 	// function used for time settlement
 	refreshFunction RefreshFunc
 	// allowance based on time used in pseudo settle
-	refreshRate *big.Int
+	refreshRate      *big.Int
+	lightRefreshRate *big.Int
 	// lower bound for the value of issued cheques
-	minimumPayment *big.Int
-	pricing        pricing.Interface
-	metrics        metrics
-	wg             sync.WaitGroup
-	p2p            p2p.Service
-	timeNow        func() time.Time
+	minimumPayment      *big.Int
+	pricing             pricing.Interface
+	metrics             metrics
+	wg                  sync.WaitGroup
+	p2p                 p2p.Service
+	timeNow             func() time.Time
+	thresholdGrowStep   *big.Int
+	thresholdGrowChange *big.Int
+	// light node counterparts
+	lightPaymentThreshold    *big.Int
+	lightDisconnectLimit     *big.Int
+	lightThresholdGrowStep   *big.Int
+	lightThresholdGrowChange *big.Int
 }
 
 var (
@@ -150,23 +170,34 @@ func NewAccounting(
 	Store storage.StateStorer,
 	Pricing pricing.Interface,
 	refreshRate *big.Int,
+	lightFactor int64,
 	p2pService p2p.Service,
 
 ) (*Accounting, error) {
+
+	lightPaymentThreshold := new(big.Int).Div(PaymentThreshold, big.NewInt(lightFactor))
+	lightRefreshRate := new(big.Int).Div(refreshRate, big.NewInt(lightFactor))
 	return &Accounting{
-		accountingPeers:  make(map[string]*accountingPeer),
-		paymentThreshold: new(big.Int).Set(PaymentThreshold),
-		paymentTolerance: PaymentTolerance,
-		earlyPayment:     EarlyPayment,
-		disconnectLimit:  new(big.Int).Div(new(big.Int).Mul(PaymentThreshold, big.NewInt(100+PaymentTolerance)), big.NewInt(100)),
-		logger:           Logger,
-		store:            Store,
-		pricing:          Pricing,
-		metrics:          newMetrics(),
-		refreshRate:      refreshRate,
-		timeNow:          time.Now,
-		minimumPayment:   new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
-		p2p:              p2pService,
+		accountingPeers:          make(map[string]*accountingPeer),
+		paymentThreshold:         new(big.Int).Set(PaymentThreshold),
+		paymentTolerance:         PaymentTolerance,
+		earlyPayment:             EarlyPayment,
+		disconnectLimit:          percentOf(100+PaymentTolerance, PaymentThreshold),
+		logger:                   Logger,
+		store:                    Store,
+		pricing:                  Pricing,
+		metrics:                  newMetrics(),
+		refreshRate:              new(big.Int).Set(refreshRate),
+		lightRefreshRate:         new(big.Int).Div(refreshRate, big.NewInt(lightFactor)),
+		timeNow:                  time.Now,
+		minimumPayment:           new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
+		p2p:                      p2pService,
+		thresholdGrowChange:      new(big.Int).Mul(refreshRate, big.NewInt(linearCheckpointNumber)),
+		thresholdGrowStep:        new(big.Int).Mul(refreshRate, big.NewInt(linearCheckpointStep)),
+		lightPaymentThreshold:    new(big.Int).Set(lightPaymentThreshold),
+		lightDisconnectLimit:     percentOf(100+PaymentTolerance, lightPaymentThreshold),
+		lightThresholdGrowChange: new(big.Int).Mul(lightRefreshRate, big.NewInt(linearCheckpointNumber)),
+		lightThresholdGrowStep:   new(big.Int).Mul(lightRefreshRate, big.NewInt(linearCheckpointStep)),
 	}, nil
 }
 
@@ -524,18 +555,63 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			reservedBalance:       big.NewInt(0),
-			shadowReservedBalance: big.NewInt(0),
-			ghostBalance:          big.NewInt(0),
+			reservedBalance:         big.NewInt(0),
+			shadowReservedBalance:   big.NewInt(0),
+			ghostBalance:            big.NewInt(0),
+			totalDebtRepay:          big.NewInt(0),
+			paymentThreshold:        new(big.Int).Set(a.paymentThreshold),
+			paymentThresholdForPeer: new(big.Int).Set(a.paymentThreshold),
+			disconnectLimit:         new(big.Int).Set(a.disconnectLimit),
+			thresholdGrowAt:         new(big.Int).Set(a.thresholdGrowStep),
 			// initially assume the peer has the same threshold as us
-			paymentThreshold: new(big.Int).Set(a.paymentThreshold),
-			earlyPayment:     new(big.Int).Div(new(big.Int).Mul(a.paymentThreshold, big.NewInt(100-a.earlyPayment)), big.NewInt(100)),
-			connected:        false,
+			earlyPayment: percentOf(100-a.earlyPayment, a.paymentThreshold),
+			connected:    false,
 		}
 		a.accountingPeers[peer.String()] = peerData
 	}
 
 	return peerData
+}
+
+// notifyPaymentThresholdUpgrade is used when cumulative debt settled by peer reaches current checkpoint,
+// to set the next checkpoint and increase the payment threshold given by 1 * refreshment rate
+// must be called under accountingPeer lock
+func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
+
+	// get appropriate linear growth limit based on whether the peer is a full node or a light node
+	thresholdGrowChange := new(big.Int).Set(a.thresholdGrowChange)
+	if !accountingPeer.fullNode {
+		thresholdGrowChange.Set(a.lightThresholdGrowChange)
+	}
+
+	// if current checkpoint already passed linear growth limit, set next checkpoint exponentially
+	if accountingPeer.thresholdGrowAt.Cmp(thresholdGrowChange) >= 0 {
+		accountingPeer.thresholdGrowAt = new(big.Int).Mul(accountingPeer.thresholdGrowAt, big.NewInt(2))
+	} else {
+		// otherwise set next linear checkpoint
+		if accountingPeer.fullNode {
+			accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.thresholdGrowStep)
+		} else {
+			accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.lightThresholdGrowStep)
+		}
+	}
+
+	// get appropriate refresh rate
+	refreshRate := new(big.Int).Set(a.refreshRate)
+	if !accountingPeer.fullNode {
+		refreshRate = new(big.Int).Set(a.lightRefreshRate)
+	}
+
+	// increase given threshold by refresh rate
+	accountingPeer.paymentThresholdForPeer = new(big.Int).Add(accountingPeer.paymentThresholdForPeer, refreshRate)
+	// recalculate disconnectLimit for peer
+	accountingPeer.disconnectLimit = percentOf(100+a.paymentTolerance, accountingPeer.paymentThresholdForPeer)
+
+	// announce new payment threshold to peer
+	err := a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
+	if err != nil {
+		a.logger.Errorf("announcing increased payment threshold of %d to peer %v: %v", accountingPeer.paymentThresholdForPeer, peer, err)
+	}
 }
 
 // Balances gets balances for all peers from store.
@@ -563,6 +639,56 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	return s, nil
+}
+
+type PeerInfo struct {
+	Balance               *big.Int
+	ThresholdReceived     *big.Int
+	ThresholdGiven        *big.Int
+	SurplusBalance        *big.Int
+	ReservedBalance       *big.Int
+	ShadowReservedBalance *big.Int
+	GhostBalance          *big.Int
+}
+
+func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
+	s := make(map[string]PeerInfo)
+
+	a.accountingPeersMu.Lock()
+	defer a.accountingPeersMu.Unlock()
+
+	for peer, accountingPeer := range a.accountingPeers {
+
+		peerAddress := swarm.MustParseHexAddress(peer)
+
+		balance, err := a.Balance(peerAddress)
+		if errors.Is(err, ErrPeerNoBalance) {
+			balance = big.NewInt(0)
+		} else if err != nil {
+			return nil, err
+		}
+
+		surplusBalance, err := a.SurplusBalance(peerAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		accountingPeer.lock.Lock()
+
+		s[peer] = PeerInfo{
+			Balance:               new(big.Int).Set(balance),
+			ThresholdReceived:     new(big.Int).Set(accountingPeer.paymentThreshold),
+			ThresholdGiven:        new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
+			SurplusBalance:        new(big.Int).Set(surplusBalance),
+			ReservedBalance:       new(big.Int).Set(accountingPeer.reservedBalance),
+			ShadowReservedBalance: new(big.Int).Set(accountingPeer.shadowReservedBalance),
+			GhostBalance:          new(big.Int).Set(accountingPeer.ghostBalance),
+		}
+
+		accountingPeer.lock.Unlock()
 	}
 
 	return s, nil
@@ -796,7 +922,7 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentThreshold.Set(paymentThreshold)
-	accountingPeer.earlyPayment.Set(new(big.Int).Div(new(big.Int).Mul(paymentThreshold, big.NewInt(100-a.earlyPayment)), big.NewInt(100)))
+	accountingPeer.earlyPayment.Set(percentOf(100-a.earlyPayment, paymentThreshold))
 	return nil
 }
 
@@ -806,6 +932,12 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
+
+	accountingPeer.totalDebtRepay = new(big.Int).Add(accountingPeer.totalDebtRepay, amount)
+
+	if accountingPeer.totalDebtRepay.Cmp(accountingPeer.thresholdGrowAt) > 0 {
+		a.notifyPaymentThresholdUpgrade(peer, accountingPeer)
+	}
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
@@ -879,6 +1011,12 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
+
+	accountingPeer.totalDebtRepay = new(big.Int).Add(accountingPeer.totalDebtRepay, amount)
+
+	if accountingPeer.totalDebtRepay.Cmp(accountingPeer.thresholdGrowAt) > 0 {
+		a.notifyPaymentThresholdUpgrade(peer, accountingPeer)
+	}
 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
@@ -1016,7 +1154,7 @@ func (d *debitAction) Apply() error {
 	a.metrics.TotalDebitedAmount.Add(tot)
 	a.metrics.DebitEventsCount.Inc()
 
-	if nextBalance.Cmp(a.disconnectLimit) >= 0 {
+	if nextBalance.Cmp(d.accountingPeer.disconnectLimit) >= 0 {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsOverdrawCount.Inc()
 
@@ -1042,7 +1180,7 @@ func (d *debitAction) Cleanup() {
 	a := d.accounting
 	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 	d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
-	if d.accountingPeer.ghostBalance.Cmp(a.disconnectLimit) > 0 {
+	if d.accountingPeer.ghostBalance.Cmp(d.accountingPeer.disconnectLimit) > 0 {
 		a.metrics.AccountingDisconnectsGhostOverdrawCount.Inc()
 		_ = a.blocklist(d.peer, 1, "ghost overdraw")
 	}
@@ -1080,17 +1218,31 @@ func (a *Accounting) blocklist(peer swarm.Address, multiplier int64, reason stri
 	return a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, reason)
 }
 
-func (a *Accounting) Connect(peer swarm.Address) {
+func (a *Accounting) Connect(peer swarm.Address, fullNode bool) {
 	accountingPeer := a.getAccountingPeer(peer)
 	zero := big.NewInt(0)
 
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
+	paymentThreshold := new(big.Int).Set(a.paymentThreshold)
+	thresholdGrowStep := new(big.Int).Set(a.thresholdGrowStep)
+	disconnectLimit := new(big.Int).Set(a.disconnectLimit)
+
+	if !fullNode {
+		paymentThreshold.Set(a.lightPaymentThreshold)
+		thresholdGrowStep.Set(a.lightThresholdGrowStep)
+		disconnectLimit.Set(a.lightDisconnectLimit)
+	}
+
 	accountingPeer.connected = true
+	accountingPeer.fullNode = fullNode
 	accountingPeer.shadowReservedBalance.Set(zero)
 	accountingPeer.ghostBalance.Set(zero)
 	accountingPeer.reservedBalance.Set(zero)
+	accountingPeer.paymentThresholdForPeer.Set(paymentThreshold)
+	accountingPeer.thresholdGrowAt.Set(thresholdGrowStep)
+	accountingPeer.disconnectLimit.Set(disconnectLimit)
 
 	err := a.store.Put(peerBalanceKey(peer), zero)
 	if err != nil {
@@ -1179,4 +1331,8 @@ func (a *Accounting) SetPayFunc(f PayFunc) {
 func (a *Accounting) Close() error {
 	a.wg.Wait()
 	return nil
+}
+
+func percentOf(percent int64, of *big.Int) *big.Int {
+	return new(big.Int).Div(new(big.Int).Mul(of, big.NewInt(percent)), big.NewInt(100))
 }
