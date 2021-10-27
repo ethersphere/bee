@@ -15,7 +15,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var (
+const (
 	errCantBalances   = "Cannot get balances"
 	errCantBalance    = "Cannot get balance"
 	errNoBalance      = "No balance for peer"
@@ -23,8 +23,10 @@ var (
 )
 
 type balanceResponse struct {
-	Peer    string         `json:"peer"`
-	Balance *bigint.BigInt `json:"balance"`
+	Peer              string         `json:"peer"`
+	Balance           *bigint.BigInt `json:"balance"`
+	ThresholdReceived *bigint.BigInt `json:"thresholdreceived"`
+	ThresholdGiven    *bigint.BigInt `json:"thresholdgiven"`
 }
 
 type balancesResponse struct {
