@@ -217,7 +217,7 @@ func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 	return s.balances, nil
 }
 
-func (s *Service) Connect(peer swarm.Address) {
+func (s *Service) Connect(peer swarm.Address, full bool) {
 
 }
 
