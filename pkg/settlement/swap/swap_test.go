@@ -82,7 +82,7 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 	}
 }
 
-func (t *testObserver) Connect(peer swarm.Address) {
+func (t *testObserver) Connect(peer swarm.Address, full bool) {
 
 }
 

@@ -102,7 +102,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 		s.peers[p.Address.String()] = peerData
 	}
 
-	go s.accounting.Connect(p.Address)
+	go s.accounting.Connect(p.Address, p.FullNode)
 	return nil
 }
 
