@@ -130,13 +130,13 @@ type accountingPeer struct {
 	shadowReservedBalance          *big.Int // amount potentially to be debited for active peer interaction
 	ghostBalance                   *big.Int // amount potentially could have been debited for but was not
 	paymentThreshold               *big.Int // the threshold at which the peer expects us to pay
-	earlyPayment                   *big.Int
-	refreshTimestamp               int64 // last time we attempted time-based settlement
-	paymentOngoing                 bool  // indicate if we are currently settling with the peer
-	lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
-	connected                      bool
+	earlyPayment                   *big.Int // individual early payment threshold calculated from from payment threshold and early payment percentage
 	paymentThresholdForPeer        *big.Int // individual payment threshold at which the peer is expected to pay
 	disconnectLimit                *big.Int // individual disconnect threshold calculated from tolerance and payment threshold for peer
+	refreshTimestamp               int64    // last time we attempted time-based settlement
+	paymentOngoing                 bool     // indicate if we are currently settling with the peer
+	lastSettlementFailureTimestamp int64    // time of last unsuccessful attempt to issue a cheque
+	connected                      bool     // indicates whether the peer is currently connected
 	fullNode                       bool     // the peer connected as full node or light node
 	totalDebtRepay                 *big.Int // since being connected, amount of cumulative debt settled by the peer
 	thresholdGrowAt                *big.Int // cumulative debt to be settled by the peer in order to give threshold upgrade
