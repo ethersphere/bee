@@ -711,7 +711,6 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 	a.accountingPeersMu.Unlock()
 
 	for peer, accountingPeer := range accountingPeersList {
-
 		peerAddress := swarm.MustParseHexAddress(peer)
 
 		balance, err := a.Balance(peerAddress)
