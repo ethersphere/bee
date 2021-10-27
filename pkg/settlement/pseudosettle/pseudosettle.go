@@ -275,15 +275,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		lastTime.Timestamp = 0
 	}
 
-	// check whether at least 1 second have passed since last refresh according to own timestamp and peers timestamp
-	currentTime := s.timeNow().Unix()
-	if currentTime <= lastTime.CheckTimestamp || currentTime <= lastTime.Timestamp {
-		// if not, return error too soon
-		// this is to avoid the peer receiving 2 refresh attempts from our node in the same second
-		// of which the second one would be refused and would lead to a disconnect from our node's enforcement of refreshments
-		return nil, 0, ErrSettlementTooSoon
-	}
-
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, 0, err
@@ -316,7 +307,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		return nil, 0, err
 	}
 
-	checkTime := s.timeNow().Unix()
+	checkTime := s.timeNow().UnixMilli()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
@@ -324,14 +315,14 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		return nil, 0, err
 	}
 
-	experiencedInterval := checkTime - lastTime.CheckTimestamp
+	experiencedInterval := checkTime/1000 - lastTime.CheckTimestamp
 	allegedInterval := paymentAck.Timestamp - lastTime.Timestamp
 
 	if allegedInterval < 0 {
 		return nil, 0, ErrTimeOutOfSyncAlleged
 	}
 
-	experienceDifferenceRecent := paymentAck.Timestamp - checkTime
+	experienceDifferenceRecent := paymentAck.Timestamp - checkTime/1000
 
 	if experienceDifferenceRecent < -2 || experienceDifferenceRecent > 2 {
 		return nil, 0, ErrTimeOutOfSyncRecent
@@ -357,7 +348,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
 	lastTime.Timestamp = paymentAck.Timestamp
-	lastTime.CheckTimestamp = checkTime
+	lastTime.CheckTimestamp = checkTime / 1000
 
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), lastTime)
 	if err != nil {
@@ -368,7 +359,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 	s.metrics.SentPseudoSettlements.Inc()
 
-	return acceptedAmount, lastTime.CheckTimestamp, nil
+	return acceptedAmount, checkTime, nil
 }
 
 func (s *Service) SetAccounting(accounting settlement.Accounting) {

@@ -13,8 +13,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 )
@@ -53,12 +53,13 @@ func TestAccountingInfo(t *testing.T) {
 		return ret, nil
 	}
 
-	testServer := newTestServer(t, testServerOptions{
+	testServer, _, _, _ := newTestServer(t, testServerOptions{
+		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithPeerAccountingFunc(accountingFunc)},
 	})
 
-	expected := &debugapi.PeerData{
-		InfoResponse: map[string]debugapi.PeerDataResponse{
+	expected := &api.PeerData{
+		InfoResponse: map[string]api.PeerDataResponse{
 			"BEEF": {
 				Balance:               bigint.Wrap(big.NewInt(25)),
 				ThresholdReceived:     bigint.Wrap(big.NewInt(37)),
@@ -90,8 +91,8 @@ func TestAccountingInfo(t *testing.T) {
 	}
 
 	// We expect a list of items unordered by peer:
-	var got *debugapi.PeerData
-	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/accounting", http.StatusOK,
+	var got *api.PeerData
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/accounting", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -106,13 +107,14 @@ func TestAccountingInfoError(t *testing.T) {
 	accountingFunc := func() (map[string]accounting.PeerInfo, error) {
 		return nil, wantErr
 	}
-	testServer := newTestServer(t, testServerOptions{
+	testServer, _, _, _ := newTestServer(t, testServerOptions{
+		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithPeerAccountingFunc(accountingFunc)},
 	})
 
-	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/accounting", http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/accounting", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.HttpErrGetAccountingInfo,
+			Message: api.HttpErrGetAccountingInfo,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
