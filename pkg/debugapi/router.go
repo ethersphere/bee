@@ -260,6 +260,10 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
+	router.Handle("/accounting", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.accountingInfoHandler),
+	})
+
 	return router
 }
 
