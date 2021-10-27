@@ -70,6 +70,9 @@ func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int
 	return nil
 }
 
+func (t *testObserver) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, amount *big.Int, timestamp int64, allegedInterval int64, receivedError error) {
+}
+
 func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int, time int64) error {
 	return nil
 }

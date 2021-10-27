@@ -12,7 +12,6 @@ type (
 	SocPostResponse       = socPostResponse
 	FeedReferenceResponse = feedReferenceResponse
 	BzzUploadResponse     = bzzUploadResponse
-	TagResponse           = tagResponse
 	DebugTagResponse      = debugTagResponse
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
