@@ -86,7 +86,6 @@ type (
 	TransactionInfo                   = transactionInfo
 	TransactionPendingList            = transactionPendingList
 	TransactionHashResponse           = transactionHashResponse
-	TagResponse                       = tagResponse
 	ReserveStateResponse              = reserveStateResponse
 	ChainStateResponse                = chainStateResponse
 	PostageCreateResponse             = postageCreateResponse
