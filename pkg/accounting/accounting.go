@@ -542,9 +542,9 @@ func (a *Accounting) NotifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 	accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.thresholdGrowStep)
 	accountingPeer.paymentThresholdForPeer = new(big.Int).Add(accountingPeer.paymentThresholdForPeer, a.refreshRate)
 	accountingPeer.disconnectLimit = new(big.Int).Add(accountingPeer.paymentThresholdForPeer, a.paymentTolerance)
-	go func() {
-		_ = a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
-	}()
+	go func(pt *big.Int) {
+		_ = a.pricing.AnnouncePaymentThreshold(context.Background(), peer, pt)
+	}(accountingPeer.paymentThresholdForPeer)
 }
 
 // Balances gets balances for all peers from store.
