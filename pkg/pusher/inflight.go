@@ -13,13 +13,11 @@ import (
 type inflight struct {
 	mtx      sync.Mutex
 	inflight map[string]struct{}
-	slots    chan struct{}
 }
 
 func newInflight() *inflight {
 	return &inflight{
 		inflight: make(map[string]struct{}),
-		slots:    make(chan struct{}, concurrentPushes),
 	}
 }
 
@@ -27,7 +25,6 @@ func (i *inflight) delete(ch swarm.Chunk) {
 	i.mtx.Lock()
 	delete(i.inflight, ch.Address().ByteString())
 	i.mtx.Unlock()
-	<-i.slots
 }
 
 func (i *inflight) set(addr []byte) bool {
@@ -39,7 +36,6 @@ func (i *inflight) set(addr []byte) bool {
 	}
 	i.inflight[key] = struct{}{}
 	i.mtx.Unlock()
-	i.slots <- struct{}{}
 	return false
 }
 
