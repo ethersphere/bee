@@ -42,6 +42,7 @@ type Service struct {
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
 	attempts          *attempts
+	sem               chan struct{}
 }
 
 var (
@@ -70,6 +71,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
 		attempts:          &attempts{attempts: make(map[string]int)},
+		sem:               make(chan struct{}, concurrentPushes),
 	}
 	go p.chunksWorker(warmupTime, tracer)
 	return p
@@ -137,13 +139,20 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				s.logger.Errorf("pusher: set sync: %w", err)
 			}
 		}
-
+		select {
+		case s.sem <- struct{}{}:
+		case <-s.quit:
+			return
+		}
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
 		wg.Add(1)
 		go func(ctx context.Context, ch swarm.Chunk) {
-			defer wg.Done()
+			defer func() {
+				wg.Done()
+				<-s.sem
+			}()
 			if err := s.pushChunk(ctx, ch, logger); err != nil {
 				repeat()
 				s.metrics.TotalErrors.Inc()
