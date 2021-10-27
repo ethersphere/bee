@@ -142,10 +142,11 @@ func bootstrapNode(
 	p2ps.SetPickyNotifier(kad)
 
 	paymentThreshold, _ := new(big.Int).SetString(o.PaymentThreshold, 10)
+	lightPaymentThreshold := new(big.Int).Div(paymentThreshold, big.NewInt(lightFactor))
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
+	pricing := pricing.New(p2ps, logger, paymentThreshold, lightPaymentThreshold, big.NewInt(minPaymentThreshold))
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
@@ -158,6 +159,7 @@ func bootstrapNode(
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
+		lightFactor,
 		p2ps,
 	)
 	if err != nil {

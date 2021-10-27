@@ -69,6 +69,8 @@ type (
 	WelcomeMessageRequest             = welcomeMessageRequest
 	WelcomeMessageResponse            = welcomeMessageResponse
 	BalancesResponse                  = balancesResponse
+	PeerDataResponse                  = peerDataResponse
+	PeerData                          = peerData
 	BalanceResponse                   = balanceResponse
 	SettlementResponse                = settlementResponse
 	SettlementsResponse               = settlementsResponse
@@ -84,6 +86,7 @@ type (
 	TransactionInfo                   = transactionInfo
 	TransactionPendingList            = transactionPendingList
 	TransactionHashResponse           = transactionHashResponse
+	TagResponse                       = tagResponse
 	ReserveStateResponse              = reserveStateResponse
 	ChainStateResponse                = chainStateResponse
 	PostageCreateResponse             = postageCreateResponse
@@ -98,6 +101,7 @@ type (
 var (
 	ErrCantBalance           = errCantBalance
 	ErrCantBalances          = errCantBalances
+	HttpErrGetAccountingInfo = httpErrGetAccountingInfo
 	ErrNoBalance             = errNoBalance
 	ErrCantSettlementsPeer   = errCantSettlementsPeer
 	ErrCantSettlements       = errCantSettlements
