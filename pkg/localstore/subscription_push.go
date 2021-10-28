@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/flipflop"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -31,27 +30,27 @@ import (
 // Returned stop function will terminate current and further iterations, and also it will close
 // the returned channel without any errors. Make sure that you check the second returned parameter
 // from the channel to stop iteration when its value is false.
-func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
+func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, reset, stop func()) {
 	db.metrics.SubscribePush.Inc()
 
 	chunks := make(chan swarm.Chunk)
-	in, out, clean := flipflop.NewFallingEdge(flipFlopBufferDuration, flipFlopWorstCaseDuration)
-
-	db.pushTriggersMu.Lock()
-	db.pushTriggers = append(db.pushTriggers, in)
-	db.pushTriggersMu.Unlock()
+	trigger := make(chan struct{}, 1)
+	resetC := make(chan struct{}, 1)
 
 	// send signal for the initial iteration
-	in <- struct{}{}
+	trigger <- struct{}{}
+
+	db.pushTriggersMu.Lock()
+	db.pushTriggers = append(db.pushTriggers, trigger)
+	db.pushTriggersMu.Unlock()
 
 	stopChan := make(chan struct{})
 	var stopChanOnce sync.Once
 
-	db.subscritionsWG.Add(1)
+	db.subscriptionsWG.Add(1)
 	go func() {
-		defer clean()
-		defer db.subscritionsWG.Done()
 		defer db.metrics.SubscribePushIterationDone.Inc()
+		defer db.subscriptionsWG.Done()
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
@@ -60,16 +59,39 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 		var sinceItem *shed.Item
 		for {
 			select {
-			case <-out:
+			case <-stopChan:
+				// terminate the subscription
+				// on stop
+				return
+			case <-db.close:
+				// terminate the subscription
+				// on database close
+				return
+			case <-ctx.Done():
+				err := ctx.Err()
+				if err != nil {
+					db.logger.Debugf("localstore push subscription iteration: %v", err)
+				}
+				return
+			case <-resetC:
+				sinceItem = nil
+				select {
+				case trigger <- struct{}{}:
+				default:
+				}
+			case <-trigger:
 				// iterate until:
 				// - last index Item is reached
 				// - subscription stop is called
-				// - context is done.met
+				// - context is done
 				db.metrics.SubscribePushIteration.Inc()
 
 				iterStart := time.Now()
 				var count int
 				err := db.pushIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+					if skipf(item.Address) {
+						return false, nil
+					}
 					// get chunk data
 					dataItem, err := db.retrievalDataIndex.Get(item)
 					if err != nil {
@@ -110,20 +132,6 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 					return
 				}
 
-			case <-stopChan:
-				// terminate the subscription
-				// on stop
-				return
-			case <-db.close:
-				// terminate the subscription
-				// on database close
-				return
-			case <-ctx.Done():
-				err := ctx.Err()
-				if err != nil {
-					db.logger.Debugf("localstore push subscription iteration: %v", err)
-				}
-				return
 			}
 		}
 	}()
@@ -137,14 +145,19 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 		defer db.pushTriggersMu.Unlock()
 
 		for i, t := range db.pushTriggers {
-			if t == in {
+			if t == trigger {
 				db.pushTriggers = append(db.pushTriggers[:i], db.pushTriggers[i+1:]...)
 				break
 			}
 		}
 	}
-
-	return chunks, stop
+	reset = func() {
+		select {
+		case resetC <- struct{}{}:
+		default:
+		}
+	}
+	return chunks, reset, stop
 }
 
 // triggerPushSubscriptions is used internally for starting iterations
@@ -153,7 +166,6 @@ func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop fun
 func (db *DB) triggerPushSubscriptions() {
 	db.pushTriggersMu.RLock()
 	defer db.pushTriggersMu.RUnlock()
-
 	for _, t := range db.pushTriggers {
 		select {
 		case t <- struct{}{}:

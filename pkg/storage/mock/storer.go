@@ -298,7 +298,7 @@ func (m *MockStorer) SubscribePullCalls() int {
 	return m.subPullCalls
 }
 
-func (m *MockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
+func (m *MockStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func()) {
 	panic("not implemented") // TODO: Implement
 }
 

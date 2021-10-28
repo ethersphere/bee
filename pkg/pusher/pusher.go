@@ -79,6 +79,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 func (s *Service) chunksWorker(warmupTime time.Duration) {
 	var (
 		chunks        <-chan swarm.Chunk
+		repeat        func()
 		unsubscribe   func()
 		timer         = time.NewTimer(0) // timer, initially set to 0 to fall through select case on timer.C for initialisation
 		chunksInBatch = -1
@@ -91,6 +92,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 		logger        *logrus.Entry
 		retryCounter  = make(map[string]int)
 	)
+	// and start iterating on Push index from the beginning
+	chunks, repeat, unsubscribe = s.storer.SubscribePush(ctx, func([]byte) bool { return false })
 
 	defer timer.Stop()
 	defer close(s.chunksWorkerQuitC)
@@ -200,6 +203,7 @@ LOOP:
 						}
 						delete(retryCounter, ch.Address().ByteString())
 					} else {
+						repeat()
 						s.metrics.TotalErrors.Inc()
 						s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 						logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
@@ -291,15 +295,7 @@ LOOP:
 			// initially timer is set to go off as well as every time we hit the end of push index
 			startTime := time.Now()
 
-			// if subscribe was running, stop it
-			if unsubscribe != nil {
-				unsubscribe()
-			}
-
 			chunksInBatch = 0
-
-			// and start iterating on Push index from the beginning
-			chunks, unsubscribe = s.storer.SubscribePush(ctx)
 
 			// reset timer to go off after retryInterval
 			timer.Reset(retryInterval)

@@ -61,10 +61,10 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 	// stop subscription when until chunk descriptor is reached
 	var errStopSubscription = errors.New("stop subscription")
 
-	db.subscritionsWG.Add(1)
+	db.subscriptionsWG.Add(1)
 	go func() {
 		defer clean()
-		defer db.subscritionsWG.Done()
+		defer db.subscriptionsWG.Done()
 		defer db.metrics.SubscribePullStop.Inc()
 		// close the returned store.Descriptor channel at the end to
 		// signal that the subscription is done
