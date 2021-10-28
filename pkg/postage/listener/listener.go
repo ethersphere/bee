@@ -26,9 +26,8 @@ import (
 )
 
 const (
-	blockPage       = 5000             // how many blocks to sync every time we page
-	tailSize        = 4                // how many blocks to tail from the tip of the chain
-	stallingTimeout = 10 * time.Minute // how long we tolerate stalling
+	blockPage = 5000 // how many blocks to sync every time we page
+	tailSize  = 4    // how many blocks to tail from the tip of the chain
 )
 
 var (
@@ -41,6 +40,8 @@ var (
 	batchDepthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
 	// priceUpdateTopic is the postage contract's price update event topic
 	priceUpdateTopic = postageStampABI.Events["PriceUpdate"].ID
+
+	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
 )
 
 type BlockHeightContractFilterer interface {
@@ -64,6 +65,7 @@ type listener struct {
 	wg                  sync.WaitGroup
 	metrics             metrics
 	shutdowner          Shutdowner
+	stallingTimeout     time.Duration
 }
 
 func New(
@@ -72,6 +74,7 @@ func New(
 	postageStampAddress common.Address,
 	blockTime uint64,
 	shutdowner Shutdowner,
+	stallingTimeout time.Duration,
 ) postage.Listener {
 	return &listener{
 		logger:              logger,
@@ -81,6 +84,7 @@ func New(
 		quit:                make(chan struct{}),
 		metrics:             newMetrics(),
 		shutdowner:          shutdowner,
+		stallingTimeout:     stallingTimeout,
 	}
 }
 
@@ -186,8 +190,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			// if for whatever reason we are stuck for too long we terminate
 			// this can happen because of rpc errors but also because of a stalled backend node
 			// this does not catch the case were a backend node is actively syncing but not caught up
-			if time.Since(lastProgress) >= stallingTimeout {
-				return errors.New("postage syncing stalled")
+			if time.Since(lastProgress) >= l.stallingTimeout {
+				return ErrPostageSyncingStalled
 			}
 
 			select {
