@@ -152,6 +152,7 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 		}
 	}
 	reset = func() {
+		time.Sleep(1 * time.Second) // give some time when retrying
 		select {
 		case resetC <- struct{}{}:
 		default:
