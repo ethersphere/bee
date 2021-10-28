@@ -38,7 +38,7 @@ const (
 )
 
 const (
-	maxPeers    = 3
+	maxPeers    = 8
 	maxAttempts = 16
 )
 
