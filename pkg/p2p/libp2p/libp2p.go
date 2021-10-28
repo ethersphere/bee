@@ -480,7 +480,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
-	s.reacher = reacher.New(s, n)
+	s.reacher = reacher.New(s, n, nil)
 	s.notifier = n
 }
 
