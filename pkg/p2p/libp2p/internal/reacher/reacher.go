@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Reacher package runs a background worker that will ping peers
+// Package reacher runs a background worker that will ping peers
 // from an internal queue and report back the reachability to the notifier.
 package reacher
 
@@ -17,12 +17,11 @@ import (
 )
 
 const (
-	pingTimeout     = time.Second * 5
-	pingMaxAttempts = 3
-	workers         = 8
+	pingTimeout        = time.Second * 5
+	pingMaxAttempts    = 3
+	workers            = 8
+	retryAfterDuration = time.Second * 15
 )
-
-var retryAfterDuration = time.Second * 15
 
 type peerState int
 
@@ -51,9 +50,18 @@ type reacher struct {
 
 	wg      sync.WaitGroup
 	metrics metrics
+
+	options *Options
 }
 
-func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
+type Options struct {
+	PingTimeout        time.Duration
+	PingMaxAttempts    int
+	Workers            int
+	RetryAfterDuration time.Duration
+}
+
+func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reacher {
 
 	r := &reacher{
 		work:     make(chan struct{}, 1),
@@ -63,6 +71,16 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier) *reacher {
 		notifier: notifier,
 		metrics:  newMetrics(),
 	}
+
+	if o == nil {
+		o = &Options{
+			PingTimeout:        pingTimeout,
+			PingMaxAttempts:    pingMaxAttempts,
+			Workers:            workers,
+			RetryAfterDuration: retryAfterDuration,
+		}
+	}
+	r.options = o
 
 	r.wg.Add(1)
 	go r.manage()
@@ -80,8 +98,8 @@ func (r *reacher) manage() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r.wg.Add(workers)
-	for i := 0; i < workers; i++ {
+	r.wg.Add(r.options.Workers)
+	for i := 0; i < r.options.Workers; i++ {
 		go r.ping(c, ctx)
 	}
 
@@ -138,7 +156,7 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		)
 		r.mu.Unlock()
 
-		ctxt, cancel := context.WithTimeout(ctx, pingTimeout)
+		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
 		_, err := r.pinger.Ping(ctxt, p.addr)
 		cancel()
 
@@ -155,7 +173,7 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 
 		// max attempts have been reached
-		if attempts >= pingMaxAttempts {
+		if attempts >= r.options.PingMaxAttempts {
 			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPrivate)
 			r.deletePeer(p)
 			continue
@@ -164,7 +182,7 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		// mark peer as 'waiting', increase retry-after duration, and notify workers about more work
 		r.mu.Lock()
 		p.state = waiting
-		p.retryAfter = time.Now().Add(retryAfterDuration * time.Duration(attempts))
+		p.retryAfter = time.Now().Add(r.options.RetryAfterDuration * time.Duration(attempts))
 		r.mu.Unlock()
 
 		r.notifyManage()
