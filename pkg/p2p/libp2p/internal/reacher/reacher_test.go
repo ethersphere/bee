@@ -18,74 +18,64 @@ import (
 	"go.uber.org/atomic"
 )
 
-func TestPingSuccess(t *testing.T) {
-
-	var (
-		want = p2p.ReachabilityStatusPublic
-		done = make(chan struct{})
-	)
-
-	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
-		return 0, nil
-	}
-
-	reachableFunc := func(addr swarm.Address, got p2p.ReachabilityStatus) {
-		if got != want {
-			t.Fatalf("got %v, want %v", got, want)
-		}
-		close(done)
-	}
-
-	mock := newMock(pingFunc, reachableFunc)
-
-	r := reacher.New(mock, mock)
-	defer r.Close()
-
-	overlay := test.RandomAddress()
-
-	r.Connected(overlay, nil)
-
-	select {
-	case <-time.After(time.Second * 5):
-		t.Fatalf("test timed out")
-	case <-done:
-	}
+var defaultOptions = reacher.Options{
+	PingTimeout:        time.Second * 5,
+	PingMaxAttempts:    3,
+	Workers:            8,
+	RetryAfterDuration: time.Millisecond,
 }
 
-func TestPingFailure(t *testing.T) {
+func TestPingSuccess(t *testing.T) {
 
-	var (
-		want = p2p.ReachabilityStatusPrivate
-		done = make(chan struct{})
-	)
+	done := make(chan struct{})
 
-	defer func(t time.Duration) {
-		*reacher.RetryAfter = t
-	}(*reacher.RetryAfter)
-	*reacher.RetryAfter = time.Millisecond
+	for _, tc := range []struct {
+		name          string
+		pingFunc      func(context.Context, ma.Multiaddr) (time.Duration, error)
+		reachableFunc func(addr swarm.Address, got p2p.ReachabilityStatus)
+	}{
+		{
+			name: "ping success",
+			pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
+				return 0, nil
+			},
+			reachableFunc: func(addr swarm.Address, got p2p.ReachabilityStatus) {
+				if got != p2p.ReachabilityStatusPublic {
+					t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPublic)
+				}
+				done <- struct{}{}
+			},
+		},
+		{
+			name: "ping failure",
+			pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
+				return 0, errors.New("test error")
+			},
+			reachableFunc: func(addr swarm.Address, got p2p.ReachabilityStatus) {
+				if got != p2p.ReachabilityStatusPrivate {
+					t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPrivate)
+				}
+				done <- struct{}{}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 
-	pingFunc := func(context.Context, ma.Multiaddr) (time.Duration, error) {
-		return 0, errors.New("test error")
-	}
+			mock := newMock(tc.pingFunc, tc.reachableFunc)
 
-	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {
-		if b != want {
-			t.Fatalf("got %v, want %v", b, want)
-		}
-		close(done)
-	}
+			r := reacher.New(mock, mock, &defaultOptions)
+			defer r.Close()
 
-	mock := newMock(pingFunc, reachableFunc)
+			overlay := test.RandomAddress()
 
-	r := reacher.New(mock, mock)
-	defer r.Close()
+			r.Connected(overlay, nil)
 
-	r.Connected(test.RandomAddress(), nil)
-
-	select {
-	case <-time.After(time.Second * 5):
-		t.Fatalf("test timed out")
-	case <-done:
+			select {
+			case <-time.After(time.Second * 5):
+				t.Fatalf("test timed out")
+			case <-done:
+			}
+		})
 	}
 }
 
@@ -95,11 +85,6 @@ func TestDisconnected(t *testing.T) {
 		disconnectedOverlay = test.RandomAddress()
 		disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 	)
-
-	defer func(t time.Duration) {
-		*reacher.RetryAfter = t
-	}(*reacher.RetryAfter)
-	*reacher.RetryAfter = time.Millisecond * 5
 
 	/*
 		Because the Disconnected is called after Connected, it may be that one of the workers
@@ -123,7 +108,7 @@ func TestDisconnected(t *testing.T) {
 
 	mock := newMock(pingFunc, reachableFunc)
 
-	r := reacher.New(mock, mock)
+	r := reacher.New(mock, mock, &defaultOptions)
 	defer r.Close()
 
 	r.Connected(test.RandomAddress(), nil)
