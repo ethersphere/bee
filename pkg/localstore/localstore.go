@@ -159,7 +159,7 @@ type DB struct {
 	// wait for all subscriptions to finish before closing
 	// underlaying leveldb to prevent possible panics from
 	// iterators
-	subscritionsWG sync.WaitGroup
+	subscriptionsWG sync.WaitGroup
 
 	metrics metrics
 
@@ -563,7 +563,6 @@ func (db *DB) Close() (err error) {
 	done := make(chan struct{})
 	go func() {
 		db.updateGCWG.Wait()
-		db.subscritionsWG.Wait()
 		// wait for gc worker to
 		// return before closing the shed
 		<-db.collectGarbageWorkerDone
