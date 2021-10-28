@@ -14,9 +14,9 @@ do
   curl -s -o dump/"$i"/stamps.json "$i"-debug.localhost/stamps
 done
 kubectl -n local get pods > dump/kubectl_get_pods
-kubectl -n local logs bee-0 > dump/kubectl_logs_bee_0
-kubectl -n local logs bee-1 > dump/kubectl_logs_bee_1
-kubectl -n local logs bootnode-0 > dump/kubectl_logs_bootnode_0
+kubectl -n local logs bee-0-0 > dump/kubectl_logs_bee_0
+kubectl -n local logs bee-1-0 > dump/kubectl_logs_bee_1
+kubectl -n local logs bootnode-0-0 > dump/kubectl_logs_bootnode_0
 endpoint=$AWS_ENDPOINT
 if [[ "$endpoint" != http* ]]
 then
