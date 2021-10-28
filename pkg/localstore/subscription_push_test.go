@@ -282,7 +282,7 @@ func TestDB_SubscribePush_iterator_restart(t *testing.T) {
 			}
 		}
 	}
-	consume(0) //first pass
+	consume(0) // first pass
 	restart()  // trigger again and expect all 10 entries to be iterated on
 	consume(0)
 
