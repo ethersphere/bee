@@ -663,6 +663,8 @@ func (k *Kad) Start(_ context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
+	k.AddPeers(k.previouslyConnected()...)
+
 	go func() {
 		select {
 		case <-k.halt:
@@ -697,6 +699,23 @@ func (k *Kad) Start(_ context.Context) error {
 	k.notifyManageLoop()
 
 	return nil
+}
+
+func (k *Kad) previouslyConnected() []swarm.Address {
+
+	now := time.Now()
+	ss := k.collector.Snapshot(now)
+	k.logger.Tracef("kademlia: getting metrics snapshot took %s", time.Since(now))
+
+	var peers []swarm.Address
+
+	for addr, p := range ss {
+		if p.ConnectionTotalDuration > 0 {
+			peers = append(peers, swarm.NewAddress([]byte(addr)))
+		}
+	}
+
+	return peers
 }
 
 func (k *Kad) connectBootNodes(ctx context.Context) {
