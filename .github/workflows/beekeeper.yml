@@ -207,6 +207,426 @@ jobs:
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+  beekeeper-clef-1:
+    name: Integration tests (clef enabled)
+    env:
+      REPLICA: 3
+      RUN_TYPE: "PR RUN"
+      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_METRICS_ENABLED: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 1
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action == 'beekeeper'
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+          fetch-depth: 1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.19.5+k3s2
+          key: k3s-v1.19.5+k3s2
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
+          patch pkg/postage/service.go .github/patches/postageservice.patch
+      - name: Prepare testing cluster (Node connection and clef enabled)
+        run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
+      - name: Test pingpong
+        id: pingpong
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
+      - name: Debug workflow if failed
+        if: failure()
+        run: |
+          export BUCKET_NAME=beekeeper-artifacts
+          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
+          export VERTAG=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
+          bash .github/bin/beekeeper_artifacts.sh
+          export FAILED='no-test'
+          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "Failed test: ${FAILED}"
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+  beekeeper-clef-2:
+    name: Integration tests (clef enabled)
+    env:
+      REPLICA: 3
+      RUN_TYPE: "PR RUN"
+      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_METRICS_ENABLED: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 1
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action == 'beekeeper'
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+          fetch-depth: 1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.19.5+k3s2
+          key: k3s-v1.19.5+k3s2
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
+          patch pkg/postage/service.go .github/patches/postageservice.patch
+      - name: Prepare testing cluster (Node connection and clef enabled)
+        run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
+      - name: Test pingpong
+        id: pingpong
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
+      - name: Debug workflow if failed
+        if: failure()
+        run: |
+          export BUCKET_NAME=beekeeper-artifacts
+          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
+          export VERTAG=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
+          bash .github/bin/beekeeper_artifacts.sh
+          export FAILED='no-test'
+          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "Failed test: ${FAILED}"
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+  beekeeper-clef-3:
+    name: Integration tests (clef enabled)
+    env:
+      REPLICA: 3
+      RUN_TYPE: "PR RUN"
+      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_METRICS_ENABLED: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 1
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action == 'beekeeper'
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+          fetch-depth: 1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.19.5+k3s2
+          key: k3s-v1.19.5+k3s2
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
+          patch pkg/postage/service.go .github/patches/postageservice.patch
+      - name: Prepare testing cluster (Node connection and clef enabled)
+        run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
+      - name: Test pingpong
+        id: pingpong
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
+      - name: Debug workflow if failed
+        if: failure()
+        run: |
+          export BUCKET_NAME=beekeeper-artifacts
+          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
+          export VERTAG=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
+          bash .github/bin/beekeeper_artifacts.sh
+          export FAILED='no-test'
+          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "Failed test: ${FAILED}"
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+  beekeeper-clef-4:
+    name: Integration tests (clef enabled)
+    env:
+      REPLICA: 3
+      RUN_TYPE: "PR RUN"
+      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_METRICS_ENABLED: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 1
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action == 'beekeeper'
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+          fetch-depth: 1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.19.5+k3s2
+          key: k3s-v1.19.5+k3s2
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
+          patch pkg/postage/service.go .github/patches/postageservice.patch
+      - name: Prepare testing cluster (Node connection and clef enabled)
+        run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
+      - name: Test pingpong
+        id: pingpong
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
+      - name: Debug workflow if failed
+        if: failure()
+        run: |
+          export BUCKET_NAME=beekeeper-artifacts
+          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
+          export VERTAG=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
+          bash .github/bin/beekeeper_artifacts.sh
+          export FAILED='no-test'
+          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "Failed test: ${FAILED}"
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+  beekeeper-clef-5:
+    name: Integration tests (clef enabled)
+    env:
+      REPLICA: 3
+      RUN_TYPE: "PR RUN"
+      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_METRICS_ENABLED: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 1
+      - name: Checkout
+        uses: actions/checkout@v2
+        if: github.event.action == 'beekeeper'
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+          fetch-depth: 1
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.19.5+k3s2
+          key: k3s-v1.19.5+k3s2
+      - name: Cache Go modules
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+      - name: Apply patches
+        run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/listener/listener.go .github/patches/listener.patch
+          patch pkg/postage/service.go .github/patches/postageservice.patch
+      - name: Prepare testing cluster (Node connection and clef enabled)
+        run: |
+          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout 10m make beelocal OPTS='ci skip-vet'
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          make beelocal ACTION=add-hosts
+          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
+      - name: Test pingpong
+        id: pingpong
+        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+      - name: Test settlements
+        id: settlements
+        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
+      - name: Debug workflow if failed
+        if: failure()
+        run: |
+          export BUCKET_NAME=beekeeper-artifacts
+          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+          export AWS_EC2_METADATA_DISABLED=true
+          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
+          export VERTAG=$(< /dev/urandom tr -dc A-Z-a-z-0-9 2> /dev/null | head -c15)
+          bash .github/bin/beekeeper_artifacts.sh
+          export FAILED='no-test'
+          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          echo "Failed test: ${FAILED}"
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
   beekeeper-si:
     name: Integration tests (storage incentives)
     env:
