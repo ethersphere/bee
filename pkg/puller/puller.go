@@ -205,6 +205,11 @@ func (p *Puller) disconnectPeer(peer swarm.Address, po uint8) {
 		syncCtx.gone()
 	}
 	delete(p.syncPeers[po], peer.ByteString())
+
+	// delete the peer cursors
+	p.cursorsMtx.Lock()
+	delete(p.cursors, peer.ByteString())
+	p.cursorsMtx.Unlock()
 }
 
 func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) (dontSync bool) {
