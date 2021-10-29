@@ -29,7 +29,7 @@ var (
 	balancesOriginatedPrefix           = "accounting_originatedbalance_"
 	// fraction of the refresh rate that is the minimum for monetary settlement
 	// this value is chosen so that tiny payments are prevented while still allowing small payments in environments with lower payment thresholds
-	minimumPaymentDivisor    = int64(5)
+	minimumPaymentDivisor    = int64(20)
 	failedSettlementInterval = int64(10) // seconds
 )
 
