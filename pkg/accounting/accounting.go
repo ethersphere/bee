@@ -55,6 +55,8 @@ type Interface interface {
 	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
 	CompensatedBalances() (map[string]*big.Int, error)
+	// AccountingInfos returns the array of peer associated values for all current accounting peers in memory
+	AccountingInfo() (map[string]PeerInfo, error)
 }
 
 // Action represents an accounting action that can be applied
@@ -637,6 +639,72 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 		return nil, err
 	}
 
+	return s, nil
+}
+
+type PeerInfo struct {
+	Peer                  string
+	Balance               *big.Int
+	ThresholdReceived     *big.Int
+	ThresholdGiven        *big.Int
+	SurplusBalance        *big.Int
+	ReservedBalance       *big.Int
+	ShadowReservedBalance *big.Int
+	GhostBalance          *big.Int
+}
+
+func (a *Accounting) AccountingInfo() (map[string]PeerInfo, error) {
+	s := make(map[string]PeerInfo)
+
+	a.accountingPeersMu.Lock()
+	defer a.accountingPeersMu.Unlock()
+
+	for peer, accountingPeer := range a.accountingPeers {
+
+		peerAddress := swarm.MustParseHexAddress(peer)
+
+		balance, err := a.Balance(peerAddress)
+		if err != nil {
+			return nil, err
+		}
+		surplusBalance, err := a.SurplusBalance(peerAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		accountingPeer.lock.Lock()
+
+		s[peer] = PeerInfo{
+			Peer:                  peer,
+			Balance:               balance,
+			ThresholdReceived:     new(big.Int).Set(accountingPeer.paymentThreshold),
+			ThresholdGiven:        new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
+			SurplusBalance:        surplusBalance,
+			ReservedBalance:       new(big.Int).Set(accountingPeer.reservedBalance),
+			ShadowReservedBalance: new(big.Int).Set(accountingPeer.shadowReservedBalance),
+			GhostBalance:          new(big.Int).Set(accountingPeer.ghostBalance),
+		}
+
+		accountingPeer.lock.Unlock()
+
+		/*
+			lock                           sync.Mutex // lock to be held during any accounting action for this peer
+			reservedBalance                *big.Int   // amount currently reserved for active peer interaction
+			shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
+			ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
+			paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
+			paymentThresholdForPeer        *big.Int   // individual payment threshold at which the peer is expected to pay
+			disconnectLimit                *big.Int
+			refreshTimestamp               int64 // last time we attempted time-based settlement
+			paymentOngoing                 bool  // indicate if we are currently settling with the peer
+			lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
+			connected                      bool
+			fullNode                       bool
+			totalDebtRepay                 *big.Int
+			thresholdGrowAt                *big.Int
+		*/
+
+	}
 	return s, nil
 }
 
