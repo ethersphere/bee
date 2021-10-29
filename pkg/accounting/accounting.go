@@ -125,13 +125,14 @@ type Accounting struct {
 	// allowance based on time used in pseudo settle
 	refreshRate *big.Int
 	// lower bound for the value of issued cheques
-	minimumPayment    *big.Int
-	pricing           pricing.Interface
-	metrics           metrics
-	wg                sync.WaitGroup
-	p2p               p2p.Service
-	timeNow           func() time.Time
-	thresholdGrowStep *big.Int
+	minimumPayment      *big.Int
+	pricing             pricing.Interface
+	metrics             metrics
+	wg                  sync.WaitGroup
+	p2p                 p2p.Service
+	timeNow             func() time.Time
+	thresholdGrowStep   *big.Int
+	thresholdGrowChange *big.Int
 }
 
 var (
@@ -158,20 +159,21 @@ func NewAccounting(
 
 ) (*Accounting, error) {
 	return &Accounting{
-		accountingPeers:   make(map[string]*accountingPeer),
-		paymentThreshold:  new(big.Int).Set(PaymentThreshold),
-		paymentTolerance:  new(big.Int).Set(PaymentTolerance),
-		earlyPayment:      new(big.Int).Set(EarlyPayment),
-		disconnectLimit:   new(big.Int).Add(PaymentThreshold, PaymentTolerance),
-		logger:            Logger,
-		store:             Store,
-		pricing:           Pricing,
-		metrics:           newMetrics(),
-		refreshRate:       refreshRate,
-		timeNow:           time.Now,
-		minimumPayment:    new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
-		thresholdGrowStep: new(big.Int).Mul(refreshRate, big.NewInt(4)),
-		p2p:               p2pService,
+		accountingPeers:     make(map[string]*accountingPeer),
+		paymentThreshold:    new(big.Int).Set(PaymentThreshold),
+		paymentTolerance:    new(big.Int).Set(PaymentTolerance),
+		earlyPayment:        new(big.Int).Set(EarlyPayment),
+		disconnectLimit:     new(big.Int).Add(PaymentThreshold, PaymentTolerance),
+		thresholdGrowChange: new(big.Int).Mul(refreshRate, big.NewInt(72)),
+		logger:              Logger,
+		store:               Store,
+		pricing:             Pricing,
+		metrics:             newMetrics(),
+		refreshRate:         refreshRate,
+		timeNow:             time.Now,
+		minimumPayment:      new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
+		thresholdGrowStep:   new(big.Int).Mul(refreshRate, big.NewInt(4)),
+		p2p:                 p2pService,
 	}, nil
 }
 
@@ -539,9 +541,17 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 }
 
 func (a *Accounting) NotifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
-	accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.thresholdGrowStep)
+
+	if accountingPeer.thresholdGrowAt.Cmp(a.thresholdGrowChange) >= 0 {
+		accountingPeer.thresholdGrowAt = new(big.Int).Mul(accountingPeer.thresholdGrowAt, big.NewInt(2))
+	} else {
+		accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.thresholdGrowStep)
+	}
+
 	accountingPeer.paymentThresholdForPeer = new(big.Int).Add(accountingPeer.paymentThresholdForPeer, a.refreshRate)
+
 	accountingPeer.disconnectLimit = new(big.Int).Add(accountingPeer.paymentThresholdForPeer, a.paymentTolerance)
+
 	_ = a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
 }
 
