@@ -691,25 +691,8 @@ func (a *Accounting) AccountingInfo() (map[string]PeerInfo, error) {
 		}
 
 		accountingPeer.lock.Unlock()
-
-		/*
-			lock                           sync.Mutex // lock to be held during any accounting action for this peer
-			reservedBalance                *big.Int   // amount currently reserved for active peer interaction
-			shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
-			ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
-			paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
-			paymentThresholdForPeer        *big.Int   // individual payment threshold at which the peer is expected to pay
-			disconnectLimit                *big.Int
-			refreshTimestamp               int64 // last time we attempted time-based settlement
-			paymentOngoing                 bool  // indicate if we are currently settling with the peer
-			lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
-			connected                      bool
-			fullNode                       bool
-			totalDebtRepay                 *big.Int
-			thresholdGrowAt                *big.Int
-		*/
-
 	}
+
 	return s, nil
 }
 
