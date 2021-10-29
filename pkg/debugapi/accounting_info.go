@@ -16,7 +16,7 @@ var (
 )
 
 type infoResponseArray struct {
-	infoResponse []accountingInfoResponse `json:"infos"`
+	InfoResponse []accountingInfoResponse `json:"infos"`
 }
 
 type accountingInfoResponse struct {
@@ -55,5 +55,5 @@ func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) 
 		i++
 	}
 
-	jsonhttp.OK(w, infoResponseArray{infoResponse: infoResponses})
+	jsonhttp.OK(w, infoResponseArray{InfoResponse: infoResponses})
 }
