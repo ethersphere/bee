@@ -649,8 +649,13 @@ func (a *Accounting) AccountingInfo() (map[string]PeerInfo, error) {
 
 		balance, err := a.Balance(peerAddress)
 		if err != nil {
-			return nil, err
+			if !errors.Is(err, ErrPeerNoBalance) {
+				return nil, err
+			} else {
+				balance = big.NewInt(0)
+			}
 		}
+
 		surplusBalance, err := a.SurplusBalance(peerAddress)
 		if err != nil {
 			return nil, err
@@ -660,10 +665,10 @@ func (a *Accounting) AccountingInfo() (map[string]PeerInfo, error) {
 
 		s[peer] = PeerInfo{
 			Peer:                  peer,
-			Balance:               balance,
+			Balance:               new(big.Int).Set(balance),
 			ThresholdReceived:     new(big.Int).Set(accountingPeer.paymentThreshold),
 			ThresholdGiven:        new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
-			SurplusBalance:        surplusBalance,
+			SurplusBalance:        new(big.Int).Set(surplusBalance),
 			ReservedBalance:       new(big.Int).Set(accountingPeer.reservedBalance),
 			ShadowReservedBalance: new(big.Int).Set(accountingPeer.shadowReservedBalance),
 			GhostBalance:          new(big.Int).Set(accountingPeer.ghostBalance),
