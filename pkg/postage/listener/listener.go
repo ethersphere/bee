@@ -40,6 +40,8 @@ var (
 	batchDepthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
 	// priceUpdateTopic is the postage contract's price update event topic
 	priceUpdateTopic = postageStampABI.Events["PriceUpdate"].ID
+
+	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
 )
 
 type BlockHeightContractFilterer interface {
@@ -63,6 +65,7 @@ type listener struct {
 	wg                  sync.WaitGroup
 	metrics             metrics
 	shutdowner          Shutdowner
+	stallingTimeout     time.Duration
 }
 
 func New(
@@ -71,6 +74,7 @@ func New(
 	postageStampAddress common.Address,
 	blockTime uint64,
 	shutdowner Shutdowner,
+	stallingTimeout time.Duration,
 ) postage.Listener {
 	return &listener{
 		logger:              logger,
@@ -80,6 +84,7 @@ func New(
 		quit:                make(chan struct{}),
 		metrics:             newMetrics(),
 		shutdowner:          shutdowner,
+		stallingTimeout:     stallingTimeout,
 	}
 }
 
@@ -176,10 +181,19 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 
+	lastProgress := time.Now()
+
 	l.wg.Add(1)
 	listenf := func() error {
 		defer l.wg.Done()
 		for {
+			// if for whatever reason we are stuck for too long we terminate
+			// this can happen because of rpc errors but also because of a stalled backend node
+			// this does not catch the case were a backend node is actively syncing but not caught up
+			if time.Since(lastProgress) >= l.stallingTimeout {
+				return ErrPostageSyncingStalled
+			}
+
 			select {
 			case <-paged:
 				// if we paged then it means there's more things to sync on
@@ -193,7 +207,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
-				return err
+				l.logger.Warningf("listener: could not get block number: %v", err)
+				continue
 			}
 
 			if to < tailSize {
@@ -221,7 +236,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
-				return err
+				l.logger.Warningf("listener: could not get logs: %v", err)
+				continue
 			}
 
 			if err := updater.TransactionStart(); err != nil {
@@ -254,6 +270,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			}
 
 			from = to + 1
+			lastProgress = time.Now()
 			totalTimeMetric(l.metrics.PageProcessDuration, start)
 			l.metrics.PagesProcessed.Inc()
 		}
