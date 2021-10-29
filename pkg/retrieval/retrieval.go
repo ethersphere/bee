@@ -99,9 +99,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 const (
 	retrieveChunkTimeout          = 10 * time.Second
-	retrieveRetryIntervalDuration = 5 * time.Second
-	maxRequestRounds              = 5
-	maxSelects                    = 8
+	retrieveRetryIntervalDuration = 1560 * time.Millisecond
+	maxRequestRounds              = 8
+	maxSelects                    = 12
 	originSuffix                  = "_origin"
 )
 
@@ -151,8 +151,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 				peerAttempt++
 				s.metrics.PeerRequestCounter.Inc()
-				go func() {
+				ticker.Reset(retrieveRetryIntervalDuration)
 
+				go func() {
 					// cancel the goroutine just with the timeout
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
