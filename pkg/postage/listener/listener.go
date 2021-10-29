@@ -210,9 +210,9 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			}
 
 			// do some paging (sub-optimal)
-			if to-from > blockPage {
+			if to-from >= blockPage {
 				paged <- struct{}{}
-				to = from + blockPage
+				to = from + blockPage - 1
 			} else {
 				closeOnce.Do(func() { close(synced) })
 			}
