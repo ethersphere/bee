@@ -298,6 +298,12 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
+	if errors.Is(err, auth.ErrExpiry) {
+		s.logger.Debugf("api: auth handler: generate key: %v", err)
+		s.logger.Error("api: auth handler: generate key")
+		jsonhttp.BadRequest(w, "Expiry duration must be a positive number")
+		return
+	}
 	if err != nil {
 		s.logger.Debugf("api: auth handler: add auth token: %v", err)
 		s.logger.Error("api: auth handler: add auth token")
@@ -346,7 +352,7 @@ func (s *server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, auth.ErrTokenExpired) {
 		s.logger.Debugf("api: auth handler: refresh key: %v", err)
 		s.logger.Error("api: auth handler: refresh key")
-		jsonhttp.BadRequest(w, err)
+		jsonhttp.BadRequest(w, "Token expired")
 		return
 	}
 
