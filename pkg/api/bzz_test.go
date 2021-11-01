@@ -41,7 +41,7 @@ func TestBzzFiles(t *testing.T) {
 		statestoreMock       = statestore.NewStateStore()
 		pinningMock          = pinning.NewServiceMock()
 		logger               = logging.New(io.Discard, 0)
-		client, _, _         = newTestServer(t, testServerOptions{
+		client, _, _, _      = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Pinning: pinningMock,
 			Tags:    tags.NewTags(statestoreMock, logger),
@@ -91,6 +91,7 @@ func TestBzzFiles(t *testing.T) {
 		})
 		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -147,6 +148,7 @@ func TestBzzFiles(t *testing.T) {
 		})
 		reference := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(tr),
@@ -184,6 +186,7 @@ func TestBzzFiles(t *testing.T) {
 		var resp api.BzzUploadResponse
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
@@ -219,6 +222,7 @@ func TestBzzFiles(t *testing.T) {
 
 		_ = jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileNameWithPath, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
@@ -249,6 +253,7 @@ func TestBzzFiles(t *testing.T) {
 
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -292,6 +297,7 @@ func TestBzzFiles(t *testing.T) {
 
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -333,6 +339,7 @@ func TestBzzFiles(t *testing.T) {
 
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
 			fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -444,7 +451,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 		t.Run(upload.name, func(t *testing.T) {
 			mockStatestore := statestore.NewStateStore()
 			logger := logging.New(io.Discard, 0)
-			client, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _ := newTestServer(t, testServerOptions{
 				Storer: smock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
 				Logger: logger,
@@ -454,6 +461,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 			var resp api.BzzUploadResponse
 
 			testOpts := []jsonhttptest.Option{
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 				jsonhttptest.WithRequestBody(upload.reader),
 				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
@@ -557,11 +565,11 @@ func parseRangeParts(t *testing.T, contentType string, body []byte) (parts [][]b
 func TestFeedIndirection(t *testing.T) {
 	// first, "upload" some content for the update
 	var (
-		updateData     = []byte("<h1>Swarm Feeds Hello World!</h1>")
-		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(io.Discard, 0)
-		storer         = smock.NewStorer()
-		client, _, _   = newTestServer(t, testServerOptions{
+		updateData      = []byte("<h1>Swarm Feeds Hello World!</h1>")
+		mockStatestore  = statestore.NewStateStore()
+		logger          = logging.New(io.Discard, 0)
+		storer          = smock.NewStorer()
+		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logger,
@@ -581,6 +589,7 @@ func TestFeedIndirection(t *testing.T) {
 	var resp api.BzzUploadResponse
 
 	options := []jsonhttptest.Option{
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 		jsonhttptest.WithRequestBody(tarReader),
 		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
@@ -610,7 +619,7 @@ func TestFeedIndirection(t *testing.T) {
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
 	)
-	client, _, _ = newTestServer(t, testServerOptions{
+	client, _, _, _ = newTestServer(t, testServerOptions{
 		Storer: storer,
 		Tags:   tags.NewTags(mockStatestore, logger),
 		Logger: logger,
@@ -654,7 +663,7 @@ func TestBzzReupload(t *testing.T) {
 		storer         = smock.NewStorer()
 		addr           = swarm.NewAddress([]byte{31: 128})
 	)
-	client, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
 		Tags:    tags.NewTags(mockStatestore, logger),
 		Logger:  logger,

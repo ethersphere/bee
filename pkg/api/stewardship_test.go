@@ -29,7 +29,7 @@ func TestStewardship(t *testing.T) {
 		storer         = smock.NewStorer()
 		addr           = swarm.NewAddress([]byte{31: 128})
 	)
-	client, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
 		Tags:    tags.NewTags(mockStatestore, logger),
 		Logger:  logger,

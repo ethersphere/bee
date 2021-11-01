@@ -48,7 +48,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				return batchID, nil
 			}),
 		)
-		client, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
@@ -77,7 +77,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				return batchID, nil
 			}),
 		)
-		client, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
@@ -95,7 +95,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				return nil, errors.New("err")
 			}),
 		)
-		client, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
@@ -113,7 +113,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				return nil, postagecontract.ErrInsufficientFunds
 			}),
 		)
-		client, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
@@ -126,7 +126,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
+		client, _, _, _ := newTestServer(t, testServerOptions{})
 
 		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/1000/ab", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
@@ -142,7 +142,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				return nil, postagecontract.ErrInvalidDepth
 			}),
 		)
-		client, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
@@ -155,7 +155,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("invalid balance", func(t *testing.T) {
-		client, _, _ := newTestServer(t, testServerOptions{})
+		client, _, _, _ := newTestServer(t, testServerOptions{})
 
 		jsonhttptest.Request(t, client, http.MethodPost, "/stamps/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
@@ -174,7 +174,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				return batchID, nil
 			}),
 		)
-		client, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _ := newTestServer(t, testServerOptions{
 			PostageContract: contract,
 		})
 
@@ -195,7 +195,7 @@ func TestPostageCreateStamp(t *testing.T) {
 func TestPostageGetStamps(t *testing.T) {
 	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
+	client, _, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/stamps", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
@@ -219,7 +219,7 @@ func TestPostageGetStamps(t *testing.T) {
 func TestPostageGetStamp(t *testing.T) {
 	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	client, _, _ := newTestServer(t, testServerOptions{Post: mp})
+	client, _, _, _ := newTestServer(t, testServerOptions{Post: mp})
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+batchOkStr, http.StatusOK,
