@@ -19,7 +19,6 @@ GO_SYSTEM_VERSION ?= "$(shell go version | awk '{ gsub(/go/, "", $$3); print $$3
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
-
 LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" -X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)" -X github.com/ethersphere/bee/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)"
 
 .PHONY: all
