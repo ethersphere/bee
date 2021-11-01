@@ -210,7 +210,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 	if val {
-		logger.Errorf("reachability overiding as public")
 		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
 	}
 
@@ -308,8 +307,6 @@ func (s *Service) reachabilityWorker() error {
 		return fmt.Errorf("failed subscribing to reachability event %w", err)
 	}
 
-	s.logger.Errorf("reachability event has been subscribed")
-
 	go func() {
 		defer sub.Close()
 		for {
@@ -323,7 +320,7 @@ func (s *Service) reachabilityWorker() error {
 					case <-s.halt:
 						return
 					}
-					s.logger.Errorf("reachability changed to %s", r.Reachability.String())
+					s.logger.Debugf("reachability changed to %s", r.Reachability.String())
 					s.notifier.UpdateReachability(p2p.ReachabilityStatus(r.Reachability))
 				}
 			}

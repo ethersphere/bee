@@ -36,4 +36,4 @@ func WithHostFactory(factory func(context.Context, ...libp2pm.Option) (host.Host
 	}
 }
 
-// var UserAgent = userAgent
+var UserAgent = userAgent
