@@ -580,8 +580,9 @@ func (k *Kad) manage() {
 				ss := k.collector.Snapshot(time.Now())
 
 				if err := k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-					status := ss[addr.ByteString()].Reachability.String()
-					rs[status]++
+					if ss, ok := ss[addr.ByteString()]; ok {
+						rs[ss.Reachability.String()]++
+					}
 					return false, false, nil
 				}); err != nil {
 					k.logger.Errorf("kademlia: unable to set peers reachability status: %v", err)

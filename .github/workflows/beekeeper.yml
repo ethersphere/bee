@@ -188,7 +188,7 @@ jobs:
         id: settlements
         run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
       - name: Debug workflow if failed
-        if: failure()
+        if: always()
         run: |
           export BUCKET_NAME=beekeeper-artifacts
           export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
@@ -272,7 +272,7 @@ jobs:
         id: settlements
         run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
       - name: Debug workflow if failed
-        if: failure()
+        if: always()
         run: |
           export BUCKET_NAME=beekeeper-artifacts
           export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
@@ -440,7 +440,7 @@ jobs:
         id: settlements
         run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
       - name: Debug workflow if failed
-        if: failure()
+        if: always()
         run: |
           export BUCKET_NAME=beekeeper-artifacts
           export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
@@ -524,7 +524,7 @@ jobs:
         id: settlements
         run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
       - name: Debug workflow if failed
-        if: failure()
+        if: always()
         run: |
           export BUCKET_NAME=beekeeper-artifacts
           export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
