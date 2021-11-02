@@ -15,10 +15,17 @@ GO_MOD_ENABLED_VERSION ?= "1.12"
 GO_MOD_VERSION ?= "$(shell go mod edit -print | awk '/^go[ \t]+[0-9]+\.[0-9]+(\.[0-9]+)?[ \t]*$$/{print $$2}')"
 GO_SYSTEM_VERSION ?= "$(shell go version | awk '{ gsub(/go/, "", $$3); print $$3 }')"
 
+BEE_API_VERSION ?= "$(shell grep '  version:' openapi/Swarm.yaml | awk '{print $$2}')"
+BEE_DEBUG_API_VERSION ?= "$(shell grep '  version:' openapi/SwarmDebug.yaml | awk '{print $$2}')"
+
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
-LDFLAGS ?= -s -w -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" -X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)"
+LDFLAGS ?= -s -w \
+-X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" \
+-X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)" \
+-X github.com/ethersphere/bee/pkg/api.Version="$(BEE_API_VERSION)" \
+-X github.com/ethersphere/bee/pkg/debugapi.Version="$(BEE_DEBUG_API_VERSION)"
 
 .PHONY: all
 all: build lint vet test-race binary

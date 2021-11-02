@@ -359,6 +359,12 @@ components:
       properties:
         status:
           type: string
+        version:
+          type: string
+        apiVersion:
+          type: string
+        debugApiVersion:
+          type: string
 
     PostageBatch:
       type: object
