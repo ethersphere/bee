@@ -1291,6 +1291,7 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error
 // SetPeerReachability sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
+	k.logger.Tracef("kademlia: reachability of peer %s is %s", addr.String(), status.String())
 	if status == p2p.ReachabilityStatusPublic {
 		k.depthMu.Lock()
 		k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
