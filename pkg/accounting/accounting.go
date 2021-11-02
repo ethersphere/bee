@@ -210,7 +210,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	if threshold.Cmp(a.earlyPayment) > 0 {
 		threshold.Sub(threshold, a.earlyPayment)
 	} else {
-		threshold.SetInt64(0)
+		threshold = new(big.Int).Set(a.refreshRate)
 	}
 
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
