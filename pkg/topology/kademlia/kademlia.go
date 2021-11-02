@@ -630,7 +630,11 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			var smallestDuration time.Duration
 			var newestPeer swarm.Address
 			for _, peer := range peers {
-				duration := k.collector.Inspect(peer).SessionConnectionDuration
+				ss := k.collector.Inspect(peer)
+				if ss == nil {
+					continue
+				}
+				duration := ss.SessionConnectionDuration
 				if smallestDuration == 0 || duration < smallestDuration {
 					smallestDuration = duration
 					newestPeer = peer
