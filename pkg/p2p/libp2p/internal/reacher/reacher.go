@@ -20,7 +20,6 @@ const (
 	pingTimeout        = time.Second * 5
 	pingMaxAttempts    = 3
 	workers            = 8
-	parallel           = 3
 	retryAfterDuration = time.Second * 15
 )
 
@@ -148,30 +147,20 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 
 	for p := range c {
 
-		result := make(chan error, parallel)
-		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
-
-		for i := 0; i < parallel; i++ {
-			go func(ctxt context.Context, p *peer, result chan error) {
-				_, err := r.pinger.Ping(ctxt, p.addr)
-				result <- err
-			}(ctxt, p, result)
-		}
-
 		r.mu.Lock()
 		p.attempts++
 		var (
 			overlay  = p.overlay
 			attempts = p.attempts
+			now      = time.Now()
 		)
 		r.mu.Unlock()
 
-		now := time.Now()
-
-		err := <-result
+		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
+		_, err := r.pinger.Ping(ctxt, p.addr)
 		cancel()
 
-		// successful ping
+		// ping was successful
 		if err == nil {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
