@@ -302,13 +302,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		return nil, 0, err
 	}
 
-	checkTime := s.timeNow().Unix()
-
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	checkTime := s.timeNow().Unix()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {

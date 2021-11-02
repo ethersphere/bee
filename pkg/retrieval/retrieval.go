@@ -100,8 +100,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout          = 10 * time.Second
 	retrieveRetryIntervalDuration = 5 * time.Second
-	maxRequestRounds              = 5
-	maxSelects                    = 8
+	maxRequestRounds              = 256
+	maxSelects                    = 16
 	originSuffix                  = "_origin"
 )
 
