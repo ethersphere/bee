@@ -152,9 +152,10 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		var (
 			overlay  = p.overlay
 			attempts = p.attempts
-			now      = time.Now()
 		)
 		r.mu.Unlock()
+
+		now := time.Now()
 
 		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
 		_, err := r.pinger.Ping(ctxt, p.addr)
