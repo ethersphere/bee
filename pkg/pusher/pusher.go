@@ -167,27 +167,11 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	var (
-		ch swarm.Chunk
-		ok bool
-		op *Op
-	)
+	// fan-in channel
+	cc := make(chan *Op)
 
-	defer wg.Wait()
-	for {
-		select {
-		case ch, ok = <-chunks:
-			if !ok {
-				chunks = nil
-				continue
-			}
-
-			select {
-			case s.sem <- struct{}{}:
-			case <-s.quit:
-				return
-			}
-
+	go func() {
+		for ch := range chunks {
 			// If the stamp is invalid, the chunk is not synced with the network
 			// since other nodes would reject the chunk, so the chunk is marked as
 			// synced which makes it available to the node but not to the network
@@ -197,8 +181,26 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 					s.logger.Errorf("pusher: set sync: %w", err)
 				}
 			}
-			push(ch, nil)
-		case op = <-s.apiC:
+			cc <- &Op{Chunk: ch}
+		}
+	}()
+
+	go func() {
+		for op := range s.apiC {
+			cc <- op
+		}
+	}()
+
+	defer wg.Wait()
+
+	for {
+		select {
+		case op, ok := <-cc:
+			if !ok {
+				chunks = nil
+				continue
+			}
+
 			select {
 			case s.sem <- struct{}{}:
 			case <-s.quit:
