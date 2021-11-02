@@ -138,6 +138,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 				s.logger.Errorf("pusher: set sync: %w", err)
 			}
+			continue
 		}
 		select {
 		case s.sem <- struct{}{}:
