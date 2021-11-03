@@ -137,8 +137,8 @@ type Options struct {
 	TracingServiceName         string
 	GlobalPinningEnabled       bool
 	PaymentThreshold           string
-	PaymentTolerance           string
-	PaymentEarly               string
+	PaymentTolerance           int64
+	PaymentEarly               int64
 	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
 	RetrievalCaching           bool
 	GatewayMode                bool
@@ -600,19 +600,18 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		logger.Debugf("p2p address: %s", addr)
 	}
 
-	paymentTolerance, ok := new(big.Int).SetString(o.PaymentTolerance, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment tolerance: %s", paymentTolerance)
+	if o.PaymentTolerance < 0 {
+		return nil, fmt.Errorf("invalid payment tolerance: %s", o.PaymentTolerance)
 	}
-	paymentEarly, ok := new(big.Int).SetString(o.PaymentEarly, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment early: %s", paymentEarly)
+
+	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
+		return nil, fmt.Errorf("invalid payment early: %s", o.PaymentEarly)
 	}
 
 	acc, err := accounting.NewAccounting(
 		paymentThreshold,
-		paymentTolerance,
-		paymentEarly,
+		o.PaymentTolerance,
+		o.PaymentEarly,
 		logger,
 		stateStore,
 		pricing,

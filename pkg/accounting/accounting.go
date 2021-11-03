@@ -91,9 +91,10 @@ type accountingPeer struct {
 	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
 	ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
 	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
-	refreshTimestamp               int64      // last time we attempted time-based settlement
-	paymentOngoing                 bool       // indicate if we are currently settling with the peer
-	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
+	earlyPayment                   *big.Int
+	refreshTimestamp               int64 // last time we attempted time-based settlement
+	paymentOngoing                 bool  // indicate if we are currently settling with the peer
+	lastSettlementFailureTimestamp int64 // time of last unsuccessful attempt to issue a cheque
 	connected                      bool
 }
 
@@ -106,11 +107,11 @@ type Accounting struct {
 	store             storage.StateStorer
 	// The payment threshold in BZZ we communicate to our peers.
 	paymentThreshold *big.Int
-	// The amount in BZZ we let peers exceed the payment threshold before we
+	// The amount in % we let peers exceed the payment threshold before we
 	// disconnect them.
-	paymentTolerance *big.Int
-	// Start settling when reserve plus debt reaches this close to threshold.
-	earlyPayment *big.Int
+	paymentTolerance int64
+	// Start settling when reserve plus debt reaches this close to threshold in %.
+	earlyPayment int64
 	// Limit to disconnect peer after going in debt over
 	disconnectLimit *big.Int
 	// function used for monetary settlement
@@ -141,9 +142,9 @@ var (
 
 // NewAccounting creates a new Accounting instance with the provided options.
 func NewAccounting(
-	PaymentThreshold,
+	PaymentThreshold *big.Int,
 	PaymentTolerance,
-	EarlyPayment *big.Int,
+	EarlyPayment int64,
 	Logger logging.Logger,
 	Store storage.StateStorer,
 	Pricing pricing.Interface,
@@ -154,9 +155,9 @@ func NewAccounting(
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
 		paymentThreshold: new(big.Int).Set(PaymentThreshold),
-		paymentTolerance: new(big.Int).Set(PaymentTolerance),
-		earlyPayment:     new(big.Int).Set(EarlyPayment),
-		disconnectLimit:  new(big.Int).Add(PaymentThreshold, PaymentTolerance),
+		paymentTolerance: PaymentTolerance,
+		earlyPayment:     EarlyPayment,
+		disconnectLimit:  new(big.Int).Div(new(big.Int).Mul(PaymentThreshold, big.NewInt(100+PaymentTolerance)), big.NewInt(100)),
 		logger:           Logger,
 		store:            Store,
 		pricing:          Pricing,
@@ -206,12 +207,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	a.metrics.AccountingReserveCount.Inc()
 	bigPrice := new(big.Int).SetUint64(price)
 
-	threshold := new(big.Int).Set(accountingPeer.paymentThreshold)
-	if threshold.Cmp(a.earlyPayment) > 0 {
-		threshold.Sub(threshold, a.earlyPayment)
-	} else {
-		threshold.SetInt64(0)
-	}
+	threshold := accountingPeer.earlyPayment
 
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
 	increasedExpectedDebt, currentBalance, err := a.getIncreasedExpectedDebt(peer, accountingPeer, bigPrice)
@@ -519,6 +515,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 			ghostBalance:          big.NewInt(0),
 			// initially assume the peer has the same threshold as us
 			paymentThreshold: new(big.Int).Set(a.paymentThreshold),
+			earlyPayment:     new(big.Int).Div(new(big.Int).Mul(a.paymentThreshold, big.NewInt(100-a.earlyPayment)), big.NewInt(100)),
 			connected:        false,
 		}
 		a.accountingPeers[peer.String()] = peerData
@@ -785,6 +782,7 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentThreshold.Set(paymentThreshold)
+	accountingPeer.earlyPayment.Set(new(big.Int).Div(new(big.Int).Mul(paymentThreshold, big.NewInt(100-a.earlyPayment)), big.NewInt(100)))
 	return nil
 }
 
