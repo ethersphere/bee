@@ -56,7 +56,7 @@ func TestExpiry(t *testing.T) {
 		t.Error(err)
 	}
 
-	key, err := a.GenerateKey("role0", 1)
+	key, err := a.GenerateKey("consumer", 1)
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
@@ -86,32 +86,32 @@ func TestEnforce(t *testing.T) {
 	}{
 		{
 			desc:     "success",
-			role:     "role2",
+			role:     "maintainer",
 			resource: "/pingpong/someone",
 			action:   "POST",
 			expected: true,
 		}, {
 			desc:     "success with query param",
-			role:     "role1",
+			role:     "creator",
 			resource: "/bzz?name=some-name",
 			action:   "POST",
 			expected: true,
 		},
 		{
 			desc:     "bad role",
-			role:     "role0",
+			role:     "consumer",
 			resource: "/pingpong/some-other-peer",
 			action:   "POST",
 		},
 		{
 			desc:     "bad resource",
-			role:     "role2",
+			role:     "maintainer",
 			resource: "/i-dont-exist",
 			action:   "POST",
 		},
 		{
 			desc:     "bad action",
-			role:     "role2",
+			role:     "maintainer",
 			resource: "/pingpong/someone",
 			action:   "DELETE",
 		},

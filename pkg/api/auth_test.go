@@ -94,7 +94,7 @@ func TestAuth(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusInternalServerError,
 			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
 			jsonhttptest.WithJSONRequestBody(api.SecurityTokenRequest{
-				Role: "role0",
+				Role: "consumer",
 			}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Error generating authorization token",
@@ -106,7 +106,7 @@ func TestAuth(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
 			jsonhttptest.WithJSONRequestBody(api.SecurityTokenRequest{
-				Role: "role0",
+				Role: "consumer",
 			}),
 			jsonhttptest.WithExpectedJSONResponse(api.SecurityTokenResponse{
 				Key: "123",
