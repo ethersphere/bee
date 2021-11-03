@@ -99,9 +99,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 const (
 	retrieveChunkTimeout          = 4 * time.Second
-	retrieveRetryIntervalDuration = 180 * time.Millisecond
-	maxRequestRounds              = 64
-	maxSelects                    = 32
+	retrieveRetryIntervalDuration = 200 * time.Millisecond
+	maxRequestRounds              = 128
+	maxSelects                    = 16
 	originSuffix                  = "_origin"
 )
 
@@ -130,7 +130,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan retrievalResult, maxSelects*2)
+			resultC      = make(chan retrievalResult, maxSelects*4)
 		)
 
 		requestAttempt := 0
