@@ -98,10 +98,10 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout          = 10 * time.Second
-	retrieveRetryIntervalDuration = 1600 * time.Millisecond
-	maxRequestRounds              = 256
-	maxSelects                    = 16
+	retrieveChunkTimeout          = 4 * time.Second
+	retrieveRetryIntervalDuration = 180 * time.Millisecond
+	maxRequestRounds              = 64
+	maxSelects                    = 32
 	originSuffix                  = "_origin"
 )
 
@@ -130,7 +130,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan retrievalResult, maxSelects)
+			resultC      = make(chan retrievalResult, maxSelects*2)
 		)
 
 		requestAttempt := 0
@@ -171,10 +171,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 				}()
 			} else {
-				select {
-				case resultC <- retrievalResult{}:
-				case <-ctx.Done():
-				}
+				continue
 			}
 
 			select {
@@ -216,7 +213,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					sp.Reset()
 				} else {
 					select {
-					case <-time.After(600 * time.Millisecond):
+					case <-time.After(900 * time.Millisecond):
 					case <-ctx.Done():
 						s.logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
 						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
@@ -281,13 +278,11 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 
 	// Reserve to see whether we can request the chunk
 	creditAction, err := s.accounting.PrepareCredit(peer, chunkPrice, originated)
+	sp.AddOverdraft(peer)
 	if err != nil {
-		sp.AddOverdraft(peer)
 		return nil, peer, false, err
 	}
 	defer creditAction.Cleanup()
-
-	sp.Add(peer)
 
 	s.logger.Tracef("retrieval: requesting chunk %s from peer %s", addr, peer)
 
@@ -304,6 +299,8 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			go stream.FullClose()
 		}
 	}()
+
+	sp.Add(peer)
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{

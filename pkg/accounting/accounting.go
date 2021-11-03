@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pricing"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -29,7 +30,7 @@ var (
 	balancesOriginatedPrefix           = "accounting_originatedbalance_"
 	// fraction of the refresh rate that is the minimum for monetary settlement
 	// this value is chosen so that tiny payments are prevented while still allowing small payments in environments with lower payment thresholds
-	minimumPaymentDivisor    = int64(20)
+	minimumPaymentDivisor    = int64(5)
 	failedSettlementInterval = int64(10) // seconds
 )
 
@@ -370,9 +371,13 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
-			a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
-			_ = a.blocklist(peer, 1, "failed to refresh")
-			return fmt.Errorf("refresh failure: %w", err)
+			if !errors.Is(err, pseudosettle.ErrSettlementTooSoon) && !errors.Is(err, p2p.ErrPeerNotFound) {
+				a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
+				_ = a.blocklist(peer, 1, "failed to refresh")
+				return fmt.Errorf("refresh failure: %w", err)
+			} else {
+				return fmt.Errorf("refresh failure: %w", err)
+			}
 		}
 
 		balance.refreshTimestamp = timestamp
