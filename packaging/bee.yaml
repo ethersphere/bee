@@ -54,7 +54,7 @@ debug-api-enable: true
 password-file: /var/lib/bee/password
 ## percentage below the peers payment threshold when we initiate settlement (default 25)
 # payment-early: 25
-## threshold in % where you expect to get paid from your peers (default 100000000)
+## threshold in BZZ where you expect to get paid from your peers (default 100000000)
 # payment-threshold: 100000000
 ## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
 # payment-tolerance: 25

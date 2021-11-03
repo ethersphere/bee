@@ -601,11 +601,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	if o.PaymentTolerance < 0 {
-		return nil, fmt.Errorf("invalid payment tolerance: %s", o.PaymentTolerance)
+		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
 	}
 
 	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
-		return nil, fmt.Errorf("invalid payment early: %s", o.PaymentEarly)
+		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
 	acc, err := accounting.NewAccounting(
