@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 )
@@ -18,8 +19,10 @@ func TestHealth(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/health", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
-			Status:  "ok",
-			Version: bee.Version,
+			Status:          "ok",
+			Version:         bee.Version,
+			APIVersion:      api.Version,
+			DebugAPIVersion: debugapi.Version,
 		}),
 	)
 }
@@ -29,8 +32,10 @@ func TestReadiness(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/readiness", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
-			Status:  "ok",
-			Version: bee.Version,
+			Status:          "ok",
+			Version:         bee.Version,
+			APIVersion:      api.Version,
+			DebugAPIVersion: debugapi.Version,
 		}),
 	)
 }
