@@ -249,15 +249,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllowance *big.Int) (*big.Int, int64, error) {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllowance *big.Int) (payedAmount *big.Int, time int64, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	var err error
-
 	defer func() {
 		if err != nil {
-			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
+			s.metrics.SentPseudoSettlementsErrors.Inc()
 		}
 	}()
 
