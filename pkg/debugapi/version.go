@@ -5,4 +5,4 @@
 package debugapi
 
 // Version is set in the build process.
-var Version string
+var Version = "0.0.0"
