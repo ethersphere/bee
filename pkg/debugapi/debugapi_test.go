@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -192,8 +193,10 @@ func TestServer_Configure(t *testing.T) {
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
-			Status:  "ok",
-			Version: bee.Version,
+			Status:          "ok",
+			Version:         bee.Version,
+			APIVersion:      api.Version,
+			DebugAPIVersion: debugapi.Version,
 		}),
 	)
 	jsonhttptest.Request(t, client, http.MethodGet, "/addresses", http.StatusOK,
@@ -212,8 +215,10 @@ func testBasicRouter(t *testing.T, client *http.Client) {
 
 	jsonhttptest.Request(t, client, http.MethodGet, "/health", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.StatusResponse{
-			Status:  "ok",
-			Version: bee.Version,
+			Status:          "ok",
+			Version:         bee.Version,
+			APIVersion:      api.Version,
+			DebugAPIVersion: debugapi.Version,
 		}),
 	)
 
