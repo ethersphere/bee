@@ -17,9 +17,6 @@ type (
 	TagResponse           = tagResponse
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
-	PostageCreateResponse = postageCreateResponse
-	PostageStampResponse  = postageStampResponse
-	PostageStampsResponse = postageStampsResponse
 	IsRetrievableResponse = isRetrievableResponse
 )
 
