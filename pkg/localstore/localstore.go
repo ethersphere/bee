@@ -555,6 +555,17 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	return db, nil
 }
 
+// RebuildFree rebuilds the free offsets in the persistence layer
+// according to the entries we have in the db.
+func (db *DB) RebuildFree() int {
+	entries := 0
+	db.retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+		entries++
+		return false, nil
+	}, nil)
+	return entries
+}
+
 // Close closes the underlying database.
 func (db *DB) Close() (err error) {
 	close(db.close)
