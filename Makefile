@@ -26,7 +26,7 @@ LDFLAGS ?= -s -w \
 -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" \
 -X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)" \
 -X github.com/ethersphere/bee/pkg/api.Version="$(BEE_API_VERSION)" \
--X github.com/ethersphere/bee/pkg/debugapi.Version="$(BEE_DEBUG_API_VERSION)"
+-X github.com/ethersphere/bee/pkg/debugapi.Version="$(BEE_DEBUG_API_VERSION)" \
 -X github.com/ethersphere/bee/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)"
 
 .PHONY: all
