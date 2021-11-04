@@ -95,7 +95,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(vstamp, stamp) {
 		t.Fatal("stamp mismatch")
 	}
-	records, err := recorder.Records(serverAddr, "retrieval", "1.0.0", "retrieval")
+	records, err := recorder.Records(serverAddr, "retrieval", "1.1.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,10 +537,10 @@ type mockPeerSuggester struct {
 	eachPeerRevFunc func(f topology.EachPeerFunc) error
 }
 
-func (s mockPeerSuggester) EachPeer(topology.EachPeerFunc) error {
+func (s mockPeerSuggester) EachPeer(_ topology.EachPeerFunc, _ topology.Filter) error {
 	return errors.New("not implemented")
 }
-func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc) error {
+func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc, _ topology.Filter) error {
 	return s.eachPeerRevFunc(f)
 }
 

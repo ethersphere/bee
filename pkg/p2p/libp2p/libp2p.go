@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -31,6 +33,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
@@ -49,6 +52,10 @@ import (
 var (
 	_ p2p.Service      = (*Service)(nil)
 	_ p2p.DebugService = (*Service)(nil)
+
+	// reachabilityOverridePublic overrides autonat to simply report
+	// public reachability status, it is set in the makefile.
+	reachabilityOverridePublic = "false"
 )
 
 const (
@@ -80,6 +87,7 @@ type Service struct {
 	lightNodes        lightnodes
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
+	reacher           p2p.Reacher
 }
 
 type lightnodes interface {
@@ -195,10 +203,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	options := []autonat.Option{autonat.EnableService(dialer.Network())}
+
+	val, err := strconv.ParseBool(reachabilityOverridePublic)
+	if err != nil {
+		return nil, err
+	}
+	if val {
+		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
+	}
+
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	if _, err = autonat.New(ctx, h, autonat.EnableService(dialer.Network())); err != nil {
+	if _, err = autonat.New(ctx, h, options...); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
@@ -268,6 +286,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
+	if err := s.reachabilityWorker(); err != nil {
+		return nil, err
+	}
+
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	h.Network().SetConnHandler(func(_ network.Conn) {
@@ -277,6 +299,34 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry)       // update peer registry on network events
 	h.Network().Notify(s.handshakeService) // update handshake service on network events
 	return s, nil
+}
+
+func (s *Service) reachabilityWorker() error {
+	sub, err := s.host.EventBus().Subscribe([]interface{}{new(event.EvtLocalReachabilityChanged)})
+	if err != nil {
+		return fmt.Errorf("failed subscribing to reachability event %w", err)
+	}
+
+	go func() {
+		defer sub.Close()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case e := <-sub.Out():
+				if r, ok := e.(event.EvtLocalReachabilityChanged); ok {
+					select {
+					case <-s.ready:
+					case <-s.halt:
+						return
+					}
+					s.logger.Debugf("reachability changed to %s", r.Reachability.String())
+					s.notifier.UpdateReachability(p2p.ReachabilityStatus(r.Reachability))
+				}
+			}
+		}
+	}()
+	return nil
 }
 
 func (s *Service) handleIncoming(stream network.Stream) {
@@ -419,6 +469,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	if s.reacher != nil {
+		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+	}
+
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 
 	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
@@ -427,6 +481,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
+	s.reacher = reacher.New(s, n, nil)
 	s.notifier = n
 }
 
@@ -677,6 +732,10 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
+	if s.reacher != nil {
+		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
+	}
+
 	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
 	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
@@ -711,6 +770,9 @@ func (s *Service) Disconnect(overlay swarm.Address, reason string) error {
 	}
 	if s.lightNodes != nil {
 		s.lightNodes.Disconnected(peer)
+	}
+	if s.reacher != nil {
+		s.reacher.Disconnected(overlay)
 	}
 
 	if !found {
@@ -748,6 +810,9 @@ func (s *Service) disconnected(address swarm.Address) {
 	}
 	if s.lightNodes != nil {
 		s.lightNodes.Disconnected(peer)
+	}
+	if s.reacher != nil {
+		s.reacher.Disconnected(address)
 	}
 }
 
