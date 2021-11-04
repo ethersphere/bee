@@ -128,56 +128,6 @@ func main() {
 		time.Sleep(5 * time.Second)
 		close(done)
 	}()
-	// one goroutine trails and tries to sync the data like the pusher does
-	//wg.Add(1)
-	//go func() {
-	//defer wg.Done()
-	//for {
-	//select {
-	//case <-done:
-	//return
-	//default:
-	//}
-	//chmtx.Lock()
-	//i := 0
-	//for _, v := range chs {
-	//err := storer.Set(ctx, storage.ModeSetSync, v)
-	//if err != nil {
-	//logger.Errorf("had error setting chunk synced: %v", v)
-	//}
-	//i++
-	//}
-	//logger.Infof("set %d chunks a synced", i)
-	//chs = nil
-	//chmtx.Unlock()
-	//time.Sleep(5000 * time.Millisecond)
-	//}
-	//}()
-
-	//// another goroutine that does random reads
-	//wg.Add(1)
-	//go func() {
-	//defer wg.Done()
-	//f, _ := os.OpenFile("get_req_reserve_size.csv", os.O_RDWR|os.O_CREATE, 0666)
-	//f.Write([]byte("res,getrtime\n"))
-	//for {
-	//select {
-	//case <-done:
-	//return
-	//default:
-	//}
-
-	//time.Sleep(1000 * time.Millisecond)
-	//chmtx.Lock()
-	//chaddr := rdchs[rand.Intn(len(rdchs))]
-	//start := time.Now()
-	//_, _ = storer.Get(ctx, storage.ModeGetRequest, chaddr)
-	//end := int(time.Since(start).Microseconds())
-	//chmtx.Unlock()
-	//rsz := storer.ReserveSize()
-	//f.Write([]byte(fmt.Sprintf("%d,%d\n", rsz, end)))
-	//}
-	//}()
 
 	// wait for the data to be inserted, then try to iterate over the index
 	wg.Wait()
