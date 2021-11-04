@@ -53,11 +53,11 @@ debug-api-enable: true
 ## path to a file that contains password for decrypting keys
 password-file: /usr/local/var/lib/swarm-bee/password
 ## percentage below the peers payment threshold when we initiate settlement (default 50)
-# payment-early: 50
+# payment-early-percent: 50
 ## threshold in BZZ where you expect to get paid from your peers (default 100000000)
 # payment-threshold: 100000000
 ## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
-# payment-tolerance: 25
+# payment-tolerance-percent: 25
 ## postage stamp contract address
 # postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
