@@ -44,14 +44,14 @@ type ClosestPeerer interface {
 	// given chunk address.
 	// This function will ignore peers with addresses provided in skipPeers.
 	// Returns topology.ErrWantSelf in case base is the closest to the address.
-	ClosestPeer(addr swarm.Address, includeSelf bool, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestPeer(addr swarm.Address, includeSelf bool, f Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 type EachPeerer interface {
 	// EachPeer iterates from closest bin to farthest
-	EachPeer(EachPeerFunc) error
+	EachPeer(EachPeerFunc, Filter) error
 	// EachPeerRev iterates from farthest bin to closest
-	EachPeerRev(EachPeerFunc) error
+	EachPeerRev(EachPeerFunc, Filter) error
 }
 
 type EachNeighbor interface {
@@ -61,6 +61,11 @@ type EachNeighbor interface {
 	EachNeighborRev(EachPeerFunc) error
 	// IsWithinDepth checks if an address is the within neighborhood.
 	IsWithinDepth(swarm.Address) bool
+}
+
+// Filter defines the different filters that can be used with the Peer iterators
+type Filter struct {
+	Reachable bool
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
@@ -80,6 +85,7 @@ type MetricSnapshotView struct {
 	SessionConnectionDuration  float64 `json:"sessionConnectionDuration"`
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
 	LatencyEWMA                int64   `json:"latencyEWMA"`
+	Reachability               string  `json:"reachability"`
 }
 
 type BinInfo struct {
@@ -131,6 +137,7 @@ type KadParams struct {
 	Timestamp      time.Time `json:"timestamp"`      // now
 	NNLowWatermark int       `json:"nnLowWatermark"` // low watermark for depth calculation
 	Depth          uint8     `json:"depth"`          // current depth
+	Reachability   string    `json:"reachability"`   // current reachability status
 	Bins           KadBins   `json:"bins"`           // individual bin info
 	LightNodes     BinInfo   `json:"lightNodes"`     // light nodes bin info
 }

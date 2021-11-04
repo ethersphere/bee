@@ -8,6 +8,7 @@ BEEKEEPER_USE_SUDO ?= false
 BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
+REACHABILITY_OVERRIDE_PUBLIC ?= false
 
 GO_MIN_VERSION ?= "1.17"
 GO_BUILD_VERSION ?= "1.17.2"
@@ -25,7 +26,8 @@ LDFLAGS ?= -s -w \
 -X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" \
 -X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)" \
 -X github.com/ethersphere/bee/pkg/api.Version="$(BEE_API_VERSION)" \
--X github.com/ethersphere/bee/pkg/debugapi.Version="$(BEE_DEBUG_API_VERSION)"
+-X github.com/ethersphere/bee/pkg/debugapi.Version="$(BEE_DEBUG_API_VERSION)" \
+-X github.com/ethersphere/bee/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)"
 
 .PHONY: all
 all: build lint vet test-race binary

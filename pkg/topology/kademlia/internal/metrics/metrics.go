@@ -13,10 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
+
+const ewmaSmoothing = 0.1
 
 // PeerConnectionDirection represents peer connection direction.
 type PeerConnectionDirection string
@@ -24,8 +27,6 @@ type PeerConnectionDirection string
 const (
 	PeerConnectionDirectionInbound  PeerConnectionDirection = "inbound"
 	PeerConnectionDirectionOutbound PeerConnectionDirection = "outbound"
-
-	ewmaSmoothing = 0.1
 )
 
 // RecordOp is a definition of a peer metrics Record
@@ -36,7 +37,7 @@ type RecordOp func(*Counters)
 // the second it'll set the direction of the session connection to the given
 // value. The force flag will force the peer re-login if he's already logged in.
 // The time is set as Unix timestamp ignoring the timezone. The operation will
-// panics if the given time is before the Unix epoch.
+// panic if the given time is before the Unix epoch.
 func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
@@ -109,6 +110,16 @@ func PeerLatency(t time.Duration) RecordOp {
 	}
 }
 
+// PeerReachability updates the last reachability status.
+func PeerReachability(s p2p.ReachabilityStatus) RecordOp {
+	return func(cs *Counters) {
+		cs.Lock()
+		defer cs.Unlock()
+
+		cs.ReachabilityStatus = s
+	}
+}
+
 // Snapshot represents a snapshot of peers' metrics counters.
 type Snapshot struct {
 	LastSeenTimestamp          int64
@@ -117,10 +128,11 @@ type Snapshot struct {
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
+	Reachability               p2p.ReachabilityStatus
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
-// peer which has at maximum one session connection attempt but it still isn't
+// peer which has at maximum one session connection attempt, but it still isn't
 // logged in.
 func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
 	return ss.LastSeenTimestamp == 0 && ss.SessionConnectionRetry <= 1
@@ -148,8 +160,8 @@ type Counters struct {
 	sessionConnRetry     uint64
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
-
-	latencyEWMA time.Duration
+	latencyEWMA          time.Duration
+	ReachabilityStatus   p2p.ReachabilityStatus
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -197,6 +209,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDuration:  sessionConnDuration,
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
+		Reachability:               cs.ReachabilityStatus,
 	}
 }
 
