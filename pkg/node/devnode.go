@@ -287,7 +287,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	apiService := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, new(mock.Steward), signer, authenticator, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		GatewayMode:        false,
+		BeeMode:            api.DevMode,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	})
