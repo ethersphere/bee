@@ -39,27 +39,57 @@ func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callbac
 	return &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
 }
 
+type result struct {
+	Chunk     swarm.Chunk
+	Retrieved bool
+}
+
 // Get retrieves a given chunk address.
 // It will request a chunk from the network whenever it cannot be found locally.
 // If the network path is taken, the method also stores the found chunk into the
 // local-store.
 func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
-	ch, err = s.Storer.Get(ctx, mode, addr)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			// request from network
-			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
-			if err != nil {
-				targets := sctx.GetTargets(ctx)
-				if targets == nil || s.recoveryCallback == nil {
-					return nil, err
-				}
-				go s.recoveryCallback(addr, targets)
-				return nil, ErrRecoveryAttempt
+
+	// request from network
+
+	resultC := make(chan result, 2)
+	errC := make(chan struct{}, 2)
+
+	go func() {
+
+		ch, err = s.Storer.Get(ctx, mode, addr)
+		if err == nil {
+			select {
+			case resultC <- result{Chunk: ch, Retrieved: false}:
+			case <-ctx.Done():
 			}
-			stamp, err := ch.Stamp().MarshalBinary()
+		} else {
+			select {
+			case errC <- struct{}{}:
+			}
+		}
+	}()
+
+	go func() {
+
+		chunk, err := s.retrieval.RetrieveChunk(ctx, addr, true)
+		if err != nil {
+			targets := sctx.GetTargets(ctx)
+			if targets != nil && s.recoveryCallback != nil {
+				go s.recoveryCallback(addr, targets)
+			}
+			select {
+			case errC <- struct{}{}:
+			}
+		} else {
+
+			select {
+			case resultC <- result{Chunk: chunk, Retrieved: true}:
+			case <-ctx.Done():
+			}
+			stamp, err := chunk.Stamp().MarshalBinary()
 			if err != nil {
-				return nil, err
+				return
 			}
 
 			putMode := storage.ModePutRequest
@@ -67,21 +97,40 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				putMode = storage.ModePutRequestPin
 			}
 
-			cch, err := s.validStamp(ch, stamp)
+			cch, err := s.validStamp(chunk, stamp)
 			if err != nil {
 				// if a chunk with an invalid postage stamp was received
 				// we force it into the cache.
 				putMode = storage.ModePutRequestCache
-				cch = ch
+				cch = chunk
 			}
+			_, _ = s.Storer.Put(ctx, putMode, cch)
 
-			_, err = s.Storer.Put(ctx, putMode, cch)
-			if err != nil {
-				return nil, fmt.Errorf("netstore retrieve put: %w", err)
-			}
-			return ch, nil
 		}
-		return nil, fmt.Errorf("netstore get: %w", err)
+
+	}()
+
+	hit := 0
+
+	for {
+		select {
+		case result := <-resultC:
+
+			if result.Retrieved {
+				go func(chunk swarm.Chunk) {
+					_, err = s.Storer.Put(context.Background(), storage.ModePutRequest, chunk)
+				}(result.Chunk)
+			}
+			return result.Chunk, nil
+		case <-errC:
+			hit++
+
+			if hit >= 2 {
+				return nil, fmt.Errorf("netstore get")
+			}
+		case <-ctx.Done():
+			return nil, fmt.Errorf("magic")
+		}
 	}
-	return ch, nil
+
 }

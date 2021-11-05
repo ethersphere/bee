@@ -98,10 +98,10 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout          = 10000 * time.Millisecond
-	retrieveRetryIntervalDuration = 100 * time.Millisecond
-	maxRequestRounds              = 32
-	maxSelects                    = 16
+	retrieveChunkTimeout          = 1800 * time.Millisecond
+	retrieveRetryIntervalDuration = 280 * time.Millisecond
+	maxRequestRounds              = 128
+	maxSelects                    = 64
 	originSuffix                  = "_origin"
 )
 
@@ -130,7 +130,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan retrievalResult)
+			resultC      = make(chan retrievalResult, 5)
 		)
 
 		requestAttempt := 0
@@ -216,7 +216,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					sp.Reset()
 				} else {
 					select {
-					case <-time.After(500 * time.Millisecond):
+					case <-time.After(100 * time.Millisecond):
 					case <-ctx.Done():
 						s.logger.Tracef("retrieval: failed to get chunk %s: %v", addr, ctx.Err())
 						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
