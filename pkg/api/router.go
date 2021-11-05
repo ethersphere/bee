@@ -43,6 +43,10 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
+	handle("/info", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.infoGetHandler),
+	})
+
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.newTracingHandler("bytes-upload"),
