@@ -29,8 +29,6 @@ const (
 	blockPage   = 5000      // how many blocks to sync every time we page
 	tailSize    = 4         // how many blocks to tail from the tip of the chain
 	batchFactor = uint64(5) // minimal number of blocks to sync at once
-
-	backoffTime = 5 * time.Second
 )
 
 var (
@@ -69,6 +67,7 @@ type listener struct {
 	metrics             metrics
 	shutdowner          Shutdowner
 	stallingTimeout     time.Duration
+	backoffTime         time.Duration
 }
 
 func New(
@@ -78,6 +77,7 @@ func New(
 	blockTime uint64,
 	shutdowner Shutdowner,
 	stallingTimeout time.Duration,
+	backoffTime time.Duration,
 ) postage.Listener {
 	return &listener{
 		logger:              logger,
@@ -88,6 +88,7 @@ func New(
 		metrics:             newMetrics(),
 		shutdowner:          shutdowner,
 		stallingTimeout:     stallingTimeout,
+		backoffTime:         backoffTime,
 	}
 }
 
@@ -204,7 +205,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
 				expectedWaitTime = time.Duration(l.blockTime*remainingBlocks) * time.Second
 			} else {
-				expectedWaitTime = backoffTime
+				expectedWaitTime = l.backoffTime
 			}
 
 			select {
