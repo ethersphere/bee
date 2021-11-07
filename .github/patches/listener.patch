@@ -1,4 +1,4 @@
-168c168
-< 	chainUpdateInterval := (time.Duration(l.blockTime) * time.Second) / 2
+31c31
+< 	batchFactor = uint64(5) // minimal number of blocks to sync at once
 ---
-> 	chainUpdateInterval := (time.Duration(l.blockTime) * time.Second) / 5
+> 	batchFactor = uint64(1) // minimal number of blocks to sync at once
