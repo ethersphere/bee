@@ -788,10 +788,6 @@ func TestTimeLimitedPayment(t *testing.T) {
 	}
 }
 
-/*
-\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///\\\|||///
-*/
-
 func TestTimeLimitedPaymentLight(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 
