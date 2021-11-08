@@ -100,7 +100,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout          = 10 * time.Second
 	retrieveRetryIntervalDuration = 5 * time.Second
-	maxRequestRounds              = 5
+	originMaxRequestRounds        = 256
+	forwardMaxRequestRounds       = 5
 	maxSelects                    = 8
 	originSuffix                  = "_origin"
 )
@@ -118,8 +119,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 		maxPeers := 1
+		requestRounds := forwardMaxRequestRounds
 		if origin {
 			maxPeers = maxSelects
+			requestRounds = originMaxRequestRounds
 		}
 
 		sp := newSkipPeers()
@@ -137,7 +140,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		lastTime := time.Now().Unix()
 
-		for requestAttempt < maxRequestRounds {
+		for requestAttempt < requestRounds {
 
 			if peerAttempt < maxSelects {
 
