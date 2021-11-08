@@ -182,7 +182,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			case res := <-resultC:
 				if errors.Is(res.err, topology.ErrNotFound) {
 					s.logger.Tracef("retrieval: failed to get chunk %s", addr)
-					return nil, res.err
+					return nil, storage.ErrNotFound
 				}
 				if res.retrieved {
 					if res.err != nil {
