@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 1.1.1
+  version: 1.2.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -31,6 +31,64 @@ servers:
         description: Service port provided in bee node config
 
 paths:
+  "/auth":
+    post:
+      summary: "Authenticate - This endpoint is experimental"
+      tags:
+        - Auth
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/SecurityTokenRequest"
+      responses:
+        "201":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/SecurityTokenResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "401":
+          $ref: "SwarmCommon.yaml#/components/responses/401"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/refresh":
+    post:
+      summary: "Refresh the auth token - This endpoint is experimental"
+      tags:
+        - Auth
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/SecurityTokenRequest"
+      responses:
+        "201":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/SecurityTokenResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "401":
+          $ref: "SwarmCommon.yaml#/components/responses/401"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/bytes":
     post:
       summary: "Upload data"

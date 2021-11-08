@@ -96,6 +96,9 @@ jobs:
       - name: Test content availability
         id: content-availability
         run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
+      - name: Test authenticate
+        id: authenticate
+        run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
       - name: Debug workflow if failed
         if: failure()
         run: |
