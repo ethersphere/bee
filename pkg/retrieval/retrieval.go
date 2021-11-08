@@ -100,8 +100,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout          = 10 * time.Second
 	retrieveRetryIntervalDuration = 5 * time.Second
-	originMaxRequestRounds        = 256
-	forwardMaxRequestRounds       = 5
+	maxRequestRounds              = 256
 	maxSelects                    = 8
 	originSuffix                  = "_origin"
 )
@@ -119,10 +118,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 		maxPeers := 1
-		requestRounds := forwardMaxRequestRounds
 		if origin {
 			maxPeers = maxSelects
-			requestRounds = originMaxRequestRounds
 		}
 
 		sp := newSkipPeers()
@@ -140,7 +137,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		lastTime := time.Now().Unix()
 
-		for requestAttempt < requestRounds {
+		for requestAttempt < maxRequestRounds {
 
 			if peerAttempt < maxSelects {
 
@@ -183,6 +180,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			case <-ticker.C:
 				// break
 			case res := <-resultC:
+				if errors.Is(res.err, topology.ErrNotFound) {
+					s.logger.Tracef("retrieval: failed to get chunk %s", addr)
+					return nil, res.err
+				}
 				if res.retrieved {
 					if res.err != nil {
 						if !res.peer.IsZero() {
@@ -206,6 +207,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 			// if we have not counted enough successful attempts but out of selection amount, reset
 			if peerAttempt >= maxSelects {
+
+				// forwarder gives up after first round of request attempts,
+				// rather than holding up the forwarding chain by waiting to be able to reserve downstream peer
 				if !origin {
 					return nil, storage.ErrNotFound
 				}
