@@ -74,7 +74,7 @@ func TestCORSHeaders(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			client, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
 

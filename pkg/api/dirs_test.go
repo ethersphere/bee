@@ -38,7 +38,7 @@ func TestDirs(t *testing.T) {
 		storer              = mock.NewStorer()
 		mockStatestore      = statestore.NewStateStore()
 		logger              = logging.New(io.Discard, 0)
-		client, _, _        = newTestServer(t, testServerOptions{
+		client, _, _, _     = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			Tags:            tags.NewTags(mockStatestore, logger),
 			Logger:          logger,
@@ -66,6 +66,7 @@ func TestDirs(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource,
 			http.StatusInternalServerError,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(file),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
@@ -385,6 +386,7 @@ func TestDirs(t *testing.T) {
 				var resp api.BzzUploadResponse
 
 				options := []jsonhttptest.Option{
+					jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 					jsonhttptest.WithRequestBody(tarReader),
 					jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
@@ -418,6 +420,7 @@ func TestDirs(t *testing.T) {
 					var resp api.BzzUploadResponse
 
 					options := []jsonhttptest.Option{
+						jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 						jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 						jsonhttptest.WithRequestBody(mwReader),
 						jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
