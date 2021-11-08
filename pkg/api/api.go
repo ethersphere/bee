@@ -55,6 +55,7 @@ const (
 	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
+	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -242,6 +243,13 @@ func requestModePut(r *http.Request) storage.ModePut {
 
 func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
+}
+
+func requestDeferred(r *http.Request) (bool, error) {
+	if h := strings.ToLower(r.Header.Get(SwarmDeferredUploadHeader)); h != "" {
+		return strconv.ParseBool(h)
+	}
+	return false, nil
 }
 
 func requestPostageBatchId(r *http.Request) ([]byte, error) {
@@ -470,6 +478,29 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
+// newStamperPutter returns either a storingStamperPutter or a pushStamperPutter
+// according to whether the upload is a deferred upload or not. in the case of
+// direct push to the network (default) a pushStamperPutter is returned.
+// returns a function to wait on the errorgroup in case of a pushing stamper putter.
+func (s *server) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)
+	}
+
+	deferred, err := requestDeferred(r)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
+	}
+
+	if deferred {
+		p, err := newStoringStamperPutter(s.storer, s.post, s.signer, batch)
+		return p, noopWaitFn, err
+	}
+	p, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
+	return p, p.eg.Wait, err
+}
+
 type pushStamperPutter struct {
 	storage.Storer
 	stamper postage.Stamper
@@ -514,7 +545,12 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
 				p.c <- &pusher.Op{Chunk: ch, Err: errc}
-				return <-errc
+				select {
+				case err := <-errc:
+					return err
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			})
 		}(c.WithStamp(stamp))
 	}
@@ -526,7 +562,7 @@ type stamperPutter struct {
 	stamper postage.Stamper
 }
 
-func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (storage.Storer, error) {
+func newStoringStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (*stamperPutter, error) {
 	i, err := post.GetStampIssuer(batch)
 	if err != nil {
 		return nil, fmt.Errorf("stamp issuer: %w", err)
@@ -627,4 +663,8 @@ func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 		}
 	}
 	return false
+}
+
+func noopWaitFn() error {
+	return nil
 }

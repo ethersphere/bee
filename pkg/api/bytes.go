@@ -27,23 +27,7 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		logger.Debugf("bytes upload: postage batch id:%v", err)
-		logger.Error("bytes upload: postage batch id")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
-
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		logger.Debugf("bytes upload: postage batch id:%v", err)
-		logger.Error("bytes upload: postage batch id")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
-
-	putter, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
+	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
 		logger.Debugf("bytes upload: get putter:%v", err)
 		logger.Error("bytes upload: putter")
@@ -87,7 +71,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err = putter.eg.Wait(); err != nil {
+	if err = wait(); err != nil {
 		logger.Debugf("bytes upload: sync chunks: %v", err)
 		logger.Error("bytes upload: sync chunks")
 		jsonhttp.InternalServerError(w, nil)
