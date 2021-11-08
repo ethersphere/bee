@@ -36,8 +36,16 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+type authenticator interface {
+	Authorize(string) bool
+	GenerateKey(string, int) (string, error)
+	Enforce(string, string, string) (bool, error)
+}
+
 // Service implements http.Handler interface to be used in HTTP server.
 type Service struct {
+	restricted         bool
+	auth               authenticator
 	overlay            *swarm.Address
 	publicKey          ecdsa.PublicKey
 	pssPublicKey       ecdsa.PublicKey
@@ -77,8 +85,10 @@ type Service struct {
 // to expose /addresses, /health endpoints, Go metrics and pprof. It is useful to expose
 // these endpoints before all dependencies are configured and injected to have
 // access to basic debugging tools and /health endpoint.
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, restrict bool, auth authenticator) *Service {
 	s := new(Service)
+	s.auth = auth
+	s.restricted = restrict
 	s.publicKey = publicKey
 	s.pssPublicKey = pssPublicKey
 	s.ethereumAddress = ethereumAddress
