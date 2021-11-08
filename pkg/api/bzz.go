@@ -46,15 +46,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		logger.Debugf("bzz upload: postage batch id: %v", err)
-		logger.Error("bzz upload: postage batch id")
-		jsonhttp.BadRequest(w, "invalid postage batch id")
-		return
-	}
-
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
 		logger.Debugf("bzz upload: putter: %v", err)
 		logger.Error("bzz upload: putter")
@@ -71,10 +63,10 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	isDir := r.Header.Get(SwarmCollectionHeader)
 	if strings.ToLower(isDir) == "true" || mediaType == multiPartFormData {
-		s.dirUploadHandler(w, r, putter)
+		s.dirUploadHandler(w, r, putter, wait)
 		return
 	}
-	s.fileUploadHandler(w, r, putter)
+	s.fileUploadHandler(w, r, putter, wait)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -84,7 +76,7 @@ type bzzUploadResponse struct {
 
 // fileUploadHandler uploads the file and its metadata supplied in the file body and
 // the headers
-func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer) {
+func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
 		reader   io.Reader
@@ -228,6 +220,13 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 			jsonhttp.InternalServerError(w, nil)
 			return
 		}
+	}
+
+	if err = waitFn(); err != nil {
+		s.logger.Debugf("bzz upload: sync chunks: %v", err)
+		s.logger.Error("bzz upload: sync chunks")
+		jsonhttp.InternalServerError(w, nil)
+		return
 	}
 
 	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
