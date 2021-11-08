@@ -1,4 +1,0 @@
-31c31
-< 	batchFactor = uint64(5) // minimal number of blocks to sync at once
----
-> 	batchFactor = uint64(1) // minimal number of blocks to sync at once
