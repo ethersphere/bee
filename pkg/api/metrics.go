@@ -21,6 +21,9 @@ type metrics struct {
 	ResponseDuration   prometheus.Histogram
 	PingRequestCount   prometheus.Counter
 	ResponseCodeCounts *prometheus.CounterVec
+
+	UploadDuration   prometheus.HistogramVec
+	DownloadDuration prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -49,6 +52,20 @@ func newMetrics() metrics {
 			},
 			[]string{"code", "method"},
 		),
+		UploadDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "upload_duration",
+			Help:      "Histogram of file upload API response durations.",
+			Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 180, 300},
+		}, []string{"filesize"}),
+		DownloadDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "download_duration",
+			Help:      "Histogram of file download API response durations.",
+			Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 180, 300},
+		}, []string{"filesize"}),
 	}
 }
 

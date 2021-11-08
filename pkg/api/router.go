@@ -89,6 +89,7 @@ func (s *server) setupRouting() {
 
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
+			s.bzzUploadDurationMiddleware(),
 			s.newTracingHandler("bzz-upload"),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
@@ -100,6 +101,7 @@ func (s *server) setupRouting() {
 	}))
 	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
+			s.bzzDownloadDurationMiddleware(),
 			s.newTracingHandler("bzz-download"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),

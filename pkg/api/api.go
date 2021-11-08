@@ -264,6 +264,26 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 	}
 }
 
+func (s *server) bzzUploadDurationMiddleware() func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			h.ServeHTTP(w, r)
+			s.metrics.UploadDuration.WithLabelValues(fmt.Sprintf("%d", r.ContentLength)).Observe(time.Since(now).Seconds())
+		})
+	}
+}
+
+func (s *server) bzzDownloadDurationMiddleware() func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			h.ServeHTTP(w, r)
+			s.metrics.DownloadDuration.WithLabelValues(w.Header().Get("Content-Length")).Observe(time.Since(now).Seconds())
+		})
+	}
+}
+
 func lookaheadBufferSize(size int64) int {
 	if size <= largeBufferFilesizeThreshold {
 		return smallFileBufferSize
