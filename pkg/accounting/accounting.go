@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pricing"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -370,9 +371,13 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
-			a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
-			_ = a.blocklist(peer, 1, "failed to refresh")
-			return fmt.Errorf("refresh failure: %w", err)
+			if !errors.Is(err, pseudosettle.ErrSettlementTooSoon) && !errors.Is(err, p2p.ErrPeerNotFound) {
+				a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
+				_ = a.blocklist(peer, 1, "failed to refresh")
+				return fmt.Errorf("refresh failure: %w", err)
+			} else {
+				return fmt.Errorf("refresh failure: %w", err)
+			}
 		}
 
 		balance.refreshTimestamp = timestamp
