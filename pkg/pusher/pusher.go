@@ -194,7 +194,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			if err := s.valid(ch); err != nil {
 				logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-					s.logger.Errorf("pusher: set sync: %w", err)
+					s.logger.Errorf("pusher: set sync: %v", err)
 				}
 			}
 			push(ch, nil)
