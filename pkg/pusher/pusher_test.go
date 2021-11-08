@@ -176,6 +176,52 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 	}
 }
 
+// TestSendChunkToPushSyncViaApiChannel sends chunks via the api channel
+func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
+	chunk := testingc.GenerateTestRandomChunk()
+
+	// create a trigger  and a closestpeer
+	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
+
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		signature, _ := signer.Sign(chunk.Address().Bytes())
+		receipt := &pushsync.Receipt{
+			Address:   swarm.NewAddress(chunk.Address().Bytes()),
+			Signature: signature,
+			BlockHash: block,
+		}
+		return receipt, nil
+	})
+
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	defer storer.Close()
+	defer p.Close()
+
+	apiC := make(chan *pusher.Op)
+	p.SetApiC(apiC)
+
+	apiC <- &pusher.Op{Chunk: chunk}
+
+	var err error
+	// Check if the chunk is set as synced in the DB.
+	for i := 0; i < noOfRetries; i++ {
+		// Give some time for chunk to be pushed and receipt to be received
+		time.Sleep(50 * time.Millisecond)
+
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
 // get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
 // is received and the ModeSetSync is not set for the chunk.
