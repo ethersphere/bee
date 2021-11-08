@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	mockAccounting "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
@@ -78,6 +79,9 @@ type DevOptions struct {
 	DBWriteBufferSize        uint64
 	DBBlockCacheCapacity     uint64
 	DBDisableSeeksCompaction bool
+	Restricted               bool
+	TokenEncryptionKey       string
+	AdminPasswordHash        string
 }
 
 // NewDevBee starts the bee instance in 'development' mode
@@ -112,6 +116,15 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("eth address: %w", err)
 	}
 
+	var authenticator *auth.Authenticator
+
+	if o.Restricted {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
+			return nil, fmt.Errorf("authenticator: %w", err)
+		}
+		logger.Info("starting with restricted APIs")
+	}
+
 	var debugAPIService *debugapi.Service
 
 	if o.DebugAPIAddr != "" {
@@ -141,8 +154,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 		)
 
-		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction)
-
+		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction, o.Restricted, authenticator)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -273,10 +285,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	feedFactory := factory.New(storer)
 
-	apiService := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, new(mock.Steward), signer, logger, tracer, api.Options{
+	apiService := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, new(mock.Steward), signer, authenticator, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        false,
 		WsPingPeriod:       60 * time.Second,
+		Restricted:         o.Restricted,
 	})
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)

@@ -197,6 +197,9 @@ func (c *command) initStartCmd() (err error) {
 				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
 				StaticNodes:                staticNodes,
 				AllowPrivateCIDRs:          c.config.GetBool(optionNameAllowPrivateCIDRs),
+				Restricted:                 c.config.GetBool(optionNameRestrictedAPI),
+				TokenEncryptionKey:         c.config.GetString(optionNameTokenEncryptionKey),
+				AdminPasswordHash:          c.config.GetString(optionNameAdminPasswordHash),
 			})
 			if err != nil {
 				return err

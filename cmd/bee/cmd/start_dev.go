@@ -79,6 +79,9 @@ func (c *command) initStartDevCmd() (err error) {
 				DBDisableSeeksCompaction: c.config.GetBool(optionNameDBDisableSeeksCompaction),
 				CORSAllowedOrigins:       c.config.GetStringSlice(optionCORSAllowedOrigins),
 				ReserveCapacity:          c.config.GetUint64(optionNameDevReserveCapacity),
+				Restricted:               c.config.GetBool(optionNameRestrictedAPI),
+				TokenEncryptionKey:       c.config.GetString(optionNameTokenEncryptionKey),
+				AdminPasswordHash:        c.config.GetString(optionNameAdminPasswordHash),
 			})
 			if err != nil {
 				return err
@@ -157,6 +160,9 @@ func (c *command) initStartDevCmd() (err error) {
 	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
 	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
 	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
+	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
+	cmd.Flags().String(optionNameTokenEncryptionKey, "", "security token encryption hash")
+	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 
 	c.root.AddCommand(cmd)
 	return nil

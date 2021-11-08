@@ -11,6 +11,16 @@ externalDocs:
 
 paths: {}
 components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: SecurityToken
+
   schemas:
     Address:
       type: object
@@ -582,6 +592,23 @@ components:
       properties:
         isRetrievable:
           type: boolean
+
+    SecurityTokenRequest:
+      type: object
+      properties:
+        Role:
+          type: string
+          nullable: false
+        Expiry:
+          type: integer
+          nullable: false
+
+    SecurityTokenResponse:
+      type: object
+      properties:
+        Key:
+          type: string
+          nullable: false
 
   headers:
     SwarmTag:

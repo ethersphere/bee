@@ -9,14 +9,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/auth"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/logging/httpaccess"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"resenje.org/web"
-
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging/httpaccess"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func (s *server) setupRouting() {
@@ -29,6 +29,9 @@ func (s *server) setupRouting() {
 
 	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
+		if s.Restricted {
+			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
+		}
 		router.Handle(path, handler)
 		router.Handle(rootPath+path, handler)
 	}
@@ -42,6 +45,23 @@ func (s *server) setupRouting() {
 	router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
+
+	if s.Restricted {
+		router.Handle("/auth", jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				s.newTracingHandler("auth"),
+				jsonhttp.NewMaxBodyBytesHandler(512),
+				web.FinalHandlerFunc(s.authHandler),
+			),
+		})
+		router.Handle("/refresh", jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				s.newTracingHandler("auth"),
+				jsonhttp.NewMaxBodyBytesHandler(512),
+				web.FinalHandlerFunc(s.refreshHandler),
+			),
+		})
+	}
 
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
