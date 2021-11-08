@@ -268,6 +268,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"accountant", "/chequebook/withdraw?*", "POST"},
 		{"accountant", "/chequebook/deposit", "POST"},
 		{"accountant", "/chequebook/deposit?*", "POST"},
+		{"accountant", "/accounting", "GET"},
 		{"maintainer", "/chequebook/cheque/*", "GET"},
 		{"maintainer", "/chequebook/cheque", "GET"},
 		{"maintainer", "/chequebook/address", "GET"},
