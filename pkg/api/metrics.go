@@ -13,6 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const bytesInKB = 1000
+
+var fileSizeBucketsKBytes = []int64{50, 100, 500, 1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 100000, 200000, 500000, 1000000}
+
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
@@ -67,6 +71,17 @@ func newMetrics() metrics {
 			Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 180, 300},
 		}, []string{"filesize"}),
 	}
+}
+
+func toFileSizeBucket(bytes int64) int64 {
+
+	for _, s := range fileSizeBucketsKBytes {
+		if (s * bytesInKB) > bytes {
+			return s * bytesInKB
+		}
+	}
+
+	return fileSizeBucketsKBytes[len(fileSizeBucketsKBytes)-1] * bytesInKB
 }
 
 func (s *server) Metrics() []prometheus.Collector {
