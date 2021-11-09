@@ -523,10 +523,14 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 				// note: shutdown might be tricky, we need to pass the quit channel
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
+			PUSH:
 				p.c <- &pusher.Op{Chunk: ch, Err: errc}
 				select {
 				case err := <-errc:
-					return err
+					if err == nil {
+						return nil
+					}
+					goto PUSH
 				case <-ctx.Done():
 					return ctx.Err()
 				}
