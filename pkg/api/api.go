@@ -516,6 +516,9 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 		func(ch swarm.Chunk) {
 			p.sem <- struct{}{}
 			p.eg.Go(func() error {
+				defer func() {
+					<-p.sem
+				}()
 				errc := make(chan error, 1)
 				// note: shutdown might be tricky, we need to pass the quit channel
 				// from the api here so that the putter knows not to keep on sending stuff
