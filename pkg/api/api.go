@@ -269,7 +269,7 @@ func (s *server) bzzUploadDurationMiddleware() func(h http.Handler) http.Handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
 			h.ServeHTTP(w, r)
-			s.metrics.UploadDuration.WithLabelValues(fmt.Sprintf("%d", r.ContentLength)).Observe(time.Since(now).Seconds())
+			s.metrics.UploadDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(r.ContentLength))).Observe(time.Since(now).Seconds())
 		})
 	}
 }
@@ -279,9 +279,18 @@ func (s *server) bzzDownloadDurationMiddleware() func(h http.Handler) http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
 			h.ServeHTTP(w, r)
-			s.metrics.DownloadDuration.WithLabelValues(w.Header().Get("Content-Length")).Observe(time.Since(now).Seconds())
+			contentLength, err := strconv.ParseInt(w.Header().Get("Content-Length"), 10, 64)
+			if err != nil {
+				s.logger.Debugf("api: content length int conversation failed: %v", err)
+				return
+			}
+			s.metrics.DownloadDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(contentLength))).Observe(time.Since(now).Seconds())
 		})
 	}
+}
+
+func fileSizeBuckets() {
+
 }
 
 func lookaheadBufferSize(size int64) int {

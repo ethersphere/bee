@@ -44,6 +44,11 @@ var (
 	SuccessWsMsg = successWsMsg
 )
 
+var (
+	FileSizeBucketsKBytes = fileSizeBucketsKBytes
+	ToFileSizeBucket      = toFileSizeBucket
+)
+
 func (s *Server) ResolveNameOrAddress(str string) (swarm.Address, error) {
 	return s.resolveNameOrAddress(str)
 }
