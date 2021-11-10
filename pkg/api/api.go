@@ -391,33 +391,27 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 	}
 }
 
-func (s *server) bzzUploadDurationMiddleware() func(h http.Handler) http.Handler {
+func (s *server) contentLengthMetricMiddleware(method string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
 			h.ServeHTTP(w, r)
-			s.metrics.UploadDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(r.ContentLength))).Observe(time.Since(now).Seconds())
-		})
-	}
-}
-
-func (s *server) bzzDownloadDurationMiddleware() func(h http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			now := time.Now()
-			h.ServeHTTP(w, r)
-			contentLength, err := strconv.ParseInt(w.Header().Get("Content-Length"), 10, 64)
-			if err != nil {
-				s.logger.Debugf("api: content length int conversation failed: %v", err)
-				return
+			if method == "GET" {
+				contentLength, err := strconv.ParseInt(w.Header().Get("Content-Length"), 10, 64)
+				if err != nil {
+					s.logger.Debugf("api: content length int conversation failed: %v", err)
+					return
+				}
+				if contentLength > 0 {
+					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(contentLength)), method).Observe(time.Since(now).Seconds())
+				}
+			} else if method == "POST" {
+				if r.ContentLength > 0 {
+					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(r.ContentLength)), method).Observe(time.Since(now).Seconds())
+				}
 			}
-			s.metrics.DownloadDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(contentLength))).Observe(time.Since(now).Seconds())
 		})
 	}
-}
-
-func fileSizeBuckets() {
-
 }
 
 func lookaheadBufferSize(size int64) int {

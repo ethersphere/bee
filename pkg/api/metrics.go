@@ -15,7 +15,7 @@ import (
 
 const bytesInKB = 1000
 
-var fileSizeBucketsKBytes = []int64{50, 100, 500, 1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 100000, 200000, 500000, 1000000}
+var fileSizeBucketsKBytes = []int64{100, 500, 2500, 4999, 5000, 10000}
 
 type metrics struct {
 	// all metrics fields must be exported
@@ -26,8 +26,7 @@ type metrics struct {
 	PingRequestCount   prometheus.Counter
 	ResponseCodeCounts *prometheus.CounterVec
 
-	UploadDuration   prometheus.HistogramVec
-	DownloadDuration prometheus.HistogramVec
+	ContentApiDuration prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -56,27 +55,20 @@ func newMetrics() metrics {
 			},
 			[]string{"code", "method"},
 		),
-		UploadDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		ContentApiDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "upload_duration",
+			Name:      "content_api_duration",
 			Help:      "Histogram of file upload API response durations.",
-			Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 180, 300},
-		}, []string{"filesize"}),
-		DownloadDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "download_duration",
-			Help:      "Histogram of file download API response durations.",
-			Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 180, 300},
-		}, []string{"filesize"}),
+			Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
+		}, []string{"filesize", "method"}),
 	}
 }
 
 func toFileSizeBucket(bytes int64) int64 {
 
 	for _, s := range fileSizeBucketsKBytes {
-		if (s * bytesInKB) > bytes {
+		if (s * bytesInKB) >= bytes {
 			return s * bytesInKB
 		}
 	}

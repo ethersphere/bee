@@ -12,10 +12,16 @@ import (
 
 func TestToFileSizeBucket(t *testing.T) {
 
-	var want int64 = 10000
+	var want int64 = 300000
 	bucket := api.ToFileSizeBucket(want)
 	if bucket < want {
 		t.Fatalf("bucket should be greater than filesize")
+	}
+
+	want = 5000000
+	bucket = api.ToFileSizeBucket(want)
+	if bucket != want {
+		t.Fatalf("bucket should be exactly 5000000")
 	}
 
 	overBound := api.FileSizeBucketsKBytes[len(api.FileSizeBucketsKBytes)-1]*1000 + 1
