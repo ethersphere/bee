@@ -99,6 +99,9 @@ jobs:
       - name: Test authenticate
         id: authenticate
         run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
+      - name: Test postage stamps
+        id: postage-stamps
+        run: beekeeper check --cluster-name local-dns --checks ci-postage
       - name: Debug workflow if failed
         if: failure()
         run: |
