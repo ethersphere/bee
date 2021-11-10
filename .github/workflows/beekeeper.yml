@@ -68,7 +68,7 @@ jobs:
         run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity
-        run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
+        run: until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done
       - name: Test settlements
         id: settlements
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
@@ -188,7 +188,7 @@ jobs:
         run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
       - name: Test fullconnectivity
         id: fullconnectivity
-        run: beekeeper check --cluster-name local-clef --checks=ci-full-connectivity
+        run: until beekeeper check --cluster-name local-clef --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done
       - name: Test settlements
         id: settlements
         run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
@@ -218,7 +218,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_BRANCH: "defer-si"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
     runs-on: ubuntu-latest
