@@ -26,6 +26,10 @@ var (
 	logMore = false // enable this to get more logging
 )
 
+const (
+	cursorPruneTimeout = 24 * time.Hour
+)
+
 type Options struct {
 	Bins uint8
 }
@@ -41,7 +45,7 @@ type Puller struct {
 	syncPeers    []map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
 
-	cursors    map[string][]uint64
+	cursors    map[string]peerCursors
 	cursorsMtx sync.Mutex
 
 	quit chan struct{}
@@ -64,7 +68,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 		syncer:     pullSync,
 		metrics:    newMetrics(),
 		logger:     logger,
-		cursors:    make(map[string][]uint64),
+		cursors:    make(map[string]peerCursors),
 
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),
@@ -208,7 +212,9 @@ func (p *Puller) disconnectPeer(peer swarm.Address, po uint8) {
 
 	// delete the peer cursors
 	p.cursorsMtx.Lock()
-	delete(p.cursors, peer.ByteString())
+	if c, ok := p.cursors[peer.ByteString()]; ok && c.timestamp.Add(cursorPruneTimeout).After(time.Now()) {
+		delete(p.cursors, peer.ByteString())
+	}
 	p.cursorsMtx.Unlock()
 }
 
@@ -225,7 +231,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	defer syncCtx.Unlock()
 
 	p.cursorsMtx.Lock()
-	c := p.cursors[peer.ByteString()]
+	c := p.cursors[peer.ByteString()].cursors
 	p.cursorsMtx.Unlock()
 
 	if len(c) != int(p.bins) {
@@ -291,21 +297,21 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 			// maybe blacklist for some time
 		}
 		p.cursorsMtx.Lock()
-		p.cursors[peer.ByteString()] = cursors
+		p.cursors[peer.ByteString()] = peerCursors{timestamp: time.Now(), cursors: cursors}
+		c = p.cursors[peer.ByteString()]
 		p.cursorsMtx.Unlock()
-		c = cursors
 	}
 
 	// if length of returned cursors does not add up to
 	// what we expect it to be - dont do anything
-	if len(c) != int(p.bins) {
+	if len(c.cursors) != int(p.bins) {
 		p.syncPeersMtx.Lock()
 		delete(p.syncPeers[po], peer.ByteString())
 		p.syncPeersMtx.Unlock()
 		return
 	}
 
-	for bin, cur := range c {
+	for bin, cur := range c.cursors {
 		if bin == 0 || uint8(bin) < d {
 			continue
 		}
@@ -559,4 +565,9 @@ func isSyncing(p *Puller, addr swarm.Address) bool {
 		}
 	}
 	return false
+}
+
+type peerCursors struct {
+	timestamp time.Time
+	cursors   []uint64
 }
