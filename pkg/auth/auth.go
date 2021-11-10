@@ -284,6 +284,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"consumer", "/consumed", "GET"},
 		{"consumer", "/consumed/*", "GET"},
 		{"consumer", "/chunks/stream", "GET"},
+		{"creator", "/stewardship/*", "GET"},
 		{"consumer", "/stewardship/*", "PUT"},
 	})
 
