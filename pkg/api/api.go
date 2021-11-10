@@ -68,6 +68,8 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
+
+	uploadSem = 50
 )
 
 const (
@@ -492,7 +494,7 @@ func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.
 	}
 
 	stamper := postage.NewStamper(i, signer)
-	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, 20)}, nil
+	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
 }
 
 func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
@@ -516,14 +518,21 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 		func(ch swarm.Chunk) {
 			p.sem <- struct{}{}
 			p.eg.Go(func() error {
+				defer func() {
+					<-p.sem
+				}()
 				errc := make(chan error, 1)
 				// note: shutdown might be tricky, we need to pass the quit channel
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
+			PUSH:
 				p.c <- &pusher.Op{Chunk: ch, Err: errc}
 				select {
 				case err := <-errc:
-					return err
+					if err == nil {
+						return nil
+					}
+					goto PUSH
 				case <-ctx.Done():
 					return ctx.Err()
 				}
