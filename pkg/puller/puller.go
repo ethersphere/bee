@@ -212,7 +212,7 @@ func (p *Puller) disconnectPeer(peer swarm.Address, po uint8) {
 
 	// delete the peer cursors
 	p.cursorsMtx.Lock()
-	if c, ok := p.cursors[peer.ByteString()]; ok && c.timestamp.Add(cursorPruneTimeout).After(time.Now()) {
+	if c, ok := p.cursors[peer.ByteString()]; ok && c.created.Add(cursorPruneTimeout).After(time.Now()) {
 		delete(p.cursors, peer.ByteString())
 	}
 	p.cursorsMtx.Unlock()
@@ -297,7 +297,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 			// maybe blacklist for some time
 		}
 		p.cursorsMtx.Lock()
-		p.cursors[peer.ByteString()] = peerCursors{timestamp: time.Now(), cursors: cursors}
+		p.cursors[peer.ByteString()] = peerCursors{created: time.Now(), cursors: cursors}
 		c = p.cursors[peer.ByteString()]
 		p.cursorsMtx.Unlock()
 	}
@@ -568,6 +568,6 @@ func isSyncing(p *Puller, addr swarm.Address) bool {
 }
 
 type peerCursors struct {
-	timestamp time.Time
-	cursors   []uint64
+	created time.Time
+	cursors []uint64
 }
