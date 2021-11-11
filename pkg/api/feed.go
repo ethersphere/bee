@@ -141,7 +141,7 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, wait, err := s.newStamperPutter(r)
+	putter, wait, cleanup, err := s.newStamperPutter(r)
 	if err != nil {
 		s.logger.Debugf("feed put: putter: %v", err)
 		s.logger.Error("feed put: putter")
@@ -157,8 +157,9 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	defer cleanup()
 
-	l := loadsave.New(putter, requestPipelineFactory(r.Context(), putter, r))
+	l := loadsave.New(s.contextStore.LookupContext(), putter, requestPipelineFactory(r.Context(), putter, r))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		s.logger.Debugf("feed put: new manifest: %v", err)

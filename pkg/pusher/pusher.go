@@ -140,9 +140,19 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				// we therefore communicate the error into the channel
 				// otherwise we assume this is a buffered upload and
 				// therefore we repeat().
+
+				if op.Direct && errors.Is(err, topology.ErrWantSelf) {
+					if _, err := s.storer.Put(ctx, storage.ModePutSync, op.Chunk); err != nil {
+						op.Err <- err
+					}
+					// all good.
+					return
+				}
+
 				if op.Err != nil {
 					op.Err <- err
 				}
+
 				repeat()
 				s.metrics.TotalErrors.Inc()
 				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())

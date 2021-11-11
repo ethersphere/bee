@@ -40,7 +40,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"golang.org/x/sync/errgroup"
@@ -107,6 +106,7 @@ type server struct {
 	auth            authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
+	contextStore    storage.ContextStorer
 	resolver        resolver.Interface
 	pss             pss.Interface
 	traversal       traversal.Traverser
@@ -140,11 +140,12 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) (Service, <-chan *pusher.Op) {
+func New(tags *tags.Tags, ctxStore storage.ContextStorer, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) (Service, <-chan *pusher.Op) {
 	s := &server{
 		auth:            auth,
 		tags:            tags,
 		storer:          storer,
+		contextStore:    ctxStore,
 		resolver:        resolver,
 		pss:             pss,
 		traversal:       traversalService,
@@ -242,6 +243,13 @@ func requestModePut(r *http.Request) storage.ModePut {
 		return storage.ModePutUploadPin
 	}
 	return storage.ModePutUpload
+}
+
+func requestPin(r *http.Request) bool {
+	if h := strings.ToLower(r.Header.Get(SwarmPinHeader)); h == "true" {
+		return true
+	}
+	return false
 }
 
 func requestEncrypt(r *http.Request) bool {
@@ -485,160 +493,146 @@ func equalASCIIFold(s, t string) bool {
 // according to whether the upload is a deferred upload or not. in the case of
 // direct push to the network (default) a pushStamperPutter is returned.
 // returns a function to wait on the errorgroup in case of a pushing stamper putter.
-func (s *server) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
+func (s *server) newStamperPutter(r *http.Request) (storage.SimpleChunkPutter, func() error, func(), error) {
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)
+		return nil, noopWaitFn, func() {}, fmt.Errorf("postage batch id: %w", err)
 	}
 
 	deferred, err := requestDeferred(r)
 	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
+		return nil, noopWaitFn, func() {}, fmt.Errorf("request deferred: %w", err)
+	}
+
+	pinned := requestPin(r)
+
+	if pinned {
+		_, u, cleanup, err := s.contextStore.ContextByName(storage.ContextPin, "")
+		if err != nil {
+			return nil, noopWaitFn, func() {}, err
+		}
+
+		p, err := newStoringStamperPutter(u, s.post, s.signer, batch)
+		return p, noopWaitFn, cleanup, err
 	}
 
 	if deferred {
-		p, err := newStoringStamperPutter(s.storer, s.post, s.signer, batch)
-		return p, noopWaitFn, err
+		_, u, cleanup, err := s.contextStore.ContextByName(storage.ContextUpload, requestUploadId(r))
+		if err != nil {
+			return nil, noopWaitFn, func() {}, err
+		}
+		p, err := newStoringStamperPutter(u, s.post, s.signer, batch)
+		return p, noopWaitFn, cleanup, err
 	}
-	p, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
-	return p, p.eg.Wait, err
+
+	c := s.contextStore.DiscContext()
+	p, err := newPushStamperPutter(c, s.post, s.signer, batch, s.chunkPushC)
+
+	return p, p.eg.Wait, func() {}, err
 }
 
 type pushStamperPutter struct {
-	storage.Storer
+	disc    storage.SimpleChunkPutter
 	stamper postage.Stamper
 	eg      errgroup.Group
 	c       chan *pusher.Op
 	sem     chan struct{}
 }
 
-func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
+func newPushStamperPutter(s storage.SimpleChunkPutter, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
 	i, err := post.GetStampIssuer(batch)
 	if err != nil {
 		return nil, fmt.Errorf("stamp issuer: %w", err)
 	}
 
 	stamper := postage.NewStamper(i, signer)
-	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
+	return &pushStamperPutter{disc: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
 }
 
-func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
-	exists = make([]bool, len(chs))
+func (p *pushStamperPutter) Put(ctx context.Context, ch swarm.Chunk) (exists bool, err error) {
+	stamp, err := p.stamper.Stamp(ch.Address())
+	if err != nil {
+		return false, err
+	}
 
-	for i, c := range chs {
-		// skips chunk we already know about
-		has, err := p.Storer.Has(ctx, c.Address())
-		if err != nil {
-			return nil, err
-		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
-			exists[i] = true
-			continue
-		}
-		stamp, err := p.stamper.Stamp(c.Address())
-		if err != nil {
-			return nil, err
-		}
+	func(ch swarm.Chunk) {
+		p.sem <- struct{}{}
+		p.eg.Go(func() error {
+			defer func() {
+				<-p.sem
+			}()
 
-		func(ch swarm.Chunk) {
-			p.sem <- struct{}{}
-			p.eg.Go(func() error {
-				defer func() {
-					<-p.sem
-				}()
-				errc := make(chan error, 1)
-				// note: shutdown might be tricky, we need to pass the quit channel
-				// from the api here so that the putter knows not to keep on sending stuff
-				// and just returns an error... or?
-			PUSH:
-				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
+		PUSH:
+			if _, err := p.disc.Put(ctx, ch); err != nil {
 				select {
-				case err := <-errc:
-					// if we're the closest one we will store the chunk and return no error
-					if errors.Is(err, topology.ErrWantSelf) {
-						if _, err := p.Storer.Put(ctx, storage.ModePutSync, ch); err != nil {
-							return err
-						}
-						return nil
-					}
-					if err == nil {
-						return nil
-					}
-					goto PUSH
 				case <-ctx.Done():
 					return ctx.Err()
+				default:
 				}
-			})
-		}(c.WithStamp(stamp))
-	}
-	return exists, nil
+				// retry failed chunks
+				goto PUSH
+			}
+			return nil
+		})
+	}(ch.WithStamp(stamp))
+	return false, nil
 }
 
 type stamperPutter struct {
-	storage.Storer
+	storage.SimpleChunkStorer
 	stamper postage.Stamper
 }
 
-func newStoringStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (*stamperPutter, error) {
+func newStoringStamperPutter(s storage.SimpleChunkStorer, post postage.Service, signer crypto.Signer, batch []byte) (*stamperPutter, error) {
 	i, err := post.GetStampIssuer(batch)
 	if err != nil {
 		return nil, fmt.Errorf("stamp issuer: %w", err)
 	}
 
 	stamper := postage.NewStamper(i, signer)
-	return &stamperPutter{Storer: s, stamper: stamper}, nil
+	return &stamperPutter{SimpleChunkStorer: s, stamper: stamper}, nil
 }
 
-func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
-	var (
-		ctp []swarm.Chunk
-		idx []int
-	)
-	exists = make([]bool, len(chs))
-
-	for i, c := range chs {
-		has, err := p.Storer.Has(ctx, c.Address())
-		if err != nil {
-			return nil, err
-		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
-			exists[i] = true
-			continue
-		}
-		stamp, err := p.stamper.Stamp(c.Address())
-		if err != nil {
-			return nil, err
-		}
-		chs[i] = c.WithStamp(stamp)
-		ctp = append(ctp, chs[i])
-		idx = append(idx, i)
-	}
-
-	exists2, err := p.Storer.Put(ctx, mode, ctp...)
+func (p *stamperPutter) Put(ctx context.Context, ch swarm.Chunk) (exists bool, err error) {
+	has, err := p.SimpleChunkStorer.Has(ctx, ch.Address())
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	for i, v := range idx {
-		exists[v] = exists2[i]
+	if has {
+		return true, nil
+	}
+	stamp, err := p.stamper.Stamp(ch.Address())
+	if err != nil {
+		return false, err
+	}
+	ch = ch.WithStamp(stamp)
+
+	exists, err = p.SimpleChunkStorer.Put(ctx, ch)
+	if err != nil {
+		return false, err
 	}
 	return exists, nil
 }
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
-	mode, encrypt := requestModePut(r), requestEncrypt(r)
+func requestPipelineFn(s storage.SimpleChunkPutter, r *http.Request) pipelineFunc {
+	_, encrypt := requestModePut(r), requestEncrypt(r)
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, r *http.Request) func() pipeline.Interface {
-	mode, encrypt := requestModePut(r), requestEncrypt(r)
+func requestPipelineFactory(ctx context.Context, s storage.SimpleChunkPutter, r *http.Request) func() pipeline.Interface {
+	_, encrypt := requestModePut(r), requestEncrypt(r)
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		return builder.NewPipelineBuilder(ctx, s, encrypt)
 	}
+}
+
+func (s *server) lookupStorageContext() storage.SimpleChunkGetter {
+	return s.contextStore.LookupContext()
 }
 
 // calculateNumberOfChunks calculates the number of chunks in an arbitrary

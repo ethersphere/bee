@@ -46,7 +46,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, wait, err := s.newStamperPutter(r)
+	putter, wait, cleanup, err := s.newStamperPutter(r)
 	if err != nil {
 		logger.Debugf("bzz upload: putter: %v", err)
 		logger.Error("bzz upload: putter")
@@ -60,6 +60,7 @@ func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	defer cleanup()
 
 	isDir := r.Header.Get(SwarmCollectionHeader)
 	if strings.ToLower(isDir) == "true" || mediaType == multiPartFormData {
@@ -76,7 +77,7 @@ type bzzUploadResponse struct {
 
 // fileUploadHandler uploads the file and its metadata supplied in the file body and
 // the headers
-func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
+func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.SimpleChunkPutter, waitFn func() error) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
 		reader   io.Reader
@@ -136,7 +137,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 	encrypt := requestEncrypt(r)
 	factory := requestPipelineFactory(ctx, storer, r)
-	l := loadsave.New(storer, factory)
+	l := loadsave.New(s.contextStore.LookupContext(), storer, factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -239,7 +240,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-	ls := loadsave.NewReadonly(s.storer)
+	ls := loadsave.NewReadonly(s.contextStore.LookupContext())
 	feedDereferenced := false
 
 	targets := r.URL.Query().Get("targets")
@@ -434,7 +435,8 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	}
 
-	reader, l, err := joiner.New(r.Context(), s.storer, reference)
+	getContext := s.lookupStorageContext()
+	reader, l, err := joiner.New(r.Context(), getContext, reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debugf("api download: not found %s: %v", reference, err)

@@ -10,13 +10,7 @@ package traversal
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/manifest"
-	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -44,40 +38,41 @@ type service struct {
 
 // Traverse implements Traverser.Traverse method.
 func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
-	processBytes := func(ref swarm.Address) error {
-		j, _, err := joiner.New(ctx, s.store, ref)
-		if err != nil {
-			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
-		}
-		err = j.IterateChunkAddresses(iterFn)
-		if err != nil {
-			return fmt.Errorf("traversal: iterate chunk address error for %q: %w", ref, err)
-		}
-		return nil
-	}
+	//processBytes := func(ref swarm.Address) error {
+	//j, _, err := joiner.New(ctx, s.store, ref)
+	//if err != nil {
+	//return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
+	//}
+	//err = j.IterateChunkAddresses(iterFn)
+	//if err != nil {
+	//return fmt.Errorf("traversal: iterate chunk address error for %q: %w", ref, err)
+	//}
+	//return nil
+	//}
 
-	ls := loadsave.NewReadonly(s.store)
-	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
-	case errors.Is(err, manifest.ErrInvalidManifestType):
-		break
-	case err != nil:
-		return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
-	default:
-		err := mf.IterateAddresses(ctx, processBytes)
-		if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
-			// Based on the returned errors we conclude that it might
-			// not be a manifest, so we try non-manifest processing.
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
-		}
-		return nil
-	}
-
-	// Non-manifest processing.
-	if err := processBytes(addr); err != nil {
-		return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
-	}
 	return nil
+	//ls := loadsave.NewReadonly(s.store)
+	//switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
+	//case errors.Is(err, manifest.ErrInvalidManifestType):
+	//break
+	//case err != nil:
+	//return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
+	//default:
+	//err := mf.IterateAddresses(ctx, processBytes)
+	//if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
+	//// Based on the returned errors we conclude that it might
+	//// not be a manifest, so we try non-manifest processing.
+	//break
+	//}
+	//if err != nil {
+	//return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
+	//}
+	//return nil
+	//}
+
+	//// Non-manifest processing.
+	//if err := processBytes(addr); err != nil {
+	//return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
+	//}
+	//return nil
 }

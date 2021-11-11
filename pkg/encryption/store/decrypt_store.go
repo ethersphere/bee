@@ -15,24 +15,24 @@ import (
 )
 
 type decryptingStore struct {
-	storage.Getter
+	s storage.SimpleChunkGetter
 }
 
-func New(s storage.Getter) storage.Getter {
+func New(s storage.SimpleChunkGetter) storage.SimpleChunkGetter {
 	return &decryptingStore{s}
 }
 
-func (s *decryptingStore) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
+func (s *decryptingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	switch l := len(addr.Bytes()); l {
 	case swarm.HashSize:
 		// normal, unencrypted content
-		return s.Getter.Get(ctx, mode, addr)
+		return s.s.Get(ctx, addr)
 
 	case encryption.ReferenceSize:
 		// encrypted reference
 		ref := addr.Bytes()
 		address := swarm.NewAddress(ref[:swarm.HashSize])
-		ch, err := s.Getter.Get(ctx, mode, address)
+		ch, err := s.s.Get(ctx, address)
 		if err != nil {
 			return nil, err
 		}

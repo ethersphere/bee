@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -53,38 +52,14 @@ func (s *server) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 // unpinRootHash unpin's an already pinned root hash. This method is idempotent.
 func (s *server) unpinRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
+	uuid := mux.Vars(r)["uuid"]
+	err := s.contextStore.PinContext().Delete(uuid)
 	if err != nil {
-		s.logger.Debugf("unpin root hash: unable to parse reference: %v", err)
-		s.logger.Error("unpin root hash: unable to parse reference")
-		jsonhttp.BadRequest(w, "bad reference")
-		return
-	}
-
-	has, err := s.pinning.HasPin(ref)
-	if err != nil {
-		s.logger.Debugf("pin root hash: checking of tracking pin for %q failed: %v", ref, err)
+		s.logger.Debugf("pin root hash: checking of tracking pin for %s failed: %v", uuid, err)
 		s.logger.Error("pin root hash: checking of tracking pin failed")
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
-	if !has {
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	switch err := s.pinning.DeletePin(r.Context(), ref); {
-	case errors.Is(err, pinning.ErrTraversal):
-		s.logger.Debugf("unpin root hash: deletion of pin for %q failed: %v", ref, err)
-		jsonhttp.InternalServerError(w, nil)
-		return
-	case err != nil:
-		s.logger.Debugf("unpin root hash: deletion of pin for %q failed: %v", ref, err)
-		s.logger.Error("unpin root hash: deletion of pin for failed")
-		jsonhttp.InternalServerError(w, nil)
-		return
-	}
-
 	jsonhttp.OK(w, nil)
 }
 
@@ -120,7 +95,11 @@ func (s *server) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 
 // listPinnedRootHashes lists all the references of the pinned root hashes.
 func (s *server) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
-	pinned, err := s.pinning.Pins()
+	var pins []string
+	err := s.contextStore.PinContext().EachStore(func(uuid string, _ storage.SimpleChunkStorer) (bool, error) {
+		pins = append(pins, uuid)
+		return false, nil
+	})
 	if err != nil {
 		s.logger.Debugf("list pinned root references: unable to list references: %v", err)
 		s.logger.Error("list pinned root references: unable to list references")
@@ -129,8 +108,8 @@ func (s *server) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, struct {
-		References []swarm.Address `json:"references"`
+		Pins []string `json:"pins"`
 	}{
-		References: pinned,
+		Pins: pins,
 	})
 }

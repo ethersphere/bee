@@ -21,38 +21,35 @@ import (
 
 var readonlyLoadsaveError = errors.New("readonly manifest loadsaver")
 
-type PutGetter interface {
-	storage.Putter
-	storage.Getter
-}
-
 // loadSave is needed for manifest operations and provides
 // simple wrapping over load and save operations using file
 // package abstractions. use with caution since Loader will
 // load all of the subtrie of a given hash in memory.
 type loadSave struct {
-	storer     PutGetter
+	putter     storage.SimpleChunkPutter
+	getter     storage.SimpleChunkGetter
 	pipelineFn func() pipeline.Interface
 }
 
 // New returns a new read-write load-saver.
-func New(storer PutGetter, pipelineFn func() pipeline.Interface) file.LoadSaver {
+func New(getter storage.SimpleChunkGetter, putter storage.SimpleChunkPutter, pipelineFn func() pipeline.Interface) file.LoadSaver {
 	return &loadSave{
-		storer:     storer,
+		putter:     putter,
+		getter:     getter,
 		pipelineFn: pipelineFn,
 	}
 }
 
 // NewReadonly returns a new read-only load-saver
 // which will error on write.
-func NewReadonly(storer PutGetter) file.LoadSaver {
+func NewReadonly(storer storage.SimpleChunkGetter) file.LoadSaver {
 	return &loadSave{
-		storer: storer,
+		getter: storer,
 	}
 }
 
 func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
-	j, _, err := joiner.New(ctx, ls.storer, swarm.NewAddress(ref))
+	j, _, err := joiner.New(ctx, ls.getter, swarm.NewAddress(ref))
 	if err != nil {
 		return nil, err
 	}

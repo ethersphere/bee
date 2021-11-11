@@ -12,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/pinning"
 	statestorem "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	storagem "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 )
@@ -27,10 +26,12 @@ func TestPinningService(t *testing.T) {
 			storerMock,
 			statestorem.NewStateStore(),
 			traversal.New(storerMock),
+
+			nil,
 		)
 	)
 
-	pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
+	pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 	ref, err := builder.FeedPipeline(ctx, pipe, strings.NewReader(content))
 	if err != nil {
 		t.Fatal(err)

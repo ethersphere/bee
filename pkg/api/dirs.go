@@ -32,7 +32,7 @@ import (
 )
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
-func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
+func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.SimpleChunkPutter, waitFn func() error) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	if r.Body == http.NoBody {
 		logger.Error("bzz upload dir: request has no body")
@@ -78,7 +78,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 		dReader,
 		s.logger,
 		requestPipelineFn(storer, r),
-		loadsave.New(storer, requestPipelineFactory(ctx, storer, r)),
+		loadsave.New(s.contextStore.LookupContext(), storer, requestPipelineFactory(ctx, storer, r)),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
 		tag,

@@ -6,14 +6,12 @@ package pinning
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/hashicorp/go-multierror"
 )
 
 // ErrTraversal signals that errors occurred during nodes traversal.
@@ -47,38 +45,45 @@ func NewService(
 	pinStorage storage.Storer,
 	rhStorage storage.StateStorer,
 	traverser traversal.Traverser,
+	contextStore storage.ContextStorer,
 ) *Service {
 	return &Service{
-		pinStorage: pinStorage,
-		rhStorage:  rhStorage,
-		traverser:  traverser,
+		pinStorage:   pinStorage,
+		rhStorage:    rhStorage,
+		traverser:    traverser,
+		contextStore: contextStore,
 	}
 }
 
 // Service is implementation of the pinning.Interface.
 type Service struct {
-	pinStorage storage.Storer
-	rhStorage  storage.StateStorer
-	traverser  traversal.Traverser
+	pinStorage   storage.Storer
+	rhStorage    storage.StateStorer
+	traverser    traversal.Traverser
+	contextStore storage.ContextStorer
 }
 
 // CreatePin implements Interface.CreatePin method.
 func (s *Service) CreatePin(ctx context.Context, ref swarm.Address, traverse bool) error {
 	// iterFn is a pinning iterator function over the leaves of the root.
+	pinCtx := s.contextStore.PinContext()
+	pinStore, cleanup, err := pinCtx.GetByName(ref.String())
+	defer cleanup()
+	if err != nil {
+		return fmt.Errorf("get pin store by name: %w", err)
+	}
+
+	lookupCtx := s.contextStore.LookupContext()
 	iterFn := func(leaf swarm.Address) error {
-		switch err := s.pinStorage.Set(ctx, storage.ModeSetPin, leaf); {
-		case errors.Is(err, storage.ErrNotFound):
-			ch, err := s.pinStorage.Get(ctx, storage.ModeGetRequestPin, leaf)
-			if err != nil {
-				return fmt.Errorf("unable to get pin for leaf %q of root %q: %w", leaf, ref, err)
-			}
-			_, err = s.pinStorage.Put(ctx, storage.ModePutRequestPin, ch)
-			if err != nil {
-				return fmt.Errorf("unable to put pin for leaf %q of root %q: %w", leaf, ref, err)
-			}
-		case err != nil:
-			return fmt.Errorf("unable to set pin for leaf %q of root %q: %w", leaf, ref, err)
+		ch, err := lookupCtx.Get(ctx, leaf)
+		if err != nil {
+			return fmt.Errorf("unable to get pin for leaf %q of root %q: %w", leaf, ref, err)
 		}
+		_, err = pinStore.Put(ctx, ch)
+		if err != nil {
+			return fmt.Errorf("unable to put pin for leaf %q of root %q: %w", leaf, ref, err)
+		}
+
 		return nil
 	}
 
@@ -100,56 +105,25 @@ func (s *Service) CreatePin(ctx context.Context, ref swarm.Address, traverse boo
 
 // DeletePin implements Interface.DeletePin method.
 func (s *Service) DeletePin(ctx context.Context, ref swarm.Address) error {
-	var iterErr error
-	// iterFn is a unpinning iterator function over the leaves of the root.
-	iterFn := func(leaf swarm.Address) error {
-		err := s.pinStorage.Set(ctx, storage.ModeSetUnpin, leaf)
-		if err != nil {
-			iterErr = multierror.Append(err, fmt.Errorf("unable to unpin the chunk for leaf %q of root %q: %w", leaf, ref, err))
-			// Continue un-pinning all chunks.
-		}
-		return nil
-	}
-
-	if err := s.traverser.Traverse(ctx, ref, iterFn); err != nil {
-		return fmt.Errorf("traversal of %q failed: %w", ref, multierror.Append(err, iterErr))
-	}
-	if iterErr != nil {
-		return multierror.Append(ErrTraversal, iterErr)
-	}
-
-	key := rootPinKey(ref)
-	if err := s.rhStorage.Delete(key); err != nil {
-		return fmt.Errorf("unable to delete pin for key %q: %w", key, err)
-	}
-	return nil
+	return s.contextStore.PinContext().Unpin(ref)
 }
 
 // HasPin implements Interface.HasPin method.
 func (s *Service) HasPin(ref swarm.Address) (bool, error) {
-	key, val := rootPinKey(ref), swarm.NewAddress(nil)
-	switch err := s.rhStorage.Get(key, &val); {
-	case errors.Is(err, storage.ErrNotFound):
-		return false, nil
-	case err != nil:
-		return false, fmt.Errorf("unable to get pin for key %q: %w", key, err)
+	pins, err := s.contextStore.PinContext().Pins()
+	if err != nil {
+		return false, err
 	}
-	return val.Equal(ref), nil
+
+	for _, val := range pins {
+		if val.Equal(ref) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Pins implements Interface.Pins method.
 func (s *Service) Pins() ([]swarm.Address, error) {
-	var refs []swarm.Address
-	err := s.rhStorage.Iterate(storePrefix, func(key, val []byte) (stop bool, err error) {
-		var ref swarm.Address
-		if err := json.Unmarshal(val, &ref); err != nil {
-			return true, fmt.Errorf("invalid reference value %q: %w", string(val), err)
-		}
-		refs = append(refs, ref)
-		return false, nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("iteration failed: %w", err)
-	}
-	return refs, nil
+	return s.contextStore.PinContext().Pins()
 }

@@ -31,14 +31,14 @@ type chunkAddressResponse struct {
 
 func (s *server) processUploadRequest(
 	r *http.Request,
-) (ctx context.Context, tag *tags.Tag, putter storage.Putter, waitFn func() error, err error) {
+) (ctx context.Context, tag *tags.Tag, putter storage.SimpleChunkPutter, waitFn func() error, cleanup func(), err error) {
 
 	if h := r.Header.Get(SwarmTagHeader); h != "" {
 		tag, err = s.getTag(h)
 		if err != nil {
 			s.logger.Debugf("chunk upload: get tag: %v", err)
 			s.logger.Error("chunk upload: get tag")
-			return nil, nil, nil, nil, errors.New("cannot get tag")
+			return nil, nil, nil, nil, nil, errors.New("cannot get tag")
 		}
 
 		// add the tag to the context if it exists
@@ -47,28 +47,29 @@ func (s *server) processUploadRequest(
 		ctx = r.Context()
 	}
 
-	putter, wait, err := s.newStamperPutter(r)
+	putter, wait, cleanup, err := s.newStamperPutter(r)
 	if err != nil {
 		s.logger.Debugf("chunk upload: putter: %v", err)
 		s.logger.Error("chunk upload: putter")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
-			return nil, nil, nil, nil, errors.New("batch not found")
+			return nil, nil, nil, nil, nil, errors.New("batch not found")
 		case errors.Is(err, postage.ErrNotUsable):
-			return nil, nil, nil, nil, errors.New("batch not usable")
+			return nil, nil, nil, nil, nil, errors.New("batch not usable")
 		}
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
-	return ctx, tag, putter, wait, nil
+	return ctx, tag, putter, wait, cleanup, nil
 }
 
 func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, tag, putter, wait, err := s.processUploadRequest(r)
+	ctx, tag, putter, wait, cleanup, err := s.processUploadRequest(r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
+	defer cleanup()
 
 	if tag != nil {
 		err = tag.Inc(tags.StateSplit)
@@ -106,7 +107,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seen, err := putter.Put(ctx, requestModePut(r), chunk)
+	seen, err := putter.Put(ctx, chunk)
 	if err != nil {
 		s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
 		s.logger.Error("chunk upload: chunk write error")
@@ -117,7 +118,7 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.InternalServerError(w, "chunk write error")
 		}
 		return
-	} else if len(seen) > 0 && seen[0] && tag != nil {
+	} else if seen && tag != nil {
 		err := tag.Inc(tags.StateSeen)
 		if err != nil {
 			s.logger.Debugf("chunk upload: increment tag", err)

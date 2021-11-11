@@ -27,13 +27,14 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
-	putter, wait, err := s.newStamperPutter(r)
+	putter, wait, cleanup, err := s.newStamperPutter(r)
 	if err != nil {
 		logger.Debugf("bytes upload: get putter:%v", err)
 		logger.Error("bytes upload: putter")
 		jsonhttp.BadRequest(w, nil)
 		return
 	}
+	defer cleanup()
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {

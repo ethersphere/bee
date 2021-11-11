@@ -24,7 +24,7 @@ var successWsMsg = []byte{}
 
 func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 
-	ctx, tag, putter, wait, err := s.processUploadRequest(r)
+	ctx, tag, putter, wait, cleanup, err := s.processUploadRequest(r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -53,6 +53,7 @@ func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request
 		requestModePut(r),
 		strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true",
 		wait,
+		cleanup,
 	)
 }
 
@@ -60,13 +61,14 @@ func (s *server) handleUploadStream(
 	ctx context.Context,
 	conn *websocket.Conn,
 	tag *tags.Tag,
-	putter storage.Putter,
+	putter storage.SimpleChunkPutter,
 	mode storage.ModePut,
 	pin bool,
 	wait func() error,
+	cleanup func(),
 ) {
 	defer s.wsWg.Done()
-
+	defer cleanup()
 	var (
 		gone = make(chan struct{})
 		err  error
@@ -166,7 +168,7 @@ func (s *server) handleUploadStream(
 			return
 		}
 
-		seen, err := putter.Put(ctx, mode, chunk)
+		seen, err := putter.Put(ctx, chunk)
 		if err != nil {
 			s.logger.Debugf("chunk stream handler: chunk write error: %v, addr %s", err, chunk.Address())
 			s.logger.Error("chunk stream handler: chunk write error")
@@ -177,7 +179,7 @@ func (s *server) handleUploadStream(
 				sendErrorClose(websocket.CloseInternalServerErr, "chunk write error")
 			}
 			return
-		} else if len(seen) > 0 && seen[0] && tag != nil {
+		} else if seen && tag != nil {
 			err := tag.Inc(tags.StateSeen)
 			if err != nil {
 				s.logger.Debugf("chunk stream handler: increment tag", err)
