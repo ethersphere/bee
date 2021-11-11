@@ -397,13 +397,13 @@ func (s *server) contentLengthMetricMiddleware(method string) func(h http.Handle
 			now := time.Now()
 			h.ServeHTTP(w, r)
 			if method == "GET" {
-				contentLength, err := strconv.ParseInt(w.Header().Get("Content-Length"), 10, 64)
+				contentLength, err := strconv.Atoi(w.Header().Get("Content-Length"))
 				if err != nil {
 					s.logger.Debugf("api: content length int conversation failed: %v", err)
 					return
 				}
 				if contentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(contentLength)), method).Observe(time.Since(now).Seconds())
+					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(int64(contentLength))), method).Observe(time.Since(now).Seconds())
 				}
 			} else if method == "POST" {
 				if r.ContentLength > 0 {
