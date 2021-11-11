@@ -252,7 +252,8 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"maintainer", "/stamps", "GET"},
 		{"maintainer", "/stamps/*", "GET"},
 		{"maintainer", "/stamps/*/*", "POST"},
-		{"maintainer", "/stamps/topup/*", "PATCH"},
+		{"maintainer", "/stamps/topup/*/*", "PATCH"},
+		{"maintainer", "/stamps/dilute/*/*", "PATCH"},
 		{"maintainer", "/addresses", "GET"},
 		{"maintainer", "/blocklist", "GET"},
 		{"maintainer", "/connect/*", "POST"},
@@ -284,6 +285,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"consumer", "/consumed", "GET"},
 		{"consumer", "/consumed/*", "GET"},
 		{"consumer", "/chunks/stream", "GET"},
+		{"creator", "/stewardship/*", "GET"},
 		{"consumer", "/stewardship/*", "PUT"},
 	})
 
