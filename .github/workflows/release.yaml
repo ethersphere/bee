@@ -52,16 +52,3 @@ jobs:
           SCOOP_PAT: ${{ secrets.SCOOP_PAT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
-
-      - name: Get the released tags version
-        id: get-version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-
-      - name: Trigger Bee Factory image build
-        uses: peter-evans/repository-dispatch@v1
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_PAT }}
-          repository: ethersphere/bee-factory
-          event-type: build-images
-          client-payload: '{"tag": "${{ steps.get-version.outputs.VERSION }}"}'
-
