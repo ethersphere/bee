@@ -124,36 +124,36 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		return ctx, logger
 	}
 
-	push := func(ch swarm.Chunk, errc chan<- error) {
+	push := func(op *Op) {
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
 		wg.Add(1)
-		go func(ctx context.Context, ch swarm.Chunk) {
+		go func() {
 			defer func() {
 				wg.Done()
 				<-s.sem
 			}()
-			if err := s.pushChunk(ctx, ch, logger, true); err != nil {
+			if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
 				// warning: ugly flow control
 				// if errc is set it means we are in a direct push,
 				// we therefore communicate the error into the channel
 				// otherwise we assume this is a buffered upload and
 				// therefore we repeat().
-				if errc != nil {
-					errc <- err
+				if op.Err != nil {
+					op.Err <- err
 				}
 				repeat()
 				s.metrics.TotalErrors.Inc()
 				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-				logger.Tracef("pusher: cannot push chunk %s: %v", ch.Address().String(), err)
+				logger.Tracef("pusher: cannot push chunk %s: %v", op.Chunk.Address().String(), err)
 				return
 			}
-			if errc != nil {
-				errc <- nil
+			if op.Err != nil {
+				op.Err <- nil
 			}
 			s.metrics.TotalSynced.Inc()
-		}(ctx, ch)
+		}()
 	}
 
 	go func() {
@@ -211,7 +211,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				return
 			}
 
-			push(op.Chunk, op.Err)
+			push(op)
 		case <-s.quit:
 			return
 		}
@@ -225,6 +225,8 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.
 	// for now ignoring the receipt and checking only for error
 	receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
 	if err != nil {
+		// when doing a direct upload from a light node this will never happen because the light node
+		// never includes self in kademlia iterator. This is only hit when doing a direct upload from a full node
 		if directUpload && errors.Is(err, topology.ErrWantSelf) {
 			return err
 		}

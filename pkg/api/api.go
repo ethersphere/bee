@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"golang.org/x/sync/errgroup"
@@ -485,7 +486,6 @@ type pushStamperPutter struct {
 	eg      errgroup.Group
 	c       chan *pusher.Op
 	sem     chan struct{}
-	direct  bool
 }
 
 func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
@@ -527,14 +527,18 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
 			PUSH:
-				p.c <- &pusher.Op{Chunk: ch, Err: errc}
+				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
 				select {
 				case err := <-errc:
-					if err == nil {
+					// if we're the closest one we will store the chunk and return no error
+					if errors.Is(err, topology.ErrWantSelf) {
+						if _, err := p.Storer.Put(ctx, storage.ModePutSync, ch); err != nil {
+							return err
+						}
 						return nil
 					}
-					if p.direct {
-						p.Storer.Put(ctx, storage.ModePutSync, ch)
+					if err == nil {
+						return nil
 					}
 					goto PUSH
 				case <-ctx.Done():
