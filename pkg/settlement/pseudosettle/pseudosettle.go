@@ -257,7 +257,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 
 	defer func() {
 		if err != nil {
-			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
+			s.metrics.SentPseudoSettlementsErrors.Inc()
 		}
 	}()
 
