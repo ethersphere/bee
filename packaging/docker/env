@@ -60,11 +60,11 @@ BEE_CLEF_SIGNER_ENABLE=true
 ## path to a file that contains password for decrypting keys
 # BEE_PASSWORD_FILE=
 ## percentage below the peers payment threshold when we initiate settlement (default 25)
-# BEE_PAYMENT_EARLY=50
+# BEE_PAYMENT_EARLY_PERCENT=50
 ## threshold in BZZ where you expect to get paid from your peers (default 100000000)
 # BEE_PAYMENT_THRESHOLD=100000000
 ## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
-# BEE_PAYMENT_TOLERANCE=25
+# BEE_PAYMENT_TOLERANCE_PERCENT=25
 ## postage stamp contract address
 # BEE_POSTAGE_STAMP_ADDRESS=
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
