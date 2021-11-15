@@ -123,7 +123,7 @@ func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, observer *
 	case <-observer.receivedCalled:
 		t.Fatal("unexpected observer to be called")
 
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1 * time.Second):
 
 	}
 }
@@ -198,7 +198,7 @@ func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, observer *tes
 			t.Fatalf("observer called with wrong peer. got %v, want %v", call.peer, peerID)
 		}
 
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1 * time.Second):
 		t.Fatal("expected observer to be called")
 	}
 
