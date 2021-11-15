@@ -62,10 +62,5 @@ func (s *skipPeers) AddOverdraft(address swarm.Address) {
 func (s *skipPeers) Saturated() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(s.overdraftAddresses) > 0 {
-		return false
-	}
-
-	return true
+	return len(s.overdraftAddresses) <= 0
 }
