@@ -232,7 +232,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// forwarding replication
 	storedChunk := false
 	defer func(stored *bool) {
-		if !stored {
+		if !*stored {
 			if ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 				verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 				if err != nil {
