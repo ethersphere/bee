@@ -30,8 +30,9 @@ import (
 )
 
 type Op struct {
-	Chunk swarm.Chunk
-	Err   chan error
+	Chunk  swarm.Chunk
+	Err    chan error
+	Direct bool
 }
 
 type OpChan <-chan *Op
@@ -133,7 +134,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				wg.Done()
 				<-s.sem
 			}()
-			if err := s.pushChunk(ctx, ch, logger); err != nil {
+			if err := s.pushChunk(ctx, ch, logger, true); err != nil {
 				// warning: ugly flow control
 				// if errc is set it means we are in a direct push,
 				// we therefore communicate the error into the channel
@@ -184,7 +185,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 					s.logger.Errorf("pusher: set sync: %v", err)
 				}
 			}
-			cc <- &Op{Chunk: ch}
+			cc <- &Op{Chunk: ch, Direct: false}
 		}
 	}()
 
@@ -217,13 +218,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 }
 
-func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.Entry) error {
+func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.Entry, directUpload bool) error {
 	defer s.inflight.delete(ch)
 	var wantSelf bool
 	// Later when we process receipt, get the receipt and process it
 	// for now ignoring the receipt and checking only for error
 	receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
 	if err != nil {
+		if directUpload && errors.Is(err, topology.ErrWantSelf) {
+			return err
+		}
 		if !errors.Is(err, topology.ErrWantSelf) {
 			return err
 		}

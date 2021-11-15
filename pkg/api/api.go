@@ -485,6 +485,7 @@ type pushStamperPutter struct {
 	eg      errgroup.Group
 	c       chan *pusher.Op
 	sem     chan struct{}
+	direct  bool
 }
 
 func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
@@ -531,6 +532,9 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 				case err := <-errc:
 					if err == nil {
 						return nil
+					}
+					if p.direct {
+						p.Storer.Put(ctx, storage.ModePutSync, ch)
 					}
 					goto PUSH
 				case <-ctx.Done():
