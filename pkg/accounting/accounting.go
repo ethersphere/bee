@@ -382,6 +382,9 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 				// if we get settlement too soon from the peer timestamp being ahead of ours, block payment by returning early
 				// this is to disincentivize ahead of time timestamps resulting in more monetary settlements
 				// if err peer not found also fail
+				if errors.Is(err, pseudosettle.ErrSettlementTooSoon) {
+					a.metrics.AccountingNonFatalRefreshFailCount.Inc()
+				}
 				return fmt.Errorf("refresh failure: %w", err)
 			}
 		}
