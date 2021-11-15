@@ -182,9 +182,11 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			case res := <-resultC:
 				if errors.Is(res.err, topology.ErrNotFound) {
 					if sp.Saturated() {
+						// if no peer is available, and none skipped temporarily
 						s.logger.Tracef("retrieval: failed to get chunk %s", addr)
 						return nil, storage.ErrNotFound
 					} else {
+						// skip to next request round if any peers are only skipped temporarily
 						peerAttempt = maxSelects
 					}
 				}
