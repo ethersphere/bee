@@ -398,7 +398,7 @@ func (s *server) contentLengthMetricMiddleware() func(h http.Handler) http.Handl
 			h.ServeHTTP(w, r)
 			switch r.Method {
 			case http.MethodGet:
-				contentLength, err := strconv.Atoi(w.Header().Get("Content-Length"))
+				contentLength, err := strconv.Atoi(w.Header().Get("Decompressed-Content-Length"))
 				if err != nil {
 					s.logger.Debugf("api: content length int conversation failed: %v", err)
 					return
