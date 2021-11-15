@@ -367,11 +367,17 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
+			// if we get settlement too soon it comes from a peer timestamp being ahead of ours, blocking refreshment
+			// if we get err peer not found the peer is already disconnected / blocklisted
+			// except for these cases, blocklist peer in case of a failed refreshment
 			if !errors.Is(err, pseudosettle.ErrSettlementTooSoon) && !errors.Is(err, p2p.ErrPeerNotFound) {
 				a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
 				_ = a.blocklist(peer, 1, "failed to refresh")
 				return fmt.Errorf("refresh failure: %w", err)
 			} else {
+				// if we get settlement too soon from the peer timestamp being ahead of ours, block payment by returning early
+				// this is to disincentivize ahead of time timestamps resulting in more monetary settlements
+				// if err peer not found also fail
 				return fmt.Errorf("refresh failure: %w", err)
 			}
 		}
