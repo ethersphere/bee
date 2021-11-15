@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"golang.org/x/sync/errgroup"
@@ -550,9 +551,16 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
 			PUSH:
-				p.c <- &pusher.Op{Chunk: ch, Err: errc}
+				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
 				select {
 				case err := <-errc:
+					// if we're the closest one we will store the chunk and return no error
+					if errors.Is(err, topology.ErrWantSelf) {
+						if _, err := p.Storer.Put(ctx, storage.ModePutSync, ch); err != nil {
+							return err
+						}
+						return nil
+					}
 					if err == nil {
 						return nil
 					}
