@@ -107,10 +107,10 @@ type Accounting struct {
 	store             storage.StateStorer
 	// The payment threshold in BZZ we communicate to our peers.
 	paymentThreshold *big.Int
-	// The amount in % we let peers exceed the payment threshold before we
+	// The amount in percent we let peers exceed the payment threshold before we
 	// disconnect them.
 	paymentTolerance int64
-	// Start settling when reserve plus debt reaches this close to threshold in %.
+	// Start settling when reserve plus debt reaches this close to threshold in percent.
 	earlyPayment int64
 	// Limit to disconnect peer after going in debt over
 	disconnectLimit *big.Int
