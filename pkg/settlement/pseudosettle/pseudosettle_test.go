@@ -132,6 +132,8 @@ func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, observer *tes
 
 	payer.SetTime(payerTime)
 	recipient.SetTime(recipientTime)
+
+	// set debt shown by accounting (observer)
 	observer.setPeerDebt(peerID, debtAmount)
 
 	acceptedAmount, _, err := payer.Pay(context.Background(), peerID, amount, amount)
@@ -251,7 +253,7 @@ func TestPayment(t *testing.T) {
 	observer2 := newTestObserver(map[string]*big.Int{}, map[string]*big.Int{peerID.String(): big.NewInt(debt)})
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(observer2)
-
+	// set time to non-zero, attempt payment based on debt, expect full amount to be accepted
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 30, 30, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
 }
 
@@ -286,15 +288,28 @@ func TestTimeLimitedPayment(t *testing.T) {
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(observer2)
 
+	// Set time to 10000, attempt payment based on debt, expect full amount accepted
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10000, 10000, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
+
+	// Set time 3 seconds later, attempt settlement below time based refreshment rate, expect full amount accepted
 	sentSum := big.NewInt(debt + testRefreshRate*3/2)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10003, 10003, 2, 1, 1, big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), sentSum)
+
+	// set time 1 seconds later, attempt settlement over the time-based allowed limit, expect partial amount accepted
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate), sentSum)
+
+	// set time to same second as previous case, attempt settlement, expect error too soon
 	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, big.NewInt(4*testRefreshRate), big.NewInt(4*testRefreshRate), pseudosettle.ErrSettlementTooSoon)
+
+	// set time to same second as previous case on recipient, 1 second later on payer, attempt settlement, expect sent but failed
 	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10005, 10004, 4, big.NewInt(2*testRefreshRate), big.NewInt(2*testRefreshRate), io.EOF)
+
+	// set time 6 seconds later, attempt with debt over time based allowance, expect partial accept
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate + 6*testRefreshRate)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10010, 10010, 5, 1, 1, big.NewInt(9*testRefreshRate), big.NewInt(9*testRefreshRate), big.NewInt(6*testRefreshRate), sentSum)
+
+	// set time 10 seconds later, attempt with debt below time based allowance, expect full amount accepted
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate + 6*testRefreshRate + 5*testRefreshRate)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10020, 10020, 6, 1, 1, big.NewInt(5*testRefreshRate), big.NewInt(5*testRefreshRate), big.NewInt(5*testRefreshRate), sentSum)
 }
@@ -330,15 +345,22 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 	payer := pseudosettle.New(recorder, logger, storePayer, observer2, big.NewInt(testRefreshRateLight), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(observer2)
 
+	// Set time to 10000, attempt payment based on debt, expect full amount accepted
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10000, 10000, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
+	// Set time 3 seconds later, attempt settlement below time based light refreshment rate, expect full amount accepted
 	sentSum := big.NewInt(debt + testRefreshRateLight*3)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10003, 10003, 2, 1, 1, big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRateLight*3), sentSum)
+	// set time 1 seconds later, attempt settlement over the time-based light allowed limit, expect partial amount accepted
 	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRateLight), sentSum)
+	// set time to same second as previous case, attempt settlement, expect error too soon
 	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, big.NewInt(4*testRefreshRate), big.NewInt(4*testRefreshRate), pseudosettle.ErrSettlementTooSoon)
+	// set time to same second as previous case on recipient, 1 second later on payer, attempt settlement, expect sent but failed
 	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10005, 10004, 4, big.NewInt(2*testRefreshRate), big.NewInt(2*testRefreshRate), io.EOF)
+	// set time 6 seconds later, attempt with debt over time based light allowance, expect partial accept
 	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10010, 10010, 5, 1, 1, big.NewInt(9*testRefreshRate), big.NewInt(9*testRefreshRate), big.NewInt(6*testRefreshRateLight), sentSum)
+	// set time 100 seconds later, attempt with debt below time based allowance, expect full amount accepted
 	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight + 50*testRefreshRateLight)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10110, 10110, 6, 1, 1, big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), sentSum)
 }
