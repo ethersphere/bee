@@ -391,6 +391,30 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 	}
 }
 
+func (s *server) contentLengthMetricMiddleware() func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			h.ServeHTTP(w, r)
+			switch r.Method {
+			case http.MethodGet:
+				contentLength, err := strconv.Atoi(w.Header().Get("Decompressed-Content-Length"))
+				if err != nil {
+					s.logger.Debugf("api: content length int conversation failed: %v", err)
+					return
+				}
+				if contentLength > 0 {
+					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(int64(contentLength))), r.Method).Observe(time.Since(now).Seconds())
+				}
+			case http.MethodPost:
+				if r.ContentLength > 0 {
+					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(r.ContentLength)), r.Method).Observe(time.Since(now).Seconds())
+				}
+			}
+		})
+	}
+}
+
 func lookaheadBufferSize(size int64) int {
 	if size <= largeBufferFilesizeThreshold {
 		return smallFileBufferSize

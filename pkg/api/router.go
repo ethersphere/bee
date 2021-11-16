@@ -65,12 +65,14 @@ func (s *server) setupRouting() {
 
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bytes-upload"),
 			web.FinalHandlerFunc(s.bytesUploadHandler),
 		),
 	})
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bytes-download"),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
@@ -109,6 +111,7 @@ func (s *server) setupRouting() {
 
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-upload"),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
@@ -120,6 +123,7 @@ func (s *server) setupRouting() {
 	}))
 	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-download"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
