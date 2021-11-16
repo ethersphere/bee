@@ -13,6 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const bytesInKB = 1000
+
+var fileSizeBucketsKBytes = []int64{100, 500, 2500, 4999, 5000, 10000}
+
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
@@ -21,6 +25,8 @@ type metrics struct {
 	ResponseDuration   prometheus.Histogram
 	PingRequestCount   prometheus.Counter
 	ResponseCodeCounts *prometheus.CounterVec
+
+	ContentApiDuration prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -49,7 +55,25 @@ func newMetrics() metrics {
 			},
 			[]string{"code", "method"},
 		),
+		ContentApiDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "content_api_duration",
+			Help:      "Histogram of file upload API response durations.",
+			Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
+		}, []string{"filesize", "method"}),
 	}
+}
+
+func toFileSizeBucket(bytes int64) int64 {
+
+	for _, s := range fileSizeBucketsKBytes {
+		if (s * bytesInKB) >= bytes {
+			return s * bytesInKB
+		}
+	}
+
+	return fileSizeBucketsKBytes[len(fileSizeBucketsKBytes)-1] * bytesInKB
 }
 
 func (s *server) Metrics() []prometheus.Collector {
