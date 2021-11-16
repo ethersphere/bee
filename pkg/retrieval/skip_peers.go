@@ -59,6 +59,8 @@ func (s *skipPeers) AddOverdraft(address swarm.Address) {
 	s.overdraftAddresses = append(s.overdraftAddresses, address)
 }
 
+// Saturated function returns whether all skipped entries a permanently skipped for this skiplist
+// Temporary entries are stored in the overdraftAddresses slice of the skiplist, so if that is empty, the function returns true
 func (s *skipPeers) Saturated() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
