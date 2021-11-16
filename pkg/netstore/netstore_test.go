@@ -193,7 +193,7 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 				t.Fatal("waited 3 secs for background put operation", err)
 			}
 		} else {
-			return d, nil
+			return d
 		}
 	}
 }
