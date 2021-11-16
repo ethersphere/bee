@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -28,6 +30,11 @@ type store struct {
 	logger           logging.Logger
 	validStamp       postage.ValidStampFn
 	recoveryCallback recovery.Callback // this is the callback to be executed when a chunk fails to be retrieved
+	opChan           chan putOp
+	bgWorkers        chan struct{}
+	sCtx             context.Context
+	sCancel          context.CancelFunc
+	wg               sync.WaitGroup
 }
 
 var (
@@ -36,7 +43,9 @@ var (
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
-	return &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
+	ns := &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
+	ns.backgroundPutter()
+	return ns
 }
 
 // Get retrieves a given chunk address.
@@ -57,31 +66,99 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				go s.recoveryCallback(addr, targets)
 				return nil, ErrRecoveryAttempt
 			}
-			stamp, err := ch.Stamp().MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-
-			putMode := storage.ModePutRequest
-			if mode == storage.ModeGetRequestPin {
-				putMode = storage.ModePutRequestPin
-			}
-
-			cch, err := s.validStamp(ch, stamp)
-			if err != nil {
-				// if a chunk with an invalid postage stamp was received
-				// we force it into the cache.
-				putMode = storage.ModePutRequestCache
-				cch = ch
-			}
-
-			_, err = s.Storer.Put(ctx, putMode, cch)
-			if err != nil {
-				return nil, fmt.Errorf("netstore retrieve put: %w", err)
+			select {
+			case <-ctx.Done():
+			case s.opChan <- putOp{ch: ch, mode: mode}:
 			}
 			return ch, nil
 		}
 		return nil, fmt.Errorf("netstore get: %w", err)
 	}
 	return ch, nil
+}
+
+// The underlying store is not the netstore's responsibility to close
+func (s *store) Close() error {
+	// for some reason if the backgroundPutter was not started, this should be a noop
+	if s.sCancel == nil {
+		return nil
+	}
+
+	s.sCancel()
+
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(time.Second * 5):
+		return errors.New("netstore: waited 5 seconds to close active goroutines")
+	}
+}
+
+type putOp struct {
+	ch   swarm.Chunk
+	mode storage.ModeGet
+}
+
+func (s *store) backgroundPutter() {
+	s.sCtx, s.sCancel = context.WithCancel(context.Background())
+	s.bgWorkers = make(chan struct{}, 16)
+	s.opChan = make(chan putOp)
+
+	s.wg.Add(1)
+	go func() {
+		defer close(s.bgWorkers)
+		defer s.wg.Done()
+
+		for {
+			select {
+			case <-s.sCtx.Done():
+				s.logger.Debug("netstore: stopping netstore background putter")
+				return
+			case op := <-s.opChan:
+				select {
+				case <-s.sCtx.Done():
+					s.logger.Debug("netstore: stopping netstore background putter")
+					return
+				case s.bgWorkers <- struct{}{}:
+					s.wg.Add(1)
+					go func(op putOp) {
+						defer func() {
+							<-s.bgWorkers
+							s.wg.Done()
+						}()
+
+						stamp, err := op.ch.Stamp().MarshalBinary()
+						if err != nil {
+							s.logger.Errorf("netstore: failed to marshal stamp from chunk %s Err:%s", op.ch.Address(), err.Error())
+							return
+						}
+
+						putMode := storage.ModePutRequest
+						if op.mode == storage.ModeGetRequestPin {
+							putMode = storage.ModePutRequestPin
+						}
+
+						cch, err := s.validStamp(op.ch, stamp)
+						if err != nil {
+							// if a chunk with an invalid postage stamp was received
+							// we force it into the cache.
+							putMode = storage.ModePutRequestCache
+							cch = op.ch
+						}
+
+						_, err = s.Storer.Put(s.sCtx, putMode, cch)
+						if err != nil {
+							s.logger.Errorf("netstore: failed to put chunk %s Err: %s", cch.Address(), err.Error())
+						}
+					}(op)
+				}
+			}
+		}
+	}()
 }

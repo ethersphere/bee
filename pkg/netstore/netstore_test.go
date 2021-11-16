@@ -33,6 +33,12 @@ var chunkStamp = postagetesting.MustNewStamp()
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
 	retrieve, store, nstore := newRetrievingNetstore(nil, noopValidStamp)
+	defer func() {
+		err := nstore.Close()
+		if err != nil {
+			t.Fatal("error while closing netstore", err)
+		}
+	}()
 	addr := swarm.MustParseHexAddress("000001")
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -48,10 +54,20 @@ func TestNetstoreRetrieval(t *testing.T) {
 		t.Fatalf("addresses not equal. got %s want %s", retrieve.addr, addr)
 	}
 
-	// store should have the chunk now
-	d, err := store.Get(context.Background(), storage.ModeGetRequest, addr)
-	if err != nil {
-		t.Fatal(err)
+	// store should have the chunk once the background PUT is complete
+	var d swarm.Chunk
+	start := time.Now()
+	for {
+		time.Sleep(time.Millisecond * 10)
+
+		d, err = store.Get(context.Background(), storage.ModeGetRequest, addr)
+		if err != nil {
+			if time.Since(start) > time.Second*3 {
+				t.Fatal("waited 3 secs for background put operation", err)
+			}
+		} else {
+			break
+		}
 	}
 
 	if !bytes.Equal(d.Data(), chunkData) {
@@ -77,6 +93,12 @@ func TestNetstoreRetrieval(t *testing.T) {
 // whenever it is found locally.
 func TestNetstoreNoRetrieval(t *testing.T) {
 	retrieve, store, nstore := newRetrievingNetstore(nil, noopValidStamp)
+	defer func() {
+		err := nstore.Close()
+		if err != nil {
+			t.Fatal("error while closing netstore", err)
+		}
+	}()
 	addr := swarm.MustParseHexAddress("000001")
 
 	// store should have the chunk in advance
@@ -107,6 +129,12 @@ func TestRecovery(t *testing.T) {
 	}
 
 	retrieve, _, nstore := newRetrievingNetstore(rec.recovery, noopValidStamp)
+	defer func() {
+		err := nstore.Close()
+		if err != nil {
+			t.Fatal("error while closing netstore", err)
+		}
+	}()
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
@@ -127,6 +155,12 @@ func TestRecovery(t *testing.T) {
 
 func TestInvalidRecoveryFunction(t *testing.T) {
 	retrieve, _, nstore := newRetrievingNetstore(nil, noopValidStamp)
+	defer func() {
+		err := nstore.Close()
+		if err != nil {
+			t.Fatal("error while closing netstore", err)
+		}
+	}()
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
@@ -143,6 +177,12 @@ func TestInvalidPostageStamp(t *testing.T) {
 		return nil, errors.New("invalid postage stamp")
 	}
 	retrieve, store, nstore := newRetrievingNetstore(nil, f)
+	defer func() {
+		err := nstore.Close()
+		if err != nil {
+			t.Fatal("error while closing netstore", err)
+		}
+	}()
 	addr := swarm.MustParseHexAddress("000001")
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -158,10 +198,20 @@ func TestInvalidPostageStamp(t *testing.T) {
 		t.Fatalf("addresses not equal. got %s want %s", retrieve.addr, addr)
 	}
 
-	// store should have the chunk now
-	d, err := store.Get(context.Background(), storage.ModeGetRequest, addr)
-	if err != nil {
-		t.Fatal(err)
+	// store should have the chunk once the background PUT is complete
+	var d swarm.Chunk
+	start := time.Now()
+	for {
+		time.Sleep(time.Millisecond * 10)
+
+		d, err = store.Get(context.Background(), storage.ModeGetRequest, addr)
+		if err != nil {
+			if time.Since(start) > time.Second*3 {
+				t.Fatal("waited 3 secs for background put operation", err)
+			}
+		} else {
+			break
+		}
 	}
 
 	if !bytes.Equal(d.Data(), chunkData) {
