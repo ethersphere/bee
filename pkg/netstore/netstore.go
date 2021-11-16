@@ -24,6 +24,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	maxBgPutters int = 16
+)
+
 type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
@@ -44,7 +48,7 @@ var (
 func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
 	ns := &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
 	ns.sCtx, ns.sCancel = context.WithCancel(context.Background())
-	ns.bgWorkers = make(chan struct{}, 16)
+	ns.bgWorkers = make(chan struct{}, maxBgPutters)
 	return ns
 }
 
@@ -66,44 +70,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				go s.recoveryCallback(addr, targets)
 				return nil, ErrRecoveryAttempt
 			}
-			s.wg.Add(1)
-			go func() {
-				defer s.wg.Done()
-
-				select {
-				case <-s.sCtx.Done():
-					s.logger.Debug("netstore: stopping netstore")
-					return
-				case s.bgWorkers <- struct{}{}:
-				}
-				defer func() {
-					<-s.bgWorkers
-				}()
-
-				stamp, err := ch.Stamp().MarshalBinary()
-				if err != nil {
-					s.logger.Errorf("netstore: failed to marshal stamp from chunk %s Err:%s", ch.Address(), err.Error())
-					return
-				}
-
-				putMode := storage.ModePutRequest
-				if mode == storage.ModeGetRequestPin {
-					putMode = storage.ModePutRequestPin
-				}
-
-				cch, err := s.validStamp(ch, stamp)
-				if err != nil {
-					// if a chunk with an invalid postage stamp was received
-					// we force it into the cache.
-					putMode = storage.ModePutRequestCache
-					cch = ch
-				}
-
-				_, err = s.Storer.Put(s.sCtx, putMode, cch)
-				if err != nil {
-					s.logger.Errorf("netstore: failed to put chunk %s Err: %s", cch.Address(), err.Error())
-				}
-			}()
+			s.put(ch, mode)
 			return ch, nil
 		}
 		return nil, fmt.Errorf("netstore get: %w", err)
@@ -111,13 +78,50 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	return ch, nil
 }
 
+// put will store the chunk into storage asynchronously
+func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+
+		select {
+		case <-s.sCtx.Done():
+			s.logger.Debug("netstore: stopping netstore")
+			return
+		case s.bgWorkers <- struct{}{}:
+		}
+		defer func() {
+			<-s.bgWorkers
+		}()
+
+		stamp, err := ch.Stamp().MarshalBinary()
+		if err != nil {
+			s.logger.Errorf("netstore: failed to marshal stamp from chunk %s Err:%s", ch.Address(), err.Error())
+			return
+		}
+
+		putMode := storage.ModePutRequest
+		if mode == storage.ModeGetRequestPin {
+			putMode = storage.ModePutRequestPin
+		}
+
+		cch, err := s.validStamp(ch, stamp)
+		if err != nil {
+			// if a chunk with an invalid postage stamp was received
+			// we force it into the cache.
+			putMode = storage.ModePutRequestCache
+			cch = ch
+		}
+
+		_, err = s.Storer.Put(s.sCtx, putMode, cch)
+		if err != nil {
+			s.logger.Errorf("netstore: failed to put chunk %s Err: %s", cch.Address(), err.Error())
+		}
+	}()
+}
+
 // The underlying store is not the netstore's responsibility to close
 func (s *store) Close() error {
-	// for some reason if the backgroundPutter was not started, this should be a noop
-	if s.sCancel == nil {
-		return nil
-	}
-
 	s.sCancel()
 
 	stopped := make(chan struct{})

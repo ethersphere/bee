@@ -49,20 +49,7 @@ func TestNetstoreRetrieval(t *testing.T) {
 	}
 
 	// store should have the chunk once the background PUT is complete
-	var d swarm.Chunk
-	start := time.Now()
-	for {
-		time.Sleep(time.Millisecond * 10)
-
-		d, err = store.Get(context.Background(), storage.ModeGetRequest, addr)
-		if err != nil {
-			if time.Since(start) > time.Second*3 {
-				t.Fatal("waited 3 secs for background put operation", err)
-			}
-		} else {
-			break
-		}
-	}
+	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
 
 	if !bytes.Equal(d.Data(), chunkData) {
 		t.Fatal("chunk data not equal to expected data")
@@ -169,20 +156,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 	}
 
 	// store should have the chunk once the background PUT is complete
-	var d swarm.Chunk
-	start := time.Now()
-	for {
-		time.Sleep(time.Millisecond * 10)
-
-		d, err = store.Get(context.Background(), storage.ModeGetRequest, addr)
-		if err != nil {
-			if time.Since(start) > time.Second*3 {
-				t.Fatal("waited 3 secs for background put operation", err)
-			}
-		} else {
-			break
-		}
-	}
+	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
 
 	if !bytes.Equal(d.Data(), chunkData) {
 		t.Fatal("chunk data not equal to expected data")
@@ -203,6 +177,24 @@ func TestInvalidPostageStamp(t *testing.T) {
 	}
 	if !bytes.Equal(d.Data(), chunkData) {
 		t.Fatal("chunk data not equal to expected data")
+	}
+}
+
+func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mode storage.ModeGet) swarm.Chunk {
+	t.Helper()
+
+	start := time.Now()
+	for {
+		time.Sleep(time.Millisecond * 10)
+
+		d, err := store.Get(context.Background(), mode, addr)
+		if err != nil {
+			if time.Since(start) > time.Second*3 {
+				t.Fatal("waited 3 secs for background put operation", err)
+			}
+		} else {
+			return d, nil
+		}
 	}
 }
 
