@@ -318,7 +318,6 @@ linters:
     - gomnd
     - wsl
     - godot
-    - misspell
     - dupl
     - depguard
     - errcheck
