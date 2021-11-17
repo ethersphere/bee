@@ -90,6 +90,11 @@ func WaitBlockAfterTransaction(ctx context.Context, backend Backend, pollingInte
 			if !errors.Is(err, ethereum.NotFound) {
 				return nil, err
 			}
+			select {
+			case <-time.After(pollingInterval):
+			case <-ctx.Done():
+				return nil, errors.New("context timeout")
+			}
 			continue
 		}
 
