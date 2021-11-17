@@ -123,7 +123,6 @@ type server struct {
 type Options struct {
 	CORSAllowedOrigins []string
 	GatewayMode        bool
-	BeeMode            BeeNodeMode
 	WsPingPeriod       time.Duration
 	Restricted         bool
 }

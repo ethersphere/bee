@@ -63,10 +63,6 @@ func (s *server) setupRouting() {
 		})
 	}
 
-	handle("/info", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.infoGetHandler),
-	})
-
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
