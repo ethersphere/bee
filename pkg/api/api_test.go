@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"math/big"
@@ -38,6 +39,7 @@ import (
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/traversal"
@@ -336,6 +338,73 @@ func TestPostageHeaderError(t *testing.T) {
 	}
 }
 
+// TestPostageDirectAndDeferred tests that incorrect postage batch ids
+// provided to the api correct the appropriate error code.
+func TestPostageDirectAndDeferred(t *testing.T) {
+	var (
+		mockStorer               = mock.NewStorer()
+		mockStatestore           = statestore.NewStateStore()
+		logger                   = logging.New(io.Discard, 5)
+		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+		client, _, _, chanStorer = newTestServer(t, testServerOptions{
+			Storer:       mockStorer,
+			Tags:         tags.NewTags(mockStatestore, logger),
+			Logger:       logger,
+			Post:         mp,
+			DirectUpload: true,
+		})
+
+		endpoints = []string{
+			"bytes", "bzz", "chunks",
+		}
+	)
+	for _, endpoint := range endpoints {
+		t.Run(endpoint+": deferred", func(t *testing.T) {
+			hexbatch := hex.EncodeToString(batchOk)
+			chunk := testingc.GenerateTestRandomChunk()
+			var responseBytes []byte
+			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+				jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+				jsonhttptest.WithPutResponseBody(&responseBytes),
+			)
+			var body struct {
+				Reference swarm.Address `json:"reference"`
+			}
+			if err := json.Unmarshal(responseBytes, &body); err != nil {
+				t.Fatal("unmarshal response body:", err)
+			}
+			if found, _ := mockStorer.Has(context.Background(), body.Reference); !found {
+				t.Fatal("chunk not found in the store")
+			}
+		})
+		t.Run(endpoint+": direct upload", func(t *testing.T) {
+			hexbatch := hex.EncodeToString(batchOk)
+			chunk := testingc.GenerateTestRandomChunk()
+			var responseBytes []byte
+			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
+				jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+				jsonhttptest.WithPutResponseBody(&responseBytes),
+			)
+
+			var body struct {
+				Reference swarm.Address `json:"reference"`
+			}
+			if err := json.Unmarshal(responseBytes, &body); err != nil {
+				t.Fatal("unmarshal response body:", err)
+			}
+			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
+				t.Fatal("chunk not received through the direct channel")
+			}
+		})
+	}
+}
+
 type chanStorer struct {
 	chunks map[string]struct{}
 	quit   chan struct{}
@@ -367,6 +436,10 @@ func (c *chanStorer) stop() {
 
 func (c *chanStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	panic("not implemented") // TODO: Implement
+}
+
+func (c *chanStorer) Len() int {
+	return len(c.chunks)
 }
 
 func (c *chanStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
