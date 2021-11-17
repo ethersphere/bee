@@ -320,7 +320,7 @@ func TestPostageHeaderError(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
-				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			)
 		})
