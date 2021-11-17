@@ -438,10 +438,6 @@ func (c *chanStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.A
 	panic("not implemented") // TODO: Implement
 }
 
-func (c *chanStorer) Len() int {
-	return len(c.chunks)
-}
-
 func (c *chanStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	panic("not implemented") // TODO: Implement
 }
