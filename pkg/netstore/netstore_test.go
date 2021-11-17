@@ -189,7 +189,7 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 
 		d, err := store.Get(context.Background(), mode, addr)
 		if err != nil {
-			if time.Since(start) > time.Second*3 {
+			if time.Since(start) > 3*time.Second {
 				t.Fatal("waited 3 secs for background put operation", err)
 			}
 		} else {

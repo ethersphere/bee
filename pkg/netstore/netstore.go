@@ -70,6 +70,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				go s.recoveryCallback(addr, targets)
 				return nil, ErrRecoveryAttempt
 			}
+			s.wg.Add(1)
 			s.put(ch, mode)
 			return ch, nil
 		}
@@ -80,7 +81,6 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 
 // put will store the chunk into storage asynchronously
 func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
-	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 
@@ -96,7 +96,7 @@ func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
 
 		stamp, err := ch.Stamp().MarshalBinary()
 		if err != nil {
-			s.logger.Errorf("netstore: failed to marshal stamp from chunk %s Err:%s", ch.Address(), err.Error())
+			s.logger.Errorf("netstore: failed to marshal stamp from chunk %s err:%s", ch.Address(), err.Error())
 			return
 		}
 
@@ -115,7 +115,7 @@ func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
 
 		_, err = s.Storer.Put(s.sCtx, putMode, cch)
 		if err != nil {
-			s.logger.Errorf("netstore: failed to put chunk %s Err: %s", cch.Address(), err.Error())
+			s.logger.Errorf("netstore: failed to put chunk %s err: %s", cch.Address(), err.Error())
 		}
 	}()
 }
@@ -126,14 +126,14 @@ func (s *store) Close() error {
 
 	stopped := make(chan struct{})
 	go func() {
-		defer close(stopped)
 		s.wg.Wait()
+		close(stopped)
 	}()
 
 	select {
 	case <-stopped:
 		return nil
-	case <-time.After(time.Second * 5):
+	case <-time.After(5 * time.Second):
 		return errors.New("netstore: waited 5 seconds to close active goroutines")
 	}
 }
