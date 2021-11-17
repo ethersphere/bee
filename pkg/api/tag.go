@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type tagRequest struct {
@@ -79,7 +79,7 @@ func (s *server) createTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *server) getTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *server) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {

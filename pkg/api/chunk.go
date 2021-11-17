@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/netstore"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -22,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/gorilla/mux"
 )
 
 type chunkAddressResponse struct {
@@ -170,7 +170,7 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
 	}
 
-	nameOrHex := mux.Vars(r)["addr"]
+	nameOrHex := chi.URLParam(r, "addr")
 	ctx := r.Context()
 
 	address, err := s.resolveNameOrAddress(nameOrHex)

@@ -12,12 +12,12 @@ import (
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 // pinRootHash pins root hash of given reference. This method is idempotent.
 func (s *server) pinRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
+	ref, err := swarm.ParseHexAddress(chi.URLParam(r, "reference"))
 	if err != nil {
 		s.logger.Debugf("pin root hash: unable to parse reference %q: %v", ref, err)
 		s.logger.Error("pin root hash: unable to parse reference")
@@ -53,7 +53,7 @@ func (s *server) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 // unpinRootHash unpin's an already pinned root hash. This method is idempotent.
 func (s *server) unpinRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
+	ref, err := swarm.ParseHexAddress(chi.URLParam(r, "reference"))
 	if err != nil {
 		s.logger.Debugf("unpin root hash: unable to parse reference: %v", err)
 		s.logger.Error("unpin root hash: unable to parse reference")
@@ -90,7 +90,7 @@ func (s *server) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 
 // getPinnedRootHash returns back the given reference if its root hash is pinned.
 func (s *server) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
+	ref, err := swarm.ParseHexAddress(chi.URLParam(r, "reference"))
 	if err != nil {
 		s.logger.Debugf("pinned root hash: unable to parse reference %q: %v", ref, err)
 		s.logger.Error("pinned root hash: unable to parse reference")

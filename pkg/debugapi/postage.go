@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
@@ -46,9 +46,9 @@ type postageCreateResponse struct {
 }
 
 func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
-	depthStr := mux.Vars(r)["depth"]
+	depthStr := chi.URLParam(r, "depth")
 
-	amount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
+	amount, ok := big.NewInt(0).SetString(chi.URLParam(r, "amount"), 10)
 	if !ok {
 		s.logger.Error("create batch: invalid amount")
 		jsonhttp.BadRequest(w, "invalid postage amount")
@@ -172,7 +172,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 }
 
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
@@ -210,7 +210,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 }
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
@@ -329,7 +329,7 @@ func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
 }
 
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 	if len(idStr) != 64 {
 		s.logger.Error("topup batch: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
@@ -343,7 +343,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	amount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
+	amount, ok := big.NewInt(0).SetString(chi.URLParam(r, "amount"), 10)
 	if !ok {
 		s.logger.Error("topup batch: invalid amount")
 		jsonhttp.BadRequest(w, "invalid postage amount")
@@ -381,7 +381,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 	if len(idStr) != 64 {
 		s.logger.Error("dilute batch: invalid batchID")
 		jsonhttp.BadRequest(w, "invalid batchID")
@@ -395,7 +395,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	depthStr := mux.Vars(r)["depth"]
+	depthStr := chi.URLParam(r, "depth")
 	depth, err := strconv.ParseUint(depthStr, 10, 8)
 	if err != nil {
 		s.logger.Debugf("dilute batch: invalid depth: %v", err)

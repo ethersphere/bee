@@ -7,11 +7,12 @@ package debugapi
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -20,7 +21,10 @@ type peerConnectResponse struct {
 }
 
 func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
-	addr, err := multiaddr.NewMultiaddr("/" + mux.Vars(r)["multi-address"])
+
+	ma := "/" + strings.Join(strings.Split(r.URL.Path, "/")[2:], "/")
+
+	addr, err := multiaddr.NewMultiaddr(ma)
 	if err != nil {
 		s.logger.Debugf("debug api: peer connect: parse multiaddress: %v", err)
 		jsonhttp.BadRequest(w, err)
@@ -49,7 +53,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["address"]
+	addr := chi.URLParam(r, "address")
 	swarmAddr, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.logger.Debugf("debug api: parse peer address %s: %v", addr, err)

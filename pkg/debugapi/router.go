@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/http/pprof"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"resenje.org/web"
@@ -26,238 +26,159 @@ import (
 // - vars
 // - metrics
 // - /addresses
-func (s *Service) newBasicRouter() *mux.Router {
-	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+func (s *Service) newBasicRouter() chi.Router {
 
-	router.Path("/metrics").Handler(web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandler(promhttp.InstrumentMetricHandler(
-			s.metricsRegistry,
-			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
-		)),
+	r := chi.NewRouter()
+
+	r.NotFound(jsonhttp.NotFoundHandler)
+	r.MethodNotAllowed(jsonhttp.MethodNotAllowedHandler)
+
+	r.Use(
+		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
+		handlers.CompressHandler,
+		s.corsHandler,
+		web.NoCacheHeadersHandler,
+	)
+
+	r.With(httpaccess.SetAccessLogLevelHandler(0)).Handle("/metrics", promhttp.InstrumentMetricHandler(
+		s.metricsRegistry,
+		promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
 	))
 
-	router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u := r.URL
-		u.Path += "/"
-		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
-	}))
-	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
-
-	router.Handle("/debug/vars", expvar.Handler())
-
-	router.Handle("/health", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(statusHandler),
-	))
-
-	var handle = func(path string, handler http.Handler) {
-		if s.restricted {
-			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
-		}
-		router.Handle(path, handler)
-	}
-
-	handle("/addresses", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.addressesHandler),
+	r.Route("/debug", func(r chi.Router) {
+		r.HandleFunc("/pprof", func(w http.ResponseWriter, r *http.Request) {
+			u := r.URL
+			u.Path += "/"
+			http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+		})
+		r.Handle("/vars", expvar.Handler())
+		r.HandleFunc("/pprof/cmdline", pprof.Cmdline)
+		r.HandleFunc("/pprof/profile", pprof.Profile)
+		r.HandleFunc("/pprof/symbol", pprof.Symbol)
+		r.HandleFunc("/pprof/trace", pprof.Trace)
+		r.HandleFunc("/pprof/", pprof.Index)
 	})
 
-	if s.transaction != nil {
-		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
-		})
-		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
-		})
-	}
+	r.With(httpaccess.SetAccessLogLevelHandler(0)).HandleFunc("/health", statusHandler)
 
-	return router
+	r.Group(func(r chi.Router) {
+
+		if s.restricted {
+			r.Use(auth.PermissionCheckHandler(s.auth))
+		}
+
+		r.Get("/addresses", s.addressesHandler)
+
+		if s.transaction != nil {
+			r.Route("/transactions", func(r chi.Router) {
+				r.Get("/", s.transactionListHandler)
+				r.Get("/{hash}", s.transactionDetailHandler)
+				r.Post("/{hash}", s.transactionResendHandler)
+				r.Delete("/{hash}", s.transactionCancelHandler)
+			})
+		}
+	})
+
+	return r
 }
 
 // newRouter construct the complete set of routes after all of the dependencies
 // are injected and exposes /readiness endpoint to provide information that
 // Debug API is fully active.
-func (s *Service) newRouter() *mux.Router {
-	router := s.newBasicRouter()
+func (s *Service) newRouter() chi.Router {
 
-	router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(statusHandler),
-	))
+	r := s.newBasicRouter()
 
-	var handle = func(path string, handler http.Handler) {
+	r.With(httpaccess.SetAccessLogLevelHandler(0)).HandleFunc("/readiness", statusHandler)
+
+	r.Group(func(api chi.Router) {
+
 		if s.restricted {
-			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
+			api.Use(auth.PermissionCheckHandler(s.auth))
 		}
-		router.Handle(path, handler)
-	}
 
-	handle("/peers", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peersHandler),
-	})
+		api.Get("/peers", s.peersHandler)
 
-	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.pingpongHandler),
-	})
+		api.Post("/pingpong/{peer-id}", s.pingpongHandler)
 
-	handle("/reservestate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.reserveStateHandler),
-	})
+		api.Get("/reservestate", s.reserveStateHandler)
 
-	handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chainStateHandler),
-	})
+		api.Get("/chainstate", s.chainStateHandler)
 
-	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.peerConnectHandler),
-	})
+		api.Post("/connect/*", s.peerConnectHandler)
 
-	handle("/blocklist", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
-	})
+		api.Get("/blocklist", s.blocklistedPeersHandler)
 
-	handle("/peers/{address}", jsonhttp.MethodHandler{
-		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
-	})
-	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.hasChunkHandler),
-		"DELETE": http.HandlerFunc(s.removeChunk),
-	})
-	handle("/topology", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.topologyHandler),
-	})
-	handle("/welcome-message", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
-		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
-			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
-		),
-	})
+		api.Delete("/peers/{address}", s.peerDisconnectHandler)
 
-	handle("/balances", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
-	})
-
-	handle("/balances/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
-	})
-
-	handle("/consumed", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.balancesHandler),
-	})
-
-	handle("/consumed/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peerBalanceHandler),
-	})
-
-	handle("/timesettlements", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
-	})
-
-	if s.chequebookEnabled {
-		handle("/settlements", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.settlementsHandler),
-		})
-		handle("/settlements/{peer}", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+		api.Route("/chunks/{address}", func(r chi.Router) {
+			r.Get("/", s.hasChunkHandler)
+			r.Delete("/", s.removeChunk)
 		})
 
-		handle("/chequebook/balance", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
+		api.Get("/topology", s.topologyHandler)
+
+		api.Route("/welcome-message", func(r chi.Router) {
+			r.Get("/", s.getWelcomeMessageHandler)
+			r.With(jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize)).Post("/", s.setWelcomeMessageHandler)
 		})
 
-		handle("/chequebook/address", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAddressHandler),
-		})
+		api.Get("/balances", s.compensatedBalancesHandler)
 
-		handle("/chequebook/deposit", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookDepositHandler),
-		})
+		api.Get("/balances/{peer}", s.compensatedPeerBalanceHandler)
 
-		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
-		})
+		api.Get("/consumed", s.balancesHandler)
 
-		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
-		})
+		api.Get("/consumed/{peer}", s.peerBalanceHandler)
 
-		handle("/chequebook/cheque", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
-		})
+		api.Get("/timesettlements", s.settlementsHandlerPseudosettle)
 
-		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": http.HandlerFunc(s.swapCashoutHandler),
-		})
-	}
+		if s.chequebookEnabled {
 
-	handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagHandler),
+			api.Get("/settlements", s.settlementsHandler)
+			api.Get("/settlements/{peer}", s.peerSettlementsHandler)
+
+			api.Route("/chequebook", func(r chi.Router) {
+
+				r.Get("/balance", s.chequebookBalanceHandler)
+
+				r.Get("/address", s.chequebookAddressHandler)
+
+				r.Post("/deposit", s.chequebookDepositHandler)
+
+				r.Post("/withdraw", s.chequebookWithdrawHandler)
+
+				r.Get("/cheque/{peer}", s.chequebookLastPeerHandler)
+
+				r.Get("/cheque", s.chequebookAllLastHandler)
+
+				r.Route("/cashout/{peer}", func(r chi.Router) {
+					r.Get("/", s.swapCashoutStatusHandler)
+					r.Post("/", s.swapCashoutHandler)
+				})
+			})
+		}
+
+		api.Get("/tags/{id}", s.getTagHandler)
+
+		api.Get("/stamps", s.postageGetStampsHandler)
+
+		api.Get("/stamps/{id}", s.postageGetStampHandler)
+
+		api.Get("/stamps/{id}/buckets", s.postageGetStampBucketsHandler)
+
+		api.With(s.postageAccessHandler).Post("/stamps/{amount}/{depth}", s.postageCreateHandler)
+		api.With(s.postageAccessHandler).Patch("/stamps/topup/{id}/{amount}", s.postageTopUpHandler)
+		api.With(s.postageAccessHandler).Patch("/stamps/dilute/{id}/{depth}", s.postageDiluteHandler)
 	})
 
-	handle("/stamps", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampsHandler),
-		})),
-	)
-
-	handle("/stamps/{id}", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampHandler),
-		})),
-	)
-
-	handle("/stamps/{id}/buckets", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
-		})),
-	)
-
-	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
-		s.postageAccessHandler,
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.postageCreateHandler),
-		})),
-	)
-
-	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
-		s.postageAccessHandler,
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
-		})),
-	)
-
-	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
-		s.postageAccessHandler,
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
-		})),
-	)
-
-	return router
+	return r
 }
 
 // setRouter sets the base Debug API handler with common middlewares.
 func (s *Service) setRouter(router http.Handler) {
-	h := http.NewServeMux()
-	h.Handle("/", web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(router),
-	))
-
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()
 
-	s.handler = h
+	s.handler = router
 }

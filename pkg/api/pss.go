@@ -20,7 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 )
 
@@ -31,10 +31,10 @@ const (
 )
 
 func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
-	topicVar := mux.Vars(r)["topic"]
+	topicVar := chi.URLParam(r, "topic")
 	topic := pss.NewTopic(topicVar)
 
-	targetsVar := mux.Vars(r)["targets"]
+	targetsVar := chi.URLParam(r, "targets")
 	var targets pss.Targets
 	tgts := strings.Split(targetsVar, ",")
 
@@ -134,7 +134,7 @@ func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := mux.Vars(r)["topic"]
+	t := chi.URLParam(r, "topic")
 	s.wsWg.Add(1)
 	go s.pumpWs(conn, t)
 }

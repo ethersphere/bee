@@ -10,11 +10,11 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
-	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	addr, err := swarm.ParseHexAddress(chi.URLParam(r, "address"))
 	if err != nil {
 		s.logger.Debugf("debug api: parse chunk address: %v", err)
 		jsonhttp.BadRequest(w, "bad address")
@@ -36,7 +36,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
-	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	addr, err := swarm.ParseHexAddress(chi.URLParam(r, "address"))
 	if err != nil {
 		s.logger.Debugf("debug api: parse chunk address: %v", err)
 		jsonhttp.BadRequest(w, "bad address")

@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -249,8 +249,10 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	nameOrHex := mux.Vars(r)["address"]
-	pathVar := mux.Vars(r)["path"]
+	nameOrHex := chi.URLParam(r, "address")
+
+	// split by '/' returns bzz {address} {path}
+	pathVar := strings.Join(strings.Split(r.URL.Path, "/")[3:], "/")
 	if strings.HasSuffix(pathVar, "/") {
 		pathVar = strings.TrimRight(pathVar, "/")
 		// NOTE: leave one slash if there was some
@@ -526,7 +528,7 @@ func (s *server) manifestFeed(
 
 // bzzPatchHandler endpoint has been deprecated; use stewardship endpoint instead.
 func (s *server) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
-	nameOrHex := mux.Vars(r)["address"]
+	nameOrHex := chi.URLParam(r, "address")
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
 		s.logger.Debugf("bzz patch: parse address %s: %v", nameOrHex, err)
