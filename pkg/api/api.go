@@ -252,7 +252,7 @@ func requestDeferred(r *http.Request) (bool, error) {
 	if h := strings.ToLower(r.Header.Get(SwarmDeferredUploadHeader)); h != "" {
 		return strconv.ParseBool(h)
 	}
-	return false, nil
+	return true, nil
 }
 
 func requestPostageBatchId(r *http.Request) ([]byte, error) {
@@ -472,7 +472,7 @@ func (s *server) newStamperPutter(r *http.Request) (storage.Storer, func() error
 		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
 	}
 
-	if !deferred {
+	if deferred {
 		p, err := newStoringStamperPutter(s.storer, s.post, s.signer, batch)
 		return p, noopWaitFn, err
 	}
