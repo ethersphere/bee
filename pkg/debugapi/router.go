@@ -55,6 +55,10 @@ func (s *Service) newBasicRouter() *mux.Router {
 		web.FinalHandlerFunc(statusHandler),
 	))
 
+	router.Handle("/info", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.infoGetHandler),
+	})
+
 	router.Handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})

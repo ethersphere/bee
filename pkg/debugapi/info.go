@@ -1,4 +1,4 @@
-package api
+package debugapi
 
 import (
 	"net/http"
@@ -31,10 +31,10 @@ func (b BeeNodeMode) String() string {
 	return "unknown"
 }
 
-// bytesGetHandler handles retrieval of raw binary data of arbitrary length.
-func (s *server) infoGetHandler(w http.ResponseWriter, r *http.Request) {
+// infoGetHandler gives back information about the Bee node configuration.
+func (s *Service) infoGetHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, infoResponse{
-		BeeMode:     s.BeeMode.String(),
-		GatewayMode: s.GatewayMode,
+		BeeMode:     s.beeMode.String(),
+		GatewayMode: s.gatewayMode,
 	})
 }

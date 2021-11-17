@@ -65,7 +65,6 @@ type testServerOptions struct {
 	WsPath             string
 	Tags               *tags.Tags
 	GatewayMode        bool
-	BeeMode            api.BeeNodeMode
 	WsPingPeriod       time.Duration
 	Logger             logging.Logger
 	PreventRedirect    bool
@@ -96,7 +95,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 	s := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Logger, nil, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		BeeMode:            o.BeeMode,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 	})

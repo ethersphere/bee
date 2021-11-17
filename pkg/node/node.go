@@ -255,7 +255,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		// set up basic debug api endpoints for debugging and /health endpoint
-		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService)
+		beeNodeMode := debugapi.LightMode
+		if o.FullNodeMode {
+			beeNodeMode = debugapi.FullMode
+		}
+		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, o.GatewayMode, beeNodeMode)
 
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 		if err != nil {
@@ -734,15 +738,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	var apiService api.Service
 	if o.APIAddr != "" {
 		// API server
-		beeMode := api.LightMode
-		if o.FullNodeMode {
-			beeMode = api.FullMode
-		}
 		feedFactory := factory.New(ns)
 		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 		apiService = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			BeeMode:            beeMode,
+			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 		})
 		apiListener, err := net.Listen("tcp", o.APIAddr)
