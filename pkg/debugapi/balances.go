@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 var (
@@ -54,7 +54,7 @@ func (s *Service) balancesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
+	addr := chi.URLParam(r, "peer")
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.logger.Debugf("debug api: balances peer: invalid peer address %s: %v", addr, err)
@@ -104,7 +104,7 @@ func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
+	addr := chi.URLParam(r, "peer")
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.logger.Debugf("debug api: compensated balances peer: invalid peer address %s: %v", addr, err)

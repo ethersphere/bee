@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 var (
@@ -90,7 +90,7 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
+	addr := chi.URLParam(r, "peer")
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.logger.Debugf("debug api: settlements peer: invalid peer address %s: %v", addr, err)

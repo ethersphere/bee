@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type tagResponse struct {
@@ -43,7 +43,7 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 }
 
 func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {

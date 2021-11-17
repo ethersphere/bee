@@ -22,7 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -38,7 +38,7 @@ type feedReferenceResponse struct {
 }
 
 func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
-	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
+	owner, err := hex.DecodeString(chi.URLParam(r, "owner"))
 	if err != nil {
 		s.logger.Debugf("feed get: decode owner: %v", err)
 		s.logger.Error("feed get: bad owner")
@@ -46,7 +46,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	topic, err := hex.DecodeString(mux.Vars(r)["topic"])
+	topic, err := hex.DecodeString(chi.URLParam(r, "topic"))
 	if err != nil {
 		s.logger.Debugf("feed get: decode topic: %v", err)
 		s.logger.Error("feed get: bad topic")
@@ -125,7 +125,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
-	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
+	owner, err := hex.DecodeString(chi.URLParam(r, "owner"))
 	if err != nil {
 		s.logger.Debugf("feed put: decode owner: %v", err)
 		s.logger.Error("feed put: bad owner")
@@ -133,7 +133,7 @@ func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	topic, err := hex.DecodeString(mux.Vars(r)["topic"])
+	topic, err := hex.DecodeString(chi.URLParam(r, "topic"))
 	if err != nil {
 		s.logger.Debugf("feed put: decode topic: %v", err)
 		s.logger.Error("feed put: bad topic")

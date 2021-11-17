@@ -20,6 +20,10 @@ func NotFoundHandler(w http.ResponseWriter, _ *http.Request) {
 	NotFound(w, nil)
 }
 
+func MethodNotAllowedHandler(w http.ResponseWriter, _ *http.Request) {
+	MethodNotAllowed(w, nil)
+}
+
 // NewMaxBodyBytesHandler is an http middleware constructor that limits the
 // maximal number of bytes that can be read from the request body. When a body
 // is read, the error can be handled with a helper function HandleBodyReadError

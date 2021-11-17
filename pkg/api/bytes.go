@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type bytesPostResponse struct {
@@ -110,7 +110,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger).Logger
-	nameOrHex := mux.Vars(r)["address"]
+	nameOrHex := chi.URLParam(r, "address")
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {

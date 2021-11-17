@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 var errBadRequestParams = errors.New("owner, id or span is not well formed")
@@ -26,14 +26,14 @@ type socPostResponse struct {
 }
 
 func (s *server) socUploadHandler(w http.ResponseWriter, r *http.Request) {
-	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
+	owner, err := hex.DecodeString(chi.URLParam(r, "owner"))
 	if err != nil {
 		s.logger.Debugf("soc upload: bad owner: %v", err)
 		s.logger.Error("soc upload: %v", errBadRequestParams)
 		jsonhttp.BadRequest(w, "bad owner")
 		return
 	}
-	id, err := hex.DecodeString(mux.Vars(r)["id"])
+	id, err := hex.DecodeString(chi.URLParam(r, "id"))
 	if err != nil {
 		s.logger.Debugf("soc upload: bad id: %v", err)
 		s.logger.Error("soc upload: %v", errBadRequestParams)

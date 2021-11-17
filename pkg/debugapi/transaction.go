@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -81,7 +81,7 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
+	hash := chi.URLParam(r, "hash")
 	txHash := common.HexToHash(hash)
 
 	storedTransaction, err := s.transaction.StoredTransaction(txHash)
@@ -114,7 +114,7 @@ type transactionHashResponse struct {
 }
 
 func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
+	hash := chi.URLParam(r, "hash")
 	txHash := common.HexToHash(hash)
 
 	err := s.transaction.ResendTransaction(r.Context(), txHash)
@@ -137,7 +137,7 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
+	hash := chi.URLParam(r, "hash")
 	txHash := common.HexToHash(hash)
 
 	ctx := r.Context()

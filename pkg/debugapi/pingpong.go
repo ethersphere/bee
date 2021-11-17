@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type pingpongResponse struct {
@@ -19,7 +19,7 @@ type pingpongResponse struct {
 }
 
 func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
-	peerID := mux.Vars(r)["peer-id"]
+	peerID := chi.URLParam(r, "peer-id")
 	ctx := r.Context()
 
 	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", s.logger)
