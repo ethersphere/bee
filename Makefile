@@ -77,6 +77,10 @@ testlocal-all: beekeeper beelocal deploylocal testlocal
 lint: linter
 	$(GOLANGCI_LINT) run
 
+.PHONY: lint-local
+lint-local: linter
+	$(GOLANGCI_LINT) -c .golangci.local.yml run
+
 .PHONY: linter
 linter:
 	test -f $(GOLANGCI_LINT) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$($(GO) env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
