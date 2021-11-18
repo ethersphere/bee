@@ -14,7 +14,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_BRANCH: "finderr"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
     runs-on: ubuntu-latest
@@ -70,38 +70,75 @@ jobs:
       - name: Test fullconnectivity
         id: fullconnectivity
         run: beekeeper check --cluster-name local-dns --checks=ci-full-connectivity
-      - name: Test settlements
-        id: settlements
-        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
-      - name: Sleep for time allowance to replenish
-        run: sleep 2
-      - name: Test pss
-        id: pss
-        run: beekeeper check --cluster-name local-dns --checks=ci-pss
-      - name: Test soc
-        id: soc
-        run: beekeeper check --cluster-name local-dns --checks=ci-soc
-      - name: Test pushsync (chunks)
-        id: pushsync-chunks-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
       - name: Test retrieval
         id: retrieval
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
-      - name: Test manifest
-        id: manifest
-        run: beekeeper check --cluster-name local-dns --checks=ci-manifest
-      - name: Test content availability
-        id: content-availability
-        run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
-      - name: Test authenticate
-        id: authenticate
-        run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
-      - name: Test postage stamps
-        id: postage-stamps
-        run: beekeeper check --cluster-name local-dns --checks ci-postage
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test retrieval
+        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
       - name: Debug workflow if failed
         if: failure()
         run: |
