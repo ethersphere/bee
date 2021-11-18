@@ -34,9 +34,9 @@ import (
 
 func TestBzzFiles(t *testing.T) {
 	var (
-		fileUploadResource   = "/bzz"
+		fileUploadResource   = "/v1/bzz"
 		targets              = "0x222"
-		fileDownloadResource = func(addr string) string { return "/bzz/" + addr }
+		fileDownloadResource = func(addr string) string { return "/v1/bzz/" + addr }
 		simpleData           = []byte("this is a simple text")
 		storerMock           = smock.NewStorer()
 		statestoreMock       = statestore.NewStateStore()
@@ -380,7 +380,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 		{
 			name:             "file",
 			uploadEndpoint:   "/bzz",
-			downloadEndpoint: "/bzz",
+			downloadEndpoint: "/v1/bzz",
 			reader:           bytes.NewReader(data),
 			contentType:      "text/plain; charset=utf-8",
 		},
