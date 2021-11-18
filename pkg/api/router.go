@@ -27,7 +27,6 @@ func (s *server) setupRouting() {
 	r := chi.NewRouter()
 
 	r.Use(
-		jsonhttp.RecovererMiddleware(s.logger),
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
 		s.responseCodeMetricsHandler,
