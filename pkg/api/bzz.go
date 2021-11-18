@@ -251,8 +251,14 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	nameOrHex := chi.URLParam(r, "address")
 
-	// split by '/' returns bzz {address} {path}
-	pathVar := strings.Join(strings.Split(r.URL.Path, "/")[3:], "/")
+	url := strings.Split(strings.TrimSpace(r.URL.Path), "/")
+	if url[1] == "bzz" {
+		url = url[3:]
+	} else {
+		url = url[4:]
+	}
+	pathVar := strings.Join(url, "/")
+
 	if strings.HasSuffix(pathVar, "/") {
 		pathVar = strings.TrimRight(pathVar, "/")
 		// NOTE: leave one slash if there was some
