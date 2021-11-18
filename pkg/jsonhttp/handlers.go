@@ -7,7 +7,6 @@ package jsonhttp
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/logging"
 	"resenje.org/web"
 )
 
@@ -57,19 +56,4 @@ func HandleBodyReadError(err error, w http.ResponseWriter) (responded bool) {
 		return true
 	}
 	return false
-}
-
-func RecovererMiddleware(logger logging.Logger) func(http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				if err := recover(); err != nil {
-					logger.Errorf("api panic: %v", err)
-					InternalServerError(w, nil)
-				}
-			}()
-
-			h.ServeHTTP(w, r)
-		})
-	}
 }
