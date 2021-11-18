@@ -379,6 +379,9 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if found, _ := mockStorer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not found in the store")
 			}
+			if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
+				t.Fatal("chunk was not expected to be present in direct channel")
+			}
 		})
 		t.Run(endpoint+": direct upload", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchOk)
@@ -400,6 +403,9 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			}
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not received through the direct channel")
+			}
+			if found, _ := mockStorer.Has(context.Background(), body.Reference); found {
+				t.Fatal("chunk was not expected to be present in store")
 			}
 		})
 	}
