@@ -738,6 +738,15 @@ components:
       schema:
         $ref: "#/components/schemas/SwarmAddress"
 
+    SwarmDeferredUpload:
+      in: header
+      name: swarm-deferred-upload
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion.
+
   responses:
     "204":
       description: The resource was deleted successfully.
