@@ -31,7 +31,6 @@ func (s *Service) newBasicRouter() chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(
-		jsonhttp.RecovererMiddleware(s.logger),
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
