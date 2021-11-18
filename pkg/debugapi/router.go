@@ -30,15 +30,16 @@ func (s *Service) newBasicRouter() chi.Router {
 
 	r := chi.NewRouter()
 
-	r.NotFound(jsonhttp.NotFoundHandler)
-	r.MethodNotAllowed(jsonhttp.MethodNotAllowedHandler)
-
 	r.Use(
+		jsonhttp.RecovererMiddleware(s.logger),
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
 	)
+
+	r.NotFound(jsonhttp.NotFoundHandler)
+	r.MethodNotAllowed(jsonhttp.MethodNotAllowedHandler)
 
 	r.With(httpaccess.SetAccessLogLevelHandler(0)).Handle("/metrics", promhttp.InstrumentMetricHandler(
 		s.metricsRegistry,
@@ -91,54 +92,54 @@ func (s *Service) newRouter() chi.Router {
 
 	r.With(httpaccess.SetAccessLogLevelHandler(0)).HandleFunc("/readiness", statusHandler)
 
-	r.Group(func(api chi.Router) {
+	r.Group(func(r chi.Router) {
 
 		if s.restricted {
-			api.Use(auth.PermissionCheckHandler(s.auth))
+			r.Use(auth.PermissionCheckHandler(s.auth))
 		}
 
-		api.Get("/peers", s.peersHandler)
+		r.Get("/peers", s.peersHandler)
 
-		api.Post("/pingpong/{peer-id}", s.pingpongHandler)
+		r.Post("/pingpong/{peer-id}", s.pingpongHandler)
 
-		api.Get("/reservestate", s.reserveStateHandler)
+		r.Get("/reservestate", s.reserveStateHandler)
 
-		api.Get("/chainstate", s.chainStateHandler)
+		r.Get("/chainstate", s.chainStateHandler)
 
-		api.Post("/connect/*", s.peerConnectHandler)
+		r.Post("/connect/*", s.peerConnectHandler)
 
-		api.Get("/blocklist", s.blocklistedPeersHandler)
+		r.Get("/blocklist", s.blocklistedPeersHandler)
 
-		api.Delete("/peers/{address}", s.peerDisconnectHandler)
+		r.Delete("/peers/{address}", s.peerDisconnectHandler)
 
-		api.Route("/chunks/{address}", func(r chi.Router) {
+		r.Route("/chunks/{address}", func(r chi.Router) {
 			r.Get("/", s.hasChunkHandler)
 			r.Delete("/", s.removeChunk)
 		})
 
-		api.Get("/topology", s.topologyHandler)
+		r.Get("/topology", s.topologyHandler)
 
-		api.Route("/welcome-message", func(r chi.Router) {
+		r.Route("/welcome-message", func(r chi.Router) {
 			r.Get("/", s.getWelcomeMessageHandler)
 			r.With(jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize)).Post("/", s.setWelcomeMessageHandler)
 		})
 
-		api.Get("/balances", s.compensatedBalancesHandler)
+		r.Get("/balances", s.compensatedBalancesHandler)
 
-		api.Get("/balances/{peer}", s.compensatedPeerBalanceHandler)
+		r.Get("/balances/{peer}", s.compensatedPeerBalanceHandler)
 
-		api.Get("/consumed", s.balancesHandler)
+		r.Get("/consumed", s.balancesHandler)
 
-		api.Get("/consumed/{peer}", s.peerBalanceHandler)
+		r.Get("/consumed/{peer}", s.peerBalanceHandler)
 
-		api.Get("/timesettlements", s.settlementsHandlerPseudosettle)
+		r.Get("/timesettlements", s.settlementsHandlerPseudosettle)
 
 		if s.chequebookEnabled {
 
-			api.Get("/settlements", s.settlementsHandler)
-			api.Get("/settlements/{peer}", s.peerSettlementsHandler)
+			r.Get("/settlements", s.settlementsHandler)
+			r.Get("/settlements/{peer}", s.peerSettlementsHandler)
 
-			api.Route("/chequebook", func(r chi.Router) {
+			r.Route("/chequebook", func(r chi.Router) {
 
 				r.Get("/balance", s.chequebookBalanceHandler)
 
@@ -159,17 +160,17 @@ func (s *Service) newRouter() chi.Router {
 			})
 		}
 
-		api.Get("/tags/{id}", s.getTagHandler)
+		r.Get("/tags/{id}", s.getTagHandler)
 
-		api.Get("/stamps", s.postageGetStampsHandler)
+		r.Get("/stamps", s.postageGetStampsHandler)
 
-		api.Get("/stamps/{id}", s.postageGetStampHandler)
+		r.Get("/stamps/{id}", s.postageGetStampHandler)
 
-		api.Get("/stamps/{id}/buckets", s.postageGetStampBucketsHandler)
+		r.Get("/stamps/{id}/buckets", s.postageGetStampBucketsHandler)
 
-		api.With(s.postageAccessHandler).Post("/stamps/{amount}/{depth}", s.postageCreateHandler)
-		api.With(s.postageAccessHandler).Patch("/stamps/topup/{id}/{amount}", s.postageTopUpHandler)
-		api.With(s.postageAccessHandler).Patch("/stamps/dilute/{id}/{depth}", s.postageDiluteHandler)
+		r.With(s.postageAccessHandler).Post("/stamps/{amount}/{depth}", s.postageCreateHandler)
+		r.With(s.postageAccessHandler).Patch("/stamps/topup/{id}/{amount}", s.postageTopUpHandler)
+		r.With(s.postageAccessHandler).Patch("/stamps/dilute/{id}/{depth}", s.postageDiluteHandler)
 	})
 
 	return r
