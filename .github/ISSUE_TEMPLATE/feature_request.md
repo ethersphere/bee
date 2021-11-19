@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new feature
+about: Use this template to suggest a new feature
 title: ''
 labels: ''
 assignees: ''
