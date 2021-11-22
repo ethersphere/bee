@@ -257,7 +257,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 
 	defer func() {
 		if err != nil {
-			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
+			s.metrics.SentPseudoSettlementsErrors.Inc()
 		}
 	}()
 
@@ -271,8 +271,12 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		lastTime.Timestamp = 0
 	}
 
+	// check whether at least 1 second have passed since last refresh according to own timestamp and peers timestamp
 	currentTime := s.timeNow().Unix()
-	if currentTime == lastTime.CheckTimestamp {
+	if currentTime <= lastTime.CheckTimestamp || currentTime <= lastTime.Timestamp {
+		// if not, return error too soon
+		// this is to avoid the peer receiving 2 refresh attempts from our node in the same second
+		// of which the second one would be refused and would lead to a disconnect from our node's enforcement of refreshments
 		return nil, 0, ErrSettlementTooSoon
 	}
 
@@ -302,13 +306,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		return nil, 0, err
 	}
 
-	checkTime := s.timeNow().Unix()
-
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	checkTime := s.timeNow().Unix()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
