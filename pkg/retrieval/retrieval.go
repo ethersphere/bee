@@ -100,7 +100,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout          = 10 * time.Second
 	retrieveRetryIntervalDuration = 5 * time.Second
-	maxRequestRounds              = 5
+	maxRequestRounds              = 256
 	maxSelects                    = 8
 	originSuffix                  = "_origin"
 )
@@ -180,6 +180,16 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			case <-ticker.C:
 				// break
 			case res := <-resultC:
+				if errors.Is(res.err, topology.ErrNotFound) {
+					if sp.Saturated() {
+						// if no peer is available, and none skipped temporarily
+						s.logger.Tracef("retrieval: failed to get chunk %s", addr)
+						return nil, storage.ErrNotFound
+					} else {
+						// skip to next request round if any peers are only skipped temporarily
+						peerAttempt = maxSelects
+					}
+				}
 				if res.retrieved {
 					if res.err != nil {
 						if !res.peer.IsZero() {
@@ -203,6 +213,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 			// if we have not counted enough successful attempts but out of selection amount, reset
 			if peerAttempt >= maxSelects {
+
+				// forwarder gives up after first round of request attempts,
+				// rather than holding up the forwarding chain by waiting to be able to reserve downstream peer
 				if !origin {
 					return nil, storage.ErrNotFound
 				}
