@@ -336,7 +336,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			acc            = mockAccounting.NewAccounting()
 			kad            = mockTopology.NewTopologyDriver()
 			storeRecipient = mockStateStore.NewStateStore()
-			pseudoset      = pseudosettle.New(nil, logger, storeRecipient, nil, big.NewInt(10000), p2ps)
+			pseudoset      = pseudosettle.New(nil, logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
 			mockSwap       = swapmock.New(swapmock.WithCashoutStatusFunc(
 				func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 					return &chequebook.CashoutStatus{
