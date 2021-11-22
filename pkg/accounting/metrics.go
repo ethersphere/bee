@@ -18,6 +18,7 @@ type metrics struct {
 	DebitEventsCount                         prometheus.Counter
 	CreditEventsCount                        prometheus.Counter
 	AccountingDisconnectsEnforceRefreshCount prometheus.Counter
+	AccountingNonFatalRefreshFailCount       prometheus.Counter
 	AccountingDisconnectsOverdrawCount       prometheus.Counter
 	AccountingDisconnectsGhostOverdrawCount  prometheus.Counter
 	AccountingDisconnectsReconnectCount      prometheus.Counter
@@ -60,6 +61,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "disconnects_enforce_refresh_count",
 			Help:      "Number of occurrences of peers disconnected based on failed refreshment attempts",
+		}),
+		AccountingNonFatalRefreshFailCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "non_fatal_refresh_fail_count",
+			Help:      "Number of occurrences of refreshments failing for peers because of peer timestamp ahead of ours",
 		}),
 		AccountingDisconnectsOverdrawCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
