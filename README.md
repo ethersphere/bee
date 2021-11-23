@@ -21,6 +21,15 @@ inability to use, or your interaction with other nodes or the software.
 
 Our documentation is hosted at https://docs.ethswarm.org.
 
+## Versioning
+
+There are two versioning schemes used in Bee that you should be aware about. The main Bee version does **NOT** follow
+strictly Semantic Versioning. As Bee includes number of protocols it would require bumping major version for every protocol updates. 
+In this light minor versions can include breaking changes, but patch versions will be kept only for fixes.
+
+Second set of versions that is important are the Bee's OpenAPI versions that define versioning of the Bee API and Bee Debug API. These versions **does follow** 
+Semantic Versioning and hence you should follow these for breaking changes.
+
 ## Contributing
 
 Please read the [coding guidelines](CODING.md).
