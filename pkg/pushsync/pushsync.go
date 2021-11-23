@@ -371,7 +371,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 		now := time.Now()
 		r, attempted, err := ps.pushPeer(ctxd, peer, ch, origin)
-		ps.measurePushPeer(now, peer, attempted, err)
+		var status string
+		if err != nil {
+			status = "failure"
+		} else {
+			status = "success"
+		}
+		ps.metrics.PushToPeerTime.WithLabelValues(status).Observe(time.Since(now).Seconds())
 
 		// attempted is true if we get past accounting and actually attempt
 		// to send the request to the peer. If we dont get past accounting, we
@@ -407,18 +413,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	return nil, ErrNoPush
-}
-
-func (ps *PushSync) measurePushPeer(t time.Time, peer swarm.Address, attempted bool, err error) {
-	po := swarm.Proximity(ps.address.Bytes(), peer.Bytes())
-	var errStr string
-	if err != nil {
-		errStr = "failure"
-	} else {
-		errStr = "success"
-	}
-	ps.metrics.PushToPeerTime.WithLabelValues(fmt.Sprintf("%d", po), fmt.Sprintf("%v", attempted), errStr).
-		Observe(time.Since(t).Seconds())
 }
 
 func (ps *PushSync) pushPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) (*pb.Receipt, bool, error) {
