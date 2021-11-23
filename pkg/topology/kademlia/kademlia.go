@@ -241,7 +241,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 			_, err := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+k.bitSuffixLength+1))
 			if err != nil {
 				if !errors.Is(err, topology.ErrNotFound) {
-					break // not possible
+					return
 				}
 			} else {
 				continue
@@ -252,7 +252,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 				if errors.Is(err, topology.ErrNotFound) {
 					continue
 				} else {
-					break // not possible
+					return
 				}
 			}
 
