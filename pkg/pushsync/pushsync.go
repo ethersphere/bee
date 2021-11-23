@@ -39,7 +39,7 @@ const (
 
 const (
 	maxAttempts = 8
-	maxRetries  = 16
+	maxPeers    = 16
 )
 
 var (
@@ -338,15 +338,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer ps.skipList.PruneExpired()
 
 	var (
-		allowedAttempts = 1
-		includeSelf     = ps.isFullNode
-		skipPeers       []swarm.Address
-		retries         = maxRetries
+		attempted   = 1
+		includeSelf = ps.isFullNode
+		skipPeers   []swarm.Address
+		retries     = maxPeers
 	)
 
 	if origin {
 		// only originator retries
-		allowedAttempts = maxAttempts
+		attempted = maxAttempts
 	}
 
 	resultChan := make(chan receiptResult)
@@ -420,7 +420,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalFailedSendAttempts.Inc()
 
 			if result.attempted {
-				allowedAttempts--
+				attempted--
 			}
 
 			var timeToSkip time.Duration
@@ -440,7 +440,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
 			}
 
-			if retries <= 0 || allowedAttempts <= 0 {
+			if retries <= 0 || attempted <= 0 {
 				return nil, ErrNoPush
 			}
 
