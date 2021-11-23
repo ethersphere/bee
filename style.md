@@ -7,6 +7,7 @@
   - [Parallel Test Execution](#parallel-test-execution)
   - [Group Declarations by Meaning](#group-declarations-by-meaning)
   - [Make Zero-value Useful](#make-zero-value-useful)
+  - [Beware of Copying Mutexes in Go](#beware-of-copying-mutexes-in-go)
   - [Copy Slices and Maps at Boundaries](#copy-slices-and-maps-at-boundaries)
     - [Receiving Slices and Maps](#receiving-slices-and-maps)
     - [Returning Slices and Maps](#returning-slices-and-maps)
@@ -25,7 +26,6 @@
     - [Error Wrapping](#error-wrapping)
     - [Handle Type Assertion Failures](#handle-type-assertion-failures)
     - [Don't Panic](#dont-panic)
-  - [Use go.uber.org/atomic](#use-gouberorgatomic)
   - [Avoid Mutable Globals](#avoid-mutable-globals)
   - [Avoid Embedding Types in Public Structs](#avoid-embedding-types-in-public-structs)
   - [Avoid Using Built-In Names](#avoid-using-built-in-names)
@@ -42,7 +42,7 @@
 ## Consistent Spelling
 
 Prefer american spellings over British spellings, avoid Latin abbreviations.
-Note: `misspell` plugin should take care of these, but it's good to keep in mind:
+Note: `misspell` linter should take care of these, but it's good to keep in mind:
 
 <table>
 <thead><tr><th>Bad</th><th>Good</th></tr></thead>
@@ -75,8 +75,9 @@ Note: `misspell` plugin should take care of these, but it's good to keep in mind
 *To discuss*
 
 - Using something like `gci` to deterministically sort imports.
-- Keep the size of functions so they fit whithin a screen
-- Keep line lenghts reasonable.
+- Consider enabling some style linters, at least in the local profile.
+- Keep the size of functions so they fit whithin a screen.
+- Keep line lengths reasonable (lll).
 
 ## Unused Names
 
@@ -199,8 +200,6 @@ var ErrLimitExceeded = errors.New("limit exeeded)
   ```go
   mu := new(sync.Mutex)
   mu.Lock()
-
-  names := []string{}
   ```
 
   </td><td>
@@ -208,8 +207,42 @@ var ErrLimitExceeded = errors.New("limit exeeded)
   ```go
   var mu sync.Mutex
   mu.Lock()
+  ```
 
-  var names []string
+  </td></tr>
+  </tbody></table>
+
+- For the same reason, a struct field of `sync.Mutex` does not require explicit initialization.
+
+  <table>
+  <thead><tr><th>Bad</th><th>Good</th></tr></thead>
+  <tbody>
+  <tr><td>
+
+  ```go
+  type Store struct {
+    mu sync.Mutex
+  }
+
+  s := Store{
+    mu: sync.Mutex{},
+  }
+
+  // use s
+  ```
+
+  </td><td>
+
+  ```go
+  type Store struct {
+    mu sync.Mutext
+  }
+
+  var s Store
+
+
+
+  // use s
   ```
 
   </td></tr>
@@ -247,40 +280,6 @@ var ErrLimitExceeded = errors.New("limit exeeded)
 
   if add2 {
     nums = append(nums, 2)
-  }
-  ```
-
-  </td></tr>
-  </tbody></table>
-
-- For the cases when we can't tell how many elements will be added to a slice and can re-allocate.
-
-  <table>
-  <thead><tr><th>Bad</th><th>Good</th></tr></thead>
-  <tbody>
-  <tr><td>
-
-  ```go
-  func f(list []int) {
-    filtered := []int{}
-    for _, v := range list {
-      if v > 10 {
-        filtered = append(filtered, v)
-      }
-    }
-  }
-  ```
-
-  </td><td>
-
-  ```go
-  func f(list []int) {
-    var filtered []int
-    for _, v := range list {
-      if v > 10 {
-        filtered = append(filtered, v)
-      }
-    }
   }
   ```
 
@@ -337,9 +336,54 @@ var ErrLimitExceeded = errors.New("limit exeeded)
   </td></tr>
   </tbody></table>
 
-Remember that, while it is a valid slice, a nil slice is not equivalent to an
-allocated slice of length 0 - one is nil and the other is not - and the two may
+Remember that, while it is a valid slice, a `nil` slice is not equivalent to an
+allocated slice of length 0 - one is `nil` and the other is not - and the two may
 be treated differently in different situations (such as serialization and comparison).
+
+## Beware of Copying Mutexes in Go
+
+The `sync.Mutex` is a value type so copying it is wrong. We're just creating a different mutex, so obviously the exclusion no longer works.
+
+<table>
+<thead><tr><th>Bad</th> <th>Good</th></tr></thead>
+<tbody>
+<tr>
+<td>
+
+```go
+type Container struct {
+  mu sync.Mutex
+  counters map[string]int
+}
+
+func (c Container) inc(name string) { // the value receiver will make a copy of the mutex
+  c.mu.Lock()
+  defer c.mu.Unlock()
+  c.counters[name]++
+}
+```
+
+</td>
+<td>
+
+```go
+type Container struct {
+  my.sync.Mutex
+  counters map[string]int
+}
+
+func (c *Container) inc(name string) {
+  c.mu.Lock()
+  defer c.mu.Unlock()
+  c.counters[name]++
+}
+```
+
+</td>
+</tr>
+
+</tbody>
+</table>
 
 ## Copy Slices and Maps at Boundaries
 
@@ -462,7 +506,7 @@ Of course, the original contents are modified, so be mindful. It is useful for t
 var b []rune
 for _, x := range a {
   if f(x) {
-    b = append(b, x) // will case new allocations
+    b = append(b, x) // will cause new allocations
   }
 }
 
@@ -1162,8 +1206,7 @@ percolates up through the stack:
 ```go
 s, err := store.New()
 if err != nil {
-    return fmt.Errorf(
-        "failed to create new store: %v", err)
+    return fmt.Errorf("failed to create new store: %v", err)
 }
 ```
 
@@ -1172,8 +1215,7 @@ if err != nil {
 ```go
 s, err := store.New()
 if err != nil {
-    return fmt.Errorf(
-        "new store: %v", err)
+    return fmt.Errorf("new store: %v", err)
 }
 ```
 
@@ -1320,66 +1362,6 @@ if err != nil {
 f, err := ioutil.TempFile("", "test")
 if err != nil {
   t.Fatal("failed to set up test")
-}
-```
-
-</td></tr>
-</tbody></table>
-
-<!-- TODO: Explain how to use _test packages. -->
-
-## Use go.uber.org/atomic
-
-Atomic operations with the [sync/atomic] package operate on the raw types
-(`int32`, `int64`, etc.) so it is easy to forget to use the atomic operation to
-read or modify the variables.
-
-[go.uber.org/atomic] adds type safety to these operations by hiding the
-underlying type. Additionally, it includes a convenient `atomic.Bool` type.
-
-  [go.uber.org/atomic]: https://godoc.org/go.uber.org/atomic
-  [sync/atomic]: https://golang.org/pkg/sync/atomic/
-
-<table>
-<thead><tr><th>Bad</th><th>Good</th></tr></thead>
-<tbody>
-<tr><td>
-
-```go
-type foo struct {
-  running int32  // atomic
-}
-
-func (f* foo) start() {
-  if atomic.SwapInt32(&f.running, 1) == 1 {
-     // already running…
-     return
-  }
-  // start the Foo
-}
-
-func (f *foo) isRunning() bool {
-  return f.running == 1  // race!
-}
-```
-
-</td><td>
-
-```go
-type foo struct {
-  running atomic.Bool
-}
-
-func (f *foo) start() {
-  if f.running.Swap(true) {
-     // already running…
-     return
-  }
-  // start the Foo
-}
-
-func (f *foo) isRunning() bool {
-  return f.running.Load()
 }
 ```
 
