@@ -1179,25 +1179,6 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFun
 	return closest, nil
 }
 
-func closestPeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
-	closest := swarm.ZeroAddress
-	closestFunc := closestPeerFunc(&closest, addr, spf)
-
-	for _, peer := range peers {
-		_, _, err := closestFunc(peer, 0)
-		if err != nil {
-			return closest, err
-		}
-	}
-
-	// check if found
-	if closest.IsZero() {
-		return closest, topology.ErrNotFound
-	}
-
-	return closest, nil
-}
-
 func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc, minPO uint8) (swarm.Address, error) {
 	for _, peer := range peers {
 		if spf(peer) {
