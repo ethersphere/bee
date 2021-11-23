@@ -27,6 +27,22 @@ type bytesPostResponse struct {
 func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		logger.Debugf("bytes upload: postage batch id:%v", err)
+		logger.Error("bytes upload: postage batch id")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
+	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
+	if err != nil {
+		logger.Debugf("bytes upload: get putter:%v", err)
+		logger.Error("bytes upload: putter")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("bytes upload: get or create tag: %v", err)
@@ -50,22 +66,6 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
-
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		logger.Debugf("bytes upload: postage batch id:%v", err)
-		logger.Error("bytes upload: postage batch id")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
-
-	putter, err := newStamperPutter(s.storer, s.post, s.signer, batch)
-	if err != nil {
-		logger.Debugf("bytes upload: get putter:%v", err)
-		logger.Error("bytes upload: putter")
-		jsonhttp.BadRequest(w, nil)
-		return
-	}
 
 	p := requestPipelineFn(putter, r)
 	address, err := p(ctx, r.Body)
