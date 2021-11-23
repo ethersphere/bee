@@ -231,40 +231,32 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 		}
 
 		binPeers := k.knownPeers.BinPeers(uint8(i))
+		binConnectedPeers := k.connectedPeers.BinPeers(uint8(i))
 
 		for j := range k.commonBinPrefixes[i] {
 			pseudoAddr := k.commonBinPrefixes[i][j]
 
-			closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn)
-			if err != nil {
-				if errors.Is(err, topology.ErrNotFound) {
-					break
-				}
-				k.logger.Errorf("closest connected peer: %v", err)
-				continue
-			}
-
-			closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
-			if int(closestConnectedPO) >= i+k.bitSuffixLength+1 {
-				continue
-			}
-
 			// Connect to closest known peer which we haven't tried connecting to recently.
-			closestKnownPeer, err := closestPeerInSlice(binPeers, pseudoAddr, skipPeers)
+
+			_, err := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+k.bitSuffixLength+1))
+			if err != nil {
+				if !errors.Is(err, topology.ErrNotFound) {
+					return
+				}
+			} else {
+				continue
+			}
+
+			closestKnownPeer, err := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+k.bitSuffixLength+1))
 			if err != nil {
 				if errors.Is(err, topology.ErrNotFound) {
-					break
+					continue
+				} else {
+					return
 				}
-				k.logger.Errorf("closest known peer: %v", err)
-				continue
 			}
 
 			if k.connectedPeers.Exists(closestKnownPeer) {
-				continue
-			}
-
-			closestKnownPeerPO := swarm.ExtendedProximity(closestKnownPeer.Bytes(), pseudoAddr.Bytes())
-			if int(closestKnownPeerPO) < i+k.bitSuffixLength+1 {
 				continue
 			}
 
@@ -1187,23 +1179,18 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFun
 	return closest, nil
 }
 
-func closestPeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
-	closest := swarm.ZeroAddress
-	closestFunc := closestPeerFunc(&closest, addr, spf)
-
+func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc, minPO uint8) (swarm.Address, error) {
 	for _, peer := range peers {
-		_, _, err := closestFunc(peer, 0)
-		if err != nil {
-			return closest, err
+		if spf(peer) {
+			continue
+		}
+
+		if swarm.ExtendedProximity(peer.Bytes(), addr.Bytes()) >= minPO {
+			return peer, nil
 		}
 	}
 
-	// check if found
-	if closest.IsZero() {
-		return closest, topology.ErrNotFound
-	}
-
-	return closest, nil
+	return swarm.ZeroAddress, topology.ErrNotFound
 }
 
 func closestPeerFunc(closest *swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) func(peer swarm.Address, po uint8) (bool, bool, error) {
