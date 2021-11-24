@@ -1,3 +1,7 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 // # lockless sharding
 
 // * shard choice responding to backpressure by running operation
@@ -16,10 +20,12 @@ import (
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	DataSize int64 = 4096
+	DataSize int64 = swarm.ChunkWithSpanSize
 
 	ErrTooLong         = errors.New("data too long")
 	ErrCapacityReached = errors.New("capacity reached")
