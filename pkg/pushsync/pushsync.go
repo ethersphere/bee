@@ -86,7 +86,7 @@ type PushSync struct {
 }
 
 type receiptResult struct {
-	t         time.Time
+	pushTime  time.Time
 	peer      swarm.Address
 	receipt   *pb.Receipt
 	attempted bool
@@ -396,8 +396,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.metrics.TotalSendAttempts.Inc()
 
-			ctxd, canceld := context.WithTimeout(ctx, defaultTTL)
-			defer canceld()
+			skipPeers = append(skipPeers, peer)
+
+			ctxd, cancel := context.WithCancel(ctx)
+			// cancel only after defaultTTL to allow pushPeer to fully complete for inflight requests
+			time.AfterFunc(defaultTTL, cancel)
 
 			go ps.pushPeer(ctxd, resultChan, peer, ch, origin)
 
@@ -410,32 +413,22 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 		case result := <-resultChan:
 
-			ps.measurePushPeer(result.t, result.err)
+			ps.measurePushPeer(result.pushTime, result.err)
 
-			// return receipt
+			// no err, return receipt
 			if result.err == nil {
 				return result.receipt, nil
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
+			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
 
 			if result.attempted {
 				attempted--
 			}
 
-			var timeToSkip time.Duration
-			switch {
-			case errors.Is(result.err, accounting.ErrOverdraft):
-				skipPeers = append(skipPeers, result.peer)
-			default:
-				timeToSkip = sanctionWait
-			}
-
-			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
-
-			// if the node has warmed up AND no other closer peer has been tried
-			if ps.warmedUp() && timeToSkip > 0 {
-				ps.skipList.Add(ch.Address(), result.peer, timeToSkip)
+			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) {
+				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
 			}
@@ -466,12 +459,12 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		err       error
 		receipt   pb.Receipt
 		attempted bool
-		start     = time.Now()
+		now       = time.Now()
 	)
 
 	defer func() {
 		select {
-		case resultChan <- receiptResult{t: start, peer: peer, err: err, attempted: attempted, receipt: &receipt}:
+		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, attempted: attempted, receipt: &receipt}:
 		default:
 		}
 	}()
