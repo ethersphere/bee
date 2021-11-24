@@ -161,7 +161,7 @@ func (s *Shards) Read(ctx context.Context, loc Location) (data []byte, err error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return op.buffer[:op.location.Length], err
+	return op.buffer[:loc.Length], err
 }
 
 func (s *Shards) Write(ctx context.Context, data []byte) (loc Location, err error) {

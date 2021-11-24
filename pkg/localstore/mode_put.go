@@ -285,6 +285,15 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	}
 	if exists {
 		return true, 0, nil
+	} else {
+		l, err := db.sharky.Write(context.TODO(), item.Data)
+		if err != nil {
+			return false, 0, err
+		}
+		item.Location, err = l.MarshalBinary()
+		if err != nil {
+			return false, 0, err
+		}
 	}
 
 	previous, err := db.postageIndexIndex.Get(item)

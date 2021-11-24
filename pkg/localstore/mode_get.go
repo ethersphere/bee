@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -63,6 +64,18 @@ func (db *DB) get(mode storage.ModeGet, addr swarm.Address) (out shed.Item, err 
 	if err != nil {
 		return out, err
 	}
+
+	l := &sharky.Location{}
+	err = l.UnmarshalBinary(out.Location)
+	if err != nil {
+		return out, err
+	}
+
+	out.Data, err = db.sharky.Read(context.TODO(), *l)
+	if err != nil {
+		return out, err
+	}
+
 	switch mode {
 	// update the access timestamp and gc index
 	case storage.ModeGetRequest:

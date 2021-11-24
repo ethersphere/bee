@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -61,7 +63,9 @@ var (
 // database related objects.
 type DB struct {
 	shed *shed.DB
-	tags *tags.Tags
+	// sharky instance
+	sharky *sharky.Shards
+	tags   *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
 	stateStore storage.StateStorer
@@ -292,9 +296,16 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 
+	// instantiate sharky instance
+	// 32 * 312500 chunks = 1000000 chunks (40GB)
+	db.sharky, err = sharky.New(filepath.Join(path, "sharky"), 32, 312500)
+	if err != nil {
+		return nil, err
+	}
+
 	// Index storing actual chunk address, data and bin id.
 	headerSize := 16 + postage.StampSize
-	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Data", shed.IndexFuncs{
+	db.retrievalDataIndex, err = db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Location", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
 		},
@@ -311,7 +322,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 				return nil, err
 			}
 			copy(b[16:], stamp)
-			value = append(b, fields.Data...)
+			value = append(b, fields.Location...)
 			return value, nil
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
@@ -325,7 +336,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			e.Index = stamp.Index()
 			e.Timestamp = stamp.Timestamp()
 			e.Sig = stamp.Sig()
-			e.Data = value[headerSize:]
+			e.Location = value[headerSize:]
 			return e, nil
 		},
 	})
