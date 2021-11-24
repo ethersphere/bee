@@ -43,10 +43,9 @@ const (
 )
 
 var (
-	ErrOutOfDepthReplication = errors.New("replication outside of the neighborhood")
-	ErrNoPush                = errors.New("could not push chunk")
-	ErrOutOfDepthStoring     = errors.New("storing outside of the neighborhood")
-	ErrWarmup                = errors.New("node warmup time not complete")
+	ErrNoPush            = errors.New("could not push chunk")
+	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
+	ErrWarmup            = errors.New("node warmup time not complete")
 
 	defaultTTL        = 30 * time.Second // request time to live
 	p90TTL            = 5 * time.Second  // P90 request time to live
@@ -466,6 +465,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, attempted: attempted, receipt: &receipt}:
 		default:
+			ps.metrics.SecondaryReceipt.Inc()
 		}
 	}()
 
