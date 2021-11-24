@@ -5,6 +5,7 @@
 package sharky
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"sync"
@@ -15,6 +16,21 @@ type Location struct {
 	Shard  uint8
 	Offset int64
 	Length int64
+}
+
+func (l *Location) MarshalBinary() ([]byte, error) {
+	b := make([]byte, 1+8+8)
+	b[0] = l.Shard
+	binary.PutVarint(b[1:9], l.Offset)
+	binary.PutVarint(b[9:], l.Length)
+	return b, nil
+}
+
+func (l *Location) UnmarshalBinary(buf []byte) error {
+	l.Shard = buf[0]
+	l.Offset, _ = binary.Varint(buf[1:9])
+	l.Length, _ = binary.Varint(buf[9:])
+	return nil
 }
 
 // operation models both read and write

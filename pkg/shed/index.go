@@ -40,6 +40,7 @@ import (
 type Item struct {
 	Address         []byte
 	Data            []byte
+	Location        []byte // Location of the chunk in sharky context
 	AccessTimestamp int64
 	StoreTimestamp  int64
 	BinID           uint64
