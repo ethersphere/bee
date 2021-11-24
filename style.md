@@ -25,7 +25,7 @@
   - [Error Types](#error-types)
     - [Error Wrapping](#error-wrapping)
     - [Handle Type Assertion Failures](#handle-type-assertion-failures)
-    - [Don't Panic](#dont-panic)
+    - [Panic with care](#panic-with-care)
   - [Avoid Mutable Globals](#avoid-mutable-globals)
   - [Avoid Embedding Types in Public Structs](#avoid-embedding-types-in-public-structs)
   - [Avoid Using Built-In Names](#avoid-using-built-in-names)
@@ -71,8 +71,6 @@ Note: `misspell` linter should take care of these, but it's good to keep in mind
 </tbody></table>
 
 ## Code Formatting
-
-*To discuss*
 
 - Using something like `gci` to deterministically sort imports.
 - Consider enabling some style linters, at least in the local profile.
@@ -777,6 +775,8 @@ c := make(chan int)
 </td></tr>
 </tbody></table>
 
+Note about a particular case of using it as a semaphore where we know beforehand the size of the channel.
+
 ## Start Enums at One
 
 The standard way of introducing enumerations in Go is to declare a custom type
@@ -1276,7 +1276,7 @@ if !ok {
 <!-- TODO: There are a few situations where the single assignment form is
 fine. -->
 
-### Don't Panic
+### Panic with care
 
 Code running in production must avoid panics. Panics are a major source of
 [cascading failures]. If an error occurs, the function must return an error and
