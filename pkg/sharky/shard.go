@@ -6,6 +6,7 @@ package sharky
 
 import (
 	"context"
+	"encoding/binary"
 	"os"
 )
 
@@ -14,6 +15,21 @@ type Location struct {
 	Shard  uint8
 	Slot   uint32
 	Length uint16
+}
+
+func (l *Location) MarshalBinary() ([]byte, error) {
+	b := make([]byte, 1+4+2)
+	b[0] = l.Shard
+	binary.LittleEndian.PutUint32(b[1:5], l.Slot)
+	binary.LittleEndian.PutUint16(b[5:], l.Length)
+	return b, nil
+}
+
+func (l *Location) UnmarshalBinary(buf []byte) error {
+	l.Shard = buf[0]
+	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
+	l.Length = binary.LittleEndian.Uint16(buf[5:])
+	return nil
 }
 
 // write models the input to a write operation
