@@ -213,7 +213,9 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			OverSaturationCalc: func(uint8) int { return 20 },
+		})
 	)
 
 	kad.SetRadius(swarm.MaxPO) // initial tests do not check for radius
@@ -1726,6 +1728,15 @@ func TestIteratorOpts(t *testing.T) {
 	})
 }
 
+func TestDefaultOverSaturationCalc(t *testing.T) {
+	nums := []int{50, 44, 39, 34, 30, 27, 24, 21, 18, 16, 14, 13, 11, 10}
+	for i, n := range nums {
+		if got := kademlia.DefaultOverSaturationCalc(uint8(i)); got != n {
+			t.Fatalf("want %d, got %d", n, got)
+		}
+	}
+}
+
 type boolgen struct {
 	src       rand.Source
 	cache     int64
@@ -1742,15 +1753,6 @@ func (b *boolgen) Bool() bool {
 	b.remaining--
 
 	return result
-}
-
-func TestDefaultOverSaturationCalc(t *testing.T) {
-	nums := []int{50, 44, 39, 34, 30, 27, 24, 21, 18, 16, 14, 13, 11, 10}
-	for i, n := range nums {
-		if got := kademlia.DefaultOverSaturationCalc(uint8(i)); got != n {
-			t.Fatalf("want %d, got %d", n, got)
-		}
-	}
 }
 
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
