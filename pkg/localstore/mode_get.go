@@ -44,7 +44,7 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 		}
 	}()
 
-	out, err := db.get(mode, addr)
+	out, err := db.get(ctx, mode, addr)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
 			return nil, storage.ErrNotFound
@@ -57,7 +57,7 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 
 // get returns Item from the retrieval index
 // and updates other indexes.
-func (db *DB) get(mode storage.ModeGet, addr swarm.Address) (out shed.Item, err error) {
+func (db *DB) get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (out shed.Item, err error) {
 	item := addressToItem(addr)
 
 	out, err = db.retrievalDataIndex.Get(item)
@@ -65,13 +65,12 @@ func (db *DB) get(mode storage.ModeGet, addr swarm.Address) (out shed.Item, err 
 		return out, err
 	}
 
-	l := &sharky.Location{}
-	err = l.UnmarshalBinary(out.Location)
+	l, err := sharky.LocationFromBinary(out.Location)
 	if err != nil {
 		return out, err
 	}
 
-	out.Data, err = db.sharky.Read(context.TODO(), *l)
+	out.Data, err = db.sharky.Read(ctx, *l)
 	if err != nil {
 		return out, err
 	}
