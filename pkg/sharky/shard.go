@@ -33,7 +33,7 @@ func (l *Location) UnmarshalBinary(buf []byte) error {
 }
 
 func LocationFromBinary(buf []byte) (*Location, error) {
-	l := &Location{}
+	l := new(Location)
 	err := l.UnmarshalBinary(buf)
 	if err != nil {
 		return nil, err
