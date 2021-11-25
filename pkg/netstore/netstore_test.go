@@ -32,7 +32,7 @@ var chunkStamp = postagetesting.MustNewStamp()
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
 	addr := swarm.MustParseHexAddress("000001")
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -48,11 +48,8 @@ func TestNetstoreRetrieval(t *testing.T) {
 		t.Fatalf("addresses not equal. got %s want %s", retrieve.addr, addr)
 	}
 
-	// store should have the chunk now
-	d, err := store.Get(context.Background(), storage.ModeGetRequest, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// store should have the chunk once the background PUT is complete
+	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
 
 	if !bytes.Equal(d.Data(), chunkData) {
 		t.Fatal("chunk data not equal to expected data")
@@ -76,7 +73,7 @@ func TestNetstoreRetrieval(t *testing.T) {
 // TestNetstoreNoRetrieval verifies that a chunk is not requested from the network
 // whenever it is found locally.
 func TestNetstoreNoRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
 	addr := swarm.MustParseHexAddress("000001")
 
 	// store should have the chunk in advance
@@ -106,7 +103,7 @@ func TestRecovery(t *testing.T) {
 		callbackC: callbackWasCalled,
 	}
 
-	retrieve, _, nstore := newRetrievingNetstore(rec.recovery, noopValidStamp)
+	retrieve, _, nstore := newRetrievingNetstore(t, rec.recovery, noopValidStamp)
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
@@ -126,7 +123,7 @@ func TestRecovery(t *testing.T) {
 }
 
 func TestInvalidRecoveryFunction(t *testing.T) {
-	retrieve, _, nstore := newRetrievingNetstore(nil, noopValidStamp)
+	retrieve, _, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
@@ -142,7 +139,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 	f := func(c swarm.Chunk, _ []byte) (swarm.Chunk, error) {
 		return nil, errors.New("invalid postage stamp")
 	}
-	retrieve, store, nstore := newRetrievingNetstore(nil, f)
+	retrieve, store, nstore := newRetrievingNetstore(t, nil, f)
 	addr := swarm.MustParseHexAddress("000001")
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -158,11 +155,8 @@ func TestInvalidPostageStamp(t *testing.T) {
 		t.Fatalf("addresses not equal. got %s want %s", retrieve.addr, addr)
 	}
 
-	// store should have the chunk now
-	d, err := store.Get(context.Background(), storage.ModeGetRequest, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// store should have the chunk once the background PUT is complete
+	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
 
 	if !bytes.Equal(d.Data(), chunkData) {
 		t.Fatal("chunk data not equal to expected data")
@@ -186,12 +180,37 @@ func TestInvalidPostageStamp(t *testing.T) {
 	}
 }
 
+func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mode storage.ModeGet) swarm.Chunk {
+	t.Helper()
+
+	start := time.Now()
+	for {
+		time.Sleep(time.Millisecond * 10)
+
+		d, err := store.Get(context.Background(), mode, addr)
+		if err != nil {
+			if time.Since(start) > 3*time.Second {
+				t.Fatal("waited 3 secs for background put operation", err)
+			}
+		} else {
+			return d
+		}
+	}
+}
+
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore(rec recovery.Callback, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
+func newRetrievingNetstore(t *testing.T, rec recovery.Callback, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(io.Discard, 0)
-	return retrieve, store, netstore.New(store, validStamp, rec, retrieve, logger)
+	ns = netstore.New(store, validStamp, rec, retrieve, logger)
+	t.Cleanup(func() {
+		err := ns.Close()
+		if err != nil {
+			t.Fatal("failed closing netstore", err)
+		}
+	})
+	return retrieve, store, ns
 }
 
 type retrievalMock struct {

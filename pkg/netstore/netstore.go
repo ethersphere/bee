@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -22,12 +24,20 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	maxBgPutters int = 16
+)
+
 type store struct {
 	storage.Storer
 	retrieval        retrieval.Interface
 	logger           logging.Logger
 	validStamp       postage.ValidStampFn
 	recoveryCallback recovery.Callback // this is the callback to be executed when a chunk fails to be retrieved
+	bgWorkers        chan struct{}
+	sCtx             context.Context
+	sCancel          context.CancelFunc
+	wg               sync.WaitGroup
 }
 
 var (
@@ -36,7 +46,10 @@ var (
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
-	return &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
+	ns := &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
+	ns.sCtx, ns.sCancel = context.WithCancel(context.Background())
+	ns.bgWorkers = make(chan struct{}, maxBgPutters)
+	return ns
 }
 
 // Get retrieves a given chunk address.
@@ -57,31 +70,70 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 				go s.recoveryCallback(addr, targets)
 				return nil, ErrRecoveryAttempt
 			}
-			stamp, err := ch.Stamp().MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-
-			putMode := storage.ModePutRequest
-			if mode == storage.ModeGetRequestPin {
-				putMode = storage.ModePutRequestPin
-			}
-
-			cch, err := s.validStamp(ch, stamp)
-			if err != nil {
-				// if a chunk with an invalid postage stamp was received
-				// we force it into the cache.
-				putMode = storage.ModePutRequestCache
-				cch = ch
-			}
-
-			_, err = s.Storer.Put(ctx, putMode, cch)
-			if err != nil {
-				return nil, fmt.Errorf("netstore retrieve put: %w", err)
-			}
+			s.wg.Add(1)
+			s.put(ch, mode)
 			return ch, nil
 		}
 		return nil, fmt.Errorf("netstore get: %w", err)
 	}
 	return ch, nil
+}
+
+// put will store the chunk into storage asynchronously
+func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
+	go func() {
+		defer s.wg.Done()
+
+		select {
+		case <-s.sCtx.Done():
+			s.logger.Debug("netstore: stopping netstore")
+			return
+		case s.bgWorkers <- struct{}{}:
+		}
+		defer func() {
+			<-s.bgWorkers
+		}()
+
+		stamp, err := ch.Stamp().MarshalBinary()
+		if err != nil {
+			s.logger.Errorf("netstore: failed to marshal stamp from chunk %s err:%s", ch.Address(), err.Error())
+			return
+		}
+
+		putMode := storage.ModePutRequest
+		if mode == storage.ModeGetRequestPin {
+			putMode = storage.ModePutRequestPin
+		}
+
+		cch, err := s.validStamp(ch, stamp)
+		if err != nil {
+			// if a chunk with an invalid postage stamp was received
+			// we force it into the cache.
+			putMode = storage.ModePutRequestCache
+			cch = ch
+		}
+
+		_, err = s.Storer.Put(s.sCtx, putMode, cch)
+		if err != nil {
+			s.logger.Errorf("netstore: failed to put chunk %s err: %s", cch.Address(), err.Error())
+		}
+	}()
+}
+
+// The underlying store is not the netstore's responsibility to close
+func (s *store) Close() error {
+	s.sCancel()
+
+	stopped := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(5 * time.Second):
+		return errors.New("netstore: waited 5 seconds to close active goroutines")
+	}
 }
