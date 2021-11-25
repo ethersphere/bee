@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -43,7 +44,7 @@ func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 		}
 	}()
 
-	out, err := db.getMulti(mode, addrs...)
+	out, err := db.getMulti(ctx, mode, addrs...)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
 			return nil, storage.ErrNotFound
@@ -60,7 +61,7 @@ func (db *DB) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 
 // getMulti returns Items from the retrieval index
 // and updates other indexes.
-func (db *DB) getMulti(mode storage.ModeGet, addrs ...swarm.Address) (out []shed.Item, err error) {
+func (db *DB) getMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (out []shed.Item, err error) {
 	out = make([]shed.Item, len(addrs))
 	for i, addr := range addrs {
 		out[i].Address = addr.Bytes()
@@ -69,6 +70,18 @@ func (db *DB) getMulti(mode storage.ModeGet, addrs ...swarm.Address) (out []shed
 	err = db.retrievalDataIndex.Fill(out)
 	if err != nil {
 		return nil, err
+	}
+
+	for i, item := range out {
+		l, err := sharky.LocationFromBinary(item.Location)
+		if err != nil {
+			return nil, err
+		}
+
+		out[i].Data, err = db.sharky.Read(ctx, *l)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	switch mode {

@@ -522,7 +522,11 @@ func TestModePut_sameChunk(t *testing.T) {
 				},
 			} {
 				t.Run(tcn.name, func(t *testing.T) {
-					db := newTestDB(t, nil)
+					db := newTestDB(t, &Options{
+						UnreserveFunc: func(postage.UnreserveIteratorFn) error {
+							return nil
+						},
+					})
 					// call unreserve on the batch with radius 0 so that
 					// localstore is aware of the batch and the chunk can
 					// be inserted into the database
@@ -594,7 +598,11 @@ func TestModePut_SameStamp(t *testing.T) {
 			} {
 				t.Run(modeTc1.String()+modeTc2.String(), func(t *testing.T) {
 
-					db := newTestDB(t, nil)
+					db := newTestDB(t, &Options{
+						UnreserveFunc: func(postage.UnreserveIteratorFn) error {
+							return nil
+						},
+					})
 					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
 
 					_, err := db.Put(ctx, modeTc1, tc.persistChunk)
@@ -660,7 +668,11 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 				testName := fmt.Sprintf("%s %s %s", modeTc1.String(), modeTc2.String(), tc.name)
 				t.Run(testName, func(t *testing.T) {
 
-					db := newTestDB(t, nil)
+					db := newTestDB(t, &Options{
+						UnreserveFunc: func(postage.UnreserveIteratorFn) error {
+							return nil
+						},
+					})
 					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
 
 					_, err := db.Put(ctx, modeTc1, tc.persistChunk)
