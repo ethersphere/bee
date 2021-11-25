@@ -173,6 +173,7 @@ const (
 	lightRefreshRate              = int64(450000)
 	basePrice                     = 10000
 	postageSyncingStallingTimeout = 10 * time.Minute
+	postageSyncingBackoffTimeout  = 5 * time.Second
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
@@ -469,7 +470,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		postageSyncStart = startBlock
 	}
 
-	eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout)
+	eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)

@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	blockPage = 5000 // how many blocks to sync every time we page
-	tailSize  = 4    // how many blocks to tail from the tip of the chain
+	blockPage   = 5000      // how many blocks to sync every time we page
+	tailSize    = 4         // how many blocks to tail from the tip of the chain
+	batchFactor = uint64(5) // minimal number of blocks to sync at once
 )
 
 var (
@@ -66,6 +67,7 @@ type listener struct {
 	metrics             metrics
 	shutdowner          Shutdowner
 	stallingTimeout     time.Duration
+	backoffTime         time.Duration
 }
 
 func New(
@@ -75,6 +77,7 @@ func New(
 	blockTime uint64,
 	shutdowner Shutdowner,
 	stallingTimeout time.Duration,
+	backoffTime time.Duration,
 ) postage.Listener {
 	return &listener{
 		logger:              logger,
@@ -85,6 +88,7 @@ func New(
 		metrics:             newMetrics(),
 		shutdowner:          shutdowner,
 		stallingTimeout:     stallingTimeout,
+		backoffTime:         backoffTime,
 	}
 }
 
@@ -174,14 +178,13 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 		cancel()
 	}()
 
-	chainUpdateInterval := (time.Duration(l.blockTime) * time.Second) / 2
-
 	synced := make(chan struct{})
 	closeOnce := new(sync.Once)
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 
 	lastProgress := time.Now()
+	lastConfirmedBlock := uint64(0)
 
 	l.wg.Add(1)
 	listenf := func() error {
@@ -194,10 +197,21 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				return ErrPostageSyncingStalled
 			}
 
+			// if we have a last blocknumber from the backend we can make a good estimate on when we need to requery
+			// otherwise we just use the backoff time
+			var expectedWaitTime time.Duration
+			if lastConfirmedBlock != 0 {
+				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
+				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
+				expectedWaitTime = time.Duration(l.blockTime*remainingBlocks) * time.Second
+			} else {
+				expectedWaitTime = l.backoffTime
+			}
+
 			select {
 			case <-paged:
 				// if we paged then it means there's more things to sync on
-			case <-time.After(chainUpdateInterval):
+			case <-time.After(expectedWaitTime):
 			case <-l.quit:
 				return nil
 			}
@@ -208,6 +222,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warningf("listener: could not get block number: %v", err)
+				lastConfirmedBlock = 0
 				continue
 			}
 
@@ -218,6 +233,10 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 
 			// consider to-tailSize as the "latest" block we need to sync to
 			to = to - tailSize
+			lastConfirmedBlock = to
+
+			// round down to the largest multiple of batchFactor
+			to = (to / batchFactor) * batchFactor
 
 			if to < from {
 				// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario
@@ -237,6 +256,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warningf("listener: could not get logs: %v", err)
+				lastConfirmedBlock = 0
 				continue
 			}
 

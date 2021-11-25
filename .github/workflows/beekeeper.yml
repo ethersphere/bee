@@ -49,7 +49,6 @@ jobs:
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/listener/listener.go .github/patches/listener.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare local cluster
         run: |
@@ -170,7 +169,6 @@ jobs:
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/listener/listener.go .github/patches/listener.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
@@ -255,7 +253,6 @@ jobs:
         run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/listener/listener.go .github/patches/listener.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
       - name: Prepare testing cluster (storage incentives setup)
