@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -98,9 +99,18 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 						return true, err
 					}
 
+					loc, err := sharky.LocationFromBinary(dataItem.Location)
+					if err != nil {
+						return true, err
+					}
+					itemData, err := db.sharky.Read(ctx, *loc)
+					if err != nil {
+						return true, err
+					}
+
 					stamp := postage.NewStamp(dataItem.BatchID, dataItem.Index, dataItem.Timestamp, dataItem.Sig)
 					select {
-					case chunks <- swarm.NewChunk(swarm.NewAddress(dataItem.Address), dataItem.Data).WithTagID(item.Tag).WithStamp(stamp):
+					case chunks <- swarm.NewChunk(swarm.NewAddress(dataItem.Address), itemData).WithTagID(item.Tag).WithStamp(stamp):
 						count++
 						// set next iteration start item
 						// when its chunk is successfully sent to channel
