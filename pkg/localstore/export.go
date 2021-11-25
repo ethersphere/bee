@@ -64,7 +64,10 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		if err != nil {
 			return false, err
 		}
-		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
 		data, err := db.sharky.Read(ctx, *loc)
 		if err != nil {
 			return false, err
