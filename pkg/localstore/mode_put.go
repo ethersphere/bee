@@ -200,7 +200,6 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		// TODO: Make sharky reclaim the slots
 		return nil, err
 	}
 
@@ -213,9 +212,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	return exist, nil
 }
 
-// putSharky will add the item to sharky and mutate the item with the location assigned
-// to it. It returns a copy of the location and whether this chunk already exists in the
-// storage
+// putSharky will add the item to sharky storage if it doesnt exist
 func (db *DB) putSharky(ctx context.Context, item shed.Item) (loc sharky.Location, exists bool, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
