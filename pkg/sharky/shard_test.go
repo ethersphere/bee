@@ -1,36 +1,52 @@
 package sharky_test
 
 import (
+	"encoding/binary"
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 )
 
-//TODO: Add tests for edge cases
 func TestLocationSerialization(t *testing.T) {
-	l := &sharky.Location{
-		Shard:  1,
-		Offset: 100,
-		Length: 4096,
-	}
+	for _, tc := range []*sharky.Location{
+		{
+			Shard:  1,
+			Offset: 100,
+			Length: 4096,
+		},
+		{
+			Shard:  0,
+			Offset: 0,
+			Length: 0,
+		},
+		{
+			Shard:  math.MaxInt8,
+			Offset: math.MaxInt64,
+			Length: math.MaxInt64,
+		},
+	} {
+		t.Run(fmt.Sprintf("%d_%d_%d", tc.Shard, tc.Offset, tc.Length), func(st *testing.T) {
+			buf, err := tc.MarshalBinary()
+			if err != nil {
+				st.Fatal(err)
+			}
 
-	buf, err := l.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+			if len(buf) != 1+binary.MaxVarintLen64*2 {
+				st.Fatal("unexpected length of buffer")
+			}
 
-	if len(buf) != 17 {
-		t.Fatal("unexpected length of buffer")
-	}
+			l2 := &sharky.Location{}
 
-	l2 := &sharky.Location{}
+			err = l2.UnmarshalBinary(buf)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	err = l2.UnmarshalBinary(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if l2.Shard != l.Shard || l2.Offset != l.Offset || l2.Length != l.Length {
-		t.Fatalf("read incorrect values from buf exp: %v found %v", l, l2)
+			if l2.Shard != tc.Shard || l2.Offset != tc.Offset || l2.Length != tc.Length {
+				t.Fatalf("read incorrect values from buf exp: %v found %v", tc, l2)
+			}
+		})
 	}
 }
