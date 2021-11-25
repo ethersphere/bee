@@ -110,6 +110,10 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			return true, 0, nil
 		}
 		committedLocations = append(committedLocations, loc)
+		item.Location, err = loc.MarshalBinary()
+		if err != nil {
+			return false, 0, err
+		}
 		return putOp(item)
 	}
 
@@ -143,7 +147,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 		for i, ch := range chs {
 			exists, c, err := putChunk(ch, i, func(item shed.Item) (bool, int64, error) {
 				chExists, gcChange, err := db.putUpload(batch, binIDs, item)
-				if err == nil {
+				if err == nil && mode == storage.ModePutUploadPin {
 					c2, err := db.setPin(batch, item)
 					if err == nil {
 						gcChange += c2
@@ -221,10 +225,6 @@ func (db *DB) putSharky(ctx context.Context, item shed.Item) (loc sharky.Locatio
 		return loc, true, nil
 	}
 	l, err := db.sharky.Write(ctx, item.Data)
-	if err != nil {
-		return loc, false, err
-	}
-	item.Location, err = l.MarshalBinary()
 	if err != nil {
 		return loc, false, err
 	}

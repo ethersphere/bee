@@ -33,6 +33,15 @@ func (l *Location) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
+func LocationFromBinary(buf []byte) (*Location, error) {
+	l := &Location{}
+	err := l.UnmarshalBinary(buf)
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
 // operation models both read and write
 type operation struct {
 	location Location   // shard, offset, length combo - given for read, returned by write

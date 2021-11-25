@@ -23,8 +23,10 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -58,10 +60,20 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 
 	err = db.retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 
+		loc, err := sharky.LocationFromBinary(item.Location)
+		if err != nil {
+			return false, err
+		}
+		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+		data, err := db.sharky.Read(ctx, *loc)
+		if err != nil {
+			return false, err
+		}
+
 		hdr := &tar.Header{
 			Name: hex.EncodeToString(item.Address),
 			Mode: 0644,
-			Size: int64(postage.StampSize + len(item.Data)),
+			Size: int64(postage.StampSize + len(data)),
 		}
 
 		if err := tw.WriteHeader(hdr); err != nil {
@@ -79,7 +91,7 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		if _, err := tw.Write(item.Sig); err != nil {
 			return false, err
 		}
-		if _, err := tw.Write(item.Data); err != nil {
+		if _, err := tw.Write(data); err != nil {
 			return false, err
 		}
 		count++

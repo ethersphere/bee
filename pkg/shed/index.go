@@ -66,6 +66,9 @@ func (i Item) Merge(i2 Item) Item {
 	if i.Data == nil {
 		i.Data = i2.Data
 	}
+	if i.Location == nil {
+		i.Location = i2.Location
+	}
 	if i.AccessTimestamp == 0 {
 		i.AccessTimestamp = i2.AccessTimestamp
 	}
