@@ -242,7 +242,8 @@ func TestConcurrency(t *testing.T) {
 		for loc := range c {
 			err := s.Read(ctx, loc, buf)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			i := binary.BigEndian.Uint32(buf)
 
