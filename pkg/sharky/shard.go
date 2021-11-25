@@ -19,17 +19,17 @@ type Location struct {
 }
 
 func (l *Location) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 1+8+8)
+	b := make([]byte, 1+binary.MaxVarintLen64*2)
 	b[0] = l.Shard
-	binary.PutVarint(b[1:9], l.Offset)
-	binary.PutVarint(b[9:], l.Length)
+	binary.PutVarint(b[1:1+binary.MaxVarintLen64], l.Offset)
+	binary.PutVarint(b[1+binary.MaxVarintLen64:], l.Length)
 	return b, nil
 }
 
 func (l *Location) UnmarshalBinary(buf []byte) error {
 	l.Shard = buf[0]
-	l.Offset, _ = binary.Varint(buf[1:9])
-	l.Length, _ = binary.Varint(buf[9:])
+	l.Offset, _ = binary.Varint(buf[1 : 1+binary.MaxVarintLen64])
+	l.Length, _ = binary.Varint(buf[1+binary.MaxVarintLen64:])
 	return nil
 }
 
