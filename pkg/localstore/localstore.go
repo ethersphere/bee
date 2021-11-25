@@ -196,6 +196,9 @@ type Options struct {
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
+	// Directory to use for sharky storage if none is configured, we will create
+	// a new directory called "sharky" in the localstore itself
+	SharkyLocation string
 }
 
 // New returns a new DB.  All fields and indexes are initialized
@@ -298,7 +301,17 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// instantiate sharky instance
 	// 32 * 312500 chunks = 1000000 chunks (40GB)
-	db.sharky, err = sharky.New(filepath.Join(path, "sharky"), 32, 312500)
+	sharkyBasePath := o.SharkyLocation
+	if sharkyBasePath == "" {
+		sharkyBasePath = filepath.Join(path, "sharky")
+	}
+	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+		err := os.Mkdir(sharkyBasePath, 0775)
+		if err != nil {
+			return nil, err
+		}
+	}
+	db.sharky, err = sharky.New(sharkyBasePath, 32, 312500)
 	if err != nil {
 		return nil, err
 	}
@@ -591,6 +604,10 @@ func (db *DB) Close() (err error) {
 		if err != nil {
 			return err
 		}
+	}
+	err = db.sharky.Close()
+	if err != nil {
+		return err
 	}
 	return db.shed.Close()
 }
