@@ -96,7 +96,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	// Values from this map are stored with the batch
 	binIDs := make(map[uint8]uint64)
 
-	committedLocations := make([]sharky.Location, 0)
+	var committedLocations []sharky.Location
 	putChunk := func(ch swarm.Chunk, index int, putOp func(shed.Item) (bool, int64, error)) (bool, int64, error) {
 		if containsChunk(ch.Address(), chs[:index]...) {
 			return true, 0, nil
@@ -252,6 +252,12 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		if err != nil {
 			return false, 0, err
 		}
+
+		// TODO create new batch
+		// delete chunk
+		// commmit
+		// release from sharky
+
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
 			if !errors.Is(err, leveldb.ErrNotFound) {

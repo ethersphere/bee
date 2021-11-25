@@ -24,9 +24,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	DataSize int64 = swarm.ChunkWithSpanSize
+var DataSize int64 = swarm.ChunkWithSpanSize
 
+var (
 	ErrTooLong         = errors.New("data too long")
 	ErrCapacityReached = errors.New("capacity reached")
 )

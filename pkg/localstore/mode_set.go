@@ -21,6 +21,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -53,6 +54,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	}
 
 	batch := new(leveldb.Batch)
+	var committedLocations []sharky.Location
 
 	// variables that provide information for operations
 	// to be done after write batch function successfully executes
@@ -77,6 +79,12 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 			if err != nil {
 				return err
 			}
+			l := new(sharky.Location)
+			err = l.UnmarshalBinary(item.Location)
+			if err != nil {
+				return err
+			}
+			committedLocations = append(committedLocations, *l)
 			gcSizeChange += c
 		}
 
@@ -110,6 +118,12 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	if err != nil {
 		return err
 	}
+
+	ctx := context.Background() //TODO pass context
+	for _, l := range committedLocations {
+		db.sharky.Release(ctx, l)
+	}
+
 	for po := range triggerPullFeed {
 		db.triggerPullSubscriptions(po)
 	}
