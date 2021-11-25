@@ -21,6 +21,15 @@ inability to use, or your interaction with other nodes or the software.
 
 Our documentation is hosted at https://docs.ethswarm.org.
 
+## Versioning
+
+There are two versioning schemes used in Bee that you should be aware of. The main Bee version does **NOT** follow
+strict Semantic Versioning. Bee hosts different peer-to-peer wire protocol implementations and individual protocol breaking changes would necessitate a bump in the major part of the version. Breaking changes are expected with bumps of the minor version component. New (backward-compatible) features and bug fixes are expected with a bump of the patch component. Major version bumps are reserved for significant changes in Swarm's incentive structure.
+
+
+The second set of versions that are important are the Bee's API versions (denoted in our [Bee](https://github.com/ethersphere/bee/blob/master/openapi/Swarm.yaml) and [Bee Debug](https://github.com/ethersphere/bee/blob/master/openapi/SwarmDebug.yaml) OpenAPI specifications). These versions **do follow** 
+Semantic Versioning and hence you should follow these for breaking changes.
+
 ## Contributing
 
 Please read the [coding guidelines](CODING.md).
