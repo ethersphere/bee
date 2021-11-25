@@ -159,7 +159,7 @@ func newMetrics() metrics {
 		SecondaryReceipt: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "secondary_receipts",
+			Name:      "duplicate_receipts",
 			Help:      "Number of receipts received after first successful receipt.",
 		}),
 	}

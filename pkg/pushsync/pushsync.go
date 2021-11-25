@@ -38,20 +38,23 @@ const (
 )
 
 const (
-	maxAttempts = 8
-	maxPeers    = 16
+	defaultTTL     = 30 * time.Second // request time to live
+	p90TTL         = 5 * time.Second  // P90 request time to live
+	sanctionWait   = 5 * time.Minute
+	replicationTTL = 5 * time.Second // time to live for neighborhood replication
+
+)
+
+const (
+	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
+	maxAttempts       = 8
+	maxPeers          = 16
 )
 
 var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
-
-	defaultTTL        = 30 * time.Second // request time to live
-	p90TTL            = 5 * time.Second  // P90 request time to live
-	sanctionWait      = 5 * time.Minute
-	replicationTTL    = 5 * time.Second // time to live for neighborhood replication
-	nPeersToReplicate = 3               // number of peers to replicate to as receipt is sent upstream
 )
 
 type PushSyncer interface {
@@ -337,15 +340,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer ps.skipList.PruneExpired()
 
 	var (
-		attempted   = 1
-		includeSelf = ps.isFullNode
-		skipPeers   []swarm.Address
-		retries     = maxPeers
+		allowedAttempts = 1
+		includeSelf     = ps.isFullNode
+		skipPeers       []swarm.Address
+		allowedRetries  = maxPeers
 	)
 
 	if origin {
 		// only originator retries
-		attempted = maxAttempts
+		allowedAttempts = maxAttempts
 	}
 
 	resultChan := make(chan receiptResult)
@@ -386,7 +389,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		select {
 		case <-timer.C:
 
-			retries--
+			allowedRetries--
+			allowedAttempts--
 
 			peer, err := nextPeer()
 			if err != nil {
@@ -403,8 +407,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			go ps.pushPeer(ctxd, resultChan, peer, ch, origin)
 
-			if retries <= 0 {
-				return nil, ErrNoPush
+			// reached the limit, do not set timer to retry
+			if allowedRetries <= 0 || allowedAttempts <= 0 {
+				continue
 			}
 
 			// retry
@@ -414,7 +419,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err)
 
-			// no err, return receipt
 			if result.err == nil {
 				return result.receipt, nil
 			}
@@ -422,8 +426,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
 
-			if result.attempted {
-				attempted--
+			// peer returned early with error, do not count as an attempt
+			if !result.attempted {
+				allowedAttempts++
 			}
 
 			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) {
@@ -432,7 +437,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
 			}
 
-			if retries <= 0 || attempted <= 0 {
+			if allowedRetries <= 0 || allowedAttempts <= 0 {
 				return nil, ErrNoPush
 			}
 
