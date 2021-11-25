@@ -172,7 +172,8 @@ func TestRelease(t *testing.T) {
 			binary.BigEndian.PutUint32(buf, uint32(i))
 			loc, err := s.Write(ctx, buf)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			locs[k][i%int(limit)] = loc
 		}
