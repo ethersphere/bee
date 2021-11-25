@@ -32,6 +32,15 @@ func (l *Location) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
+func LocationFromBinary(buf []byte) (*Location, error) {
+	l := &Location{}
+	err := l.UnmarshalBinary(buf)
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
 // write models the input to a write operation
 type write struct {
 	buf []byte     // variable size read buffer
