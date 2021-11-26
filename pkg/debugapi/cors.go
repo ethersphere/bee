@@ -15,7 +15,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		if o := r.Header.Get("Origin"); o != "" && checkOrigin(r, s.corsAllowedOrigins) {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Origin", o)
-			w.Header().Set("Access-Control-Allow-Headers", "Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method, Gas-Price, Gas-Limit")
+			w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Access-Control-Request-Headers, Access-Control-Request-Method, Gas-Price, Gas-Limit")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
