@@ -264,6 +264,23 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 
+	// instantiate sharky instance
+	// 32 * 312500 chunks = 1000000 chunks (40GB)
+	sharkyBasePath := o.SharkyLocation
+	if sharkyBasePath == "" {
+		sharkyBasePath = filepath.Join(path, "sharky")
+	}
+	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+		err := os.Mkdir(sharkyBasePath, 0775)
+		if err != nil {
+			return nil, err
+		}
+	}
+	db.sharky, err = sharky.New(sharkyBasePath, 32, 312500)
+	if err != nil {
+		return nil, err
+	}
+
 	// Identify current storage schema by arbitrary name.
 	db.schemaName, err = db.shed.NewStringField("schema-name")
 	if err != nil {
@@ -295,23 +312,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// reserve size
 	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
-	if err != nil {
-		return nil, err
-	}
-
-	// instantiate sharky instance
-	// 32 * 312500 chunks = 1000000 chunks (40GB)
-	sharkyBasePath := o.SharkyLocation
-	if sharkyBasePath == "" {
-		sharkyBasePath = filepath.Join(path, "sharky")
-	}
-	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(sharkyBasePath, 0775)
-		if err != nil {
-			return nil, err
-		}
-	}
-	db.sharky, err = sharky.New(sharkyBasePath, 32, 312500)
 	if err != nil {
 		return nil, err
 	}
