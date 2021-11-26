@@ -54,7 +54,7 @@ func NewMatcher(backend Backend, signer types.Signer, storage storage.StateStore
 	}
 }
 
-func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) ([]byte, error) {
+func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error) {
 
 	incomingTx := common.BytesToHash(tx)
 
@@ -67,7 +67,7 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	} else if val.Verified {
 		// add cache invalidation
 		return val.NextBlockHash, nil
-	} else if val.TimeStamp.Add(5 * time.Minute).After(m.timeNow()) {
+	} else if val.TimeStamp.Add(5*time.Minute).After(m.timeNow()) && !ignoreGreylist {
 		return nil, ErrGreylisted
 	}
 
