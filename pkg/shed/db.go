@@ -29,6 +29,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/storage"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 var (
@@ -181,6 +182,13 @@ func (db *DB) WriteBatch(batch *leveldb.Batch) (err error) {
 	}
 	db.metrics.WriteBatchCounter.Inc()
 	return nil
+}
+
+// Compact triggers a full database compaction on the underlying
+// LevelDB instance. Use with care! This can be very expensive!
+func (db *DB) Compact() error {
+	r := util.Range{Start: nil, Limit: nil}
+	return db.ldb.CompactRange(r)
 }
 
 // Close closes LevelDB database.
