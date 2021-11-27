@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -65,7 +66,9 @@ type DB struct {
 	shed *shed.DB
 	// sharky instance
 	sharky *sharky.Shards
-	tags   *tags.Tags
+
+	flock *os.File // LOCK file handle
+	tags  *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
 	stateStore storage.StateStorer
@@ -311,6 +314,13 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			return nil, err
 		}
 	}
+
+	db.flock, err = newFileLock(filepath.Join(path, "LOCK"))
+	if err != nil {
+		// check whether file already existed, and if so, initiate recovery process
+		return nil, err
+	}
+
 	db.sharky, err = sharky.New(sharkyBasePath, 32, 312500)
 	if err != nil {
 		return nil, err
@@ -605,11 +615,20 @@ func (db *DB) Close() (err error) {
 			return err
 		}
 	}
-	err = db.sharky.Close()
-	if err != nil {
+	// todo instrument these
+	if err = db.sharky.Close(); err != nil {
 		return err
 	}
-	return db.shed.Close()
+	if err = db.shed.Close(); err != nil {
+		return err
+	}
+	if err = db.flock.Close(); err != nil {
+		return err
+	}
+	if err = os.Remove(db.flock.Name()); err != nil {
+		return err
+	}
+	return nil
 }
 
 // po computes the proximity order between the address
@@ -713,4 +732,30 @@ func totalTimeMetric(metric prometheus.Counter, start time.Time) {
 	totalTime := time.Since(start)
 	metric.Add(float64(totalTime))
 
+}
+
+func newFileLock(path string) (fl *os.File, err error) {
+	var flag int
+	flag = os.O_CREATE | os.O_EXCL
+	f, err := os.OpenFile(path, flag, 0)
+	if os.IsNotExist(err) {
+		f, err = os.OpenFile(path, flag|os.O_CREATE, 0644)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return f, nil
+}
+
+func setFileLock(f *os.File, readOnly, lock bool) error {
+	how := syscall.LOCK_UN
+	if lock {
+		if readOnly {
+			how = syscall.LOCK_SH
+		} else {
+			how = syscall.LOCK_EX
+		}
+	}
+	return syscall.Flock(int(f.Fd()), how|syscall.LOCK_NB)
 }
