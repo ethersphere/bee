@@ -318,6 +318,10 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	db.flock, err = newFileLock(filepath.Join(path, "LOCK"))
 	if err != nil {
 		// check whether file already existed, and if so, initiate recovery process
+		locations, err := recovery(db)
+		if err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 

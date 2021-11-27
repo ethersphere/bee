@@ -60,6 +60,34 @@ func New(basedir string, shardCnt int, limit int64) (*Shards, error) {
 	return sh, nil
 }
 
+// NewRecovery creates a new sharky instance in recovery mode
+// and overrides the existing free slots with the one given to it.
+func NewRecovery(basedir string, shardCnt int, limit int64, freeslots []Location) (*Shards, error) {
+	pool := &sync.Pool{New: func() interface{} {
+		return newOp()
+	}}
+	sh := &Shards{
+		pool:     pool,
+		writeOps: make(chan *operation),
+		shards:   make([]*shard, shardCnt),
+		quit:     make(chan struct{}),
+	}
+	for i := range sh.shards {
+		s, err := sh.create(uint8(i), limit, basedir)
+		if err != nil {
+			return nil, err
+		}
+		sh.shards[i] = s
+	}
+
+	for _, slot := range freeslots {
+		sh.shards[slot.Shard]
+
+	}
+	return sh, nil
+
+}
+
 // Close closes each shard
 func (s *Shards) Close() error {
 	close(s.quit)
