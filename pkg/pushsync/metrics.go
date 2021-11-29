@@ -21,7 +21,7 @@ type metrics struct {
 	TotalOutgoing                   prometheus.Counter
 	TotalOutgoingErrors             prometheus.Counter
 	InvalidStampErrors              prometheus.Counter
-	StampValidationTime             prometheus.GaugeVec
+	StampValidationTime             prometheus.HistogramVec
 	HandlerReplication              prometheus.Counter
 	HandlerReplicationErrors        prometheus.Counter
 	Forwarder                       prometheus.Counter
@@ -103,7 +103,7 @@ func newMetrics() metrics {
 			Name:      "invalid_stamps",
 			Help:      "No of invalid stamp errors.",
 		}),
-		StampValidationTime: *prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		StampValidationTime: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "stamp_validation_time",

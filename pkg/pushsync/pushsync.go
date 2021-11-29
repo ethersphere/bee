@@ -656,9 +656,9 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 		chunk, err := f(c, s)
 		if err != nil {
 			ps.metrics.InvalidStampErrors.Inc()
-			ps.metrics.StampValidationTime.WithLabelValues("failure").Set(time.Since(t).Seconds())
+			ps.metrics.StampValidationTime.WithLabelValues("failure").Observe(time.Since(t).Seconds())
 		} else {
-			ps.metrics.StampValidationTime.WithLabelValues("success").Set(time.Since(t).Seconds())
+			ps.metrics.StampValidationTime.WithLabelValues("success").Observe(time.Since(t).Seconds())
 		}
 
 		return chunk, err
