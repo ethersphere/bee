@@ -187,7 +187,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	var swarmAddress swarm.Address
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
+	storer, err := localstore.New(context.Background(), "", swarmAddress.Bytes(), stateStore, lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
