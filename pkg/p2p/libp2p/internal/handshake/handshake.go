@@ -63,7 +63,7 @@ type AdvertisableAddressResolver interface {
 }
 
 type SenderMatcher interface {
-	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address) ([]byte, error)
+	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error)
 }
 
 // Service can perform initiate or handle a handshake between peers.
@@ -191,7 +191,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	blockHash, err := s.senderMatcher.Matches(ctx, resp.Ack.Transaction, s.networkID, overlay)
+	blockHash, err := s.senderMatcher.Matches(ctx, resp.Ack.Transaction, s.networkID, overlay, false)
 	if err != nil {
 		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
 	}
@@ -321,7 +321,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		}
 	}
 
-	blockHash, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, overlay)
+	blockHash, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, overlay, false)
 	if err != nil {
 		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
 	}
