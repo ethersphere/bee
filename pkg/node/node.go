@@ -388,7 +388,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	senderMatcher := transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
 
-	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress)
+	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
 	if err != nil {
 		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
 	}

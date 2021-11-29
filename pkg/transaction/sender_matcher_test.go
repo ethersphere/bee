@@ -40,7 +40,7 @@ func TestMatchesSender(t *testing.T) {
 
 		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
 			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
 		}
@@ -53,7 +53,7 @@ func TestMatchesSender(t *testing.T) {
 
 		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionPending) {
 			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionPending, err)
 		}
@@ -69,7 +69,7 @@ func TestMatchesSender(t *testing.T) {
 		}
 		matcher := transaction.NewMatcher(backendmock.New(txByHash), signer, statestore.NewStateStore())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionSenderInvalid) {
 			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionSenderInvalid, err)
 		}
@@ -103,7 +103,7 @@ func TestMatchesSender(t *testing.T) {
 
 		matcher := transaction.NewMatcher(backendmock.New(txByHash, trxReceipt, headerByNum), signer, statestore.NewStateStore())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if err == nil {
 			t.Fatalf("expected no match")
 		}
@@ -139,7 +139,7 @@ func TestMatchesSender(t *testing.T) {
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay, false)
 		if err != nil {
 			t.Fatalf("expected match")
 		}
@@ -178,14 +178,14 @@ func TestMatchesSender(t *testing.T) {
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(overlayEth.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay, false)
 		if err != nil {
 			t.Fatalf("expected match. got %v", err)
 		}
 
 		senderOverlay = crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
-		_, err = matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		_, err = matcher.Matches(context.Background(), trx, 0, senderOverlay, false)
 		if err == nil {
 			t.Fatalf("matched signer for data tx")
 		}
@@ -226,12 +226,12 @@ func TestMatchesSender(t *testing.T) {
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
-		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		_, err := matcher.Matches(context.Background(), trx, 0, senderOverlay, false)
 		if err != nil {
 			t.Fatalf("expected match")
 		}
 
-		_, err = matcher.Matches(context.Background(), trx, 0, senderOverlay)
+		_, err = matcher.Matches(context.Background(), trx, 0, senderOverlay, false)
 		if err != nil {
 			t.Fatalf("expected match")
 		}
@@ -249,12 +249,12 @@ func TestMatchesSender(t *testing.T) {
 		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
 		matcher.SetTime(0)
 
-		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
 			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
 		}
 
-		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrGreylisted) {
 			t.Fatalf("bad error type, want %v, got %v", transaction.ErrGreylisted, err)
 		}
@@ -262,7 +262,26 @@ func TestMatchesSender(t *testing.T) {
 		// greylist expires
 		matcher.SetTime(5 * 60)
 
-		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}))
+		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
+		if !errors.Is(err, transaction.ErrTransactionNotFound) {
+			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
+		}
+	})
+
+	t.Run("greylisted but ignored", func(t *testing.T) {
+		txByHash := backendmock.WithTransactionByHashFunc(func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
+			return nil, false, errors.New("transaction not found by hash")
+		})
+
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
+		matcher.SetTime(0)
+
+		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
+		if !errors.Is(err, transaction.ErrTransactionNotFound) {
+			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
+		}
+
+		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), true)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
 			t.Fatalf("bad error type, want %v, got %v", transaction.ErrTransactionNotFound, err)
 		}

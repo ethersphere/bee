@@ -169,6 +169,6 @@ type MockSenderMatcher struct {
 	BlockHash []byte
 }
 
-func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address) ([]byte, error) {
+func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
 	return m.BlockHash, nil
 }
