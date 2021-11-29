@@ -17,6 +17,7 @@
 package localstore
 
 import (
+	"context"
 	"io"
 	"math/rand"
 	"os"
@@ -61,7 +62,7 @@ func TestOneMigration(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(context.Background(), dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestOneMigration(t *testing.T) {
 	DBSchemaCurrent = dbSchemaNext
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil, nil, logger)
+	db, err = New(context.Background(), dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestManyMigrations(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(context.Background(), dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +162,7 @@ func TestManyMigrations(t *testing.T) {
 	DBSchemaCurrent = "salvation"
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil, nil, logger)
+	db, err = New(context.Background(), dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +229,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(context.Background(), dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	DBSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil, nil, logger)
+	_, err = New(context.Background(), dir, baseKey, nil, nil, logger)
 	if !strings.Contains(err.Error(), errMissingCurrentSchema.Error()) {
 		t.Fatalf("expected errCannotFindSchema but got %v", err)
 	}
@@ -289,7 +290,7 @@ func TestMigrationErrorTo(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(context.Background(), dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +303,7 @@ func TestMigrationErrorTo(t *testing.T) {
 	DBSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil, nil, logger)
+	_, err = New(context.Background(), dir, baseKey, nil, nil, logger)
 	if !strings.Contains(err.Error(), errMissingTargetSchema.Error()) {
 		t.Fatalf("expected errMissingTargetSchema but got %v", err)
 	}

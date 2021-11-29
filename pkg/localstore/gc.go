@@ -17,9 +17,11 @@
 package localstore
 
 import (
+	"context"
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -57,7 +59,7 @@ var (
 // collectGarbageTrigger channel to signal a garbage collection
 // run. GC run iterates on gcIndex and removes older items
 // form retrieval and other indexes.
-func (db *DB) collectGarbageWorker() {
+func (db *DB) collectGarbageWorker(ctx context.Context) {
 	defer close(db.collectGarbageWorkerDone)
 
 	for {
@@ -66,7 +68,7 @@ func (db *DB) collectGarbageWorker() {
 			// run a single collect garbage run and
 			// if done is false, gcBatchSize is reached and
 			// another collect garbage run is needed
-			collectedCount, done, err := db.collectGarbage()
+			collectedCount, done, err := db.collectGarbage(ctx)
 			if err != nil {
 				db.logger.Errorf("localstore: collect garbage: %v", err)
 			}
@@ -90,7 +92,7 @@ func (db *DB) collectGarbageWorker() {
 // is false, another call to this function is needed to collect
 // the rest of the garbage as the batch size limit is reached.
 // This function is called in collectGarbageWorker.
-func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
+func (db *DB) collectGarbage(ctx context.Context) (collectedCount uint64, done bool, err error) {
 	db.metrics.GCCounter.Inc()
 	defer func(start time.Time) {
 		if err != nil {
@@ -165,6 +167,8 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, false, err
 	}
 
+	locations := make([]*sharky.Location, 0, len(candidates))
+
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
@@ -204,8 +208,13 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-
+		loc, err := sharky.LocationFromBinary(item.Location)
+		if err != nil {
+			return 0, false, err
+		}
+		locations = append(locations, loc)
 	}
+
 	if gcSize-collectedCount > target {
 		done = false
 	}
@@ -218,6 +227,11 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
 	}
+
+	for _, loc := range locations {
+		db.sharky.Release(ctx, *loc)
+	}
+
 	return collectedCount, done, nil
 }
 
