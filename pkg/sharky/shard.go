@@ -27,16 +27,17 @@ type operation struct {
 
 // shard models a shard writing to a file with periodic offsets due to fixed datasize
 type shard struct {
-	readOps  chan *operation // channel for reads
-	writeOps chan *operation // channel for writes
-	free     chan int64      // channel for offsets available to write
-	freed    chan int64      // channel for offsets freed by garbage collection
-	index    uint8           // index of the shard
-	limit    int64           // max number of items in the shard
-	fh       *os.File        // the file handle the shard is writing data to
-	ffh      *os.File        // the file handle the shard is writing free slats to
-	quit     chan struct{}   // channel to signal quitting
-	wg       *sync.WaitGroup // waitgroup to allow clean closing
+	readOps   chan *operation // channel for reads
+	writeOps  chan *operation // channel for writes
+	free      chan int64      // channel for offsets available to write
+	freed     chan int64      // channel for offsets freed by garbage collection
+	freeslots *freeSlots
+	index     uint8           // index of the shard
+	limit     int64           // max number of items in the shard
+	fh        *os.File        // the file handle the shard is writing data to
+	ffh       *os.File        // the file handle the shard is writing free slats to
+	quit      chan struct{}   // channel to signal quitting
+	wg        *sync.WaitGroup // waitgroup to allow clean closing
 }
 
 // forever loop processing
