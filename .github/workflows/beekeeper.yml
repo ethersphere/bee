@@ -85,23 +85,67 @@ jobs:
         id: pushsync-chunks-1
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
       - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test retrieval
-        id: retrieval
-        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
-      - name: Test manifest
-        id: manifest
-        run: beekeeper check --cluster-name local-dns --checks=ci-manifest
-      - name: Test content availability
-        id: content-availability
-        run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
-      - name: Test authenticate
-        id: authenticate
-        run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
-      - name: Test postage stamps
-        id: postage-stamps
-        run: beekeeper check --cluster-name local-dns --checks ci-postage
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
       - name: Debug workflow if failed
         if: failure()
         run: |
