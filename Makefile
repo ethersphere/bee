@@ -1,9 +1,10 @@
 GO ?= go
-GOLANGCI_LINT ?= $$($(GO) env GOPATH)/bin/golangci-lint
+GOBIN ?= $$($(GO) env GOPATH)/bin
+GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v1.37.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
-BEEKEEPER_INSTALL_DIR ?= $$($(GO) env GOPATH)/bin
+BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
 BEEKEEPER_USE_SUDO ?= false
 BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
@@ -67,11 +68,21 @@ deploylocal:
 
 .PHONY: testlocal
 testlocal:
-	export PATH=${PATH}:$$($(GO) env GOPATH)/bin
+	export PATH=${PATH}:$(GOBIN)
 	beekeeper check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-content-availability,ci-settlements,ci-soc
 
 .PHONY: testlocal-all
 testlocal-all: beekeeper beelocal deploylocal testlocal
+
+.PHONY: install-formatters
+install-formatters:
+	$(GO) get github.com/daixiang0/gci
+	$(GO) install mvdan.cc/gofumpt@latest
+
+.PHONY: format
+format:
+	$(GOBIN)/gofumpt -l -w .
+	$(GOBIN)/gci -w -local $(go list -m) `find . -type f -name "*.go" \! -path \*/\.git/\* -exec echo {} \;` 
 
 .PHONY: lint
 lint: linter
@@ -80,6 +91,10 @@ lint: linter
 .PHONY: lint-local
 lint-local: linter
 	$(GOLANGCI_LINT) -c .golangci.local.yml run
+
+.PHONY: lint-style
+lint-style: linter
+	$(GOLANGCI_LINT) -c .golangci.style.yml run
 
 .PHONY: linter
 linter:
