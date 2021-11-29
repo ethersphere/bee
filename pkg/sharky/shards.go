@@ -12,10 +12,8 @@ package sharky
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -40,7 +38,7 @@ type Shards struct {
 }
 
 // New constructs a new sharded chunk db
-func New(basedir string, shardCnt int, limit int64) (*Shards, error) {
+func New(basedir string, shardCnt int, limit uint32) (*Shards, error) {
 	pool := &sync.Pool{New: func() interface{} {
 		return newOp()
 	}}
@@ -83,65 +81,39 @@ func (s *Shards) Close() error {
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Shards) create(index uint8, limit int64, basedir string) (*shard, error) {
-	fh, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
+func (s *Shards) create(index uint8, limit uint32, basedir string) (*shard, error) {
+	file, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
-	fi, err := fh.Stat()
+	fi, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
-	size := fi.Size() / DataSize
-
-	ffh, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
+	size := uint32(fi.Size() / DataSize)
+	ffile, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
-	ffi, err := ffh.Stat()
+	sl := newSlots(size, ffile, limit)
+	err = sl.load()
 	if err != nil {
 		return nil, err
-	}
-	freed := make(chan int64)
-
-	wg := &sync.WaitGroup{}
-	if ffi.Size() > 0 {
-		frees, err := ioutil.ReadAll(ffh)
-		if err != nil {
-			return nil, err
-		}
-		var free []int64
-		err = json.Unmarshal(frees, &free)
-		if err != nil {
-			return nil, err
-		}
-		for _, offset := range free {
-			offset := offset
-			if offset/DataSize >= size {
-				continue
-			}
-			wg.Add(1)
-			go func() {
-				freed <- offset
-				wg.Done()
-			}()
-		}
 	}
 	sh := &shard{
 		readOps:  make(chan *operation),
 		writeOps: s.writeOps,
-		free:     make(chan int64),
-		freed:    freed,
 		index:    index,
-		limit:    limit,
-		fh:       fh,
-		ffh:      ffh,
+		file:     file,
+		slots:    sl,
 		quit:     s.quit,
-		wg:       wg,
 	}
-	sh.wg.Add(2) // initialisation requires so that s.wg.Wait() does not hold prematurely
-	go sh.offer(size)
-	go sh.process()
+	terminated := make(chan struct{})
+	go func() {
+		sh.process()
+		close(terminated)
+	}()
+	go sl.process(terminated)
 	return sh, nil
 }
 
@@ -187,7 +159,7 @@ func (s *Shards) Write(ctx context.Context, data []byte) (loc Location, err erro
 
 func (s *Shards) Release(ctx context.Context, loc Location) {
 	sh := s.shards[loc.Shard]
-	sh.release(loc.Offset)
+	sh.release(loc.Slot)
 }
 
 func newOp() *operation {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestSingleRetrieval(t *testing.T) {
@@ -63,7 +64,7 @@ func TestSingleRetrieval(t *testing.T) {
 		} {
 
 			t.Run(tc.name, func(t *testing.T) {
-				cctx, cancel := context.WithTimeout(ctx, time.Second)
+				cctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 				defer cancel()
 				loc, err := s.Write(cctx, tc.want)
 				if !errors.Is(err, tc.err) {
@@ -90,15 +91,16 @@ func TestPersistence(t *testing.T) {
 	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
 	sharky.DataSize = 4
 	shards := 4
-	limit := int64(16)
+	limit := uint32(16)
 	items := shards * int(limit)
 
 	dir := t.TempDir()
 	buf := make([]byte, 4)
-	locs := make([]sharky.Location, items)
+	locs := make([]*sharky.Location, items)
 	i := 0
 	ctx := context.Background()
-
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	// simulate several subsequent sessions filling up the store
 	for j := 0; i < items; j++ {
 		s, err := sharky.New(dir, shards, limit)
@@ -106,12 +108,15 @@ func TestPersistence(t *testing.T) {
 			t.Fatal(err)
 		}
 		for ; i < items && rand.Intn(4) > 0; i++ {
+			if locs[i] != nil {
+				continue
+			}
 			binary.BigEndian.PutUint32(buf, uint32(i))
-			loc, err := s.Write(ctx, buf)
+			loc, err := s.Write(cctx, buf)
 			if err != nil {
 				t.Fatal(err)
 			}
-			locs[i] = loc
+			locs[i] = &loc
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -124,7 +129,7 @@ func TestPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	for want, loc := range locs {
-		data, err := s.Read(ctx, loc)
+		data, err := s.Read(cctx, *loc)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,9 +138,9 @@ func TestPersistence(t *testing.T) {
 			t.Fatalf("data mismatch. want %d, got %d", want, got)
 		}
 	}
-
+	cancel()
 	// the store has no more capacity, write expected to time out on waiting for free slots
-	cctx, cancel := context.WithTimeout(ctx, time.Second)
+	cctx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	_, err = s.Write(cctx, []byte{0})
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -146,64 +151,117 @@ func TestPersistence(t *testing.T) {
 	}
 }
 
-func TestRelease(t *testing.T) {
+func TestConcurrency(t *testing.T) {
 	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
 	sharky.DataSize = 4
-	shards := 3
-	limit := int64(1024)
+	workers := 64
+	shards := 32
+	shardSize := uint32(64)
+	limit := shards * int(shardSize)
 
 	dir := t.TempDir()
-	locs := make([][]sharky.Location, 4)
-	ctx := context.Background()
-	s, err := sharky.New(dir, shards, limit)
+	s, err := sharky.New(dir, shards, shardSize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wg := sync.WaitGroup{}
-	wg.Add(4)
-	trigger := func(k int) {
-		defer wg.Done()
-		locs[k] = make([]sharky.Location, limit)
-		for i := k * int(limit); i < (k+1)*int(limit); i++ {
+	c := make(chan sharky.Location, limit)
+	start := make(chan struct{})
+	deleted := make(map[uint32]int)
+	entered := make(map[uint32]struct{})
+	ctx := context.Background()
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	eg, ectx := errgroup.WithContext(cctx)
+	// a number of workers write sequential numbers to sharky
+	for k := 0; k < workers; k++ {
+		k := k
+		eg.Go(func() error {
+			<-start
 			buf := make([]byte, 4)
-			if i%4 == 3 {
-				s.Release(ctx, locs[k][(i-1)%int(limit)])
+			for i := 0; i < limit; i++ {
+				j := i*workers + k
+				binary.BigEndian.PutUint32(buf, uint32(j))
+				loc, err := s.Write(ctx, buf)
+				if err != nil {
+					return err
+				}
+				select {
+				case <-ectx.Done():
+					return ectx.Err()
+				case c <- loc:
+				}
 			}
-			binary.BigEndian.PutUint32(buf, uint32(i))
-			loc, err := s.Write(ctx, buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			locs[k][i%int(limit)] = loc
-		}
+			return nil
+		})
 	}
-	for k := 0; k < 4; k++ {
-		go trigger(k)
+	// parallel to these workers, other workers collect the taken slots and release them
+	// modelling some aggressive gc policy
+	mtx := sync.Mutex{}
+	for k := 0; k < workers-1; k++ {
+		eg.Go(func() error {
+			<-start
+			for i := 0; i < limit; i++ {
+				select {
+				case <-ectx.Done():
+					return ectx.Err()
+				case loc := <-c:
+					data, err := s.Read(ectx, loc)
+					if err != nil {
+						return err
+					}
+					j := binary.BigEndian.Uint32(data)
+					mtx.Lock()
+					deleted[j]++
+					mtx.Unlock()
+					s.Release(ectx, loc)
+				}
+			}
+			return nil
+		})
+	}
+	close(start)
+	if err := eg.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	close(c)
+	extraSlots := 0
+	for i := uint32(0); i < uint32(workers*limit); i++ {
+		cnt, found := deleted[i]
+		if !found {
+			entered[i] = struct{}{}
+			continue
+		}
+		extraSlots += cnt - 1
+	}
+	for loc := range c {
+		data, err := s.Read(ctx, loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := binary.BigEndian.Uint32(data)
+
+		_, found := entered[i]
+		if !found {
+			t.Fatal("item at unreleased location incorrect")
+		}
 	}
 
-	wg.Wait()
-	for k := 0; k < 4; k++ {
-		for i, loc := range locs[k] {
-			if i%4 == 2 {
-				continue
-			}
-			want := i + k*int(limit)
-			data, err := s.Read(ctx, loc)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := int(binary.BigEndian.Uint32(data))
-			if got != want {
-				t.Fatalf("data mismatch. want %d, got %d", want, got)
-			}
+	// the store has extra slots capacity
+	cctx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+	for i := 0; i < extraSlots; i++ {
+		_, err = s.Write(cctx, []byte{0})
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
+	cancel()
+
 	// the store has no more capacity, write expected to time out on waiting for free slots
-	cctx, cancel := context.WithTimeout(ctx, time.Second)
+	cctx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	_, err = s.Write(cctx, []byte{0})
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected error DeadlineExceeded, got %v", err)
+		t.Fatalf("after extra slots expected error DeadlineExceeded, got %v", err)
 	}
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
