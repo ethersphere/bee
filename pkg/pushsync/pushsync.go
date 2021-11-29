@@ -235,7 +235,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			return debit.Apply()
+			err = debit.Apply()
+			return err
 		}
 	}
 
