@@ -279,6 +279,21 @@ paths:
         default:
           description: Default response
 
+  "/info":
+    get:
+      summary: Get information about the node
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Information about the node
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Info"
+        default:
+          description: Default response
+
   "/health":
     get:
       summary: Get health of node
