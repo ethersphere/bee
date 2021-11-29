@@ -29,6 +29,7 @@ type metrics struct {
 	PushToPeerTime                  prometheus.HistogramVec
 	TotalReplicationFromDistantPeer prometheus.Counter
 	TotalReplicationFromClosestPeer prometheus.Counter
+	DuplicateReceipt                prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -154,6 +155,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_closest_replications",
 			Help:      "Total no of replication requests received from closest peer to chunk",
+		}),
+		DuplicateReceipt: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "duplicate_receipts",
+			Help:      "Number of receipts received after first successful receipt.",
 		}),
 	}
 }
