@@ -248,11 +248,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if err != nil {
 				ps.metrics.InvalidStampErrors.Inc()
 				ps.logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
-			} else {
-				_, err = ps.storer.Put(ctx, storage.ModePutSync, verifiedChunk)
-				if err != nil {
-					ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
-				}
+				return
+			}
+			_, err = ps.storer.Put(ctx, storage.ModePutSync, verifiedChunk)
+			if err != nil {
+				ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
 			}
 		}
 	}()
