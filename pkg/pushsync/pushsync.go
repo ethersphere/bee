@@ -359,11 +359,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	doneChan := make(chan struct{})
 
 	timer := time.NewTimer(0)
-	defer func() {
-		if !timer.Stop() {
-			<-timer.C
-		}
-	}()
+	defer timer.Stop()
 
 	nextPeer := func() (swarm.Address, error) {
 
