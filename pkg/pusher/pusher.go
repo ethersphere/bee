@@ -196,7 +196,11 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		case apiC := <-s.smugler:
 			go func() {
 				for op := range apiC {
-					cc <- op
+					select {
+					case cc <- op:
+					case <-s.quit:
+						return
+					}
 				}
 			}()
 		case op, ok := <-cc:
@@ -305,7 +309,7 @@ func (s *Service) valid(ch swarm.Chunk) error {
 	return nil
 }
 
-func (s *Service) SetApiC(c <-chan *Op) {
+func (s *Service) AddFeed(c <-chan *Op) {
 	s.smugler <- c
 }
 

@@ -769,7 +769,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
 		})
-		pusherService.SetApiC(chunkC)
+		pusherService.AddFeed(chunkC)
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)

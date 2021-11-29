@@ -203,7 +203,7 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 	defer p.Close()
 
 	apiC := make(chan *pusher.Op)
-	p.SetApiC(apiC)
+	p.AddFeed(apiC)
 
 	apiC <- &pusher.Op{Chunk: chunk}
 
@@ -240,7 +240,7 @@ func TestSendChunkToPushSyncDirect(t *testing.T) {
 	defer p.Close()
 
 	apiC := make(chan *pusher.Op)
-	p.SetApiC(apiC)
+	p.AddFeed(apiC)
 
 	errC := make(chan error)
 
