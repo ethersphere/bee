@@ -32,7 +32,7 @@ Semantic Versioning and hence you should follow these for breaking changes.
 
 ## Contributing
 
-Please read the [coding guidelines](CODING.md).
+Please read the [coding guidelines](CODING.md) and [style guide](CODINGSTYLE.md).
 
 ## Installing
 
