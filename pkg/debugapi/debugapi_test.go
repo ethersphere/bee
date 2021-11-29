@@ -157,7 +157,9 @@ func TestServer_Configure(t *testing.T) {
 	swapserv := swapmock.New(o.SwapOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	transaction := transactionmock.New(o.TransactionOpts...)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, false, nil, false, debugapi.FullMode)
+	gatewayMode := false
+	beeMode := debugapi.FullMode
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, false, nil, gatewayMode, beeMode)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -206,6 +208,12 @@ func TestServer_Configure(t *testing.T) {
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
 			PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PSSPublicKey)),
+		}),
+	)
+	jsonhttptest.Request(t, client, http.MethodGet, "/info", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.InfoResponse{
+			BeeMode:     beeMode.String(),
+			GatewayMode: gatewayMode,
 		}),
 	)
 }
