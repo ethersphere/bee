@@ -15,14 +15,13 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 
-	RequestCounter             prometheus.Counter
-	PeerRequestCounter         prometheus.Counter
-	TotalRetrieved             prometheus.Counter
-	InvalidChunkRetrieved      prometheus.Counter
-	RetrieveChunkPeerPOTimer   prometheus.HistogramVec
-	RetrieveChunkPOGainCounter prometheus.CounterVec
-	ChunkPrice                 prometheus.Summary
-	TotalErrors                prometheus.Counter
+	RequestCounter        prometheus.Counter
+	PeerRequestCounter    prometheus.Counter
+	TotalRetrieved        prometheus.Counter
+	InvalidChunkRetrieved prometheus.Counter
+	ChunkPrice            prometheus.Summary
+	TotalErrors           prometheus.Counter
+	ChunkRetrieveTime     prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -53,25 +52,6 @@ func newMetrics() metrics {
 			Name:      "invalid_chunk_retrieved",
 			Help:      "Invalid chunk retrieved from peer.",
 		}),
-		RetrieveChunkPeerPOTimer: *prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "retrieve_po_time",
-				Help:      "Histogram for time taken to retrieve a chunk per PO.",
-				Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-			},
-			[]string{"po"},
-		),
-		RetrieveChunkPOGainCounter: *prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "chunk_po_gain_count",
-				Help:      "Counter of chunk retrieval requests per address PO hop distance.",
-			},
-			[]string{"gain"},
-		),
 		ChunkPrice: prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -84,6 +64,14 @@ func newMetrics() metrics {
 			Name:      "total_errors",
 			Help:      "Total number of errors while retrieving chunk.",
 		}),
+		ChunkRetrieveTime: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "retrieve_chunk_time",
+				Help:      "Histogram for time taken to retrieve a chunk.",
+			},
+		),
 	}
 }
 
