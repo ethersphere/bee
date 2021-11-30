@@ -110,11 +110,12 @@ func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnec
 		pricer:         pricer,
 		metrics:        newMetrics(),
 		tracer:         tracer,
-		validStamp:     validStamp,
 		signer:         signer,
 		skipList:       newPeerSkipList(),
 		warmupPeriod:   time.Now().Add(warmupTime),
 	}
+
+	ps.validStamp = ps.validStampWrapper(validStamp)
 	return ps
 }
 
@@ -184,6 +185,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			ps.metrics.HandlerReplication.Inc()
 
+			var err error
+			defer func() {
+				if err != nil {
+					ps.metrics.HandlerReplicationErrors.Inc()
+				}
+			}()
+
 			ctxd, canceld := context.WithTimeout(context.Background(), replicationTTL)
 			defer canceld()
 
@@ -201,20 +209,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			chunk, err = ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				ps.metrics.InvalidStampErrors.Inc()
-				ps.metrics.HandlerReplicationErrors.Inc()
 				return fmt.Errorf("pushsync replication valid stamp: %w", err)
 			}
 
 			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
 			if err != nil {
-				ps.metrics.HandlerReplicationErrors.Inc()
 				return fmt.Errorf("chunk store: %w", err)
 			}
 
 			debit, err := ps.accounting.PrepareDebit(p.Address, price)
 			if err != nil {
-				ps.metrics.HandlerReplicationErrors.Inc()
 				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 			}
 			defer debit.Cleanup()
@@ -222,21 +226,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			// return back receipt
 			signature, err := ps.signer.Sign(chunkAddress.Bytes())
 			if err != nil {
-				ps.metrics.HandlerReplicationErrors.Inc()
 				return fmt.Errorf("receipt signature: %w", err)
 			}
 
 			receipt := pb.Receipt{Address: chunkAddress.Bytes(), Signature: signature, BlockHash: ps.blockHash}
-			if err := w.WriteMsgWithContext(ctxd, &receipt); err != nil {
-				ps.metrics.HandlerReplicationErrors.Inc()
+			err = w.WriteMsgWithContext(ctxd, &receipt)
+			if err != nil {
 				return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 			}
 
-			err = debit.Apply()
-			if err != nil {
-				ps.metrics.HandlerReplicationErrors.Inc()
-			}
-			return err
+			return debit.Apply()
 		}
 	}
 
@@ -246,7 +245,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if !storerNode && ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				ps.metrics.InvalidStampErrors.Inc()
 				ps.logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
 				return
 			}
@@ -264,7 +262,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			ps.metrics.Storer.Inc()
 			chunk, err = ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				ps.metrics.InvalidStampErrors.Inc()
 				return fmt.Errorf("pushsync storer valid stamp: %w", err)
 			}
 
@@ -647,6 +644,23 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 
 	if err = creditAction.Apply(); err != nil {
 		return
+	}
+}
+
+func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStampFn {
+	return func(c swarm.Chunk, s []byte) (swarm.Chunk, error) {
+
+		t := time.Now()
+
+		chunk, err := f(c, s)
+		if err != nil {
+			ps.metrics.InvalidStampErrors.Inc()
+			ps.metrics.StampValidationTime.WithLabelValues("failure").Set(time.Since(t).Seconds())
+		} else {
+			ps.metrics.StampValidationTime.WithLabelValues("success").Set(time.Since(t).Seconds())
+		}
+
+		return chunk, err
 	}
 }
 
