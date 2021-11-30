@@ -170,7 +170,7 @@ func newTestDB(t testing.TB, o *Options) *DB {
 		}
 	}
 	logger := logging.New(io.Discard, 0)
-	db, err := New(context.Background(), "", baseKey, nil, o, logger)
+	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
