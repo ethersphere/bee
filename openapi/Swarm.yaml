@@ -99,6 +99,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
         content:
           application/octet-stream:
@@ -195,6 +196,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
         content:
           application/octet-stream:
@@ -263,6 +265,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
         content:
           multipart/form-data:

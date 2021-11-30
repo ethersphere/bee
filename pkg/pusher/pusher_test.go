@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/topology"
 
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
@@ -173,6 +174,85 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSendChunkToPushSyncViaApiChannel sends chunks via the api channel
+func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
+	chunk := testingc.GenerateTestRandomChunk()
+
+	// create a trigger  and a closestpeer
+	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
+
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		signature, _ := signer.Sign(chunk.Address().Bytes())
+		receipt := &pushsync.Receipt{
+			Address:   swarm.NewAddress(chunk.Address().Bytes()),
+			Signature: signature,
+			BlockHash: block,
+		}
+		return receipt, nil
+	})
+
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	defer storer.Close()
+	defer p.Close()
+
+	apiC := make(chan *pusher.Op)
+	p.AddFeed(apiC)
+
+	apiC <- &pusher.Op{Chunk: chunk}
+
+	var err error
+	// Check if the chunk is set as synced in the DB.
+	for i := 0; i < noOfRetries; i++ {
+		// Give some time for chunk to be pushed and receipt to be received
+		time.Sleep(50 * time.Millisecond)
+
+		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSendChunkToPushSyncDirect sends chunks via the api channel
+func TestSendChunkToPushSyncDirect(t *testing.T) {
+	chunk := testingc.GenerateTestRandomChunk()
+
+	// create a trigger  and a closestpeer
+	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
+
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		return nil, topology.ErrWantSelf
+	})
+
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	defer storer.Close()
+	defer p.Close()
+
+	apiC := make(chan *pusher.Op)
+	p.AddFeed(apiC)
+
+	errC := make(chan error)
+
+	apiC <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
+
+	select {
+	case err := <-errC:
+		if !errors.Is(err, topology.ErrWantSelf) {
+			t.Fatal("bad error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout after 5 seconds")
 	}
 }
 

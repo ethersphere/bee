@@ -34,13 +34,16 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -53,6 +56,7 @@ const (
 	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
+	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -65,6 +69,8 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
+
+	uploadSem = 50
 )
 
 const (
@@ -112,6 +118,7 @@ type server struct {
 	signer          crypto.Signer
 	post            postage.Service
 	postageContract postagecontract.Interface
+	chunkPushC      chan *pusher.Op
 	Options
 	http.Handler
 	metrics metrics
@@ -133,7 +140,7 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) Service {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) (Service, <-chan *pusher.Op) {
 	s := &server{
 		auth:            auth,
 		tags:            tags,
@@ -146,6 +153,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		post:            post,
 		postageContract: postageContract,
 		steward:         steward,
+		chunkPushC:      make(chan *pusher.Op),
 		signer:          signer,
 		Options:         o,
 		logger:          logger,
@@ -156,7 +164,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 
 	s.setupRouting()
 
-	return s
+	return s, s.chunkPushC
 }
 
 // Close hangs up running websockets on shutdown.
@@ -238,6 +246,13 @@ func requestModePut(r *http.Request) storage.ModePut {
 
 func requestEncrypt(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
+}
+
+func requestDeferred(r *http.Request) (bool, error) {
+	if h := strings.ToLower(r.Header.Get(SwarmDeferredUploadHeader)); h != "" {
+		return strconv.ParseBool(h)
+	}
+	return true, nil
 }
 
 func requestPostageBatchId(r *http.Request) ([]byte, error) {
@@ -466,12 +481,105 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
+// newStamperPutter returns either a storingStamperPutter or a pushStamperPutter
+// according to whether the upload is a deferred upload or not. in the case of
+// direct push to the network (default) a pushStamperPutter is returned.
+// returns a function to wait on the errorgroup in case of a pushing stamper putter.
+func (s *server) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
+	batch, err := requestPostageBatchId(r)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)
+	}
+
+	deferred, err := requestDeferred(r)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
+	}
+
+	if deferred {
+		p, err := newStoringStamperPutter(s.storer, s.post, s.signer, batch)
+		return p, noopWaitFn, err
+	}
+	p, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
+	return p, p.eg.Wait, err
+}
+
+type pushStamperPutter struct {
+	storage.Storer
+	stamper postage.Stamper
+	eg      errgroup.Group
+	c       chan *pusher.Op
+	sem     chan struct{}
+}
+
+func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
+	i, err := post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	stamper := postage.NewStamper(i, signer)
+	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
+}
+
+func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
+	exists = make([]bool, len(chs))
+
+	for i, c := range chs {
+		// skips chunk we already know about
+		has, err := p.Storer.Has(ctx, c.Address())
+		if err != nil {
+			return nil, err
+		}
+		if has || containsChunk(c.Address(), chs[:i]...) {
+			exists[i] = true
+			continue
+		}
+		stamp, err := p.stamper.Stamp(c.Address())
+		if err != nil {
+			return nil, err
+		}
+
+		func(ch swarm.Chunk) {
+			p.sem <- struct{}{}
+			p.eg.Go(func() error {
+				defer func() {
+					<-p.sem
+				}()
+				errc := make(chan error, 1)
+				// note: shutdown might be tricky, we need to pass the quit channel
+				// from the api here so that the putter knows not to keep on sending stuff
+				// and just returns an error... or?
+			PUSH:
+				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
+				select {
+				case err := <-errc:
+					// if we're the closest one we will store the chunk and return no error
+					if errors.Is(err, topology.ErrWantSelf) {
+						if _, err := p.Storer.Put(ctx, storage.ModePutSync, ch); err != nil {
+							return err
+						}
+						return nil
+					}
+					if err == nil {
+						return nil
+					}
+					goto PUSH
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			})
+		}(c.WithStamp(stamp))
+	}
+	return exists, nil
+}
+
 type stamperPutter struct {
 	storage.Storer
 	stamper postage.Stamper
 }
 
-func newStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (storage.Storer, error) {
+func newStoringStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (*stamperPutter, error) {
 	i, err := post.GetStampIssuer(batch)
 	if err != nil {
 		return nil, fmt.Errorf("stamp issuer: %w", err)
@@ -572,4 +680,8 @@ func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 		}
 	}
 	return false
+}
+
+func noopWaitFn() error {
+	return nil
 }
