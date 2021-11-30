@@ -66,6 +66,8 @@ var (
 	ErrShallowReceipt = errors.New("shallow recipt")
 )
 
+const chunksWorkerTimeout = 2 * time.Second
+
 func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	p := &Service{
 		networkID:         networkID,
@@ -181,9 +183,13 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			// synced which makes it available to the node but not to the network
 			if err := s.valid(ch); err != nil {
 				logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
+
+				ctx, cancel := context.WithTimeout(ctx, chunksWorkerTimeout)
+
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 					s.logger.Errorf("pusher: set sync: %v", err)
 				}
+				cancel()
 			}
 			cc <- &Op{Chunk: ch, Direct: false}
 		}
