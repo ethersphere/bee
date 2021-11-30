@@ -17,7 +17,6 @@
 package localstore
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -59,7 +58,7 @@ var (
 // collectGarbageTrigger channel to signal a garbage collection
 // run. GC run iterates on gcIndex and removes older items
 // form retrieval and other indexes.
-func (db *DB) collectGarbageWorker(ctx context.Context) {
+func (db *DB) collectGarbageWorker() {
 	defer close(db.collectGarbageWorkerDone)
 
 	for {
@@ -68,7 +67,7 @@ func (db *DB) collectGarbageWorker(ctx context.Context) {
 			// run a single collect garbage run and
 			// if done is false, gcBatchSize is reached and
 			// another collect garbage run is needed
-			collectedCount, done, err := db.collectGarbage(ctx)
+			collectedCount, done, err := db.collectGarbage()
 			if err != nil {
 				db.logger.Errorf("localstore: collect garbage: %v", err)
 			}
@@ -92,7 +91,7 @@ func (db *DB) collectGarbageWorker(ctx context.Context) {
 // is false, another call to this function is needed to collect
 // the rest of the garbage as the batch size limit is reached.
 // This function is called in collectGarbageWorker.
-func (db *DB) collectGarbage(ctx context.Context) (collectedCount uint64, done bool, err error) {
+func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	db.metrics.GCCounter.Inc()
 	defer func(start time.Time) {
 		if err != nil {
@@ -229,7 +228,7 @@ func (db *DB) collectGarbage(ctx context.Context) (collectedCount uint64, done b
 	}
 
 	for _, loc := range locations {
-		db.sharky.Release(ctx, *loc)
+		db.sharky.Release(db.ctx, *loc)
 	}
 
 	return collectedCount, done, nil

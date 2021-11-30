@@ -450,7 +450,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 	logger := logging.New(io.Discard, 0)
-	storer, err := localstore.New(context.Background(), "", addr.Bytes(), nil, nil, logger)
+	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
