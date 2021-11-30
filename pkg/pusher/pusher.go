@@ -310,7 +310,13 @@ func (s *Service) valid(ch swarm.Chunk) error {
 }
 
 func (s *Service) AddFeed(c <-chan *Op) {
-	s.smugler <- c
+	go func() {
+		select {
+		case s.smugler <- c:
+		case <-s.quit:
+			// if we're quitting: don't do anything
+		}
+	}()
 }
 
 func (s *Service) Close() error {
