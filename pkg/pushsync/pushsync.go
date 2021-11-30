@@ -417,7 +417,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 		case result := <-resultChan:
 
-			ps.measurePushPeer(result.pushTime, result.err)
+			ps.measurePushPeer(result.pushTime, result.err, origin)
 
 			if result.err == nil {
 				close(doneChan)
@@ -448,12 +448,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 }
 
-func (ps *PushSync) measurePushPeer(t time.Time, err error) {
+func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 	var status string
 	if err != nil {
 		status = "failure"
 	} else {
 		status = "success"
+		if origin {
+			ps.metrics.OriginPushTime.Observe(time.Since(t).Seconds())
+		}
 	}
 	ps.metrics.PushToPeerTime.WithLabelValues(status).Observe(time.Since(t).Seconds())
 }
