@@ -34,10 +34,10 @@ func TestBytes(t *testing.T) {
 	)
 
 	var (
-		storerMock   = mock.NewStorer()
-		pinningMock  = pinning.NewServiceMock()
-		logger       = logging.New(io.Discard, 0)
-		client, _, _ = newTestServer(t, testServerOptions{
+		storerMock      = mock.NewStorer()
+		pinningMock     = pinning.NewServiceMock()
+		logger          = logging.New(io.Discard, 0)
+		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Tags:    tags.NewTags(statestore.NewStateStore(), logging.New(io.Discard, 0)),
 			Pinning: pinningMock,
@@ -55,6 +55,7 @@ func TestBytes(t *testing.T) {
 	t.Run("upload", func(t *testing.T) {
 		chunkAddr := swarm.MustParseHexAddress(expHash)
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithExpectedJSONResponse(api.BytesPostResponse{
@@ -82,6 +83,7 @@ func TestBytes(t *testing.T) {
 	t.Run("upload-with-pinning", func(t *testing.T) {
 		var res api.BytesPostResponse
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),

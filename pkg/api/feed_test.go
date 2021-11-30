@@ -44,11 +44,11 @@ func TestFeed_Get(t *testing.T) {
 			}
 			return fmt.Sprintf("/feeds/%s/%s", owner, topic)
 		}
-		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(io.Discard, 0)
-		tag            = tags.NewTags(mockStatestore, logger)
-		mockStorer     = mock.NewStorer()
-		client, _, _   = newTestServer(t, testServerOptions{
+		mockStatestore  = statestore.NewStateStore()
+		logger          = logging.New(io.Discard, 0)
+		tag             = tags.NewTags(mockStatestore, logger)
+		mockStorer      = mock.NewStorer()
+		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tag,
 		})
@@ -83,12 +83,12 @@ func TestFeed_Get(t *testing.T) {
 
 	t.Run("with at", func(t *testing.T) {
 		var (
-			timestamp    = int64(12121212)
-			ch           = toChunk(t, uint64(timestamp), expReference.Bytes())
-			look         = newMockLookup(12, 0, ch, nil, &id{}, &id{})
-			factory      = newMockFactory(look)
-			idBytes, _   = (&id{}).MarshalBinary()
-			client, _, _ = newTestServer(t, testServerOptions{
+			timestamp       = int64(12121212)
+			ch              = toChunk(t, uint64(timestamp), expReference.Bytes())
+			look            = newMockLookup(12, 0, ch, nil, &id{}, &id{})
+			factory         = newMockFactory(look)
+			idBytes, _      = (&id{}).MarshalBinary()
+			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Tags:   tag,
 				Feeds:  factory,
@@ -120,7 +120,7 @@ func TestFeed_Get(t *testing.T) {
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
 
-			client, _, _ = newTestServer(t, testServerOptions{
+			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Tags:   tag,
 				Feeds:  factory,
@@ -150,13 +150,13 @@ func TestFeed_Post(t *testing.T) {
 	// get the reference from the store, unmarshal to a
 	// manifest entry and make sure all metadata correct
 	var (
-		mockStatestore = statestore.NewStateStore()
-		logger         = logging.New(io.Discard, 0)
-		tag            = tags.NewTags(mockStatestore, logger)
-		topic          = "aabbcc"
-		mp             = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		mockStorer     = mock.NewStorer()
-		client, _, _   = newTestServer(t, testServerOptions{
+		mockStatestore  = statestore.NewStateStore()
+		logger          = logging.New(io.Discard, 0)
+		tag             = tags.NewTags(mockStatestore, logger)
+		topic           = "aabbcc"
+		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+		mockStorer      = mock.NewStorer()
+		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tag,
 			Logger: logger,
@@ -167,6 +167,7 @@ func TestFeed_Post(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{
 				Reference: expReference,
@@ -208,6 +209,7 @@ func TestFeed_Post(t *testing.T) {
 		t.Run("ok - batch zeros", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchOk)
 			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			)
 		})

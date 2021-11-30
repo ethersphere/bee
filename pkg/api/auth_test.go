@@ -25,7 +25,7 @@ func TestAuth(t *testing.T) {
 			AuthorizeFunc:   func(string) bool { return true },
 			GenerateKeyFunc: func(string) (string, error) { return "123", nil },
 		}
-		client, _, _ = newTestServer(t, testServerOptions{
+		client, _, _, _ = newTestServer(t, testServerOptions{
 			Logger:        logger,
 			Restricted:    true,
 			Authenticator: authenticator,

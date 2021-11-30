@@ -26,18 +26,18 @@ import (
 )
 
 func TestChunkUploadStream(t *testing.T) {
-
 	wsHeaders := http.Header{}
+	wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")
 	wsHeaders.Set("Content-Type", "application/octet-stream")
 	wsHeaders.Set("Swarm-Postage-Batch-Id", batchOkStr)
 
 	var (
-		statestoreMock = statestore.NewStateStore()
-		logger         = logging.New(io.Discard, 0)
-		tag            = tags.NewTags(statestoreMock, logger)
-		storerMock     = mock.NewStorer()
-		pinningMock    = pinning.NewServiceMock()
-		_, wsConn, _   = newTestServer(t, testServerOptions{
+		statestoreMock  = statestore.NewStateStore()
+		logger          = logging.New(io.Discard, 0)
+		tag             = tags.NewTags(statestoreMock, logger)
+		storerMock      = mock.NewStorer()
+		pinningMock     = pinning.NewServiceMock()
+		_, wsConn, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,
 			Pinning:   pinningMock,
 			Tags:      tag,

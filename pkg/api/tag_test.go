@@ -40,15 +40,15 @@ func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 func TestTags(t *testing.T) {
 
 	var (
-		bzzResource           = "/bzz"
-		bytesResource         = "/bytes"
-		chunksResource        = "/chunks"
-		tagsResource          = "/tags"
-		chunk                 = testingc.GenerateTestRandomChunk()
-		mockStatestore        = statestore.NewStateStore()
-		logger                = logging.New(io.Discard, 0)
-		tag                   = tags.NewTags(mockStatestore, logger)
-		client, _, listenAddr = newTestServer(t, testServerOptions{
+		bzzResource              = "/bzz"
+		bytesResource            = "/bytes"
+		chunksResource           = "/chunks"
+		tagsResource             = "/tags"
+		chunk                    = testingc.GenerateTestRandomChunk()
+		mockStatestore           = statestore.NewStateStore()
+		logger                   = logging.New(io.Discard, 0)
+		tag                      = tags.NewTags(mockStatestore, logger)
+		client, _, listenAddr, _ = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tag,
 			Logger: logger,
@@ -111,12 +111,14 @@ func TestTags(t *testing.T) {
 		)
 
 		_ = jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
 		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
@@ -137,6 +139,7 @@ func TestTags(t *testing.T) {
 
 		wsHeaders := http.Header{}
 		wsHeaders.Set("Content-Type", "application/octet-stream")
+		wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")
 		wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 		wsHeaders.Set(api.SwarmTagHeader, strconv.FormatUint(uint64(tr.Uid), 10))
 
@@ -287,6 +290,7 @@ func TestTags(t *testing.T) {
 
 		// upload content with tag
 		jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprint(tagId)),
@@ -327,6 +331,7 @@ func TestTags(t *testing.T) {
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost,
 			bzzResource+"?name=somefile", http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader([]byte("some data"))),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
@@ -350,6 +355,7 @@ func TestTags(t *testing.T) {
 		expectedResponse := api.BzzUploadResponse{Reference: expectedHash}
 
 		respHeaders := jsonhttptest.Request(t, client, http.MethodPost, bzzResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
@@ -389,6 +395,7 @@ func TestTags(t *testing.T) {
 		copy(content[:swarm.ChunkSize], dataChunk)
 
 		rcvdHeaders := jsonhttptest.Request(t, client, http.MethodPost, bytesResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithExpectedJSONResponse(fileUploadResponse{

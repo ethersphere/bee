@@ -24,7 +24,7 @@ var successWsMsg = []byte{}
 
 func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 
-	ctx, tag, putter, err := s.processUploadRequest(r)
+	ctx, tag, putter, wait, err := s.processUploadRequest(r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -52,6 +52,7 @@ func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request
 		putter,
 		requestModePut(r),
 		strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true",
+		wait,
 	)
 }
 
@@ -62,6 +63,7 @@ func (s *server) handleUploadStream(
 	putter storage.Putter,
 	mode storage.ModePut,
 	pin bool,
+	wait func() error,
 ) {
 	defer s.wsWg.Done()
 
@@ -71,6 +73,9 @@ func (s *server) handleUploadStream(
 	)
 	defer func() {
 		_ = conn.Close()
+		if err = wait(); err != nil {
+			s.logger.Errorf("chunk stream handler: errors syncing chunks: %v", err)
+		}
 	}()
 
 	conn.SetCloseHandler(func(code int, text string) error {
