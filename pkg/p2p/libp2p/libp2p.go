@@ -145,6 +145,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	security := libp2p.DefaultSecurity
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
+	if err != nil {
+		return nil, err
+	}
 
 	var natManager basichost.NATManager
 
