@@ -488,7 +488,7 @@ func TestDB_gcSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := logging.New(io.Discard, 0)
-	db, err := New(context.Background(), dir, baseKey, nil, nil, logger)
+	db, err := New(dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +516,7 @@ func TestDB_gcSize(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err = New(context.Background(), dir, baseKey, nil, nil, logger)
+	db, err = New(dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

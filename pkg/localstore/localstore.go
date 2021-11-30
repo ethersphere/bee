@@ -155,6 +155,11 @@ type DB struct {
 	// to terminate other goroutines
 	close chan struct{}
 
+	// context
+	ctx context.Context
+	// the cancelation function from the context
+	cancel context.CancelFunc
+
 	// protect Close method from exiting before
 	// garbage collection and gc size write workers
 	// are done
@@ -205,7 +210,7 @@ type Options struct {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(ctx context.Context, path string, baseKey []byte, ss storage.StateStorer, o *Options, logger logging.Logger) (db *DB, err error) {
+func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger logging.Logger) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -214,6 +219,8 @@ func New(ctx context.Context, path string, baseKey []byte, ss storage.StateStore
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	db = &DB{
 		stateStore:      ss,
 		cacheCapacity:   o.Capacity,
@@ -221,6 +228,8 @@ func New(ctx context.Context, path string, baseKey []byte, ss storage.StateStore
 		unreserveFunc:   o.UnreserveFunc,
 		baseKey:         baseKey,
 		tags:            o.Tags,
+		ctx:             ctx,
+		cancel:          cancel,
 		// channel collectGarbageTrigger
 		// needs to be buffered with the size of 1
 		// to signal another event if it
@@ -578,7 +587,7 @@ func New(ctx context.Context, path string, baseKey []byte, ss storage.StateStore
 	}
 
 	// start garbage collection worker
-	go db.collectGarbageWorker(ctx)
+	go db.collectGarbageWorker()
 	go db.reserveEvictionWorker()
 	return db, nil
 }
@@ -590,6 +599,7 @@ func (db *DB) Close() (err error) {
 	// wait for all handlers to finish
 	done := make(chan struct{})
 	go func() {
+		db.cancel()
 		db.updateGCWG.Wait()
 		// wait for gc worker to
 		// return before closing the shed
