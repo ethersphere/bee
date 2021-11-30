@@ -870,8 +870,8 @@ func TestUserAgentLogging(t *testing.T) {
 func TestReachabilityUpdate(t *testing.T) {
 	s1, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.WithHostFactory(
-			func(ctx context.Context, _ ...libp2pm.Option) (host.Host, error) {
-				return bhost.NewHost(context.TODO(), swarmt.GenSwarm(t, context.TODO()), &bhost.HostOpts{})
+			func(_ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{})
 			},
 		),
 	})
