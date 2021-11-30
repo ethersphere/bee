@@ -40,6 +40,8 @@ const (
 	streamName      = "retrieval"
 )
 
+const retrievalTimeout = 2 * time.Second
+
 var _ Interface = (*Service)(nil)
 
 type Interface interface {
@@ -425,6 +427,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer span.Finish()
 
 	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
+
+	ctx, cancel := context.WithTimeout(ctx, retrievalTimeout)
+	defer cancel()
+
 	addr := swarm.NewAddress(req.Addr)
 
 	forwarded := false

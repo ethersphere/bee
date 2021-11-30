@@ -35,14 +35,18 @@ const (
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
-
-	logMore = false // enable this for more logging
 )
+
+const logMore = false // enable this for more logging
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
+)
 
-	cancellationTimeout = 5 * time.Second // explicit ruid cancellation message timeout
+const (
+	processWantTimeout = 2 * time.Second
+	// explicit ruid cancellation message timeout
+	cancellationTimeout = 5 * time.Second
 )
 
 // how many maximum chunks in a batch
@@ -354,7 +358,18 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		return fmt.Errorf("read want: %w", err)
 	}
 
-	chs, err := s.processWant(ctx, offer, &want)
+	var mtx sync.Mutex
+
+	cctx := func() (context.Context, context.CancelFunc) {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return context.WithTimeout(ctx, processWantTimeout)
+	}
+
+	ctxPW, cancelPW := cctx()
+	defer cancelPW()
+
+	chs, err := s.processWant(ctxPW, offer, &want)
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
 	}
