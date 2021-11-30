@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -252,13 +251,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers, originated bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
 	startTimer := time.Now()
 	v := ctx.Value(requestSourceContextKey{})
-	sourcePeerAddr := swarm.Address{}
 	// allow upstream requests if this node is the source of the request
 	// i.e. the request was not forwarded, to improve retrieval
 	// if this node is the closest to he chunk but still does not contain it
 	allowUpstream := true
 	if src, ok := v.(string); ok {
-		sourcePeerAddr, err = swarm.ParseHexAddress(src)
+		sourcePeerAddr, err := swarm.ParseHexAddress(src)
 		if err == nil {
 			sp.Add(sourcePeerAddr)
 		}
@@ -272,20 +270,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	peer, err = s.closestPeer(addr, sp.All(), allowUpstream)
 	if err != nil {
 		return nil, peer, false, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
-	}
-
-	peerPO := swarm.Proximity(s.addr.Bytes(), peer.Bytes())
-
-	if !sourcePeerAddr.IsZero() {
-		// is forwarded request
-		sourceAddrPO := swarm.Proximity(sourcePeerAddr.Bytes(), addr.Bytes())
-		addrPO := swarm.Proximity(peer.Bytes(), addr.Bytes())
-
-		poGain := int(addrPO) - int(sourceAddrPO)
-
-		s.metrics.RetrieveChunkPOGainCounter.
-			WithLabelValues(strconv.Itoa(poGain)).
-			Inc()
 	}
 
 	// compute the peer's price for this chunk for price header
@@ -330,9 +314,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, true, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
-	s.metrics.RetrieveChunkPeerPOTimer.
-		WithLabelValues(strconv.Itoa(int(peerPO))).
-		Observe(time.Since(startTimer).Seconds())
+	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTimer).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
 	stamp := new(postage.Stamp)
