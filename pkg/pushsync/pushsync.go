@@ -209,7 +209,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			chunk, err = ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				return fmt.Errorf("pushsync replication valid stamp: %w", err)
+				return fmt.Errorf("pushsync replication invalid stamp: %w", err)
 			}
 
 			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
@@ -263,7 +263,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			ps.metrics.Storer.Inc()
 			chunk, err = ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				return fmt.Errorf("pushsync storer valid stamp: %w", err)
+				return fmt.Errorf("pushsync storer invalid stamp: %w", err)
 			}
 
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
