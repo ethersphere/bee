@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,9 +27,14 @@ import (
 )
 
 const (
-	blockPage   = 5000      // how many blocks to sync every time we page
-	tailSize    = 4         // how many blocks to tail from the tip of the chain
-	batchFactor = uint64(5) // minimal number of blocks to sync at once
+	blockPage          = 5000      // how many blocks to sync every time we page
+	tailSize           = 4         // how many blocks to tail from the tip of the chain
+	defaultBatchFactor = uint64(5) // // minimal number of blocks to sync at once
+)
+
+var (
+	// for testing, set externally for testing.
+	batchFactorOverridePublic = "5"
 )
 
 var (
@@ -177,6 +183,12 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 		<-l.quit
 		cancel()
 	}()
+
+	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
+	if err != nil {
+		l.logger.Warningf("listener: batch factor conversation failed %s: %w", batchFactor, err)
+		batchFactor = defaultBatchFactor
+	}
 
 	synced := make(chan struct{})
 	closeOnce := new(sync.Once)
