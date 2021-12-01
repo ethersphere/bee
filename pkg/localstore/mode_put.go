@@ -50,6 +50,12 @@ func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	return exist, err
 }
 
+type releaseLocations []*sharky.Location
+
+func (r *releaseLocations) add(loc *sharky.Location) {
+	*r = append(*r, loc)
+}
+
 // put stores Chunks to database and updates other indexes. It acquires batchMu
 // to protect two calls of this function for the same address in parallel. Item
 // fields Address and Data must not be with their nil values. If chunks with the
@@ -97,7 +103,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	binIDs := make(map[uint8]uint64)
 
 	var (
-		releaseLocations   []*sharky.Location
+		releaseLocs        = new(releaseLocations)
 		committedLocations []sharky.Location
 	)
 
@@ -138,7 +144,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			pin := mode == storage.ModePutRequestPin     // force pin in this mode
 			cache := mode == storage.ModePutRequestCache // force cache
 			exists, c, err := putChunk(ch, i, func(item shed.Item) (bool, int64, error) {
-				return db.putRequest(ctx, releaseLocations, batch, binIDs, item, pin, cache)
+				return db.putRequest(ctx, releaseLocs, batch, binIDs, item, pin, cache)
 			})
 			if err != nil {
 				return nil, err
@@ -150,7 +156,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	case storage.ModePutUpload, storage.ModePutUploadPin:
 		for i, ch := range chs {
 			exists, c, err := putChunk(ch, i, func(item shed.Item) (bool, int64, error) {
-				chExists, gcChange, err := db.putUpload(batch, releaseLocations, binIDs, item)
+				chExists, gcChange, err := db.putUpload(batch, releaseLocs, binIDs, item)
 				if err == nil && mode == storage.ModePutUploadPin {
 					c2, err := db.setPin(batch, item)
 					if err == nil {
@@ -175,7 +181,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	case storage.ModePutSync:
 		for i, ch := range chs {
 			exists, c, err := putChunk(ch, i, func(item shed.Item) (bool, int64, error) {
-				return db.putSync(batch, releaseLocations, binIDs, item)
+				return db.putSync(batch, releaseLocs, binIDs, item)
 			})
 			if err != nil {
 				return nil, err
@@ -207,7 +213,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 		return nil, err
 	}
 
-	for _, v := range releaseLocations {
+	for _, v := range *releaseLocs {
 		db.sharky.Release(ctx, *v)
 	}
 
@@ -241,7 +247,7 @@ func (db *DB) putSharky(ctx context.Context, item shed.Item) (loc sharky.Locatio
 //  - it does not enter the syncpool
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putRequest(ctx context.Context, loc []*sharky.Location, batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item, forcePin, forceCache bool) (exists bool, gcSizeChange int64, err error) {
+func (db *DB) putRequest(ctx context.Context, loc *releaseLocations, batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item, forcePin, forceCache bool) (exists bool, gcSizeChange int64, err error) {
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
@@ -265,7 +271,7 @@ func (db *DB) putRequest(ctx context.Context, loc []*sharky.Location, batch *lev
 		if err != nil {
 			return false, 0, err
 		}
-		loc = append(loc, l)
+		loc.add(l)
 
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
@@ -325,7 +331,7 @@ func (db *DB) putRequest(ctx context.Context, loc []*sharky.Location, batch *lev
 //  - put to indexes: retrieve, push, pull
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putUpload(batch *leveldb.Batch, loc []*sharky.Location, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
+func (db *DB) putUpload(batch *leveldb.Batch, loc *releaseLocations, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
@@ -350,7 +356,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, loc []*sharky.Location, binIDs map
 			return false, 0, err
 		}
 
-		loc = append(loc, l)
+		loc.add(l)
 	}
 
 	item.StoreTimestamp = now()
@@ -385,7 +391,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, loc []*sharky.Location, binIDs map
 //  - put to indexes: retrieve, pull, gc
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putSync(batch *leveldb.Batch, loc []*sharky.Location, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
+func (db *DB) putSync(batch *leveldb.Batch, loc *releaseLocations, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
@@ -410,7 +416,7 @@ func (db *DB) putSync(batch *leveldb.Batch, loc []*sharky.Location, binIDs map[u
 			return false, 0, err
 		}
 
-		loc = append(loc, l)
+		loc.add(l)
 
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
