@@ -10,15 +10,24 @@ import (
 	"os"
 )
 
+// size of the byte representation of Location
+const LocationSize int = 7
+
 // Location models the location <shard, slot, length> of a chunk
+// location models the location <shard, offset, length> of a chunk
 type Location struct {
 	Shard  uint8
 	Slot   uint32
 	Length uint16
 }
 
+// MarshalBinary returns byte representation of location. We use binary.PutVarint
+// which can take upto 10bytes to marshal int64. Realistically, we will never have
+// values here that would require extra bytes to pack. The offset is currently capped
+// and the length is deterministic. In order to save the extra bytes, we use the min
+// required bytes here which is 8
 func (l *Location) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 1+4+2)
+	b := make([]byte, LocationSize)
 	b[0] = l.Shard
 	binary.LittleEndian.PutUint32(b[1:5], l.Slot)
 	binary.LittleEndian.PutUint16(b[5:], l.Length)
