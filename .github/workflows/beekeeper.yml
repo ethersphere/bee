@@ -17,7 +17,7 @@ jobs:
       BEEKEEPER_BRANCH: "ps-lightnode-fix"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
-      BATCHFACTOR_OVERRIDE_PUBLIC: 1
+      BATCHFACTOR_OVERRIDE_PUBLIC: 2
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -153,7 +153,7 @@ jobs:
       BEEKEEPER_BRANCH: "ps-lightnode-fix"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
-      BATCHFACTOR_OVERRIDE_PUBLIC: 1
+      BATCHFACTOR_OVERRIDE_PUBLIC: 2
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -238,7 +238,7 @@ jobs:
       BEEKEEPER_BRANCH: "ps-lightnode-fix"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
-      BATCHFACTOR_OVERRIDE_PUBLIC: 1
+      BATCHFACTOR_OVERRIDE_PUBLIC: 2
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
