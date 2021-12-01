@@ -90,7 +90,7 @@ func TestPersistence(t *testing.T) {
 	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
 	sharky.DataSize = 4
 	shards := 4
-	limit := int64(16)
+	limit := uint32(16)
 	items := shards * int(limit)
 
 	dir := t.TempDir()
@@ -150,7 +150,7 @@ func TestRelease(t *testing.T) {
 	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
 	sharky.DataSize = 4
 	shards := 3
-	limit := int64(1024)
+	limit := uint32(1024)
 
 	dir := t.TempDir()
 	locs := make([][]sharky.Location, 4)
