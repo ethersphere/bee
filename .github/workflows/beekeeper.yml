@@ -14,7 +14,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "ps-lightnode-fix"
+      BEEKEEPER_BRANCH: "master"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -75,24 +75,6 @@ jobs:
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Sleep for time allowance to replenish
         run: sleep 2
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-3
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-4
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-5
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-6
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-7
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
       - name: Test pss
         id: pss
         run: beekeeper check --cluster-name local-dns --checks=ci-pss
@@ -102,6 +84,9 @@ jobs:
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-2
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
       - name: Test retrieval
         id: retrieval
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
@@ -150,7 +135,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "ps-lightnode-fix"
+      BEEKEEPER_BRANCH: "master"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -235,7 +220,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "ps-lightnode-fix"
+      BEEKEEPER_BRANCH: "master"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2

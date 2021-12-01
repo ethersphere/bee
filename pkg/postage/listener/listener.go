@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	// for testing, set externally for testing.
+	// for testing, set externally
 	batchFactorOverridePublic = "5"
 )
 
