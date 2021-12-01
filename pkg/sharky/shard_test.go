@@ -1,7 +1,6 @@
 package sharky_test
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"testing"
@@ -22,9 +21,12 @@ func TestLocationSerialization(t *testing.T) {
 			Length: 0,
 		},
 		{
-			Shard:  math.MaxInt8,
-			Offset: math.MaxInt64,
-			Length: math.MaxInt64,
+			Shard: math.MaxInt8,
+			// If we use offset and length as MaxInt64 we will fail as we pack
+			// only 8 bytes. The values here are pretty high, higher than what makes
+			// sense for our implementation and they can be packed into 8 bytes
+			Offset: 35000000000000000,
+			Length: 35000000000000000,
 		},
 	} {
 		t.Run(fmt.Sprintf("%d_%d_%d", tc.Shard, tc.Offset, tc.Length), func(st *testing.T) {
@@ -33,7 +35,7 @@ func TestLocationSerialization(t *testing.T) {
 				st.Fatal(err)
 			}
 
-			if len(buf) != 1+binary.MaxVarintLen64*2 {
+			if len(buf) != sharky.LocationSize {
 				st.Fatal("unexpected length of buffer")
 			}
 

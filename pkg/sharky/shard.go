@@ -11,6 +11,9 @@ import (
 	"sync"
 )
 
+// size of the byte representation of Location
+const LocationSize int = 17
+
 // location models the location <shard, offset, length> of a chunk
 type Location struct {
 	Shard  uint8
@@ -18,18 +21,23 @@ type Location struct {
 	Length int64
 }
 
+// MarshalBinary returns byte representation of location. We use binary.PutVarint
+// which can take upto 10bytes to marshal int64. Realistically, we will never have
+// values here that would require extra bytes to pack. The offset is currently capped
+// and the length is deterministic. In order to save the extra bytes, we use the min
+// required bytes here which is 8
 func (l *Location) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 1+binary.MaxVarintLen64*2)
+	b := make([]byte, LocationSize)
 	b[0] = l.Shard
-	binary.PutVarint(b[1:1+binary.MaxVarintLen64], l.Offset)
-	binary.PutVarint(b[1+binary.MaxVarintLen64:], l.Length)
+	binary.PutVarint(b[1:9], l.Offset)
+	binary.PutVarint(b[9:], l.Length)
 	return b, nil
 }
 
 func (l *Location) UnmarshalBinary(buf []byte) error {
 	l.Shard = buf[0]
-	l.Offset, _ = binary.Varint(buf[1 : 1+binary.MaxVarintLen64])
-	l.Length, _ = binary.Varint(buf[1+binary.MaxVarintLen64:])
+	l.Offset, _ = binary.Varint(buf[1:9])
+	l.Length, _ = binary.Varint(buf[9:])
 	return nil
 }
 
