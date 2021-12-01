@@ -10,8 +10,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -20,10 +22,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type dirFS struct {
+	basedir string
+}
+
+func (d *dirFS) Open(path string) (fs.File, error) {
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+}
+
 func TestSingleRetrieval(t *testing.T) {
 	datasize := 4
 	dir := t.TempDir()
-	s, err := sharky.New(dir, 2, 2, datasize)
+	s, err := sharky.New(&dirFS{basedir: dir}, 2, 2, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +114,7 @@ func TestPersistence(t *testing.T) {
 	defer cancel()
 	// simulate several subsequent sessions filling up the store
 	for ; i < items; j++ {
-		s, err := sharky.New(dir, shards, shardSize, datasize)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, datasize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -126,7 +136,7 @@ func TestPersistence(t *testing.T) {
 	t.Logf("got full in %d sessions\n", j)
 
 	// check location and data consisency
-	s, err := sharky.New(dir, shards, shardSize, datasize)
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +175,7 @@ func TestConcurrency(t *testing.T) {
 
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
-		s, err := sharky.New(dir, shards, shardSize, datasize)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, datasize)
 		if err != nil {
 			t.Fatal(err)
 		}
