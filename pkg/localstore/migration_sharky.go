@@ -25,8 +25,8 @@ func migrateSharky(db *DB) error {
 	var (
 		start      = time.Now()
 		batch      = new(leveldb.Batch)
-		count      = 0
-		batchSize  = 10000
+		batchSize  = 10000 // TODO: Tweak the compaction (less often then batch write).
+		batchCount = 0
 		headerSize = 16 + postage.StampSize
 	)
 
@@ -110,17 +110,16 @@ func migrateSharky(db *DB) error {
 
 	var dirtyLocations []sharky.Location
 
-	fmt.Printf("starting to move entries. batch size %d\n", batchSize)
-	currentBatch := 0
+	db.logger.Debugf("starting to move entries with batch size %d", batchSize)
 	for {
-		currentBatch = 0
+		isBatchEmpty := true
 		err = retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-			l, err := db.sharky.Write(context.Background(), item.Data)
+			loc, err := db.sharky.Write(context.TODO(), item.Data)
 			if err != nil {
 				return false, err
 			}
-			dirtyLocations = append(dirtyLocations, l)
-			item.Location, err = l.MarshalBinary()
+			dirtyLocations = append(dirtyLocations, loc)
+			item.Location, err = loc.MarshalBinary()
 			if err != nil {
 				return false, err
 			}
@@ -130,11 +129,10 @@ func migrateSharky(db *DB) error {
 			if err = retrievalDataIndex.DeleteInBatch(batch, item); err != nil {
 				return false, err
 			}
-			count++
-			currentBatch++
-			if count%batchSize == 0 {
-				// collected enough entries. close the iterator, try to flush, trigger compaction
-				fmt.Printf("collected %d entries, trying to flush...\n", batchSize)
+			batchCount++
+			isBatchEmpty = false
+			if batchCount%batchSize == 0 {
+				db.logger.Debugf("collected %d entries; trying to flush...", batchSize)
 				return true, nil
 			}
 			return false, nil
@@ -143,25 +141,28 @@ func migrateSharky(db *DB) error {
 			return fmt.Errorf("iterate index: %w", err)
 		}
 
-		if currentBatch == 0 {
+		if isBatchEmpty {
 			break
 		}
 
-		err = db.shed.WriteBatch(batch)
-		if err != nil {
+		if err := db.shed.WriteBatch(batch); err != nil {
+			for _, loc := range dirtyLocations {
+				db.sharky.Release(context.TODO(), loc)
+			}
 			return fmt.Errorf("write batch: %w", err)
-		} else {
-			// release sharky locations, return error, potentially force deletion of the shards?
 		}
-		fmt.Printf("flush ok, progress so far: %d chunks\n", count)
+
+		db.logger.Debugf("flush ok; progress so far: %d chunks", batchCount)
 		batch.Reset()
-		fmt.Println("triggering leveldb compaction...")
+		db.logger.Debugf("triggering leveldb compaction...")
 		compactStart := time.Now()
 		if err = db.shed.Compact(); err != nil {
 			return fmt.Errorf("leveldb compaction failed: %w", err)
 		}
-		fmt.Printf("leveldb compaction done, took %s\n", time.Since(compactStart))
+		db.logger.Debugf("leveldb compaction done, took %s\n", time.Since(compactStart))
+
+		dirtyLocations = nil
 	}
-	db.logger.Debugf("done migrating to sharky. it took me %s to move %d chunks.", time.Since(start), count)
+	db.logger.Debugf("done migrating to sharky. it took me %s to move %d chunks.", time.Since(start), batchCount)
 	return nil
 }
