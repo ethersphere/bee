@@ -87,6 +87,21 @@ jobs:
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-3
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-4
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-5
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-6
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-7
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
       - name: Test retrieval
         id: retrieval
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
