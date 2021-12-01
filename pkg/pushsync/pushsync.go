@@ -38,11 +38,10 @@ const (
 )
 
 const (
-	defaultTTL     = 30 * time.Second // request time to live
-	p90TTL         = 5 * time.Second  // P90 request time to live
+	defaultTTL     = 30 * time.Second        // request time to live
+	p90TTL         = 1500 * time.Millisecond // P90 request time to live
 	sanctionWait   = 5 * time.Minute
 	replicationTTL = 5 * time.Second // time to live for neighborhood replication
-
 )
 
 const (
