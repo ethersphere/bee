@@ -60,6 +60,13 @@ var (
 	flipFlopWorstCaseDuration = 10 * time.Second
 )
 
+const (
+	// 32 * 312500 chunks = 1000000 chunks (40GB)
+	// currently this size is enforced by the localstore
+	sharkyNoOfShards    int   = 32
+	sharkyPerShardLimit int64 = 312500
+)
+
 // DB is the local store implementation and holds
 // database related objects.
 type DB struct {
@@ -310,7 +317,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	}
 
 	// instantiate sharky instance
-	// 32 * 312500 chunks = 1000000 chunks (40GB)
 	sharkyBasePath := o.SharkyLocation
 	if sharkyBasePath == "" {
 		sharkyBasePath = filepath.Join(path, "sharky")
@@ -321,7 +327,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			return nil, err
 		}
 	}
-	db.sharky, err = sharky.New(sharkyBasePath, 32, 312500)
+	db.sharky, err = sharky.New(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +475,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			return e, nil
 		},
 		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			value = make([]byte, 40+17)
+			value = make([]byte, 40+sharky.LocationSize)
 			copy(value, fields.BatchID)
 			copy(value[32:], fields.Index)
 			value = append(value, fields.Location...)
@@ -480,7 +486,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			copy(e.BatchID, value[:32])
 			e.Index = make([]byte, postage.IndexSize)
 			copy(e.Index, value[32:])
-			e.Location = make([]byte, 17)
+			e.Location = make([]byte, sharky.LocationSize)
 			copy(e.Location, value[40:])
 			return e, nil
 		},
