@@ -233,8 +233,6 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 		}
 	}
 
-	// item.Location
-
 	db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 	db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
