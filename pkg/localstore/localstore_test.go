@@ -161,9 +161,6 @@ func newTestDB(t testing.TB, o *Options) *DB {
 	if o == nil {
 		o = &Options{}
 	}
-	if o.SharkyLocation == "" {
-		o.SharkyLocation = t.TempDir()
-	}
 	if o.UnreserveFunc == nil {
 		o.UnreserveFunc = func(postage.UnreserveIteratorFn) error {
 			return nil

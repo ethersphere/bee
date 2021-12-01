@@ -7,7 +7,7 @@ package sharky
 import (
 	"encoding/binary"
 	"encoding/json"
-	"os"
+	"io"
 	"sync"
 )
 
@@ -50,6 +50,15 @@ func LocationFromBinary(buf []byte) (*Location, error) {
 	return l, nil
 }
 
+type shardFile interface {
+	io.ReadWriteCloser
+	io.ReaderAt
+	io.Seeker
+	io.Writer
+	io.WriterAt
+	Truncate(int64) error
+}
+
 // operation models both read and write
 type operation struct {
 	location Location   // shard, offset, length combo - given for read, returned by write
@@ -66,8 +75,8 @@ type shard struct {
 	freed    chan int64      // channel for offsets freed by garbage collection
 	index    uint8           // index of the shard
 	limit    int64           // max number of items in the shard
-	fh       *os.File        // the file handle the shard is writing data to
-	ffh      *os.File        // the file handle the shard is writing free slats to
+	fh       shardFile       // the file handle the shard is writing data to
+	ffh      shardFile       // the file handle the shard is writing free slats to
 	quit     chan struct{}   // channel to signal quitting
 	wg       *sync.WaitGroup // waitgroup to allow clean closing
 }

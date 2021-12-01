@@ -15,9 +15,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
-	"os"
-	"path"
 	"strings"
 	"sync"
 
@@ -40,7 +39,7 @@ type Shards struct {
 }
 
 // New constructs a new sharded chunk db
-func New(basedir string, shardCnt int, limit int64) (*Shards, error) {
+func New(basedir fs.FS, shardCnt int, limit int64) (*Shards, error) {
 	pool := &sync.Pool{New: func() interface{} {
 		return newOp()
 	}}
@@ -83,8 +82,8 @@ func (s *Shards) Close() error {
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Shards) create(index uint8, limit int64, basedir string) (*shard, error) {
-	fh, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
+func (s *Shards) create(index uint8, limit int64, basedir fs.FS) (*shard, error) {
+	fh, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +93,7 @@ func (s *Shards) create(index uint8, limit int64, basedir string) (*shard, error
 	}
 	size := fi.Size() / DataSize
 
-	ffh, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
+	ffh, err := basedir.Open(fmt.Sprintf("free_%03d", index))
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +133,8 @@ func (s *Shards) create(index uint8, limit int64, basedir string) (*shard, error
 		freed:    freed,
 		index:    index,
 		limit:    limit,
-		fh:       fh,
-		ffh:      ffh,
+		fh:       fh.(shardFile),
+		ffh:      ffh.(shardFile),
 		quit:     s.quit,
 		wg:       wg,
 	}
