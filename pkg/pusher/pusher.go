@@ -66,7 +66,7 @@ var (
 	ErrShallowReceipt = errors.New("shallow recipt")
 )
 
-const chunksWorkerTimeout = 2 * time.Second
+const chunkStoreTimeout = 2 * time.Second
 
 func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	p := &Service{
@@ -184,7 +184,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			if err := s.valid(ch); err != nil {
 				logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
 
-				ctx, cancel := context.WithTimeout(ctx, chunksWorkerTimeout)
+				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
 
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 					s.logger.Errorf("pusher: set sync: %v", err)
@@ -252,6 +252,9 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.
 	} else if err = s.checkReceipt(receipt); err != nil {
 		return err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
 		return fmt.Errorf("pusher: set sync: %w", err)
 	}

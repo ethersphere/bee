@@ -44,7 +44,7 @@ var (
 )
 
 const (
-	processWantTimeout = 2 * time.Second
+	storagePutTimeout = 5 * time.Second
 	// explicit ruid cancellation message timeout
 	cancellationTimeout = 5 * time.Second
 )
@@ -256,6 +256,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 	if len(chunksToPut) > 0 {
 		s.metrics.DbOps.Inc()
+		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
+		defer cancel()
 		if ierr := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); ierr != nil {
 			if err != nil {
 				ierr = fmt.Errorf(", sync err: %w", err)
@@ -358,18 +360,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		return fmt.Errorf("read want: %w", err)
 	}
 
-	var mtx sync.Mutex
-
-	cctx := func() (context.Context, context.CancelFunc) {
-		mtx.Lock()
-		defer mtx.Unlock()
-		return context.WithTimeout(ctx, processWantTimeout)
-	}
-
-	ctxPW, cancelPW := cctx()
-	defer cancelPW()
-
-	chs, err := s.processWant(ctxPW, offer, &want)
+	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
 	}
