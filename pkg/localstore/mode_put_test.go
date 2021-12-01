@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -670,6 +671,18 @@ func TestPutDuplicateChunks(t *testing.T) {
 				t.Errorf("got chunk address %s, want %s", got.Address(), ch.Address())
 			}
 		})
+	}
+}
+
+func TestReleaseLocations(t *testing.T) {
+	locs := new(releaseLocations)
+
+	for i := 0; i < 5; i++ {
+		locs.add(&sharky.Location{Shard: 0, Offset: 100, Length: 100})
+	}
+
+	if len(*locs) != 5 {
+		t.Fatal("incorrect length of release locations expected", 5, "found", len(*locs))
 	}
 }
 
