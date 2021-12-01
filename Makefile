@@ -79,10 +79,12 @@ install-formatters:
 	$(GO) get github.com/daixiang0/gci
 	$(GO) install mvdan.cc/gofumpt@latest
 
+FOLDER=$(shell pwd)
+
 .PHONY: format
 format:
-	$(GOBIN)/gofumpt -l -w .
-	$(GOBIN)/gci -w -local $(go list -m) `find . -type f -name "*.go" \! -path \*/\.git/\* -exec echo {} \;` 
+	$(GOBIN)/gofumpt -l -w $(FOLDER)
+	$(GOBIN)/gci -w -local $(go list -m) `find $(FOLDER) -type f \! -name "*.pb.go" -name "*.go" \! -path \*/\.git/\* -exec echo {} \;`
 
 .PHONY: lint
 lint: linter
