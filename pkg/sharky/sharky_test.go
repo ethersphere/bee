@@ -9,7 +9,10 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"io/fs"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -17,12 +20,20 @@ import (
 	"github.com/ethersphere/bee/pkg/sharky"
 )
 
+type dirFS struct {
+	basedir string
+}
+
+func (d *dirFS) Open(path string) (fs.File, error) {
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+}
+
 func TestSingleRetrieval(t *testing.T) {
 	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
 	sharky.DataSize = 4
 
 	dir := t.TempDir()
-	s, err := sharky.New(dir, 2, 2)
+	s, err := sharky.New(&dirFS{basedir: dir}, 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +112,7 @@ func TestPersistence(t *testing.T) {
 
 	// simulate several subsequent sessions filling up the store
 	for j := 0; i < items; j++ {
-		s, err := sharky.New(dir, shards, limit)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, limit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +130,7 @@ func TestPersistence(t *testing.T) {
 	}
 
 	// check location and data consisency
-	s, err := sharky.New(dir, shards, limit)
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, limit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +166,7 @@ func TestRelease(t *testing.T) {
 	dir := t.TempDir()
 	locs := make([][]sharky.Location, 4)
 	ctx := context.Background()
-	s, err := sharky.New(dir, shards, limit)
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, limit)
 	if err != nil {
 		t.Fatal(err)
 	}
