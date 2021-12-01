@@ -21,12 +21,14 @@ type metrics struct {
 	TotalOutgoing                   prometheus.Counter
 	TotalOutgoingErrors             prometheus.Counter
 	InvalidStampErrors              prometheus.Counter
+	StampValidationTime             prometheus.HistogramVec
 	HandlerReplication              prometheus.Counter
 	HandlerReplicationErrors        prometheus.Counter
 	Forwarder                       prometheus.Counter
 	Storer                          prometheus.Counter
 	TotalHandlerTime                prometheus.HistogramVec
 	PushToPeerTime                  prometheus.HistogramVec
+	OriginPushTime                  prometheus.Histogram
 	TotalReplicationFromDistantPeer prometheus.Counter
 	TotalReplicationFromClosestPeer prometheus.Counter
 	DuplicateReceipt                prometheus.Counter
@@ -102,6 +104,12 @@ func newMetrics() metrics {
 			Name:      "invalid_stamps",
 			Help:      "No of invalid stamp errors.",
 		}),
+		StampValidationTime: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "stamp_validation_time",
+			Help:      "Time taken to validate stamps.",
+		}, []string{"status"}),
 		HandlerReplication: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -143,6 +151,14 @@ func newMetrics() metrics {
 				Help:      "Histogram for time taken to push a chunk to a peer.",
 				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
 			}, []string{"status"},
+		),
+		OriginPushTime: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "origin_push_time",
+				Help:      "Histogram for time taken for origin node to successfully push a chunk.",
+			},
 		),
 		TotalReplicationFromDistantPeer: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
