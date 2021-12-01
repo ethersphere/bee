@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime/pprof"
@@ -36,6 +37,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -209,9 +211,22 @@ type Options struct {
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
-	// Directory to use for sharky storage if none is configured, we will create
-	// a new directory called "sharky" in the localstore itself
-	SharkyLocation string
+}
+
+type memFS struct {
+	afero.Fs
+}
+
+func (m *memFS) Open(path string) (fs.File, error) {
+	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+}
+
+type dirFS struct {
+	basedir string
+}
+
+func (d *dirFS) Open(path string) (fs.File, error) {
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
 }
 
 // New returns a new DB.  All fields and indexes are initialized
@@ -317,17 +332,20 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	}
 
 	// instantiate sharky instance
-	sharkyBasePath := o.SharkyLocation
-	if sharkyBasePath == "" {
-		sharkyBasePath = filepath.Join(path, "sharky")
-	}
-	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(sharkyBasePath, 0775)
-		if err != nil {
-			return nil, err
+	var sharkyBase fs.FS
+	if path == "" {
+		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
+	} else {
+		sharkyBasePath := filepath.Join(path, "sharky")
+		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+			err := os.Mkdir(sharkyBasePath, 0775)
+			if err != nil {
+				return nil, err
+			}
 		}
+		sharkyBase = &dirFS{basedir: sharkyBasePath}
 	}
-	db.sharky, err = sharky.New(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit)
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit)
 	if err != nil {
 		return nil, err
 	}

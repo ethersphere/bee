@@ -7,7 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
-	"os"
+	"io"
 )
 
 // size of the byte representation of Location
@@ -50,6 +50,15 @@ func LocationFromBinary(buf []byte) (*Location, error) {
 	return l, nil
 }
 
+type shardFile interface {
+	io.ReadWriteCloser
+	io.ReaderAt
+	io.Seeker
+	io.Writer
+	io.WriterAt
+	Truncate(int64) error
+}
+
 // write models the input to a write operation
 type write struct {
 	buf []byte     // variable size read buffer
@@ -76,7 +85,7 @@ type shard struct {
 	writes   chan write    // channel for writes
 	index    uint8         // index of the shard
 	datasize int           // max size of blobs
-	file     *os.File      // the file handle the shard is writing data to
+	file     shardFile     // the file handle the shard is writing data to
 	slots    *slots        // component keeping track of freed slots
 	quit     chan struct{} // channel to signal quitting
 }
