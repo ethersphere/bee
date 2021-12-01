@@ -75,15 +75,6 @@ jobs:
         run: beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Sleep for time allowance to replenish
         run: sleep 2
-      - name: Test pss
-        id: pss
-        run: beekeeper check --cluster-name local-dns --checks=ci-pss
-      - name: Test soc
-        id: soc
-        run: beekeeper check --cluster-name local-dns --checks=ci-soc
-      - name: Test pushsync (chunks)
-        id: pushsync-chunks-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
@@ -102,6 +93,15 @@ jobs:
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-7
         run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test pss
+        id: pss
+        run: beekeeper check --cluster-name local-dns --checks=ci-pss
+      - name: Test soc
+        id: soc
+        run: beekeeper check --cluster-name local-dns --checks=ci-soc
+      - name: Test pushsync (chunks)
+        id: pushsync-chunks-1
+        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
       - name: Test retrieval
         id: retrieval
         run: beekeeper check --cluster-name local-dns --checks=ci-retrieval

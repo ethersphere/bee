@@ -190,6 +190,8 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 		batchFactor = defaultBatchFactor
 	}
 
+	l.logger.Debugf("listener: batch factor %d", batchFactor)
+
 	synced := make(chan struct{})
 	closeOnce := new(sync.Once)
 	paged := make(chan struct{}, 1)
