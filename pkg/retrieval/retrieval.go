@@ -130,6 +130,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		resultChan := make(chan retrievalResult, 1)
 		doneChan := make(chan struct{})
+		defer close(doneChan)
 
 		for {
 
@@ -140,6 +141,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				allowedRetrieves--
 
 				s.metrics.PeerRequestCounter.Inc()
+
+				// create a new context without cancelation but
+				// set the tracing span to the new context from the context of the first caller
+				ctx := tracing.WithContext(context.Background(), tracing.FromContext(ctx))
 
 				// get the tracing span
 				span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
@@ -170,7 +175,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 				if res.retrieved {
 					if res.err == nil {
-						close(doneChan)
 						return res.chunk, nil
 					}
 					if !res.peer.IsZero() {

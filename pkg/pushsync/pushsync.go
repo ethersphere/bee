@@ -351,6 +351,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	resultChan := make(chan receiptResult, 1)
 	doneChan := make(chan struct{})
+	defer close(doneChan)
 
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -420,7 +421,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
 			if result.err == nil {
-				close(doneChan)
 				return result.receipt, nil
 			}
 
