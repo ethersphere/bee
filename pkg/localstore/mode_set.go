@@ -54,7 +54,7 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	}
 
 	batch := new(leveldb.Batch)
-	var committedLocations []*sharky.Location
+	var committedLocations []sharky.Location
 
 	// variables that provide information for operations
 	// to be done after write batch function successfully executes
@@ -123,7 +123,7 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	}
 
 	for _, l := range committedLocations {
-		db.sharky.Release(ctx, *l)
+		db.sharky.Release(ctx, l)
 	}
 
 	for po := range triggerPullFeed {

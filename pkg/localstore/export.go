@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -58,6 +57,8 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		return 0, err
 	}
 
+	ctx := context.Background()
+
 	err = db.retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 
 		loc, err := sharky.LocationFromBinary(item.Location)
@@ -65,10 +66,7 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 			return false, err
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-
-		data, err := db.sharky.Read(ctx, *loc)
+		data, err := db.sharky.Read(ctx, loc)
 		if err != nil {
 			return false, err
 		}

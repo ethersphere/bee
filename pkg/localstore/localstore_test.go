@@ -477,7 +477,7 @@ func validateData(t *testing.T, db *DB, item shed.Item, data []byte) {
 	if err != nil {
 		t.Fatal("failed reading sharky location", err)
 	}
-	buf, err := db.sharky.Read(context.TODO(), *loc)
+	buf, err := db.sharky.Read(context.TODO(), loc)
 	if err != nil {
 		t.Fatal("failed reading data from sharky", err)
 	}

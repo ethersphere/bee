@@ -50,9 +50,9 @@ func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	return exist, err
 }
 
-type releaseLocations []*sharky.Location
+type releaseLocations []sharky.Location
 
-func (r *releaseLocations) add(loc *sharky.Location) {
+func (r *releaseLocations) add(loc sharky.Location) {
 	*r = append(*r, loc)
 }
 
@@ -214,7 +214,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	}
 
 	for _, v := range *releaseLocs {
-		db.sharky.Release(ctx, *v)
+		db.sharky.Release(ctx, v)
 	}
 
 	for po := range triggerPullFeed {
