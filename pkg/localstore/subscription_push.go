@@ -103,7 +103,7 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 					if err != nil {
 						return true, err
 					}
-					itemData, err := db.sharky.Read(ctx, *loc)
+					itemData, err := db.sharky.Read(ctx, loc)
 					if err != nil {
 						return true, err
 					}

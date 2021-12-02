@@ -166,7 +166,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, false, err
 	}
 
-	locations := make([]*sharky.Location, 0, len(candidates))
+	locations := make([]sharky.Location, 0, len(candidates))
 
 	// get rid of dirty entries
 	for _, item := range candidates {
@@ -228,7 +228,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	}
 
 	for _, loc := range locations {
-		db.sharky.Release(db.ctx, *loc)
+		db.sharky.Release(db.ctx, loc)
 	}
 
 	return collectedCount, done, nil
