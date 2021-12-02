@@ -216,6 +216,7 @@ func (s *Service) retrieveChunk(ctx context.Context, resultChan chan retrievalRe
 		select {
 		case resultChan <- retrievalResult{peer: peer, err: err, retrieved: retrieved, chunk: chunk}:
 		case <-doneChan:
+			s.metrics.DuplicateRetrieval.Inc()
 		}
 	}()
 
