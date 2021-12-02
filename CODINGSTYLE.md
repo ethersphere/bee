@@ -73,10 +73,9 @@ Prefer american spellings over British spellings, avoid Latin abbreviations.
 
 ## Code Formatting
 
-- Using something like `gci` to deterministically sort imports.
-- Consider enabling some style linters, at least in the local profile.
-- Keep the size of functions so they fit whithin a screen.
-- Keep line lengths reasonable (lll).
+- Keep line length, argument count and function size reasonable.
+- Run `make lint-style` command to lint the codebase using a set of style linters.
+- Run `make format FOLDER=pkg/mypackage` to format the code using `gci` and `gfumpt` formatters.
 
 ## Unused Names
 

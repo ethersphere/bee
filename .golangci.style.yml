@@ -1,0 +1,50 @@
+issues:
+  # Show only new issues: if there are unstaged changes or untracked files,
+  # only those changes are analyzed, else only changes in HEAD~ are analyzed.
+  new: true
+
+# options for analysis running
+run:
+  # default concurrency is a available CPU number
+  concurrency: 4
+
+  # timeout for analysis, e.g. 30s, 5m, default is 1m
+  timeout: 1m
+
+  # exit code when at least one issue was found, default is 1
+  issues-exit-code: 1
+
+  # include test files or not, default is true
+  tests: false
+
+  # default is true. Enables skipping of directories:
+  #   vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
+  skip-dirs-use-default: true
+
+linters:
+  fast: false
+  disable-all: true
+  enable:
+    - errname
+    - dogsled
+    - maligned
+    - megacheck
+    - govet
+    - godox
+    - goimports
+    - golint
+    - lll
+    - whitespace
+    - stylecheck
+    - nlreturn
+    - wsl
+    - godot
+    - dupl
+    - depguard
+    - errcheck
+    - funlen
+    # - gofumpt
+    # - gochecknoglobals
+    # - gochecknoinits
+    # - gomnd
+    # - wrapcheck
