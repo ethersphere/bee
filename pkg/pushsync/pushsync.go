@@ -88,11 +88,11 @@ type PushSync struct {
 }
 
 type receiptResult struct {
-	pushTime  time.Time
-	peer      swarm.Address
-	receipt   *pb.Receipt
-	attempted bool
-	err       error
+	pushTime time.Time
+	peer     swarm.Address
+	receipt  *pb.Receipt
+	pushed   bool
+	err      error
 }
 
 func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
@@ -335,13 +335,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	var (
 		// limits "attempted" requests, see pushPeer when a request becomes attempted
-		allowedAttempts = 1
+		allowedPushes = 1
 		// limits total requests, irregardless of "attempted"
 		allowedRetries = maxPeers
 	)
 
 	if origin {
-		allowedAttempts = maxAttempts
+		allowedPushes = maxAttempts
 	}
 
 	var (
@@ -351,6 +351,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	resultChan := make(chan receiptResult, 1)
 	doneChan := make(chan struct{})
+	defer close(doneChan)
 
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -386,11 +387,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	for {
 		select {
+		case <-ctx.Done():
+			return nil, ErrNoPush
 		case <-timer.C:
 
 			allowedRetries--
 			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
-			allowedAttempts--
+			allowedPushes--
 
 			peer, err := nextPeer()
 			if err != nil {
@@ -401,14 +404,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			skipPeers = append(skipPeers, peer)
 
-			ctxd, cancel := context.WithCancel(ctx)
-			// cancel only after defaultTTL to allow pushPeer to fully complete for inflight requests
-			time.AfterFunc(defaultTTL, cancel)
-
-			go ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
+			go func() {
+				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
+				defer cancel()
+				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
+			}()
 
 			// reached the limit, do not set timer to retry
-			if allowedRetries <= 0 || allowedAttempts <= 0 {
+			if allowedRetries <= 0 || allowedPushes <= 0 {
 				continue
 			}
 
@@ -420,7 +423,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
 			if result.err == nil {
-				close(doneChan)
 				return result.receipt, nil
 			}
 
@@ -428,8 +430,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
 
 			// pushPeer returned early, do not count as an attempt
-			if !result.attempted {
-				allowedAttempts++
+			if !result.pushed {
+				allowedPushes++
 			}
 
 			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) {
@@ -438,7 +440,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
 			}
 
-			if allowedRetries <= 0 || allowedAttempts <= 0 {
+			if allowedRetries <= 0 || allowedPushes <= 0 {
 				return nil, ErrNoPush
 			}
 
@@ -464,15 +466,15 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResult, doneChan <-chan struct{}, peer swarm.Address, ch swarm.Chunk, origin bool) {
 
 	var (
-		err       error
-		receipt   pb.Receipt
-		attempted bool
-		now       = time.Now()
+		err     error
+		receipt pb.Receipt
+		pushed  bool
+		now     = time.Now()
 	)
 
 	defer func() {
 		select {
-		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, attempted: attempted, receipt: &receipt}:
+		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, pushed: pushed, receipt: &receipt}:
 		case <-doneChan:
 			ps.metrics.DuplicateReceipt.Inc()
 		}
@@ -515,7 +517,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 
 	ps.metrics.TotalSent.Inc()
 
-	attempted = true
+	pushed = true
 
 	// if you manage to get a tag, just increment the respective counter
 	t, err := ps.tagger.Get(ch.TagID())
