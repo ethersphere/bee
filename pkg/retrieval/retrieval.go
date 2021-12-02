@@ -245,6 +245,7 @@ func (s *Service) retrieveChunk(ctx context.Context, resultChan chan retrievalRe
 	creditAction, err := s.accounting.PrepareCredit(peer, chunkPrice, originated)
 	if err != nil {
 		sp.AddOverdraft(peer)
+		return
 	}
 	defer creditAction.Cleanup()
 
