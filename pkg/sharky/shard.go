@@ -7,6 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 )
 
@@ -34,6 +35,11 @@ func (l *Location) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
+var (
+	errBufferTooSmall = errors.New("buffer is too small")
+	errBufferOverflow = errors.New("value overflow")
+)
+
 func (l *Location) UnmarshalBinary(buf []byte) error {
 	l.Shard = buf[0]
 	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
@@ -41,13 +47,13 @@ func (l *Location) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-func LocationFromBinary(buf []byte) (*Location, error) {
+func LocationFromBinary(buf []byte) (Location, error) {
 	l := new(Location)
 	err := l.UnmarshalBinary(buf)
 	if err != nil {
-		return nil, err
+		return Location{}, err
 	}
-	return l, nil
+	return *l, nil
 }
 
 type shardFile interface {
