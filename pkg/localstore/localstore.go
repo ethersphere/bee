@@ -619,11 +619,11 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 // Close closes the underlying database.
 func (db *DB) Close() (err error) {
 	close(db.close)
+	db.cancel()
 
 	// wait for all handlers to finish
 	done := make(chan struct{})
 	go func() {
-		db.cancel()
 		db.updateGCWG.Wait()
 		// wait for gc worker to
 		// return before closing the shed
