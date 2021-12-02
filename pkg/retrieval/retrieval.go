@@ -167,23 +167,20 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 			case res := <-resultChan:
 
-				if errors.Is(res.err, topology.ErrNotFound) {
-					if sp.Saturated() {
-						// if no peer is available, and none skipped temporarily
-						s.logger.Tracef("retrieval: failed to get chunk %s", addr)
-						return nil, storage.ErrNotFound
-					}
+				if errors.Is(res.err, topology.ErrNotFound) && sp.Saturated() {
+					// if no peer is available, and none skipped temporarily
+					s.logger.Tracef("retrieval: failed to get chunk %s", addr)
+					return nil, storage.ErrNotFound
 				}
 
-				if res.retrieved {
-					if res.err == nil {
-						return res.chunk, nil
-					}
-					if !res.peer.IsZero() {
-						s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, res.peer, res.err)
-					}
-				} else {
+				if res.err == nil {
+					return res.chunk, nil
+				}
+
+				if !res.retrieved {
 					allowedRetrieves++
+				} else if !res.peer.IsZero() {
+					s.logger.Debugf("retrieval: failed to get chunk %s from peer %s: %v", addr, res.peer, res.err)
 				}
 
 				if allowedRetries <= 0 || allowedRetrieves <= 0 {
