@@ -349,7 +349,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		skipPeers   []swarm.Address
 	)
 
-	resultChan := make(chan receiptResult, 1)
+	resultChan := make(chan receiptResult)
 	doneChan := make(chan struct{})
 	defer close(doneChan)
 
