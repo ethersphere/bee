@@ -128,7 +128,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		timer := time.NewTimer(0)
 		defer timer.Stop()
 
-		resultChan := make(chan retrievalResult, 1)
+		resultChan := make(chan retrievalResult)
 		doneChan := make(chan struct{})
 		defer close(doneChan)
 
