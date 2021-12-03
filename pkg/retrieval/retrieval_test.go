@@ -422,7 +422,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		// NOTE: must be more than retry duration
 		// (here one second more)
-		server1ResponseDelayDuration := 6 * time.Second
+		server1ResponseDelayDuration := 3 * time.Second
 
 		ranOnce := true
 		ranMux := sync.Mutex{}
