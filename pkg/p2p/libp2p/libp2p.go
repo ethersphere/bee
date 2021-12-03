@@ -211,11 +211,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
 	}
 
+	flag := false
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	if _, err = autonat.New(h, options...); err != nil {
-		return nil, fmt.Errorf("autonat: %w", err)
+	if flag {
+		if _, err = autonat.New(h, options...); err != nil {
+			return nil, fmt.Errorf("autonat: %w", err)
+		}
 	}
 
 	var advertisableAddresser handshake.AdvertisableAddressResolver
