@@ -153,7 +153,6 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 	}()
 
 	id := addr.String() + p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
-
 	r.recordsMu.Lock()
 	defer r.recordsMu.Unlock()
 
