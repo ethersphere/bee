@@ -137,12 +137,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		defer close(doneChan)
 
 		for {
-
 			select {
 			case <-ctx.Done():
 				return nil, storage.ErrNotFound
 			case <-timer.C:
-
 				allowedRetries--
 				allowedRequests--
 
@@ -160,7 +158,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					// cancel the goroutine just with the timeout
 					ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 					defer cancel()
-
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
 					select {
 					case resultChan <- retrievalResult{peer: peer, err: err, requested: requested, chunk: chunk}:
@@ -173,11 +170,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				if allowedRetries <= 0 || allowedRequests <= 0 {
 					continue // we don't return here to allow results to be read from the result chan
 				}
-
 				timer.Reset(p90TTL)
 
 			case res := <-resultChan:
-
 				if errors.Is(res.err, topology.ErrNotFound) && sp.Saturated() {
 					// if no peer is available, and none skipped temporarily
 					s.logger.Tracef("retrieval: failed to get chunk %s", addr)
@@ -227,7 +222,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		allowUpstream = false
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, p90TTL)
+	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
 	peer, err = s.closestPeer(addr, sp.All(), allowUpstream)
 	if err != nil {
@@ -262,7 +257,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 			go stream.FullClose()
 		}
 	}()
-
 	w, r := protobuf.NewWriterAndReader(stream)
 	if err := w.WriteMsgWithContext(ctx, &pb.Request{
 		Addr: addr.Bytes(),
