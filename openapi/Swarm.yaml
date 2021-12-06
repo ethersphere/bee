@@ -198,6 +198,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
+        description: Chunk binary data that has to have at least 8 bytes.
         content:
           application/octet-stream:
             schema:
@@ -208,7 +209,9 @@ paths:
           description: Ok
           headers:
             "swarm-tag":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
+              description: Tag UID if it was passed to the request `swarm-tag` header.
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           content:
             application/json:
               schema:
