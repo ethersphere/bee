@@ -4,6 +4,7 @@
   - [Consistent Spelling](#consistent-spelling)
   - [Code Formatting](#code-formatting)
   - [Unused Names](#unused-names)
+  - [Naked returns and Named Parameters](#naked-returns-and-named-parameters)
   - [Parallel Test Execution](#parallel-test-execution)
   - [Group Declarations by Meaning](#group-declarations-by-meaning)
   - [Make Zero-value Useful](#make-zero-value-useful)
@@ -112,6 +113,42 @@ func method(string) {
 </tbody></table>
 
 Note: there might be a linter to take care of this
+
+## Naked returns and Named Parameters
+
+Don't name result parameters just to avoid declaring a var inside the function; that trades off a minor implementation brevity at the cost of unnecessary API verbosity.
+
+Naked returns are okay if the function is a handful of lines. Once it's a medium sized function, be explicit with your return values.
+
+```go
+func collect(birds ...byte) (ducks []byte) {
+  for _, bird := range birds {
+    if isDuck(bird) {
+      ducks = append(ducks, bird)
+    }
+  }
+
+  return
+}
+```
+
+*Corollary:* it's not worth it to name result parameters just because it enables you to use naked returns. Clarity of docs is always more important than saving a line or two in your function.
+
+Finally, in some cases you need to name a result parameter in order to change it in a deferred closure. That is always OK.
+
+```go
+func getID() (id int, err error) {
+   defer func() {
+      if err != nil {
+         err = fmt.Errorf("some extra info: %v", err)
+      }
+   }
+
+   id, err = /* call to db */
+
+   return
+}
+```
 
 ## Parallel Test Execution
 
