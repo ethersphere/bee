@@ -175,6 +175,12 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			continue
 		}
 
+		i, err := db.retrievalDataIndex.Get(item)
+		if err != nil {
+			return 0, false, err
+		}
+		item.Location = i.Location
+
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
