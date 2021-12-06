@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/crypto/sha3"
 )
@@ -38,6 +39,7 @@ type encryptedKey struct {
 	Address string    `json:"address"`
 	Crypto  keyCripto `json:"crypto"`
 	Version int       `json:"version"`
+	Id      string    `json:"id"`
 }
 
 type keyCripto struct {
@@ -75,6 +77,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
 		Address: hex.EncodeToString(addr),
 		Crypto:  *kc,
 		Version: keyVersion,
+		Id:      uuid.NewString(),
 	})
 }
 
@@ -112,7 +115,10 @@ func encryptData(data, password []byte) (*keyCripto, error) {
 	if err != nil {
 		return nil, err
 	}
-	mac := sha3.Sum256(append(derivedKey[16:32], cipherText...))
+	mac, err := crypto.LegacyKeccak256(append(derivedKey[16:32], cipherText...))
+	if err != nil {
+		return nil, err
+	}
 
 	return &keyCripto{
 		Cipher:     "aes-128-ctr",
