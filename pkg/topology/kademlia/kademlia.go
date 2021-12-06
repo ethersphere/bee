@@ -238,22 +238,14 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 			// Connect to closest known peer which we haven't tried connecting to recently.
 
-			_, err := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+k.bitSuffixLength+1))
-			if err != nil {
-				if !errors.Is(err, topology.ErrNotFound) {
-					return
-				}
-			} else {
+			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+k.bitSuffixLength+1))
+			if exists {
 				continue
 			}
 
-			closestKnownPeer, err := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+k.bitSuffixLength+1))
-			if err != nil {
-				if errors.Is(err, topology.ErrNotFound) {
-					continue
-				} else {
-					return
-				}
+			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+k.bitSuffixLength+1))
+			if exists {
+				continue
 			}
 
 			if k.connectedPeers.Exists(closestKnownPeer) {
@@ -1179,18 +1171,18 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFun
 	return closest, nil
 }
 
-func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc, minPO uint8) (swarm.Address, error) {
+func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc, minPO uint8) (swarm.Address, bool) {
 	for _, peer := range peers {
 		if spf(peer) {
 			continue
 		}
 
 		if swarm.ExtendedProximity(peer.Bytes(), addr.Bytes()) >= minPO {
-			return peer, nil
+			return peer, true
 		}
 	}
 
-	return swarm.ZeroAddress, topology.ErrNotFound
+	return swarm.ZeroAddress, false
 }
 
 func closestPeerFunc(closest *swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) func(peer swarm.Address, po uint8) (bool, bool, error) {
