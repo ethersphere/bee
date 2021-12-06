@@ -519,7 +519,7 @@ func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (
 
 func (s *Service) checkAvailableChunk(ctx context.Context, addr swarm.Address, sp *skipPeers) (attempt bool, err error) {
 
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
 
 	peer, err := s.farthestPeer(addr, sp.All())
