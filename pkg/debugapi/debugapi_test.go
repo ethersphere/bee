@@ -210,8 +210,8 @@ func TestServer_Configure(t *testing.T) {
 			PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PSSPublicKey)),
 		}),
 	)
-	jsonhttptest.Request(t, client, http.MethodGet, "/info", http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(debugapi.InfoResponse{
+	jsonhttptest.Request(t, client, http.MethodGet, "/node", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.NodeResponse{
 			BeeMode:     beeMode.String(),
 			GatewayMode: gatewayMode,
 		}),

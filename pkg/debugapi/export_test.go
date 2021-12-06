@@ -6,7 +6,7 @@ package debugapi
 
 type (
 	StatusResponse                    = statusResponse
-	InfoResponse                      = infoResponse
+	NodeResponse                      = nodeResponse
 	PingpongResponse                  = pingpongResponse
 	PeerConnectResponse               = peerConnectResponse
 	PeersResponse                     = peersResponse

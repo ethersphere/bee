@@ -18,7 +18,7 @@ const (
 	DevMode
 )
 
-type infoResponse struct {
+type nodeResponse struct {
 	BeeMode     string `json:"beeMode"`
 	GatewayMode bool   `json:"gatewayMode"`
 }
@@ -35,9 +35,9 @@ func (b BeeNodeMode) String() string {
 	return "unknown"
 }
 
-// infoGetHandler gives back information about the Bee node configuration.
-func (s *Service) infoGetHandler(w http.ResponseWriter, r *http.Request) {
-	jsonhttp.OK(w, infoResponse{
+// nodeGetHandler gives back information about the Bee node configuration.
+func (s *Service) nodeGetHandler(w http.ResponseWriter, r *http.Request) {
+	jsonhttp.OK(w, nodeResponse{
 		BeeMode:     s.beeMode.String(),
 		GatewayMode: s.gatewayMode,
 	})
