@@ -279,7 +279,7 @@ paths:
         default:
           description: Default response
 
-  "/info":
+  "/node":
     get:
       summary: Get information about the node
       tags:
@@ -290,7 +290,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Info"
+                $ref: "SwarmCommon.yaml#/components/schemas/Node"
         default:
           description: Default response
 

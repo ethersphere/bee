@@ -364,7 +364,7 @@ components:
         rtt:
           $ref: "#/components/schemas/Duration"
 
-    Info:
+    Node:
       type: object
       properties:
         beeMode:
