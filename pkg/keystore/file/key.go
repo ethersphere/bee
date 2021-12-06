@@ -151,7 +151,14 @@ func decryptData(v keyCripto, password string) ([]byte, error) {
 	}
 	calculatedMAC := sha3.Sum256(append(derivedKey[16:32], cipherText...))
 	if !bytes.Equal(calculatedMAC[:], mac) {
-		return nil, keystore.ErrInvalidPassword
+		// if this fails we might be trying to load an ethereum V3 keyfile
+		calculatedMACEth, err := crypto.LegacyKeccak256(append(derivedKey[16:32], cipherText...))
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(calculatedMACEth[:], mac) {
+			return nil, keystore.ErrInvalidPassword
+		}
 	}
 
 	iv, err := hex.DecodeString(v.CipherParams.IV)
