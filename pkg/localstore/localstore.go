@@ -64,7 +64,7 @@ var (
 )
 
 const (
-	// 32 * 312500 chunks = 1000000 chunks (40GB)
+	// 32 * 312500 chunks = 10000000 chunks (40GB)
 	// currently this size is enforced by the localstore
 	sharkyNoOfShards    int    = 32
 	sharkyPerShardLimit uint32 = 312500
@@ -341,6 +341,34 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 
+	// instantiate sharky instance
+	var sharkyBase fs.FS
+	if path == "" {
+		// No need for recovery for in-mem sharky
+		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
+	} else {
+		sharkyBasePath := filepath.Join(path, "sharky")
+		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+			err := os.Mkdir(sharkyBasePath, 0775)
+			if err != nil {
+				return nil, err
+			}
+		}
+		sharkyBase = &dirFS{basedir: sharkyBasePath}
+
+		err = safeInit(path, sharkyBasePath, db)
+		if err != nil {
+			db.logger.Errorf("safe sharky initialization failed %w", err)
+			return nil, err
+		}
+		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
+	}
+
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	if err != nil {
+		return nil, err
+	}
+
 	// Identify current storage schema by arbitrary name.
 	db.schemaName, err = db.shed.NewStringField("schema-name")
 	if err != nil {
@@ -371,34 +399,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// reserve size
 	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
-	if err != nil {
-		return nil, err
-	}
-
-	// instantiate sharky instance
-	var sharkyBase fs.FS
-	if path == "" {
-		// No need for recovery for in-mem sharky
-		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
-	} else {
-		sharkyBasePath := filepath.Join(path, "sharky")
-		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-			err := os.Mkdir(sharkyBasePath, 0775)
-			if err != nil {
-				return nil, err
-			}
-		}
-		sharkyBase = &dirFS{basedir: sharkyBasePath}
-
-		err = safeInit(path, sharkyBasePath, db)
-		if err != nil {
-			db.logger.Errorf("safe sharky initialization failed %w", err)
-			return nil, err
-		}
-		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
-	}
-
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
 	if err != nil {
 		return nil, err
 	}
