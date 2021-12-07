@@ -422,7 +422,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		// NOTE: must be more than retry duration
 		// (here one second more)
-		server1ResponseDelayDuration := 6 * time.Second
+		server1ResponseDelayDuration := 2 * time.Second
 
 		ranOnce := true
 		ranMux := sync.Mutex{}
@@ -465,12 +465,12 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		clientServer1Balance, _ := clientMockAccounting.Balance(serverAddress1)
 		if clientServer1Balance.Int64() != 0 {
-			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer1Balance)
+			t.Fatalf("unexpected balance on client. want %d got %d", 0, clientServer1Balance)
 		}
 
 		clientServer2Balance, _ := clientMockAccounting.Balance(serverAddress2)
 		if clientServer2Balance.Int64() != -int64(defaultPrice) {
-			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer2Balance)
+			t.Fatalf("unexpected balance on client. want %d got %d", -int64(defaultPrice), clientServer2Balance)
 		}
 
 		// wait and check balance again
@@ -479,12 +479,12 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		clientServer1Balance, _ = clientMockAccounting.Balance(serverAddress1)
 		if clientServer1Balance.Int64() != -int64(defaultPrice) {
-			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer1Balance)
+			t.Fatalf("unexpected balance on client. want %d got %d", -int64(defaultPrice), clientServer1Balance)
 		}
 
 		clientServer2Balance, _ = clientMockAccounting.Balance(serverAddress2)
 		if clientServer2Balance.Int64() != -int64(defaultPrice) {
-			t.Fatalf("unexpected balance on client. want %d got %d", -defaultPrice, clientServer2Balance)
+			t.Fatalf("unexpected balance on client. want %d got %d", -int64(defaultPrice), clientServer2Balance)
 		}
 	})
 
