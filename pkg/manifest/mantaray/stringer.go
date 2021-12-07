@@ -11,7 +11,7 @@ import (
 	"strconv"
 )
 
-//nolint,errcheck
+//nolint:errcheck
 func (n *Node) String() string {
 	buf := bytes.NewBuffer(nil)
 	io.WriteString(buf, tableCharsMap["bottom-left"])
@@ -22,7 +22,7 @@ func (n *Node) String() string {
 	return buf.String()
 }
 
-//nolint,errcheck
+//nolint:errcheck
 func nodeStringWithPrefix(n *Node, prefix string, writer io.Writer) {
 	io.WriteString(writer, prefix)
 	io.WriteString(writer, tableCharsMap["left-mid"])
