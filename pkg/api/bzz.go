@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -282,21 +284,56 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
+		var mtx sync.Mutex
+		var wg sync.WaitGroup
+		var ll []feeds.Lookup
 		if l, err := s.manifestFeed(ctx, m); err == nil {
-			//we have a feed manifest here
-			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
-			if err != nil {
-				logger.Debugf("bzz download: feed lookup: %v", err)
-				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, "feed not found")
-				return
+			ll = append(ll, l)
+			for i := 0; i < 4; i++ {
+				lll, _ := s.manifestFeed(ctx, m)
+				ll = append(ll, lll)
 			}
-			if ch == nil {
-				logger.Debugf("bzz download: feed lookup: no updates")
-				logger.Error("bzz download: feed lookup")
-				jsonhttp.NotFound(w, "no update found")
-				return
+			var results []uint64
+			var resultsCh []swarm.Chunk
+			wg.Add(len(ll))
+			for _, lookup := range ll {
+				go func(f feeds.Lookup) {
+					ctxd, canceld := context.WithTimeout(ctx, 3*time.Second)
+					defer canceld()
+					defer wg.Done()
+					ch, cur, _, err := f.At(ctxd, time.Now().Unix(), 0)
+					if err != nil {
+						logger.Debugf("bzz download: feed lookup: %v", err)
+						logger.Error("bzz download: feed lookup")
+						jsonhttp.NotFound(w, "feed not found")
+						return
+					}
+					if ch == nil {
+						logger.Debugf("bzz download: feed lookup: no updates")
+						logger.Error("bzz download: feed lookup")
+						jsonhttp.NotFound(w, "no update found")
+						return
+					}
+					buf, _ := cur.MarshalBinary()
+					idx := binary.BigEndian.Uint64(buf)
+					mtx.Lock()
+					results = append(results, idx)
+					resultsCh = append(resultsCh, ch)
+					mtx.Unlock()
+				}(lookup)
 			}
+
+			wg.Wait()
+			max := uint64(0)
+			maxI := 0
+			for i, v := range results {
+				logger.Infof("feed lookup value %d", v)
+				if v > max {
+					maxI = i
+					max = v
+				}
+			}
+			ch := resultsCh[maxI]
 			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
 				logger.Debugf("bzz download: parse feed update: %v", err)
@@ -306,21 +343,22 @@ FETCH:
 			}
 			address = ref
 			feedDereferenced = true
-			curBytes, err := cur.MarshalBinary()
-			if err != nil {
-				s.logger.Debugf("bzz download: marshal feed index: %v", err)
-				s.logger.Error("bzz download: marshal index")
-				jsonhttp.InternalServerError(w, "marshal index")
-				return
-			}
+			//curBytes, err := cur.MarshalBinary()
+			//if err != nil {
+			//s.logger.Debugf("bzz download: marshal feed index: %v", err)
+			//s.logger.Error("bzz download: marshal index")
+			//jsonhttp.InternalServerError(w, "marshal index")
+			//return
+			//}
 
-			w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
+			//w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
 			// this header might be overriding others. handle with care. in the future
 			// we should implement an append functionality for this specific header,
 			// since different parts of handlers might be overriding others' values
 			// resulting in inconsistent headers in the response.
 			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
 			goto FETCH
+
 		}
 	}
 
