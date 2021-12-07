@@ -292,6 +292,25 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		withinRadiusFn = withinRadius
 	}
 
+	// instantiate sharky instance
+	var sharkyBase fs.FS
+	if path == "" {
+		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
+	} else {
+		sharkyBasePath := filepath.Join(path, "sharky")
+		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+			err := os.Mkdir(sharkyBasePath, 0775)
+			if err != nil {
+				return nil, err
+			}
+		}
+		sharkyBase = &dirFS{basedir: sharkyBasePath}
+	}
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	if err != nil {
+		return nil, err
+	}
+
 	db.shed, err = shed.NewDB(path, shedOpts)
 	if err != nil {
 		return nil, err
@@ -327,25 +346,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// reserve size
 	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
-	if err != nil {
-		return nil, err
-	}
-
-	// instantiate sharky instance
-	var sharkyBase fs.FS
-	if path == "" {
-		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
-	} else {
-		sharkyBasePath := filepath.Join(path, "sharky")
-		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-			err := os.Mkdir(sharkyBasePath, 0775)
-			if err != nil {
-				return nil, err
-			}
-		}
-		sharkyBase = &dirFS{basedir: sharkyBasePath}
-	}
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
 	if err != nil {
 		return nil, err
 	}
