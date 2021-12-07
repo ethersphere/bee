@@ -85,7 +85,6 @@ func NewRecovery(basedir string, shardCnt int, limit int64, freeslots []Location
 
 	}
 	return sh, nil
-
 }
 
 // Close closes each shard

@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -750,16 +749,4 @@ func newFileLock(path string) (fl *os.File, err error) {
 	}
 
 	return f, nil
-}
-
-func setFileLock(f *os.File, readOnly, lock bool) error {
-	how := syscall.LOCK_UN
-	if lock {
-		if readOnly {
-			how = syscall.LOCK_SH
-		} else {
-			how = syscall.LOCK_EX
-		}
-	}
-	return syscall.Flock(int(f.Fd()), how|syscall.LOCK_NB)
 }
