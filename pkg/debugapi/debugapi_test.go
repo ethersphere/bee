@@ -90,7 +90,7 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	swapserv := swapmock.New(o.SwapOpts...)
 	transaction := transactionmock.New(o.TransactionOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction, false, nil)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction, false, nil, false, debugapi.FullMode)
 	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract, o.Traverser)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
@@ -157,7 +157,9 @@ func TestServer_Configure(t *testing.T) {
 	swapserv := swapmock.New(o.SwapOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	transaction := transactionmock.New(o.TransactionOpts...)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, false, nil)
+	gatewayMode := false
+	beeMode := debugapi.FullMode
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, false, nil, gatewayMode, beeMode)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -206,6 +208,12 @@ func TestServer_Configure(t *testing.T) {
 			Ethereum:     o.EthereumAddress,
 			PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PublicKey)),
 			PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&o.PSSPublicKey)),
+		}),
+	)
+	jsonhttptest.Request(t, client, http.MethodGet, "/node", http.StatusOK,
+		jsonhttptest.WithExpectedJSONResponse(debugapi.NodeResponse{
+			BeeMode:     beeMode.String(),
+			GatewayMode: gatewayMode,
 		}),
 	)
 }

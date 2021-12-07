@@ -364,6 +364,20 @@ components:
         rtt:
           $ref: "#/components/schemas/Duration"
 
+    Node:
+      type: object
+      properties:
+        beeMode:
+          type: string
+          enum: [light, full, dev]
+          description: >
+            Gives back in what mode the Bee client has been started. The modes are mutually exclusive
+            * `light` - light node; does not participate in forwarding or storing chunks
+            * `full` - full node
+            * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
+        gatewayMode:
+          type: boolean
+
     Status:
       type: object
       properties:

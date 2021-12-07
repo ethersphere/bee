@@ -153,7 +153,8 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 		)
 
-		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction, o.Restricted, authenticator)
+		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction, o.Restricted, authenticator, false, debugapi.DevMode)
+
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -286,7 +287,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	apiService, _ := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, authenticator, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		GatewayMode:        false,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	})

@@ -71,6 +71,8 @@ type Service struct {
 	lightNodes         *lightnode.Container
 	blockTime          *big.Int
 	traverser          traversal.Traverser
+	beeMode            BeeNodeMode
+	gatewayMode        bool
 	// handler is changed in the Configure method
 	handler   http.Handler
 	handlerMu sync.RWMutex
@@ -85,7 +87,7 @@ type Service struct {
 // to expose /addresses, /health endpoints, Go metrics and pprof. It is useful to expose
 // these endpoints before all dependencies are configured and injected to have
 // access to basic debugging tools and /health endpoint.
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, restrict bool, auth authenticator) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, restrict bool, auth authenticator, gatewayMode bool, beeMode BeeNodeMode) *Service {
 	s := new(Service)
 	s.auth = auth
 	s.restricted = restrict
@@ -100,6 +102,8 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.transaction = transaction
 	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
+	s.beeMode = beeMode
+	s.gatewayMode = gatewayMode
 
 	s.setRouter(s.newBasicRouter())
 
