@@ -22,7 +22,6 @@ type metrics struct {
 	ChunkPrice            prometheus.Summary
 	TotalErrors           prometheus.Counter
 	ChunkRetrieveTime     prometheus.Histogram
-	DuplicateRetrieval    prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -73,12 +72,6 @@ func newMetrics() metrics {
 				Help:      "Histogram for time taken to retrieve a chunk.",
 			},
 		),
-		DuplicateRetrieval: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "duplicate_retrieval",
-			Help:      "Number of duplicate chunks received after first successful retrieval.",
-		}),
 	}
 }
 
