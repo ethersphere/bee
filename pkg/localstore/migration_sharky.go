@@ -23,12 +23,22 @@ const DBSchemaSharky = "sharky"
 func migrateSharky(db *DB) error {
 	db.logger.Debug("starting sharky migration. have patience, this might take a while...")
 	var (
-		start      = time.Now()
-		batch      = new(leveldb.Batch)
-		batchSize  = 10000 // TODO: Tweak the compaction (less often then batch write).
-		batchCount = 0
-		headerSize = 16 + postage.StampSize
+		start          = time.Now()
+		batch          = new(leveldb.Batch)
+		batchSize      = 10000
+		batchCount     = 0
+		headerSize     = 16 + postage.StampSize
+		compactionRate = 100
+		compactionSize = batchSize * compactionRate
 	)
+
+	compaction := func() (time.Duration, error) {
+		compactStart := time.Now()
+		if err := db.shed.Compact(); err != nil {
+			return 0, fmt.Errorf("leveldb compaction failed: %w", err)
+		}
+		return time.Since(compactStart), nil
+	}
 
 	retrievalDataIndex, err := db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Data", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
@@ -108,6 +118,7 @@ func migrateSharky(db *DB) error {
 		return err
 	}
 
+	var compactionTime time.Duration
 	var dirtyLocations []sharky.Location
 
 	db.logger.Debugf("starting to move entries with batch size %d", batchSize)
@@ -151,18 +162,26 @@ func migrateSharky(db *DB) error {
 			}
 			return fmt.Errorf("write batch: %w", err)
 		}
-
+		dirtyLocations = nil
 		db.logger.Debugf("flush ok; progress so far: %d chunks", batchCount)
 		batch.Reset()
-		db.logger.Debugf("triggering leveldb compaction...")
-		compactStart := time.Now()
-		if err = db.shed.Compact(); err != nil {
-			return fmt.Errorf("leveldb compaction failed: %w", err)
-		}
-		db.logger.Debugf("leveldb compaction done, took %s\n", time.Since(compactStart))
 
-		dirtyLocations = nil
+		if batchCount%compactionSize == 0 {
+			dur, err := compaction()
+			if err != nil {
+				return err
+			}
+			compactionTime += dur
+		}
 	}
+
+	dur, err := compaction()
+	if err != nil {
+		return err
+	}
+	compactionTime += dur
+
+	db.logger.Debugf("leveldb compaction took: %v", compactionTime)
 	db.logger.Debugf("done migrating to sharky. it took me %s to move %d chunks.", time.Since(start), batchCount)
 	return nil
 }
