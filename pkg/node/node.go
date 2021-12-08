@@ -583,7 +583,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	if !o.FullNodeMode {
 		minThreshold = big.NewInt(2 * lightRefreshRate)
-		maxThreshold = big.NewInt(24 * lightRefreshRate)
 	}
 
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
