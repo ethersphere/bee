@@ -173,7 +173,8 @@ type Options struct {
 
 const (
 	refreshRate                   = int64(4500000)
-	lightRefreshRate              = int64(450000)
+	lightFactor                   = 10
+	lightRefreshRate              = refreshRate / lightFactor
 	basePrice                     = 10000
 	postageSyncingStallingTimeout = 10 * time.Minute
 	postageSyncingBackoffTimeout  = 5 * time.Second
@@ -655,9 +656,32 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	}
 
+	minThreshold := big.NewInt(2 * refreshRate)
+	maxThreshold := big.NewInt(24 * refreshRate)
+
+	if !o.FullNodeMode {
+		minThreshold = big.NewInt(2 * lightRefreshRate)
+		maxThreshold = big.NewInt(24 * lightRefreshRate)
+	}
+
+	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
+	}
+
+	lightPaymentThreshold := new(big.Int).Div(paymentThreshold, big.NewInt(lightFactor))
+
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
+
+	if paymentThreshold.Cmp(maxThreshold) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
+	}
+
+	pricing := pricing.New(p2ps, logger, paymentThreshold, lightPaymentThreshold, minThreshold)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
@@ -680,6 +704,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
+		lightFactor,
 		p2ps,
 	)
 	if err != nil {
