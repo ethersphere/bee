@@ -67,7 +67,8 @@ const (
 	// 32 * 312500 chunks = 1000000 chunks (40GB)
 	// currently this size is enforced by the localstore
 	sharkyNoOfShards    int    = 32
-	sharkyPerShardLimit uint32 = 312500
+	sharkyPerShardLimit int64  = 312500
+	sharkyDirtyFileName string = ".DIRTY"
 )
 
 // DB is the local store implementation and holds
@@ -77,8 +78,8 @@ type DB struct {
 	// sharky instance
 	sharky *sharky.Store
 
-	flock *os.File // LOCK file handle
-	tags  *tags.Tags
+	fdirty *os.File // LOCK file handle
+	tags   *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
 	stateStore storage.StateStorer
@@ -347,15 +348,28 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			}
 		}
 		sharkyBase = &dirFS{basedir: sharkyBasePath}
-	}
 
-	/* TODO WIP
-	db.flock, err = newFileLock(filepath.Join(path, "LOCK"))
-	if err != nil {
 		// check whether file already existed, and if so, initiate recovery process
-		return nil, err
+		if isDirtyShutdown(path) {
+			//recovery
+			locOrErr, err := recovery(db)
+
+			if err != nil {
+				return nil, err
+			}
+
+			for range locOrErr {
+				// TODO move this to the right place
+			}
+
+		} else {
+			fdirty, err := createDirtyFile(path)
+			if err != nil {
+				return nil, err
+			}
+			db.fdirty = fdirty
+		}
 	}
-	*/
 
 	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
 	if err != nil {
@@ -659,12 +673,16 @@ func (db *DB) Close() (err error) {
 	if err = db.shed.Close(); err != nil {
 		return err
 	}
-	if err = db.flock.Close(); err != nil {
-		return err
+
+	if db.fdirty != nil {
+		if err = db.fdirty.Close(); err != nil {
+			return err
+		}
+		if err = os.Remove(db.fdirty.Name()); err != nil {
+			return err
+		}
 	}
-	if err = os.Remove(db.flock.Name()); err != nil {
-		return err
-	}
+
 	return nil
 }
 
@@ -771,18 +789,16 @@ func totalTimeMetric(metric prometheus.Counter, start time.Time) {
 
 }
 
-func newFileLock(path string) (fl *os.File, err error) {
-	var flag int
-	flag = os.O_CREATE | os.O_EXCL
-	f, err := os.OpenFile(path, flag, 0)
-	if os.IsNotExist(err) {
-		f, err = os.OpenFile(path, flag|os.O_CREATE, 0644)
-	}
-	if err != nil {
-		return nil, err
-	}
+func isDirtyShutdown(path string) bool {
+	_, err := os.Stat(filepath.Join(path, sharkyDirtyFileName))
+	return !os.IsNotExist(err)
+}
 
-	return f, nil
+func createDirtyFile(path string) (f *os.File, err error) {
+	path = filepath.Join(path, sharkyDirtyFileName)
+	f, err = os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0644)
+
+	return
 }
 
 func setFileLock(f *os.File, readOnly, lock bool) error {
