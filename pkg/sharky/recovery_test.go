@@ -42,10 +42,13 @@ func TestRecovery(t *testing.T) {
 		indexes[i] = uint32(i)
 	}
 	rest := indexes[:]
-	for n := size / 2; n > 0; n-- {
+	for n := size; n > size/2; n-- {
 		i := rand.Intn(n)
 		preserved[rest[i]] = false
 		rest = append(rest[:i], rest[i+1:]...)
+	}
+	if len(rest) != len(preserved) {
+		t.Fatalf("incorrect set sizes %d <> %d", len(rest), len(preserved))
 	}
 	for _, i := range rest {
 		preserved[i] = true
@@ -54,11 +57,10 @@ func TestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	// recover based on preserved map
-	s, err = sharky.New(dir, shards, shardSize)
+	r, err := sharky.NewRecovery(dir, shards, shardSize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := sharky.NewRecovery(s)
 	for i, add := range preserved {
 		if add {
 			if err := r.Add(locs[i]); err != nil {
@@ -77,13 +79,14 @@ func TestRecovery(t *testing.T) {
 	defer s.Close()
 	t.Run("preserved are found", func(t *testing.T) {
 		for i := range preserved {
-			data, err := s.Read(ctx, locs[int(i)])
+			loc := locs[int(i)]
+			data, err := s.Read(ctx, loc)
 			if err != nil {
 				t.Fatal(err)
 			}
 			j := binary.BigEndian.Uint32(data)
 			if i != j {
-				t.Fatalf("data not preserved at location %v. want %d, got %d", locs[int(j)], i, j)
+				t.Fatalf("data not preserved at location %v. want %d, got %d", loc, i, j)
 			}
 		}
 	})
@@ -91,9 +94,9 @@ func TestRecovery(t *testing.T) {
 	t.Run("correct number of free slots", func(t *testing.T) {
 		cctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-		data = []byte{0x0}
+		payload := []byte{0xff}
 		for {
-			loc, err := s.Write(cctx, data)
+			loc, err := s.Write(cctx, payload)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					break
@@ -123,12 +126,14 @@ func TestRecovery(t *testing.T) {
 	t.Run("not added preserved are overwritten", func(t *testing.T) {
 		for i, added := range preserved {
 			if !added {
-				data, err := s.Read(ctx, locs[int(i)])
+				loc := locs[int(i)]
+				loc.Length = 1
+				data, err := s.Read(ctx, loc)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(data) != 1 || data[0] != 0x0 {
-					t.Fatalf("incorrect data on freed location. want %x, got %x", 0x0, data)
+				if len(data) != 1 || data[0] != 0xff {
+					t.Fatalf("incorrect data on freed location %v. want %x, got %x", loc, 0x0, data)
 				}
 			}
 		}
@@ -139,7 +144,7 @@ func TestRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(data) != 1 || data[0] != 0x0 {
+			if len(data) != 1 || data[0] != 0xff {
 				t.Fatalf("incorrect data on freed location. want %x, got %x", 0x0, data)
 			}
 		}
