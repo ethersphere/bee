@@ -149,7 +149,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				defer span.Finish()
 
 				peerAttempt++
-				ticker.Reset(retrieveRetryIntervalDuration)
+				if origin {
+					ticker.Reset(retrieveRetryIntervalDuration)
+				}
 				s.metrics.PeerRequestCounter.Inc()
 				go func() {
 
