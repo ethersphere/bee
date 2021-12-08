@@ -82,6 +82,7 @@ func (sh *shard) process() {
 }
 
 func (sh *shard) close() error {
+	<-sh.slots.stopped
 	if err := sh.slots.save(); err != nil {
 		return err
 	}

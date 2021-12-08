@@ -6,24 +6,26 @@ import (
 )
 
 type slots struct {
-	data  []byte      // byteslice serving as bitvector: i-t bit set <>
-	size  uint32      // number of slots
-	limit uint32      // max number of items in the shard
-	head  uint32      // the first free slot
-	file  *os.File    // file to persist free slots across sessions
-	in    chan uint32 // incoming channel for free slots,
-	out   chan uint32 // outgoing channel for free slots
-	rest  chan uint32 // channel for freeing popped slots not yet written to
+	data    []byte        // byteslice serving as bitvector: i-t bit set <>
+	size    uint32        // number of slots
+	limit   uint32        // max number of items in the shard
+	head    uint32        // the first free slot
+	file    *os.File      // file to persist free slots across sessions
+	in      chan uint32   // incoming channel for free slots,
+	out     chan uint32   // outgoing channel for free slots
+	rest    chan uint32   // channel for freeing popped slots not yet written to
+	stopped chan struct{} // signal end of process loop before save
 }
 
 func newSlots(size uint32, file *os.File, limit uint32) *slots {
 	return &slots{
-		size:  size,
-		file:  file,
-		limit: limit,
-		in:    make(chan uint32),
-		out:   make(chan uint32),
-		rest:  make(chan uint32),
+		size:    size,
+		file:    file,
+		limit:   limit,
+		in:      make(chan uint32),
+		out:     make(chan uint32),
+		rest:    make(chan uint32),
+		stopped: make(chan struct{}),
 	}
 }
 
@@ -109,6 +111,7 @@ func (sl *slots) process(quit chan struct{}) {
 		for slot := range sl.rest {
 			sl.push(slot)
 		}
+		close(sl.stopped)
 	}()
 	var out chan uint32
 	var full bool
