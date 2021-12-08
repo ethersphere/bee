@@ -1,3 +1,19 @@
+// Copyright 2021 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package localstore
 
 import (
@@ -9,8 +25,11 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 )
 
-// recovery tries to recover a dirty database
-func recovery(db *DB) error {
+// recovery tries to recover a dirty database.
+// it returns a slice of the _taken_ locations in
+// sharky according to the items it sees in the retrieval
+// data index.
+func recovery(db *DB) ([]sharky.Location, error) {
 	// - go through all retrieval data index entries
 	// - find all used locations in sharky
 	// - return them so that sharky can be initialized with them
@@ -54,29 +73,30 @@ func recovery(db *DB) error {
 		},
 	})
 
-	// Persist gc size.
+	// gc size
 	gcSize, err := db.shed.NewUint64Field("gc-size")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// reserve size
 	reserveSize, err := db.shed.NewUint64Field("reserve-size")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	vr, err := reserveSize.Get()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	vc, err := reserveSize.Get()
+	vc, err := gcSize.Get()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// this operation is memory intensive. we will preallocate the
-	// minimum size of locations we expect to see.
+	// minimum size of locations we expect to see. this way we can keep
+	// the slice reallocations to a minimum.
 	usedLocations := make([]sharky.Location, 0, vr+vc)
 
 	retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -88,7 +108,7 @@ func recovery(db *DB) error {
 		return false, nil
 	}, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return usedLocations, nil
 }

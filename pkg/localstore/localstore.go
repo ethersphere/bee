@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -59,6 +58,8 @@ var (
 	flipFlopBufferDuration    = 150 * time.Millisecond
 	flipFlopWorstCaseDuration = 10 * time.Second
 )
+
+const LockFileName = "DIRTY"
 
 // DB is the local store implementation and holds
 // database related objects.
@@ -315,12 +316,20 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		}
 	}
 
-	db.flock, err = newFileLock(filepath.Join(path, "LOCK"))
+	flock, existed, err := newFileLock(filepath.Join(path, LockFileName))
 	if err != nil {
-		// check whether file already existed, and if so, initiate recovery process
 		return nil, err
 	}
 
+	// check whether file already existed, and if so, initiate recovery process
+	if existed {
+		/* TODO use locations */ _, err := recovery(db)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	db.flock = flock
 	db.sharky, err = sharky.New(sharkyBasePath, 32, 312500)
 	if err != nil {
 		return nil, err
@@ -734,28 +743,15 @@ func totalTimeMetric(metric prometheus.Counter, start time.Time) {
 
 }
 
-func newFileLock(path string) (fl *os.File, err error) {
-	var flag int
-	flag = os.O_CREATE | os.O_EXCL
+func newFileLock(path string) (fl *os.File, existed bool, err error) {
+	flag := os.O_CREATE | os.O_EXCL
 	f, err := os.OpenFile(path, flag, 0)
+
+	existed = true
 	if os.IsNotExist(err) {
+		existed = false
 		f, err = os.OpenFile(path, flag|os.O_CREATE, 0644)
 	}
-	if err != nil {
-		return nil, err
-	}
 
-	return f, nil
-}
-
-func setFileLock(f *os.File, readOnly, lock bool) error {
-	how := syscall.LOCK_UN
-	if lock {
-		if readOnly {
-			how = syscall.LOCK_SH
-		} else {
-			how = syscall.LOCK_EX
-		}
-	}
-	return syscall.Flock(int(f.Fd()), how|syscall.LOCK_NB)
+	return f, existed, err
 }
