@@ -45,16 +45,18 @@ type Service struct {
 	streamer                 p2p.Streamer
 	logger                   logging.Logger
 	paymentThreshold         *big.Int
+	lightPaymentThreshold    *big.Int
 	minPaymentThreshold      *big.Int
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold, minThreshold *big.Int) *Service {
+func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold, lightPaymentThreshold, minThreshold *big.Int) *Service {
 	return &Service{
-		streamer:            streamer,
-		logger:              logger,
-		paymentThreshold:    paymentThreshold,
-		minPaymentThreshold: minThreshold,
+		streamer:              streamer,
+		logger:                logger,
+		paymentThreshold:      paymentThreshold,
+		lightPaymentThreshold: lightPaymentThreshold,
+		minPaymentThreshold:   minThreshold,
 	}
 }
 
@@ -104,7 +106,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
-	err := s.AnnouncePaymentThreshold(ctx, p.Address, s.paymentThreshold)
+
+	threshold := s.paymentThreshold
+	if !p.FullNode {
+		threshold = s.lightPaymentThreshold
+	}
+
+	err := s.AnnouncePaymentThreshold(ctx, p.Address, threshold)
 	if err != nil {
 		s.logger.Warningf("could not send payment threshold announcement to peer %v", p.Address)
 	}
