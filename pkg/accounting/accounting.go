@@ -568,7 +568,12 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 
 func (a *Accounting) NotifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
 
-	if accountingPeer.thresholdGrowAt.Cmp(a.thresholdGrowChange) >= 0 {
+	thresholdGrowChange := new(big.Int).Set(a.thresholdGrowChange)
+	if !accountingPeer.fullNode {
+		thresholdGrowChange.Set(a.lightThresholdGrowChange)
+	}
+
+	if accountingPeer.thresholdGrowAt.Cmp(thresholdGrowChange) >= 0 {
 		accountingPeer.thresholdGrowAt = new(big.Int).Mul(accountingPeer.thresholdGrowAt, big.NewInt(2))
 	} else {
 		if accountingPeer.fullNode {
