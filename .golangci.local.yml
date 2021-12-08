@@ -219,9 +219,6 @@ linters-settings:
     line-length: 180
     # tab width in spaces. Default to 1.
     tab-width: 1
-  maligned:
-    # print struct with more effective memory layout or not, false by default
-    suggest-new: true
   misspell:
     # Correct spellings using locale preferences for US or UK.
     # Default is to use a neutral variety of English.
@@ -292,22 +289,20 @@ linters-settings:
     force-err-cuddling: false
     # Allow leading comments to be separated with empty liens
     allow-separated-leading-comment: false
-  gochecknoglobals:
 
 
 linters:
+  fast: false
   enable-all: true
-  # enable:
-  #   - maligned
-  #   - structslop
-  #   - megacheck
-  #   - govet
   disable:
+    - scopelint
+    - interfacer
+    - maligned
+    - golint  # ^deprecated linters
     - gochecknoglobals
     - gochecknoinits
     - godox
     - goimports
-    - golint
     - lll
     - whitespace
     - govet
@@ -322,11 +317,6 @@ linters:
     - depguard
     - errcheck
     - funlen
-  # disable-all: false
-  # presets:
-  #   - bugs
-  #   - unused
-  fast: false
 
 
 issues:
@@ -357,10 +347,6 @@ issues:
     - linters:
         - stylecheck
       text: "^ST1000:"
-
-    - linters:
-        - golint
-      text: "should have comment or be unexported$"
 
     - linters:
         - goerr113

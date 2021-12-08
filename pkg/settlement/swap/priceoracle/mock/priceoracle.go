@@ -42,7 +42,7 @@ func DiscoverPriceOracleAddress(chainID int64) (priceOracleAddress common.Addres
 	return common.Address{}, false
 }
 
-func (s Service) SetValues(rate, deduct *big.Int) {
+func (s *Service) SetValues(rate, deduct *big.Int) {
 	s.rate = rate
 	s.deduct = deduct
 }

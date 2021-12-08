@@ -27,12 +27,11 @@ linters:
   enable:
     - errname
     - dogsled
-    - maligned
     - megacheck
     - govet
     - godox
     - goimports
-    - golint
+    - revive
     - lll
     - whitespace
     - stylecheck
@@ -43,7 +42,7 @@ linters:
     - depguard
     - errcheck
     - funlen
-    # - gofumpt
+    # - gofumpt # enable the linters below for a stricter check
     # - gochecknoglobals
     # - gochecknoinits
     # - gomnd
