@@ -73,6 +73,10 @@ func recovery(db *DB) ([]sharky.Location, error) {
 		},
 	})
 
+	if err != nil {
+		return nil, err
+	}
+
 	// gc size
 	gcSize, err := db.shed.NewUint64Field("gc-size")
 	if err != nil {
@@ -99,7 +103,7 @@ func recovery(db *DB) ([]sharky.Location, error) {
 	// the slice reallocations to a minimum.
 	usedLocations := make([]sharky.Location, 0, vr+vc)
 
-	retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+	_ = retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 		loc, err := sharky.LocationFromBinary(item.Location)
 		if err != nil {
 			return false, fmt.Errorf("location from binary: %w", err)
