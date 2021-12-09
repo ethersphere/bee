@@ -485,7 +485,7 @@ func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (
 
 	selectAttempt, requestRound, requested, available := 0, 0, 0, 0
 
-	for requested < 5 {
+	for requested < 3 {
 		requestRound++
 
 		timeNow := time.Now().Unix()
@@ -497,12 +497,12 @@ func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (
 				requested++
 				if err == nil {
 					available++
-					if available >= 3 {
+					if available >= 2 {
 						return nil
 					}
 				}
 
-				if requested-available > 2 {
+				if requested-available > 1 {
 					return storage.ErrNotFound
 				}
 			}
