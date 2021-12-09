@@ -172,6 +172,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				select {
 				case resultC <- retrievalResult{}:
 				case <-ctx.Done():
+				default:
 				}
 			}
 
