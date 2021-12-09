@@ -22,7 +22,7 @@ func TestBeeNodeMode_String(t *testing.T) {
 
 	for have, want := range mapping {
 		if have != want {
-			t.Fatalf("got unexpected bee node mode status string %q; wanted %q", have, want)
+			t.Fatalf("unexpected bee node mode: have %q; want %q", have, want)
 		}
 	}
 }
