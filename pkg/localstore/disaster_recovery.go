@@ -31,7 +31,7 @@ type locOrErr struct {
 }
 
 // recovery tries to recover a dirty database
-func recovery(db *DB) (usedLocations chan locOrErr, err error) {
+func recovery(db *DB) (chan locOrErr, error) {
 	// - go through all retrieval data index entries
 	// - find all used locations in sharky
 	// - return them so that sharky can be initialized with them
@@ -75,9 +75,11 @@ func recovery(db *DB) (usedLocations chan locOrErr, err error) {
 		},
 	})
 
-	// this operation is memory intensive. we will preallocate the
-	// minimum size of locations we expect to see.
-	usedLocations = make(chan locOrErr)
+	if err != nil {
+		return nil, err
+	}
+
+	usedLocations := make(chan locOrErr)
 
 	go func() {
 		retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
@@ -85,10 +87,18 @@ func recovery(db *DB) (usedLocations chan locOrErr, err error) {
 			if err != nil {
 				return false, fmt.Errorf("location from binary: %w", err)
 			}
-			usedLocations <- locOrErr{
+
+			select {
+			case usedLocations <- locOrErr{
 				err: err,
 				loc: loc,
+			}:
+			case <-db.ctx.Done():
+				close(usedLocations)
+
+				return true, db.ctx.Err()
 			}
+
 			return false, nil
 		}, nil)
 	}()
