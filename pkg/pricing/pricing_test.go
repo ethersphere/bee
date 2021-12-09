@@ -37,9 +37,11 @@ func (t *testThresholdObserver) NotifyPaymentThreshold(peerAddr swarm.Address, p
 func TestAnnouncePaymentThreshold(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 	testThreshold := big.NewInt(100000)
+	testLightThreshold := big.NewInt(10000)
+
 	observer := &testThresholdObserver{}
 
-	recipient := pricing.New(nil, logger, testThreshold, big.NewInt(1000))
+	recipient := pricing.New(nil, logger, testThreshold, testLightThreshold, big.NewInt(1000))
 	recipient.SetPaymentThresholdObserver(observer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
@@ -49,7 +51,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	payer := pricing.New(recorder, logger, testThreshold, big.NewInt(1000))
+	payer := pricing.New(recorder, logger, testThreshold, testLightThreshold, big.NewInt(1000))
 
 	paymentThreshold := big.NewInt(100000)
 
@@ -102,11 +104,13 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 	testThreshold := big.NewInt(100_000)
+	testLightThreshold := big.NewInt(10_000)
+
 	observer := &testThresholdObserver{}
 
 	minThreshold := big.NewInt(1_000_000) // above requested threashold
 
-	recipient := pricing.New(nil, logger, testThreshold, minThreshold)
+	recipient := pricing.New(nil, logger, testThreshold, testLightThreshold, minThreshold)
 	recipient.SetPaymentThresholdObserver(observer)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
@@ -116,7 +120,7 @@ func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	payer := pricing.New(recorder, logger, testThreshold, minThreshold)
+	payer := pricing.New(recorder, logger, testThreshold, testLightThreshold, minThreshold)
 
 	paymentThreshold := big.NewInt(100_000)
 
