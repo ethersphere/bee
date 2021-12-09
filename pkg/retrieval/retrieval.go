@@ -483,22 +483,31 @@ func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (
 	sp := newSkipPeers()
 	lastTime := time.Now().Unix()
 
-	selectAttempt, requestAttempt, requested := 0, 0, 0
+	selectAttempt, requestRound, requested, available := 0, 0, 0, 0
 
-	for requestAttempt < 5 {
-		requestAttempt++
-		for selectAttempt < 3 {
+	for requested < 5 {
+		requestRound++
+
+		timeNow := time.Now().Unix()
+
+		for selectAttempt < 8 {
 			selectAttempt++
 			attempted, err := s.checkAvailableChunk(ctx, addr, sp)
 			if attempted {
 				requested++
 				if err == nil {
-					return nil
+					available++
+					if available >= 3 {
+						return nil
+					}
+				}
+
+				if requested-available > 2 {
+					return storage.ErrNotFound
 				}
 			}
 		}
 
-		timeNow := time.Now().Unix()
 		if timeNow > lastTime {
 			lastTime = timeNow
 			selectAttempt = 0
@@ -512,6 +521,10 @@ func (s *Service) CheckAvailableChunk(ctx context.Context, addr swarm.Address) (
 			}
 		}
 
+		if requestRound > 15 {
+			return storage.ErrNotFound
+		}
+
 	}
 
 	return storage.ErrNotFound
@@ -522,12 +535,13 @@ func (s *Service) checkAvailableChunk(ctx context.Context, addr swarm.Address, s
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
+	// compute the peer's price for this chunk for price header
+
 	peer, err := s.farthestPeer(addr, sp.All())
 	if err != nil {
 		return false, fmt.Errorf("get farthest for address %s: %w", addr.String(), err)
 	}
 
-	// compute the peer's price for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
 	// Reserve to see whether we can request the chunk
