@@ -1,7 +1,11 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package sharky
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 )
 
@@ -17,9 +21,8 @@ type slots struct {
 	stopped chan struct{} // signal end of process loop before save
 }
 
-func newSlots(size uint32, file *os.File, limit uint32) *slots {
+func newSlots(file *os.File, limit uint32) *slots {
 	return &slots{
-		size:    size,
 		file:    file,
 		limit:   limit,
 		in:      make(chan uint32),
@@ -31,7 +34,7 @@ func newSlots(size uint32, file *os.File, limit uint32) *slots {
 
 // load inits the slots from file, called after init
 func (sl *slots) load() (err error) {
-	sl.data, err = ioutil.ReadAll(sl.file)
+	sl.data, err = io.ReadAll(sl.file)
 	if err != nil {
 		return err
 	}
@@ -43,7 +46,7 @@ func (sl *slots) load() (err error) {
 	return err
 }
 
-// save persists the free slot bitvector on disk
+// save persists the free slot bitvector on disk (without closing)
 func (sl *slots) save() error {
 	if err := sl.file.Truncate(0); err != nil {
 		return err
@@ -54,10 +57,7 @@ func (sl *slots) save() error {
 	if _, err := sl.file.Write(sl.data); err != nil {
 		return err
 	}
-	if err := sl.file.Sync(); err != nil {
-		return err
-	}
-	return sl.file.Close()
+	return sl.file.Sync()
 }
 
 // extend adapts the slots to an extended size shard
@@ -87,7 +87,7 @@ func (sl *slots) push(i uint32) {
 	if sl.head > i {
 		sl.head = i
 	}
-	sl.data[i/8] |= (1 << (i % 8))
+	sl.data[i/8] |= 1 << (i % 8)
 }
 
 // pop returns the lowest available free slot.
@@ -99,7 +99,7 @@ func (sl *slots) pop() (uint32, bool) {
 	if head == sl.size && sl.size < sl.limit {
 		sl.extend(1)
 	}
-	sl.data[head/8] &= (0xff ^ (1 << (head % 8)))
+	sl.data[head/8] &= ^(1 << (head % 8))
 	sl.head = sl.next(head + 1)
 	return head, head == sl.limit
 }
