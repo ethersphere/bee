@@ -43,7 +43,7 @@ func (sl *slots) load() (err error) {
 	return err
 }
 
-// save persists the free slot bitvector on disk
+// save persists the free slot bitvector on disk (without closing)
 func (sl *slots) save() error {
 	if err := sl.file.Truncate(0); err != nil {
 		return err
@@ -54,9 +54,11 @@ func (sl *slots) save() error {
 	if _, err := sl.file.Write(sl.data); err != nil {
 		return err
 	}
-	if err := sl.file.Sync(); err != nil {
-		return err
-	}
+	return sl.file.Sync()
+}
+
+// close closes the free slots file (without saving)
+func (sl *slots) close() error {
 	return sl.file.Close()
 }
 
@@ -87,7 +89,7 @@ func (sl *slots) push(i uint32) {
 	if sl.head > i {
 		sl.head = i
 	}
-	sl.data[i/8] |= (1 << (i % 8))
+	sl.data[i/8] |= 1 << (i % 8)
 }
 
 // pop returns the lowest available free slot.
@@ -99,7 +101,7 @@ func (sl *slots) pop() (uint32, bool) {
 	if head == sl.size && sl.size < sl.limit {
 		sl.extend(1)
 	}
-	sl.data[head/8] &= (0xff ^ (1 << (head % 8)))
+	sl.data[head/8] &= ^(1 << (head % 8))
 	sl.head = sl.next(head + 1)
 	return head, head == sl.limit
 }
