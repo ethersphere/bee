@@ -87,7 +87,7 @@ func (sl *slots) push(i uint32) {
 	if sl.head > i {
 		sl.head = i
 	}
-	sl.data[i/8] |= (1 << (i % 8))
+	sl.data[i/8] |= 1 << (i % 8)
 }
 
 // pop returns the lowest available free slot.
@@ -99,7 +99,7 @@ func (sl *slots) pop() (uint32, bool) {
 	if head == sl.size && sl.size < sl.limit {
 		sl.extend(1)
 	}
-	sl.data[head/8] &= (0xff ^ (1 << (head % 8)))
+	sl.data[head/8] &= ^(1 << (head % 8))
 	sl.head = sl.next(head + 1)
 	return head, head == sl.limit
 }
