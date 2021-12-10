@@ -1,6 +1,7 @@
 package sharky_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -12,14 +13,13 @@ import (
 )
 
 func TestRecovery(t *testing.T) {
-	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
-	sharky.DataSize = 4
+	datasize := 4
 	shards := 8
 	shardSize := uint32(16)
 	limit := shards * int(shardSize)
 
 	dir := t.TempDir()
-	s, err := sharky.New(dir, shards, shardSize)
+	s, err := sharky.New(dir, shards, shardSize, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestRecovery(t *testing.T) {
 		rest = append(rest[:i], rest[i+1:]...)
 	}
 	if len(rest) != len(preserved) {
-		t.Fatalf("incorrect set sizes %d <> %d", len(rest), len(preserved))
+		t.Fatalf("incorrect set sizes: %d <> %d", len(rest), len(preserved))
 	}
 	for _, i := range rest {
 		preserved[i] = true
@@ -57,7 +57,7 @@ func TestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	// recover based on preserved map
-	r, err := sharky.NewRecovery(dir, shards, shardSize)
+	r, err := sharky.NewRecovery(dir, shards, shardSize, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,29 +72,29 @@ func TestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	// check integrity of reecovered sharky
-	s, err = sharky.New(dir, shards, shardSize)
+	s, err = sharky.New(dir, shards, shardSize, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	buf := make([]byte, datasize)
 	t.Run("preserved are found", func(t *testing.T) {
 		for i := range preserved {
 			loc := locs[int(i)]
-			data, err := s.Read(ctx, loc)
-			if err != nil {
+			if err := s.Read(ctx, loc, buf); err != nil {
 				t.Fatal(err)
 			}
-			j := binary.BigEndian.Uint32(data)
+			j := binary.BigEndian.Uint32(buf)
 			if i != j {
-				t.Fatalf("data not preserved at location %v. want %d, got %d", loc, i, j)
+				t.Fatalf("data not preserved at location %v: want %d; got %d", loc, i, j)
 			}
 		}
 	})
 	var freelocs []sharky.Location
+	payload := []byte{0xff}
 	t.Run("correct number of free slots", func(t *testing.T) {
 		cctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-		payload := []byte{0xff}
 		for {
 			loc, err := s.Write(cctx, payload)
 			if err != nil {
@@ -106,46 +106,47 @@ func TestRecovery(t *testing.T) {
 			freelocs = append(freelocs, loc)
 		}
 		if len(freelocs) != limit-size/2 {
-			t.Fatalf("incorrect number of free slots. wanted %d. got %d", limit-size/2, len(freelocs))
+			t.Fatalf("incorrect number of free slots: wanted %d; got %d", limit-size/2, len(freelocs))
 		}
 	})
 	t.Run("added locs are still preserved", func(t *testing.T) {
 		for i, added := range preserved {
-			if added {
-				data, err := s.Read(ctx, locs[int(i)])
-				if err != nil {
-					t.Fatal(err)
-				}
-				j := binary.BigEndian.Uint32(data)
-				if i != j {
-					t.Fatalf("data not preserved at location %v. want %d, got %d", locs[int(j)], i, j)
-				}
+			if !added {
+				continue
+			}
+			if err := s.Read(ctx, locs[int(i)], buf); err != nil {
+				t.Fatal(err)
+			}
+			j := binary.BigEndian.Uint32(buf)
+			if i != j {
+				t.Fatalf("data not preserved at location %v: want %d; got %d", locs[int(j)], i, j)
 			}
 		}
 	})
 	t.Run("not added preserved are overwritten", func(t *testing.T) {
 		for i, added := range preserved {
-			if !added {
-				loc := locs[int(i)]
-				loc.Length = 1
-				data, err := s.Read(ctx, loc)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(data) != 1 || data[0] != 0xff {
-					t.Fatalf("incorrect data on freed location %v. want %x, got %x", loc, 0x0, data)
-				}
+			if added {
+				continue
+			}
+			loc := locs[int(i)]
+			loc.Length = 1
+			if err := s.Read(ctx, loc, buf); err != nil {
+				t.Fatal(err)
+			}
+			data := buf[:len(payload)]
+			if !bytes.Equal(data, payload) {
+				t.Fatalf("incorrect data on freed location %v: want %x; got %x", loc, payload, data)
 			}
 		}
 	})
 	t.Run("all other slots also overwritten", func(t *testing.T) {
 		for _, loc := range freelocs {
-			data, err := s.Read(ctx, loc)
-			if err != nil {
+			if err := s.Read(ctx, loc, buf); err != nil {
 				t.Fatal(err)
 			}
-			if len(data) != 1 || data[0] != 0xff {
-				t.Fatalf("incorrect data on freed location. want %x, got %x", 0x0, data)
+			data := buf[:len(payload)]
+			if !bytes.Equal(data, payload) {
+				t.Fatalf("incorrect data on freed location %v: want %x; got %x", loc, payload, data)
 			}
 		}
 	})
