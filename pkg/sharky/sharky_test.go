@@ -62,7 +62,7 @@ func TestSingleRetrieval(t *testing.T) {
 				context.DeadlineExceeded,
 			},
 		} {
-
+			buf := make([]byte, sharky.DataSize)
 			t.Run(tc.name, func(t *testing.T) {
 				cctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 				defer cancel()
@@ -73,10 +73,11 @@ func TestSingleRetrieval(t *testing.T) {
 				if err != nil {
 					return
 				}
-				got, err := s.Read(ctx, loc)
+				err = s.Read(ctx, loc, buf)
 				if err != nil {
 					t.Fatal(err)
 				}
+				got := buf[:loc.Length]
 				if !bytes.Equal(tc.want, got) {
 					t.Fatalf("data mismatch at location %v. want %x, got %x", loc, tc.want, got)
 				}
@@ -128,12 +129,13 @@ func TestPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	buf = make([]byte, sharky.DataSize)
 	for want, loc := range locs {
-		data, err := s.Read(cctx, *loc)
+		err := s.Read(cctx, *loc, buf)
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := binary.BigEndian.Uint32(data)
+		got := binary.BigEndian.Uint32(buf)
 		if int(got) != want {
 			t.Fatalf("data mismatch. want %d, got %d", want, got)
 		}
@@ -199,16 +201,17 @@ func TestConcurrency(t *testing.T) {
 	for k := 0; k < workers-1; k++ {
 		eg.Go(func() error {
 			<-start
+			buf := make([]byte, sharky.DataSize)
 			for i := 0; i < limit; i++ {
 				select {
 				case <-ectx.Done():
 					return ectx.Err()
 				case loc := <-c:
-					data, err := s.Read(ectx, loc)
+					err := s.Read(ectx, loc, buf)
 					if err != nil {
 						return err
 					}
-					j := binary.BigEndian.Uint32(data)
+					j := binary.BigEndian.Uint32(buf)
 					mtx.Lock()
 					deleted[j]++
 					mtx.Unlock()
@@ -233,12 +236,13 @@ func TestConcurrency(t *testing.T) {
 		}
 		extraSlots += cnt - 1
 	}
+	buf := make([]byte, sharky.DataSize)
 	for loc := range c {
-		data, err := s.Read(ctx, loc)
+		err := s.Read(ctx, loc, buf)
 		if err != nil {
 			t.Fatal(err)
 		}
-		i := binary.BigEndian.Uint32(data)
+		i := binary.BigEndian.Uint32(buf)
 
 		_, found := entered[i]
 		if !found {

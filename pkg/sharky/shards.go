@@ -25,28 +25,27 @@ import (
 var (
 	DataSize int64 = swarm.ChunkWithSpanSize
 
-	ErrTooLong         = errors.New("data too long")
-	ErrCapacityReached = errors.New("capacity reached")
+	ErrTooLong = errors.New("data too long")
 )
 
 // models the sharded chunkdb
 type Shards struct {
-	writeOps chan *operation // shared write operations channel
-	pool     *sync.Pool      // pool to save on allocating for operation
-	shards   []*shard
-	quit     chan struct{}
+	writes chan write // shared write operations channel
+	pool   *sync.Pool // pool to save on allocating for operation
+	shards []*shard
+	quit   chan struct{}
 }
 
 // New constructs a new sharded chunk db
 func New(basedir string, shardCnt int, limit uint32) (*Shards, error) {
 	pool := &sync.Pool{New: func() interface{} {
-		return newOp()
+		return make(chan entry)
 	}}
 	sh := &Shards{
-		pool:     pool,
-		writeOps: make(chan *operation),
-		shards:   make([]*shard, shardCnt),
-		quit:     make(chan struct{}),
+		pool:   pool,
+		writes: make(chan write),
+		shards: make([]*shard, shardCnt),
+		quit:   make(chan struct{}),
 	}
 	for i := range sh.shards {
 		s, err := sh.create(uint8(i), limit, basedir)
@@ -101,12 +100,13 @@ func (s *Shards) create(index uint8, limit uint32, basedir string) (*shard, erro
 		return nil, err
 	}
 	sh := &shard{
-		readOps:  make(chan *operation),
-		writeOps: s.writeOps,
-		index:    index,
-		file:     file,
-		slots:    sl,
-		quit:     s.quit,
+		reads:  make(chan read),
+		errc:   make(chan error),
+		writes: s.writes,
+		index:  index,
+		file:   file,
+		slots:  sl,
+		quit:   s.quit,
 	}
 	terminated := make(chan struct{})
 	go func() {
@@ -117,69 +117,33 @@ func (s *Shards) create(index uint8, limit uint32, basedir string) (*shard, erro
 	return sh, nil
 }
 
-func (s *Shards) Read(ctx context.Context, loc Location) (data []byte, err error) {
-	op, f := s.newReadOp(loc)
-	defer f()
-
+func (s *Shards) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
-	case sh.readOps <- op:
+	case sh.reads <- read{buf[:loc.Length], loc.Slot, 0}:
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
-
-	select {
-	case err = <-op.err:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	return op.buffer[:op.location.Length], err
+	return <-sh.errc
 }
 
 func (s *Shards) Write(ctx context.Context, data []byte) (loc Location, err error) {
 	if len(data) > int(DataSize) {
 		return loc, ErrTooLong
 	}
-	op, f := s.newWriteOp(data)
-	defer f()
-
+	c := s.pool.Get().(chan entry)
+	defer s.pool.Put(c)
 	select {
-	case s.writeOps <- op:
+	case s.writes <- write{data, c}:
 	case <-ctx.Done():
 		return loc, ctx.Err()
 	}
 
-	select {
-	case err = <-op.err:
-	case <-ctx.Done():
-		return loc, ctx.Err()
-	}
-	return op.location, err
+	e := <-c
+	return e.loc, e.err
 }
 
 func (s *Shards) Release(ctx context.Context, loc Location) {
 	sh := s.shards[loc.Shard]
 	sh.release(loc.Slot)
-}
-
-func newOp() *operation {
-	return &operation{
-		location: Location{},
-		err:      make(chan error),
-		buffer:   make([]byte, DataSize),
-	}
-}
-
-func (s *Shards) newReadOp(loc Location) (*operation, func()) {
-	op := s.pool.Get().(*operation)
-	f := func() { s.pool.Put(op) }
-	op.location = loc
-	return op, f
-}
-
-func (s *Shards) newWriteOp(data []byte) (*operation, func()) {
-	op := s.pool.Get().(*operation)
-	f := func() { s.pool.Put(op) }
-	op.data = data
-	return op, f
 }

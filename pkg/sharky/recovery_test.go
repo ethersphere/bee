@@ -1,6 +1,7 @@
 package sharky_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -77,24 +78,24 @@ func TestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	buf := make([]byte, sharky.DataSize)
 	t.Run("preserved are found", func(t *testing.T) {
 		for i := range preserved {
 			loc := locs[int(i)]
-			data, err := s.Read(ctx, loc)
-			if err != nil {
+			if err := s.Read(ctx, loc, buf); err != nil {
 				t.Fatal(err)
 			}
-			j := binary.BigEndian.Uint32(data)
+			j := binary.BigEndian.Uint32(buf)
 			if i != j {
 				t.Fatalf("data not preserved at location %v. want %d, got %d", loc, i, j)
 			}
 		}
 	})
 	var freelocs []sharky.Location
+	payload := []byte{0xff}
 	t.Run("correct number of free slots", func(t *testing.T) {
 		cctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-		payload := []byte{0xff}
 		for {
 			loc, err := s.Write(cctx, payload)
 			if err != nil {
@@ -112,11 +113,10 @@ func TestRecovery(t *testing.T) {
 	t.Run("added locs are still preserved", func(t *testing.T) {
 		for i, added := range preserved {
 			if added {
-				data, err := s.Read(ctx, locs[int(i)])
-				if err != nil {
+				if err := s.Read(ctx, locs[int(i)], buf); err != nil {
 					t.Fatal(err)
 				}
-				j := binary.BigEndian.Uint32(data)
+				j := binary.BigEndian.Uint32(buf)
 				if i != j {
 					t.Fatalf("data not preserved at location %v. want %d, got %d", locs[int(j)], i, j)
 				}
@@ -128,24 +128,24 @@ func TestRecovery(t *testing.T) {
 			if !added {
 				loc := locs[int(i)]
 				loc.Length = 1
-				data, err := s.Read(ctx, loc)
-				if err != nil {
+				if err := s.Read(ctx, loc, buf); err != nil {
 					t.Fatal(err)
 				}
-				if len(data) != 1 || data[0] != 0xff {
-					t.Fatalf("incorrect data on freed location %v. want %x, got %x", loc, 0x0, data)
+				data := buf[:len(payload)]
+				if !bytes.Equal(data, payload) {
+					t.Fatalf("incorrect data on freed location %v. want %x, got %x", loc, payload, data)
 				}
 			}
 		}
 	})
 	t.Run("all other slots also overwritten", func(t *testing.T) {
 		for _, loc := range freelocs {
-			data, err := s.Read(ctx, loc)
-			if err != nil {
+			if err := s.Read(ctx, loc, buf); err != nil {
 				t.Fatal(err)
 			}
-			if len(data) != 1 || data[0] != 0xff {
-				t.Fatalf("incorrect data on freed location. want %x, got %x", 0x0, data)
+			data := buf[:len(payload)]
+			if !bytes.Equal(data, payload) {
+				t.Fatalf("incorrect data on freed location %v. want %x, got %x", loc, payload, data)
 			}
 		}
 	})
