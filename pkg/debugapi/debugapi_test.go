@@ -212,8 +212,10 @@ func TestServer_Configure(t *testing.T) {
 	)
 	jsonhttptest.Request(t, client, http.MethodGet, "/node", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(debugapi.NodeResponse{
-			BeeMode:     beeMode.String(),
-			GatewayMode: gatewayMode,
+			BeeMode:           beeMode.String(),
+			GatewayMode:       gatewayMode,
+			ChequebookEnabled: true,
+			SwapEnabled:       true,
 		}),
 	)
 }
