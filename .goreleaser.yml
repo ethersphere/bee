@@ -11,7 +11,12 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commitHash={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -s -w
+      - -X github.com/ethersphere/bee.version={{.Version}}
+      - -X github.com/ethersphere/bee.commitHash={{.ShortCommit}}
+      - -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -X github.com/ethersphere/bee/pkg/api.Version={{.BeeApiVersion}}
+      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{.BeeDebugApiVersion}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -30,7 +35,12 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commitHash={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -s -w
+      - -X github.com/ethersphere/bee.version={{.Version}}
+      - -X github.com/ethersphere/bee.commitHash={{.ShortCommit}}
+      - -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -X github.com/ethersphere/bee/pkg/api.Version={{.BeeApiVersion}}
+      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{.BeeDebugApiVersion}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -51,7 +61,12 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commitHash={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -s -w
+      - -X github.com/ethersphere/bee.version={{.Version}}
+      - -X github.com/ethersphere/bee.commitHash={{.ShortCommit}}
+      - -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -X github.com/ethersphere/bee/pkg/api.Version={{.BeeApiVersion}}
+      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{.BeeDebugApiVersion}}
     env:
       - CGO_ENABLED=0
     goos:
@@ -66,7 +81,12 @@ builds:
       - -v
       - -trimpath
     ldflags:
-      - -s -w -X github.com/ethersphere/bee.version={{.Version}} -X github.com/ethersphere/bee.commitHash={{.ShortCommit}} -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -s -w
+      - -X github.com/ethersphere/bee.version={{.Version}}
+      - -X github.com/ethersphere/bee.commitHash={{.ShortCommit}}
+      - -X github.com/ethersphere/bee.commitTime={{.CommitTimestamp}}
+      - -X github.com/ethersphere/bee/pkg/api.Version={{.BeeApiVersion}}
+      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{.BeeDebugApiVersion}}
     env:
       - CGO_ENABLED=0
     goos:
