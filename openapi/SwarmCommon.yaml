@@ -377,6 +377,10 @@ components:
             * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
         gatewayMode:
           type: boolean
+        chequebookEnabled:
+          type: boolean
+        swapEnabled:
+          type: boolean
 
     Status:
       type: object

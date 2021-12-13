@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -102,7 +103,7 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 
 	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.swap.LastSentCheque(peer)
-	if err != nil && err != chequebook.ErrNoCheque {
+	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) && !errors.Is(err, swap.ErrNoChequebook) {
 		s.logger.Debugf("debug api: chequebook cheque peer: get peer %s last cheque: %v", peer.String(), err)
 		s.logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
@@ -142,10 +143,13 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
 	lastchequessent, err := s.swap.LastSentCheques()
 	if err != nil {
-		s.logger.Debugf("debug api: chequebook cheque all: get all last cheques: %v", err)
-		s.logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
-		jsonhttp.InternalServerError(w, errCantLastCheque)
-		return
+		if !errors.Is(err, swap.ErrNoChequebook) {
+			s.logger.Debugf("debug api: chequebook cheque all: get all last cheques: %v", err)
+			s.logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
+			jsonhttp.InternalServerError(w, errCantLastCheque)
+			return
+		}
+		lastchequessent = map[string]*chequebook.SignedCheque{}
 	}
 	lastchequesreceived, err := s.swap.LastReceivedCheques()
 	if err != nil {
