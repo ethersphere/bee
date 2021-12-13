@@ -129,7 +129,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan retrievalResult, maxSelects)
+			resultC      = make(chan retrievalResult)
 		)
 
 		requestAttempt := 0
@@ -172,6 +172,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				select {
 				case resultC <- retrievalResult{}:
 				case <-ctx.Done():
+				default:
 				}
 			}
 
