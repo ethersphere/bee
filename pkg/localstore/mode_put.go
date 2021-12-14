@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -63,7 +64,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	if len(chs) == 1 && mode != storage.ModePutRequestPin && mode != storage.ModePutUploadPin {
 		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("initial has check: %w", err)
 		}
 		if has {
 			return []bool{true}, nil
@@ -83,7 +84,10 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 
 	// variables that provide information for operations
 	// to be done after write batch function successfully executes
-	var gcSizeChange int64                      // number to add or subtract from gcSize
+	var (
+		gcSizeChange      int64 // number to add or subtract from gcSize
+		reserveSizeChange int64 // number to add or subtract from reserveSize
+	)
 	var triggerPushFeed bool                    // signal push feed subscriptions to iterate
 	triggerPullFeed := make(map[uint8]struct{}) // signal pull feed subscriptions to iterate
 
@@ -105,12 +109,13 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			item := chunkToItem(ch)
 			pin := mode == storage.ModePutRequestPin     // force pin in this mode
 			cache := mode == storage.ModePutRequestCache // force cache
-			exists, c, err := db.putRequest(batch, binIDs, item, pin, cache)
+			exists, c, r, err := db.putRequest(batch, binIDs, item, pin, cache)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("put request: %w", err)
 			}
 			exist[i] = exists
 			gcSizeChange += c
+			reserveSizeChange += r
 		}
 
 	case storage.ModePutUpload, storage.ModePutUploadPin:
@@ -122,7 +127,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			item := chunkToItem(ch)
 			exists, c, err := db.putUpload(batch, binIDs, item)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("put upload: %w", err)
 			}
 			exist[i] = exists
 			if !exists {
@@ -135,7 +140,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			if mode == storage.ModePutUploadPin {
 				c, err = db.setPin(batch, item)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("upload set pin: %w", err)
 				}
 				gcSizeChange += c
 			}
@@ -147,9 +152,9 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				exist[i] = true
 				continue
 			}
-			exists, c, err := db.putSync(batch, binIDs, chunkToItem(ch))
+			exists, c, r, err := db.putSync(batch, binIDs, chunkToItem(ch))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("put sync: %w", err)
 			}
 			exist[i] = exists
 			if !exists {
@@ -158,6 +163,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				triggerPullFeed[db.po(ch.Address())] = struct{}{}
 			}
 			gcSizeChange += c
+			reserveSizeChange += r
 		}
 
 	default:
@@ -170,12 +176,17 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 
 	err = db.incGCSizeInBatch(batch, gcSizeChange)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inc gc: %w", err)
+	}
+
+	err = db.incReserveSizeInBatch(batch, reserveSizeChange)
+	if err != nil {
+		return nil, fmt.Errorf("inc reserve: %w", err)
 	}
 
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write batch: %w", err)
 	}
 
 	for po := range triggerPullFeed {
@@ -192,43 +203,41 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 //  - it does not enter the syncpool
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item, forcePin, forceCache bool) (exists bool, gcSizeChange int64, err error) {
+func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item, forcePin, forceCache bool) (exists bool, gcSizeChange, reserveSizeChange int64, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	if exists {
-		return true, 0, nil
+		return true, 0, 0, nil
 	}
 
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return false, 0, err
+			return false, 0, 0, err
 		}
 	} else {
 		if item.Immutable {
-			return false, 0, ErrOverwrite
+			return false, 0, 0, ErrOverwrite
 		}
 		// if a chunk is found with the same postage stamp index,
 		// replace it with the new one only if timestamp is later
 		if !later(previous, item) {
-			return false, 0, nil
+			return false, 0, 0, nil
 		}
 		gcSizeChange, err = db.setRemove(batch, previous, true)
 		if err != nil {
-			return false, 0, err
+			return false, 0, 0, err
 		}
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
 			if !errors.Is(err, leveldb.ErrNotFound) {
-				return false, 0, err
+				return false, 0, 0, err
 			}
 		} else {
 			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
-				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
-					return false, 0, err
-				}
+				reserveSizeChange--
 			}
 		}
 
@@ -237,29 +246,29 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.postageIndexIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 
-	gcSizeChangeNew, err := db.preserveOrCache(batch, item, forcePin, forceCache)
+	gcSizeChangeNew, reserveSizeChangeNew, err := db.preserveOrCache(batch, item, forcePin, forceCache)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 
 	if !forceCache {
@@ -267,11 +276,11 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 		// therefore we'd like to be able to pullsync it
 		err = db.pullIndex.PutInBatch(batch, item)
 		if err != nil {
-			return false, 0, err
+			return false, 0, 0, err
 		}
 	}
 
-	return false, gcSizeChange + gcSizeChangeNew, nil
+	return false, gcSizeChange + gcSizeChangeNew, reserveSizeChange + reserveSizeChangeNew, nil
 }
 
 // putUpload adds an Item to the batch by updating required indexes:
@@ -281,7 +290,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, fmt.Errorf("retrieval has: %w", err)
 	}
 	if exists {
 		return true, 0, nil
@@ -290,7 +299,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return false, 0, err
+			return false, 0, fmt.Errorf("postage index get: %w", err)
 		}
 	} else {
 		if item.Immutable {
@@ -303,14 +312,15 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 		}
 		_, err = db.setRemove(batch, previous, true)
 		if err != nil {
-			return false, 0, err
+			db.logger.Warningf("tried insert chunk but failed. previous item batchID %x index %x hash %x timestamp %x. new item batchID %x index %x hash %x timestamp %x.", previous.BatchID, previous.Index, previous.Address, previous.Timestamp, item.BatchID, item.Index, item.Address, item.Timestamp)
+			return false, 0, fmt.Errorf("same slot remove: %w", err)
 		}
 	}
 
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
-		return false, 0, err
+		return false, 0, fmt.Errorf("inc bin id: %w", err)
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
@@ -339,43 +349,41 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 //  - put to indexes: retrieve, pull, gc
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
-func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
+func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange, reserveSizeChange int64, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	if exists {
-		return true, 0, nil
+		return true, 0, 0, nil
 	}
 
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return false, 0, err
+			return false, 0, 0, err
 		}
 	} else {
 		if item.Immutable {
-			return false, 0, ErrOverwrite
+			return false, 0, 0, ErrOverwrite
 		}
 		// if a chunk is found with the same postage stamp index,
 		// replace it with the new one only if timestamp is later
 		if !later(previous, item) {
-			return false, 0, nil
+			return false, 0, 0, nil
 		}
 		_, err = db.setRemove(batch, previous, true)
 		if err != nil {
-			return false, 0, err
+			return false, 0, 0, err
 		}
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
 			if !errors.Is(err, leveldb.ErrNotFound) {
-				return false, 0, err
+				return false, 0, 0, err
 			}
 		} else {
 			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
-				if err := db.incReserveSizeInBatch(batch, -1); err != nil {
-					return false, 0, err
-				}
+				reserveSizeChange--
 			}
 		}
 	}
@@ -383,72 +391,71 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.pullIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.postageChunksIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	err = db.postageIndexIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	item.AccessTimestamp = now()
 	err = db.retrievalAccessIndex.PutInBatch(batch, item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 
-	gcSizeChangeNew, err := db.preserveOrCache(batch, item, false, false)
+	gcSizeChangeNew, reserveSizeChangeNew, err := db.preserveOrCache(batch, item, false, false)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 
-	return false, gcSizeChange + gcSizeChangeNew, nil
+	return false, gcSizeChange + gcSizeChangeNew, reserveSizeChange + reserveSizeChangeNew, nil
 }
 
 // preserveOrCache is a helper function used to add chunks to either a pinned reserve or gc cache
 // (the retrieval access index and the gc index)
-func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, forceCache bool) (gcSizeChange int64, err error) {
+func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, forceCache bool) (gcSizeChange, reserveSizeChange int64, err error) {
 	if !forceCache && (withinRadiusFn(db, item) || forcePin) {
 		if !forcePin {
-			if err := db.incReserveSizeInBatch(batch, 1); err != nil {
-				return 0, err
-			}
+			reserveSizeChange++
 		}
-		return db.setPin(batch, item)
+		gcSizeChange, err = db.setPin(batch, item)
+		return gcSizeChange, reserveSizeChange, err
 	}
 
 	// add new entry to gc index ONLY if it is not present in pinIndex
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if ok {
-		return gcSizeChange, nil
+		return gcSizeChange, 0, nil
 	}
 	exists, err := db.gcIndex.Has(item)
 	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-		return 0, err
+		return 0, 0, err
 	}
 	if exists {
-		return 0, nil
+		return 0, 0, nil
 	}
 	err = db.gcIndex.PutInBatch(batch, item)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	gcSizeChange++
 
-	return gcSizeChange, nil
+	return gcSizeChange, 0, nil
 }
 
 // incBinID is a helper function for db.put* methods that increments bin id

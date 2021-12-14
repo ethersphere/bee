@@ -555,6 +555,14 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	return db, nil
 }
 
+func (db *DB) Lock() {
+	db.batchMu.Lock()
+}
+
+func (db *DB) Unlock() {
+	db.batchMu.Unlock()
+}
+
 // Close closes the underlying database.
 func (db *DB) Close() (err error) {
 	close(db.close)

@@ -415,7 +415,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	b.p2pHalter = p2ps
 
 	var unreserveFn func([]byte, uint8) (uint64, error)
+	var lockFn, unlockFn func()
 	var evictFn = func(b []byte) error {
+		lockFn()
+		defer unlockFn()
 		_, err := unreserveFn(b, swarm.MaxPO+1)
 		return err
 	}
@@ -448,6 +451,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
+
+	lockFn = storer.Lock
+	unlockFn = storer.Unlock
 
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
