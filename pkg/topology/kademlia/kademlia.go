@@ -88,39 +88,40 @@ type Options struct {
 
 // Kad is the Swarm forwarding kademlia implementation.
 type Kad struct {
-	base              swarm.Address         // this node's overlay address
-	discovery         discovery.Driver      // the discovery driver
-	addressBook       addressbook.Interface // address book to get underlays
-	p2p               p2p.Service           // p2p service to connect to nodes with
-	saturationFunc    binSaturationFunc     // pluggable saturation function
-	bitSuffixLength   int                   // additional depth of common prefix for bin
-	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
-	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
-	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
-	bootnodes         []ma.Multiaddr
-	depth             uint8         // current neighborhood depth
-	radius            uint8         // storage area of responsibility
-	depthMu           sync.RWMutex  // protect depth changes
-	manageC           chan struct{} // trigger the manage forever loop to connect to new peers
-	peerSig           []chan struct{}
-	peerSigMtx        sync.Mutex
-	logger            logging.Logger // logger
-	bootnode          bool           // indicates whether the node is working in bootnode mode
-	collector         *im.Collector
-	quit              chan struct{} // quit channel
-	halt              chan struct{} // halt channel
-	done              chan struct{} // signal that `manage` has quit
-	wg                sync.WaitGroup
-	waitNext          *waitnext.WaitNext
-	metrics           metrics
-	pruneFunc         pruneFunc // pluggable prune function
-	pinger            pingpong.Interface
-	staticPeer        staticPeerFunc
-	bgBroadcastCtx    context.Context
-	bgBroadcastCancel context.CancelFunc
-	blocker           *blocker.Blocker
-	reachability      p2p.ReachabilityStatus
-	peerFilter        peerFilterFunc
+	base                swarm.Address         // this node's overlay address
+	discovery           discovery.Driver      // the discovery driver
+	addressBook         addressbook.Interface // address book to get underlays
+	p2p                 p2p.Service           // p2p service to connect to nodes with
+	saturationFunc      binSaturationFunc     // pluggable saturation function
+	bitSuffixLength     int                   // additional depth of common prefix for bin
+	commonBinPrefixes   [][]swarm.Address     // list of address prefixes for each bin
+	connectedPeers      *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
+	knownPeers          *pslice.PSlice        // both are po aware slice of addresses
+	bootnodes           []ma.Multiaddr
+	depth               uint8         // current neighborhood depth
+	radius              uint8         // storage area of responsibility
+	depthMu             sync.RWMutex  // protect depth changes
+	manageC             chan struct{} // trigger the manage forever loop to connect to new peers
+	peerSig             []chan struct{}
+	peerSigMtx          sync.Mutex
+	logger              logging.Logger // logger
+	bootnode            bool           // indicates whether the node is working in bootnode mode
+	collector           *im.Collector
+	quit                chan struct{} // quit channel
+	halt                chan struct{} // halt channel
+	done                chan struct{} // signal that `manage` has quit
+	wg                  sync.WaitGroup
+	waitNext            *waitnext.WaitNext
+	metrics             metrics
+	pruneFunc           pruneFunc // pluggable prune function
+	pinger              pingpong.Interface
+	staticPeer          staticPeerFunc
+	bgBroadcastCtx      context.Context
+	bgBroadcastCancel   context.CancelFunc
+	blocker             *blocker.Blocker
+	reachability        p2p.ReachabilityStatus
+	setReachabilityOnce sync.Once
+	peerFilter          peerFilterFunc
 }
 
 // New returns a new Kademlia.
@@ -1303,7 +1304,7 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error
 	})
 }
 
-// SetPeerReachability sets the peer reachability status.
+// Reachable sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
 	k.logger.Tracef("kademlia: reachability of peer %s is %s", addr.String(), status.String())
@@ -1316,10 +1317,13 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 }
 
 // UpdateReachability updates node reachability status.
+// The status will be updated only once.
 func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
-	k.logger.Infof("kademlia: updated reachability to %s", status.String())
-	k.reachability = status
-	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
+	k.setReachabilityOnce.Do(func() {
+		k.logger.Infof("kademlia: updated reachability to %s", status.String())
+		k.reachability = status
+		k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
+	})
 }
 
 // SubscribePeersChange returns the channel that signals when the connected peers
