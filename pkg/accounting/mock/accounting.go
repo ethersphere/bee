@@ -223,7 +223,7 @@ func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 	return s.balances, nil
 }
 
-func (s *Service) AccountingInfo() (map[string]accounting.PeerInfo, error) {
+func (s *Service) PeerAccounting() (map[string]accounting.PeerInfo, error) {
 	if s.accountingInfosFunc != nil {
 		return s.accountingInfosFunc()
 	}

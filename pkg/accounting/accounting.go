@@ -55,8 +55,8 @@ type Interface interface {
 	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
 	CompensatedBalances() (map[string]*big.Int, error)
-	// AccountingInfos returns the array of peer associated values for all current accounting peers in memory
-	AccountingInfo() (map[string]PeerInfo, error)
+	// PeerAccountings returns the associated values for all known peers
+	PeerAccounting() (map[string]PeerInfo, error)
 }
 
 // Action represents an accounting action that can be applied
@@ -643,7 +643,6 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 }
 
 type PeerInfo struct {
-	Peer                  string
 	Balance               *big.Int
 	ThresholdReceived     *big.Int
 	ThresholdGiven        *big.Int
@@ -653,7 +652,7 @@ type PeerInfo struct {
 	GhostBalance          *big.Int
 }
 
-func (a *Accounting) AccountingInfo() (map[string]PeerInfo, error) {
+func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 	s := make(map[string]PeerInfo)
 
 	a.accountingPeersMu.Lock()
@@ -680,7 +679,6 @@ func (a *Accounting) AccountingInfo() (map[string]PeerInfo, error) {
 		accountingPeer.lock.Lock()
 
 		s[peer] = PeerInfo{
-			Peer:                  peer,
 			Balance:               new(big.Int).Set(balance),
 			ThresholdReceived:     new(big.Int).Set(accountingPeer.paymentThreshold),
 			ThresholdGiven:        new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
