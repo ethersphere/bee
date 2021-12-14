@@ -47,31 +47,33 @@ type Interface interface {
 
 // Service is the implementation of the swap settlement layer.
 type Service struct {
-	proto       swapprotocol.Interface
-	logger      logging.Logger
-	store       storage.StateStorer
-	accounting  settlement.Accounting
-	metrics     metrics
-	chequebook  chequebook.Service
-	chequeStore chequebook.ChequeStore
-	cashout     chequebook.CashoutService
-	addressbook Addressbook
-	networkID   uint64
+	proto          swapprotocol.Interface
+	logger         logging.Logger
+	store          storage.StateStorer
+	accounting     settlement.Accounting
+	metrics        metrics
+	chequebook     chequebook.Service
+	chequeStore    chequebook.ChequeStore
+	cashout        chequebook.CashoutService
+	addressbook    Addressbook
+	networkID      uint64
+	cashoutAddress common.Address
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting) *Service {
+func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting, cashoutAddress common.Address) *Service {
 	return &Service{
-		proto:       proto,
-		logger:      logger,
-		store:       store,
-		metrics:     newMetrics(),
-		chequebook:  chequebook,
-		chequeStore: chequeStore,
-		addressbook: addressbook,
-		networkID:   networkID,
-		cashout:     cashout,
-		accounting:  accounting,
+		proto:          proto,
+		logger:         logger,
+		store:          store,
+		metrics:        newMetrics(),
+		chequebook:     chequebook,
+		chequeStore:    chequeStore,
+		addressbook:    addressbook,
+		networkID:      networkID,
+		cashout:        cashout,
+		accounting:     accounting,
+		cashoutAddress: cashoutAddress,
 	}
 }
 
@@ -352,7 +354,7 @@ func (s *Service) CashCheque(ctx context.Context, peer swarm.Address) (common.Ha
 	if !known {
 		return common.Hash{}, chequebook.ErrNoCheque
 	}
-	return s.cashout.CashCheque(ctx, chequebookAddress, s.chequebook.Address())
+	return s.cashout.CashCheque(ctx, chequebookAddress, s.cashoutAddress)
 }
 
 // CashoutStatus gets the status of the latest cashout transaction for the peers chequebook

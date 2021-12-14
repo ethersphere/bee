@@ -242,6 +242,11 @@ func InitSwap(
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, priceOracle)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
+	cashoutAddress := overlayEthAddress
+	if chequebookService != nil {
+		cashoutAddress = chequebookService.Address()
+	}
+
 	swapService := swap.New(
 		swapProtocol,
 		logger,
@@ -252,6 +257,7 @@ func InitSwap(
 		networkID,
 		cashoutService,
 		accounting,
+		cashoutAddress,
 	)
 
 	swapProtocol.SetSwap(swapService)
