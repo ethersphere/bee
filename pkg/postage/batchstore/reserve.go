@@ -40,7 +40,7 @@ import (
 )
 
 // DefaultDepth is the initial depth for the reserve
-var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging to master
+var DefaultDepth = uint8(1) // 12 is the testnet depth at the time of merging to master
 
 // Capacity is the number of chunks in reserve. `2^22` (4194304) was chosen to remain
 // relatively near the current 5M chunks ~25GB.
