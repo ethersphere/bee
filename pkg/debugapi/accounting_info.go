@@ -5,6 +5,7 @@
 package debugapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/bigint"
@@ -12,15 +13,14 @@ import (
 )
 
 var (
-	errCantInfo = "Cannot get accounting infos"
+	errCantInfo = errors.New("Cannot get accounting infos")
 )
 
 type infoResponseArray struct {
-	InfoResponse []accountingInfoResponse `json:"infos"`
+	InfoResponse map[string]accountingInfoResponse `json:"peerData"`
 }
 
 type accountingInfoResponse struct {
-	Peer                  string         `json:"peer"`
 	Balance               *bigint.BigInt `json:"balance"`
 	ThresholdReceived     *bigint.BigInt `json:"thresholdReceived"`
 	ThresholdGiven        *bigint.BigInt `json:"thresholdGiven"`
@@ -31,7 +31,7 @@ type accountingInfoResponse struct {
 }
 
 func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) {
-	infos, err := s.accounting.AccountingInfo()
+	infos, err := s.accounting.PeerAccounting()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantInfo)
 		s.logger.Debugf("debug api: accounting info: %v", err)
@@ -39,11 +39,9 @@ func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	infoResponses := make([]accountingInfoResponse, len(infos))
-	i := 0
+	infoResponses := make(map[string]accountingInfoResponse, len(infos))
 	for k := range infos {
-		infoResponses[i] = accountingInfoResponse{
-			Peer:                  infos[k].Peer,
+		infoResponses[k] = accountingInfoResponse{
 			Balance:               bigint.Wrap(infos[k].Balance),
 			ThresholdReceived:     bigint.Wrap(infos[k].ThresholdReceived),
 			ThresholdGiven:        bigint.Wrap(infos[k].ThresholdGiven),
@@ -52,7 +50,6 @@ func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) 
 			ShadowReservedBalance: bigint.Wrap(infos[k].ShadowReservedBalance),
 			GhostBalance:          bigint.Wrap(infos[k].GhostBalance),
 		}
-		i++
 	}
 
 	jsonhttp.OK(w, infoResponseArray{InfoResponse: infoResponses})
