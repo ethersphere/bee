@@ -1317,8 +1317,12 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 }
 
 // UpdateReachability updates node reachability status.
-// The status will be updated only once.
+// The status will be updated only once. Updates to status
+// p2p.ReachabilityStatusUnknown are ignored.
 func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
+	if status == p2p.ReachabilityStatusUnknown {
+		return
+	}
 	k.setReachabilityOnce.Do(func() {
 		k.logger.Infof("kademlia: updated reachability to %s", status.String())
 		k.reachability = status
