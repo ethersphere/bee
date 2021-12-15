@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-var (
+const (
 	errCantInfo = "Cannot get accounting infos"
 )
 

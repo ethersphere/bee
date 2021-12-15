@@ -16,7 +16,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var (
+const (
 	errCantSettlements     = "can not get settlements"
 	errCantSettlementsPeer = "can not get settlements for peer"
 )
