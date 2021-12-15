@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -59,7 +59,7 @@ func TestAccountingInfo(t *testing.T) {
 
 	expected := &debugapi.PeerData{
 		InfoResponse: map[string]debugapi.PeerDataResponse{
-			"BEEF": debugapi.PeerDataResponse{
+			"BEEF": {
 				Balance:               bigint.Wrap(big.NewInt(25)),
 				ThresholdReceived:     bigint.Wrap(big.NewInt(37)),
 				ThresholdGiven:        bigint.Wrap(big.NewInt(49)),
@@ -68,7 +68,7 @@ func TestAccountingInfo(t *testing.T) {
 				ShadowReservedBalance: bigint.Wrap(big.NewInt(92)),
 				GhostBalance:          bigint.Wrap(big.NewInt(94)),
 			},
-			"B33F": debugapi.PeerDataResponse{
+			"B33F": {
 				Balance:               bigint.Wrap(big.NewInt(26)),
 				ThresholdReceived:     bigint.Wrap(big.NewInt(38)),
 				ThresholdGiven:        bigint.Wrap(big.NewInt(50)),
@@ -77,7 +77,7 @@ func TestAccountingInfo(t *testing.T) {
 				ShadowReservedBalance: bigint.Wrap(big.NewInt(93)),
 				GhostBalance:          bigint.Wrap(big.NewInt(95)),
 			},
-			"BE3F": debugapi.PeerDataResponse{
+			"BE3F": {
 				Balance:               bigint.Wrap(big.NewInt(27)),
 				ThresholdReceived:     bigint.Wrap(big.NewInt(39)),
 				ThresholdGiven:        bigint.Wrap(big.NewInt(51)),
