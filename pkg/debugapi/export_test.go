@@ -44,7 +44,7 @@ type (
 var (
 	ErrCantBalance           = errCantBalance
 	ErrCantBalances          = errCantBalances
-	ErrCantInfo              = errCantInfo
+	HttpErrGetAccountingInfo = httpErrGetAccountingInfo
 	ErrNoBalance             = errNoBalance
 	ErrCantSettlementsPeer   = errCantSettlementsPeer
 	ErrCantSettlements       = errCantSettlements
