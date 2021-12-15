@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	errCantInfo = "Cannot get accounting infos"
+	httpErrGetAccountingInfo = "Cannot get accounting info"
 )
 
 type peerData struct {
@@ -32,7 +32,7 @@ type peerDataResponse struct {
 func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) {
 	infos, err := s.accounting.PeerAccounting()
 	if err != nil {
-		jsonhttp.InternalServerError(w, errCantInfo)
+		jsonhttp.InternalServerError(w, httpErrGetAccountingInfo)
 		s.logger.Debugf("debug api: accounting info: %v", err)
 		s.logger.Error("debug api: can not get accounting info")
 		return
