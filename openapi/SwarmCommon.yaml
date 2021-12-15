@@ -71,6 +71,32 @@ components:
         currentPrice:
           type: integer
 
+    PeerAccountingData:
+      type: object
+      properties:
+        peerData:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AccountingInfo"
+
+    AccountingInfo:
+      type: object
+      properties:
+        balance:
+          $ref: "#/components/schemas/BigInt"
+        thresholdReceived:
+          $ref: "#/components/schemas/BigInt"
+        thresholdGiven:
+          $ref: "#/components/schemas/BigInt"
+        surplusBalance:
+          $ref: "#/components/schemas/BigInt"
+        reservedBalance:
+          $ref: "#/components/schemas/BigInt"
+        shadowReservedBalance:
+          $ref: "#/components/schemas/BigInt"
+        ghostBalance:
+          $ref: "#/components/schemas/BigInt"
+
     Balance:
       type: object
       properties:
