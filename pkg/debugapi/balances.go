@@ -15,7 +15,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var (
+const (
 	errCantBalances   = "Cannot get balances"
 	errCantBalance    = "Cannot get balance"
 	errNoBalance      = "No balance for peer"
