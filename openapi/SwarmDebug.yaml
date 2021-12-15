@@ -41,7 +41,7 @@ paths:
 
   "/accounting":
     get:
-      summary: Get all accounting associated values with all known peers 
+      summary: Get all accounting associated values with all known peers
       tags:
         - Balance
       responses:
