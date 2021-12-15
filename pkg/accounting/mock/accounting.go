@@ -25,7 +25,7 @@ type Service struct {
 	balancesFunc            func() (map[string]*big.Int, error)
 	compensatedBalanceFunc  func(swarm.Address) (*big.Int, error)
 	compensatedBalancesFunc func() (map[string]*big.Int, error)
-	accountingInfosFunc     func() (map[string]accounting.PeerInfo, error)
+	peerAccountingFunc      func() (map[string]accounting.PeerInfo, error)
 	balanceSurplusFunc      func(swarm.Address) (*big.Int, error)
 }
 
@@ -92,9 +92,9 @@ func WithBalanceSurplusFunc(f func(swarm.Address) (*big.Int, error)) Option {
 	})
 }
 
-func WithAccountingInfosFunc(f func() (map[string]accounting.PeerInfo, error)) Option {
+func WithPeerAccountingFunc(f func() (map[string]accounting.PeerInfo, error)) Option {
 	return optionFunc(func(s *Service) {
-		s.accountingInfosFunc = f
+		s.peerAccountingFunc = f
 	})
 }
 
@@ -224,8 +224,8 @@ func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 }
 
 func (s *Service) PeerAccounting() (map[string]accounting.PeerInfo, error) {
-	if s.accountingInfosFunc != nil {
-		return s.accountingInfosFunc()
+	if s.peerAccountingFunc != nil {
+		return s.peerAccountingFunc()
 	}
 	return map[string]accounting.PeerInfo{}, nil
 }

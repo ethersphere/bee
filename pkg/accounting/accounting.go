@@ -665,12 +665,10 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		peerAddress := swarm.MustParseHexAddress(peer)
 
 		balance, err := a.Balance(peerAddress)
-		if err != nil {
-			if !errors.Is(err, ErrPeerNoBalance) {
-				return nil, err
-			} else {
-				balance = big.NewInt(0)
-			}
+		if errors.Is(err, ErrPeerNoBalance) {
+			balance = big.NewInt(0)
+		} else if err != nil {
+			return nil, err
 		}
 
 		surplusBalance, err := a.SurplusBalance(peerAddress)
