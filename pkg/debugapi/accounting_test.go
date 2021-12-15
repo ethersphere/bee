@@ -112,7 +112,7 @@ func TestAccountingInfoError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer.Client, http.MethodGet, "/accounting", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantInfo,
+			Message: debugapi.HttpErrGetAccountingInfo,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
