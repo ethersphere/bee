@@ -39,6 +39,23 @@ paths:
         default:
           description: Default response
 
+  "/accounting":
+    get:
+      summary: Get all accounting associated values with all known peers 
+      tags:
+        - Balance
+      responses:
+        "200":
+          description: Own accounting associated values with all known peers
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PeerAccountingData"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/balances":
     get:
       summary: Get the balances with all known peers including prepaid services
