@@ -91,6 +91,9 @@ format:
 .PHONY: lint
 lint: linter
 	$(GOLANGCI_LINT) run
+	TREE=$$(git hash-object -t tree /dev/null); \
+	TW=$$(git diff-index --cached --check --diff-filter=d "$${TREE}"); \
+	[ "$${TW}" != "" ] && echo "Trailing whitespaces found:\n $${TW}" && exit 1; exit 0
 
 .PHONY: lint-local
 lint-local: linter
