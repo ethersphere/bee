@@ -420,18 +420,25 @@ components:
           type: integer
         immutableFlag:
           type: boolean
+        exists:
+          type: boolean
+        batchTTL:
+          type: integer
 
+    PostageBatchNoIssuer:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/BatchID"
+        exists:
+          type: boolean
+        batchTTL:
+          type: integer
+        
     DebugPostageBatch:
-      allOf:
-        - $ref: '#/components/schemas/PostageBatch'
-        - type: object
-          properties:
-            exists:
-              description: Internal debugging property. It indicates if the batch is expired.
-              type: boolean
-            batchTTL:
-              description: The time (in seconds) remaining until the batch expires; -1 signals that the batch never expires; 0 signals that the batch has already expired.
-              type: integer
+      anyOf:
+        - $ref: "#/components/schemas/PostageBatch"
+        - $ref: "#/components/schemas/PostageBatchNoIssuer"
 
     StampBucketData:
       type: object
@@ -500,6 +507,7 @@ components:
       example: "swarm.eth"
 
     BatchID:
+      type: string
       pattern: "^[A-Fa-f0-9]{64}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
 
