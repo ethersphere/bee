@@ -294,7 +294,7 @@ paths:
             "swarm-tag":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
             "etag":
-              $ref: "SwarmCommon.yaml#/components/headers/ETag" 
+              $ref: "SwarmCommon.yaml#/components/headers/ETag"
           content:
             application/json:
               schema:

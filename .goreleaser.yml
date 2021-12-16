@@ -156,7 +156,7 @@ nfpms:
     formats:
       - deb
       - rpm
-    
+
     contents:
       - src: packaging/bee.service
         dst: /lib/systemd/system/bee.service
@@ -225,7 +225,7 @@ scoop:
     - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient eth and bzz available on $ETH_ADDRESS address.\nLearn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node\""
     - "Write-Host \"Obtain a free Infura account and set: swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx inside $persist_dir\\bee.yaml\""
     - "Write-Host \"After the initial fund deploy Bee chequebook with [sudo] $dir\\bee.exe deploy --config=$persist_dir\\bee.yaml\""
-    - "Write-Host 'Start Bee service with [sudo] sc.exe start SwarmBeeSvc'" 
+    - "Write-Host 'Start Bee service with [sudo] sc.exe start SwarmBeeSvc'"
 
 brews:
   - name: swarm-bee

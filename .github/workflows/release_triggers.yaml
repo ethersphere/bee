@@ -24,4 +24,3 @@ jobs:
           repository: ethersphere/bee-factory
           event-type: build-images
           client-payload: '{"tag": "${{ steps.get-version.outputs.VERSION }}"}'
-

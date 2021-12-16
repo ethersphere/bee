@@ -686,7 +686,7 @@ paths:
 
   "/transactions":
     get:
-      summary: Get list of pending transactions      
+      summary: Get list of pending transactions
       tags:
         - Transaction
       responses:
