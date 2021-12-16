@@ -434,7 +434,7 @@ components:
           type: boolean
         batchTTL:
           type: integer
-        
+
     DebugPostageBatch:
       anyOf:
         - $ref: "#/components/schemas/PostageBatch"
