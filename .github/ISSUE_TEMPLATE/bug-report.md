@@ -9,7 +9,7 @@ assignees: ''
 
 ⚠️ Support requests in an issue-format will be closed immediately. For support, go to Swarm's [Discord](https://discord.gg/XGNBEKktkD).
 
-### Context 
+### Context
 <!-- Bee version / System information / Environment-->
 
 ### Summary
@@ -22,7 +22,7 @@ assignees: ''
 <!-- How did the application behave? -->
 <!-- Please help us help you:
 - if the problem involves a specific file/dir, providing it might be helpful
-- if the issue is related to an API behavior - please provide the exact command (curl/postman etc) used to call the API. 
+- if the issue is related to an API behavior - please provide the exact command (curl/postman etc) used to call the API.
 - please always try to provide the node console output preferably in TRACE level
 - screenshots are welcome -->
 

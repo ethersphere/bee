@@ -11,4 +11,3 @@ option go_package = "pb";
 message Message {
     string Text = 1;
 }
-

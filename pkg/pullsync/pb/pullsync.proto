@@ -42,4 +42,3 @@ message Delivery {
   bytes Data = 2;
   bytes Stamp = 3;
 }
-
