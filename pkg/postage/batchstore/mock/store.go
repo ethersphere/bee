@@ -102,6 +102,11 @@ func (bs *BatchStore) Get(id []byte) (*postage.Batch, error) {
 	return bs.batch, nil
 }
 
+// Iterate mocks the Iterate method from the BatchStore
+func (bs *BatchStore) Iterate(func(*postage.Batch) (bool, error)) error {
+	return nil
+}
+
 // Put mocks the Put method from the BatchStore
 func (bs *BatchStore) Put(batch *postage.Batch, newValue *big.Int, newDepth uint8) error {
 	if bs.putErr != nil {
