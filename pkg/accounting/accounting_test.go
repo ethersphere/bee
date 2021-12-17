@@ -1559,7 +1559,7 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 
 }
 
-func TestAccountingRefreshGrowingThresholds(t *testing.T) {
+func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64), fullNode bool, testPayThreshold *big.Int, testGrowth int64) {
 
 	logger := logging.New(io.Discard, 0)
 
@@ -1577,21 +1577,21 @@ func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, testPaymentThreshold)
+	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, testPayThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	acc.Connect(peer1Addr, true)
+	acc.Connect(peer1Addr, fullNode)
 
-	checkPaymentThreshold := testPaymentThreshold
+	checkPaymentThreshold := new(big.Int).Set(testPayThreshold)
 
 	// Simulate first 18 threshold upgrades
 	for j := 0; j < 18; j++ {
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 100; i++ {
 
-			// expect no change in threshold while less than 10 seconds worth of refreshment rate was settled
-			debitAndRefresh(t, acc, peer1Addr, testRefreshRate-2)
+			// expect no change in threshold while less than 100 seconds worth of refreshment rate was settled
+			settleFunc(t, acc, peer1Addr, testGrowth-1)
 
 			if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
 				t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
@@ -1599,14 +1599,14 @@ func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 
 		}
 
-		// Cumulative settled debt is now "milestone - 20 + j" ( j < 18 )
+		// Cumulative settled debt is now "milestone - 100 + j" ( j < 18 )
 
-		// Expect increase after 10 seconds of refreshment is crossed
+		// Expect increase after 100 seconds of refreshment is crossed
 
-		checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testRefreshRate))
+		checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testGrowth))
 
 		// Cross
-		debitAndRefresh(t, acc, peer1Addr, 21)
+		settleFunc(t, acc, peer1Addr, 101)
 
 		// Cumulative settled debt is now "milestone + j + 1" ( j < 18 )
 
@@ -1621,9 +1621,9 @@ func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 
 	// Expect no increase for the next 179 seconds of refreshment
 
-	for k := 0; k < 179; k++ {
+	for k := 0; k < 1799; k++ {
 
-		debitAndRefresh(t, acc, peer1Addr, testRefreshRate)
+		settleFunc(t, acc, peer1Addr, testGrowth)
 
 		// Check threshold have not been updated
 		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
@@ -1632,11 +1632,11 @@ func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 
 	}
 
-	// Expect increase after the 180th second worth of refreshment settled
+	// Expect increase after the 1800th second worth of refreshment settled
 
-	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testRefreshRate))
+	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testGrowth))
 
-	debitAndRefresh(t, acc, peer1Addr, testRefreshRate)
+	settleFunc(t, acc, peer1Addr, testGrowth)
 
 	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
 	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
@@ -1645,11 +1645,11 @@ func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 
 	// Simulate second exponential milestone
 
-	// Expect no increase for another 359 seconds of refreshments
+	// Expect no increase for another 3599 seconds of refreshments
 
-	for k := 0; k < 359; k++ {
+	for k := 0; k < 3599; k++ {
 
-		debitAndRefresh(t, acc, peer1Addr, testRefreshRate)
+		settleFunc(t, acc, peer1Addr, testGrowth)
 
 		// Check threshold have not been updated
 		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
@@ -1660,304 +1660,44 @@ func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 
 	// Expect increase after the 360th second worth of refreshment settled
 
-	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testRefreshRate))
+	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testGrowth))
 
-	debitAndRefresh(t, acc, peer1Addr, testRefreshRate)
+	settleFunc(t, acc, peer1Addr, testGrowth)
 
 	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
 	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
 		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
 	}
+
+}
+
+func testAccountingRefreshGrowingThresholds(t *testing.T) {
+
+	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, true, testPaymentThreshold, testRefreshRate)
 
 }
 
 func TestAccountingRefreshGrowingThresholdsLight(t *testing.T) {
 
-	logger := logging.New(io.Discard, 0)
-
-	store := mock.NewStateStore()
-	defer store.Close()
-
-	pricing := &pricingMock{}
-
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
-	if err != nil {
-		t.Fatal(err)
-	}
-	peer1Addr, err := swarm.ParseHexAddress("00112233")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	lightPaymentThresholdDefault := new(big.Int).Div(testPaymentThreshold, big.NewInt(testLightFactor))
 	lightRefreshRate := testRefreshRate / testLightFactor
 
-	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, lightPaymentThresholdDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	acc.Connect(peer1Addr, false)
-
-	checkPaymentThreshold := lightPaymentThresholdDefault
-
-	// Simulate first 18 threshold upgrades
-	for j := 0; j < 18; j++ {
-		for i := 0; i < 10; i++ {
-
-			// expect no change in threshold while less than 10 seconds worth of refreshment rate was settled
-			debitAndRefresh(t, acc, peer1Addr, lightRefreshRate-2)
-
-			if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-				t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-			}
-
-		}
-
-		// Cumulative settled debt is now "milestone - 20 + j" ( j < 18 )
-
-		// Expect increase after 10 seconds of refreshment is crossed
-
-		checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(lightRefreshRate))
-
-		// Cross
-
-		debitAndRefresh(t, acc, peer1Addr, 21)
-
-		// Cumulative settled debt is now "milestone + j + 1" ( j < 18 )
-
-		// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Expect no increase for the next 179 seconds of refreshment
-
-	for k := 0; k < 179; k++ {
-		// Create debt and refresh
-		debitAndRefresh(t, acc, peer1Addr, lightRefreshRate)
-
-		// Check threshold have not been updated
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Expect increase after the 180th second worth of refreshment settled
-
-	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(lightRefreshRate))
-
-	// Cross
-	debitAndRefresh(t, acc, peer1Addr, lightRefreshRate)
-
-	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-	}
+	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, false, lightPaymentThresholdDefault, lightRefreshRate)
 
 }
 
 func TestAccountingSwapGrowingThresholds(t *testing.T) {
 
-	logger := logging.New(io.Discard, 0)
-
-	store := mock.NewStateStore()
-	defer store.Close()
-
-	pricing := &pricingMock{}
-
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
-	if err != nil {
-		t.Fatal(err)
-	}
-	peer1Addr, err := swarm.ParseHexAddress("00112233")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, testPaymentThreshold)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	acc.Connect(peer1Addr, true)
-
-	checkPaymentThreshold := testPaymentThreshold
-
-	// Simulate first 18 threshold upgrades
-	for j := 0; j < 18; j++ {
-		for i := 0; i < 10; i++ {
-
-			// expect no change in threshold while less than 10 seconds worth of refreshment rate was settled
-			debitAndReceivePayment(t, acc, peer1Addr, testRefreshRate-2)
-
-			if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-				t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-			}
-
-		}
-
-		// Cumulative settled debt is now "milestone - 20 + j" ( j < 18 )
-
-		// Expect increase after 10 seconds of refreshment is crossed
-
-		checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testRefreshRate))
-
-		// Cross
-		debitAndReceivePayment(t, acc, peer1Addr, 21)
-
-		// Cumulative settled debt is now "milestone + j + 1" ( j < 18 )
-
-		// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Simulate first exponential milestone
-
-	// Expect no increase for the next 179 seconds of refreshment
-
-	for k := 0; k < 179; k++ {
-
-		debitAndReceivePayment(t, acc, peer1Addr, testRefreshRate)
-
-		// Check threshold have not been updated
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Expect increase after the 180th second worth of refreshment settled
-
-	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testRefreshRate))
-
-	debitAndReceivePayment(t, acc, peer1Addr, testRefreshRate)
-
-	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-	}
-
-	// Simulate second exponential milestone
-
-	// Expect no increase for another 359 seconds of refreshments
-
-	for k := 0; k < 359; k++ {
-
-		debitAndReceivePayment(t, acc, peer1Addr, testRefreshRate)
-
-		// Check threshold have not been updated
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Expect increase after the 360th second worth of refreshment settled
-
-	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(testRefreshRate))
-
-	debitAndReceivePayment(t, acc, peer1Addr, testRefreshRate)
-
-	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-	}
+	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, true, testPaymentThreshold, testRefreshRate)
 
 }
 
 func TestAccountingSwapGrowingThresholdsLight(t *testing.T) {
 
-	logger := logging.New(io.Discard, 0)
-
-	store := mock.NewStateStore()
-	defer store.Close()
-
-	pricing := &pricingMock{}
-
-	acc, err := accounting.NewAccounting(testPaymentThreshold, 0, 0, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
-	if err != nil {
-		t.Fatal(err)
-	}
-	peer1Addr, err := swarm.ParseHexAddress("00112233")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	lightPaymentThresholdDefault := new(big.Int).Div(testPaymentThreshold, big.NewInt(testLightFactor))
 	lightRefreshRate := testRefreshRate / testLightFactor
 
-	err = pricing.AnnouncePaymentThreshold(context.Background(), peer1Addr, lightPaymentThresholdDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	acc.Connect(peer1Addr, false)
-
-	checkPaymentThreshold := lightPaymentThresholdDefault
-
-	// Simulate first 18 threshold upgrades
-	for j := 0; j < 18; j++ {
-		for i := 0; i < 10; i++ {
-
-			// expect no change in threshold while less than 10 seconds worth of refreshment rate was settled
-			debitAndReceivePayment(t, acc, peer1Addr, lightRefreshRate-2)
-
-			if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-				t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-			}
-
-		}
-
-		// Cumulative settled debt is now "milestone - 20 + j" ( j < 18 )
-
-		// Expect increase after 10 seconds of refreshment is crossed
-
-		checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(lightRefreshRate))
-
-		// Cross
-
-		debitAndReceivePayment(t, acc, peer1Addr, 21)
-
-		// Cumulative settled debt is now "milestone + j + 1" ( j < 18 )
-
-		// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Expect no increase for the next 179 seconds of refreshment
-
-	for k := 0; k < 179; k++ {
-		// Create debt and refresh
-		debitAndReceivePayment(t, acc, peer1Addr, lightRefreshRate)
-
-		// Check threshold have not been updated
-		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-		}
-
-	}
-
-	// Expect increase after the 180th second worth of refreshment settled
-
-	checkPaymentThreshold = new(big.Int).Add(checkPaymentThreshold, big.NewInt(lightRefreshRate))
-
-	// Cross
-	debitAndReceivePayment(t, acc, peer1Addr, lightRefreshRate)
-
-	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
-	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
-	}
+	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, false, lightPaymentThresholdDefault, lightRefreshRate)
 
 }
 
