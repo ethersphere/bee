@@ -126,10 +126,10 @@ type postageStampsResponse struct {
 }
 
 type postageBatchResponse struct {
-	ID          []byte   `json:"batchID"`
+	ID          batchID  `json:"batchID"`
 	Value       *big.Int `json:"value"`
 	Start       uint64   `json:"start"`
-	Owner       []byte   `json:"owner"`
+	Owner       batchID  `json:"owner"`
 	Depth       uint8    `json:"depth"`
 	BucketDepth uint8    `json:"bucketDepth"`
 	Immutable   bool     `json:"immutable"`
