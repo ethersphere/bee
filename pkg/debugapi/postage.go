@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -125,6 +126,18 @@ type postageStampsResponse struct {
 	Stamps []postageStampResponse `json:"stamps"`
 }
 
+type postageBatchResponse struct {
+	BatchID     batchID  `json:"batchID"`
+	Value       *big.Int `json:"value"`
+	Start       uint64   `json:"start"`
+	Owner       batchID  `json:"owner"`
+	Depth       uint8    `json:"depth"`
+	BucketDepth uint8    `json:"bucketDepth"`
+	Immutable   bool     `json:"immutable"`
+	Radius      uint8    `json:"radius"`
+	BatchTTL    int64    `json:"batchTTL"`
+}
+
 type postageStampBucketsResponse struct {
 	Depth            uint8        `json:"depth"`
 	BucketDepth      uint8        `json:"bucketDepth"`
@@ -137,7 +150,7 @@ type bucketData struct {
 	Collisions uint32 `json:"collisions"`
 }
 
-func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := postageStampsResponse{}
 	for _, v := range s.post.StampIssuers() {
 		exists, err := s.batchStore.Exists(v.ID())
@@ -147,7 +160,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 			jsonhttp.InternalServerError(w, "unable to check batch")
 			return
 		}
-		batchTTL, err := s.estimateBatchTTL(v.ID())
+		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
 			s.logger.Debugf("get stamp issuer: estimate batch expiration: %v", err)
 			s.logger.Error("get stamp issuer: estimate batch expiration")
@@ -169,6 +182,37 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request
 		})
 	}
 	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Request) {
+	batches := []postageBatchResponse{}
+	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		batchTTL, err := s.estimateBatchTTL(b)
+		if err != nil {
+			s.logger.Debugf("iterate batch: estimate batch expiration: %v", err)
+			s.logger.Error("iterate batch: estimate batch expiration")
+			return false, err
+		}
+
+		batches = append(batches, postageBatchResponse{
+			BatchID:     b.ID,
+			Value:       b.Value,
+			Start:       b.Start,
+			Owner:       b.Owner,
+			Depth:       b.Depth,
+			BucketDepth: b.BucketDepth,
+			Immutable:   b.Immutable,
+			Radius:      b.Radius,
+			BatchTTL:    batchTTL,
+		})
+		return false, nil
+	})
+	if err != nil {
+		jsonhttp.InternalServerError(w, "unable to iterate all batches")
+		return
+	}
+
+	jsonhttp.OK(w, batches)
 }
 
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
@@ -239,7 +283,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		jsonhttp.InternalServerError(w, "unable to check batch")
 		return
 	}
-	batchTTL, err := s.estimateBatchTTL(id)
+	batchTTL, err := s.estimateBatchTTLFromID(id)
 	if err != nil {
 		s.logger.Debugf("get stamp issuer: estimate batch expiration: %v", err)
 		s.logger.Error("get stamp issuer: estimate batch expiration")
@@ -271,6 +315,7 @@ type reserveStateResponse struct {
 	Radius        uint8          `json:"radius"`
 	StorageRadius uint8          `json:"storageRadius"`
 	Available     int64          `json:"available"`
+	Commitment    int64          `json:"commitment"`
 	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
 	Inner         *bigint.BigInt `json:"inner"`
 }
@@ -284,10 +329,21 @@ type chainStateResponse struct {
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
+	commitment := int64(0)
+	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		commitment += int64(math.Pow(2.0, float64(b.Depth)))
+		return false, nil
+	})
+	if err != nil {
+		jsonhttp.InternalServerError(w, "unable to iterate all batches")
+		return
+	}
+
 	jsonhttp.OK(w, reserveStateResponse{
 		Radius:        state.Radius,
 		StorageRadius: state.StorageRadius,
 		Available:     state.Available,
+		Commitment:    int64(commitment),
 		Outer:         bigint.Wrap(state.Outer),
 		Inner:         bigint.Wrap(state.Inner),
 	})
@@ -306,14 +362,24 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
 
 // estimateBatchTTL estimates the time remaining until the batch expires.
 // The -1 signals that the batch never expires.
-func (s *Service) estimateBatchTTL(id []byte) (int64, error) {
-	state := s.batchStore.GetChainState()
+func (s *Service) estimateBatchTTLFromID(id []byte) (int64, error) {
 	batch, err := s.batchStore.Get(id)
 	switch {
-	case errors.Is(err, storage.ErrNotFound), len(state.CurrentPrice.Bits()) == 0:
+	case errors.Is(err, storage.ErrNotFound):
 		return -1, nil
 	case err != nil:
 		return 0, err
+	}
+
+	return s.estimateBatchTTL(batch)
+}
+
+// estimateBatchTTL estimates the time remaining until the batch expires.
+// The -1 signals that the batch never expires.
+func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
+	state := s.batchStore.GetChainState()
+	if len(state.CurrentPrice.Bits()) == 0 {
+		return -1, nil
 	}
 
 	var (

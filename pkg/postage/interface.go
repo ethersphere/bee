@@ -36,6 +36,7 @@ type Storer interface {
 	SetRadiusSetter(RadiusSetter)
 	Unreserve(UnreserveIteratorFn) error
 	Exists(id []byte) (bool, error)
+	Iterate(func(*Batch) (bool, error)) error
 
 	Reset() error
 }
