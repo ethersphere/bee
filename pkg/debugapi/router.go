@@ -217,6 +217,12 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
+	handle("/stamps/all", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
+		})),
+	)
+
 	handle("/stamps/{id}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
