@@ -1671,7 +1671,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 }
 
-func testAccountingRefreshGrowingThresholds(t *testing.T) {
+func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 
 	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, true, testPaymentThreshold, testRefreshRate)
 
