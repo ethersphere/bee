@@ -23,6 +23,11 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const (
+	linearMilestoneNumber = 1800
+	linearMilestoneStep   = 100
+)
+
 var (
 	_                        Interface = (*Accounting)(nil)
 	balancesPrefix                     = "accounting_balance_"
@@ -98,10 +103,10 @@ type accountingPeer struct {
 	refreshTimestamp               int64      // last time we attempted time-based settlement
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
 	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
-	connected                      bool
-	fullNode                       bool
-	totalDebtRepay                 *big.Int
-	thresholdGrowAt                *big.Int
+	connected                      bool       //
+	fullNode                       bool       // the peer connected as full node or light node
+	totalDebtRepay                 *big.Int   // since being connected, amount of cumulative debt settled by the peer
+	thresholdGrowAt                *big.Int   // cumulative debt to be settled by the peer in order to give threshold upgrade
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -175,7 +180,7 @@ func NewAccounting(
 		paymentThreshold:         new(big.Int).Set(PaymentThreshold),
 		paymentTolerance:         PaymentTolerance,
 		earlyPayment:             EarlyPayment,
-		disconnectLimit:          new(big.Int).Div(new(big.Int).Mul(PaymentThreshold, big.NewInt(100+PaymentTolerance)), big.NewInt(100)),
+		disconnectLimit:          percentOf(100+PaymentTolerance, PaymentThreshold),
 		logger:                   Logger,
 		store:                    Store,
 		pricing:                  Pricing,
@@ -185,12 +190,12 @@ func NewAccounting(
 		timeNow:                  time.Now,
 		minimumPayment:           new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
 		p2p:                      p2pService,
-		thresholdGrowChange:      new(big.Int).Mul(refreshRate, big.NewInt(180)),
-		thresholdGrowStep:        new(big.Int).Mul(refreshRate, big.NewInt(10)),
+		thresholdGrowChange:      new(big.Int).Mul(refreshRate, big.NewInt(linearMilestoneNumber)),
+		thresholdGrowStep:        new(big.Int).Mul(refreshRate, big.NewInt(linearMilestoneStep)),
 		lightPaymentThreshold:    new(big.Int).Set(lightPaymentThreshold),
-		lightDisconnectLimit:     new(big.Int).Div(new(big.Int).Mul(lightPaymentThreshold, big.NewInt(100+PaymentTolerance)), big.NewInt(100)),
-		lightThresholdGrowChange: new(big.Int).Mul(lightRefreshRate, big.NewInt(180)),
-		lightThresholdGrowStep:   new(big.Int).Mul(lightRefreshRate, big.NewInt(10)),
+		lightDisconnectLimit:     percentOf(100+PaymentTolerance, lightPaymentThreshold),
+		lightThresholdGrowChange: new(big.Int).Mul(lightRefreshRate, big.NewInt(linearMilestoneNumber)),
+		lightThresholdGrowStep:   new(big.Int).Mul(lightRefreshRate, big.NewInt(linearMilestoneStep)),
 	}, nil
 }
 
@@ -557,7 +562,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 			disconnectLimit:         new(big.Int).Set(a.disconnectLimit),
 			thresholdGrowAt:         new(big.Int).Set(a.thresholdGrowStep),
 			// initially assume the peer has the same threshold as us
-			earlyPayment: new(big.Int).Div(new(big.Int).Mul(a.paymentThreshold, big.NewInt(100-a.earlyPayment)), big.NewInt(100)),
+			earlyPayment: percentOf(100-a.earlyPayment, a.paymentThreshold),
 			connected:    false,
 		}
 		a.accountingPeers[peer.String()] = peerData
@@ -566,16 +571,22 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	return peerData
 }
 
-func (a *Accounting) NotifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
+// notifyPaymentThresholdUpgrade is used when cumulative debt settled by peer reaches current milestone,
+// to set the next milestone and increase the payment threshold given by 1 * refreshment rate
+// must be called under accountingPeer lock
+func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
 
+	// get appropriate linear growth limit based on whether the peer is a full node or a light node
 	thresholdGrowChange := new(big.Int).Set(a.thresholdGrowChange)
 	if !accountingPeer.fullNode {
 		thresholdGrowChange.Set(a.lightThresholdGrowChange)
 	}
 
+	// if current milestone already passed linear growth limit, set next milestone exponentially
 	if accountingPeer.thresholdGrowAt.Cmp(thresholdGrowChange) >= 0 {
 		accountingPeer.thresholdGrowAt = new(big.Int).Mul(accountingPeer.thresholdGrowAt, big.NewInt(2))
 	} else {
+		// otherwise set next linear milestone
 		if accountingPeer.fullNode {
 			accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.thresholdGrowStep)
 		} else {
@@ -583,14 +594,19 @@ func (a *Accounting) NotifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 		}
 	}
 
+	// get appropriate refresh rate
 	refreshRate := new(big.Int).Set(a.refreshRate)
 	if !accountingPeer.fullNode {
 		refreshRate = new(big.Int).Set(a.lightRefreshRate)
 	}
 
+	// increase given threshold by refresh rate
 	accountingPeer.paymentThresholdForPeer = new(big.Int).Add(accountingPeer.paymentThresholdForPeer, refreshRate)
-	accountingPeer.disconnectLimit = new(big.Int).Div(new(big.Int).Mul(accountingPeer.paymentThresholdForPeer, big.NewInt(100+a.paymentTolerance)), big.NewInt(100))
+	// recalculate disconnectLimit for peer
+	accountingPeer.disconnectLimit = percentOf(100+a.paymentTolerance, accountingPeer.paymentThresholdForPeer)
 
+	// announce new payment threshold to peer
+	a.logger.Tracef("announcing increased payment threshold of %d to peer %v", accountingPeer.paymentThresholdForPeer, peer)
 	_ = a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
 }
 
@@ -852,7 +868,7 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentThreshold.Set(paymentThreshold)
-	accountingPeer.earlyPayment.Set(new(big.Int).Div(new(big.Int).Mul(paymentThreshold, big.NewInt(100-a.earlyPayment)), big.NewInt(100)))
+	accountingPeer.earlyPayment.Set(percentOf(100-a.earlyPayment, paymentThreshold))
 	return nil
 }
 
@@ -866,7 +882,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 	accountingPeer.totalDebtRepay = new(big.Int).Add(accountingPeer.totalDebtRepay, amount)
 
 	if accountingPeer.totalDebtRepay.Cmp(accountingPeer.thresholdGrowAt) > 0 {
-		a.NotifyPaymentThresholdUpgrade(peer, accountingPeer)
+		a.notifyPaymentThresholdUpgrade(peer, accountingPeer)
 	}
 
 	currentBalance, err := a.Balance(peer)
@@ -945,7 +961,7 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 	accountingPeer.totalDebtRepay = new(big.Int).Add(accountingPeer.totalDebtRepay, amount)
 
 	if accountingPeer.totalDebtRepay.Cmp(accountingPeer.thresholdGrowAt) > 0 {
-		a.NotifyPaymentThresholdUpgrade(peer, accountingPeer)
+		a.notifyPaymentThresholdUpgrade(peer, accountingPeer)
 	}
 
 	currentBalance, err := a.Balance(peer)
@@ -1261,4 +1277,8 @@ func (a *Accounting) SetPayFunc(f PayFunc) {
 func (a *Accounting) Close() error {
 	a.wg.Wait()
 	return nil
+}
+
+func percentOf(percent int64, of *big.Int) *big.Int {
+	return new(big.Int).Div(new(big.Int).Mul(of, big.NewInt(percent)), big.NewInt(100))
 }
