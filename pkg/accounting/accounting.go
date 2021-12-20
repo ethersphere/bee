@@ -103,7 +103,7 @@ type accountingPeer struct {
 	refreshTimestamp               int64      // last time we attempted time-based settlement
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
 	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
-	connected                      bool       //
+	connected                      bool       // indicates whether the peer is currently connected
 	fullNode                       bool       // the peer connected as full node or light node
 	totalDebtRepay                 *big.Int   // since being connected, amount of cumulative debt settled by the peer
 	thresholdGrowAt                *big.Int   // cumulative debt to be settled by the peer in order to give threshold upgrade
@@ -608,7 +608,7 @@ func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 	// announce new payment threshold to peer
 	err := a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
 	if err != nil {
-		a.logger.Errorf("announcing increased payment threshold of %d to peer %v: %w", accountingPeer.paymentThresholdForPeer, peer, err)
+		a.logger.Errorf("announcing increased payment threshold of %d to peer %v: %v", accountingPeer.paymentThresholdForPeer, peer, err)
 	}
 }
 
