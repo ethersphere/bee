@@ -1594,7 +1594,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 			settleFunc(t, acc, peer1Addr, testGrowth-1)
 
 			if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-				t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
+				t.Fatalf("expected threshold %d got %d", checkPaymentThreshold, pricing.paymentThreshold)
 			}
 
 		}
@@ -1612,7 +1612,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 		// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
 		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
+			t.Fatalf("expected threshold %d got %d", checkPaymentThreshold, pricing.paymentThreshold)
 		}
 
 	}
@@ -1627,7 +1627,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 		// Check threshold have not been updated
 		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
+			t.Fatalf("expected threshold %d got %d", checkPaymentThreshold, pricing.paymentThreshold)
 		}
 
 	}
@@ -1640,7 +1640,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
 	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
+		t.Fatalf("expected threshold %d got %d", checkPaymentThreshold, pricing.paymentThreshold)
 	}
 
 	// Simulate second exponential milestone
@@ -1653,7 +1653,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 		// Check threshold have not been updated
 		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-			t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
+			t.Fatalf("expected threshold %d got %d", checkPaymentThreshold, pricing.paymentThreshold)
 		}
 
 	}
@@ -1666,7 +1666,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 	// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
 	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
-		t.Fatalf("wrong threshold. got %d wanted %d", pricing.paymentThreshold, checkPaymentThreshold)
+		t.Fatalf("expected threshold %d got %d", checkPaymentThreshold, pricing.paymentThreshold)
 	}
 
 }
@@ -1716,7 +1716,7 @@ func debitAndRefresh(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.A
 	// Refresh
 	err = acc.NotifyRefreshmentReceived(peer1Addr, big.NewInt(debitRefresh))
 	if err != nil {
-		t.Fatal("Unexpected error from NotifyRefreshmentReceived", err)
+		t.Fatalf("unexpected error from NotifyRefreshmentReceived: %v", err)
 	}
 
 }
@@ -1736,7 +1736,7 @@ func debitAndReceivePayment(t *testing.T, acc *accounting.Accounting, peer1Addr 
 	// Refresh
 	err = acc.NotifyPaymentReceived(peer1Addr, big.NewInt(debitRefresh))
 	if err != nil {
-		t.Fatal("Unexpected error from NotifyRefreshmentReceived", err)
+		t.Fatalf("unexpected error from NotifyRefreshmentReceived: %v", err)
 	}
 
 }
