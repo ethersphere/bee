@@ -55,7 +55,7 @@ type Interface interface {
 	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
 	CompensatedBalances() (map[string]*big.Int, error)
-	// PeerAccountings returns the associated values for all known peers
+	// PeerAccounting returns the associated values for all known peers
 	PeerAccounting() (map[string]PeerInfo, error)
 }
 
