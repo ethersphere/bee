@@ -41,6 +41,10 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Set the API and debug API versions
+        run: |
+          echo "BEE_API_VERSION=$(grep '^  version:' openapi/Swarm.yaml | awk '{print $2}')" >> $GITHUB_ENV
+          echo "BEE_DEBUG_API_VERSION=$(grep '^  version:' openapi/SwarmDebug.yaml | awk '{print $2}')" >> $GITHUB_ENV
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
@@ -52,3 +56,5 @@ jobs:
           SCOOP_PAT: ${{ secrets.SCOOP_PAT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          BEE_API_VERSION: ${{ env.BEE_API_VERSION }}
+          BEE_DEBUG_API_VERSION: ${{ env.BEE_DEBUG_API_VERSION }}
