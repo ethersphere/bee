@@ -93,7 +93,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 	}
 
 	if observer.paymentThreshold.Cmp(paymentThreshold) != 0 {
-		t.Fatalf("observer called with wrong paymentThreshold. got %d, want %d", observer.paymentThreshold, paymentThreshold)
+		t.Fatalf("observer called with wrong paymentThreshold. got %v, want %v", observer.paymentThreshold, paymentThreshold)
 	}
 
 	if !observer.peer.Equal(peerID) {
@@ -217,11 +217,11 @@ func TestInitialPaymentThreshold(t *testing.T) {
 	}
 
 	if observer.paymentThreshold.Cmp(testThreshold) != 0 {
-		t.Fatalf("observer called with wrong paymentThreshold. got %d, want %d", observer.paymentThreshold, testThreshold)
+		t.Fatalf("observer called with wrong paymentThreshold, got %v, want %v", observer.paymentThreshold, testThreshold)
 	}
 
 	if !observer.peer.Equal(peerID) {
-		t.Fatalf("observer called with wrong peer. got %v, want %v", observer.peer, peerID)
+		t.Fatalf("observer called with wrong peer, got %v, want %v", observer.peer, peerID)
 	}
 }
 
@@ -283,10 +283,10 @@ func TestInitialPaymentThresholdLightNode(t *testing.T) {
 	}
 
 	if observer.paymentThreshold.Cmp(testLightThreshold) != 0 {
-		t.Fatalf("observer called with wrong paymentThreshold. got %d, want %d", observer.paymentThreshold, testLightThreshold)
+		t.Fatalf("observer called with wrong paymentThreshold, got %v, want %v", observer.paymentThreshold, testLightThreshold)
 	}
 
 	if !observer.peer.Equal(peerID) {
-		t.Fatalf("observer called with wrong peer. got %v, want %v", observer.peer, peerID)
+		t.Fatalf("observer called with wrong peer, got %v, want %v", observer.peer, peerID)
 	}
 }
