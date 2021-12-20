@@ -606,8 +606,10 @@ func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 	accountingPeer.disconnectLimit = percentOf(100+a.paymentTolerance, accountingPeer.paymentThresholdForPeer)
 
 	// announce new payment threshold to peer
-	a.logger.Tracef("announcing increased payment threshold of %d to peer %v", accountingPeer.paymentThresholdForPeer, peer)
-	_ = a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
+	err := a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
+	if err != nil {
+		a.logger.Errorf("announcing increased payment threshold of %d to peer %v: %w", accountingPeer.paymentThresholdForPeer, peer, err)
+	}
 }
 
 // Balances gets balances for all peers from store.
