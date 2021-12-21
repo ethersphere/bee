@@ -27,7 +27,7 @@ type entry struct {
 	err error    // signal for end of operation
 }
 
-// read models the input to read opeeration (the output is an error)
+// read models the input to read operation (the output is an error)
 type read struct {
 	buf  []byte // variable size read buffer
 	slot uint32 // slot to read from
@@ -55,18 +55,16 @@ LOOP:
 	for {
 		select {
 		case op := <-sh.reads:
-			// prioritise read ops
-			var reads chan read
+			// prioritise read ops i.e., continue processing read ops (only) as long as any
+			// this will block any writes on this shard effectively making store-wide
+			// write op to use a differenct shard while this one is busy
 			for {
-				select {
-				case op = <-reads:
-				default:
-					if reads != nil {
-						continue LOOP
-					}
-				}
-				reads = sh.reads
 				sh.errc <- sh.read(op)
+				select {
+				case op = <-sh.reads:
+				default:
+					continue LOOP
+				}
 			}
 
 			// only enabled if there is a free slot previously popped
@@ -85,7 +83,8 @@ LOOP:
 		case <-sh.quit:
 			// this condition checks if an slot is in limbo (popped but not used for write op)
 			if writes != nil {
-				sh.release(slot)
+				sh.slots.wg.Add(1)
+				go sh.release(slot)
 			}
 			return
 		}
@@ -95,7 +94,7 @@ LOOP:
 // close closes the shard:
 // wait for pending operations to finish then saves free slots and blobs on disk
 func (sh *shard) close() error {
-	<-sh.slots.stopped
+	sh.slots.wg.Wait()
 	if err := sh.slots.save(); err != nil {
 		return err
 	}
@@ -132,8 +131,5 @@ func (sh *shard) write(buf []byte, slot uint32) entry {
 
 // release frees the slot allowing new entry to overwrite
 func (sh *shard) release(slot uint32) {
-	select {
-	case sh.slots.in <- slot:
-	case sh.slots.rest <- slot:
-	}
+	sh.slots.in <- slot
 }

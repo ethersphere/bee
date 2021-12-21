@@ -20,7 +20,7 @@ type Recovery struct {
 func NewRecovery(dir string, shardCnt int, shardSize uint32, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
-		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR|os.O_CREATE, 0644)
+		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -32,14 +32,12 @@ func NewRecovery(dir string, shardCnt int, shardSize uint32, datasize int) (*Rec
 			return nil, err
 		}
 		size := uint32(fi.Size() / int64(datasize))
-		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0644)
+		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			return nil, err
 		}
 		sl := newSlots(ffile, shardSize)
 		sl.data = make([]byte, size/8)
-		sl.size = size
-		sl.head = 0
 		shards[i] = sl
 	}
 	return &Recovery{shards}, nil

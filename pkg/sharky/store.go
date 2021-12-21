@@ -22,6 +22,7 @@ import (
 )
 
 var (
+	// Error returned by Write if the blob length exceeds the max blobsize
 	ErrTooLong = errors.New("data too long")
 )
 
@@ -34,7 +35,12 @@ type Store struct {
 	quit     chan struct{} // quit channel
 }
 
-// New constructs a new sharded blobstore
+// New constructs a sharded blobstore
+// arguments:
+// - base directory string
+// - shard count - positive integer < 256 - cannot be zero or expect panic
+// - shard size - positive integer multiple of 8 - for others expect undefined behaviour
+// - datasize - positive integer representing the maximum blob size to be stored
 func New(basedir string, shardCnt int, limit uint32, datasize int) (*Store, error) {
 	pool := &sync.Pool{New: func() interface{} {
 		return make(chan entry)
@@ -56,7 +62,7 @@ func New(basedir string, shardCnt int, limit uint32, datasize int) (*Store, erro
 	return sh, nil
 }
 
-// Close closes each shard
+// Close closes each shard and return incidental errors from each shard
 func (s *Store) Close() (err error) {
 	close(s.quit)
 	for _, sh := range s.shards {
@@ -67,11 +73,11 @@ func (s *Store) Close() (err error) {
 
 // create creates a new shard with index, max capacity limit, file within base directory
 func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) (*shard, error) {
-	file, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
+	file, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
-	ffile, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0644)
+	ffile, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +97,7 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) 
 		quit:     s.quit,
 	}
 	terminated := make(chan struct{})
+	sh.slots.wg.Add(1)
 	go func() {
 		sh.process()
 		close(terminated)
@@ -99,6 +106,8 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) 
 	return sh, nil
 }
 
+// Read reads the content of the blob found at location into the byte buffer given
+// The location is assumed to be obtained by an earlier Write call storing the blob
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) error {
 	sh := s.shards[loc.Shard]
 	select {
@@ -109,6 +118,8 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) error {
 	return <-sh.errc
 }
 
+// Write stores a new blob and returns its location to be used as a reference
+// It can be given to a Read call to return the stored blob.
 func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error) {
 	if len(data) > s.datasize {
 		return loc, ErrTooLong
@@ -125,7 +136,14 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	return e.loc, e.err
 }
 
+// Release gives back the slot to the shard
+// From here on the slot can be reused and overwritten
+// Release is meant to be called when an entry in the upstream db is removed
+// Note that releasing is not safe for obfuscating earlier content, since
+// even after reuse, the slot may be used by a very short blob and leaves the
+// rest of the old blob bytes untouched
 func (s *Store) Release(loc Location) {
 	sh := s.shards[loc.Shard]
-	sh.release(loc.Slot)
+	sh.slots.wg.Add(1)
+	go sh.release(loc.Slot)
 }
