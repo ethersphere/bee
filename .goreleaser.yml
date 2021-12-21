@@ -74,7 +74,7 @@ builds:
     goarch:
       - amd64
       - 386
-  - id: darwin
+  - id: darwin-amd64
     main: ./cmd/bee
     binary: bee
     flags:
@@ -93,6 +93,24 @@ builds:
       - darwin
     goarch:
       - amd64
+  - id: darwin-arm64
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ethersphere/bee.version={{ .Version }}
+      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
       - arm64
 
 snapshot:
@@ -126,15 +144,28 @@ archives:
     builds:
     - linux
     - windows
-    - darwin
+    - darwin-amd64
+    - darwin-arm64
   -
-    id: homebrew
+    id: homebrew-amd64
     builds:
-    - darwin
+    - darwin-amd64
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     files:
-    - packaging/homebrew/bee.yaml
-    - packaging/homebrew/bee-get-addr
+    - src: 'packaging/homebrew-amd64/*'
+      dst: '.'
+      strip_parent: true
+    - LICENSE
+    - README.md
+  -
+    id: homebrew-arm64
+    builds:
+    - darwin-arm64
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    files:
+    - src: 'packaging/homebrew-arm64/*'
+      dst: '.'
+      strip_parent: true
     - LICENSE
     - README.md
 
@@ -235,7 +266,8 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_PAT }}"
     ids:
-      - homebrew
+      - homebrew-amd64
+      - homebrew-arm64
     commit_author:
       name: bee-worker
       email: bee-worker@ethswarm.org
@@ -259,8 +291,8 @@ brews:
     install: |
       (etc/"swarm-bee").mkpath
       (var/"lib/swarm-bee").mkpath
-      bin.install ["bee", "packaging/homebrew/bee-get-addr"]
-      etc.install "packaging/homebrew/bee.yaml" => "swarm-bee/bee.yaml" unless File.exists? etc/"swarm-bee/bee.yaml"
+      bin.install ["bee", "bee-get-addr"]
+      etc.install "bee.yaml" => "swarm-bee/bee.yaml" unless File.exists? etc/"swarm-bee/bee.yaml"
     post_install: |
       unless File.exists? "#{var}/lib/swarm-bee/password"
       system("openssl", "rand", "-out", var/"lib/swarm-bee/password", "-base64", "32")
@@ -284,8 +316,6 @@ brews:
         </array>
         <key>RunAtLoad</key>
         <true/>
-        <key>WorkingDirectory</key>
-        <string>/usr/local</string>
         <key>StandardOutPath</key>
         <string>#{var}/log/swarm-bee/bee.log</string>
         <key>StandardErrorPath</key>
