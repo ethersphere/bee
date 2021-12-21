@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	linearMilestoneNumber = 1800
-	linearMilestoneStep   = 100
+	linearCheckpointNumber = 1800
+	linearCheckpointStep   = 100
 )
 
 var (
@@ -190,12 +190,12 @@ func NewAccounting(
 		timeNow:                  time.Now,
 		minimumPayment:           new(big.Int).Div(refreshRate, big.NewInt(minimumPaymentDivisor)),
 		p2p:                      p2pService,
-		thresholdGrowChange:      new(big.Int).Mul(refreshRate, big.NewInt(linearMilestoneNumber)),
-		thresholdGrowStep:        new(big.Int).Mul(refreshRate, big.NewInt(linearMilestoneStep)),
+		thresholdGrowChange:      new(big.Int).Mul(refreshRate, big.NewInt(linearCheckpointNumber)),
+		thresholdGrowStep:        new(big.Int).Mul(refreshRate, big.NewInt(linearCheckpointStep)),
 		lightPaymentThreshold:    new(big.Int).Set(lightPaymentThreshold),
 		lightDisconnectLimit:     percentOf(100+PaymentTolerance, lightPaymentThreshold),
-		lightThresholdGrowChange: new(big.Int).Mul(lightRefreshRate, big.NewInt(linearMilestoneNumber)),
-		lightThresholdGrowStep:   new(big.Int).Mul(lightRefreshRate, big.NewInt(linearMilestoneStep)),
+		lightThresholdGrowChange: new(big.Int).Mul(lightRefreshRate, big.NewInt(linearCheckpointNumber)),
+		lightThresholdGrowStep:   new(big.Int).Mul(lightRefreshRate, big.NewInt(linearCheckpointStep)),
 	}, nil
 }
 
@@ -571,8 +571,8 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	return peerData
 }
 
-// notifyPaymentThresholdUpgrade is used when cumulative debt settled by peer reaches current milestone,
-// to set the next milestone and increase the payment threshold given by 1 * refreshment rate
+// notifyPaymentThresholdUpgrade is used when cumulative debt settled by peer reaches current checkpoint,
+// to set the next checkpoint and increase the payment threshold given by 1 * refreshment rate
 // must be called under accountingPeer lock
 func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
 
@@ -582,11 +582,11 @@ func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 		thresholdGrowChange.Set(a.lightThresholdGrowChange)
 	}
 
-	// if current milestone already passed linear growth limit, set next milestone exponentially
+	// if current checkpoint already passed linear growth limit, set next checkpoint exponentially
 	if accountingPeer.thresholdGrowAt.Cmp(thresholdGrowChange) >= 0 {
 		accountingPeer.thresholdGrowAt = new(big.Int).Mul(accountingPeer.thresholdGrowAt, big.NewInt(2))
 	} else {
-		// otherwise set next linear milestone
+		// otherwise set next linear checkpoint
 		if accountingPeer.fullNode {
 			accountingPeer.thresholdGrowAt = new(big.Int).Add(accountingPeer.thresholdGrowAt, a.thresholdGrowStep)
 		} else {

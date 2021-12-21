@@ -1599,7 +1599,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 		}
 
-		// Cumulative settled debt is now "milestone - 100 + j" ( j < 18 )
+		// Cumulative settled debt is now "checkpoint - 100 + j" ( j < 18 )
 
 		// Expect increase after 100 seconds of refreshment is crossed
 
@@ -1608,7 +1608,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 		// Cross
 		settleFunc(t, acc, peer1Addr, 101)
 
-		// Cumulative settled debt is now "milestone + j + 1" ( j < 18 )
+		// Cumulative settled debt is now "checkpoint + j + 1" ( j < 18 )
 
 		// Check increase happened (meaning pricing AnnounceThreshold was called by accounting)
 		if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
@@ -1617,7 +1617,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 	}
 
-	// Simulate first exponential milestone
+	// Simulate first exponential checkpoint
 
 	// Expect no increase for the next 179 seconds of refreshment
 
@@ -1643,7 +1643,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 		t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
 	}
 
-	// Simulate second exponential milestone
+	// Simulate second exponential checkpoint
 
 	// Expect no increase for another 3599 seconds of refreshments
 
