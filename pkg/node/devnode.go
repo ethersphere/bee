@@ -175,7 +175,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	lo := &localstore.Options{
-		Capacity:               1000,
+		Capacity:               1000000,
 		ReserveCapacity:        o.ReserveCapacity,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
