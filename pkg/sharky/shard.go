@@ -5,6 +5,7 @@
 package sharky
 
 import (
+	"context"
 	"os"
 )
 
@@ -83,8 +84,10 @@ LOOP:
 		case <-sh.quit:
 			// this condition checks if an slot is in limbo (popped but not used for write op)
 			if writes != nil {
-				sh.slots.wg.Add(1)
-				go sh.release(slot)
+				sh.slots.wg.Add(1) // Done after the slots process pops from slots.in
+				go func() {
+					sh.slots.in <- slot
+				}()
 			}
 			return
 		}
@@ -130,6 +133,12 @@ func (sh *shard) write(buf []byte, slot uint32) entry {
 }
 
 // release frees the slot allowing new entry to overwrite
-func (sh *shard) release(slot uint32) {
-	sh.slots.in <- slot
+func (sh *shard) release(ctx context.Context, slot uint32) error {
+	select {
+	case sh.slots.in <- slot:
+		return nil
+	case <-ctx.Done():
+		sh.slots.wg.Done()
+		return ctx.Err()
+	}
 }

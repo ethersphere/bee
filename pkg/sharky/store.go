@@ -24,15 +24,18 @@ import (
 var (
 	// Error returned by Write if the blob length exceeds the max blobsize
 	ErrTooLong = errors.New("data too long")
+	// Error returned by Write when the store is Closed before the write completes
+	ErrQuitting = errors.New("quitting")
 )
 
 // Store models the sharded fix-length blobstore
 type Store struct {
-	datasize int           // max length of blobs
-	pool     *sync.Pool    // pool to save on allocating channels
-	writes   chan write    // shared write operations channel
-	shards   []*shard      // shards
-	quit     chan struct{} // quit channel
+	datasize int             // max length of blobs
+	pool     *sync.Pool      // pool to save on allocating channels
+	writes   chan write      // shared write operations channel
+	shards   []*shard        // shards
+	wg       *sync.WaitGroup // count started operations
+	quit     chan struct{}   // quit channel
 }
 
 // New constructs a sharded blobstore
@@ -50,6 +53,7 @@ func New(basedir string, shardCnt int, limit uint32, datasize int) (*Store, erro
 		pool:     pool,
 		writes:   make(chan write),
 		shards:   make([]*shard, shardCnt),
+		wg:       &sync.WaitGroup{},
 		quit:     make(chan struct{}),
 	}
 	for i := range sh.shards {
@@ -81,7 +85,7 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) 
 	if err != nil {
 		return nil, err
 	}
-	sl := newSlots(ffile, limit)
+	sl := newSlots(ffile, limit, s.wg)
 	err = sl.load()
 	if err != nil {
 		return nil, err
@@ -108,14 +112,22 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) 
 
 // Read reads the content of the blob found at location into the byte buffer given
 // The location is assumed to be obtained by an earlier Write call storing the blob
-func (s *Store) Read(ctx context.Context, loc Location, buf []byte) error {
+func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
 	case sh.reads <- read{buf[:loc.Length], loc.Slot, 0}:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	return <-sh.errc
+
+	select {
+	case err = <-sh.errc:
+		return err
+	case <-s.quit:
+		return ErrQuitting
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Write stores a new blob and returns its location to be used as a reference
@@ -124,16 +136,28 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	if len(data) > s.datasize {
 		return loc, ErrTooLong
 	}
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 	c := s.pool.Get().(chan entry)
 	defer s.pool.Put(c)
+
 	select {
 	case s.writes <- write{data, c}:
+	case <-s.quit:
+		return loc, ErrQuitting
 	case <-ctx.Done():
 		return loc, ctx.Err()
 	}
 
-	e := <-c
-	return e.loc, e.err
+	select {
+	case e := <-c:
+		return e.loc, e.err
+	case <-s.quit:
+		return loc, ErrQuitting
+	case <-ctx.Done():
+		return loc, ctx.Err()
+	}
 }
 
 // Release gives back the slot to the shard
@@ -142,8 +166,9 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // Note that releasing is not safe for obfuscating earlier content, since
 // even after reuse, the slot may be used by a very short blob and leaves the
 // rest of the old blob bytes untouched
-func (s *Store) Release(loc Location) {
+func (s *Store) Release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
+	// we add the current routine and will be Done in slots.process
 	sh.slots.wg.Add(1)
-	go sh.release(loc.Slot)
+	return sh.release(ctx, loc.Slot)
 }

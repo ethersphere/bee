@@ -209,15 +209,16 @@ func TestConcurrency(t *testing.T) {
 					case <-ectx.Done():
 						return ectx.Err()
 					case loc := <-c:
-						err := s.Read(ectx, loc, buf)
-						if err != nil {
+						if err := s.Read(ectx, loc, buf); err != nil {
 							return err
 						}
 						j := binary.BigEndian.Uint32(buf)
 						mtx.Lock()
 						deleted[j]++
 						mtx.Unlock()
-						s.Release(loc)
+						if err := s.Release(ectx, loc); err != nil {
+							return err
+						}
 					}
 				}
 				return nil
@@ -254,6 +255,7 @@ func TestConcurrency(t *testing.T) {
 		// the store has extra slots capacity
 		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 		for i := 0; i < extraSlots; i++ {
+			t.Logf("checking extra slot %d\n", i)
 			_, err = s.Write(cctx, []byte{0})
 			if err != nil {
 				t.Fatal(err)
@@ -264,6 +266,7 @@ func TestConcurrency(t *testing.T) {
 		// the store has no more capacity, write expected to time out on waiting for free slots
 		cctx, cancel = context.WithTimeout(ctx, 800*time.Millisecond)
 		defer cancel()
+		t.Logf("checking if full\n")
 		_, err = s.Write(cctx, []byte{0})
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("after extra slots expected error DeadlineExceeded, got %v", err)

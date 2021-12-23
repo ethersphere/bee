@@ -11,22 +11,23 @@ import (
 )
 
 type slots struct {
-	data  []byte         // byteslice serving as bitvector: i-t bit set <>
-	size  uint32         // number of slots
-	limit uint32         // max number of items in the shard
-	head  uint32         // the first free slot
-	file  *os.File       // file to persist free slots across sessions
-	in    chan uint32    // incoming channel for free slots,
-	out   chan uint32    // outgoing channel for free slots
-	wg    sync.WaitGroup // signal releasing of free slots
+	data  []byte          // byteslice serving as bitvector: i-t bit set <>
+	size  uint32          // number of slots
+	limit uint32          // max number of items in the shard
+	head  uint32          // the first free slot
+	file  *os.File        // file to persist free slots across sessions
+	in    chan uint32     // incoming channel for free slots,
+	out   chan uint32     // outgoing channel for free slots
+	wg    *sync.WaitGroup // count started write operations
 }
 
-func newSlots(file *os.File, limit uint32) *slots {
+func newSlots(file *os.File, limit uint32, wg *sync.WaitGroup) *slots {
 	return &slots{
 		file:  file,
 		limit: limit,
 		in:    make(chan uint32),
 		out:   make(chan uint32),
+		wg:    wg,
 	}
 }
 
