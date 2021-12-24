@@ -165,6 +165,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, false, err
 	}
 
+	db.logger.Infof("localstore gc: size %d, collected %d candidates (collected count %d), target %d", gcSize, len(candidates), collectedCount, target)
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
@@ -204,13 +205,12 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-
 	}
 	if gcSize-collectedCount > target {
+		db.logger.Infof("localstore gc: target %d not reached (current size %d, collected count %d)", target, gcSize, collectedCount)
 		done = false
 	}
 
-	db.metrics.GCCommittedCounter.Add(float64(collectedCount))
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 
 	err = db.shed.WriteBatch(batch)
@@ -218,6 +218,16 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
 	}
+
+	gcSize, err = db.gcSize.Get()
+	if err != nil {
+		return 0, false, err
+	}
+
+	db.logger.Infof("localstore gc: wrote batch. size %d, committed %d candidates", gcSize, collectedCount)
+
+	db.metrics.GCCommittedCounter.Add(float64(collectedCount))
+
 	return collectedCount, done, nil
 }
 
