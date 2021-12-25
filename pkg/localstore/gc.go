@@ -60,6 +60,16 @@ var (
 func (db *DB) collectGarbageWorker() {
 	defer close(db.collectGarbageWorkerDone)
 
+	gcSize, err := db.gcSize.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	if gcSize > db.cacheCapacity {
+		db.logger.Infof("gc size %d over cache capacity %d. triggering gc...", gcSize, db.cacheCapacity)
+		db.triggerGarbageCollection()
+	}
+
 	for {
 		select {
 		case <-db.collectGarbageTrigger:
