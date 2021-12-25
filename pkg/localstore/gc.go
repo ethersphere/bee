@@ -37,7 +37,7 @@ var (
 	gcTargetRatio = 0.9
 	// gcBatchSize limits the number of chunks in a single
 	// transaction on garbage collection.
-	gcBatchSize uint64 = 2000
+	gcBatchSize uint64 = 10000
 
 	// reserveCollectionRatio is the ratio of the cache to evict from
 	// the reserve every time it hits the limit. If the cache size is
@@ -206,7 +206,7 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			return 0, false, err
 		}
 	}
-	if gcSize-collectedCount > target {
+	if gcSize-collectedCount > target+500 {
 		db.logger.Infof("localstore gc: target %d not reached (current size %d, collected count %d)", target, gcSize, collectedCount)
 		done = false
 	}
