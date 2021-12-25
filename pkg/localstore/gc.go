@@ -206,8 +206,10 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 			return 0, false, err
 		}
 	}
-	if gcSize-collectedCount > target+10000 {
-		db.logger.Infof("localstore gc: target %d not reached (current size %d, collected count %d)", target, gcSize, collectedCount)
+
+	softTarget := target + 20000
+	if gcSize-collectedCount > softTarget {
+		db.logger.Infof("localstore gc: soft target %d not reached (current size %d, collected count %d)", softTarget, gcSize, collectedCount)
 		done = false
 	}
 
