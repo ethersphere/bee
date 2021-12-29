@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -314,11 +315,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius        uint8          `json:"radius"`
-	StorageRadius uint8          `json:"storageRadius"`
-	Available     int64          `json:"available"`
-	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner         *bigint.BigInt `json:"inner"`
+	Radius           uint8          `json:"radius"`
+	StorageRadius    uint8          `json:"storageRadius"`
+	BatchUtilization float64        `json:"batchUtilization"`
+	Available        int64          `json:"available"`
+	Commitment       int64          `json:"commitment"`
+	Outer            *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
+	Inner            *bigint.BigInt `json:"inner"`
 }
 
 type chainStateResponse struct {
@@ -330,12 +333,24 @@ type chainStateResponse struct {
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
+	commitment := int64(0)
+	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		commitment += int64(math.Pow(2.0, float64(b.Depth)))
+		return false, nil
+	})
+	if err != nil {
+		jsonhttp.InternalServerError(w, "unable to iterate all batches")
+		return
+	}
+
 	jsonhttp.OK(w, reserveStateResponse{
-		Radius:        state.Radius,
-		StorageRadius: state.StorageRadius,
-		Available:     state.Available,
-		Outer:         bigint.Wrap(state.Outer),
-		Inner:         bigint.Wrap(state.Inner),
+		Radius:           state.Radius,
+		StorageRadius:    state.StorageRadius,
+		BatchUtilization: 1.0 / math.Pow(2, float64(state.Radius-state.StorageRadius)),
+		Available:        state.Available,
+		Commitment:       int64(commitment),
+		Outer:            bigint.Wrap(state.Outer),
+		Inner:            bigint.Wrap(state.Inner),
 	})
 }
 
