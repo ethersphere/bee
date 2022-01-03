@@ -16,46 +16,6 @@ func migratePinAll(db *DB) error {
 	start := time.Now()
 	db.logger.Debug("purging the cache, then pinning everything else to pin counter 1")
 	batch := new(leveldb.Batch)
-	headerSize := 16 + postage.StampSize
-	retrievalDataIndex, err := db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Data", shed.IndexFuncs{
-		EncodeKey: func(fields shed.Item) (key []byte, err error) {
-			return fields.Address, nil
-		},
-		DecodeKey: func(key []byte) (e shed.Item, err error) {
-			e.Address = key
-			return e, nil
-		},
-		EncodeValue: func(fields shed.Item) (value []byte, err error) {
-			b := make([]byte, headerSize)
-			binary.BigEndian.PutUint64(b[:8], fields.BinID)
-			binary.BigEndian.PutUint64(b[8:16], uint64(fields.StoreTimestamp))
-			stamp, err := postage.NewStamp(fields.BatchID, fields.Index, fields.Timestamp, fields.Sig).MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-			copy(b[16:], stamp)
-			value = append(b, fields.Data...)
-			return value, nil
-		},
-		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
-			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
-			e.BinID = binary.BigEndian.Uint64(value[:8])
-			stamp := new(postage.Stamp)
-			if err = stamp.UnmarshalBinary(value[16:headerSize]); err != nil {
-				return e, err
-			}
-			e.BatchID = stamp.BatchID()
-			e.Index = stamp.Index()
-			e.Timestamp = stamp.Timestamp()
-			e.Sig = stamp.Sig()
-			e.Data = value[headerSize:]
-			return e, nil
-		},
-	})
-	if err != nil {
-		return err
-	}
-
 	gcIndex, err := db.shed.NewIndex("AccessTimestamp|BinID|Hash->BatchID|BatchIndex", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			b := make([]byte, 16, 16+len(fields.Address))
@@ -209,6 +169,8 @@ func migratePinAll(db *DB) error {
 	if err = reserveSize.Put(ii); err != nil {
 		return err
 	}
+
+	db.logger.Infof("migration done. took %s", time.Since(start))
 
 	return nil
 }
