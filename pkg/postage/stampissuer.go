@@ -58,6 +58,10 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 	}
 }
 
+func (si *StampIssuer) Inc(addr swarm.Address) {
+	_, _ = si.inc(addr)
+}
+
 // inc increments the count in the correct collision bucket for a newly stamped
 // chunk with address addr.
 func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
@@ -128,6 +132,10 @@ func (si *StampIssuer) ID() []byte {
 	id := make([]byte, len(si.data.BatchID))
 	copy(id, si.data.BatchID)
 	return id
+}
+
+func (si *StampIssuer) SetBatchDepth(newDepth uint8) {
+	si.data.BatchDepth = newDepth
 }
 
 // Depth represent issued batch depth.

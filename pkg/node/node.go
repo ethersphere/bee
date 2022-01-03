@@ -436,6 +436,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		Capacity:               o.CacheCapacity,
 		ReserveCapacity:        uint64(batchstore.Capacity),
 		UnreserveFunc:          batchStore.Unreserve,
+		Seen:                   batchStore.Seen,
 		OpenFilesLimit:         o.DBOpenFilesLimit,
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,

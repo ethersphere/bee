@@ -7,6 +7,8 @@ package postage
 import (
 	"io"
 	"math/big"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
@@ -35,6 +37,7 @@ type Storer interface {
 	GetReserveState() *ReserveState
 	SetRadiusSetter(RadiusSetter)
 	Unreserve(UnreserveIteratorFn) error
+	Seen(swarm.Address, []byte) error
 	Exists(id []byte) (bool, error)
 
 	Reset() error

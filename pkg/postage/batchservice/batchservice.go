@@ -111,6 +111,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		Depth:       depth,
 		BucketDepth: bucketDepth,
 		Immutable:   immutable,
+		StampIssuer: postage.NewStampIssuer("", "", id, big.NewInt(0), depth, bucketDepth, 0, immutable),
 	}
 
 	err := svc.storer.Put(b, normalisedBalance, depth)
@@ -166,6 +167,9 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
 	}
+
+	b.StampIssuer.SetBatchDepth(depth)
+
 	err = svc.storer.Put(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)

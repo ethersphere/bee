@@ -160,6 +160,10 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 				// chunk is new so, trigger pull subscription feed
 				// after the batch is successfully written
 				triggerPullFeed[db.po(ch.Address())] = struct{}{}
+				err = db.seenFunc(ch.Address(), ch.Stamp().BatchID())
+				if err != nil {
+					db.logger.Errorf("localstore put sync: seen %v", err)
+				}
 			}
 			gcSizeChange += c
 			reserveSizeChange += r

@@ -118,6 +118,8 @@ type DB struct {
 
 	unreserveFunc func(postage.UnreserveIteratorFn) error
 
+	seenFunc func(swarm.Address, []byte) error
+
 	// triggers garbage collection event loop
 	collectGarbageTrigger chan struct{}
 
@@ -179,6 +181,9 @@ type Options struct {
 	// OpenFilesLimit defines the upper bound of open files that the
 	// the localstore should maintain at any point of time. It is
 	// passed on to the shed constructor.
+
+	Seen func(swarm.Address, []byte) error
+
 	OpenFilesLimit uint64
 	// BlockCacheCapacity defines the block cache capacity and is passed
 	// on to shed.
@@ -211,6 +216,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		cacheCapacity:   o.Capacity,
 		reserveCapacity: o.ReserveCapacity,
 		unreserveFunc:   o.UnreserveFunc,
+		seenFunc:        o.Seen,
 		baseKey:         baseKey,
 		tags:            o.Tags,
 		// channel collectGarbageTrigger

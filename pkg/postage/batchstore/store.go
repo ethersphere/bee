@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
@@ -146,6 +147,19 @@ func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 		s.radiusSetter.SetRadius(s.rs.Radius)
 		s.rsMtx.Unlock()
 	}
+	return s.store.Put(batchKey(b.ID), b)
+}
+
+func (s *store) Seen(addr swarm.Address, batchID []byte) error {
+
+	b := &postage.Batch{}
+	err := s.store.Get(batchKey(batchID), b)
+	if err != nil {
+		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batchID), err)
+	}
+
+	b.StampIssuer.Inc(addr)
+
 	return s.store.Put(batchKey(b.ID), b)
 }
 
