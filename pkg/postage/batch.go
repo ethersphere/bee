@@ -57,5 +57,9 @@ func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.Immutable = buf[94] > 0
 
 	stampIssuer := &StampIssuer{}
-	return stampIssuer.UnmarshalBinary(buf[95:])
+	if err := stampIssuer.UnmarshalBinary(buf[95:]); err != nil {
+		return err
+	}
+	b.StampIssuer = stampIssuer
+	return nil
 }
