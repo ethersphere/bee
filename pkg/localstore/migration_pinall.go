@@ -132,8 +132,7 @@ func migratePinAll(db *DB) error {
 		return err
 	}
 
-	err = db.shed.WriteBatch(batch)
-	if err != nil {
+	if err = db.shed.WriteBatch(batch); err != nil {
 		return fmt.Errorf("write last batch: %w", err)
 	}
 	batch.Reset()
@@ -165,6 +164,13 @@ func migratePinAll(db *DB) error {
 		}
 		return false, nil
 	}, nil)
+	if err != nil {
+		return err
+	}
+
+	if err = db.shed.WriteBatch(batch); err != nil {
+		return fmt.Errorf("write last batch: %w", err)
+	}
 
 	if err = reserveSize.Put(ii); err != nil {
 		return err
