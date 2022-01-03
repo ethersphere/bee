@@ -39,7 +39,7 @@ type Storer interface {
 	Unreserve(UnreserveIteratorFn) error
 	Seen(swarm.Address, []byte) error
 	Exists(id []byte) (bool, error)
-	Iterate(func(*Batch) (bool, error)) error
+	Iterate(func(Batch) (bool, error)) error
 
 	Reset() error
 }

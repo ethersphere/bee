@@ -123,13 +123,13 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	return b, nil
 }
 
-func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
+func (s *store) Iterate(cb func(postage.Batch) (bool, error)) error {
 	return s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err
 		}
-		stop, err := cb(b)
+		stop, err := cb(*b)
 		if stop {
 			return true, nil
 		}

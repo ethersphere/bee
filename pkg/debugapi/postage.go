@@ -127,15 +127,18 @@ type postageStampsResponse struct {
 }
 
 type postageBatchResponse struct {
-	ID          batchID  `json:"batchID"`
-	Value       *big.Int `json:"value"`
-	Start       uint64   `json:"start"`
-	Owner       batchID  `json:"owner"`
-	Depth       uint8    `json:"depth"`
-	BucketDepth uint8    `json:"bucketDepth"`
-	Immutable   bool     `json:"immutable"`
-	Radius      uint8    `json:"radius"`
-	BatchTTL    int64    `json:"batchTTL"`
+	ID                    batchID  `json:"batchID"`
+	Value                 *big.Int `json:"value"`
+	Start                 uint64   `json:"start"`
+	Owner                 batchID  `json:"owner"`
+	Depth                 uint8    `json:"depth"`
+	BucketDepth           uint8    `json:"bucketDepth"`
+	Immutable             bool     `json:"immutable"`
+	Radius                uint8    `json:"radius"`
+	BatchTTL              int64    `json:"batchTTL"`
+	Utilization           uint32   `json:"utilization"`
+	BucketUpperBound      uint32   `json:"bucketUpperBound"`
+	UtilizationPercentage float64  `json:"utilizationPercentage"`
 }
 
 type postageStampBucketsResponse struct {
@@ -188,9 +191,9 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 
 	batches := []postageBatchResponse{}
 
-	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+	err := s.batchStore.Iterate(func(b postage.Batch) (bool, error) {
 
-		batchTTL, err := s.estimateBatchTTL(b)
+		batchTTL, err := s.estimateBatchTTL(&b)
 		if err != nil {
 			s.logger.Debugf("iterate batch: estimate batch expiration: %v", err)
 			s.logger.Error("iterate batch: estimate batch expiration")
@@ -198,15 +201,18 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 		}
 
 		batches = append(batches, postageBatchResponse{
-			ID:          b.ID,
-			Value:       b.Value,
-			Start:       b.Start,
-			Owner:       b.Owner,
-			Depth:       b.Depth,
-			BucketDepth: b.BucketDepth,
-			Immutable:   b.Immutable,
-			Radius:      b.Radius,
-			BatchTTL:    batchTTL,
+			ID:                    b.ID,
+			Value:                 b.Value,
+			Start:                 b.Start,
+			Owner:                 b.Owner,
+			Depth:                 b.Depth,
+			BucketDepth:           b.BucketDepth,
+			Immutable:             b.Immutable,
+			Radius:                b.Radius,
+			BatchTTL:              batchTTL,
+			Utilization:           b.StampIssuer.Utilization(),
+			BucketUpperBound:      b.StampIssuer.BucketUpperBound(),
+			UtilizationPercentage: float64(b.StampIssuer.Utilization()) / float64(b.StampIssuer.BucketUpperBound()),
 		})
 		return false, nil
 	})
@@ -335,7 +341,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
 	commitment := int64(0)
-	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+	err := s.batchStore.Iterate(func(b postage.Batch) (bool, error) {
 		commitment += int64(math.Pow(2.0, float64(b.Depth)))
 		return false, nil
 	})
