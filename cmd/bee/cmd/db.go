@@ -191,7 +191,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 			logger.Warningf("Proceeding with database nuke...")
 
 			localstorePath := filepath.Join(dataDir, "localstore")
-			err = os.RemoveAll(localstorePath)
+			err = removeContent(localstorePath)
 			if err != nil {
 				return fmt.Errorf("localstore delete: %w", err)
 			}
@@ -204,7 +204,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			if forgetOverlay {
-				err = os.RemoveAll(statestorePath)
+				err = removeContent(statestorePath)
 				if err != nil {
 					return fmt.Errorf("statestore delete: %w", err)
 				}
@@ -229,4 +229,25 @@ func dbNukeCmd(cmd *cobra.Command) {
 	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
+}
+
+func removeContent(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+
+	subpaths, err := dir.Readdirnames(0)
+	if err != nil {
+		return err
+	}
+
+	for _, sub := range subpaths {
+		err = os.RemoveAll(filepath.Join(path, sub))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
