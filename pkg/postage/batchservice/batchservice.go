@@ -239,7 +239,7 @@ func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
 		if svc.resync {
 			svc.logger.Warning("batch service: resync requested, resetting batch store")
 		} else {
-			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+			svc.logger.Warning("batch service: dirty startup detected, resetting batch store")
 		}
 
 		if err := svc.storer.Reset(); err != nil {
