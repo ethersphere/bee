@@ -45,7 +45,7 @@ const (
 )
 
 var (
-	dbSchemaCurrent = dBSchemaForceResync
+	dbSchemaCurrent = dBSchemaKademliaMetrics
 )
 
 type migration struct {
