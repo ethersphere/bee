@@ -114,7 +114,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
-
+	fmt.Println("do sf")
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 		maxPeers := 1
 		if origin {
@@ -155,7 +155,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					// cancel the goroutine just with the timeout
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
-
+					fmt.Println("ret ch")
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
 					select {
 					case resultC <- retrievalResult{
@@ -272,6 +272,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	if err != nil {
 		return nil, peer, false, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
 	}
+	fmt.Println("got closest")
 
 	// compute the peer's price for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
@@ -309,12 +310,13 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, false, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
-
+	fmt.Println("send ye")
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, true, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 	}
+	fmt.Println("got ye")
 	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTimer).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
@@ -348,7 +350,9 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 // retrieve request.
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
 	closest := swarm.Address{}
+	fmt.Println("closest")
 	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		fmt.Println("peer ye")
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
@@ -366,8 +370,9 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 			closest = peer
 		}
 		return false, false, nil
-	}, topology.Filter{Reachable: true})
+	}, topology.Filter{Reachable: false})
 	if err != nil {
+		fmt.Println("err", err)
 		return swarm.Address{}, err
 	}
 
