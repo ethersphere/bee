@@ -209,7 +209,7 @@ func migrateForceResync(s *Store) error {
 func (s *Store) migrate(schemaName string) error {
 	migrations, err := getMigrations(schemaName, dbSchemaCurrent, schemaMigrations, s)
 	if err != nil {
-		return fmt.Errorf("error getting migrations for current schema (%s): %w", schemaName, err)
+		return fmt.Errorf("error getting migrations (current schema %s, target %s),: %w", schemaName, dbSchemaCurrent, err)
 	}
 
 	// no migrations to run
