@@ -126,6 +126,7 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 func (s *store) Iterate(cb func(postage.Batch) (bool, error)) error {
 	return s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 		b := &postage.Batch{}
+		fmt.Println("bid", fmt.Sprintf("%x", value[:32]))
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err
 		}
