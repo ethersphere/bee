@@ -215,6 +215,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.stateStoreCloser = stateStore
 
+	stateStore.Put("statestore_schema", "kademlia-metrics")
+	stateStore.Put("batchservice_dirty_db", false)
+
+	time.Sleep(time.Minute)
 	addressbook := addressbook.New(stateStore)
 
 	var (
