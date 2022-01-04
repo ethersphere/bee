@@ -90,6 +90,10 @@ func migrate(s *Store) error {
 		sn = dbSchemaCurrent
 	}
 
+	if err := s.putSchemaName(dbSchemaCurrent); err != nil {
+		panic(err)
+	}
+
 	if err = s.migrate(sn); err != nil {
 		_ = s.Close()
 		return fmt.Errorf("migrate: %w", err)
