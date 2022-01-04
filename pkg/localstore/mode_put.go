@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
@@ -63,7 +64,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 	if len(chs) == 1 && mode != storage.ModePutRequestPin && mode != storage.ModePutUploadPin {
 		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("initial has check: %w", err)
 		}
 		if has {
 			return []bool{true}, nil
@@ -110,7 +111,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			cache := mode == storage.ModePutRequestCache // force cache
 			exists, c, r, err := db.putRequest(batch, binIDs, item, pin, cache)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("put request: %w", err)
 			}
 			exist[i] = exists
 			gcSizeChange += c
@@ -126,7 +127,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			item := chunkToItem(ch)
 			exists, c, err := db.putUpload(batch, binIDs, item)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("put upload: %w", err)
 			}
 			exist[i] = exists
 			if !exists {
@@ -139,7 +140,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			if mode == storage.ModePutUploadPin {
 				c, err = db.setPin(batch, item)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("upload set pin: %w", err)
 				}
 				gcSizeChange += c
 			}
@@ -153,7 +154,7 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 			}
 			exists, c, r, err := db.putSync(batch, binIDs, chunkToItem(ch))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("put sync: %w", err)
 			}
 			exist[i] = exists
 			if !exists {
@@ -175,17 +176,17 @@ func (db *DB) put(mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err e
 
 	err = db.incGCSizeInBatch(batch, gcSizeChange)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inc gc: %w", err)
 	}
 
 	err = db.incReserveSizeInBatch(batch, reserveSizeChange)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inc reserve: %w", err)
 	}
 
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write batch: %w", err)
 	}
 
 	for po := range triggerPullFeed {
@@ -289,7 +290,7 @@ func (db *DB) putRequest(batch *leveldb.Batch, binIDs map[uint8]uint64, item she
 func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange int64, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {
-		return false, 0, err
+		return false, 0, fmt.Errorf("retrieval has: %w", err)
 	}
 	if exists {
 		return true, 0, nil
@@ -298,7 +299,7 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return false, 0, err
+			return false, 0, fmt.Errorf("postage index get: %w", err)
 		}
 	} else {
 		if item.Immutable {
@@ -311,14 +312,14 @@ func (db *DB) putUpload(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed
 		}
 		_, err = db.setRemove(batch, previous, true)
 		if err != nil {
-			return false, 0, err
+			return false, 0, fmt.Errorf("same slot remove: %w", err)
 		}
 	}
 
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
-		return false, 0, err
+		return false, 0, fmt.Errorf("inc bin id: %w", err)
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
