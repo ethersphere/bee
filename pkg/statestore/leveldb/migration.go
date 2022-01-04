@@ -63,7 +63,7 @@ var schemaMigrations = []migration{
 	{name: dbSchemaFlushBlock, fn: migrateFB},
 	{name: dbSchemaSwapAddr, fn: migrateSwap},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
-	{name: dBSchemaForceResync, fn: migrateForceResync},
+	//{name: dBSchemaForceResync, fn: migrateForceResync},
 }
 
 func migrateFB(s *Store) error {
