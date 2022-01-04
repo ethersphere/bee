@@ -178,6 +178,11 @@ const (
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+	start := time.Now()
+	fmt.Println("running bootstrapper")
+	_, _ = NewBeeBootstrapper(addr, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
+	fmt.Println("bootstrapper done, took", time.Since(start))
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
