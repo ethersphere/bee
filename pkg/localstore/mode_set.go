@@ -123,7 +123,10 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	}
 
 	for _, l := range committedLocations {
-		db.sharky.Release(ctx, l)
+		err = db.sharky.Release(ctx, l)
+		if err != nil {
+			db.logger.Warning("failed releasing sharky location", l)
+		}
 	}
 
 	for po := range triggerPullFeed {
