@@ -142,7 +142,7 @@ func (s *Store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 	iter := s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	defer iter.Release()
 	for iter.Next() {
-		stop, err := iterFunc(iter.Key(), iter.Value())
+		stop, err := iterFunc(append([]byte(nil), iter.Key()...), append([]byte(nil), iter.Value()...))
 		if err != nil {
 			return err
 		}
