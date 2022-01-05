@@ -7,11 +7,10 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"io"
 )
 
-// size of the byte representation of Location
+// LocationSize is the size of the byte representation of Location
 const LocationSize int = 7
 
 // Location models the location <shard, slot, length> of a chunk
@@ -22,11 +21,7 @@ type Location struct {
 	Length uint16
 }
 
-// MarshalBinary returns byte representation of location. We use binary.PutVarint
-// which can take upto 10bytes to marshal int64. Realistically, we will never have
-// values here that would require extra bytes to pack. The offset is currently capped
-// and the length is deterministic. In order to save the extra bytes, we use the min
-// required bytes here which is 8
+// MarshalBinary returns byte representation of location
 func (l *Location) MarshalBinary() ([]byte, error) {
 	b := make([]byte, LocationSize)
 	b[0] = l.Shard
@@ -35,11 +30,6 @@ func (l *Location) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-var (
-	errBufferTooSmall = errors.New("buffer is too small")
-	errBufferOverflow = errors.New("value overflow")
-)
-
 func (l *Location) UnmarshalBinary(buf []byte) error {
 	l.Shard = buf[0]
 	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
@@ -47,6 +37,7 @@ func (l *Location) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
+// LocationFromBinary is a helper to construct a Location object from byte representation
 func LocationFromBinary(buf []byte) (Location, error) {
 	l := new(Location)
 	err := l.UnmarshalBinary(buf)
@@ -56,13 +47,17 @@ func LocationFromBinary(buf []byte) (Location, error) {
 	return *l, nil
 }
 
-type shardFile interface {
+// sharkyFile defines the minimal interface that is required for a file type for it to
+// be usable in sharky. This allows us to have different implementations of file types
+// that can continue using the sharky logic
+type sharkyFile interface {
 	io.ReadWriteCloser
 	io.ReaderAt
 	io.Seeker
 	io.Writer
 	io.WriterAt
 	Truncate(int64) error
+	Sync() error
 }
 
 // write models the input to a write operation
@@ -91,7 +86,7 @@ type shard struct {
 	writes   chan write    // channel for writes
 	index    uint8         // index of the shard
 	datasize int           // max size of blobs
-	file     shardFile     // the file handle the shard is writing data to
+	file     sharkyFile    // the file handle the shard is writing data to
 	slots    *slots        // component keeping track of freed slots
 	quit     chan struct{} // channel to signal quitting
 }

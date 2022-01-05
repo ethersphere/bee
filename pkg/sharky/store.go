@@ -14,8 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path"
+	"io/fs"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -44,7 +43,7 @@ type Store struct {
 // - shard count - positive integer < 256 - cannot be zero or expect panic
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
 // - datasize - positive integer representing the maximum blob size to be stored
-func New(basedir string, shardCnt int, limit uint32, datasize int) (*Store, error) {
+func New(basedir fs.FS, shardCnt int, limit uint32, datasize int) (*Store, error) {
 	pool := &sync.Pool{New: func() interface{} {
 		return make(chan entry)
 	}}
@@ -76,16 +75,16 @@ func (s *Store) Close() (err error) {
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) (*shard, error) {
-	file, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0666)
+func (s *Store) create(index uint8, limit uint32, datasize int, basedir fs.FS) (*shard, error) {
+	file, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
 	}
-	ffile, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0666)
+	ffile, err := basedir.Open(fmt.Sprintf("free_%03d", index))
 	if err != nil {
 		return nil, err
 	}
-	sl := newSlots(ffile, limit, s.wg)
+	sl := newSlots(ffile.(sharkyFile), limit, s.wg)
 	err = sl.load()
 	if err != nil {
 		return nil, err
@@ -96,7 +95,7 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) 
 		writes:   s.writes,
 		index:    index,
 		datasize: datasize,
-		file:     file,
+		file:     file.(sharkyFile),
 		slots:    sl,
 		quit:     s.quit,
 	}
