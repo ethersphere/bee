@@ -41,7 +41,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/smartystreets/assertions v1.1.1 // indirect
-	github.com/spf13/afero v1.6.0 // indirect
+	github.com/spf13/afero v1.6.0
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -66,6 +66,11 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	resenje.org/singleflight v0.2.0
 	resenje.org/web v0.4.3
+)
+
+require (
+	github.com/libp2p/go-eventbus v0.2.1
+	go.uber.org/atomic v1.9.0
 )
 
 require (
