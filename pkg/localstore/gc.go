@@ -234,7 +234,10 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 	}
 
 	for _, loc := range locations {
-		db.sharky.Release(db.ctx, loc)
+		err = db.sharky.Release(db.ctx, loc)
+		if err != nil {
+			db.logger.Warning("failed releasing sharky location", loc)
+		}
 	}
 
 	return collectedCount, done, nil
