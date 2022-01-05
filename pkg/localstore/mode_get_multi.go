@@ -78,7 +78,8 @@ func (db *DB) getMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm
 			return nil, err
 		}
 
-		out[i].Data, err = db.sharky.Read(ctx, l)
+		out[i].Data = make([]byte, l.Length)
+		err = db.sharky.Read(ctx, l, out[i].Data)
 		if err != nil {
 			return nil, err
 		}

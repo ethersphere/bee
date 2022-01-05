@@ -748,7 +748,7 @@ func TestReleaseLocations(t *testing.T) {
 	locs := new(releaseLocations)
 
 	for i := 0; i < 5; i++ {
-		locs.add(sharky.Location{Shard: 0, Offset: 100, Length: 100})
+		locs.add(sharky.Location{Shard: 0, Slot: 100, Length: 100})
 	}
 
 	if len(*locs) != 5 {
