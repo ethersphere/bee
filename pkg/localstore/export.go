@@ -81,21 +81,21 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		if err := tw.WriteHeader(hdr); err != nil {
 			return false, err
 		}
-		if _, err := tw.Write(item.BatchID); err != nil {
+		write := func(buf []byte) {
+			if err != nil {
+				return
+			}
+			_, err = tw.Write(buf)
+		}
+		write(item.BatchID)
+		write(item.Index)
+		write(item.Timestamp)
+		write(item.Sig)
+		write(data)
+		if err != nil {
 			return false, err
 		}
-		if _, err := tw.Write(item.Index); err != nil {
-			return false, err
-		}
-		if _, err := tw.Write(item.Timestamp); err != nil {
-			return false, err
-		}
-		if _, err := tw.Write(item.Sig); err != nil {
-			return false, err
-		}
-		if _, err := tw.Write(data); err != nil {
-			return false, err
-		}
+
 		count++
 		return false, nil
 	}, nil)
