@@ -9,20 +9,21 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/rand"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestSingleRetrieval(t *testing.T) {
-	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
-	sharky.DataSize = 4
-
+	datasize := 4
 	dir := t.TempDir()
-	s, err := sharky.New(dir, 2, 2)
+	s, err := sharky.New(dir, 2, 2, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,9 +62,9 @@ func TestSingleRetrieval(t *testing.T) {
 				context.DeadlineExceeded,
 			},
 		} {
-
+			buf := make([]byte, datasize)
 			t.Run(tc.name, func(t *testing.T) {
-				cctx, cancel := context.WithTimeout(ctx, time.Second)
+				cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 				defer cancel()
 				loc, err := s.Write(cctx, tc.want)
 				if !errors.Is(err, tc.err) {
@@ -72,10 +73,11 @@ func TestSingleRetrieval(t *testing.T) {
 				if err != nil {
 					return
 				}
-				got, err := s.Read(ctx, loc)
+				err = s.Read(ctx, loc, buf)
 				if err != nil {
 					t.Fatal(err)
 				}
+				got := buf[:loc.Length]
 				if !bytes.Equal(tc.want, got) {
 					t.Fatalf("data mismatch at location %v. want %x, got %x", loc, tc.want, got)
 				}
@@ -87,125 +89,203 @@ func TestSingleRetrieval(t *testing.T) {
 // TestPersistence tests behaviour across several process sessions
 // and checks if items and pregenerated free slots are persisted correctly
 func TestPersistence(t *testing.T) {
-	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
-	sharky.DataSize = 4
-	shards := 4
-	limit := int64(16)
-	items := shards * int(limit)
+	datasize := 4
+	shards := 2
+	shardSize := uint32(16)
+	items := shards * int(shardSize)
 
 	dir := t.TempDir()
 	buf := make([]byte, 4)
-	locs := make([]sharky.Location, items)
+	locs := make([]*sharky.Location, items)
 	i := 0
+	j := 0
 	ctx := context.Background()
-
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	// simulate several subsequent sessions filling up the store
-	for j := 0; i < items; j++ {
-		s, err := sharky.New(dir, shards, limit)
+	for ; i < items; j++ {
+		s, err := sharky.New(dir, shards, shardSize, datasize)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for ; i < items && rand.Intn(4) > 0; i++ {
+			if locs[i] != nil {
+				continue
+			}
 			binary.BigEndian.PutUint32(buf, uint32(i))
-			loc, err := s.Write(ctx, buf)
+			loc, err := s.Write(cctx, buf)
 			if err != nil {
 				t.Fatal(err)
 			}
-			locs[i] = loc
+			locs[i] = &loc
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
+	t.Logf("got full in %d sessions\n", j)
 
 	// check location and data consisency
-	s, err := sharky.New(dir, shards, limit)
+	s, err := sharky.New(dir, shards, shardSize, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
+	buf = make([]byte, datasize)
+	j = 0
 	for want, loc := range locs {
-		data, err := s.Read(ctx, loc)
+		j++
+		err := s.Read(cctx, *loc, buf)
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := binary.BigEndian.Uint32(data)
+		got := binary.BigEndian.Uint32(buf)
 		if int(got) != want {
 			t.Fatalf("data mismatch. want %d, got %d", want, got)
 		}
 	}
-
+	cancel()
 	// the store has no more capacity, write expected to time out on waiting for free slots
-	cctx, cancel := context.WithTimeout(ctx, time.Second)
+	cctx, cancel = context.WithTimeout(ctx, 800*time.Millisecond)
 	defer cancel()
 	_, err = s.Write(cctx, []byte{0})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected error DeadlineExceeded, got %v", err)
 	}
+
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 }
 
-func TestRelease(t *testing.T) {
-	defer func(c int64) { sharky.DataSize = c }(sharky.DataSize)
-	sharky.DataSize = 4
-	shards := 3
-	limit := int64(1024)
+func TestConcurrency(t *testing.T) {
+	datasize := 4
+	test := func(t *testing.T, workers, shards int, shardSize uint32) {
+		limit := shards * int(shardSize)
 
-	dir := t.TempDir()
-	locs := make([][]sharky.Location, 4)
-	ctx := context.Background()
-	s, err := sharky.New(dir, shards, limit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wg := sync.WaitGroup{}
-	wg.Add(4)
-	trigger := func(k int) {
-		defer wg.Done()
-		locs[k] = make([]sharky.Location, limit)
-		for i := k * int(limit); i < (k+1)*int(limit); i++ {
-			buf := make([]byte, 4)
-			if i%4 == 3 {
-				s.Release(ctx, locs[k][(i-1)%int(limit)])
-			}
-			binary.BigEndian.PutUint32(buf, uint32(i))
-			loc, err := s.Write(ctx, buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			locs[k][i%int(limit)] = loc
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+		s, err := sharky.New(dir, shards, shardSize, datasize)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	for k := 0; k < 4; k++ {
-		go trigger(k)
-	}
-
-	wg.Wait()
-	for k := 0; k < 4; k++ {
-		for i, loc := range locs[k] {
-			if i%4 == 2 {
+		c := make(chan sharky.Location, limit)
+		start := make(chan struct{})
+		deleted := make(map[uint32]int)
+		entered := make(map[uint32]struct{})
+		ctx := context.Background()
+		eg, ectx := errgroup.WithContext(ctx)
+		// a number of workers write sequential numbers to sharky
+		for k := 0; k < workers; k++ {
+			k := k
+			eg.Go(func() error {
+				<-start
+				buf := make([]byte, 4)
+				for i := 0; i < limit; i++ {
+					j := i*workers + k
+					binary.BigEndian.PutUint32(buf, uint32(j))
+					loc, err := s.Write(ctx, buf)
+					if err != nil {
+						return err
+					}
+					select {
+					case <-ectx.Done():
+						return ectx.Err()
+					case c <- loc:
+					}
+				}
+				return nil
+			})
+		}
+		// parallel to these workers, other workers collect the taken slots and release them
+		// modelling some aggressive gc policy
+		mtx := sync.Mutex{}
+		for k := 0; k < workers-1; k++ {
+			eg.Go(func() error {
+				<-start
+				buf := make([]byte, datasize)
+				for i := 0; i < limit; i++ {
+					select {
+					case <-ectx.Done():
+						return ectx.Err()
+					case loc := <-c:
+						if err := s.Read(ectx, loc, buf); err != nil {
+							return err
+						}
+						j := binary.BigEndian.Uint32(buf)
+						mtx.Lock()
+						deleted[j]++
+						mtx.Unlock()
+						if err := s.Release(ectx, loc); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+		}
+		close(start)
+		if err := eg.Wait(); err != nil {
+			t.Fatal(err)
+		}
+		close(c)
+		extraSlots := 0
+		for i := uint32(0); i < uint32(workers*limit); i++ {
+			cnt, found := deleted[i]
+			if !found {
+				entered[i] = struct{}{}
 				continue
 			}
-			want := i + k*int(limit)
-			data, err := s.Read(ctx, loc)
+			extraSlots += cnt - 1
+		}
+		buf := make([]byte, datasize)
+		for loc := range c {
+			err := s.Read(ctx, loc, buf)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := int(binary.BigEndian.Uint32(data))
-			if got != want {
-				t.Fatalf("data mismatch. want %d, got %d", want, got)
+			i := binary.BigEndian.Uint32(buf)
+
+			_, found := entered[i]
+			if !found {
+				t.Fatal("item at unreleased location incorrect")
 			}
 		}
+
+		// the store has extra slots capacity
+		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
+		for i := 0; i < extraSlots; i++ {
+			t.Logf("checking extra slot %d\n", i)
+			_, err = s.Write(cctx, []byte{0})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		cancel()
+
+		// the store has no more capacity, write expected to time out on waiting for free slots
+		cctx, cancel = context.WithTimeout(ctx, 800*time.Millisecond)
+		defer cancel()
+		t.Logf("checking if full\n")
+		_, err = s.Write(cctx, []byte{0})
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("after extra slots expected error DeadlineExceeded, got %v", err)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// the store has no more capacity, write expected to time out on waiting for free slots
-	cctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	_, err = s.Write(cctx, []byte{0})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected error DeadlineExceeded, got %v", err)
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
+	for _, c := range []struct {
+		workers, shards int
+		shardSize       uint32
+	}{
+		{3, 2, 2},
+		{2, 64, 2},
+		{32, 8, 32},
+		{64, 32, 64},
+	} {
+		t.Run(fmt.Sprintf("workers:%d,shards:%d,size:%d", c.workers, c.shards, c.shardSize), func(t *testing.T) {
+			test(t, c.workers, c.shards, c.shardSize)
+		})
 	}
 }
