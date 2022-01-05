@@ -66,7 +66,8 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 			return false, err
 		}
 
-		data, err := db.sharky.Read(ctx, loc)
+		data := make([]byte, loc.Length)
+		err = db.sharky.Read(ctx, loc, data)
 		if err != nil {
 			return false, err
 		}

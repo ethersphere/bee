@@ -65,8 +65,8 @@ var (
 const (
 	// 32 * 312500 chunks = 1000000 chunks (40GB)
 	// currently this size is enforced by the localstore
-	sharkyNoOfShards    int   = 32
-	sharkyPerShardLimit int64 = 312500
+	sharkyNoOfShards    int    = 32
+	sharkyPerShardLimit uint32 = 312500
 )
 
 // DB is the local store implementation and holds
@@ -74,7 +74,7 @@ const (
 type DB struct {
 	shed *shed.DB
 	// sharky instance
-	sharky *sharky.Shards
+	sharky *sharky.Store
 	tags   *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
@@ -345,7 +345,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		}
 		sharkyBase = &dirFS{basedir: sharkyBasePath}
 	}
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit)
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
 	if err != nil {
 		return nil, err
 	}

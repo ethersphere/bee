@@ -70,7 +70,8 @@ func (db *DB) get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 		return out, err
 	}
 
-	out.Data, err = db.sharky.Read(ctx, l)
+	out.Data = make([]byte, l.Length)
+	err = db.sharky.Read(ctx, l, out.Data)
 	if err != nil {
 		return out, err
 	}
