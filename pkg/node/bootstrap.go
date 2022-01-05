@@ -3,11 +3,11 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"math/big"
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +20,9 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pricing"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -37,7 +40,15 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/sha3"
 )
+
+type events struct {
+	Events           []types.Log `json:"events"`
+	LastBlockNumber  uint64      `json:"lastBlockNumber"`
+	FirstBlockNumber uint64      `json:"firstBlockNumber"`
+	Timestamp        int64       `json:"timestamp"`
+}
 
 var snapshotReference = swarm.MustParseHexAddress("b933cd26548ae992e0ee6ba6fabdf9ab7769663d8ddac84b65b1a527ea0734e7")
 
@@ -50,6 +61,8 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
+
+	o.FullNodeMode = false
 
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 	defer func() {
@@ -67,7 +80,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 		tracerCloser:   tracerCloser,
 	}
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
+	stateStore, _, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -380,25 +393,38 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	fmt.Println("bootstrapper trying to fetch file")
-	reader, l, err := joiner.New(ctx, ns, snapshotReference)
+	reader, _, err := joiner.New(ctx, ns, snapshotReference)
 	if err != nil {
 		panic(err)
 	}
 
-	f, err := os.CreateTemp("", "swarm_snapshot")
+	eventsJSON, err := ioutil.ReadAll(reader)
 	if err != nil {
 		panic(err)
-	}
-	fmt.Println("using temp file at", f.Name())
-	n, err := io.Copy(f, reader)
-	if err != nil {
-		panic(err)
-	}
-	if n != l {
-		panic("short write")
 	}
 
-	fmt.Println("thats it")
+	events := &events{}
+	err = json.Unmarshal(eventsJSON, events)
+	if err != nil {
+		panic(err)
+	}
+
+	batchStore, err := batchstore.New(stateStore, nil, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
+	batchSvc, err := batchservice.New(stateStore, batchStore, logger, nil, overlayEthAddress.Bytes(), nil, sha3.New256, o.Resync)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range events.Events {
+		err := listener.ProcessEvent(e, batchSvc)
+		if err != nil {
+			panic(err)
+		}
+	}
 
 	return b, nil
 }

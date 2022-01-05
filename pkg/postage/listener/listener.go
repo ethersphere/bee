@@ -116,8 +116,7 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 	}
 }
 
-func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
-	defer l.metrics.EventsProcessed.Inc()
+func ProcessEvent(e types.Log, updater postage.EventUpdater) error {
 	switch e.Topics[0] {
 	case batchCreatedTopic:
 		c := &batchCreatedEvent{}
@@ -125,7 +124,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.CreatedCounter.Inc()
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
@@ -141,7 +139,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.TopupCounter.Inc()
 		return updater.TopUp(
 			c.BatchId[:],
 			c.NormalisedBalance,
@@ -153,7 +150,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.DepthCounter.Inc()
 		return updater.UpdateDepth(
 			c.BatchId[:],
 			c.NewDepth,
@@ -166,15 +162,36 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.PriceCounter.Inc()
 		return updater.UpdatePrice(
 			c.Price,
 			e.TxHash.Bytes(),
 		)
 	default:
-		l.metrics.EventErrors.Inc()
 		return errors.New("unknown event")
 	}
+}
+
+func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
+	l.metrics.EventsProcessed.Inc()
+
+	err := ProcessEvent(e, updater)
+	if err != nil {
+		l.metrics.EventErrors.Inc()
+		return err
+	}
+
+	switch e.Topics[0] {
+	case batchCreatedTopic:
+		l.metrics.CreatedCounter.Inc()
+	case batchTopupTopic:
+		l.metrics.TopupCounter.Inc()
+	case batchDepthIncreaseTopic:
+		l.metrics.DepthCounter.Inc()
+	case priceUpdateTopic:
+		l.metrics.PriceCounter.Inc()
+	}
+
+	return nil
 }
 
 func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan struct{} {

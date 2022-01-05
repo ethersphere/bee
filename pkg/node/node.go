@@ -178,10 +178,6 @@ const (
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
-	start := time.Now()
-	fmt.Println("running bootstrapper")
-	_, _ = NewBeeBootstrapper(addr, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
-	fmt.Println("bootstrapper done, took", time.Since(start))
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -214,11 +210,27 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		tracerCloser:   tracerCloser,
 	}
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
+	stateStore, exists, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
+
+	// bootstrap node to sync stamp events optimally by reading the events dump from the network
+	if !exists || o.Resync {
+		// TODO: we may need to close the statestore before we call bootstrap
+		start := time.Now()
+		fmt.Println("running bootstrapper")
+		boostrapNode, err := NewBeeBootstrapper(addr, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
+		fmt.Println("bootstrapper done, took", time.Since(start))
+		if err != nil {
+			return nil, err
+		}
+		err = boostrapNode.Shutdown(context.Background())
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	addressbook := addressbook.New(stateStore)
 
