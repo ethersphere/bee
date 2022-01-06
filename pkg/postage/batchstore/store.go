@@ -114,11 +114,11 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	s.rsMtx.Lock()
 	defer s.rsMtx.Unlock()
 
-	if s.rs.StorageRadius < s.rs.Radius {
-		b.Radius = s.rs.StorageRadius
-	} else {
-		b.Radius = s.rs.radius(s.rs.tier(b.Value))
-	}
+	//if s.rs.StorageRadius < s.rs.Radius {
+	//b.Radius = s.rs.StorageRadius
+	//} else {
+	b.Radius = s.rs.radius(s.rs.tier(b.Value))
+	//}
 	return b, nil
 }
 
