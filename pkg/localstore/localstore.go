@@ -66,7 +66,7 @@ const (
 	// 32 * 312500 chunks = 1000000 chunks (40GB)
 	// currently this size is enforced by the localstore
 	sharkyNoOfShards    int    = 32
-	sharkyPerShardLimit int64  = 312500
+	sharkyPerShardLimit uint32 = 312500
 	sharkyDirtyFileName string = ".DIRTY"
 )
 
@@ -352,15 +352,36 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		if isDirtyShutdown(path) {
 			//recovery
 			locOrErr, err := recovery(db)
-
 			if err != nil {
 				return nil, err
 			}
 
-			for range locOrErr {
-				// TODO move this to the right place
+			recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+			if err != nil {
+				return nil, err
 			}
 
+			for l := range locOrErr {
+				if l.err != nil {
+					db.logger.Warning("error reading sharky location", l.err)
+					continue
+				}
+
+				err = recoverySharky.Add(l.loc)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			err = recoverySharky.Save()
+			if err != nil {
+				return nil, err
+			}
+
+			err = recoverySharky.Close()
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			fdirty, err := createDirtyFile(path)
 			if err != nil {
