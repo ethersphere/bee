@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -363,6 +364,10 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 			for l := range locOrErr {
 				if l.err != nil {
+					// if the request was cancelled, dont save anything and return
+					if errors.Is(err, context.Canceled) {
+						return nil, err
+					}
 					db.logger.Warning("error reading sharky location", l.err)
 					continue
 				}
@@ -667,7 +672,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 }
 
 // Close closes the underlying database.
-func (db *DB) Close() (err error) {
+func (db *DB) Close() error {
 	close(db.close)
 	db.cancel()
 
@@ -688,29 +693,31 @@ func (db *DB) Close() (err error) {
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")
-		err = prof.WriteTo(os.Stdout, 2)
+		err := prof.WriteTo(os.Stdout, 2)
 		if err != nil {
 			return err
 		}
 	}
-	// todo instrument these
-	if err = db.sharky.Close(); err != nil {
-		return err
+
+	var err multierror.Error
+
+	if e := db.sharky.Close(); e != nil {
+		err.Append(e)
 	}
-	if err = db.shed.Close(); err != nil {
-		return err
+	if e := db.shed.Close(); e != nil {
+		err.Append(e)
 	}
 
 	if db.fdirty != nil {
-		if err = db.fdirty.Close(); err != nil {
-			return err
+		if e := db.fdirty.Close(); e != nil {
+			err.Append(e)
 		}
-		if err = os.Remove(db.fdirty.Name()); err != nil {
-			return err
+		if e := os.Remove(db.fdirty.Name()); e != nil {
+			err.Append(e)
 		}
 	}
 
-	return nil
+	return err.ErrorOrNil()
 }
 
 // po computes the proximity order between the address
