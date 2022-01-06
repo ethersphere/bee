@@ -382,13 +382,20 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			if err != nil {
 				return nil, err
 			}
-		} else {
-			fdirty, err := createDirtyFile(path)
+
+			// remove the existing dirty file so a new one can be initialized for
+			// the new instance
+			err = os.Remove(filepath.Join(path, sharkyDirtyFileName))
 			if err != nil {
 				return nil, err
 			}
-			db.fdirty = fdirty
 		}
+
+		fdirty, err := createDirtyFile(path)
+		if err != nil {
+			return nil, err
+		}
+		db.fdirty = fdirty
 	}
 
 	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
