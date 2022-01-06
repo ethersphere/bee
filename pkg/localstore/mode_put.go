@@ -385,6 +385,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 			if db.po(swarm.NewAddress(item.Address)) >= radius.Radius {
 				reserveSizeChange--
 			}
+			item.Radius = radius.Radius
 		}
 	}
 
