@@ -180,6 +180,7 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 		if err != nil {
 			return false, 0, 0, err
 		}
+
 		radius, err := db.postageRadiusIndex.Get(item)
 		if err != nil {
 			if !errors.Is(err, leveldb.ErrNotFound) {
@@ -231,8 +232,8 @@ func (db *DB) putSync(batch *leveldb.Batch, binIDs map[uint8]uint64, item shed.I
 			if err != nil {
 				return false, 0, 0, err
 			}
+			gcSizeChange++
 		}
-		gcSizeChange++
 	}
 
 	return false, gcSizeChange, reserveSizeChange, nil
