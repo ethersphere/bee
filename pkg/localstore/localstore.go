@@ -78,8 +78,7 @@ type DB struct {
 	// sharky instance
 	sharky *sharky.Store
 
-	fdirty *os.File // LOCK file handle
-	tags   *tags.Tags
+	tags *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
 	stateStore storage.StateStorer
@@ -396,11 +395,10 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			}
 		}
 
-		fdirty, err := createDirtyFile(path)
+		_, err := os.OpenFile(filepath.Join(path, sharkyDirtyFileName), os.O_RDONLY|os.O_CREATE, 0644)
 		if err != nil {
 			return nil, err
 		}
-		db.fdirty = fdirty
 	}
 
 	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
@@ -708,13 +706,8 @@ func (db *DB) Close() error {
 		err.Append(e)
 	}
 
-	if db.fdirty != nil {
-		if e := db.fdirty.Close(); e != nil {
-			err.Append(e)
-		}
-		if e := os.Remove(db.fdirty.Name()); e != nil {
-			err.Append(e)
-		}
+	if e := os.Remove(sharkyDirtyFileName); e != nil {
+		err.Append(e)
 	}
 
 	return err.ErrorOrNil()
@@ -827,11 +820,4 @@ func isDirtyShutdown(path string) bool {
 	isClean := errors.Is(err, fs.ErrNotExist) // missing lock file implies a clean exit
 
 	return !isClean
-}
-
-func createDirtyFile(path string) (f *os.File, err error) {
-	path = filepath.Join(path, sharkyDirtyFileName)
-	f, err = os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0644)
-
-	return
 }
