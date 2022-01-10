@@ -76,10 +76,10 @@ const (
 type DB struct {
 	shed *shed.DB
 	// sharky instance
-	sharky *sharky.Store
+	sharky       *sharky.Store
+	fdirtyCloser func() error
 
-	fdirty *os.File // LOCK file handle
-	tags   *tags.Tags
+	tags *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
 	stateStore storage.StateStorer
@@ -233,6 +233,51 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
 }
 
+func safeInit(rootPath, sharkyBasePath string, db *DB) error {
+	// create if needed
+	path := filepath.Join(rootPath, sharkyDirtyFileName)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		// missing lock file implies a clean exit then create the file and return
+		f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0644)
+		if err != nil {
+			return err
+		}
+		return f.Close()
+	}
+	locOrErr, err := recovery(db)
+	if err != nil {
+		return err
+	}
+
+	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	if err != nil {
+		return err
+	}
+
+	for l := range locOrErr {
+		if l.err != nil {
+			return l.err
+		}
+
+		err = recoverySharky.Add(l.loc)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = recoverySharky.Save()
+	if err != nil {
+		return err
+	}
+
+	err = recoverySharky.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
@@ -338,6 +383,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	// instantiate sharky instance
 	var sharkyBase fs.FS
 	if path == "" {
+		// No need for recovery for in-mem sharky
 		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
 	} else {
 		sharkyBasePath := filepath.Join(path, "sharky")
@@ -349,58 +395,12 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		}
 		sharkyBase = &dirFS{basedir: sharkyBasePath}
 
-		// check whether file already existed, and if so, initiate recovery process
-		if isDirtyShutdown(path) {
-			//recovery
-			locOrErr, err := recovery(db)
-			if err != nil {
-				return nil, err
-			}
-
-			recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
-			if err != nil {
-				return nil, err
-			}
-
-			for l := range locOrErr {
-				if l.err != nil {
-					// if the request was cancelled, dont save anything and return
-					if errors.Is(err, context.Canceled) {
-						return nil, err
-					}
-					db.logger.Warning("error reading sharky location", l.err)
-					continue
-				}
-
-				err = recoverySharky.Add(l.loc)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			err = recoverySharky.Save()
-			if err != nil {
-				return nil, err
-			}
-
-			err = recoverySharky.Close()
-			if err != nil {
-				return nil, err
-			}
-
-			// remove the existing dirty file so a new one can be initialized for
-			// the new instance
-			err = os.Remove(filepath.Join(path, sharkyDirtyFileName))
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		fdirty, err := createDirtyFile(path)
+		err = safeInit(path, sharkyBasePath, db)
 		if err != nil {
+			db.logger.Errorf("safe sharky initialization failed %w", err)
 			return nil, err
 		}
-		db.fdirty = fdirty
+		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
 	}
 
 	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
@@ -708,11 +708,8 @@ func (db *DB) Close() error {
 		err.Append(e)
 	}
 
-	if db.fdirty != nil {
-		if e := db.fdirty.Close(); e != nil {
-			err.Append(e)
-		}
-		if e := os.Remove(db.fdirty.Name()); e != nil {
+	if db.fdirtyCloser != nil {
+		if e := db.fdirtyCloser(); e != nil {
 			err.Append(e)
 		}
 	}
