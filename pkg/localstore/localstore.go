@@ -238,11 +238,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 	path := filepath.Join(rootPath, sharkyDirtyFileName)
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		// missing lock file implies a clean exit then create the file and return
-		f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0644)
-		if err != nil {
-			return err
-		}
-		return f.Close()
+		return os.WriteFile(path, []byte{}, 0644)
 	}
 	locOrErr, err := recovery(db)
 	if err != nil {
@@ -817,18 +813,4 @@ func init() {
 func totalTimeMetric(metric prometheus.Counter, start time.Time) {
 	totalTime := time.Since(start)
 	metric.Add(float64(totalTime))
-}
-
-func isDirtyShutdown(path string) bool {
-	_, err := os.Stat(filepath.Join(path, sharkyDirtyFileName))
-	isClean := errors.Is(err, fs.ErrNotExist) // missing lock file implies a clean exit
-
-	return !isClean
-}
-
-func createDirtyFile(path string) (f *os.File, err error) {
-	path = filepath.Join(path, sharkyDirtyFileName)
-	f, err = os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0644)
-
-	return
 }
