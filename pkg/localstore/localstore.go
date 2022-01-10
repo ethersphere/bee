@@ -616,6 +616,12 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 	}
 	indexInfo["gcSize"] = int(val)
 
+	val, err = db.reserveSize.Get()
+	if err != nil {
+		return indexInfo, err
+	}
+	indexInfo["reserveSize"] = int(val)
+
 	return indexInfo, err
 }
 
