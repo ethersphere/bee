@@ -70,22 +70,16 @@ func recovery(db *DB) (chan locOrErr, error) {
 	usedLocations := make(chan locOrErr)
 
 	go func() {
-
 		defer close(usedLocations)
 
 		err := retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 			loc, err := sharky.LocationFromBinary(item.Location)
 			if err != nil {
-				return false, fmt.Errorf("location from binary: %w", err)
+				return true, fmt.Errorf("location from binary: %w", err)
 			}
 
-			select {
-			case usedLocations <- locOrErr{
-				err: err,
+			usedLocations <- locOrErr{
 				loc: loc,
-			}:
-			case <-db.ctx.Done():
-				return true, db.ctx.Err()
 			}
 
 			return false, nil
