@@ -11,16 +11,6 @@ externalDocs:
 
 paths: {}
 components:
-  securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
-
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: SecurityToken
-
   schemas:
     Address:
       type: object
