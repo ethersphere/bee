@@ -315,14 +315,12 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius           uint8          `json:"radius"`
-	StorageRadius    uint8          `json:"storageRadius"`
-	BatchUtilization float64        `json:"batchUtilization"`
-	Available        int64          `json:"available"`
-	Commitment       int64          `json:"commitment"`
-	CommitmentTB     float64        `json:"commitmentTB"`
-	Outer            *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner            *bigint.BigInt `json:"inner"`
+	Radius        uint8          `json:"radius"`
+	StorageRadius uint8          `json:"storageRadius"`
+	Available     int64          `json:"available"`
+	Commitment    int64          `json:"commitment"`
+	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
+	Inner         *bigint.BigInt `json:"inner"`
 }
 
 type chainStateResponse struct {
@@ -345,14 +343,12 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, reserveStateResponse{
-		Radius:           state.Radius,
-		StorageRadius:    state.StorageRadius,
-		BatchUtilization: 1.0 / math.Pow(2, float64(state.Radius-state.StorageRadius)),
-		Available:        state.Available,
-		Commitment:       int64(commitment),
-		CommitmentTB:     float64(commitment) * 4096 / 1024 / 1024 / 1024 / 1024,
-		Outer:            bigint.Wrap(state.Outer),
-		Inner:            bigint.Wrap(state.Inner),
+		Radius:        state.Radius,
+		StorageRadius: state.StorageRadius,
+		Available:     state.Available,
+		Commitment:    int64(commitment),
+		Outer:         bigint.Wrap(state.Outer),
+		Inner:         bigint.Wrap(state.Inner),
 	})
 }
 
