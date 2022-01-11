@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
-	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -695,21 +694,12 @@ func (db *DB) Close() error {
 		}
 	}
 
-	var err multierror.Error
-
-	if e := db.sharky.Close(); e != nil {
-		err.Append(e)
-	}
-	if e := db.shed.Close(); e != nil {
-		err.Append(e)
-	}
-
+	err := new(multierror.Error)
+	err = multierror.Append(err, db.sharky.Close())
+	err = multierror.Append(err, db.shed.Close())
 	if db.fdirtyCloser != nil {
-		if e := db.fdirtyCloser(); e != nil {
-			err.Append(e)
-		}
+		err = multierror.Append(err, db.fdirtyCloser())
 	}
-
 	return err.ErrorOrNil()
 }
 
