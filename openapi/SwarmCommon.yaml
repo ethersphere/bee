@@ -612,17 +612,17 @@ components:
     SecurityTokenRequest:
       type: object
       properties:
-        Role:
+        role:
           type: string
           nullable: false
-        Expiry:
+        expiry:
           type: integer
           nullable: false
 
     SecurityTokenResponse:
       type: object
       properties:
-        Key:
+        key:
           type: string
           nullable: false
 
