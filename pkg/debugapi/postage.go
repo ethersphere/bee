@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -150,7 +151,29 @@ type bucketData struct {
 	Collisions uint32 `json:"collisions"`
 }
 
-func (s *Service) postageGetStampsHandler(w http.ResponseWriter, _ *http.Request) {
+const AllStampsHeader = "Swarm-All-Stamps"
+
+func requestAll(r *http.Request) (bool, error) {
+	if h := strings.ToLower(r.Header.Get(AllStampsHeader)); h != "" {
+		return strconv.ParseBool(h)
+	}
+	return false, nil
+}
+
+func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
+	reqAll, err := requestAll(r)
+	if err != nil {
+		s.logger.Debugf("get stamp issuer: check batch: %v", err)
+		s.logger.Error("get stamp issuer: check batch")
+		jsonhttp.InternalServerError(w, "unable to check batch")
+		return
+	}
+
+	if reqAll {
+		s.postageGetAllStampsHandler(w, r)
+		return
+	}
+
 	resp := postageStampsResponse{}
 	for _, v := range s.post.StampIssuers() {
 		exists, err := s.batchStore.Exists(v.ID())
