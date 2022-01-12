@@ -7,6 +7,7 @@ package localstore
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -22,7 +23,7 @@ const DBSchemaSharky = "sharky"
 
 // migrateDeadPush cleans up dangling push index entries that make the pusher stop pushing entries
 func migrateSharky(db *DB) error {
-	db.logger.Debug("starting sharky migration. have patience, this might take a while...")
+	db.logger.Debug("starting sharky migration; have patience, this might take a while...")
 	var (
 		start          = time.Now()
 		batch          = new(leveldb.Batch)
@@ -119,6 +120,30 @@ func migrateSharky(db *DB) error {
 		return err
 	}
 
+	db.gcSize, err = db.shed.NewUint64Field("gc-size")
+	if err != nil {
+		return err
+	}
+
+	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
+	if err != nil {
+		return err
+	}
+
+	gcSize, err := db.gcSize.Get()
+	if err != nil {
+		return err
+	}
+
+	reserveSize, err := db.reserveSize.Get()
+	if err != nil {
+		return err
+	}
+
+	if gcSize+reserveSize > sharkyMaxTotalChunks {
+		return errors.New("maximum allowed chunks exceeded")
+	}
+
 	var compactionTime time.Duration
 	var dirtyLocations []sharky.Location
 
@@ -183,6 +208,6 @@ func migrateSharky(db *DB) error {
 	compactionTime += dur
 
 	db.logger.Debugf("leveldb compaction took: %v", compactionTime)
-	db.logger.Debugf("done migrating to sharky. it took me %s to move %d chunks.", time.Since(start), batchCount)
+	db.logger.Debugf("done migrating to sharky; it took me %s to move %d chunks.", time.Since(start), batchCount)
 	return nil
 }

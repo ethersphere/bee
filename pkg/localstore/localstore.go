@@ -66,9 +66,10 @@ var (
 const (
 	// 32 * 312500 chunks = 10000000 chunks (40GB)
 	// currently this size is enforced by the localstore
-	sharkyNoOfShards    int    = 32
-	sharkyPerShardLimit uint32 = 312500
-	sharkyDirtyFileName string = ".DIRTY"
+	sharkyNoOfShards     = 32
+	sharkyPerShardLimit  = 312500
+	sharkyMaxTotalChunks = sharkyNoOfShards * sharkyPerShardLimit
+	sharkyDirtyFileName  = ".DIRTY"
 )
 
 // DB is the local store implementation and holds
@@ -121,7 +122,7 @@ type DB struct {
 	// postage index index
 	postageIndexIndex shed.Index
 
-	// field that stores number of intems in gc index
+	// field that stores number of items in gc index
 	gcSize shed.Uint64Field
 
 	// field that stores the size of the reserve
