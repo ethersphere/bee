@@ -55,6 +55,8 @@ type Interface interface {
 	CompensatedBalance(peer swarm.Address) (*big.Int, error)
 	// CompensatedBalances returns the compensated balances for all known peers.
 	CompensatedBalances() (map[string]*big.Int, error)
+	// PeerAccounting returns the associated values for all known peers
+	PeerAccounting() (map[string]PeerInfo, error)
 }
 
 // Action represents an accounting action that can be applied
@@ -637,6 +639,56 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	return s, nil
+}
+
+type PeerInfo struct {
+	Balance               *big.Int
+	ThresholdReceived     *big.Int
+	ThresholdGiven        *big.Int
+	SurplusBalance        *big.Int
+	ReservedBalance       *big.Int
+	ShadowReservedBalance *big.Int
+	GhostBalance          *big.Int
+}
+
+func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
+	s := make(map[string]PeerInfo)
+
+	a.accountingPeersMu.Lock()
+	defer a.accountingPeersMu.Unlock()
+
+	for peer, accountingPeer := range a.accountingPeers {
+
+		peerAddress := swarm.MustParseHexAddress(peer)
+
+		balance, err := a.Balance(peerAddress)
+		if errors.Is(err, ErrPeerNoBalance) {
+			balance = big.NewInt(0)
+		} else if err != nil {
+			return nil, err
+		}
+
+		surplusBalance, err := a.SurplusBalance(peerAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		accountingPeer.lock.Lock()
+
+		s[peer] = PeerInfo{
+			Balance:               new(big.Int).Set(balance),
+			ThresholdReceived:     new(big.Int).Set(accountingPeer.paymentThreshold),
+			ThresholdGiven:        new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
+			SurplusBalance:        new(big.Int).Set(surplusBalance),
+			ReservedBalance:       new(big.Int).Set(accountingPeer.reservedBalance),
+			ShadowReservedBalance: new(big.Int).Set(accountingPeer.shadowReservedBalance),
+			GhostBalance:          new(big.Int).Set(accountingPeer.ghostBalance),
+		}
+
+		accountingPeer.lock.Unlock()
 	}
 
 	return s, nil
