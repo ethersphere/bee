@@ -27,6 +27,10 @@ func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, bo
 	}
 
 	store, err := leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
+	if err != nil {
+		log.Error(err)
+		return nil, false, err
+	}
 
 	var (
 		statestoreExits = false

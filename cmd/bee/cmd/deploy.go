@@ -38,7 +38,7 @@ func (c *command) initDeployCmd() error {
 			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
 			networkID := c.config.GetUint64(optionNameNetworkID)
 
-			stateStore, err := node.InitStateStore(logger, dataDir)
+			stateStore, _, err := node.InitStateStore(logger, dataDir)
 			if err != nil {
 				return err
 			}

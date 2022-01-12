@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -50,9 +51,9 @@ type events struct {
 	Timestamp        int64       `json:"timestamp"`
 }
 
-var snapshotReference = swarm.MustParseHexAddress("b933cd26548ae992e0ee6ba6fabdf9ab7769663d8ddac84b65b1a527ea0734e7")
+var snapshotReference = swarm.MustParseHexAddress("b36f03d995a04df1757c3a5ddbb795f48d279c532b11803864503f6b97fb20e1")
 
-func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -61,6 +62,10 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
+
+	defer func(fullmode bool) {
+		o.FullNodeMode = fullmode
+	}(o.FullNodeMode)
 
 	o.FullNodeMode = false
 
@@ -79,12 +84,6 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
 	}
-
-	stateStore, _, err := InitStateStore(logger, o.DataDir)
-	if err != nil {
-		return nil, err
-	}
-	b.stateStoreCloser = stateStore
 
 	addressbook := addressbook.New(stateStore)
 
@@ -109,27 +108,27 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 		pollingInterval,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("init chain: %w", err)
+		return b, fmt.Errorf("init chain: %w", err)
 	}
 	b.ethClientCloser = swapBackend.Close
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
 	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
+		return b, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
 	}
 
 	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
 	if err != nil {
-		return nil, fmt.Errorf("is synced: %w", err)
+		return b, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
 		logger.Infof("waiting to sync with the Ethereum backend")
 
 		err := transaction.WaitSynced(p2pCtx, logger, swapBackend, maxDelay)
 		if err != nil {
-			return nil, fmt.Errorf("waiting backend sync: %w", err)
+			return b, fmt.Errorf("waiting backend sync: %w", err)
 		}
 	}
 
@@ -143,11 +142,11 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 			o.SwapLegacyFactoryAddresses,
 		)
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 
 		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
+			return b, fmt.Errorf("factory fail: %w", err)
 		}
 
 		if o.ChequebookEnable {
@@ -165,7 +164,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 				o.DeployGasPrice,
 			)
 			if err != nil {
-				return nil, err
+				return b, err
 			}
 		}
 
@@ -181,7 +180,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 
 	pubKey, _ := signer.PublicKey()
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 
 	var (
@@ -191,19 +190,19 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 
 	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
 	if err != nil {
-		return nil, fmt.Errorf("invalid transaction hash: %w", err)
+		return b, fmt.Errorf("invalid transaction hash: %w", err)
 	}
 
 	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
 	if err != nil {
-		return nil, fmt.Errorf("invalid block hash: %w", err)
+		return b, fmt.Errorf("invalid block hash: %w", err)
 	}
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
 
 	err = CheckOverlayWithStore(swarmAddress, stateStore)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
@@ -212,7 +211,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 
 	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
 	if err != nil {
-		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
+		return b, fmt.Errorf("identity transaction verification failed: %w", err)
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
@@ -224,18 +223,18 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 		Transaction:    txHash,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("p2p service: %w", err)
+		return b, fmt.Errorf("p2p service: %w", err)
 	}
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
 	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
 	if err != nil {
-		return nil, fmt.Errorf("hive: %w", err)
+		return b, fmt.Errorf("hive: %w", err)
 	}
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
-		return nil, fmt.Errorf("hive service: %w", err)
+		return b, fmt.Errorf("hive service: %w", err)
 	}
 	b.hiveCloser = hive
 
@@ -256,13 +255,13 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 
 	metricsDB, err := shed.NewDBWrap(stateStore.DB())
 	if err != nil {
-		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
+		return b, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, nil /* TODO: pingpong is nil here. we need a noop pingpong */, metricsDB, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &pinger{} /* TODO: pingpong is nil here. we need a noop pingpong */, metricsDB, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
 	if err != nil {
-		return nil, fmt.Errorf("unable to create kademlia: %w", err)
+		return b, fmt.Errorf("unable to create kademlia: %w", err)
 	}
 	b.topologyCloser = kad
 	b.topologyHalter = kad
@@ -274,28 +273,28 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
+		return b, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
 	if paymentThreshold.Cmp(minThreshold) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+		return b, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
 	}
 
 	if paymentThreshold.Cmp(maxThreshold) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
+		return b, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
 	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
-		return nil, fmt.Errorf("pricing service: %w", err)
+		return b, fmt.Errorf("pricing service: %w", err)
 	}
 
 	addrs, err := p2ps.Addresses()
 	if err != nil {
-		return nil, fmt.Errorf("get server addresses: %w", err)
+		return b, fmt.Errorf("get server addresses: %w", err)
 	}
 
 	for _, addr := range addrs {
@@ -303,11 +302,11 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 	}
 
 	if o.PaymentTolerance < 0 {
-		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
+		return b, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
 	}
 
 	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
-		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
+		return b, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
 	acc, err := accounting.NewAccounting(
@@ -321,7 +320,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 		p2ps,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("accounting: %w", err)
+		return b, fmt.Errorf("accounting: %w", err)
 	}
 	b.accountingCloser = acc
 
@@ -335,7 +334,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 
 	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
-		return nil, fmt.Errorf("pseudosettle service: %w", err)
+		return b, fmt.Errorf("pseudosettle service: %w", err)
 	}
 
 	acc.SetRefreshFunc(pseudosettleService.Pay)
@@ -356,7 +355,7 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 		transactionService,
 	)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 	b.priceOracleCloser = priceOracle
 
@@ -371,62 +370,72 @@ func NewBeeBootstrapper(addr string, publicKey *ecdsa.PublicKey, signer crypto.S
 	}
 
 	storer := inmemstore.New()
-
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
 	ns := netstore.New(storer, noopValidStamp, nil, retrieve, logger)
 
 	retrieveProtocolSpec := retrieve.Protocol()
 
 	if err = p2ps.AddProtocol(retrieveProtocolSpec); err != nil {
-		return nil, fmt.Errorf("retrieval service: %w", err)
+		return b, fmt.Errorf("retrieval service: %w", err)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
-		return nil, err
+		return b, err
 	}
 	p2ps.Ready()
 
 	if !waitPeers(kad) {
-		return nil, errors.New("timed out waiting for kademlia peers")
+		return b, errors.New("timed out waiting for kademlia peers")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	fmt.Println("bootstrapper trying to fetch file")
-	reader, _, err := joiner.New(ctx, ns, snapshotReference)
+
+	logger.Info("bootstrapper trying to fetch file")
+	reader, l, err := joiner.New(ctx, ns, snapshotReference)
 	if err != nil {
-		panic(err)
+		return b, err
 	}
 
 	eventsJSON, err := ioutil.ReadAll(reader)
 	if err != nil {
-		panic(err)
+		return b, err
 	}
 
-	events := &events{}
-	err = json.Unmarshal(eventsJSON, events)
-	if err != nil {
-		panic(err)
+	if len(eventsJSON) != int(l) {
+		return b, err
 	}
 
-	batchStore, err := batchstore.New(stateStore, nil, logger)
+	events := events{}
+	err = json.Unmarshal(eventsJSON, &events)
 	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
+		return b, err
+	}
+
+	// TODO: can we get away this noOp func?
+	var evictFn = func(b []byte) error {
+		return nil
+	}
+
+	batchStore, err := batchstore.New(stateStore, evictFn, logger)
+	if err != nil {
+		return b, fmt.Errorf("batchstore: %w", err)
 	}
 
 	batchSvc, err := batchservice.New(stateStore, batchStore, logger, nil, overlayEthAddress.Bytes(), nil, sha3.New256, o.Resync)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 
 	for _, e := range events.Events {
 		err := listener.ProcessEvent(e, batchSvc)
-		if err != nil {
-			panic(err)
-		}
+		logger.Warningf("bootstrap: %w", err)
 	}
 
-	return b, nil
+	logger.Infof("lastBlockNumber", events.LastBlockNumber)
+
+	err = batchSvc.UpdateBlockNumber(events.LastBlockNumber)
+	return b, err
 }
 
 // wait till some peers are connected. returns true if all is ok
@@ -454,4 +463,11 @@ func waitPeers(kad *kademlia.Kad) bool {
 		time.Sleep(time.Second)
 	}
 	return false
+}
+
+type pinger struct {
+}
+
+func (p *pinger) Ping(ctx context.Context, address swarm.Address, msgs ...string) (time.Duration, error) {
+	return time.Millisecond, nil
 }
