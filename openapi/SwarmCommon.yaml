@@ -618,6 +618,7 @@ components:
         expiry:
           type: integer
           nullable: false
+          description: Expiration time in seconds
 
     SecurityTokenResponse:
       type: object
