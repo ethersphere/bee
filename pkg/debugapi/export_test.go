@@ -14,6 +14,8 @@ type (
 	WelcomeMessageRequest             = welcomeMessageRequest
 	WelcomeMessageResponse            = welcomeMessageResponse
 	BalancesResponse                  = balancesResponse
+	PeerDataResponse                  = peerDataResponse
+	PeerData                          = peerData
 	BalanceResponse                   = balanceResponse
 	SettlementResponse                = settlementResponse
 	SettlementsResponse               = settlementsResponse
@@ -43,6 +45,7 @@ type (
 var (
 	ErrCantBalance           = errCantBalance
 	ErrCantBalances          = errCantBalances
+	HttpErrGetAccountingInfo = httpErrGetAccountingInfo
 	ErrNoBalance             = errNoBalance
 	ErrCantSettlementsPeer   = errCantSettlementsPeer
 	ErrCantSettlements       = errCantSettlements
