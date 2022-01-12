@@ -11,16 +11,6 @@ externalDocs:
 
 paths: {}
 components:
-  securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
-
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: SecurityToken
-
   schemas:
     Address:
       type: object
@@ -622,17 +612,18 @@ components:
     SecurityTokenRequest:
       type: object
       properties:
-        Role:
+        role:
           type: string
           nullable: false
-        Expiry:
+        expiry:
           type: integer
           nullable: false
+          description: Expiration time in seconds
 
     SecurityTokenResponse:
       type: object
       properties:
-        Key:
+        key:
           type: string
           nullable: false
 
