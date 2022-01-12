@@ -93,7 +93,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		s.SetPickyNotifier(o.notifier)
 	}
 
-	s.Ready()
+	_ = s.Ready()
 
 	t.Cleanup(func() {
 		cancel()
