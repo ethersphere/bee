@@ -66,10 +66,9 @@ var (
 const (
 	// 32 * 312500 chunks = 10000000 chunks (40GB)
 	// currently this size is enforced by the localstore
-	sharkyNoOfShards     = 32
-	sharkyPerShardLimit  = 312500
-	sharkyMaxTotalChunks = sharkyNoOfShards * sharkyPerShardLimit
-	sharkyDirtyFileName  = ".DIRTY"
+	sharkyNoOfShards    = 32
+	sharkyPerShardLimit = 312500
+	sharkyDirtyFileName = ".DIRTY"
 )
 
 // DB is the local store implementation and holds
