@@ -106,22 +106,22 @@ func TestLightPeerLimit(t *testing.T) {
 	var (
 		limit     = 3
 		container = lightnode.NewContainer(test.RandomAddress())
+		notifier  = mockNotifier(noopCf, noopDf, true)
 		sf, _     = newService(t, 1, libp2pServiceOpts{
 			lightNodes: container,
 			libp2pOpts: libp2p.Options{
 				LightNodeLimit: limit,
 				FullNode:       true,
 			},
+			notifier: notifier,
 		})
-
-		notifier = mockNotifier(noopCf, noopDf, true)
 	)
-	sf.SetPickyNotifier(notifier)
 
 	addr := serviceUnderlayAddress(t, sf)
 
 	for i := 0; i < 5; i++ {
 		sl, _ := newService(t, 1, libp2pServiceOpts{
+			notifier: notifier,
 			libp2pOpts: libp2p.Options{
 				FullNode: false,
 			},
