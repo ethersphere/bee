@@ -284,10 +284,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
-	if err := s.reachabilityWorker(); err != nil {
-		return nil, err
-	}
-
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	connMetricNotify := newConnMetricNotify(s.metrics)
@@ -896,8 +892,13 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.handshakeService.GetWelcomeMessage()
 }
 
-func (s *Service) Ready() {
+func (s *Service) Ready() error {
+	if err := s.reachabilityWorker(); err != nil {
+		return fmt.Errorf("reachability worker: %w", err)
+	}
+
 	close(s.ready)
+	return nil
 }
 
 func (s *Service) Halt() {

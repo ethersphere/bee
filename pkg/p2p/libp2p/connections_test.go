@@ -106,22 +106,22 @@ func TestLightPeerLimit(t *testing.T) {
 	var (
 		limit     = 3
 		container = lightnode.NewContainer(test.RandomAddress())
+		notifier  = mockNotifier(noopCf, noopDf, true)
 		sf, _     = newService(t, 1, libp2pServiceOpts{
 			lightNodes: container,
 			libp2pOpts: libp2p.Options{
 				LightNodeLimit: limit,
 				FullNode:       true,
 			},
+			notifier: notifier,
 		})
-
-		notifier = mockNotifier(noopCf, noopDf, true)
 	)
-	sf.SetPickyNotifier(notifier)
 
 	addr := serviceUnderlayAddress(t, sf)
 
 	for i := 0; i < 5; i++ {
 		sl, _ := newService(t, 1, libp2pServiceOpts{
+			notifier: notifier,
 			libp2pOpts: libp2p.Options{
 				FullNode: false,
 			},
@@ -281,16 +281,18 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
-	}})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		notifier: mockNotifier(noopCf, noopDf, true),
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		}})
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, addr := range addrs {
 		// creating new remote host for each address
-		s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+		s2, overlay2 := newService(t, 1, libp2pServiceOpts{notifier: mockNotifier(noopCf, noopDf, true)})
 
 		if _, err := s2.Connect(ctx, addr); err != nil {
 			t.Fatal(err)
