@@ -865,7 +865,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err
 	}
-	p2ps.Ready()
+
+	if err := p2ps.Ready(); err != nil {
+		return nil, err
+	}
 
 	return b, nil
 }
