@@ -32,6 +32,7 @@ type libp2pServiceOpts struct {
 	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
 	lightNodes  *lightnode.Container
+	notifier    p2p.PickyNotifier
 }
 
 // newService constructs a new libp2p service.
@@ -87,7 +88,12 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Ready()
+
+	if o.notifier != nil {
+		s.SetPickyNotifier(o.notifier)
+	}
+
+	_ = s.Ready()
 
 	t.Cleanup(func() {
 		cancel()
