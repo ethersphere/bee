@@ -31,12 +31,12 @@ import (
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
-	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -64,11 +64,12 @@ var (
 )
 
 const (
-	// 32 * 312500 chunks = 1000000 chunks (40GB)
+	// 32 * 312500 chunks = 10000000 chunks (40GB)
 	// currently this size is enforced by the localstore
-	sharkyNoOfShards    int    = 32
-	sharkyPerShardLimit uint32 = 312500
-	sharkyDirtyFileName string = ".DIRTY"
+	sharkyNoOfShards     = 32
+	sharkyPerShardLimit  = 312500
+	sharkyMaxTotalChunks = sharkyNoOfShards * sharkyPerShardLimit
+	sharkyDirtyFileName  = ".DIRTY"
 )
 
 // DB is the local store implementation and holds
@@ -121,7 +122,7 @@ type DB struct {
 	// postage index index
 	postageIndexIndex shed.Index
 
-	// field that stores number of intems in gc index
+	// field that stores number of items in gc index
 	gcSize shed.Uint64Field
 
 	// field that stores the size of the reserve
@@ -341,41 +342,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 
-	// Identify current storage schema by arbitrary name.
-	db.schemaName, err = db.shed.NewStringField("schema-name")
-	if err != nil {
-		return nil, err
-	}
-	schemaName, err := db.schemaName.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-		return nil, err
-	}
-	if schemaName == "" {
-		// initial new localstore run
-		err := db.schemaName.Put(DBSchemaCurrent)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// execute possible migrations
-		err = db.migrate(schemaName)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Persist gc size.
-	db.gcSize, err = db.shed.NewUint64Field("gc-size")
-	if err != nil {
-		return nil, err
-	}
-
-	// reserve size
-	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
-	if err != nil {
-		return nil, err
-	}
-
 	// instantiate sharky instance
 	var sharkyBase fs.FS
 	if path == "" {
@@ -400,6 +366,40 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	}
 
 	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// Identify current storage schema by arbitrary name.
+	db.schemaName, err = db.shed.NewStringField("schema-name")
+	if err != nil {
+		return nil, err
+	}
+	schemaName, err := db.schemaName.Get()
+	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+		return nil, err
+	}
+	if schemaName == "" {
+		// initial new localstore run
+		err := db.schemaName.Put(DBSchemaCurrent)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Execute possible migrations.
+		if err := db.migrate(schemaName); err != nil {
+			return nil, multierror.Append(err, db.sharky.Close(), db.shed.Close())
+		}
+	}
+
+	// Persist gc size.
+	db.gcSize, err = db.shed.NewUint64Field("gc-size")
+	if err != nil {
+		return nil, err
+	}
+
+	// reserve size
+	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
 	if err != nil {
 		return nil, err
 	}
@@ -695,21 +695,12 @@ func (db *DB) Close() error {
 		}
 	}
 
-	var err multierror.Error
-
-	if e := db.sharky.Close(); e != nil {
-		err.Append(e)
-	}
-	if e := db.shed.Close(); e != nil {
-		err.Append(e)
-	}
-
+	err := new(multierror.Error)
+	err = multierror.Append(err, db.sharky.Close())
+	err = multierror.Append(err, db.shed.Close())
 	if db.fdirtyCloser != nil {
-		if e := db.fdirtyCloser(); e != nil {
-			err.Append(e)
-		}
+		err = multierror.Append(err, db.fdirtyCloser())
 	}
-
 	return err.ErrorOrNil()
 }
 
