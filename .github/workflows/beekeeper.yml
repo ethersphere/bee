@@ -136,11 +136,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-<<<<<<< HEAD
-      BEEKEEPER_BRANCH: "acc_upd"
-=======
       BEEKEEPER_BRANCH: "thr_d"
->>>>>>> 72abdb0b (fix: configs in ci)
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -226,11 +222,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-<<<<<<< HEAD
-      BEEKEEPER_BRANCH: "acc_upd"
-=======
       BEEKEEPER_BRANCH: "thr_d"
->>>>>>> 72abdb0b (fix: configs in ci)
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
