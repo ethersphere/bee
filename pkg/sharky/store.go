@@ -44,7 +44,7 @@ type Store struct {
 // - shard count - positive integer < 256 - cannot be zero or expect panic
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
 // - datasize - positive integer representing the maximum blob size to be stored
-func New(basedir fs.FS, shardCnt int, limit uint32, datasize int) (*Store, error) {
+func New(basedir fs.FS, shardCnt int, datasize int) (*Store, error) {
 	pool := &sync.Pool{New: func() interface{} {
 		return make(chan entry)
 	}}
@@ -58,7 +58,7 @@ func New(basedir fs.FS, shardCnt int, limit uint32, datasize int) (*Store, error
 		metrics:  newMetrics(),
 	}
 	for i := range store.shards {
-		s, err := store.create(uint8(i), limit, datasize, basedir)
+		s, err := store.create(uint8(i), datasize, basedir)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ func (s *Store) Close() (err error) {
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Store) create(index uint8, limit uint32, datasize int, basedir fs.FS) (*shard, error) {
+func (s *Store) create(index uint8, datasize int, basedir fs.FS) (*shard, error) {
 	file, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir fs.FS) (
 	if err != nil {
 		return nil, err
 	}
-	sl := newSlots(ffile.(sharkyFile), limit, s.wg)
+	sl := newSlots(ffile.(sharkyFile), s.wg)
 	err = sl.load()
 	if err != nil {
 		return nil, err

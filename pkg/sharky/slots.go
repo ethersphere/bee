@@ -10,23 +10,21 @@ import (
 )
 
 type slots struct {
-	data  []byte          // byteslice serving as bitvector: i-t bit set <>
-	size  uint32          // number of slots
-	limit uint32          // max number of items in the shard
-	head  uint32          // the first free slot
-	file  sharkyFile      // file to persist free slots across sessions
-	in    chan uint32     // incoming channel for free slots,
-	out   chan uint32     // outgoing channel for free slots
-	wg    *sync.WaitGroup // count started write operations
+	data []byte          // byteslice serving as bitvector: i-t bit set <>
+	size uint32          // number of slots
+	head uint32          // the first free slot
+	file sharkyFile      // file to persist free slots across sessions
+	in   chan uint32     // incoming channel for free slots,
+	out  chan uint32     // outgoing channel for free slots
+	wg   *sync.WaitGroup // count started write operations
 }
 
-func newSlots(file sharkyFile, limit uint32, wg *sync.WaitGroup) *slots {
+func newSlots(file sharkyFile, wg *sync.WaitGroup) *slots {
 	return &slots{
-		file:  file,
-		limit: limit,
-		in:    make(chan uint32),
-		out:   make(chan uint32),
-		wg:    wg,
+		file: file,
+		in:   make(chan uint32),
+		out:  make(chan uint32),
+		wg:   wg,
 	}
 }
 
@@ -37,9 +35,6 @@ func (sl *slots) load() (err error) {
 		return err
 	}
 	sl.size = uint32(len(sl.data) * 8)
-	if sl.size > sl.limit {
-		sl.size = sl.limit
-	}
 	sl.head = sl.next(0)
 	return err
 }
@@ -62,9 +57,6 @@ func (sl *slots) save() error {
 // extensions are bytewise: can only be multiples of 8 bits
 func (sl *slots) extend(n int) {
 	sl.size += uint32(n) * 8
-	if sl.size > sl.limit {
-		sl.size = sl.limit
-	}
 	for i := 0; i < n; i++ {
 		sl.data = append(sl.data, 0xff)
 	}
@@ -89,31 +81,26 @@ func (sl *slots) push(i uint32) {
 }
 
 // pop returns the lowest available free slot.
-func (sl *slots) pop() (uint32, bool) {
+func (sl *slots) pop() uint32 {
 	head := sl.head
-	if head == sl.limit {
-		return head, true
-	}
-	if head == sl.size && sl.size < sl.limit {
+	if head == sl.size {
 		sl.extend(1)
 	}
 	sl.data[head/8] &= ^(1 << (head % 8))
 	sl.head = sl.next(head + 1)
-	return head, head == sl.limit
+	return head
 }
 
 // forever loop processing.
 func (sl *slots) process(quit chan struct{}) {
 	var head uint32     // the currently pending next free slots
 	var out chan uint32 // nullable output channel, need to pop a free slot when nil
-	var full bool       // set to true if uable to pop a free slot, i.e., head (zero value) is not a slot index
 	for {
 		// if out is nil, need to pop a new head unless quitting
 		if out == nil && quit != nil {
 			// if read a free slot to head, switch on case 0 by assigning out channel
-			if head, full = sl.pop(); !full {
-				out = sl.out
-			}
+			head = sl.pop()
+			out = sl.out
 		}
 
 		select {
