@@ -5,7 +5,9 @@
 package sharky
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 
@@ -21,6 +23,9 @@ func NewRecovery(dir string, shardCnt int, shardSize uint32, datasize int) (*Rec
 	shards := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
 		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
+		if errors.Is(err, fs.ErrNotExist) {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -36,7 +41,7 @@ func NewRecovery(dir string, shardCnt int, shardSize uint32, datasize int) (*Rec
 		if err != nil {
 			return nil, err
 		}
-		sl := newSlots(ffile, shardSize, nil)
+		sl := newSlots(ffile, nil)
 		sl.data = make([]byte, size/8)
 		shards[i] = sl
 	}
