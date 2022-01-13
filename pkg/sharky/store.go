@@ -22,9 +22,9 @@ import (
 )
 
 var (
-	// Error returned by Write if the blob length exceeds the max blobsize
+	// ErrTooLong returned by Write if the blob length exceeds the max blobsize.
 	ErrTooLong = errors.New("data too long")
-	// Error returned by Write when the store is Closed before the write completes
+	// ErrQuitting returned by Write when the store is Closed before the write completes.
 	ErrQuitting = errors.New("quitting")
 )
 
@@ -36,6 +36,7 @@ type Store struct {
 	shards   []*shard        // shards
 	wg       *sync.WaitGroup // count started operations
 	quit     chan struct{}   // quit channel
+	metrics  metrics
 }
 
 // New constructs a sharded blobstore
@@ -48,22 +49,25 @@ func New(basedir string, shardCnt int, limit uint32, datasize int) (*Store, erro
 	pool := &sync.Pool{New: func() interface{} {
 		return make(chan entry)
 	}}
-	sh := &Store{
+	store := &Store{
 		datasize: datasize,
 		pool:     pool,
 		writes:   make(chan write),
 		shards:   make([]*shard, shardCnt),
 		wg:       &sync.WaitGroup{},
 		quit:     make(chan struct{}),
+		metrics:  newMetrics(),
 	}
-	for i := range sh.shards {
-		s, err := sh.create(uint8(i), limit, datasize, basedir)
+	for i := range store.shards {
+		s, err := store.create(uint8(i), limit, datasize, basedir)
 		if err != nil {
 			return nil, err
 		}
-		sh.shards[i] = s
+		store.shards[i] = s
 	}
-	return sh, nil
+	store.metrics.ShardSize.Set(float64(len(store.shards)))
+
+	return store, nil
 }
 
 // Close closes each shard and return incidental errors from each shard
@@ -116,12 +120,14 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 	sh := s.shards[loc.Shard]
 	select {
 	case sh.reads <- read{buf[:loc.Length], loc.Slot, 0}:
+		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 
 	select {
 	case err = <-sh.errc:
+		s.metrics.TotalReadCallsErr.Inc()
 		return err
 	case <-s.quit:
 		return ErrQuitting
@@ -144,6 +150,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 
 	select {
 	case s.writes <- write{data, c}:
+		s.metrics.TotalWriteCalls.Inc()
 	case <-s.quit:
 		return loc, ErrQuitting
 	case <-ctx.Done():
@@ -152,6 +159,9 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 
 	select {
 	case e := <-c:
+		if e.err != nil {
+			s.metrics.TotalWriteCallsErr.Inc()
+		}
 		return e.loc, e.err
 	case <-s.quit:
 		return loc, ErrQuitting
