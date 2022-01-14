@@ -69,7 +69,7 @@ func (t *testObserver) Disconnect(peer swarm.Address) {
 
 }
 
-func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int, time int64) error {
 	t.receivedCalled <- notifyPaymentReceivedCall{
 		peer:   peer,
 		amount: amount,
