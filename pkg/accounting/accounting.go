@@ -429,7 +429,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
-
 	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
 		if timeElapsed > 0 {
 			shadowBalance, err := a.shadowBalance(peer, balance)
@@ -705,7 +704,6 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 	s := make(map[string]PeerInfo)
 
 	a.accountingPeersMu.Lock()
-
 	accountingPeersList := make(map[string]*accountingPeer)
 	for peer, accountingPeer := range a.accountingPeers {
 		accountingPeersList[peer] = accountingPeer
