@@ -67,7 +67,6 @@ const (
 	// 32 * 312500 chunks = 10000000 chunks (40GB)
 	// currently this size is enforced by the localstore
 	sharkyNoOfShards    = 32
-	sharkyPerShardLimit = 312500
 	sharkyDirtyFileName = ".DIRTY"
 )
 
@@ -245,7 +244,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 		return err
 	}
 
-	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.ChunkWithSpanSize)
 	if err != nil {
 		return err
 	}
@@ -364,7 +363,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
 	}
 
-	db.sharky, err = sharky.New(sharkyBase, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.ChunkWithSpanSize)
 	if err != nil {
 		return nil, err
 	}

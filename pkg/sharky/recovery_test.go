@@ -20,25 +20,17 @@ func TestRecovery(t *testing.T) {
 	datasize := 4
 	shards := 8
 	shardSize := uint32(16)
-	limit := shards * int(shardSize)
+	limitInChunks := shards * int(shardSize)
 
 	dir := t.TempDir()
 	ctx := context.Background()
-	size := limit / 2
+	size := limitInChunks / 2
 	data := make([]byte, 4)
 	locs := make([]sharky.Location, size)
 	preserved := make(map[uint32]bool)
 
 	t.Run("check set sizes", func(t *testing.T) {
-		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if err := s.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}()
+		s := newSharky(t, dir, shards, datasize)
 		for i := range locs {
 			binary.BigEndian.PutUint32(data, uint32(i))
 			loc, err := s.Write(ctx, data)
@@ -67,7 +59,7 @@ func TestRecovery(t *testing.T) {
 	})
 
 	t.Run("recover based on preserved map", func(t *testing.T) {
-		r, err := sharky.NewRecovery(dir, shards, shardSize, datasize)
+		r, err := sharky.NewRecovery(dir, shards, datasize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,15 +81,7 @@ func TestRecovery(t *testing.T) {
 	})
 
 	t.Run("check integrity of recovered sharky", func(t *testing.T) {
-		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if err := s.Close(); err != nil {
-				t.Fatal(err)
-			}
-		})
+		s := newSharky(t, dir, shards, datasize)
 		buf := make([]byte, datasize)
 		t.Run("preserved are found", func(t *testing.T) {
 			for i := range preserved {
@@ -114,7 +98,8 @@ func TestRecovery(t *testing.T) {
 		var freelocs []sharky.Location
 		payload := []byte{0xff}
 		t.Run("correct number of free slots", func(t *testing.T) {
-			t.Skip()
+			t.Skip("TODO rewrite the test without the limit assertions")
+			s := newSharky(t, dir, 2, datasize)
 			cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 			defer cancel()
 			for {
@@ -127,8 +112,8 @@ func TestRecovery(t *testing.T) {
 				}
 				freelocs = append(freelocs, loc)
 			}
-			if len(freelocs) != limit-size/2 {
-				t.Fatalf("incorrect number of free slots: wanted %d; got %d", limit-size/2, len(freelocs))
+			if len(freelocs) != limitInChunks-size/2 {
+				t.Fatalf("incorrect number of free slots: wanted %d; got %d", limitInChunks-size/2, len(freelocs))
 			}
 		})
 		t.Run("added locs are still preserved", func(t *testing.T) {
@@ -174,4 +159,19 @@ func TestRecovery(t *testing.T) {
 			}
 		})
 	})
+}
+
+func newSharky(t *testing.T, dir string, shards, datasize int) *sharky.Store {
+	t.Helper()
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	return s
 }
