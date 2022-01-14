@@ -277,7 +277,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	}
 
 	var lastTime lastPayment
-	err = a.store.Get(totalKey(peer, pseudosettle.SettlementReceivedPrefix), &lastTime)
+	err = a.store.Get(totalKey(peer, pseudosettle.SettlementSentPrefix), &lastTime)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			a.logger.Warningf("")
@@ -340,7 +340,6 @@ func (c *creditAction) Apply() error {
 			c.accounting.logger.Errorf("failed to settle with credited peer %v: %w", c.peer, err)
 		}
 	}
-
 
 	c.accounting.logger.Tracef("crediting peer %v with price %d, new balance is %d", c.peer, c.price, nextBalance)
 
