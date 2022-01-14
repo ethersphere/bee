@@ -23,10 +23,8 @@ const (
 )
 
 type balanceResponse struct {
-	Peer              string         `json:"peer"`
-	Balance           *bigint.BigInt `json:"balance"`
-	ThresholdReceived *bigint.BigInt `json:"thresholdreceived"`
-	ThresholdGiven    *bigint.BigInt `json:"thresholdgiven"`
+	Peer    string         `json:"peer"`
+	Balance *bigint.BigInt `json:"balance"`
 }
 
 type balancesResponse struct {
