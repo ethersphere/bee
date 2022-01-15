@@ -1368,7 +1368,7 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 	if accountingPeer.connected {
 		disconnectFor, err := a.blocklistUntil(peer, 1)
 		if err != nil {
-			disconnectFor = int64(60)
+			disconnectFor = int64(10)
 		}
 		accountingPeer.connected = false
 		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "disconnected")
