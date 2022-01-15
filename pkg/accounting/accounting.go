@@ -290,13 +290,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 		timeElapsed = 10
 	}
 
-	// get appropriate refresh rate
-	refreshRate := new(big.Int).Set(a.refreshRate)
-	if !accountingPeer.fullNode {
-		refreshRate = new(big.Int).Set(a.lightRefreshRate)
-	}
-
-	refreshDue := new(big.Int).Mul(big.NewInt(timeElapsed), refreshRate)
+	refreshDue := new(big.Int).Mul(big.NewInt(timeElapsed), a.refreshRate)
 	overdraftLimit := new(big.Int).Add(accountingPeer.paymentThreshold, refreshDue)
 
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
@@ -691,13 +685,15 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 }
 
 type PeerInfo struct {
-	Balance               *big.Int
-	ThresholdReceived     *big.Int
-	ThresholdGiven        *big.Int
-	SurplusBalance        *big.Int
-	ReservedBalance       *big.Int
-	ShadowReservedBalance *big.Int
-	GhostBalance          *big.Int
+	Balance                  *big.Int
+	ThresholdReceived        *big.Int
+	ThresholdGiven           *big.Int
+	CurrentThresholdReceived *big.Int
+	CurrentThresholdGiven    *big.Int
+	SurplusBalance           *big.Int
+	ReservedBalance          *big.Int
+	ShadowReservedBalance    *big.Int
+	GhostBalance             *big.Int
 }
 
 func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
@@ -724,14 +720,59 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 
 		accountingPeer.lock.Lock()
 
+		var lastTime lastPayment
+
+		err = a.store.Get(totalKey(peerAddress, pseudosettle.SettlementReceivedPrefix), &lastTime)
+		if err != nil {
+			if !errors.Is(err, storage.ErrNotFound) {
+				a.logger.Warningf("")
+			}
+			lastTime.Timestamp = int64(0)
+		}
+
+		t := a.timeNow().Unix()
+
+		timeElapsed := t - lastTime.Timestamp
+		if timeElapsed > 10 {
+			timeElapsed = 10
+		}
+
+		// get appropriate refresh rate
+		refreshRate := new(big.Int).Set(a.refreshRate)
+		if !accountingPeer.fullNode {
+			refreshRate = new(big.Int).Set(a.lightRefreshRate)
+		}
+
+		refreshDue := new(big.Int).Mul(big.NewInt(timeElapsed), refreshRate)
+		currentThresholdGiven := new(big.Int).Add(accountingPeer.disconnectLimit, refreshDue)
+
+		err = a.store.Get(totalKey(peerAddress, pseudosettle.SettlementSentPrefix), &lastTime)
+		if err != nil {
+			if !errors.Is(err, storage.ErrNotFound) {
+				a.logger.Warningf("")
+			}
+			lastTime.Timestamp = int64(0)
+		}
+
+		timeElapsed = t - lastTime.Timestamp
+		if timeElapsed > 10 {
+			timeElapsed = 10
+		}
+
+		// get appropriate refresh rate
+		refreshDue = new(big.Int).Mul(big.NewInt(timeElapsed), a.refreshRate)
+		currentThresholdReceived := new(big.Int).Add(accountingPeer.paymentThreshold, refreshDue)
+
 		s[peer] = PeerInfo{
-			Balance:               new(big.Int).Set(balance),
-			ThresholdReceived:     new(big.Int).Set(accountingPeer.paymentThreshold),
-			ThresholdGiven:        new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
-			SurplusBalance:        new(big.Int).Set(surplusBalance),
-			ReservedBalance:       new(big.Int).Set(accountingPeer.reservedBalance),
-			ShadowReservedBalance: new(big.Int).Set(accountingPeer.shadowReservedBalance),
-			GhostBalance:          new(big.Int).Set(accountingPeer.ghostBalance),
+			Balance:                  new(big.Int).Set(balance),
+			ThresholdReceived:        new(big.Int).Set(accountingPeer.paymentThreshold),
+			CurrentThresholdReceived: currentThresholdReceived,
+			CurrentThresholdGiven:    currentThresholdGiven,
+			ThresholdGiven:           new(big.Int).Set(accountingPeer.paymentThresholdForPeer),
+			SurplusBalance:           new(big.Int).Set(surplusBalance),
+			ReservedBalance:          new(big.Int).Set(accountingPeer.reservedBalance),
+			ShadowReservedBalance:    new(big.Int).Set(accountingPeer.shadowReservedBalance),
+			GhostBalance:             new(big.Int).Set(accountingPeer.ghostBalance),
 		}
 
 		accountingPeer.lock.Unlock()

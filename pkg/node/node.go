@@ -636,22 +636,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
-	acc, err := accounting.NewAccounting(
-		paymentThreshold,
-		o.PaymentTolerance,
-		o.PaymentEarly,
-		logger,
-		stateStore,
-		pricing,
-		big.NewInt(refreshRate),
-		lightFactor,
-		p2ps,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("accounting: %w", err)
-	}
-	b.accountingCloser = acc
-
 	var enforcedRefreshRate *big.Int
 
 	if o.FullNodeMode {
@@ -660,7 +644,23 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
 	}
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
+	acc, err := accounting.NewAccounting(
+		paymentThreshold,
+		o.PaymentTolerance,
+		o.PaymentEarly,
+		logger,
+		stateStore,
+		pricing,
+		new(big.Int).Set(enforcedRefreshRate),
+		lightFactor,
+		p2ps,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("accounting: %w", err)
+	}
+	b.accountingCloser = acc
+
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, new(big.Int).Set(enforcedRefreshRate), big.NewInt(lightRefreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}

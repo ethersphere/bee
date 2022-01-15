@@ -20,13 +20,15 @@ type peerData struct {
 }
 
 type peerDataResponse struct {
-	Balance               *bigint.BigInt `json:"balance"`
-	ThresholdReceived     *bigint.BigInt `json:"thresholdReceived"`
-	ThresholdGiven        *bigint.BigInt `json:"thresholdGiven"`
-	SurplusBalance        *bigint.BigInt `json:"surplusBalance"`
-	ReservedBalance       *bigint.BigInt `json:"reservedBalance"`
-	ShadowReservedBalance *bigint.BigInt `json:"shadowReservedBalance"`
-	GhostBalance          *bigint.BigInt `json:"ghostBalance"`
+	Balance                  *bigint.BigInt `json:"balance"`
+	ThresholdReceived        *bigint.BigInt `json:"thresholdReceived"`
+	ThresholdGiven           *bigint.BigInt `json:"thresholdGiven"`
+	CurrentThresholdReceived *bigint.BigInt `json:"thresholdReceived"`
+	CurrentThresholdGiven    *bigint.BigInt `json:"thresholdGiven"`
+	SurplusBalance           *bigint.BigInt `json:"surplusBalance"`
+	ReservedBalance          *bigint.BigInt `json:"reservedBalance"`
+	ShadowReservedBalance    *bigint.BigInt `json:"shadowReservedBalance"`
+	GhostBalance             *bigint.BigInt `json:"ghostBalance"`
 }
 
 func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -41,13 +43,15 @@ func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) 
 	infoResponses := make(map[string]peerDataResponse, len(infos))
 	for k := range infos {
 		infoResponses[k] = peerDataResponse{
-			Balance:               bigint.Wrap(infos[k].Balance),
-			ThresholdReceived:     bigint.Wrap(infos[k].ThresholdReceived),
-			ThresholdGiven:        bigint.Wrap(infos[k].ThresholdGiven),
-			SurplusBalance:        bigint.Wrap(infos[k].SurplusBalance),
-			ReservedBalance:       bigint.Wrap(infos[k].ReservedBalance),
-			ShadowReservedBalance: bigint.Wrap(infos[k].ShadowReservedBalance),
-			GhostBalance:          bigint.Wrap(infos[k].GhostBalance),
+			Balance:                  bigint.Wrap(infos[k].Balance),
+			ThresholdReceived:        bigint.Wrap(infos[k].ThresholdReceived),
+			ThresholdGiven:           bigint.Wrap(infos[k].ThresholdGiven),
+			CurrentThresholdReceived: bigint.Wrap(infos[k].CurrentThresholdReceived),
+			CurrentThresholdGiven:    bigint.Wrap(infos[k].CurrentThresholdGiven),
+			SurplusBalance:           bigint.Wrap(infos[k].SurplusBalance),
+			ReservedBalance:          bigint.Wrap(infos[k].ReservedBalance),
+			ShadowReservedBalance:    bigint.Wrap(infos[k].ShadowReservedBalance),
+			GhostBalance:             bigint.Wrap(infos[k].GhostBalance),
 		}
 	}
 
