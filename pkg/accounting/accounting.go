@@ -1214,7 +1214,7 @@ func (d *debitAction) Apply() error {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsOverdrawCount.Inc()
 
-		disconnectFor, _ := a.blocklistUntil(d.peer, 1)
+		disconnectFor, err := a.blocklistUntil(d.peer, 1)
 		if err != nil {
 			disconnectFor = 10
 		}
