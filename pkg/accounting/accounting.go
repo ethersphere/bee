@@ -432,9 +432,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 				// if err peer not found also fail
 				if errors.Is(err, pseudosettle.ErrSettlementTooSoon) {
 					a.metrics.AccountingNonFatalRefreshFailCount.Inc()
-				} else {
-					return fmt.Errorf("refresh failure: %w", err)
 				}
+				return fmt.Errorf("refresh failure: %w", err)
 			}
 		}
 
