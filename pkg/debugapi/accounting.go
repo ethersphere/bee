@@ -23,8 +23,8 @@ type peerDataResponse struct {
 	Balance                  *bigint.BigInt `json:"balance"`
 	ThresholdReceived        *bigint.BigInt `json:"thresholdReceived"`
 	ThresholdGiven           *bigint.BigInt `json:"thresholdGiven"`
-	CurrentThresholdReceived *bigint.BigInt `json:"thresholdReceived"`
-	CurrentThresholdGiven    *bigint.BigInt `json:"thresholdGiven"`
+	CurrentThresholdReceived *bigint.BigInt `json:"currentThresholdReceived"`
+	CurrentThresholdGiven    *bigint.BigInt `json:"currentThresholdGiven"`
 	SurplusBalance           *bigint.BigInt `json:"surplusBalance"`
 	ReservedBalance          *bigint.BigInt `json:"reservedBalance"`
 	ShadowReservedBalance    *bigint.BigInt `json:"shadowReservedBalance"`
