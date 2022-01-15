@@ -297,7 +297,7 @@ func (c *creditAction) Apply() error {
 	defer c.accountingPeer.lock.Unlock()
 
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
-	increasedExpectedDebt, currentBalance, err := c.accounting.getIncreasedExpectedDebt(c.peer, c.accountingPeer, c.price)
+	currentBalance, err := c.accounting.Balance(c.peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
 			return fmt.Errorf("failed to load balance: %w", err)
@@ -306,16 +306,6 @@ func (c *creditAction) Apply() error {
 
 	// Calculate next balance by decreasing current balance with the price we credit
 	nextBalance := new(big.Int).Sub(currentBalance, c.price)
-
-	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
-	// in other words this the debt the other node sees if everything pending is successful
-	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, c.accountingPeer.shadowReservedBalance)
-	if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
-		err = c.accounting.settle(c.peer, c.accountingPeer)
-		if err != nil {
-			c.accounting.logger.Errorf("failed to settle with credited peer %v: %w", c.peer, err)
-		}
-	}
 
 	c.accounting.logger.Tracef("crediting peer %v with price %d, new balance is %d", c.peer, c.price, nextBalance)
 
