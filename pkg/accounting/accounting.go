@@ -103,22 +103,13 @@ type accountingPeer struct {
 	paymentThresholdForPeer        *big.Int   // individual payment threshold at which the peer is expected to pay
 	disconnectLimit                *big.Int   // individual disconnect threshold calculated from tolerance and payment threshold for peer
 	refreshTimestamp               int64      // last time we attempted time-based settlement
+	refreshReceivedTimestamp       int64      // last time we attempted time-based settlement
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
 	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
 	connected                      bool       // indicates whether the peer is currently connected
 	fullNode                       bool       // the peer connected as full node or light node
 	totalDebtRepay                 *big.Int   // since being connected, amount of cumulative debt settled by the peer
 	thresholdGrowAt                *big.Int   // cumulative debt to be settled by the peer in order to give threshold upgrade
-}
-
-type lastPayment struct {
-	Timestamp      int64
-	CheckTimestamp int64
-	Total          *big.Int
-}
-
-func totalKey(peer swarm.Address, prefix string) string {
-	return fmt.Sprintf("%v%v", prefix, peer.String())
 }
 
 // Accounting is the main implementation of the accounting interface.
@@ -711,19 +702,9 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 
 		accountingPeer.lock.Lock()
 
-		var lastTime lastPayment
-
-		err = a.store.Get(totalKey(peerAddress, pseudosettle.SettlementReceivedPrefix), &lastTime)
-		if err != nil {
-			if !errors.Is(err, storage.ErrNotFound) {
-				a.logger.Warningf("")
-			}
-			lastTime.CheckTimestamp = int64(0)
-		}
-
 		t := a.timeNow().Unix()
 
-		timeElapsed := t - lastTime.CheckTimestamp
+		timeElapsed := t - accountingPeer.refreshReceivedTimestamp
 		if timeElapsed > 10 {
 			timeElapsed = 10
 		}
@@ -1076,7 +1057,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 }
 
 // NotifyRefreshmentReceived is called by pseudosettle when we receive a time based settlement.
-func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int, timestamp int64) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
@@ -1105,6 +1086,8 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
+
+	accountingPeer.refreshReceivedTimestamp = timestamp
 
 	return nil
 }
@@ -1224,16 +1207,7 @@ func (d *debitAction) Apply() error {
 	a.metrics.TotalDebitedAmount.Add(tot)
 	a.metrics.DebitEventsCount.Inc()
 
-	var lastTime lastPayment
-	err = a.store.Get(totalKey(d.peer, pseudosettle.SettlementReceivedPrefix), &lastTime)
-	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			a.logger.Warningf("")
-		}
-		lastTime.CheckTimestamp = int64(0)
-	}
-
-	timeElapsed := a.timeNow().Unix() - lastTime.CheckTimestamp
+	timeElapsed := a.timeNow().Unix() - d.accountingPeer.refreshReceivedTimestamp
 	if timeElapsed > 10 {
 		timeElapsed = 10
 	}
