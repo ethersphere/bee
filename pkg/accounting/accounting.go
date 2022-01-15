@@ -276,16 +276,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 		}
 	}
 
-	var lastTime lastPayment
-	err = a.store.Get(totalKey(peer, pseudosettle.SettlementSentPrefix), &lastTime)
-	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			a.logger.Warningf("")
-		}
-		lastTime.Timestamp = int64(0)
-	}
-
-	timeElapsed := a.timeNow().Unix() - lastTime.Timestamp
+	timeElapsed := a.timeNow().Unix() - accountingPeer.refreshTimestamp
 	if timeElapsed > 10 {
 		timeElapsed = 10
 	}
@@ -727,12 +718,12 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				a.logger.Warningf("")
 			}
-			lastTime.Timestamp = int64(0)
+			lastTime.CheckTimestamp = int64(0)
 		}
 
 		t := a.timeNow().Unix()
 
-		timeElapsed := t - lastTime.Timestamp
+		timeElapsed := t - lastTime.CheckTimestamp
 		if timeElapsed > 10 {
 			timeElapsed = 10
 		}
@@ -746,15 +737,7 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		refreshDue := new(big.Int).Mul(big.NewInt(timeElapsed), refreshRate)
 		currentThresholdGiven := new(big.Int).Add(accountingPeer.disconnectLimit, refreshDue)
 
-		err = a.store.Get(totalKey(peerAddress, pseudosettle.SettlementSentPrefix), &lastTime)
-		if err != nil {
-			if !errors.Is(err, storage.ErrNotFound) {
-				a.logger.Warningf("")
-			}
-			lastTime.Timestamp = int64(0)
-		}
-
-		timeElapsed = t - lastTime.Timestamp
+		timeElapsed = t - accountingPeer.refreshTimestamp
 		if timeElapsed > 10 {
 			timeElapsed = 10
 		}
@@ -1247,10 +1230,10 @@ func (d *debitAction) Apply() error {
 		if !errors.Is(err, storage.ErrNotFound) {
 			a.logger.Warningf("")
 		}
-		lastTime.Timestamp = int64(0)
+		lastTime.CheckTimestamp = int64(0)
 	}
 
-	timeElapsed := a.timeNow().Unix() - lastTime.Timestamp
+	timeElapsed := a.timeNow().Unix() - lastTime.CheckTimestamp
 	if timeElapsed > 10 {
 		timeElapsed = 10
 	}
@@ -1268,9 +1251,9 @@ func (d *debitAction) Apply() error {
 		// peer too much in debt
 		a.metrics.AccountingDisconnectsOverdrawCount.Inc()
 
-		disconnectFor, err := a.blocklistUntil(d.peer, 1)
+		disconnectFor, _ := a.blocklistUntil(d.peer, 1)
 		if err != nil {
-			return p2p.NewBlockPeerError(1*time.Minute, ErrDisconnectThresholdExceeded)
+			disconnectFor = 10
 		}
 		return p2p.NewBlockPeerError(time.Duration(disconnectFor)*time.Second, ErrDisconnectThresholdExceeded)
 
