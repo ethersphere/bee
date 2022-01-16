@@ -297,7 +297,7 @@ func (c *creditAction) Apply() error {
 	defer c.accountingPeer.lock.Unlock()
 
 	// debt if all reserved operations are successfully credited including debt created by surplus balance
-	currentBalance, err := c.accounting.Balance(c.peer)
+	increasedExpectedDebt, currentBalance, err := c.accounting.getIncreasedExpectedDebt(c.peer, c.accountingPeer, c.price)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
 			return fmt.Errorf("failed to load balance: %w", err)
@@ -327,6 +327,16 @@ func (c *creditAction) Apply() error {
 	c.applied = true
 
 	if !c.originated {
+		// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
+		// in other words this the debt the other node sees if everything pending is successful
+		increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, c.accountingPeer.shadowReservedBalance)
+		if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
+			err = c.accounting.settle(c.peer, c.accountingPeer)
+			if err != nil {
+				c.accounting.logger.Errorf("failed to settle with credited peer %v: %w", c.peer, err)
+			}
+		}
+
 		return nil
 	}
 
@@ -360,6 +370,16 @@ func (c *creditAction) Apply() error {
 	c.accounting.metrics.TotalOriginatedCreditedAmount.Add(float64(c.price.Int64()))
 	c.accounting.metrics.OriginatedCreditEventsCount.Inc()
 
+	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
+	// in other words this the debt the other node sees if everything pending is successful
+	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, c.accountingPeer.shadowReservedBalance)
+	if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
+		err = c.accounting.settle(c.peer, c.accountingPeer)
+		if err != nil {
+			c.accounting.logger.Errorf("failed to settle with credited peer %v: %w", c.peer, err)
+		}
+	}
+
 	return nil
 }
 
@@ -385,13 +405,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	now := a.timeNow().Unix()
 	timeElapsed := now - balance.refreshTimestamp
 
-	oldBalance, err := a.Balance(peer)
-	if err != nil {
-		if !errors.Is(err, ErrPeerNoBalance) {
-			return fmt.Errorf("failed to load balance: %w", err)
-		}
-	}
-
 	// compute the debt including debt created by incoming payments
 	compensatedBalance, err := a.CompensatedBalance(peer)
 	if err != nil {
@@ -401,7 +414,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
-	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) > 0 {
+	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
 		if timeElapsed > 0 {
 			shadowBalance, err := a.shadowBalance(peer)
 			if err != nil {
@@ -423,8 +436,16 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 					// if err peer not found also fail
 					if errors.Is(err, pseudosettle.ErrSettlementTooSoon) {
 						a.metrics.AccountingNonFatalRefreshFailCount.Inc()
+					} else {
+						return fmt.Errorf("refresh failure: %w", err)
 					}
-					return fmt.Errorf("refresh failure: %w", err)
+				}
+			}
+
+			oldBalance, err := a.Balance(peer)
+			if err != nil {
+				if !errors.Is(err, ErrPeerNoBalance) {
+					return fmt.Errorf("failed to load balance: %w", err)
 				}
 			}
 
