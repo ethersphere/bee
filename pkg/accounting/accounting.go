@@ -268,8 +268,8 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	}
 
 	timeElapsed := a.timeNow().Unix() - accountingPeer.refreshTimestamp
-	if timeElapsed > 10 {
-		timeElapsed = 10
+	if timeElapsed > 2 {
+		timeElapsed = 2
 	}
 
 	refreshDue := new(big.Int).Mul(big.NewInt(timeElapsed), a.refreshRate)
@@ -401,7 +401,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
-	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
+	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) > 0 && timeElapsed > 0 {
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
 			return err
@@ -694,8 +694,8 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		t := a.timeNow().Unix()
 
 		timeElapsed := t - accountingPeer.refreshReceivedTimestamp
-		if timeElapsed > 10 {
-			timeElapsed = 10
+		if timeElapsed > 2 {
+			timeElapsed = 2
 		}
 
 		// get appropriate refresh rate
@@ -708,8 +708,8 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		currentThresholdGiven := new(big.Int).Add(accountingPeer.disconnectLimit, refreshDue)
 
 		timeElapsed = t - accountingPeer.refreshTimestamp
-		if timeElapsed > 10 {
-			timeElapsed = 10
+		if timeElapsed > 2 {
+			timeElapsed = 2
 		}
 
 		// get appropriate refresh rate
@@ -1197,8 +1197,8 @@ func (d *debitAction) Apply() error {
 	a.metrics.DebitEventsCount.Inc()
 
 	timeElapsed := a.timeNow().Unix() - d.accountingPeer.refreshReceivedTimestamp
-	if timeElapsed > 10 {
-		timeElapsed = 10
+	if timeElapsed > 2 {
+		timeElapsed = 2
 	}
 
 	// get appropriate refresh rate
