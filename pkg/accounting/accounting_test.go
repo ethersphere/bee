@@ -563,7 +563,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	}
 
 	// try another request
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	_, err = acc.PrepareCredit(peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1081,11 +1081,6 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 	creditAction.Cleanup()
-
-	_, err = acc.PrepareCredit(peer1Addr, lowerThreshold, true)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	select {
 	case call := <-refreshchan:
