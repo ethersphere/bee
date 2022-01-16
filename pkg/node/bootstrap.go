@@ -54,6 +54,7 @@ type events struct {
 var snapshotReference = swarm.MustParseHexAddress("b36f03d995a04df1757c3a5ddbb795f48d279c532b11803864503f6b97fb20e1")
 
 func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -118,13 +119,12 @@ func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *
 		return b, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
 	}
 
-	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(p2pCtx, swapBackend, maxDelay)
 	if err != nil {
 		return b, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
+		logger.Infof("bootstrap: waiting to sync with the Ethereum backend")
 
 		err := transaction.WaitSynced(p2pCtx, logger, swapBackend, maxDelay)
 		if err != nil {
@@ -243,8 +243,8 @@ func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *
 	for _, a := range o.Bootnodes {
 		addr, err := ma.NewMultiaddr(a)
 		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
+			logger.Debugf("bootstrap: multiaddress fail %s: %v", a, err)
+			logger.Warningf("bootstrap: invalid bootnode address %s", a)
 			continue
 		}
 
@@ -391,7 +391,7 @@ func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	logger.Info("bootstrapper trying to fetch file")
+	logger.Info("bootstrap: trying to fetch stamps snapshot")
 	reader, l, err := joiner.New(ctx, ns, snapshotReference)
 	if err != nil {
 		return b, err
@@ -419,7 +419,7 @@ func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *
 
 	batchStore, err := batchstore.New(stateStore, evictFn, logger)
 	if err != nil {
-		return b, fmt.Errorf("batchstore: %w", err)
+		return b, err
 	}
 
 	batchSvc, err := batchservice.New(stateStore, batchStore, logger, nil, overlayEthAddress.Bytes(), nil, sha3.New256, o.Resync)
@@ -427,12 +427,20 @@ func NewBeeBootstrapper(addr string, stateStore storage.StateStorer, publicKey *
 		return b, err
 	}
 
-	for _, e := range events.Events {
-		err := listener.ProcessEvent(e, batchSvc)
-		logger.Warningf("bootstrap: %w", err)
+	// reset chainstate and list of batches
+	err = batchStore.Reset()
+	if err != nil {
+		return b, err
 	}
 
-	logger.Infof("lastBlockNumber", events.LastBlockNumber)
+	logger.Info("bootstrap: processing stamps")
+
+	for _, e := range events.Events {
+		err := listener.ProcessEvent(e, batchSvc)
+		logger.Warningf("bootstrap: process event %w", err)
+	}
+
+	logger.Infof("bootstrap: recorded last block number %d", events.LastBlockNumber)
 
 	err = batchSvc.UpdateBlockNumber(events.LastBlockNumber)
 	return b, err

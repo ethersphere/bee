@@ -221,9 +221,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if !exists || o.Resync {
 
 		start := time.Now()
-		fmt.Println("running bootstrapper")
+
+		logger.Infof("running bootstrapper")
 		boostrapNode, err := NewBeeBootstrapper(addr, stateStore, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
-		fmt.Println("bootstrapper done, took", time.Since(start))
+		logger.Infof("bootstrapper done, took", time.Since(start))
 		if boostrapNode != nil {
 			err := boostrapNode.Shutdown(context.Background())
 			if err != nil {
