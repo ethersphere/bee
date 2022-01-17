@@ -37,14 +37,16 @@ func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
 	})
 }
 
-type batchID []byte
+// hexByte takes care that a byte slice gets correctly
+// marshaled by the json serializer.
+type hexByte []byte
 
-func (b batchID) MarshalJSON() ([]byte, error) {
+func (b hexByte) MarshalJSON() ([]byte, error) {
 	return json.Marshal(hex.EncodeToString(b))
 }
 
 type postageCreateResponse struct {
-	BatchID batchID `json:"batchID"`
+	BatchID hexByte `json:"batchID"`
 }
 
 func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +112,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type postageStampResponse struct {
-	BatchID       batchID        `json:"batchID"`
+	BatchID       hexByte        `json:"batchID"`
 	Utilization   uint32         `json:"utilization"`
 	Usable        bool           `json:"usable"`
 	Label         string         `json:"label"`
@@ -128,10 +130,10 @@ type postageStampsResponse struct {
 }
 
 type postageBatchResponse struct {
-	BatchID     batchID  `json:"batchID"`
+	BatchID     hexByte  `json:"batchID"`
 	Value       *big.Int `json:"value"`
 	Start       uint64   `json:"start"`
-	Owner       batchID  `json:"owner"`
+	Owner       hexByte  `json:"owner"`
 	Depth       uint8    `json:"depth"`
 	BucketDepth uint8    `json:"bucketDepth"`
 	Immutable   bool     `json:"immutable"`
