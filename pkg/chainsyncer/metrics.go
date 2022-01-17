@@ -15,6 +15,7 @@ type metrics struct {
 	PeerErrors       prometheus.Counter
 	InvalidProofs    prometheus.Counter
 	TotalTimeWaiting prometheus.Counter
+	OutLimitErrors   prometheus.Counter
 	PositiveProofs   prometheus.Gauge
 }
 
@@ -44,6 +45,12 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "invalid_proof_count",
+			Help:      "total number of invalid proofs we've received. duplicate increments are expected",
+		}),
+		OutLimitErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "out_limit_error_count",
 			Help:      "total number of invalid proofs we've received. duplicate increments are expected",
 		}),
 		TotalTimeWaiting: prometheus.NewCounter(prometheus.CounterOpts{

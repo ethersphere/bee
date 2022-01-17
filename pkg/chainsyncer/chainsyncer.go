@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/blocker"
+	"github.com/ethersphere/bee/pkg/chainsync"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -143,7 +144,11 @@ func (c *ChainSyncer) manage() {
 				defer wg.Done()
 				hash, err := c.prove.Prove(cctx, peer, blockHeight)
 				if err != nil {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d in %s: %v", peer.String(), blockHeight, time.Since(start), err)
+					if errors.Is(err, chainsync.ErrRateLimitExceeded) {
+						c.metrics.OutLimitErrors.Inc()
+						return
+					}
+					c.logger.Infof("chainsync: peer %s failed to prove block %d: %v", p.String(), blockHeight, err)
 					c.metrics.PeerErrors.Inc()
 					c.blocker.Flag(peer)
 					return
