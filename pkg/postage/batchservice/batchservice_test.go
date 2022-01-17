@@ -509,7 +509,7 @@ func TestTransactionOk(t *testing.T) {
 	}
 }
 
-func TestTransactionFail(t *testing.T) {
+func TestTransactionError(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
 	if _, err := svc.Start(10); err != nil {
 		t.Fatal(err)
