@@ -6,7 +6,6 @@ package sharky
 
 import (
 	"io"
-	"os"
 	"sync"
 )
 
@@ -15,13 +14,13 @@ type slots struct {
 	size  uint32          // number of slots
 	limit uint32          // max number of items in the shard
 	head  uint32          // the first free slot
-	file  *os.File        // file to persist free slots across sessions
+	file  sharkyFile      // file to persist free slots across sessions
 	in    chan uint32     // incoming channel for free slots,
 	out   chan uint32     // outgoing channel for free slots
 	wg    *sync.WaitGroup // count started write operations
 }
 
-func newSlots(file *os.File, limit uint32, wg *sync.WaitGroup) *slots {
+func newSlots(file sharkyFile, limit uint32, wg *sync.WaitGroup) *slots {
 	return &slots{
 		file:  file,
 		limit: limit,

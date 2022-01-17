@@ -383,5 +383,5 @@ func newMetrics() metrics {
 }
 
 func (db *DB) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(db.metrics)
+	return append(m.PrometheusCollectorsFromFields(db.metrics), db.sharky.Metrics()...)
 }

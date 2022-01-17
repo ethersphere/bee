@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -56,32 +57,45 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		return 0, err
 	}
 
+	ctx := context.Background()
+
 	err = db.retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+
+		loc, err := sharky.LocationFromBinary(item.Location)
+		if err != nil {
+			return false, err
+		}
+
+		data := make([]byte, loc.Length)
+		err = db.sharky.Read(ctx, loc, data)
+		if err != nil {
+			return false, err
+		}
 
 		hdr := &tar.Header{
 			Name: hex.EncodeToString(item.Address),
 			Mode: 0644,
-			Size: int64(postage.StampSize + len(item.Data)),
+			Size: int64(postage.StampSize + len(data)),
 		}
 
 		if err := tw.WriteHeader(hdr); err != nil {
 			return false, err
 		}
-		if _, err := tw.Write(item.BatchID); err != nil {
+		write := func(buf []byte) {
+			if err != nil {
+				return
+			}
+			_, err = tw.Write(buf)
+		}
+		write(item.BatchID)
+		write(item.Index)
+		write(item.Timestamp)
+		write(item.Sig)
+		write(data)
+		if err != nil {
 			return false, err
 		}
-		if _, err := tw.Write(item.Index); err != nil {
-			return false, err
-		}
-		if _, err := tw.Write(item.Timestamp); err != nil {
-			return false, err
-		}
-		if _, err := tw.Write(item.Sig); err != nil {
-			return false, err
-		}
-		if _, err := tw.Write(item.Data); err != nil {
-			return false, err
-		}
+
 		count++
 		return false, nil
 	}, nil)

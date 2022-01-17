@@ -42,7 +42,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/smartystreets/assertions v1.1.1 // indirect
-	github.com/spf13/afero v1.3.1 // indirect
+	github.com/spf13/afero v1.6.0
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -68,6 +68,8 @@ require (
 	resenje.org/singleflight v0.2.0
 	resenje.org/web v0.4.3
 )
+
+require github.com/google/uuid v1.3.0
 
 require (
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
