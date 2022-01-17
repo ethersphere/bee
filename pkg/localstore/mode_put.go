@@ -103,7 +103,11 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	binIDs := make(map[uint8]uint64)
 
 	var (
-		releaseLocs        = new(releaseLocations)
+		// this is the list of locations that need to be released if the batch is
+		// successfully committed due to postageIndex collisions
+		releaseLocs = new(releaseLocations)
+		// this is the list of locations that need to be released if the batch is NOT
+		// successfully committed as they have already been committed to sharky
 		committedLocations []sharky.Location
 	)
 
@@ -128,8 +132,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	}
 
 	// If for whatever reason we fail to commit the batch, we should release all
-	// the chunks that have been committed to sharky to free them up for the incoming
-	// chunks
+	// the chunks that have been committed to sharky
 	defer func() {
 		if retErr != nil {
 			for _, l := range committedLocations {
