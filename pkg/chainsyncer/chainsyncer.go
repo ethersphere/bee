@@ -26,7 +26,7 @@ import (
 
 const (
 	defaultFlagTimeout     = 20 * time.Minute
-	defaultPollEvery       = 1 * time.Minute
+	defaultPollEvery       = 2 * time.Minute
 	defaultBlockerPollTime = 10 * time.Second
 	blockDuration          = 1 * time.Hour
 
