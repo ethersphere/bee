@@ -36,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -63,10 +64,12 @@ var (
 )
 
 const (
-	// 32 * 312500 chunks = 1000000 chunks (40GB)
+	// 32 * 312500 chunks = 10000000 chunks (40GB)
 	// currently this size is enforced by the localstore
-	sharkyNoOfShards    int    = 32
-	sharkyPerShardLimit uint32 = 312500
+	sharkyNoOfShards     = 32
+	sharkyPerShardLimit  = 312500
+	sharkyMaxTotalChunks = sharkyNoOfShards * sharkyPerShardLimit
+	sharkyDirtyFileName  = ".DIRTY"
 )
 
 // DB is the local store implementation and holds
@@ -74,8 +77,10 @@ const (
 type DB struct {
 	shed *shed.DB
 	// sharky instance
-	sharky *sharky.Store
-	tags   *tags.Tags
+	sharky       *sharky.Store
+	fdirtyCloser func() error
+
+	tags *tags.Tags
 
 	// stateStore is needed to access the pinning Service.Pins() method.
 	stateStore storage.StateStorer
@@ -117,7 +122,7 @@ type DB struct {
 	// postage index index
 	postageIndexIndex shed.Index
 
-	// field that stores number of intems in gc index
+	// field that stores number of items in gc index
 	gcSize shed.Uint64Field
 
 	// field that stores the size of the reserve
@@ -229,6 +234,47 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
 }
 
+func safeInit(rootPath, sharkyBasePath string, db *DB) error {
+	// create if needed
+	path := filepath.Join(rootPath, sharkyDirtyFileName)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		// missing lock file implies a clean exit then create the file and return
+		return os.WriteFile(path, []byte{}, 0644)
+	}
+	locOrErr, err := recovery(db)
+	if err != nil {
+		return err
+	}
+
+	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	if err != nil {
+		return err
+	}
+
+	for l := range locOrErr {
+		if l.err != nil {
+			return l.err
+		}
+
+		err = recoverySharky.Add(l.loc)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = recoverySharky.Save()
+	if err != nil {
+		return err
+	}
+
+	err = recoverySharky.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
@@ -296,6 +342,34 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		return nil, err
 	}
 
+	// instantiate sharky instance
+	var sharkyBase fs.FS
+	if path == "" {
+		// No need for recovery for in-mem sharky
+		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
+	} else {
+		sharkyBasePath := filepath.Join(path, "sharky")
+		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+			err := os.Mkdir(sharkyBasePath, 0775)
+			if err != nil {
+				return nil, err
+			}
+		}
+		sharkyBase = &dirFS{basedir: sharkyBasePath}
+
+		err = safeInit(path, sharkyBasePath, db)
+		if err != nil {
+			db.logger.Errorf("safe sharky initialization failed %w", err)
+			return nil, err
+		}
+		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
+	}
+
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
+	if err != nil {
+		return nil, err
+	}
+
 	// Identify current storage schema by arbitrary name.
 	db.schemaName, err = db.shed.NewStringField("schema-name")
 	if err != nil {
@@ -312,10 +386,9 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 			return nil, err
 		}
 	} else {
-		// execute possible migrations
-		err = db.migrate(schemaName)
-		if err != nil {
-			return nil, err
+		// Execute possible migrations.
+		if err := db.migrate(schemaName); err != nil {
+			return nil, multierror.Append(err, db.sharky.Close(), db.shed.Close())
 		}
 	}
 
@@ -327,25 +400,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// reserve size
 	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
-	if err != nil {
-		return nil, err
-	}
-
-	// instantiate sharky instance
-	var sharkyBase fs.FS
-	if path == "" {
-		sharkyBase = &memFS{Fs: afero.NewMemMapFs()}
-	} else {
-		sharkyBasePath := filepath.Join(path, "sharky")
-		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-			err := os.Mkdir(sharkyBasePath, 0775)
-			if err != nil {
-				return nil, err
-			}
-		}
-		sharkyBase = &dirFS{basedir: sharkyBasePath}
-	}
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, sharkyPerShardLimit, swarm.ChunkWithSpanSize)
 	if err != nil {
 		return nil, err
 	}
@@ -614,7 +668,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 }
 
 // Close closes the underlying database.
-func (db *DB) Close() (err error) {
+func (db *DB) Close() error {
 	close(db.close)
 	db.cancel()
 
@@ -635,16 +689,19 @@ func (db *DB) Close() (err error) {
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")
-		err = prof.WriteTo(os.Stdout, 2)
+		err := prof.WriteTo(os.Stdout, 2)
 		if err != nil {
 			return err
 		}
 	}
-	err = db.sharky.Close()
-	if err != nil {
-		return err
+
+	err := new(multierror.Error)
+	err = multierror.Append(err, db.sharky.Close())
+	err = multierror.Append(err, db.shed.Close())
+	if db.fdirtyCloser != nil {
+		err = multierror.Append(err, db.fdirtyCloser())
 	}
-	return db.shed.Close()
+	return err.ErrorOrNil()
 }
 
 // po computes the proximity order between the address
@@ -753,5 +810,4 @@ func init() {
 func totalTimeMetric(metric prometheus.Counter, start time.Time) {
 	totalTime := time.Since(start)
 	metric.Add(float64(totalTime))
-
 }
