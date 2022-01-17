@@ -5,7 +5,9 @@
   - [Code Formatting](#code-formatting)
   - [Unused Names](#unused-names)
   - [Naked returns and Named Parameters](#naked-returns-and-named-parameters)
-  - [Parallel Test Execution](#parallel-test-execution)
+  - [Testing](#testing)
+    - [Parallel Test Execution](#parallel-test-execution)
+    - [Naming Tests](#naming-tests)
   - [Group Declarations by Meaning](#group-declarations-by-meaning)
   - [Make Zero-value Useful](#make-zero-value-useful)
   - [Beware of Copying Mutexes in Go](#beware-of-copying-mutexes-in-go)
@@ -149,8 +151,9 @@ func getID() (id int, err error) {
    return
 }
 ```
+## Testing
 
-## Parallel Test Execution
+### Parallel Test Execution
 
 Run tests in parallel where possible but don't forget about variable scope gotchas.
 
@@ -171,6 +174,51 @@ for tc := range tt {
   })
 }
 ```
+
+### Naming Tests
+
+Name tests with a compact name that reflects their scenario. Don't try to specify the scenario in the test name, that is not what it's for. Use the accompanying godoc to describe the test scenario.
+
+<table>
+<thead><tr><th>Bad</th><th>Good</th></tr></thead>
+<tbody>
+<tr><td>
+```go
+func TestSomethingBySettingVarToFive(t *testing.T) {
+  ...
+}
+```
+</td><td>
+```go
+// TestSomething tests that something works correctly by doing this and that.
+func TestSomething(t *testing.T) {
+  ...
+}
+```
+</td>
+</td></tr>
+</tbody></table>
+
+If needed, use an underscore to disambiguate tests that are hard to name:
+```go
+func TestScenario_EdgeCase(t *testing.T) {
+  ...
+}
+
+func TestScenario_CornerCase(t *testing.T) {
+  ...
+}
+```
+
+Ideally, try to use nested tests that would cause the test runner to automatically assemble the different test cases in separate entries:
+```go
+func TestSomething(t *testing.T) {
+  ...
+  t.Run("edge case", func(t *testing.T) { ... })
+}
+
+Lastly, please, for the love of god, don't use the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
+
 
 ## Group Declarations by Meaning
 
@@ -200,6 +248,7 @@ var (
 ```
 
 </td><td>
+
 
 ```go
 const (
