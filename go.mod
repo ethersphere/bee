@@ -68,10 +68,7 @@ require (
 	resenje.org/web v0.4.3
 )
 
-require (
-	github.com/libp2p/go-eventbus v0.2.1
-	go.uber.org/atomic v1.9.0
-)
+require github.com/google/uuid v1.3.0
 
 require (
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
@@ -94,7 +91,6 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
