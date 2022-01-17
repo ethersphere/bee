@@ -21,6 +21,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -35,7 +36,7 @@ import (
 func (db *DB) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	db.metrics.ModeSet.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeSet, time.Now())
-	err = db.set(mode, addrs...)
+	err = db.set(ctx, mode, addrs...)
 	if err != nil {
 		db.metrics.ModeSetFailure.Inc()
 	}
@@ -44,7 +45,7 @@ func (db *DB) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 
 // set updates database indexes for
 // chunks represented by provided addresses.
-func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
+func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	// protect parallel updates
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
@@ -53,6 +54,7 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	}
 
 	batch := new(leveldb.Batch)
+	var committedLocations []sharky.Location
 
 	// variables that provide information for operations
 	// to be done after write batch function successfully executes
@@ -77,10 +79,19 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	case storage.ModeSetRemove:
 		for _, addr := range addrs {
 			item := addressToItem(addr)
+			item, err = db.retrievalDataIndex.Get(item)
+			if err != nil {
+				return err
+			}
 			c, err := db.setRemove(batch, item, true)
 			if err != nil {
 				return err
 			}
+			l, err := sharky.LocationFromBinary(item.Location)
+			if err != nil {
+				return err
+			}
+			committedLocations = append(committedLocations, l)
 			gcSizeChange += c
 		}
 
@@ -119,6 +130,14 @@ func (db *DB) set(mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	if err != nil {
 		return err
 	}
+
+	for _, l := range committedLocations {
+		err = db.sharky.Release(ctx, l)
+		if err != nil {
+			db.logger.Warning("failed releasing sharky location", l)
+		}
+	}
+
 	for po := range triggerPullFeed {
 		db.triggerPullSubscriptions(po)
 	}
@@ -218,7 +237,8 @@ func (db *DB) setRemove(batch *leveldb.Batch, item shed.Item, check bool) (gcSiz
 			return 0, err
 		}
 	}
-	if item.StoreTimestamp == 0 {
+
+	if item.StoreTimestamp == 0 || item.Location == nil {
 		item, err = db.retrievalDataIndex.Get(item)
 		if err != nil {
 			return 0, err

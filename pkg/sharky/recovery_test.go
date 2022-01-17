@@ -30,7 +30,7 @@ func TestRecovery(t *testing.T) {
 	preserved := make(map[uint32]bool)
 
 	func() {
-		s, err := sharky.New(dir, shards, shardSize, datasize)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, datasize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestRecovery(t *testing.T) {
 	}()
 	// check integrity of reecovered sharky
 	func() {
-		s, err := sharky.New(dir, shards, shardSize, datasize)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, datasize)
 		if err != nil {
 			t.Fatal(err)
 		}

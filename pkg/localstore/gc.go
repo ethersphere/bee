@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -163,6 +164,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	}
 
 	var totalChunksEvicted uint64
+	locations := make([]sharky.Location, 0, len(candidates))
 
 	// get rid of dirty entries
 	for _, item := range candidates {
@@ -184,6 +186,12 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		}
 
 		totalChunksEvicted++
+
+		i, err := db.retrievalDataIndex.Get(item)
+		if err != nil {
+			return 0, false, err
+		}
+		item.Location = i.Location
 
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
@@ -217,6 +225,11 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
+		loc, err := sharky.LocationFromBinary(item.Location)
+		if err != nil {
+			return 0, false, err
+		}
+		locations = append(locations, loc)
 	}
 
 	db.metrics.GCCommittedCounter.Add(float64(totalChunksEvicted))
@@ -226,6 +239,13 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	if err != nil {
 		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
+	}
+
+	for _, loc := range locations {
+		err = db.sharky.Release(db.ctx, loc)
+		if err != nil {
+			db.logger.Warning("failed releasing sharky location", loc)
+		}
 	}
 
 	return totalChunksEvicted, done, nil
