@@ -961,7 +961,7 @@ paths:
 
   "/batches":
     get:
-      summary: Get all existing and valid batches that were purchased from the postage stamp contract and are still valid.
+      summary: Get all globally available batches that were purchased by all nodes.
       tags:
         - Postage Stamps
       responses:
