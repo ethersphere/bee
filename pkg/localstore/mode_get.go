@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -43,7 +44,7 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 		}
 	}()
 
-	out, err := db.get(mode, addr)
+	out, err := db.get(ctx, mode, addr)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
 			return nil, storage.ErrNotFound
@@ -56,13 +57,25 @@ func (db *DB) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address)
 
 // get returns Item from the retrieval index
 // and updates other indexes.
-func (db *DB) get(mode storage.ModeGet, addr swarm.Address) (out shed.Item, err error) {
+func (db *DB) get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (out shed.Item, err error) {
 	item := addressToItem(addr)
 
 	out, err = db.retrievalDataIndex.Get(item)
 	if err != nil {
 		return out, err
 	}
+
+	l, err := sharky.LocationFromBinary(out.Location)
+	if err != nil {
+		return out, err
+	}
+
+	out.Data = make([]byte, l.Length)
+	err = db.sharky.Read(ctx, l, out.Data)
+	if err != nil {
+		return out, err
+	}
+
 	switch mode {
 	// update the access timestamp and gc index
 	case storage.ModeGetRequest:

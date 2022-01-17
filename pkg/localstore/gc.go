@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -165,12 +166,20 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, false, err
 	}
 
+	locations := make([]sharky.Location, 0, len(candidates))
+
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
 			collectedCount--
 			continue
 		}
+
+		i, err := db.retrievalDataIndex.Get(item)
+		if err != nil {
+			return 0, false, err
+		}
+		item.Location = i.Location
 
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
@@ -204,8 +213,13 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-
+		loc, err := sharky.LocationFromBinary(item.Location)
+		if err != nil {
+			return 0, false, err
+		}
+		locations = append(locations, loc)
 	}
+
 	if gcSize-collectedCount > target {
 		done = false
 	}
@@ -218,6 +232,14 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
 	}
+
+	for _, loc := range locations {
+		err = db.sharky.Release(db.ctx, loc)
+		if err != nil {
+			db.logger.Warning("failed releasing sharky location", loc)
+		}
+	}
+
 	return collectedCount, done, nil
 }
 

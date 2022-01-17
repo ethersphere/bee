@@ -6,14 +6,58 @@ package sharky
 
 import (
 	"context"
-	"os"
+	"encoding/binary"
+	"io"
 )
 
+// LocationSize is the size of the byte representation of Location
+const LocationSize int = 7
+
 // Location models the location <shard, slot, length> of a chunk
+// location models the location <shard, offset, length> of a chunk
 type Location struct {
 	Shard  uint8
 	Slot   uint32
 	Length uint16
+}
+
+// MarshalBinary returns byte representation of location
+func (l *Location) MarshalBinary() ([]byte, error) {
+	b := make([]byte, LocationSize)
+	b[0] = l.Shard
+	binary.LittleEndian.PutUint32(b[1:5], l.Slot)
+	binary.LittleEndian.PutUint16(b[5:], l.Length)
+	return b, nil
+}
+
+func (l *Location) UnmarshalBinary(buf []byte) error {
+	l.Shard = buf[0]
+	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
+	l.Length = binary.LittleEndian.Uint16(buf[5:])
+	return nil
+}
+
+// LocationFromBinary is a helper to construct a Location object from byte representation
+func LocationFromBinary(buf []byte) (Location, error) {
+	l := new(Location)
+	err := l.UnmarshalBinary(buf)
+	if err != nil {
+		return Location{}, err
+	}
+	return *l, nil
+}
+
+// sharkyFile defines the minimal interface that is required for a file type for it to
+// be usable in sharky. This allows us to have different implementations of file types
+// that can continue using the sharky logic
+type sharkyFile interface {
+	io.ReadWriteCloser
+	io.ReaderAt
+	io.Seeker
+	io.Writer
+	io.WriterAt
+	Truncate(int64) error
+	Sync() error
 }
 
 // write models the input to a write operation
@@ -42,7 +86,7 @@ type shard struct {
 	writes   chan write    // channel for writes
 	index    uint8         // index of the shard
 	datasize int           // max size of blobs
-	file     *os.File      // the file handle the shard is writing data to
+	file     sharkyFile    // the file handle the shard is writing data to
 	slots    *slots        // component keeping track of freed slots
 	quit     chan struct{} // channel to signal quitting
 }
