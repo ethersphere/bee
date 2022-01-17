@@ -892,12 +892,13 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.handshakeService.GetWelcomeMessage()
 }
 
-func (s *Service) Ready() {
+func (s *Service) Ready() error {
 	if err := s.reachabilityWorker(); err != nil {
-		s.logger.Error("reachability worker", err)
+		return fmt.Errorf("reachability worker: %w", err)
 	}
 
 	close(s.ready)
+	return nil
 }
 
 func (s *Service) Halt() {
