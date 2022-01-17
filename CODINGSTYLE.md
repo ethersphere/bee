@@ -217,7 +217,7 @@ func TestSomething(t *testing.T) {
   t.Run("edge case", func(t *testing.T) { ... })
 }
 
-Lastly, please, for the love of god, don't use the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
+Lastly, please, goodness, don't use the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
 
 
 ## Group Declarations by Meaning
