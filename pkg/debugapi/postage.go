@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"net/http"
@@ -189,9 +190,7 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
 		batchTTL, err := s.estimateBatchTTL(b)
 		if err != nil {
-			s.logger.Debugf("iterate batch: estimate batch expiration: %v", err)
-			s.logger.Error("iterate batch: estimate batch expiration")
-			return false, err
+			return false, fmt.Errorf("estimate batch ttl: %w", err)
 		}
 
 		batches = append(batches, postageBatchResponse{
@@ -208,6 +207,8 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 		return false, nil
 	})
 	if err != nil {
+		s.logger.Debugf("iterate batches: %v", err)
+		s.logger.Error("iterate batches: cannot complete operation")
 		jsonhttp.InternalServerError(w, "unable to iterate all batches")
 		return
 	}

@@ -958,3 +958,21 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+
+  "/batches":
+    get:
+      summary: Get all existing and valid batches that were purchased from the postage stamp contract and are still valid.
+      tags:
+        - Postage Stamps
+      responses:
+        "200":
+          description: Returns an array of all available and currently valid postage batches.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageAllBatchesResponse"
+
+        default:
+          description: Default response
+
+
