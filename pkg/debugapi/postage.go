@@ -331,11 +331,13 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
 	commitment := int64(0)
-	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+	if err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
 		commitment += int64(math.Pow(2.0, float64(b.Depth)))
 		return false, nil
-	})
-	if err != nil {
+	}); err != nil {
+		s.logger.Debugf("reserve state: batch store iteration: %v", err)
+		s.logger.Error("reserve state: batch store iteration failed")
+
 		jsonhttp.InternalServerError(w, "unable to iterate all batches")
 		return
 	}
