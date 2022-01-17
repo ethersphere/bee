@@ -348,7 +348,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 		Radius:        state.Radius,
 		StorageRadius: state.StorageRadius,
 		Available:     state.Available,
-		Commitment:    int64(commitment),
+		Commitment:    commitment,
 		Outer:         bigint.Wrap(state.Outer),
 		Inner:         bigint.Wrap(state.Inner),
 	})
