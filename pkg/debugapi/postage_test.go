@@ -245,7 +245,7 @@ func TestGetAllBatches(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse([]debugapi.PostageBatchResponse{
 				{
 					BatchID:     b.ID,
-					Value:       b.Value,
+					Value:       bigint.Wrap(b.Value),
 					Start:       b.Start,
 					Owner:       b.Owner,
 					Depth:       b.Depth,
