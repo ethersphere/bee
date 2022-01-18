@@ -426,7 +426,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	}
 }
 
-func TestPushChunkToClosestFailedAttemptRetry(t *testing.T) {
+func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -710,7 +710,7 @@ func TestPeerSkipList(t *testing.T) {
 	}
 }
 
-func TestPushChunkToClosestSkipFailed(t *testing.T) {
+func TestPushChunkToClosestSkipError(t *testing.T) {
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
