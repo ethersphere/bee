@@ -33,15 +33,15 @@ func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, bo
 	}
 
 	var (
-		statestoreExits = false
-		storedOverlay   swarm.Address
+		newStateStore = true
+		storedOverlay swarm.Address
 	)
 
 	if err := store.Get(secureOverlayKey, &storedOverlay); err == nil {
-		statestoreExits = true
+		newStateStore = false
 	}
 
-	return store, statestoreExits, err
+	return store, newStateStore, err
 }
 
 const overlayKey = "overlay"

@@ -116,7 +116,8 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 	}
 }
 
-func ProcessEvent(e types.Log, updater postage.EventUpdater) error {
+func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
+	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
 	case batchCreatedTopic:
 		c := &batchCreatedEvent{}
@@ -124,6 +125,7 @@ func ProcessEvent(e types.Log, updater postage.EventUpdater) error {
 		if err != nil {
 			return err
 		}
+		l.metrics.CreatedCounter.Inc()
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
@@ -139,6 +141,7 @@ func ProcessEvent(e types.Log, updater postage.EventUpdater) error {
 		if err != nil {
 			return err
 		}
+		l.metrics.TopupCounter.Inc()
 		return updater.TopUp(
 			c.BatchId[:],
 			c.NormalisedBalance,
@@ -150,6 +153,7 @@ func ProcessEvent(e types.Log, updater postage.EventUpdater) error {
 		if err != nil {
 			return err
 		}
+		l.metrics.DepthCounter.Inc()
 		return updater.UpdateDepth(
 			c.BatchId[:],
 			c.NewDepth,
@@ -162,44 +166,34 @@ func ProcessEvent(e types.Log, updater postage.EventUpdater) error {
 		if err != nil {
 			return err
 		}
+		l.metrics.PriceCounter.Inc()
 		return updater.UpdatePrice(
 			c.Price,
 			e.TxHash.Bytes(),
 		)
 	default:
+		l.metrics.EventErrors.Inc()
 		return errors.New("unknown event")
 	}
 }
 
-func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
-	l.metrics.EventsProcessed.Inc()
-
-	err := ProcessEvent(e, updater)
-	if err != nil {
-		l.metrics.EventErrors.Inc()
-		return err
-	}
-
-	switch e.Topics[0] {
-	case batchCreatedTopic:
-		l.metrics.CreatedCounter.Inc()
-	case batchTopupTopic:
-		l.metrics.TopupCounter.Inc()
-	case batchDepthIncreaseTopic:
-		l.metrics.DepthCounter.Inc()
-	case priceUpdateTopic:
-		l.metrics.PriceCounter.Inc()
-	}
-
-	return nil
-}
-
-func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan struct{} {
+func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.BatchSnapshot) <-chan struct{} {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-l.quit
 		cancel()
 	}()
+
+	if initState != nil {
+		for _, e := range initState.Events {
+			if err := l.processEvent(e, updater); err != nil {
+				l.logger.Warningf("listener: processing init batch snapshot %w", err)
+			}
+		}
+		if err := updater.UpdateBlockNumber(initState.LastBlockNumber + 1); err != nil {
+			l.logger.Warningf("listener: update block number %w", err)
+		}
+	}
 
 	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/listener"
 )
 
@@ -58,7 +59,7 @@ func TestListener(t *testing.T) {
 		)
 
 		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -89,7 +90,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -120,7 +121,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -149,7 +150,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 		select {
 		case e := <-evC:
 			e.(blockNumberCall).compare(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
@@ -201,7 +202,7 @@ func TestListener(t *testing.T) {
 			WithBlockNumber(blockNumber),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -271,7 +272,7 @@ func TestListener(t *testing.T) {
 			WithBlockNumberErrorOnce(errors.New("dummy error"), blockNumber),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner, stallingTimeout, 0*time.Second)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -288,7 +289,7 @@ func TestListener(t *testing.T) {
 			WithBlockNumberError(errors.New("dummy error")),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner, 50*time.Millisecond, 0*time.Second)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		start := time.Now()
 		for {
@@ -310,7 +311,7 @@ func TestListener(t *testing.T) {
 			WithBlockNumber(blockNumber),
 		)
 		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner, stallingTimeout, backoffTime)
-		l.Listen(0, ev)
+		l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -411,9 +412,9 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(_ uint64) (<-chan struct{}, error) { return nil, nil }
-func (u *updater) TransactionStart() error                 { return nil }
-func (u *updater) TransactionEnd() error                   { return nil }
+func (u *updater) Start(_ uint64, _ *postage.BatchSnapshot) (<-chan struct{}, error) { return nil, nil }
+func (u *updater) TransactionStart() error                                           { return nil }
+func (u *updater) TransactionEnd() error                                             { return nil }
 
 type mockFilterer struct {
 	filterLogEvents      []types.Log

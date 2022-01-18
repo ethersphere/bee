@@ -211,32 +211,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	var stateStore storage.StateStorer
-	stateStore, exists, err := InitStateStore(logger, o.DataDir)
+	stateStore, newStateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
-
-	// bootstrap node to sync stamp events optimally by reading the events dump from the network
-	if !exists || o.Resync {
-
-		start := time.Now()
-
-		logger.Infof("running bootstrapper")
-		boostrapNode, err := NewBeeBootstrapper(addr, stateStore, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
-		logger.Infof("bootstrapper done, took", time.Since(start))
-		if boostrapNode != nil {
-			err := boostrapNode.Shutdown(context.Background())
-			if err != nil {
-				return nil, err
-			}
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		o.Resync = false
-	}
 
 	addressbook := addressbook.New(stateStore)
 
@@ -423,6 +402,44 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
 	}
 
+	var bootnodes []ma.Multiaddr
+
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			logger.Debugf("multiaddress fail %s: %v", a, err)
+			logger.Warningf("invalid bootnode address %s", a)
+			continue
+		}
+
+		bootnodes = append(bootnodes, addr)
+	}
+
+	// bootstrap node to sync stamp events optimally by reading the events dump from the network
+	var initBatchState *postage.BatchSnapshot
+	if newStateStore || o.Resync {
+		start := time.Now()
+		logger.Infof("cold postage start detected. fetching postage stamp snapshot from swarm")
+		initBatchState, err = bootstrapNode(addr,
+			swarmAddress,
+			txHash,
+			chainID,
+			overlayEthAddress,
+			addressbook,
+			bootnodes,
+			lightNodes,
+			senderMatcher,
+			chequebookService,
+			chequeStore,
+			cashoutService,
+			transactionService,
+			stateStore, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
+		logger.Infof("bootstrapper done, took", time.Since(start))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
@@ -553,19 +570,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.hiveCloser = hive
 
-	var bootnodes []ma.Multiaddr
-
-	for _, a := range o.Bootnodes {
-		addr, err := ma.NewMultiaddr(a)
-		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
-			continue
-		}
-
-		bootnodes = append(bootnodes, addr)
-	}
-
 	var swapService *swap.Service
 
 	metricsDB, err := shed.NewDBWrap(stateStore.DB())
@@ -585,7 +589,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil {
-		syncedChan, err := batchSvc.Start(postageSyncStart)
+		syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
 		if err != nil {
 			return nil, fmt.Errorf("unable to start batch service: %w", err)
 		}

@@ -228,45 +228,40 @@ func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
-func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
+func (svc *batchService) Start(startBlock uint64, initState *postage.BatchSnapshot) (<-chan struct{}, error) {
 	dirty := false
 	err := svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
 
-	if dirty || svc.resync {
+	if dirty || svc.resync || initState != nil {
 
-		if svc.resync {
-			svc.logger.Warning("batch service: resync requested, resetting batch store")
-		} else {
+		if dirty {
 			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+		} else {
+			svc.logger.Warning("batch service: resync requested, resetting batch store")
 		}
 
-		if err := svc.Reset(); err != nil {
+		if err := svc.storer.Reset(); err != nil {
 			return nil, err
 		}
+		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
+			return nil, err
+		}
+		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
 
 	cs := svc.storer.GetChainState()
 	if cs.Block > startBlock {
 		startBlock = cs.Block
 	}
-	return svc.listener.Listen(startBlock+1, svc), nil
-}
 
-func (svc *batchService) Reset() error {
-
-	if err := svc.storer.Reset(); err != nil {
-		return err
-	}
-	if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
-		return err
+	if initState != nil && initState.LastBlockNumber > startBlock {
+		startBlock = initState.LastBlockNumber
 	}
 
-	svc.logger.Warning("batch service: batch store has been reset.")
-
-	return nil
+	return svc.listener.Listen(startBlock+1, svc, initState), nil
 }
 
 // updateChecksum updates the batchservice checksum once an event gets
