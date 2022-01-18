@@ -18,7 +18,7 @@ import (
 
 func TestRecovery(t *testing.T) {
 	datasize := 4
-	shards := 8
+	shards := 1
 	shardSize := uint32(16)
 	limitInChunks := shards * int(shardSize)
 
@@ -29,34 +29,32 @@ func TestRecovery(t *testing.T) {
 	locs := make([]sharky.Location, size)
 	preserved := make(map[uint32]bool)
 
-	t.Run("check set sizes", func(t *testing.T) {
-		s := newSharky(t, dir, shards, datasize)
-		for i := range locs {
-			binary.BigEndian.PutUint32(data, uint32(i))
-			loc, err := s.Write(ctx, data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			locs[i] = loc
+	s := newSharky(t, dir, shards, datasize)
+	for i := range locs {
+		binary.BigEndian.PutUint32(data, uint32(i))
+		loc, err := s.Write(ctx, data)
+		if err != nil {
+			t.Fatal(err)
 		}
-		// extract locations to preserve / free in map
-		indexes := make([]uint32, size)
-		for i := range indexes {
-			indexes[i] = uint32(i)
-		}
-		rest := indexes[:]
-		for n := size; n > size/2; n-- {
-			i := rand.Intn(n)
-			preserved[rest[i]] = false
-			rest = append(rest[:i], rest[i+1:]...)
-		}
-		if len(rest) != len(preserved) {
-			t.Fatalf("incorrect set sizes: %d <> %d", len(rest), len(preserved))
-		}
-		for _, i := range rest {
-			preserved[i] = true
-		}
-	})
+		locs[i] = loc
+	}
+	// extract locations to preserve / free in map
+	indexes := make([]uint32, size)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	rest := indexes[:]
+	for n := size; n > size/2; n-- {
+		i := rand.Intn(n)
+		preserved[rest[i]] = false
+		rest = append(rest[:i], rest[i+1:]...)
+	}
+	if len(rest) != len(preserved) {
+		t.Fatalf("incorrect set sizes: %d <> %d", len(rest), len(preserved))
+	}
+	for _, i := range rest {
+		preserved[i] = true
+	}
 
 	t.Run("recover based on preserved map", func(t *testing.T) {
 		r, err := sharky.NewRecovery(dir, shards, datasize)
@@ -80,12 +78,14 @@ func TestRecovery(t *testing.T) {
 		}
 	})
 
+	payload := []byte{0xff}
+
 	t.Run("check integrity of recovered sharky", func(t *testing.T) {
 		s := newSharky(t, dir, shards, datasize)
 		buf := make([]byte, datasize)
 		t.Run("preserved are found", func(t *testing.T) {
 			for i := range preserved {
-				loc := locs[int(i)]
+				loc := locs[i]
 				if err := s.Read(ctx, loc, buf); err != nil {
 					t.Fatal(err)
 				}
@@ -95,14 +95,16 @@ func TestRecovery(t *testing.T) {
 				}
 			}
 		})
+
 		var freelocs []sharky.Location
-		payload := []byte{0xff}
+
 		t.Run("correct number of free slots", func(t *testing.T) {
-			t.Skip("TODO rewrite the test without the limit assertions")
-			s := newSharky(t, dir, 2, datasize)
+			s := newSharky(t, dir, 1, datasize)
 			cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 			defer cancel()
-			for {
+
+			runs := 96
+			for i := 0; i < runs; i++ {
 				loc, err := s.Write(cctx, payload)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
@@ -112,8 +114,8 @@ func TestRecovery(t *testing.T) {
 				}
 				freelocs = append(freelocs, loc)
 			}
-			if len(freelocs) != limitInChunks-size/2 {
-				t.Fatalf("incorrect number of free slots: wanted %d; got %d", limitInChunks-size/2, len(freelocs))
+			if len(freelocs) != runs {
+				t.Fatalf("incorrect number of free slots: wanted %d; got %d", runs, len(freelocs))
 			}
 		})
 		t.Run("added locs are still preserved", func(t *testing.T) {
@@ -131,12 +133,11 @@ func TestRecovery(t *testing.T) {
 			}
 		})
 		t.Run("not added preserved are overwritten", func(t *testing.T) {
-			t.Skip()
 			for i, added := range preserved {
 				if added {
 					continue
 				}
-				loc := locs[int(i)]
+				loc := locs[i]
 				loc.Length = 1
 				if err := s.Read(ctx, loc, buf); err != nil {
 					t.Fatal(err)
