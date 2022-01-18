@@ -205,25 +205,58 @@ func TestPostageGetStamps(t *testing.T) {
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
 	ts := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs})
 
-	jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps", http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampsResponse{
-			Stamps: []debugapi.PostageStampResponse{
-				{
-					BatchID:       b.ID,
-					Utilization:   si.Utilization(),
-					Usable:        true,
-					Label:         si.Label(),
-					Depth:         si.Depth(),
-					Amount:        bigint.Wrap(si.Amount()),
-					BucketDepth:   si.BucketDepth(),
-					BlockNumber:   si.BlockNumber(),
-					ImmutableFlag: si.ImmutableFlag(),
-					Exists:        true,
-					BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+	t.Run("single stamp", func(t *testing.T) {
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/stamps", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&debugapi.PostageStampsResponse{
+				Stamps: []debugapi.PostageStampResponse{
+					{
+						BatchID:       b.ID,
+						Utilization:   si.Utilization(),
+						Usable:        true,
+						Label:         si.Label(),
+						Depth:         si.Depth(),
+						Amount:        bigint.Wrap(si.Amount()),
+						BucketDepth:   si.BucketDepth(),
+						BlockNumber:   si.BlockNumber(),
+						ImmutableFlag: si.ImmutableFlag(),
+						Exists:        true,
+						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+					},
 				},
-			},
-		}),
-	)
+			}),
+		)
+	})
+
+}
+
+// TestGetAllBatches tests that the endpoint that returns all living
+// batches functions correctly.
+func TestGetAllBatches(t *testing.T) {
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	si := postage.NewStampIssuer("", "", b.ID, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
+	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
+	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
+	ts := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs})
+
+	t.Run("all stamps", func(t *testing.T) {
+		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/batches", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse([]debugapi.PostageBatchResponse{
+				{
+					BatchID:     b.ID,
+					Value:       bigint.Wrap(b.Value),
+					Start:       b.Start,
+					Owner:       b.Owner,
+					Depth:       b.Depth,
+					BucketDepth: b.BucketDepth,
+					Immutable:   b.Immutable,
+					Radius:      b.Radius,
+					BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				},
+			}),
+		)
+	})
 }
 
 func TestPostageGetStamp(t *testing.T) {

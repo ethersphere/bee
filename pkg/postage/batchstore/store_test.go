@@ -5,6 +5,7 @@
 package batchstore_test
 
 import (
+	"errors"
 	"io"
 	"math/big"
 	"testing"
@@ -30,6 +31,77 @@ func TestBatchStoreGet(t *testing.T) {
 	stateStorePut(t, stateStore, key, testBatch)
 	got := batchStoreGetBatch(t, batchStore, testBatch.ID)
 	postagetest.CompareBatches(t, testBatch, got)
+}
+
+func TestBatchStoreIterate(t *testing.T) {
+	testBatch := postagetest.MustNewBatch()
+	key := batchstore.BatchKey(testBatch.ID)
+
+	stateStore := mock.NewStateStore()
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
+
+	stateStorePut(t, stateStore, key, testBatch)
+
+	var got *postage.Batch
+	err := batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		got = b
+		return false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	postagetest.CompareBatches(t, testBatch, got)
+}
+
+func TestBatchStoreIterateStopsEarly(t *testing.T) {
+	testBatch1 := postagetest.MustNewBatch()
+	key1 := batchstore.BatchKey(testBatch1.ID)
+
+	testBatch2 := postagetest.MustNewBatch()
+	key2 := batchstore.BatchKey(testBatch2.ID)
+
+	stateStore := mock.NewStateStore()
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
+
+	stateStorePut(t, stateStore, key1, testBatch1)
+	stateStorePut(t, stateStore, key2, testBatch2)
+
+	var iterations = 0
+	err := batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		iterations++
+		return false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iterations != 2 {
+		t.Fatalf("wanted 2 iteration, got %d", iterations)
+	}
+
+	iterations = 0
+	err = batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		iterations++
+		return true, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iterations > 2 {
+		t.Fatalf("wanted 1 iteration, got %d", iterations)
+	}
+
+	iterations = 0
+	err = batchStore.Iterate(func(b *postage.Batch) (bool, error) {
+		iterations++
+		return false, errors.New("test error")
+	})
+	if err == nil {
+		t.Fatalf("wanted error")
+	}
+	if iterations > 2 {
+		t.Fatalf("wanted 1 iteration, got %d", iterations)
+	}
 }
 
 func TestBatchStorePut(t *testing.T) {

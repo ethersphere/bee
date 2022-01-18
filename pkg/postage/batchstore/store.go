@@ -122,6 +122,21 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	return b, nil
 }
 
+func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
+	return s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
+		b := &postage.Batch{}
+		if err := b.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+		stop, err := cb(b)
+		if stop {
+			return true, nil
+		}
+
+		return false, err
+	})
+}
+
 // Put stores a given batch in the batchstore and requires new values of Value and Depth
 func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 	oldVal := new(big.Int).Set(b.Value)

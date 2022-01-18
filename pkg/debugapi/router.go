@@ -250,6 +250,12 @@ func (s *Service) newRouter() *mux.Router {
 		})),
 	)
 
+	handle("/batches", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
+		})),
+	)
+
 	return router
 }
 

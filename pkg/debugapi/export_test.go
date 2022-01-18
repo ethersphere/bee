@@ -35,6 +35,7 @@ type (
 	PostageCreateResponse             = postageCreateResponse
 	PostageStampResponse              = postageStampResponse
 	PostageStampsResponse             = postageStampsResponse
+	PostageBatchResponse              = postageBatchResponse
 	PostageStampBucketsResponse       = postageStampBucketsResponse
 	BucketData                        = bucketData
 )

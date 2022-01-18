@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 1.2.0
+  version: 1.2.1
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 
@@ -956,5 +956,21 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/batches":
+    get:
+      summary: Get all globally available batches that were purchased by all nodes.
+      tags:
+        - Postage Stamps
+      responses:
+        "200":
+          description: Returns an array of all available and currently valid postage batches.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageAllBatchesResponse"
+
         default:
           description: Default response
