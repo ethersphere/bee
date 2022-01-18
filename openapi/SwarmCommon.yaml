@@ -316,15 +316,6 @@ components:
         reference:
           $ref: "#/components/schemas/SwarmReference"
 
-    PostageBatchesResponse:
-      type: object
-      properties:
-        stamps:
-          type: array
-          nullable: true
-          items:
-            $ref: "#/components/schemas/PostageBatch"
-
     DebugPostageBatchesResponse:
       type: object
       properties:
@@ -333,6 +324,15 @@ components:
           nullable: true
           items:
             $ref: "#/components/schemas/DebugPostageBatch"
+
+    DebugPostageAllBatchesResponse:
+      type: object
+      properties:
+        stamps:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PostageBatchShort"
 
     BatchIDResponse:
       type: object
@@ -424,6 +424,26 @@ components:
           type: boolean
         batchTTL:
           type: integer
+
+    PostageBatchShort:
+      type: object
+      properties:
+        batchID:
+          $ref: "#/components/schemas/BatchID"
+        depth:
+          type: integer
+        value:
+          $ref: "#/components/schemas/BigInt"
+        bucketDepth:
+          type: integer
+        blockNumber:
+          type: integer
+        immutableFlag:
+          type: boolean
+        batchTTL:
+          type: integer
+        owner:
+          $ref: "#/components/schemas/EthereumAddress"
 
     DebugPostageBatch:
       anyOf:
