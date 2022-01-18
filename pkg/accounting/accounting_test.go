@@ -1176,7 +1176,7 @@ func TestAccountingPeerDebt(t *testing.T) {
 	}
 }
 
-func TestAccountingCallPaymentFailureRetries(t *testing.T) {
+func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
 
 	store := mock.NewStateStore()
