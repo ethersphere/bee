@@ -126,7 +126,9 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 
 	select {
 	case err = <-sh.errc:
-		s.metrics.TotalReadCallsErr.Inc()
+		if err != nil {
+			s.metrics.TotalReadCallsErr.Inc()
+		}
 		return err
 	case <-s.quit:
 		return ErrQuitting
