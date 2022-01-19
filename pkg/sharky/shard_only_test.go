@@ -14,8 +14,47 @@ import (
 func TestShard(t *testing.T) {
 	shard := newShard(t)
 
-	var loc Location
 	payload := write{buf: []byte{0xff}, res: make(chan entry)}
+
+	loc := writePayload(t, shard, payload)
+	t.Log("wrote", payload.buf, "to slot", loc.Slot)
+
+	buf := readFromLocation(t, shard, loc)
+	t.Log("read", buf, "from slot", loc.Slot)
+
+	releaseSlot(t, shard, loc)
+	t.Log("released slot", loc.Slot)
+
+	payload = write{buf: []byte{0xff >> 1}, res: make(chan entry)}
+
+	loc = writePayload(t, shard, payload)
+	t.Log("wrote", payload.buf, "to slot", loc.Slot)
+
+	buf = readFromLocation(t, shard, loc)
+	t.Log("read", buf, "from slot", loc.Slot)
+
+	releaseSlot(t, shard, loc)
+	t.Log("released slot", loc.Slot)
+
+	i, runs := 0, 10
+	for ; i < runs; i++ { // we write until slot 0 is release and available for writing
+		payload = write{buf: []byte{0x01 << i}, res: make(chan entry)}
+		loc = writePayload(t, shard, payload)
+		releaseSlot(t, shard, loc)
+		t.Log("wrote", payload.buf, "to slot", loc.Slot)
+		if loc.Slot == 0 {
+			t.Log("took", i, "iteration(s) to write back to slot", loc.Slot)
+			break
+		}
+	}
+
+	if i == runs {
+		t.Errorf("expected to write to slot 0 in fewer than %d runs, but got %d runs", runs, i)
+	}
+}
+
+func writePayload(t *testing.T, shard *shard, payload write) (loc Location) {
+	t.Helper()
 
 	shard.slots.wg.Add(1)
 
@@ -26,11 +65,15 @@ func TestShard(t *testing.T) {
 			t.Fatal("write entry", e.err)
 		}
 		loc = e.loc
-		t.Log("wrote", payload.buf, "to slot", loc.Slot)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("write timeout")
 	}
 
+	return loc
+}
+
+func readFromLocation(t *testing.T, shard *shard, loc Location) []byte {
+	t.Helper()
 	buf := make([]byte, loc.Length)
 
 	select {
@@ -38,87 +81,22 @@ func TestShard(t *testing.T) {
 		if err := <-shard.errc; err != nil {
 			t.Fatal("read", err)
 		}
-		t.Log("read", buf, "from slot", loc.Slot)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("timeout reading")
 	}
 
+	return buf
+}
+
+func releaseSlot(t *testing.T, shard *shard, loc Location) {
+	t.Helper()
 	ctx := context.Background()
 	cctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	if err := shard.release(cctx, loc.Slot); err != nil {
 		t.Fatal("release slot", loc.Slot, "err", err)
 	}
 	cancel()
-	t.Log("released slot", loc.Slot)
-
-	payload = write{buf: []byte{0xff >> 1}, res: make(chan entry)}
-
-	shard.slots.wg.Add(1)
-
-	select {
-	case shard.writes <- payload:
-		e := <-payload.res
-		if e.err != nil {
-			t.Fatal("write entry", e.err)
-		}
-		loc = e.loc
-		t.Log("wrote", payload.buf, "to slot", loc.Slot)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("write timeout")
-	}
-
-	buf = make([]byte, loc.Length)
-
-	select {
-	case shard.reads <- read{buf[:loc.Length], loc.Slot, 0}:
-		if err := <-shard.errc; err != nil {
-			t.Fatal("read", err)
-		}
-		t.Log("read", buf, "from slot", loc.Slot)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout reading")
-	}
-
-	payload = write{buf: []byte{0xff >> 2}, res: make(chan entry)}
-
-	shard.slots.wg.Add(1)
-
-	select {
-	case shard.writes <- payload:
-		e := <-payload.res
-		if e.err != nil {
-			t.Fatal("write entry", e.err)
-		}
-		loc = e.loc
-		t.Log("wrote", payload.buf, "to slot", loc.Slot)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("write timeout")
-	}
-
-	ctx = context.Background()
-	cctx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
-	if err := shard.release(cctx, loc.Slot); err != nil {
-		t.Fatal("release slot", loc.Slot, "err", err)
-	}
-	cancel()
-	t.Log("released slot", loc.Slot)
-
-	buf = make([]byte, loc.Length)
-
-	select {
-	case shard.reads <- read{buf[:loc.Length], loc.Slot, 0}:
-		if err := <-shard.errc; err != nil {
-			t.Fatal("read", err)
-		}
-		t.Log("read", buf, "from slot", loc.Slot)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout reading")
-	}
 }
-
-// 10 writes - 9 chunks
-
-//  2 3 5 7
 
 type dirFS string
 
@@ -176,6 +154,7 @@ func newShard(t *testing.T) *shard {
 		close(terminated)
 	}()
 
+	shard.slots.wg.Add(1)
 	go slots.process(terminated)
 
 	return shard
