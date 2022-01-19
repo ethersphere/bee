@@ -1,6 +1,7 @@
 package sharky
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
@@ -15,41 +16,37 @@ func TestShard(t *testing.T) {
 	shard := newShard(t)
 
 	payload := write{buf: []byte{0xff}, res: make(chan entry)}
-
 	loc := writePayload(t, shard, payload)
-	t.Log("wrote", payload.buf, "to slot", loc.Slot)
-
 	buf := readFromLocation(t, shard, loc)
-	t.Log("read", buf, "from slot", loc.Slot)
+
+	if !bytes.Equal(buf, payload.buf) {
+		t.Fatalf("want %x, got %x", buf, payload.buf)
+	}
+
+	if loc.Slot != 0 {
+		t.Fatalf("expected to write to slot 0, got %d", loc.Slot)
+	}
 
 	releaseSlot(t, shard, loc)
-	t.Log("released slot", loc.Slot)
 
 	payload = write{buf: []byte{0xff >> 1}, res: make(chan entry)}
-
 	loc = writePayload(t, shard, payload)
-	t.Log("wrote", payload.buf, "to slot", loc.Slot)
-
-	buf = readFromLocation(t, shard, loc)
-	t.Log("read", buf, "from slot", loc.Slot)
+	_ = readFromLocation(t, shard, loc)
 
 	releaseSlot(t, shard, loc)
-	t.Log("released slot", loc.Slot)
 
 	i, runs := 0, 10
-	for ; i < runs; i++ { // we write until slot 0 is release and available for writing
+	for ; i < runs; i++ { // we write until slot 0 is released and available for writing
 		payload = write{buf: []byte{0x01 << i}, res: make(chan entry)}
 		loc = writePayload(t, shard, payload)
 		releaseSlot(t, shard, loc)
-		t.Log("wrote", payload.buf, "to slot", loc.Slot)
 		if loc.Slot == 0 {
-			t.Log("took", i, "iteration(s) to write back to slot", loc.Slot)
 			break
 		}
 	}
 
 	if i == runs {
-		t.Errorf("expected to write to slot 0 in fewer than %d runs, but got %d runs", runs, i)
+		t.Errorf("expected to write to slot 0 within %d runs, got %d", runs, i)
 	}
 }
 
