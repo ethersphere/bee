@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strconv"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -160,7 +161,11 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 
 	select {
 	case e := <-c:
-		if e.err != nil {
+		if e.err == nil {
+			size := float64(int(e.loc.Length) / s.datasize)
+			shard := strconv.Itoa(int(e.loc.Shard))
+			s.metrics.CurrentShardSize.WithLabelValues(shard).Add(size)
+		} else {
 			s.metrics.TotalWriteCallsErr.Inc()
 		}
 		return e.loc, e.err
@@ -181,5 +186,14 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
 	// we add the current routine and will be Done in slots.process
 	sh.slots.wg.Add(1)
-	return sh.release(ctx, loc.Slot)
+	err := sh.release(ctx, loc.Slot)
+	s.metrics.TotalReleaseCalls.Inc()
+	if err == nil {
+		size := float64(int(loc.Length) / sh.datasize)
+		shard := strconv.Itoa(int(sh.index))
+		s.metrics.CurrentShardSize.WithLabelValues(shard).Sub(size)
+	} else {
+		s.metrics.TotalReleaseCallsErr.Inc()
+	}
+	return err
 }
