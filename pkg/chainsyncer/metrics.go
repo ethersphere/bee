@@ -51,7 +51,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "out_limit_error_count",
-			Help:      "total number of invalid proofs we've received. duplicate increments are expected",
+			Help:      "total number of attempts blocked by the outer limiter",
 		}),
 		TotalTimeWaiting: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
