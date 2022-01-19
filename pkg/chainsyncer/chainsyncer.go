@@ -25,10 +25,10 @@ import (
 )
 
 const (
-	defaultFlagTimeout     = 10 * time.Minute
+	defaultFlagTimeout     = 20 * time.Minute
 	defaultPollEvery       = 1 * time.Minute
 	defaultBlockerPollTime = 10 * time.Second
-	blockDuration          = 24 * time.Hour
+	blockDuration          = 1 * time.Hour
 
 	blocksToRemember = 1000
 )
@@ -133,27 +133,30 @@ func (c *ChainSyncer) manage() {
 		start := time.Now()
 		items = 0
 		positives = 0
+		var seen []swarm.Address
+		cctx, cancelF := context.WithTimeout(ctx, defaultPollEvery)
 		_ = c.peerIterator.EachPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
+			seen = append(seen, p)
 			wg.Add(1)
 			items++
-			go func(p swarm.Address) {
+			go func(peer swarm.Address) {
 				defer wg.Done()
-				hash, err := c.prove.Prove(ctx, p, blockHeight)
+				hash, err := c.prove.Prove(cctx, peer, blockHeight)
 				if err != nil {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d: %v", p.String(), blockHeight, err)
+					c.logger.Infof("chainsync: peer %s failed to prove block %d: %v", peer.String(), blockHeight, err)
 					c.metrics.PeerErrors.Inc()
-					c.blocker.Flag(p)
+					c.blocker.Flag(peer)
 					return
 				}
 				if !bytes.Equal(blockHash, hash) {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d: want block hash %x got %x", p.String(), blockHeight, blockHash, hash)
+					c.logger.Infof("chainsync: peer %s failed to prove block %d: want block hash %x got %x", peer.String(), blockHeight, blockHash, hash)
 					c.metrics.InvalidProofs.Inc()
-					c.blocker.Flag(p)
+					c.blocker.Flag(peer)
 					return
 				}
-				c.logger.Tracef("chainsync: peer %s proved block %d", p.String(), blockHeight)
+				c.logger.Tracef("chainsync: peer %s proved block %d", peer.String(), blockHeight)
 				c.metrics.SyncedPeers.Inc()
-				c.blocker.Unflag(p)
+				c.blocker.Unflag(peer)
 				atomic.AddInt32(&positives, 1)
 			}(p)
 			return false, false, nil
@@ -161,6 +164,11 @@ func (c *ChainSyncer) manage() {
 
 		// wait for all operations to finish
 		wg.Wait()
+
+		cancelF()
+
+		// prune the peers that we haven't seen.
+		c.blocker.PruneUnseen(seen)
 
 		c.metrics.PositiveProofs.Set(float64(positives) / float64(items))
 

@@ -28,7 +28,7 @@ const (
 	protocolVersion  = "1.0.0"
 	syncStreamName   = "prove"
 	messageTimeout   = 1 * time.Minute
-	limitBurst       = 2
+	limitBurst       = 100
 	limitRate        = time.Minute
 	blocksToRemember = 1000
 )
