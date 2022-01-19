@@ -18,7 +18,7 @@ import (
 
 func TestRecovery(t *testing.T) {
 	datasize := 4
-	shards := 1
+	shards := 8
 	shardSize := uint32(16)
 	limitInChunks := shards * int(shardSize)
 
@@ -129,22 +129,6 @@ func TestRecovery(t *testing.T) {
 				j := binary.BigEndian.Uint32(buf)
 				if i != j {
 					t.Fatalf("data not preserved at location %v: want %d; got %d", locs[int(j)], i, j)
-				}
-			}
-		})
-		t.Run("not added preserved are overwritten", func(t *testing.T) {
-			for i, added := range preserved {
-				if added {
-					continue
-				}
-				loc := locs[i]
-				loc.Length = 1
-				if err := s.Read(ctx, loc, buf); err != nil {
-					t.Fatal(err)
-				}
-				data := buf[:len(payload)]
-				if !bytes.Equal(data, payload) {
-					t.Fatalf("incorrect data on freed location %v: want %x; got %x", loc, payload, data)
 				}
 			}
 		})
