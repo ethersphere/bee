@@ -37,7 +37,7 @@ var (
 	gcTargetRatio = 0.9
 	// gcBatchSize limits the number of chunks in a single
 	// transaction on garbage collection.
-	gcBatchSize uint64 = 2000
+	gcBatchSize uint64 = 10_000
 
 	// reserveCollectionRatio is the ratio of the cache to evict from
 	// the reserve every time it hits the limit. If the cache size is
@@ -90,7 +90,8 @@ func (db *DB) collectGarbageWorker() {
 // is false, another call to this function is needed to collect
 // the rest of the garbage as the batch size limit is reached.
 // This function is called in collectGarbageWorker.
-func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
+// collected count should reflect how many
+func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	db.metrics.GCCounter.Inc()
 	defer func(start time.Time) {
 		if err != nil {
@@ -121,34 +122,30 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, true, nil
 	}
 	db.metrics.GCSize.Set(float64(gcSize))
-	done = true
+
 	first := true
 	start := time.Now()
-	candidates := make([]shed.Item, 0)
+
+	candidates := make([]shed.Item, 0, gcBatchSize)
+
 	err = db.gcIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 		if first {
 			totalTimeMetric(db.metrics.TotalTimeGCFirstItem, start)
 			first = false
 		}
-		if gcSize-collectedCount <= target {
+
+		if len(candidates) == cap(candidates) {
 			return true, nil
 		}
 
 		candidates = append(candidates, item)
 
-		collectedCount++
-		if collectedCount >= gcBatchSize {
-			// batch size limit reached, however we don't
-			// know whether another gc run is needed until
-			// we weed out the dirty entries below
-			return true, nil
-		}
 		return false, nil
 	}, nil)
 	if err != nil {
 		return 0, false, err
 	}
-	db.metrics.GCCollectedCounter.Add(float64(collectedCount))
+	db.metrics.GCCollectedCounter.Add(float64(len(candidates)))
 	if testHookGCIteratorDone != nil {
 		testHookGCIteratorDone()
 	}
@@ -165,12 +162,20 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, false, err
 	}
 
+	var totalChunksEvicted uint64
+
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
-			collectedCount--
 			continue
 		}
+
+		if gcSize-totalChunksEvicted <= target {
+			done = true
+			break
+		}
+
+		totalChunksEvicted++
 
 		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
@@ -204,21 +209,18 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-
-	}
-	if gcSize-collectedCount > target {
-		done = false
 	}
 
-	db.metrics.GCCommittedCounter.Add(float64(collectedCount))
-	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
+	db.metrics.GCCommittedCounter.Add(float64(totalChunksEvicted))
+	db.gcSize.PutInBatch(batch, gcSize-totalChunksEvicted)
 
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
 		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
 	}
-	return collectedCount, done, nil
+
+	return totalChunksEvicted, done, nil
 }
 
 // gcTrigger retruns the absolute value for garbage collection
