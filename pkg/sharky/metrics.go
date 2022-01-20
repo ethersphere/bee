@@ -11,11 +11,14 @@ import (
 
 // metrics groups sharky related prometheus counters.
 type metrics struct {
-	TotalWriteCalls    prometheus.Counter
-	TotalWriteCallsErr prometheus.Counter
-	TotalReadCalls     prometheus.Counter
-	TotalReadCallsErr  prometheus.Counter
-	ShardCount         prometheus.Gauge
+	TotalWriteCalls      prometheus.Counter
+	TotalWriteCallsErr   prometheus.Counter
+	TotalReadCalls       prometheus.Counter
+	TotalReadCallsErr    prometheus.Counter
+	TotalReleaseCalls    prometheus.Counter
+	TotalReleaseCallsErr prometheus.Counter
+	ShardCount           prometheus.Gauge
+	CurrentShardSize     *prometheus.GaugeVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -47,12 +50,33 @@ func newMetrics() metrics {
 			Name:      "total_read_calls_err",
 			Help:      "The total read calls ended up with error.",
 		}),
+		TotalReleaseCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_release_calls",
+			Help:      "The total release calls made.",
+		}),
+		TotalReleaseCallsErr: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_release_calls_err",
+			Help:      "The total release calls ended up with error.",
+		}),
 		ShardCount: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "shard_count",
 			Help:      "The number of shards.",
 		}),
+		CurrentShardSize: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "current_shard_size",
+				Help:      "The current size of the shard derived as: length in bytes/data length per chunk",
+			},
+			[]string{"current_shard_size"},
+		),
 	}
 }
 
