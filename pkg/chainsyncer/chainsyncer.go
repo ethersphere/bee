@@ -143,18 +143,18 @@ func (c *ChainSyncer) manage() {
 				defer wg.Done()
 				hash, err := c.prove.Prove(cctx, peer, blockHeight)
 				if err != nil {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d: %v", peer.String(), blockHeight, err)
+					c.logger.Infof("chainsync: peer %s failed to prove block %d in %s: %v", peer.String(), blockHeight, time.Since(start), err)
 					c.metrics.PeerErrors.Inc()
 					c.blocker.Flag(peer)
 					return
 				}
 				if !bytes.Equal(blockHash, hash) {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d: want block hash %x got %x", peer.String(), blockHeight, blockHash, hash)
+					c.logger.Infof("chainsync: peer %s failed to prove block %d in %s: want block hash %x got %x", peer.String(), blockHeight, time.Since(start), blockHash, hash)
 					c.metrics.InvalidProofs.Inc()
 					c.blocker.Flag(peer)
 					return
 				}
-				c.logger.Tracef("chainsync: peer %s proved block %d", peer.String(), blockHeight)
+				c.logger.Tracef("chainsync: peer %s proved block %d in %s", peer.String(), blockHeight, time.Since(start))
 				c.metrics.SyncedPeers.Inc()
 				c.blocker.Unflag(peer)
 				atomic.AddInt32(&positives, 1)
