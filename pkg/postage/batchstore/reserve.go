@@ -129,56 +129,23 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 func (s *store) evictExpired() error {
 	var toDelete [][]byte
 
-	// set until to total or inner whichever is greater
-	until := new(big.Int)
-
-	// if inner > 0 && total >= inner
-	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.TotalAmount.Cmp(s.rs.Inner) >= 0 {
-		// collect until total+1
-		until.Add(s.cs.TotalAmount, big1)
-	} else {
-		// collect until inner (collect all outer ones)
-		until.Set(s.rs.Inner)
-	}
-	var multiplier int64
+	threshold := new(big.Int).Add(s.cs.TotalAmount, big1)
 	err := s.store.Iterate(valueKeyPrefix, func(key, _ []byte) (bool, error) {
 		b, err := s.Get(valueKeyToID(key))
 		if err != nil {
 			return true, err
 		}
 
-		// if batch value >= until then continue to next.
-		// terminate iteration if until is passed
-		if b.Value.Cmp(until) >= 0 {
+		if b.Value.Cmp(threshold) >= 0 {
 			return true, nil
 		}
 
-		// in the following if statements we check the batch value
-		// against the inner and outer values and set the multiplier
-		// to 1 or 2 depending on the value. if the batch value falls
-		// outside of Outer it means we are evicting twice more chunks
-		// than within Inner, therefore the multiplier is needed to
-		// estimate better how much capacity gain is leveraged from
-		// evicting this specific batch.
-
-		// if multiplier == 0 && batch value >= inner
-		if multiplier == 0 && b.Value.Cmp(s.rs.Inner) >= 0 {
-			multiplier = 1
-		}
-		// if multiplier == 1 && batch value >= outer
-		if multiplier == 1 && b.Value.Cmp(s.rs.Outer) >= 0 {
-			multiplier = 2
-		}
-
-		// unreserve batch fully
-		err = s.evictFn(b.ID)
-		if err != nil {
+		if err := s.evictFn(b.ID); err != nil {
 			return true, err
 		}
 
-		s.rs.Available += multiplier * exp2(uint(b.Radius-s.rs.Radius-1))
+		s.rs.Available += exp2(uint(b.Radius-s.rs.Radius-1))
 
-		// if batch has no value then delete it
 		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
 			toDelete = append(toDelete, b.ID)
 		}
@@ -188,18 +155,10 @@ func (s *store) evictExpired() error {
 		return err
 	}
 
-	// set inner to either until or Outer, whichever
-	// is the smaller value.
-
-	s.rs.Inner.Set(until)
-
-	// if outer < until
-	if s.rs.Outer.Cmp(until) < 0 {
-		s.rs.Outer.Set(until)
-	}
 	if err = s.store.Put(reserveStateKey, s.rs); err != nil {
 		return err
 	}
+
 	return s.delete(toDelete...)
 }
 
