@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// TestShard ensures that released slots are available for writes, eventually
+// TestShard ensures that released slots eventually become available for writes
 func TestShard(t *testing.T) {
 	shard := newShard(t)
 
@@ -28,6 +28,7 @@ func TestShard(t *testing.T) {
 		t.Fatalf("expected to write to slot 0, got %d", loc.Slot)
 	}
 
+	// in order for the test to succeed this slot is expected to become available before test finishes
 	releaseSlot(t, shard, loc)
 
 	payload = write{buf: []byte{0xff >> 1}, res: make(chan entry)}
@@ -35,13 +36,12 @@ func TestShard(t *testing.T) {
 
 	// immediate write should pick the next slot
 	if loc.Slot != 1 {
-		t.Fatalf("expected to write to slot 0, got %d", loc.Slot)
+		t.Fatalf("expected to write to slot 1, got %d", loc.Slot)
 	}
 
 	releaseSlot(t, shard, loc)
 
-	// we make ten writes expecting that slot 0 is released
-	// and becomes available for writing eventually
+	// we make ten writes expecting that slot 0 is released and becomes available for writing eventually
 	i, runs := 0, 10
 	for ; i < runs; i++ {
 		payload = write{buf: []byte{0x01 << i}, res: make(chan entry)}
@@ -53,7 +53,7 @@ func TestShard(t *testing.T) {
 	}
 
 	if i == runs {
-		t.Errorf("expected to write to slot 0 within %d runs, got %d", runs, i)
+		t.Errorf("expected to write to slot 0 within %d runs, write did not occur", runs)
 	}
 }
 
