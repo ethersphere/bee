@@ -19,12 +19,14 @@ type Recovery struct {
 	shards []*slots
 }
 
+var ErrShardNotFound = errors.New("shard not found")
+
 func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
-		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
+		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
 		if errors.Is(err, fs.ErrNotExist) {
-			break
+			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
 		}
 		if err != nil {
 			return nil, err

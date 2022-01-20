@@ -16,6 +16,13 @@ import (
 	"github.com/ethersphere/bee/pkg/sharky"
 )
 
+func TestMissingShard(t *testing.T) {
+	_, err := sharky.NewRecovery(t.TempDir(), 1, 8)
+	if !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("want %v, got %v", sharky.ErrShardNotFound, err)
+	}
+}
+
 func TestRecovery(t *testing.T) {
 	datasize := 4
 	shards := 8
