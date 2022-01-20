@@ -107,10 +107,29 @@ func (b *Blocker) Unflag(addr swarm.Address) {
 	delete(b.peers, addr.ByteString())
 }
 
+func (b *Blocker) PruneUnseen(seen []swarm.Address) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for a := range b.peers {
+		if !isIn(a, seen) {
+			delete(b.peers, a)
+		}
+	}
+}
+
 // Close will exit the worker loop.
 // must be called only once.
 func (b *Blocker) Close() error {
 	close(b.quit)
 	b.closeWg.Wait()
 	return nil
+}
+
+func isIn(addr string, addrs []swarm.Address) bool {
+	for _, a := range addrs {
+		if a.ByteString() == addr {
+			return true
+		}
+	}
+	return false
 }
