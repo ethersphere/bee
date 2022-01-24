@@ -5,8 +5,6 @@
 package batchstore
 
 import (
-	"fmt"
-
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
@@ -19,11 +17,18 @@ var BatchKey = batchKey
 // power of 2 function
 var Exp2 = exp2
 
-func (s *store) String() string {
-	return fmt.Sprintf("inner=%d,outer=%d", s.rs.Inner.Uint64(), s.rs.Outer.Uint64())
-}
+// func (s *store) String() string {
+// 	return fmt.Sprintf("inner=%d,outer=%d", s.rs.Inner.Uint64(), s.rs.Outer.Uint64())
+// }
 
 func SetUnreserveFunc(s postage.Storer, fn func([]byte, uint8) error) {
 	st := s.(*store)
-	st.unreserveFn = fn
+
+	unreserveFn := st.unreserve
+	st.unreserveFn = func(batchID []byte, radius uint8) error {
+
+		fn(batchID, radius)
+		return unreserveFn(batchID, radius)
+
+	}
 }

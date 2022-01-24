@@ -22,7 +22,7 @@ const (
 	valueKeyPrefix              = "batchstore_value_"
 	chainStateKey               = "batchstore_chainstate"
 	reserveStateKey             = "batchstore_reservestate"
-	unreserveQueueKey           = "batchstore_unreserve_queue_"
+	unreserveQueuePrefix        = "batchstore_unreserve_queue_"
 	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
 )
 
@@ -38,9 +38,9 @@ type store struct {
 	rs          *reserveState // the reserve state
 	unreserveFn unreserveFn   // unreserve function
 	evictFn     evictFn       // evict function
-	queueIdx    uint64        // unreserve queue cardinality
-	metrics     metrics       // metrics
-	logger      logging.Logger
+	// queueIdx    uint64        // unreserve queue cardinality
+	metrics metrics // metrics
+	logger  logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
@@ -67,9 +67,9 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 			return nil, err
 		}
 		rs = &reserveState{
-			Radius:    DefaultDepth,
-			Inner:     big.NewInt(0),
-			Outer:     big.NewInt(0),
+			Radius: DefaultDepth,
+			// Inner:     big.NewInt(0),
+			// Outer:     big.NewInt(0),
 			Available: Capacity,
 		}
 	}
@@ -84,9 +84,9 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 	}
 
 	s.unreserveFn = s.unreserve
-	if s.queueIdx, err = s.getQueueCardinality(); err != nil {
-		return nil, err
-	}
+	// if s.queueIdx, err = s.getQueueCardinality(); err != nil {
+	// 	return nil, err
+	// }
 
 	return s, nil
 }
@@ -98,8 +98,8 @@ func (s *store) GetReserveState() *postage.ReserveState {
 		Radius:        s.rs.Radius,
 		StorageRadius: s.rs.StorageRadius,
 		Available:     s.rs.Available,
-		Outer:         new(big.Int).Set(s.rs.Outer),
-		Inner:         new(big.Int).Set(s.rs.Inner),
+		// Outer:         new(big.Int).Set(s.rs.Outer),
+		// Inner:         new(big.Int).Set(s.rs.Inner),
 	}
 }
 
@@ -111,14 +111,13 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
 
-	s.rsMtx.Lock()
-	defer s.rsMtx.Unlock()
+	// TODO:
+	// if s.rs.StorageRadius < s.rs.Radius {
+	// 	b.Radius = s.rs.StorageRadius
+	// } else {
+	// 	b.Radius = s.rs.radius(s.rs.tier(b.Value))
+	// }
 
-	if s.rs.StorageRadius < s.rs.Radius {
-		b.Radius = s.rs.StorageRadius
-	} else {
-		b.Radius = s.rs.radius(s.rs.tier(b.Value))
-	}
 	return b, nil
 }
 
@@ -139,19 +138,29 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 
 // Put stores a given batch in the batchstore and requires new values of Value and Depth
 func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
+
 	oldVal := new(big.Int).Set(b.Value)
 	oldDepth := b.Depth
+
 	err := s.store.Delete(valueKey(oldVal, b.ID))
 	if err != nil {
 		return err
 	}
+
 	b.Value.Set(value)
 	b.Depth = depth
+
 	err = s.store.Put(valueKey(b.Value, b.ID), nil)
 	if err != nil {
 		return err
 	}
-	err = s.update(b, oldDepth, oldVal)
+
+	err = s.store.Put(batchKey(b.ID), b)
+	if err != nil {
+		return err
+	}
+
+	err = s.adjustBatchAllocation(b, oldDepth, oldVal)
 	if err != nil {
 		return err
 	}
@@ -161,7 +170,8 @@ func (s *store) Put(b *postage.Batch, value *big.Int, depth uint8) error {
 		s.radiusSetter.SetRadius(s.rs.Radius)
 		s.rsMtx.Unlock()
 	}
-	return s.store.Put(batchKey(b.ID), b)
+
+	return err
 }
 
 // delete removes the batches with ids given as arguments.
@@ -188,7 +198,7 @@ func (s *store) delete(ids ...[]byte) error {
 // stores the chain state in the batch store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
 	s.cs = cs
-	err := s.evictExpired()
+	err := s.evictForCapacity()
 	if err != nil {
 		return err
 	}
@@ -243,9 +253,9 @@ func (s *store) Reset() error {
 		CurrentPrice: big.NewInt(0),
 	}
 	s.rs = &reserveState{
-		Radius:    DefaultDepth,
-		Inner:     big.NewInt(0),
-		Outer:     big.NewInt(0),
+		Radius: DefaultDepth,
+		// Inner:     big.NewInt(0),
+		// Outer:     big.NewInt(0),
 		Available: Capacity,
 	}
 	return nil

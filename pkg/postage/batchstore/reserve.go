@@ -27,10 +27,10 @@
 package batchstore
 
 import (
-	"bytes"
-	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -46,8 +46,6 @@ var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging t
 // relatively near the current 5M chunks ~25GB.
 var Capacity = exp2(22)
 
-var big1 = big.NewInt(1)
-
 // reserveState records the state and is persisted in the state store
 type reserveState struct {
 	// Radius is the radius of responsibility,
@@ -59,9 +57,11 @@ type reserveState struct {
 	// reserve eviction worker.
 	StorageRadius uint8 `json:"storageRadius"`
 	// Available capacity of the reserve which can still be used.
-	Available int64    `json:"available"`
-	Outer     *big.Int `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner     *big.Int `json:"inner"` // lower value limit for inner layer = the closer half of chunks
+	Available int64 `json:"available"`
+
+	// LastEvictionValue *big.Int
+	// Outer     *big.Int `json:"outer"` // lower value limit for outer layer = the further half of chunks
+	// Inner     *big.Int `json:"inner"` // lower value limit for inner layer = the closer half of chunks
 }
 
 // unreserve is called when the batchstore decides not to reserve a batch on a PO
@@ -69,22 +69,34 @@ type reserveState struct {
 // this adds the batch at the mentioned PO to the unreserve fifo queue, that can be
 // dequeued by the localstore once the storage fills up.
 func (s *store) unreserve(b []byte, radius uint8) error {
-	c := s.queueIdx
-	c++
-	v := make([]byte, 8)
-	binary.BigEndian.PutUint64(v, c)
-	i := &UnreserveItem{BatchID: b, Radius: radius}
-	if err := s.store.Put(fmt.Sprintf("%s_%s", unreserveQueueKey, string(v)), i); err != nil {
-		return err
-	}
-	if err := s.putQueueCardinality(c); err != nil {
-		return err
-	}
-	s.queueIdx = c
-	return nil
+	// c := s.queueIdx
+	// c++
+	// v := make([]byte, 8)
+	// binary.BigEndian.PutUint64(v, c)
+	// i := &UnreserveItem{BatchID: b, Radius: radius}
+	// if err := s.store.Put(fmt.Sprintf("%s_%s", unreserveQueuePrefix, string(v)), i); err != nil {
+	// 	return err
+	// }
+	// if err := s.putQueueCardinality(c); err != nil {
+	// 	return err
+	// }
+	// s.queueIdx = c
+	// return nil
+
+	// fmt.Println("~~~~~ unreserve ~~~~~~")
+
+	return s.store.Put(unreserveQueueKey(b), &UnreserveItem{BatchID: b, Radius: radius})
+}
+
+func unreserveQueueKey(b []byte) string {
+	// fmt.Println("queue key", string(b))
+	return fmt.Sprintf("%s_%s", unreserveQueuePrefix, string(b))
 }
 
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
+
+	fmt.Println("localstore: Unreserve")
+
 	var entries []string // entries to clean up
 	defer func() {
 		for _, v := range entries {
@@ -94,8 +106,9 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			}
 		}
 	}()
-	return s.store.Iterate(unreserveQueueKey, func(key, val []byte) (bool, error) {
-		if !strings.HasPrefix(string(key), unreserveQueueKey) {
+
+	return s.store.Iterate(unreserveQueuePrefix, func(key, val []byte) (bool, error) {
+		if !strings.HasPrefix(string(key), unreserveQueuePrefix) {
 			return true, nil
 		}
 		v := &UnreserveItem{}
@@ -125,263 +138,428 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	})
 }
 
-// evictExpired is called when PutChainState is called (and there is 'settlement')
-func (s *store) evictExpired() error {
-	var toDelete [][]byte
-
-	// set until to total or inner whichever is greater
-	until := new(big.Int)
-
-	// if inner > 0 && total >= inner
-	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.TotalAmount.Cmp(s.rs.Inner) >= 0 {
-		// collect until total+1
-		until.Add(s.cs.TotalAmount, big1)
-	} else {
-		// collect until inner (collect all outer ones)
-		until.Set(s.rs.Inner)
-	}
-	var multiplier int64
-	err := s.store.Iterate(valueKeyPrefix, func(key, _ []byte) (bool, error) {
-		b, err := s.Get(valueKeyToID(key))
-		if err != nil {
-			return true, err
-		}
-
-		// if batch value >= until then continue to next.
-		// terminate iteration if until is passed
-		if b.Value.Cmp(until) >= 0 {
-			return true, nil
-		}
-
-		// in the following if statements we check the batch value
-		// against the inner and outer values and set the multiplier
-		// to 1 or 2 depending on the value. if the batch value falls
-		// outside of Outer it means we are evicting twice more chunks
-		// than within Inner, therefore the multiplier is needed to
-		// estimate better how much capacity gain is leveraged from
-		// evicting this specific batch.
-
-		// if multiplier == 0 && batch value >= inner
-		if multiplier == 0 && b.Value.Cmp(s.rs.Inner) >= 0 {
-			multiplier = 1
-		}
-		// if multiplier == 1 && batch value >= outer
-		if multiplier == 1 && b.Value.Cmp(s.rs.Outer) >= 0 {
-			multiplier = 2
-		}
-
-		// unreserve batch fully
-		err = s.evictFn(b.ID)
-		if err != nil {
-			return true, err
-		}
-
-		s.rs.Available += multiplier * exp2(uint(b.Radius-s.rs.Radius-1))
-
-		// if batch has no value then delete it
-		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
-			toDelete = append(toDelete, b.ID)
-		}
-		return false, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	// set inner to either until or Outer, whichever
-	// is the smaller value.
-
-	s.rs.Inner.Set(until)
-
-	// if outer < until
-	if s.rs.Outer.Cmp(until) < 0 {
-		s.rs.Outer.Set(until)
-	}
-	if err = s.store.Put(reserveStateKey, s.rs); err != nil {
-		return err
-	}
-	return s.delete(toDelete...)
-}
-
-// tier represents the sections of the reserve that can be  described as value intervals
-// 0 - out of the reserve
-// 1 - within reserve radius = depth (inner half)
-// 2 - within reserve radius = depth-1 (both inner and outer halves)
-type tier int
-
-const (
-	unreserved tier = iota // out of the reserve
-	inner                  // the mid range where chunks are kept within depth
-	outer                  // top range where chunks are kept within depth - 1
-)
-
-// change calculates info relevant to the value change from old to new value and old and new depth
-// returns the change in capacity and the radius of reserve
-func (rs *reserveState) change(oldv, newv *big.Int, oldDepth, newDepth uint8) (int64, uint8) {
-	oldTier := rs.tier(oldv)
-	newTier := rs.setLimits(newv, rs.tier(newv))
-
-	oldSize := rs.size(oldDepth, oldTier)
-	newSize := rs.size(newDepth, newTier)
-
-	availableCapacityChange := oldSize - newSize
-	reserveRadius := rs.radius(newTier)
-
-	return availableCapacityChange, reserveRadius
-}
-
-// size returns the number of chunks the local node is responsible
-// to store in its reserve.
-func (rs *reserveState) size(depth uint8, t tier) int64 {
-	size := exp2(uint(depth - rs.Radius - 1))
-	switch t {
-	case inner:
-		return size
-	case outer:
-		return 2 * size
-	default:
-		// case is unreserved
-		return 0
-	}
-}
-
-// tier returns which tier a value falls into
-func (rs *reserveState) tier(x *big.Int) tier {
-
-	// x < rs.Inner || x == 0
-	if x.Cmp(rs.Inner) < 0 || rs.Inner.Cmp(big.NewInt(0)) == 0 {
-		return unreserved
-	}
-
-	// x < rs.Outer
-	if x.Cmp(rs.Outer) < 0 {
-		return inner
-	}
-
-	// x >= rs.Outer
-	return outer
-}
-
-// radius returns the reserve radius of a batch given the depth (radius of responsibility)
-// based on the tier it falls in
-func (rs *reserveState) radius(t tier) uint8 {
-	switch t {
-	case unreserved:
-		return swarm.MaxPO
-	case inner:
-		return rs.Radius
-	default:
-		// outer
-		return rs.Radius - 1
-	}
-}
-
-// setLimits sets the tier 1 value limit, if new item is the minimum so far (or the very first batch)
-// returns the adjusted new tier
-func (rs *reserveState) setLimits(val *big.Int, newTier tier) tier {
-	if newTier != unreserved {
-		return newTier
-	}
-
-	// if we're here it means that the new tier
-	// falls under the unreserved tier
-	var adjustedTier tier
-
-	// rs.Inner == 0 || rs.Inner > val
-	if rs.Inner.Cmp(big.NewInt(0)) == 0 || rs.Inner.Cmp(val) > 0 {
-		adjustedTier = inner
-		// if the outer is the same as the inner
-		if rs.Outer.Cmp(rs.Inner) == 0 {
-			// the value falls below inner and outer
-			rs.Outer.Set(val)
-			adjustedTier = outer
-		}
-		// inner is decreased to val, this is done when the
-		// batch is diluted, decreasing the value of it.
-		rs.Inner.Set(val)
-	}
-	return adjustedTier
-}
-
 // update manages what chunks of which batch are allocated to the reserve
-func (s *store) update(b *postage.Batch, oldDepth uint8, oldValue *big.Int) error {
-	newValue := b.Value
-	newDepth := b.Depth
-	capacityChange, reserveRadius := s.rs.change(oldValue, newValue, oldDepth, newDepth)
-	s.rs.Available += capacityChange
+func (s *store) adjustBatchAllocation(b *postage.Batch, oldDepth uint8, oldValue *big.Int) error {
+	s.rs.Available += s.rs.capacityChange(oldDepth, b.Depth)
 
-	if err := s.unreserveFn(b.ID, reserveRadius); err != nil {
-		return err
-	}
-	err := s.evictOuter(b)
+	err := s.evictForCapacity()
 	if err != nil {
 		return err
 	}
 
 	s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
 	s.metrics.Radius.Set(float64(s.rs.Radius))
-	s.metrics.Inner.Set(float64(s.rs.Inner.Int64()))
-	s.metrics.Outer.Set(float64(s.rs.Outer.Int64()))
 	return nil
 }
 
-// evictOuter is responsible for keeping capacity positive by unreserving lowest priority batches
-func (s *store) evictOuter(last *postage.Batch) error {
-	// if capacity is positive nothing to evict
+func (s *store) evictForCapacity() error {
+
 	if s.rs.Available >= 0 {
 		return nil
 	}
-	err := s.store.Iterate(valueKeyPrefix, func(key, _ []byte) (bool, error) {
+
+	fmt.Printf("evictForCapacity: %v\n", s.rs.Available)
+
+	var toDelete [][]byte
+
+	// 1. iterate batches from lowest to highest value until
+	// positive capacity is reached,
+	// also delete batches with no value
+	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
+
+		fmt.Printf("iterator\n")
+
 		batchID := valueKeyToID(key)
-		b := last
-		if !bytes.Equal(b.ID, batchID) {
-			var err error
-			b, err = s.Get(batchID)
-			if err != nil {
-				return true, fmt.Errorf("release get %x %v: %w", batchID, b, err)
-			}
+		b, err := s.Get(valueKeyToID(key))
+		if err != nil {
+			return true, fmt.Errorf("release get %x %v: %w", batchID, b, err)
 		}
-		//  FIXME: this is needed only because  the statestore iterator does not allow seek, only prefix
-		//  so we need to page through all the batches until outer limit is reached
-		if b.Value.Cmp(s.rs.Outer) < 0 {
-			return false, nil
-		}
-		// stop iteration  only if we consumed all batches of the same value as the one that put capacity above zero
-		if s.rs.Available >= 0 && s.rs.Outer.Cmp(b.Value) != 0 {
+
+		if s.rs.Available >= 0 {
 			return true, nil
 		}
-		// unreserve outer PO of the lowest priority batch  until capacity is back to positive
-		s.rs.Available += exp2(uint(b.Depth) - uint(s.rs.Radius) - 1)
-		s.rs.Outer.Set(b.Value)
-		return false, s.unreserveFn(b.ID, s.rs.Radius)
+
+		evictionRadius := s.rs.Radius
+
+		// expired batch, remove all chunks for the batch
+		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
+			toDelete = append(toDelete, b.ID)
+			evictionRadius = swarm.MaxPO
+		}
+
+		// TODO: LOCK?
+		item := &UnreserveItem{}
+		err = s.store.Get(unreserveQueueKey(batchID), item)
+		// fmt.Println("item", item)
+		if err != nil && err != storage.ErrNotFound {
+			return false, err
+		} else if err == nil { // found an item
+			if item.Radius >= evictionRadius { // already queued for eviction
+				return false, nil
+			}
+		}
+
+		fmt.Printf("iterator: %v\n", hex.EncodeToString(b.ID))
+
+		newCapacity := exp2(uint(b.Depth - evictionRadius))
+
+		fmt.Printf("iterator: depth %v capacity %v evictionRadius %v\n", b.Depth, newCapacity, evictionRadius)
+
+		s.rs.Available += newCapacity
+
+		return false, s.unreserveFn(b.ID, evictionRadius)
 	})
 	if err != nil {
 		return err
 	}
-	// add 1 to outer limit value so we dont hit on the same batch next time we iterate
-	s.rs.Outer.Add(s.rs.Outer, big1)
-	// if we consumed all batches, ie. we unreserved all chunks on the outer = depth PO
-	//  then its time to  increase depth
-	if s.rs.Available < 0 {
-		s.rs.Radius++
-		s.rs.Outer.Set(s.rs.Inner) // reset outer limit to inner limit
-		return s.evictOuter(last)
+
+	if err := s.store.Put(reserveStateKey, s.rs); err != nil {
+		return err
 	}
-	return s.store.Put(reserveStateKey, s.rs)
-}
 
-func (s *store) getQueueCardinality() (val uint64, err error) {
-
-	err = s.store.Get(ureserveQueueCardinalityKey, &val)
-	if errors.Is(err, storage.ErrNotFound) {
-		return 0, nil
+	if err := s.delete(toDelete...); err != nil {
+		return err
 	}
-	return val, err
+
+	return s.computeRadius()
 }
 
-func (s *store) putQueueCardinality(val uint64) error {
-	return s.store.Put(ureserveQueueCardinalityKey, val)
+// change calculates info relevant to the value change from old to new value and old and new depth
+// returns the change in capacity and the radius of reserve
+func (rs *reserveState) capacityChange(oldDepth, newDepth uint8) int64 {
+
+	oldSize := exp2(uint(oldDepth - rs.Radius))
+	newSize := exp2(uint(newDepth - rs.Radius))
+
+	return oldSize - newSize
 }
+
+func (s *store) computeRadius() error {
+
+	var totalCommitment int64
+
+	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
+		batchID := valueKeyToID(key)
+		b, err := s.Get(valueKeyToID(key))
+		if err != nil {
+			return true, fmt.Errorf("compute radius %x %v: %w", batchID, b, err)
+		}
+
+		totalCommitment += exp2(uint(b.Depth))
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("radius:", math.Log2(float64(totalCommitment)/float64(Capacity)))
+
+	oldRadius := s.rs.Radius
+	s.rs.Radius = uint8(math.Log2(float64(totalCommitment) / float64(Capacity)))
+
+	// TODO: LOCK?
+	if s.rs.Radius < oldRadius {
+		err := s.dequeueHigherRadius()
+		if err != nil {
+			return err
+		}
+	}
+
+	return err
+}
+
+// discard from eviction queue items with radius greater than new radius
+func (s *store) dequeueHigherRadius() error {
+
+	var toRemove []string
+
+	defer func() {
+		for _, k := range toRemove {
+			err := s.store.Delete(k)
+			if err != nil {
+				s.logger.Warningf("batchstore: dequeue %v", err)
+			}
+		}
+	}()
+
+	return s.store.Iterate(unreserveQueuePrefix, func(key, value []byte) (bool, error) {
+		v := &UnreserveItem{}
+		err := v.UnmarshalBinary(value)
+		if err != nil {
+			return false, err
+		}
+
+		if v.Radius > s.rs.Radius {
+			toRemove = append(toRemove, string(key))
+		}
+
+		return false, nil
+	})
+}
+
+// // evictExpired is called when PutChainState is called (and there is 'settlement')
+// func (s *store) evictExpired() error {
+// 	var toDelete [][]byte
+
+// 	fmt.Println("~ EVICT EXPIRED ~")
+
+// 	// set until to total or inner whichever is greater
+// 	until := new(big.Int)
+
+// 	// if inner > 0 && total >= inner
+// 	if s.rs.Inner.Cmp(big.NewInt(0)) > 0 && s.cs.TotalAmount.Cmp(s.rs.Inner) >= 0 {
+// 		// collect until total+1
+// 		until.Add(s.cs.TotalAmount, big1)
+// 	} else {
+// 		// collect until inner (collect all outer ones)
+// 		until.Set(s.rs.Inner)
+// 	}
+// 	var multiplier int64
+// 	err := s.store.Iterate(valueKeyPrefix, func(key, _ []byte) (bool, error) {
+// 		b, err := s.Get(valueKeyToID(key))
+// 		if err != nil {
+// 			return true, err
+// 		}
+
+// 		// if batch value >= until then continue to next.
+// 		// terminate iteration if until is passed
+// 		if b.Value.Cmp(until) >= 0 {
+// 			return true, nil
+// 		}
+
+// 		// in the following if statements we check the batch value
+// 		// against the inner and outer values and set the multiplier
+// 		// to 1 or 2 depending on the value. if the batch value falls
+// 		// outside of Outer it means we are evicting twice more chunks
+// 		// than within Inner, therefore the multiplier is needed to
+// 		// estimate better how much capacity gain is leveraged from
+// 		// evicting this specific batch.
+
+// 		// if multiplier == 0 && batch value >= inner
+// 		if multiplier == 0 && b.Value.Cmp(s.rs.Inner) >= 0 {
+// 			multiplier = 1
+// 		}
+// 		// if multiplier == 1 && batch value >= outer
+// 		if multiplier == 1 && b.Value.Cmp(s.rs.Outer) >= 0 {
+// 			multiplier = 2
+// 		}
+
+// 		// unreserve batch fully
+// 		err = s.evictFn(b.ID)
+// 		if err != nil {
+// 			return true, err
+// 		}
+
+// 		s.rs.Available += multiplier * exp2(uint(b.Radius-s.rs.Radius-1))
+
+// 		// if batch has no value then delete it
+// 		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
+// 			toDelete = append(toDelete, b.ID)
+// 		}
+// 		return false, nil
+// 	})
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// set inner to either until or Outer, whichever
+// 	// is the smaller value.
+
+// 	s.rs.Inner.Set(until)
+
+// 	// if outer < until
+// 	if s.rs.Outer.Cmp(until) < 0 {
+// 		s.rs.Outer.Set(until)
+// 	}
+// 	if err = s.store.Put(reserveStateKey, s.rs); err != nil {
+// 		return err
+// 	}
+// 	return s.delete(toDelete...)
+// }
+
+// // tier represents the sections of the reserve that can be  described as value intervals
+// // 0 - out of the reserve
+// // 1 - within reserve radius = depth (inner half)
+// // 2 - within reserve radius = depth-1 (both inner and outer halves)
+// type tier int
+
+// const (
+// 	unreserved tier = iota // out of the reserve
+// 	inner                  // the mid range where chunks are kept within depth
+// 	outer                  // top range where chunks are kept within depth - 1
+// )
+
+// // change calculates info relevant to the value change from old to new value and old and new depth
+// // returns the change in capacity and the radius of reserve
+// func (rs *reserveState) change(oldv, newv *big.Int, oldDepth, newDepth uint8) (int64, uint8) {
+// 	oldTier := rs.tier(oldv)
+// 	newTier := rs.setLimits(newv, rs.tier(newv))
+
+// 	oldSize := rs.size(oldDepth, oldTier)
+// 	newSize := rs.size(newDepth, newTier)
+
+// 	availableCapacityChange := oldSize - newSize
+// 	reserveRadius := rs.radius(newTier)
+
+// 	return availableCapacityChange, reserveRadius
+// }
+
+// // size returns the number of chunks the local node is responsible
+// // to store in its reserve.
+// func (rs *reserveState) size(depth uint8, t tier) int64 {
+// 	size := exp2(uint(depth - rs.Radius - 1))
+// 	switch t {
+// 	case inner:
+// 		return size
+// 	case outer:
+// 		return 2 * size
+// 	default:
+// 		// case is unreserved
+// 		return 0
+// 	}
+// }
+
+// // tier returns which tier a value falls into
+// func (rs *reserveState) tier(x *big.Int) tier {
+
+// 	// x < rs.Inner || x == 0
+// 	if x.Cmp(rs.Inner) < 0 || rs.Inner.Cmp(big.NewInt(0)) == 0 {
+// 		return unreserved
+// 	}
+
+// 	// x < rs.Outer
+// 	if x.Cmp(rs.Outer) < 0 {
+// 		return inner
+// 	}
+
+// 	// x >= rs.Outer
+// 	return outer
+// }
+
+// // radius returns the reserve radius of a batch given the depth (radius of responsibility)
+// // based on the tier it falls in
+// func (rs *reserveState) radius(t tier) uint8 {
+// 	switch t {
+// 	case unreserved:
+// 		return swarm.MaxPO
+// 	case inner:
+// 		return rs.Radius
+// 	default:
+// 		// outer
+// 		return rs.Radius - 1
+// 	}
+// }
+
+// // setLimits sets the tier 1 value limit, if new item is the minimum so far (or the very first batch)
+// // returns the adjusted new tier
+// func (rs *reserveState) setLimits(val *big.Int, newTier tier) tier {
+// 	if newTier != unreserved {
+// 		return newTier
+// 	}
+
+// 	// if we're here it means that the new tier
+// 	// falls under the unreserved tier
+// 	var adjustedTier tier
+
+// 	// rs.Inner == 0 || rs.Inner > val
+// 	if rs.Inner.Cmp(big.NewInt(0)) == 0 || rs.Inner.Cmp(val) > 0 {
+// 		adjustedTier = inner
+// 		// if the outer is the same as the inner
+// 		if rs.Outer.Cmp(rs.Inner) == 0 {
+// 			// the value falls below inner and outer
+// 			rs.Outer.Set(val)
+// 			adjustedTier = outer
+// 		}
+// 		// inner is decreased to val, this is done when the
+// 		// batch is diluted, decreasing the value of it.
+// 		rs.Inner.Set(val)
+// 		fmt.Println("set inner", val.Int64())
+// 	}
+// 	return adjustedTier
+// }
+
+// // update manages what chunks of which batch are allocated to the reserve
+// func (s *store) update(b *postage.Batch, oldDepth uint8, oldValue *big.Int) error {
+// 	newValue := b.Value
+// 	newDepth := b.Depth
+// 	capacityChange, reserveRadius := s.rs.change(oldValue, newValue, oldDepth, newDepth)
+// 	s.rs.Available += capacityChange
+
+// 	if err := s.unreserveFn(b.ID, reserveRadius); err != nil {
+// 		return err
+// 	}
+// 	err := s.evictOuter(b)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
+// 	s.metrics.Radius.Set(float64(s.rs.Radius))
+// 	s.metrics.Inner.Set(float64(s.rs.Inner.Int64()))
+// 	s.metrics.Outer.Set(float64(s.rs.Outer.Int64()))
+// 	return nil
+// }
+
+// // evictOuter is responsible for keeping capacity positive by unreserving lowest priority batches
+// func (s *store) evictOuter(last *postage.Batch) error {
+// 	// if capacity is positive nothing to evict
+// 	if s.rs.Available >= 0 {
+// 		return nil
+// 	}
+// 	err := s.store.Iterate(valueKeyPrefix, func(key, _ []byte) (bool, error) {
+// 		batchID := valueKeyToID(key)
+// 		b := last
+// 		if !bytes.Equal(b.ID, batchID) {
+// 			var err error
+// 			b, err = s.Get(batchID)
+// 			if err != nil {
+// 				return true, fmt.Errorf("release get %x %v: %w", batchID, b, err)
+// 			}
+// 		}
+// 		//  FIXME: this is needed only because  the statestore iterator does not allow seek, only prefix
+// 		//  so we need to page through all the batches until outer limit is reached
+// 		if b.Value.Cmp(s.rs.Outer) < 0 {
+// 			return false, nil
+// 		}
+// 		// stop iteration  only if we consumed all batches of the same value as the one that put capacity above zero
+// 		if s.rs.Available >= 0 && s.rs.Outer.Cmp(b.Value) != 0 {
+// 			return true, nil
+// 		}
+// 		// unreserve outer PO of the lowest priority batch  until capacity is back to positive
+// 		s.rs.Available += exp2(uint(b.Depth) - uint(s.rs.Radius) - 1)
+// 		s.rs.Outer.Set(b.Value)
+// 		fmt.Println("setting outer", s.rs.Outer.Int64())
+// 		return false, s.unreserveFn(b.ID, s.rs.Radius)
+// 	})
+// 	if err != nil {
+// 		return err
+// 	}
+// 	// add 1 to outer limit value so we dont hit on the same batch next time we iterate
+// 	s.rs.Outer.Add(s.rs.Outer, big1)
+// 	fmt.Println("setting outer", s.rs.Outer.Int64())
+
+// 	// if we consumed all batches, ie. we unreserved all chunks on the outer = depth PO
+// 	//  then its time to  increase depth
+// 	if s.rs.Available < 0 {
+// 		s.rs.Radius++
+// 		s.rs.Outer.Set(s.rs.Inner) // reset outer limit to inner limit
+// 		return s.evictOuter(last)
+// 	}
+// 	return s.store.Put(reserveStateKey, s.rs)
+// }
+
+// func (s *store) getQueueCardinality() (val uint64, err error) {
+
+// 	err = s.store.Get(ureserveQueueCardinalityKey, &val)
+// 	if errors.Is(err, storage.ErrNotFound) {
+// 		return 0, nil
+// 	}
+// 	return val, err
+// }
+
+// func (s *store) putQueueCardinality(val uint64) error {
+// 	return s.store.Put(ureserveQueueCardinalityKey, val)
+// }
 
 type UnreserveItem struct {
 	BatchID []byte
