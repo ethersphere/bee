@@ -170,6 +170,14 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 			continue
 		}
 
+		// candidates are intentionally oversized so that we can afford the
+		// possible discrepancy in gcSize between the candidates collection phase
+		// and the actual critical section under lock. we therefore work our way through
+		// the candidates and stop once the target gc size is reached. the rest of the candidates
+		// will be iterated upon next time the gc is called. while this is a minor inefficiency in the
+		// last iteration of the gc eviction, it gets around the edge case of the last iteration never reaching
+		// the target since the gc size always is bound to change even if to a minor degree in the time between
+		// candidate collection and the mutex acquisition.
 		if gcSize-totalChunksEvicted <= target {
 			done = true
 			break
@@ -223,7 +231,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	return totalChunksEvicted, done, nil
 }
 
-// gcTrigger retruns the absolute value for garbage collection
+// gcTarget retruns the absolute value for garbage collection
 // target value, calculated from db.capacity and gcTargetRatio.
 func (db *DB) gcTarget() (target uint64) {
 	return uint64(float64(db.cacheCapacity) * gcTargetRatio)
