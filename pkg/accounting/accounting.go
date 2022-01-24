@@ -449,7 +449,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 			balance.refreshTimestamp = timestamp
 
-			oldBalance.Add(oldBalance, acceptedAmount)
+			oldBalance := new(big.Int).Add(oldBalance, acceptedAmount)
 
 			a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, acceptedAmount, oldBalance)
 
