@@ -11,8 +11,6 @@ import (
 
 type metrics struct {
 	AvailableCapacity prometheus.Gauge
-	Inner             prometheus.Gauge
-	Outer             prometheus.Gauge
 	Radius            prometheus.Gauge
 	StorageRadius     prometheus.Gauge
 }
@@ -26,18 +24,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "available_capacity",
 			Help:      "Available capacity observed by the batchstore.",
-		}),
-		Inner: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "inner",
-			Help:      "Inner storage tier value observed by the batchstore.",
-		}),
-		Outer: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "outer",
-			Help:      "Outer storage tier value observed by the batchstore.",
 		}),
 		Radius: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
