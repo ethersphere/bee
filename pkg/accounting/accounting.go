@@ -420,7 +420,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			if err != nil {
 				return err
 			}
-
 			acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 			if err != nil {
 				// if we get settlement too soon it comes from a peer timestamp being ahead of ours, blocking refreshment
@@ -441,7 +440,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 					}
 				}
 			}
-
 			oldBalance, err := a.Balance(peer)
 			if err != nil {
 				if !errors.Is(err, ErrPeerNoBalance) {
@@ -451,7 +449,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 			balance.refreshTimestamp = timestamp
 
-			oldBalance = new(big.Int).Add(oldBalance, acceptedAmount)
+			oldBalance.Add(oldBalance, acceptedAmount)
 
 			a.logger.Tracef("registering refreshment sent to peer %v with amount %d, new balance is %d", peer, acceptedAmount, oldBalance)
 

@@ -39,7 +39,7 @@ type paymentCall struct {
 }
 
 // booking represents an accounting action and the expected result afterwards
-type booking struct {
+type bookingT struct {
 	peer              swarm.Address
 	price             int64 // Credit if <0, Debit otherwise
 	expectedBalance   int64
@@ -76,7 +76,7 @@ func TestAccountingAddBalance(t *testing.T) {
 	acc.Connect(peer1Addr, true)
 	acc.Connect(peer2Addr, true)
 
-	bookings := []booking{
+	bookings := []bookingT{
 		{peer: peer1Addr, price: 100, expectedBalance: 100},
 		{peer: peer2Addr, price: 200, expectedBalance: 200},
 		{peer: peer1Addr, price: 300, expectedBalance: 400},
@@ -145,7 +145,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 
 	acc.Connect(peer1Addr, true)
 
-	bookings := []booking{
+	bookings := []bookingT{
 		// originated credit
 		{peer: peer1Addr, price: -2000, expectedBalance: -2000, originatedBalance: -2000, originatedCredit: true},
 		// forwarder credit
@@ -155,9 +155,9 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 		// consequential debit moving balance closer to 0 than originbalance, therefore also moving originated balance along
 		{peer: peer1Addr, price: 2000, expectedBalance: -1000, originatedBalance: -1000},
 		// forwarder credit happening to increase debt
-		{peer: peer1Addr, price: -8000, expectedBalance: -9000, originatedBalance: -1000, originatedCredit: false},
+		{peer: peer1Addr, price: -1000, expectedBalance: -2000, originatedBalance: -1000, originatedCredit: false},
 		// expect notifypaymentsent triggered by reserve that moves originated balance into positive domain because of earlier debit triggering overpay
-		{peer: peer1Addr, price: -1000, expectedBalance: 1000, originatedBalance: 1000, overpay: 10000, notifyPaymentSent: true},
+		{peer: peer1Addr, price: -7000, expectedBalance: 1000, originatedBalance: 1000, overpay: 9000, notifyPaymentSent: true},
 		// inconsequential debit because originated balance is in the positive domain
 		{peer: peer1Addr, price: 1000, expectedBalance: 2000, originatedBalance: 1000},
 		// originated credit moving the originated balance back into the negative domain, should be limited to the expectedbalance
@@ -168,21 +168,25 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 
 	for i, booking := range bookings {
 
-		currentBooking := booking
-		pay := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
-			if currentBooking.overpay != 0 {
-				debitAction, err := acc.PrepareDebit(peer, currentBooking.overpay)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_ = debitAction.Apply()
-			}
+		makePayFunc := func(currentBooking bookingT) func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+			return func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+				if currentBooking.overpay != 0 {
 
-			acc.NotifyPaymentSent(peer, amount, nil)
-			paychan <- struct{}{}
+					debitAction, err := acc.PrepareDebit(peer, currentBooking.overpay)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_ = debitAction.Apply()
+				}
+
+				acc.NotifyPaymentSent(peer, amount, nil)
+				paychan <- struct{}{}
+			}
 		}
 
-		acc.SetPayFunc(pay)
+		payFunc := makePayFunc(booking)
+
+		acc.SetPayFunc(payFunc)
 
 		if booking.price < 0 {
 			creditAction, err := acc.PrepareCredit(booking.peer, uint64(-booking.price), booking.originatedCredit)
