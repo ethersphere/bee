@@ -672,14 +672,14 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		s.logger.Errorf("internal error while connecting with peer %s", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
-		return nil, fmt.Errorf("peer blocklisted")
+		return nil, err
 	}
 
 	if blocked {
 		s.logger.Errorf("blocked connection to blocklisted peer %s", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
-		return nil, fmt.Errorf("peer blocklisted")
+		return nil, p2p.ErrPeerBlocklisted
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
