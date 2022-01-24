@@ -7,7 +7,6 @@ package localstore
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 
@@ -128,20 +127,6 @@ func migrateSharky(db *DB) error {
 	db.reserveSize, err = db.shed.NewUint64Field("reserve-size")
 	if err != nil {
 		return err
-	}
-
-	gcSize, err := db.gcSize.Get()
-	if err != nil {
-		return err
-	}
-
-	reserveSize, err := db.reserveSize.Get()
-	if err != nil {
-		return err
-	}
-
-	if gcSize+reserveSize > sharkyMaxTotalChunks {
-		return errors.New("maximum allowed chunks exceeded")
 	}
 
 	var compactionTime time.Duration
