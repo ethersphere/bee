@@ -168,9 +168,10 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 
 	for i, booking := range bookings {
 
+		currentBooking := booking
 		pay := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
-			if booking.overpay != 0 {
-				debitAction, err := acc.PrepareDebit(peer, booking.overpay)
+			if currentBooking.overpay != 0 {
+				debitAction, err := acc.PrepareDebit(peer, currentBooking.overpay)
 				if err != nil {
 					t.Fatal(err)
 				}
