@@ -315,12 +315,10 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius        uint8          `json:"radius"`
-	StorageRadius uint8          `json:"storageRadius"`
-	Available     int64          `json:"available"`
-	Commitment    int64          `json:"commitment"`
-	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner         *bigint.BigInt `json:"inner"`
+	Radius        uint8 `json:"radius"`
+	StorageRadius uint8 `json:"storageRadius"`
+	Available     int64 `json:"available"`
+	Commitment    int64 `json:"commitment"`
 }
 
 type chainStateResponse struct {
@@ -349,8 +347,6 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 		StorageRadius: state.StorageRadius,
 		Available:     state.Available,
 		Commitment:    commitment,
-		Outer:         bigint.Wrap(state.Outer),
-		Inner:         bigint.Wrap(state.Inner),
 	})
 }
 
