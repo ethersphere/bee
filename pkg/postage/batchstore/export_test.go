@@ -5,8 +5,6 @@
 package batchstore
 
 import (
-	"fmt"
-
 	"github.com/ethersphere/bee/pkg/postage"
 )
 
@@ -18,14 +16,17 @@ var (
 	ValueKey = valueKey
 )
 
-// power of 2 function
 var Exp2 = exp2
 
-func (s *store) String() string {
-	return fmt.Sprintf("inner=%d,outer=%d", s.rs.Inner.Uint64(), s.rs.Outer.Uint64())
-}
+func BatchCapacity(s postage.Storer, b *postage.Batch, radius uint8) (int64, int64, error) {
 
-func SetUnreserveFunc(s postage.Storer, fn func([]byte, uint8) error) {
 	st := s.(*store)
-	st.unreserveFn = fn
+	item, err := st.getValueItem(b)
+
+	if err != nil {
+		return 0, 0, err
+	}
+
+	newCapacity, change := st.capacity(b.Depth, item.Radius, radius)
+	return newCapacity, change, err
 }
