@@ -585,7 +585,7 @@ func TestBinSaturation(t *testing.T) {
 	// add one more peer in each bin shallower than depth and
 	// expect no connections due to saturation. if we add a peer within
 	// depth, the short circuit will be hit and we will connect to the peer
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		addr := test.RandomAddressAt(base, i)
 		addOne(t, signer, kad, ab, addr)
 	}

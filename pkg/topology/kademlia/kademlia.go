@@ -47,7 +47,7 @@ const (
 )
 
 var (
-	nnLowWatermark              = 2 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
+	nnLowWatermark              = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	quickSaturationPeers        = 4
 	saturationPeers             = 8
 	overSaturationPeers         = 20
