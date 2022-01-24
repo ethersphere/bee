@@ -18,6 +18,8 @@ var (
 	ErrAlreadyConnected = errors.New("already connected")
 	// ErrDialLightNode is returned if connect was attempted to a light node.
 	ErrDialLightNode = errors.New("target peer is a light node")
+	// ErrPeerBlocklisted is returned if peer is on blocklist
+	ErrPeerBlocklisted = errors.New("peer blocklisted")
 )
 
 const (
