@@ -357,13 +357,9 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		}
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
-
-	// mutex usage is omitted here, since UnreserveBatch can be
-	// called also from the batch store on batch expiration, the lock
-	// is needed to be acquired internally by UnreserveBatch.
-	// we therefore accept possible data races here with regards to
-	// the reserve size and target.
 	target = db.reserveEvictionTarget()
+	db.batchMu.Lock()
+	defer db.batchMu.Unlock()
 	reserveSizeStart, err := db.reserveSize.Get()
 	if err != nil {
 		return 0, false, err
