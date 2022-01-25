@@ -821,10 +821,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 
 	chunkCount := 10
 
-	db := newTestDB(t, &Options{
-		Capacity: 10,
-	})
-
+	var closed chan struct{}
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		// don't trigger if we haven't collected anything - this may
@@ -836,9 +833,15 @@ func TestGC_NoEvictDirty(t *testing.T) {
 		}
 		select {
 		case testHookCollectGarbageChan <- collectedCount:
-		case <-db.close:
+		case <-closed:
 		}
 	}))
+
+	db := newTestDB(t, &Options{
+		Capacity: 10,
+	})
+
+	closed = db.close
 
 	dirtyChan := make(chan struct{})
 	incomingChan := make(chan struct{})
