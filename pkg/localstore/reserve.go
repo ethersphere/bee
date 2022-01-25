@@ -21,14 +21,21 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		item = shed.Item{
 			BatchID: id,
 		}
-		batch = new(leveldb.Batch)
+		batch     = new(leveldb.Batch)
+		oldRadius = radius
 	)
-
+	i, err := db.postageRadiusIndex.Get(item)
+	if err != nil {
+		if !errors.Is(err, leveldb.ErrNotFound) {
+			return 0, err
+		}
+	} else {
+		oldRadius = i.Radius
+	}
 	var (
 		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
 		reserveSizeChange uint64
 	)
-
 	unpin := func(item shed.Item) (stop bool, err error) {
 		addr := swarm.NewAddress(item.Address)
 		c, err := db.setUnpin(batch, addr)
@@ -54,7 +61,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 	}
 
 	// iterate over chunk in bins
-	for bin := uint8(0); bin < radius; bin++ {
+	for bin := oldRadius; bin < radius; bin++ {
 		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
 		if err != nil {
 			return 0, err
