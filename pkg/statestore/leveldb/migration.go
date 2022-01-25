@@ -41,11 +41,10 @@ const (
 	dbSchemaFlushBlock      = "flushblock"
 	dbSchemaSwapAddr        = "swapaddr"
 	dBSchemaKademliaMetrics = "kademlia-metrics"
-	dBSchemaForceResync     = "force-resync"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaForceResync
+	dbSchemaCurrent = dBSchemaKademliaMetrics
 )
 
 type migration struct {
@@ -63,7 +62,6 @@ var schemaMigrations = []migration{
 	{name: dbSchemaFlushBlock, fn: migrateFB},
 	{name: dbSchemaSwapAddr, fn: migrateSwap},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
-	{name: dBSchemaForceResync, fn: migrateForceResync},
 }
 
 func migrateFB(s *Store) error {
@@ -191,18 +189,6 @@ func migrateKademliaMetrics(s *Store) error {
 
 		s.logger.Debugf("removing kademlia %q metrics took %s", prefix, time.Since(start))
 	}
-	return nil
-}
-
-// migrateForceResync forces a node postage resync with the dirty flag.
-func migrateForceResync(s *Store) error {
-	s.logger.Info("forcing node to resync chain data by activating the postage dirty start shortcircuit...")
-	dirtyKey := "batchservice_dirty_db"
-	err := s.Put(dirtyKey, true)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return err
-	}
-
 	return nil
 }
 
