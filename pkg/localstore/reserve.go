@@ -22,7 +22,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 			BatchID: id,
 		}
 		batch     = new(leveldb.Batch)
-		oldRadius = radius
+		oldRadius uint8
 	)
 	i, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
