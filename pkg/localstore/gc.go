@@ -37,7 +37,7 @@ var (
 	gcTargetRatio = 0.9
 	// gcBatchSize limits the number of chunks in a single
 	// transaction on garbage collection.
-	gcBatchSize uint64 = 10000
+	gcBatchSize uint64 = 2000
 
 	// reserveCollectionRatio is the ratio of the cache to evict from
 	// the reserve every time it hits the limit. If the cache size is
@@ -165,7 +165,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		return 0, false, err
 	}
 
-	db.logger.Infof("localstore gc: size %d, collected %d candidates (collected count %d), target %d", gcSize, len(candidates), collectedCount, target)
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
@@ -205,14 +204,13 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-	}
 
-	softTarget := target + 20000
-	if gcSize-collectedCount > softTarget {
-		db.logger.Infof("localstore gc: soft target %d not reached (current size %d, collected count %d)", softTarget, gcSize, collectedCount)
+	}
+	if gcSize-collectedCount > target {
 		done = false
 	}
 
+	db.metrics.GCCommittedCounter.Add(float64(collectedCount))
 	db.gcSize.PutInBatch(batch, gcSize-collectedCount)
 
 	err = db.shed.WriteBatch(batch)
@@ -220,16 +218,6 @@ func (db *DB) collectGarbage() (collectedCount uint64, done bool, err error) {
 		db.metrics.GCErrorCounter.Inc()
 		return 0, false, err
 	}
-
-	gcSize, err = db.gcSize.Get()
-	if err != nil {
-		return 0, false, err
-	}
-
-	db.logger.Infof("localstore gc: wrote batch. size %d, committed %d candidates", gcSize, collectedCount)
-
-	db.metrics.GCCommittedCounter.Add(float64(collectedCount))
-
 	return collectedCount, done, nil
 }
 
