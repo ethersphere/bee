@@ -374,7 +374,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	if err != nil {
 		return 0, false, err
 	}
-	if reserveSizeStart == target {
+	if reserveSizeStart <= target {
 		return 0, true, nil
 	}
 

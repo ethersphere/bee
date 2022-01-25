@@ -381,7 +381,7 @@ func newItemsCountTest(i shed.Index, want int) func(t *testing.T) {
 	}
 }
 
-// newIndexGCSizeTest retruns a test function that validates if DB.gcSize
+// newIndexGCSizeTest returns a test function that validates if DB.gcSize
 // value is the same as the number of items in DB.gcIndex.
 func newIndexGCSizeTest(db *DB) func(t *testing.T) {
 	return func(t *testing.T) {
@@ -401,6 +401,22 @@ func newIndexGCSizeTest(db *DB) func(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("got gc size %v, want %v", got, want)
+		}
+	}
+}
+
+// reserveSizeTest checks that the reserveSize scalar is equal
+// to the expected value.
+func reserveSizeTest(db *DB, want uint64) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Helper()
+
+		got, err := db.reserveSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("got reserve size %v, want %v", got, want)
 		}
 	}
 }
