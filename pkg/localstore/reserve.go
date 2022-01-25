@@ -29,6 +29,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		if !errors.Is(err, leveldb.ErrNotFound) {
 			return 0, err
 		}
+		oldRadius = 0
 	} else {
 		oldRadius = i.Radius
 	}
