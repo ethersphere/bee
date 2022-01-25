@@ -84,6 +84,8 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
+	t.Run("reserve size", reserveSizeTest(db, 0))
+
 	// the first synced chunk should be removed
 	t.Run("get the first synced chunk", func(t *testing.T) {
 		_, err := db.Get(context.Background(), storage.ModeGetRequest, addrs[0])
@@ -189,6 +191,8 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 0))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
+
+	t.Run("reserve size", reserveSizeTest(db, 150))
 
 	t.Run("all chunks should be accessible", func(t *testing.T) {
 		for _, a := range addrs {
@@ -368,6 +372,8 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
+
+	t.Run("reserve size", reserveSizeTest(db, 90))
 
 	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
 		for _, a := range addrs[:10] {
@@ -562,6 +568,8 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
+	t.Run("reserve size", reserveSizeTest(db, 90))
+
 	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
 		for _, a := range addrs[:10] {
 			_, err := db.Get(context.Background(), storage.ModeGetRequest, a)
@@ -578,5 +586,100 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 				t.Errorf("got error %v but want none", err)
 			}
 		}
+	})
+}
+
+func TestReserveSize(t *testing.T) {
+	var (
+		chunkCount = 10
+	)
+
+	t.Run("variadic put sync", func(t *testing.T) {
+		var (
+			db = newTestDB(t, &Options{
+				Capacity:        100,
+				ReserveCapacity: 100,
+			})
+			chs []swarm.Chunk
+		)
+		for i := 0; i < chunkCount; i++ {
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			chs = append(chs, ch)
+		}
+		_, err := db.Put(context.Background(), storage.ModePutSync, chs...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run("reserve size", reserveSizeTest(db, 10))
+	})
+
+	t.Run("variadic put upload then set sync", func(t *testing.T) {
+		var (
+			db = newTestDB(t, &Options{
+				Capacity:        100,
+				ReserveCapacity: 100,
+			})
+			chs   []swarm.Chunk
+			addrs []swarm.Address
+		)
+		for i := 0; i < chunkCount; i++ {
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			chs = append(chs, ch)
+			addrs = append(addrs, ch.Address())
+		}
+		_, err := db.Put(context.Background(), storage.ModePutUpload, chs...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run("reserve size", reserveSizeTest(db, 0))
+
+		err = db.Set(context.Background(), storage.ModeSetSync, addrs...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run("reserve size", reserveSizeTest(db, 10))
+	})
+
+	t.Run("sequencial put sync", func(t *testing.T) {
+		var (
+			db = newTestDB(t, &Options{
+				Capacity:        100,
+				ReserveCapacity: 100,
+			})
+		)
+		for i := 0; i < chunkCount; i++ {
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			_, err := db.Put(context.Background(), storage.ModePutSync, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Run("reserve size", reserveSizeTest(db, 10))
+	})
+
+	t.Run("sequencial put upload then set sync", func(t *testing.T) {
+		var (
+			db = newTestDB(t, &Options{
+				Capacity:        100,
+				ReserveCapacity: 100,
+			})
+			chs []swarm.Chunk
+		)
+		for i := 0; i < chunkCount; i++ {
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			chs = append(chs, ch)
+			_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Run("reserve size", reserveSizeTest(db, 0))
+		for _, ch := range chs {
+			err := db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Run("reserve size", reserveSizeTest(db, 10))
 	})
 }
