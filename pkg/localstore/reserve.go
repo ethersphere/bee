@@ -24,6 +24,10 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		batch     = new(leveldb.Batch)
 		oldRadius uint8
 	)
+
+	db.batchMu.Lock()
+	defer db.batchMu.Unlock()
+
 	i, err := db.postageRadiusIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
