@@ -25,7 +25,7 @@ func TestNew(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	s := soc.New(id, ch)
 
 	// check SOC fields
@@ -59,7 +59,7 @@ func TestNewSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	// creates a new signed SOC
 	s, err := soc.NewSigned(id, ch, owner.Bytes(), sig)
 	if err != nil {
@@ -131,16 +131,16 @@ func TestChunk(t *testing.T) {
 	chunkData := sch.Data()
 	// verifies that id, signature, payload is in place in the SOC chunk
 	cursor := 0
-	if !bytes.Equal(chunkData[cursor:soc.IdSize], id) {
-		t.Fatalf("id mismatch. got %x want %x", chunkData[cursor:soc.IdSize], id)
+	if !bytes.Equal(chunkData[cursor:swarm.HashSize], id) {
+		t.Fatalf("id mismatch. got %x want %x", chunkData[cursor:swarm.HashSize], id)
 	}
-	cursor += soc.IdSize
+	cursor += swarm.HashSize
 
-	signature := chunkData[cursor : cursor+soc.SignatureSize]
+	signature := chunkData[cursor : cursor+swarm.SignatureSize]
 	if !bytes.Equal(signature, sig) {
 		t.Fatalf("signature mismatch. got %x want %x", signature, sig)
 	}
-	cursor += soc.SignatureSize
+	cursor += swarm.SignatureSize
 
 	spanBytes := make([]byte, swarm.SpanSize)
 	binary.LittleEndian.PutUint64(spanBytes, uint64(len(payload)))
@@ -160,7 +160,7 @@ func TestChunkErrorWithoutOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 
 	// creates a new soc
 	s := soc.New(id, ch)
@@ -185,7 +185,7 @@ func TestSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	// creates the soc
 	s := soc.New(id, ch)
 
@@ -197,8 +197,8 @@ func TestSign(t *testing.T) {
 
 	chunkData := sch.Data()
 	// get signature in the chunk
-	cursor := soc.IdSize
-	signature := chunkData[cursor : cursor+soc.SignatureSize]
+	cursor := swarm.HashSize
+	signature := chunkData[cursor : cursor+swarm.SignatureSize]
 
 	// get the public key of the signer
 	publicKey, err := signer.PublicKey()
@@ -238,10 +238,10 @@ func TestFromChunk(t *testing.T) {
 	// owner: 0x8d3766440f0d7b949a5e32995d09619a7f86e632
 	sch := swarm.NewChunk(socAddress, []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 205, 56, 79, 235, 193, 51, 183, 178, 69, 229, 221, 198, 45, 130, 210, 205, 237, 145, 130, 210, 113, 97, 38, 205, 136, 68, 80, 154, 246, 90, 5, 61, 235, 65, 130, 8, 2, 127, 84, 142, 62, 136, 52, 58, 246, 248, 74, 135, 114, 251, 60, 235, 192, 161, 131, 58, 14, 167, 236, 12, 19, 72, 49, 27, 3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111})
 
-	cursor := soc.IdSize + soc.SignatureSize
+	cursor := swarm.HashSize + swarm.SignatureSize
 	data := sch.Data()
-	id := data[:soc.IdSize]
-	sig := data[soc.IdSize:cursor]
+	id := data[:swarm.HashSize]
+	sig := data[swarm.HashSize:cursor]
 	chunkData := data[cursor:]
 
 	chunkAddress := swarm.MustParseHexAddress("2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48")
@@ -283,7 +283,7 @@ func TestFromChunk(t *testing.T) {
 }
 
 func TestCreateAddress(t *testing.T) {
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
 
@@ -298,7 +298,7 @@ func TestCreateAddress(t *testing.T) {
 
 func TestRecoverAddress(t *testing.T) {
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	chunkAddress := swarm.MustParseHexAddress("2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48")
 	signedDigest, err := soc.Hash(id, chunkAddress.Bytes())
 	if err != nil {

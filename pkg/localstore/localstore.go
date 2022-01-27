@@ -244,7 +244,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 		return err
 	}
 
-	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.ChunkWithSpanSize)
+	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.MaxChunkSize)
 	if err != nil {
 		return err
 	}
@@ -363,7 +363,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
 	}
 
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.ChunkWithSpanSize)
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.MaxChunkSize)
 	if err != nil {
 		return nil, err
 	}
