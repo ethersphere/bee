@@ -19,10 +19,10 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/soc"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
@@ -81,7 +81,7 @@ func TestSOC(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 
 		// modify the sign
-		sig := make([]byte, soc.SignatureSize)
+		sig := make([]byte, swarm.SignatureSize)
 		copy(sig, s.Signature)
 		sig[12] = 0x98
 		sig[10] = 0x12
