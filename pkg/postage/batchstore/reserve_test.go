@@ -648,7 +648,7 @@ func topupBatch(t *testing.T, s postage.Storer, batches []*postage.Batch, bvp ..
 	t.Helper()
 	for _, v := range bvp {
 		batch := batches[v.batchIndex]
-		err := s.Put(batch, v.value, batch.Depth)
+		err := s.Update(batch, v.value, batch.Depth)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -664,7 +664,7 @@ func diluteBatch(t *testing.T, s postage.Storer, batches []*postage.Batch, bdp .
 		for i := batch.Depth; i < v.depth; i++ {
 			val = big.NewInt(0).Div(val, big.NewInt(2))
 		}
-		err := s.Put(batch, val, v.depth)
+		err := s.Update(batch, val, v.depth)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -686,7 +686,7 @@ func addBatch(t *testing.T, s postage.Storer, dvp ...depthValueTuple) []*postage
 
 		val := big.NewInt(int64(v.value))
 
-		err := s.Put(b, val, v.depth)
+		err := s.Create(b, val, v.depth)
 		if err != nil {
 			t.Fatal(err)
 		}

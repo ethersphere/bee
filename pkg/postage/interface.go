@@ -23,24 +23,53 @@ type EventUpdater interface {
 	TransactionEnd() error
 }
 
+// UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
 type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
 
-// Storer represents the persistence layer for batches on the current (highest
-// available) block.
+// Storer represents the persistence layer for batches
+// on the current (highest available) block.
 type Storer interface {
-	Get(id []byte) (*Batch, error)
-	Put(*Batch, *big.Int, uint8) error
-	GetChainState() *ChainState
-	PutChainState(*ChainState) error
-	GetReserveState() *ReserveState
-	SetRadiusSetter(RadiusSetter)
-	Unreserve(UnreserveIteratorFn) error
-	Exists(id []byte) (bool, error)
+	// Get returns a batch from the store with the given ID.
+	Get([]byte) (*Batch, error)
+
+	// Exists reports whether batch referenced by the give id exists.
+	Exists([]byte) (bool, error)
+
+	// Iterate iterates through stored batches.
 	Iterate(func(*Batch) (bool, error)) error
 
+	// Create creates new batch with given value and depth. The call is
+	// idempotent, so a subsequent call would not create new batches if
+	// a batch with such ID already exists.
+	Create(*Batch, *big.Int, uint8) error
+
+	// Update updates a given batch in the store by first deleting the
+	// existing batch and then creating a new one. It's an error to update
+	// non-existing batch.
+	Update(*Batch, *big.Int, uint8) error
+
+	// GetChainState returns the stored chain state from the store.
+	GetChainState() *ChainState
+
+	// PutChainState puts given chain state into the store.
+	PutChainState(*ChainState) error
+
+	// GetReserveState returns a copy of stored reserve state.
+	GetReserveState() *ReserveState
+
+	// SetRadiusSetter sets the RadiusSetter to the given value.
+	// The given RadiusSetter will be called when radius changes.
+	SetRadiusSetter(RadiusSetter)
+
+	// Unreserve evict batches from the unreserve queue of the storage.
+	// During the eviction process, the given UnreserveIteratorFn is called.
+	Unreserve(UnreserveIteratorFn) error
+
+	// Reset resets chain state and reserve state of the storage.
 	Reset() error
 }
 
+// RadiusSetter is used as a callback when the radius of a node changes.
 type RadiusSetter interface {
 	SetRadius(uint8)
 }

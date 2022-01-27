@@ -228,7 +228,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
 
-				err := batchStore.Put(b, totalAmount, depth)
+				err := batchStore.Create(b, totalAmount, depth)
 				if err != nil {
 					return nil, err
 				}
@@ -250,7 +250,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				newBalance := big.NewInt(0).Add(totalAmount, batch.Value)
 
-				err = batchStore.Put(batch, newBalance, batch.Depth)
+				err = batchStore.Update(batch, newBalance, batch.Depth)
 				if err != nil {
 					return err
 				}
@@ -272,7 +272,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				newBalance := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(newDepth-batch.Depth))))
 
-				err = batchStore.Put(batch, newBalance, newDepth)
+				err = batchStore.Update(batch, newBalance, newDepth)
 				if err != nil {
 					return err
 				}

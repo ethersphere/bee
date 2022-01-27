@@ -113,7 +113,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		Immutable:   immutable,
 	}
 
-	err := svc.storer.Put(b, normalisedBalance, depth)
+	err := svc.storer.Create(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
@@ -141,9 +141,9 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txHash []b
 		return fmt.Errorf("get: %w", err)
 	}
 
-	err = svc.storer.Put(b, normalisedBalance, b.Depth)
+	err = svc.storer.Update(b, normalisedBalance, b.Depth)
 	if err != nil {
-		return fmt.Errorf("put: %w", err)
+		return fmt.Errorf("update: %w", err)
 	}
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
@@ -166,7 +166,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
 	}
-	err = svc.storer.Put(b, normalisedBalance, depth)
+	err = svc.storer.Update(b, normalisedBalance, depth)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}

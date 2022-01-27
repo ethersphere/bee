@@ -13,22 +13,26 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 )
 
-func TestBatchStorePutGet(t *testing.T) {
+func TestBatchStore(t *testing.T) {
 	const testCnt = 3
 
 	testBatch := postagetesting.MustNewBatch()
 	batchStore := mock.New(
 		mock.WithGetErr(errors.New("fails"), testCnt),
-		mock.WithPutErr(errors.New("fails"), testCnt),
+		mock.WithUpdateErr(errors.New("fails"), testCnt),
 	)
 
-	// Put should return error after a number of tries:
+	if err := batchStore.Create(testBatch, big.NewInt(0), 0); err != nil {
+		t.Fatal("unexpected error")
+	}
+
+	// Update should return error after a number of tries:
 	for i := 0; i < testCnt; i++ {
-		if err := batchStore.Put(testBatch, big.NewInt(0), 0); err != nil {
+		if err := batchStore.Update(testBatch, big.NewInt(0), 0); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := batchStore.Put(testBatch, big.NewInt(0), 0); err == nil {
+	if err := batchStore.Update(testBatch, big.NewInt(0), 0); err == nil {
 		t.Fatal("expected error")
 	}
 
@@ -52,7 +56,7 @@ func TestBatchStorePutChainState(t *testing.T) {
 	testChainState := postagetesting.NewChainState()
 	batchStore := mock.New(
 		mock.WithChainState(testChainState),
-		mock.WithPutErr(errors.New("fails"), testCnt),
+		mock.WithUpdateErr(errors.New("fails"), testCnt),
 	)
 
 	// PutChainState should return an error after a number of tries:

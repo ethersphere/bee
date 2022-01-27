@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -17,11 +18,12 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var noopEvictFn = func([]byte) error { return nil }
 
-func TestBatchStoreGet(t *testing.T) {
+func TestBatchStore_Get(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -33,7 +35,7 @@ func TestBatchStoreGet(t *testing.T) {
 	postagetest.CompareBatches(t, testBatch, got)
 }
 
-func TestBatchStoreIterate(t *testing.T) {
+func TestBatchStore_Iterate(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -54,7 +56,7 @@ func TestBatchStoreIterate(t *testing.T) {
 	postagetest.CompareBatches(t, testBatch, got)
 }
 
-func TestBatchStoreIterateStopsEarly(t *testing.T) {
+func TestBatchStore_IterateStopsEarly(t *testing.T) {
 	testBatch1 := postagetest.MustNewBatch()
 	key1 := batchstore.BatchKey(testBatch1.ID)
 
@@ -104,21 +106,48 @@ func TestBatchStoreIterateStopsEarly(t *testing.T) {
 	}
 }
 
-func TestBatchStorePut(t *testing.T) {
+func TestBatchStore_CreateAndUpdate(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
-	batchStorePutBatch(t, batchStore, testBatch)
 
-	var got postage.Batch
-	stateStoreGet(t, stateStore, key, &got)
-	postagetest.CompareBatches(t, testBatch, &got)
+	if err := batchStore.Create(testBatch, testBatch.Value, testBatch.Depth); err != nil {
+		t.Fatalf("storer.Create(...): unexpected error: %v", err)
+	}
+
+	var have postage.Batch
+	stateStoreGet(t, stateStore, key, &have)
+	postagetest.CompareBatches(t, testBatch, &have)
+
+	// Check for idempotency.
+	if err := batchStore.Create(testBatch, testBatch.Value, testBatch.Depth); err != nil {
+		t.Fatalf("storer.Create(...): unexpected error: %v", err)
+	}
+	cnt := 0
+	if err := stateStore.Iterate(batchstore.ValueKey(testBatch.Value, testBatch.ID), func(k, v []byte) (stop bool, err error) {
+		cnt++
+		return false, nil
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cnt > 1 {
+		t.Fatal("storer.Create(...): method is not idempotent")
+	}
+
+	// Check update.
+	newValue := postagetest.NewBigInt()
+	newDepth := uint8(rand.Intn(int(swarm.MaxPO)))
+	if err := batchStore.Update(testBatch, newValue, newDepth); err != nil {
+		t.Fatalf("storer.Update(...): unexpected error: %v", err)
+	}
+	stateStoreGet(t, stateStore, key, &have)
+	postagetest.CompareBatches(t, testBatch, &have)
 }
 
-func TestBatchStoreGetChainState(t *testing.T) {
+func TestBatchStore_GetChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -133,7 +162,7 @@ func TestBatchStoreGetChainState(t *testing.T) {
 	postagetest.CompareChainState(t, testChainState, got)
 }
 
-func TestBatchStorePutChainState(t *testing.T) {
+func TestBatchStore_PutChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -146,7 +175,7 @@ func TestBatchStorePutChainState(t *testing.T) {
 	postagetest.CompareChainState(t, testChainState, &got)
 }
 
-func TestBatchStoreReset(t *testing.T) {
+func TestBatchStore_Reset(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 	testBatch := postagetest.MustNewBatch()
 
@@ -164,7 +193,7 @@ func TestBatchStoreReset(t *testing.T) {
 
 	batchStore, _ := batchstore.New(stateStore, noopEvictFn, logger)
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
-	err = batchStore.Put(testBatch, big.NewInt(15), 8)
+	err = batchStore.Create(testBatch, big.NewInt(15), 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,12 +219,16 @@ func TestBatchStoreReset(t *testing.T) {
 }
 
 func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v interface{}) {
+	t.Helper()
+
 	if err := st.Get(k, v); err != nil {
 		t.Fatalf("store get batch: %v", err)
 	}
 }
 
 func stateStorePut(t *testing.T, st storage.StateStorer, k string, v interface{}) {
+	t.Helper()
+
 	if err := st.Put(k, v); err != nil {
 		t.Fatalf("store put batch: %v", err)
 	}
@@ -203,6 +236,7 @@ func stateStorePut(t *testing.T, st storage.StateStorer, k string, v interface{}
 
 func batchStoreGetBatch(t *testing.T, st postage.Storer, id []byte) *postage.Batch {
 	t.Helper()
+
 	b, err := st.Get(id)
 	if err != nil {
 		t.Fatalf("postage storer get: %v", err)
@@ -210,15 +244,9 @@ func batchStoreGetBatch(t *testing.T, st postage.Storer, id []byte) *postage.Bat
 	return b
 }
 
-func batchStorePutBatch(t *testing.T, st postage.Storer, b *postage.Batch) {
-	t.Helper()
-	if err := st.Put(b, b.Value, b.Depth); err != nil {
-		t.Fatalf("postage storer put: %v", err)
-	}
-}
-
 func batchStorePutChainState(t *testing.T, st postage.Storer, cs *postage.ChainState) {
 	t.Helper()
+
 	if err := st.PutChainState(cs); err != nil {
 		t.Fatalf("postage storer put chain state: %v", err)
 	}
