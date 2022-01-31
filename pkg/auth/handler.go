@@ -28,7 +28,7 @@ func PermissionCheckHandler(auth auth) func(h http.Handler) http.Handler {
 			keys := strings.Split(reqToken, "Bearer ")
 
 			if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
-				jsonhttp.Forbidden(w, "Missing security token")
+				jsonhttp.Unauthorized(w, "Missing security token")
 				return
 			}
 
@@ -36,7 +36,7 @@ func PermissionCheckHandler(auth auth) func(h http.Handler) http.Handler {
 
 			allowed, err := auth.Enforce(apiKey, r.URL.Path, r.Method)
 			if errors.Is(err, ErrTokenExpired) {
-				jsonhttp.Forbidden(w, "Token expired")
+				jsonhttp.Unauthorized(w, "Token expired")
 				return
 			}
 
