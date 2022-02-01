@@ -28,7 +28,6 @@ var (
 // - free slots allow write
 type Store struct {
 	maxDataSize int             // max length of blobs
-	pool        *sync.Pool      // pool to save on allocating channels
 	writes      chan write      // shared write operations channel
 	shards      []*shard        // shards
 	wg          *sync.WaitGroup // count started operations
@@ -43,12 +42,8 @@ type Store struct {
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
 // - maxDataSize - positive integer representing the maximum blob size to be stored
 func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
-	pool := &sync.Pool{New: func() interface{} {
-		return make(chan entry)
-	}}
 	store := &Store{
 		maxDataSize: maxDataSize,
-		pool:        pool,
 		writes:      make(chan write),
 		shards:      make([]*shard, shardCnt),
 		wg:          &sync.WaitGroup{},
@@ -146,8 +141,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	c := s.pool.Get().(chan entry)
-	defer s.pool.Put(c)
+	c := make(chan entry)
 
 	select {
 	case s.writes <- write{data, c}:
