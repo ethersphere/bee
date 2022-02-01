@@ -48,30 +48,6 @@ type store struct {
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
 
-// create stores given batch and updates radius.
-func (s *store) create(batch *postage.Batch, value *big.Int, depth uint8) error {
-	//oldVal := new(big.Int).Set(batch.Value)
-	//oldDepth := batch.Depth
-
-	//batch.Value.Set(value)
-	//batch.Depth = depth
-
-	if err := s.store.Put(valueKey(batch.Value, batch.ID), nil); err != nil {
-		return err
-	}
-
-	if err := s.update(batch, 0, big.NewInt(0)); err != nil {
-		return err
-	}
-
-	if s.radiusSetter != nil {
-		s.rsMtx.Lock()
-		s.radiusSetter.SetRadius(s.rs.Radius)
-		s.rsMtx.Unlock()
-	}
-	return s.store.Put(batchKey(batch.ID), batch)
-}
-
 // delete removes the batches with ids given as arguments.
 func (s *store) delete(ids ...[]byte) error {
 	for _, id := range ids {
@@ -220,7 +196,27 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	if err := s.store.Delete(valueKey(batch.Value, batch.ID)); err != nil {
 		return err
 	}
-	return s.create(batch, value, depth)
+
+	oldVal := new(big.Int).Set(batch.Value)
+	oldDepth := batch.Depth
+
+	batch.Value.Set(value)
+	batch.Depth = depth
+
+	if err := s.store.Put(valueKey(batch.Value, batch.ID), nil); err != nil {
+		return err
+	}
+
+	if err := s.update(batch, oldDepth, oldVal); err != nil {
+		return err
+	}
+
+	if s.radiusSetter != nil {
+		s.rsMtx.Lock()
+		s.radiusSetter.SetRadius(s.rs.Radius)
+		s.rsMtx.Unlock()
+	}
+	return s.store.Put(batchKey(batch.ID), batch)
 }
 
 // GetChainState is implementation of postage.Storer interface GetChainState method.
