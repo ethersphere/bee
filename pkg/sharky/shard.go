@@ -14,7 +14,6 @@ import (
 const LocationSize int = 7
 
 // Location models the location <shard, slot, length> of a chunk
-// location models the location <shard, offset, length> of a chunk
 type Location struct {
 	Shard  uint8
 	Slot   uint32
@@ -30,6 +29,7 @@ func (l *Location) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
+// UnmarshalBinary constructs the location from byte representation
 func (l *Location) UnmarshalBinary(buf []byte) error {
 	l.Shard = buf[0]
 	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
@@ -54,7 +54,6 @@ type sharkyFile interface {
 	io.ReadWriteCloser
 	io.ReaderAt
 	io.Seeker
-	io.Writer
 	io.WriterAt
 	Truncate(int64) error
 	Sync() error
@@ -76,19 +75,18 @@ type entry struct {
 type read struct {
 	buf  []byte // variable size read buffer
 	slot uint32 // slot to read from
-	at   int    // within-chunk offset for partial reads
 }
 
-// shard models a shard writing to a file with periodic offsets due to fixed datasize
+// shard models a shard writing to a file with periodic offsets due to fixed maxDataSize
 type shard struct {
-	reads    chan read     // channel for reads
-	errc     chan error    // result for reads
-	writes   chan write    // channel for writes
-	index    uint8         // index of the shard
-	datasize int           // max size of blobs
-	file     sharkyFile    // the file handle the shard is writing data to
-	slots    *slots        // component keeping track of freed slots
-	quit     chan struct{} // channel to signal quitting
+	reads       chan read     // channel for reads
+	errc        chan error    // result for reads
+	writes      chan write    // channel for writes
+	index       uint8         // index of the shard
+	maxDataSize int           // max size of blobs
+	file        sharkyFile    // the file handle the shard is writing data to
+	slots       *slots        // component keeping track of freed slots
+	quit        chan struct{} // channel to signal quitting
 }
 
 // forever loop processing
@@ -154,12 +152,12 @@ func (sh *shard) close() error {
 // offset calculates the offset from the slot
 // this is possible since all blobs are of fixed size
 func (sh *shard) offset(slot uint32) int64 {
-	return int64(slot) * int64(sh.datasize)
+	return int64(slot) * int64(sh.maxDataSize)
 }
 
 // read reads loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) read(r read) error {
-	_, err := sh.file.ReadAt(r.buf, sh.offset(r.slot)+int64(r.at))
+	_, err := sh.file.ReadAt(r.buf, sh.offset(r.slot))
 	return err
 }
 

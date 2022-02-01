@@ -1,13 +1,6 @@
 // Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
-// # lockless sharding
-
-// * shard choice responding to backpressure by running operation
-// * read prioritisation over writing
-// * free slots allow write
-
 package sharky
 
 import (
@@ -29,14 +22,18 @@ var (
 )
 
 // Store models the sharded fix-length blobstore
+// Design provides lockless sharding:
+// - shard choice responding to backpressure by running operation
+// - read prioritisation over writing
+// - free slots allow write
 type Store struct {
-	datasize int             // max length of blobs
-	pool     *sync.Pool      // pool to save on allocating channels
-	writes   chan write      // shared write operations channel
-	shards   []*shard        // shards
-	wg       *sync.WaitGroup // count started operations
-	quit     chan struct{}   // quit channel
-	metrics  metrics
+	maxDataSize int             // max length of blobs
+	pool        *sync.Pool      // pool to save on allocating channels
+	writes      chan write      // shared write operations channel
+	shards      []*shard        // shards
+	wg          *sync.WaitGroup // count started operations
+	quit        chan struct{}   // quit channel
+	metrics     metrics
 }
 
 // New constructs a sharded blobstore
@@ -44,22 +41,22 @@ type Store struct {
 // - base directory string
 // - shard count - positive integer < 256 - cannot be zero or expect panic
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
-// - datasize - positive integer representing the maximum blob size to be stored
-func New(basedir fs.FS, shardCnt int, datasize int) (*Store, error) {
+// - maxDataSize - positive integer representing the maximum blob size to be stored
+func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 	pool := &sync.Pool{New: func() interface{} {
 		return make(chan entry)
 	}}
 	store := &Store{
-		datasize: datasize,
-		pool:     pool,
-		writes:   make(chan write),
-		shards:   make([]*shard, shardCnt),
-		wg:       &sync.WaitGroup{},
-		quit:     make(chan struct{}),
-		metrics:  newMetrics(),
+		maxDataSize: maxDataSize,
+		pool:        pool,
+		writes:      make(chan write),
+		shards:      make([]*shard, shardCnt),
+		wg:          &sync.WaitGroup{},
+		quit:        make(chan struct{}),
+		metrics:     newMetrics(),
 	}
 	for i := range store.shards {
-		s, err := store.create(uint8(i), datasize, basedir)
+		s, err := store.create(uint8(i), maxDataSize, basedir)
 		if err != nil {
 			return nil, err
 		}
@@ -71,17 +68,18 @@ func New(basedir fs.FS, shardCnt int, datasize int) (*Store, error) {
 }
 
 // Close closes each shard and return incidental errors from each shard
-func (s *Store) Close() (err error) {
+func (s *Store) Close() error {
 	close(s.quit)
+	err := new(multierror.Error)
 	for _, sh := range s.shards {
 		err = multierror.Append(err, sh.close())
 	}
 
-	return err.(*multierror.Error).ErrorOrNil()
+	return err.ErrorOrNil()
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Store) create(index uint8, datasize int, basedir fs.FS) (*shard, error) {
+func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, error) {
 	file, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
@@ -96,14 +94,14 @@ func (s *Store) create(index uint8, datasize int, basedir fs.FS) (*shard, error)
 		return nil, err
 	}
 	sh := &shard{
-		reads:    make(chan read),
-		errc:     make(chan error),
-		writes:   s.writes,
-		index:    index,
-		datasize: datasize,
-		file:     file.(sharkyFile),
-		slots:    sl,
-		quit:     s.quit,
+		reads:       make(chan read),
+		errc:        make(chan error),
+		writes:      s.writes,
+		index:       index,
+		maxDataSize: maxDataSize,
+		file:        file.(sharkyFile),
+		slots:       sl,
+		quit:        s.quit,
 	}
 	terminated := make(chan struct{})
 	sh.slots.wg.Add(1)
@@ -120,7 +118,7 @@ func (s *Store) create(index uint8, datasize int, basedir fs.FS) (*shard, error)
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
-	case sh.reads <- read{buf[:loc.Length], loc.Slot, 0}:
+	case sh.reads <- read{buf[:loc.Length], loc.Slot}:
 		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
@@ -142,7 +140,7 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 // Write stores a new blob and returns its location to be used as a reference
 // It can be given to a Read call to return the stored blob.
 func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error) {
-	if len(data) > s.datasize {
+	if len(data) > s.maxDataSize {
 		return loc, ErrTooLong
 	}
 	s.wg.Add(1)

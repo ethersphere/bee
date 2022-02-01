@@ -58,7 +58,7 @@ func TestInvalid(t *testing.T) {
 			chunk: func() swarm.Chunk {
 				data := make([]byte, len(sch.Data()))
 				copy(data, sch.Data())
-				cursor := swarm.HashSize + swarm.SignatureSize
+				cursor := swarm.HashSize + swarm.SocSignatureSize
 				chunkData := data[cursor:]
 				chunkData[0] = 0x01
 				return swarm.NewChunk(socAddress, data)
@@ -80,7 +80,7 @@ func TestInvalid(t *testing.T) {
 				data := make([]byte, len(sch.Data()))
 				copy(data, sch.Data())
 				// modify signature
-				cursor := swarm.HashSize + swarm.SignatureSize
+				cursor := swarm.HashSize + swarm.SocSignatureSize
 				sig := data[swarm.HashSize:cursor]
 				sig[0] = 0x01
 				return swarm.NewChunk(socAddress, data)

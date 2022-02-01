@@ -20,14 +20,14 @@ import (
 // DBSchemaSharky is the bee schema identifier for sharky.
 const DBSchemaSharky = "sharky"
 
-// migrateDeadPush cleans up dangling push index entries that make the pusher stop pushing entries
+// migrateSharky writes the new retrievalDataIndex format by storing chunk data in sharky
 func migrateSharky(db *DB) error {
-	db.logger.Debug("starting sharky migration; have patience, this might take a while...")
+	db.logger.Info("starting sharky migration; have patience, this might take a while...")
 	var (
 		start          = time.Now()
 		batch          = new(leveldb.Batch)
 		batchSize      = 10000
-		batchCount     = 0
+		batchesCount   = 0
 		headerSize     = 16 + postage.StampSize
 		compactionRate = 100
 		compactionSize = batchSize * compactionRate
@@ -151,9 +151,9 @@ func migrateSharky(db *DB) error {
 			if err = retrievalDataIndex.DeleteInBatch(batch, item); err != nil {
 				return false, err
 			}
-			batchCount++
+			batchesCount++
 			isBatchEmpty = false
-			if batchCount%batchSize == 0 {
+			if batchesCount%batchSize == 0 {
 				db.logger.Debugf("collected %d entries; trying to flush...", batchSize)
 				return true, nil
 			}
@@ -174,10 +174,10 @@ func migrateSharky(db *DB) error {
 			return fmt.Errorf("write batch: %w", err)
 		}
 		dirtyLocations = nil
-		db.logger.Debugf("flush ok; progress so far: %d chunks", batchCount)
+		db.logger.Debugf("flush ok; progress so far: %d chunks", batchesCount)
 		batch.Reset()
 
-		if batchCount%compactionSize == 0 {
+		if batchesCount%compactionSize == 0 {
 			dur, err := compaction()
 			if err != nil {
 				return err
@@ -193,6 +193,6 @@ func migrateSharky(db *DB) error {
 	compactionTime += dur
 
 	db.logger.Debugf("leveldb compaction took: %v", compactionTime)
-	db.logger.Debugf("done migrating to sharky; it took me %s to move %d chunks.", time.Since(start), batchCount)
+	db.logger.Infof("done migrating to sharky; it took me %s to move %d chunks.", time.Since(start), batchesCount)
 	return nil
 }
