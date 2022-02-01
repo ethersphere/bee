@@ -50,17 +50,17 @@ type store struct {
 
 // create stores given batch and updates radius.
 func (s *store) create(batch *postage.Batch, value *big.Int, depth uint8) error {
-	oldVal := new(big.Int).Set(batch.Value)
-	oldDepth := batch.Depth
+	//oldVal := new(big.Int).Set(batch.Value)
+	//oldDepth := batch.Depth
 
-	batch.Value.Set(value)
-	batch.Depth = depth
+	//batch.Value.Set(value)
+	//batch.Depth = depth
 
 	if err := s.store.Put(valueKey(batch.Value, batch.ID), nil); err != nil {
 		return err
 	}
 
-	if err := s.update(batch, oldDepth, oldVal); err != nil {
+	if err := s.update(batch, 0, big.NewInt(0)); err != nil {
 		return err
 	}
 
@@ -184,12 +184,23 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 	})
 }
 
-// Create is implementation of postage.Storer interface Create method.
+// Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
-func (s *store) Create(batch *postage.Batch, value *big.Int, depth uint8) error {
+func (s *store) Save(batch *postage.Batch) error {
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
-		return s.create(batch, value, depth)
+		if err := s.store.Put(valueKey(batch.Value, batch.ID), nil); err != nil {
+			return err
+		}
+		if err := s.update(batch, 0, big.NewInt(0)); err != nil {
+			return err
+		}
+		if s.radiusSetter != nil {
+			s.rsMtx.Lock()
+			s.radiusSetter.SetRadius(s.rs.Radius)
+			s.rsMtx.Unlock()
+		}
+		return s.store.Put(batchKey(batch.ID), batch)
 	case err != nil:
 		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batch.ID), err)
 	}

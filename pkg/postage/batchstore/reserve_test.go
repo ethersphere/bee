@@ -673,24 +673,18 @@ func diluteBatch(t *testing.T, s postage.Storer, batches []*postage.Batch, bdp .
 
 func addBatch(t *testing.T, s postage.Storer, dvp ...depthValueTuple) []*postage.Batch {
 	t.Helper()
+
 	var batches []*postage.Batch
 	for _, v := range dvp {
-		b := postagetest.MustNewBatch()
-
-		// this is needed since the initial batch state should be
-		// always zero. should be rectified with less magical test
-		// helpers
-		b.Value = big.NewInt(0)
-		b.Depth = uint8(0)
-		b.Start = 111
-
-		val := big.NewInt(int64(v.value))
-
-		err := s.Create(b, val, v.depth)
-		if err != nil {
+		batch := postagetest.MustNewBatch(
+			postagetest.WithValue(int64(v.value)),
+			postagetest.WithDepth(v.depth),
+			postagetest.WithStart(111),
+		)
+		if err := s.Save(batch); err != nil {
 			t.Fatal(err)
 		}
-		batches = append(batches, b)
+		batches = append(batches, batch)
 	}
 
 	return batches

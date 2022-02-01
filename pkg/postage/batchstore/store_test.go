@@ -7,7 +7,6 @@ package batchstore_test
 import (
 	"errors"
 	"io"
-	"math/big"
 	"math/rand"
 	"testing"
 
@@ -106,7 +105,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 	}
 }
 
-func TestBatchStore_CreateAndUpdate(t *testing.T) {
+func TestBatchStore_SaveAndUpdate(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -114,8 +113,8 @@ func TestBatchStore_CreateAndUpdate(t *testing.T) {
 	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
-	if err := batchStore.Create(testBatch, testBatch.Value, testBatch.Depth); err != nil {
-		t.Fatalf("storer.Create(...): unexpected error: %v", err)
+	if err := batchStore.Save(testBatch); err != nil {
+		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
 
 	var have postage.Batch
@@ -123,8 +122,8 @@ func TestBatchStore_CreateAndUpdate(t *testing.T) {
 	postagetest.CompareBatches(t, testBatch, &have)
 
 	// Check for idempotency.
-	if err := batchStore.Create(testBatch, testBatch.Value, testBatch.Depth); err != nil {
-		t.Fatalf("storer.Create(...): unexpected error: %v", err)
+	if err := batchStore.Save(testBatch); err != nil {
+		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
 	cnt := 0
 	if err := stateStore.Iterate(batchstore.ValueKey(testBatch.Value, testBatch.ID), func(k, v []byte) (stop bool, err error) {
@@ -134,7 +133,7 @@ func TestBatchStore_CreateAndUpdate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if cnt > 1 {
-		t.Fatal("storer.Create(...): method is not idempotent")
+		t.Fatal("storer.Save(...): method is not idempotent")
 	}
 
 	// Check update.
@@ -177,7 +176,10 @@ func TestBatchStore_PutChainState(t *testing.T) {
 
 func TestBatchStore_Reset(t *testing.T) {
 	testChainState := postagetest.NewChainState()
-	testBatch := postagetest.MustNewBatch()
+	testBatch := postagetest.MustNewBatch(
+		postagetest.WithValue(15),
+		postagetest.WithDepth(8),
+	)
 
 	path := t.TempDir()
 	logger := logging.New(io.Discard, 0)
@@ -193,7 +195,7 @@ func TestBatchStore_Reset(t *testing.T) {
 
 	batchStore, _ := batchstore.New(stateStore, noopEvictFn, logger)
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
-	err = batchStore.Create(testBatch, big.NewInt(15), 8)
+	err = batchStore.Save(testBatch)
 	if err != nil {
 		t.Fatal(err)
 	}

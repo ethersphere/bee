@@ -16,13 +16,16 @@ import (
 func TestBatchStore(t *testing.T) {
 	const testCnt = 3
 
-	testBatch := postagetesting.MustNewBatch()
+	testBatch := postagetesting.MustNewBatch(
+		postagetesting.WithValue(0),
+		postagetesting.WithDepth(0),
+	)
 	batchStore := mock.New(
 		mock.WithGetErr(errors.New("fails"), testCnt),
 		mock.WithUpdateErr(errors.New("fails"), testCnt),
 	)
 
-	if err := batchStore.Create(testBatch, big.NewInt(0), 0); err != nil {
+	if err := batchStore.Save(testBatch); err != nil {
 		t.Fatal("unexpected error")
 	}
 

@@ -103,23 +103,23 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		// don't do anything
 		return fmt.Errorf("batch service: batch %x: %w", id, ErrZeroValueBatch)
 	}
-	b := &postage.Batch{
+	batch := &postage.Batch{
 		ID:          id,
 		Owner:       owner,
-		Value:       big.NewInt(0),
+		Value:       normalisedBalance,
 		Start:       svc.storer.GetChainState().Block,
 		Depth:       depth,
 		BucketDepth: bucketDepth,
 		Immutable:   immutable,
 	}
 
-	err := svc.storer.Create(b, normalisedBalance, depth)
+	err := svc.storer.Save(batch)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
 
 	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
-		if err := svc.batchListener.HandleCreate(b); err != nil {
+		if err := svc.batchListener.HandleCreate(batch); err != nil {
 			return fmt.Errorf("create batch: %w", err)
 		}
 	}
@@ -129,7 +129,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: created batch id %s, tx %x, checksum %x", hex.EncodeToString(b.ID), txHash, cs)
+	svc.logger.Debugf("batch service: created batch id %s, tx %x, checksum %x", hex.EncodeToString(batch.ID), txHash, cs)
 	return nil
 }
 

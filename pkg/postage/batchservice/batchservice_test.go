@@ -624,7 +624,7 @@ func newTestStoreAndService(t *testing.T, opts ...mock.Option) (postage.EventUpd
 func createBatch(t *testing.T, store postage.Storer, b *postage.Batch) {
 	t.Helper()
 
-	if err := store.Create(b, big.NewInt(0), 0); err != nil {
+	if err := store.Save(b, big.NewInt(0), 0); err != nil {
 		t.Fatalf("store create batch: %v", err)
 	}
 }

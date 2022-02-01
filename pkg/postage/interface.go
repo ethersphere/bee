@@ -38,10 +38,10 @@ type Storer interface {
 	// Iterate iterates through stored batches.
 	Iterate(func(*Batch) (bool, error)) error
 
-	// Create creates new batch with given value and depth. The call is
-	// idempotent, so a subsequent call would not create new batches if
-	// a batch with such ID already exists.
-	Create(*Batch, *big.Int, uint8) error
+	// Save stores given batch in the store. The call is idempotent, so
+	// a subsequent call would not create new batches if a batch with
+	// such ID already exists.
+	Save(*Batch) error
 
 	// Update updates a given batch in the store by first deleting the
 	// existing batch and then creating a new one. It's an error to update

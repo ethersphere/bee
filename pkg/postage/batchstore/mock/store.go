@@ -112,13 +112,11 @@ func (bs *BatchStore) Iterate(f func(*postage.Batch) (bool, error)) error {
 }
 
 // Create mocks the Create method from the BatchStore.
-func (bs *BatchStore) Create(batch *postage.Batch, value *big.Int, depth uint8) error {
+func (bs *BatchStore) Save(batch *postage.Batch) error {
 	if bs.batch != nil {
 		return errors.New("batch already taken")
 	}
 	bs.batch = batch
-	batch.Depth = depth
-	batch.Value.Set(value)
 	bs.id = batch.ID
 	return nil
 }
