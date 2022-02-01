@@ -18,7 +18,7 @@ type locOrErr struct {
 	loc sharky.Location
 }
 
-// recovery tries to recover a dirty database
+// recovery tries to recover a dirty database.
 func recovery(db *DB) (chan locOrErr, error) {
 	// - go through all retrieval data index entries
 	// - find all used locations in sharky

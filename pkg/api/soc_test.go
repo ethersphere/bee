@@ -81,7 +81,7 @@ func TestSOC(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 
 		// modify the sign
-		sig := make([]byte, swarm.SignatureSize)
+		sig := make([]byte, swarm.SocSignatureSize)
 		copy(sig, s.Signature)
 		sig[12] = 0x98
 		sig[10] = 0x12

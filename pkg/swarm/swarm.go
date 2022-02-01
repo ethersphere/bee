@@ -28,9 +28,9 @@ const (
 	ExtendedPO        uint8 = MaxPO + 5
 	MaxBins                 = MaxPO + 1
 	ChunkWithSpanSize       = ChunkSize + SpanSize
-	SignatureSize           = 65
-	MinChunkSize            = HashSize + SignatureSize + SpanSize
-	MaxChunkSize            = MinChunkSize + ChunkSize
+	SocSignatureSize        = 65
+	SocMinChunkSize         = HashSize + SocSignatureSize + SpanSize
+	SocMaxChunkSize         = SocMinChunkSize + ChunkSize
 )
 
 var (

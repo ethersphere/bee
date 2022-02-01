@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -64,8 +65,6 @@ var (
 )
 
 const (
-	// 32 * 312500 chunks = 10000000 chunks (40GB)
-	// currently this size is enforced by the localstore
 	sharkyNoOfShards    = 32
 	sharkyDirtyFileName = ".DIRTY"
 )
@@ -244,7 +243,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 		return err
 	}
 
-	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.MaxChunkSize)
+	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
 		return err
 	}
@@ -357,13 +356,12 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 		err = safeInit(path, sharkyBasePath, db)
 		if err != nil {
-			db.logger.Errorf("safe sharky initialization failed %w", err)
-			return nil, err
+			return nil, fmt.Errorf("safe sharky initialization failed: %w", err)
 		}
 		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
 	}
 
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.MaxChunkSize)
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +384,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	} else {
 		// Execute possible migrations.
 		if err := db.migrate(schemaName); err != nil {
-			return nil, multierror.Append(err, db.sharky.Close(), db.shed.Close())
+			return nil, multierror.Append(err, db.sharky.Close(), db.shed.Close(), db.fdirtyCloser())
 		}
 	}
 

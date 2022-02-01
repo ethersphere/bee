@@ -1,3 +1,6 @@
+// Copyright 2021 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package sharky
 
 import (
@@ -81,7 +84,7 @@ func readFromLocation(t *testing.T, shard *shard, loc Location) []byte {
 	buf := make([]byte, loc.Length)
 
 	select {
-	case shard.reads <- read{buf[:loc.Length], loc.Slot, 0}:
+	case shard.reads <- read{buf[:loc.Length], loc.Slot}:
 		if err := <-shard.errc; err != nil {
 			t.Fatal("read", err)
 		}
@@ -134,14 +137,14 @@ func newShard(t *testing.T) *shard {
 
 	quit := make(chan struct{})
 	shard := &shard{
-		reads:    make(chan read),
-		errc:     make(chan error),
-		writes:   make(chan write),
-		index:    uint8(index),
-		datasize: 1,
-		file:     file.(sharkyFile),
-		slots:    slots,
-		quit:     quit,
+		reads:       make(chan read),
+		errc:        make(chan error),
+		writes:      make(chan write),
+		index:       uint8(index),
+		maxDataSize: 1,
+		file:        file.(sharkyFile),
+		slots:       slots,
+		quit:        quit,
 	}
 
 	t.Cleanup(func() {

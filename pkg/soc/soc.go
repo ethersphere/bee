@@ -118,7 +118,7 @@ func (s *SOC) Sign(signer crypto.Signer) (swarm.Chunk, error) {
 // FromChunk recreates a SOC representation from swarm.Chunk data.
 func FromChunk(sch swarm.Chunk) (*SOC, error) {
 	chunkData := sch.Data()
-	if len(chunkData) < swarm.MinChunkSize {
+	if len(chunkData) < swarm.SocMinChunkSize {
 		return nil, errWrongChunkSize
 	}
 
@@ -129,8 +129,8 @@ func FromChunk(sch swarm.Chunk) (*SOC, error) {
 	s.id = chunkData[cursor:swarm.HashSize]
 	cursor += swarm.HashSize
 
-	s.signature = chunkData[cursor : cursor+swarm.SignatureSize]
-	cursor += swarm.SignatureSize
+	s.signature = chunkData[cursor : cursor+swarm.SocSignatureSize]
+	cursor += swarm.SocSignatureSize
 
 	ch, err := cac.NewWithDataSpan(chunkData[cursor:])
 	if err != nil {

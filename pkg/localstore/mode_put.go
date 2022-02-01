@@ -142,7 +142,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			for _, l := range committedLocations {
 				err := db.sharky.Release(ctx, l)
 				if err != nil {
-					db.logger.Warning("failed releasing sharky location", err)
+					db.logger.Warning("failed releasing sharky location on error", err)
 				}
 			}
 		}
@@ -246,7 +246,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	return exist, nil
 }
 
-// putSharky will add the item to sharky storage if it doesnt exist
+// putSharky will add the item to sharky storage if it doesnt exist.
 func (db *DB) putSharky(ctx context.Context, item shed.Item) (loc sharky.Location, exists bool, err error) {
 	exists, err = db.retrievalDataIndex.Has(item)
 	if err != nil {

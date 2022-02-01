@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -131,11 +132,12 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 		return err
 	}
 
+	sharkyErr := new(multierror.Error)
 	for _, l := range committedLocations {
-		err = db.sharky.Release(ctx, l)
-		if err != nil {
-			db.logger.Warning("failed releasing sharky location", l)
-		}
+		sharkyErr = multierror.Append(sharkyErr, db.sharky.Release(ctx, l))
+	}
+	if sharkyErr.ErrorOrNil() != nil {
+		return sharkyErr.ErrorOrNil()
 	}
 
 	for po := range triggerPullFeed {
