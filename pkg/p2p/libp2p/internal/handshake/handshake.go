@@ -66,11 +66,16 @@ type SenderMatcher interface {
 	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error)
 }
 
+type ResponseParser interface {
+	ParseAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error)
+}
+
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
 	senderMatcher         SenderMatcher
+	parser                ResponseParser
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           []byte
@@ -100,7 +105,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, parser ResponseParser, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -113,6 +118,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		fullNode:              fullNode,
 		transaction:           transaction,
 		senderMatcher:         isSender,
+		parser:                parser,
 		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		libp2pID:              ownPeerID,
 		logger:                logger,
@@ -196,14 +202,14 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, blockHash)
+	remoteBzzAddress, err := s.parser.ParseAck(resp.Ack, blockHash)
 	if err != nil {
 		return nil, err
 	}
 
 	// Synced read:
 	welcomeMessage := s.GetWelcomeMessage()
-	if err := w.WriteMsgWithContext(ctx, &pb.Ack{
+	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
 			Overlay:   bzzAddress.Overlay.Bytes(),
@@ -213,7 +219,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		FullNode:       s.fullNode,
 		Transaction:    s.transaction,
 		WelcomeMessage: welcomeMessage,
-	}); err != nil {
+	}
+
+	if err := w.WriteMsgWithContext(ctx, msg); err != nil {
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
