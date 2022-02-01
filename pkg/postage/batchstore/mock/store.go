@@ -111,7 +111,7 @@ func (bs *BatchStore) Iterate(f func(*postage.Batch) (bool, error)) error {
 	return err
 }
 
-// Create mocks the Create method from the BatchStore.
+// Save mocks the Save method from the BatchStore.
 func (bs *BatchStore) Save(batch *postage.Batch) error {
 	if bs.batch != nil {
 		return errors.New("batch already taken")
