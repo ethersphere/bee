@@ -218,7 +218,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	addressbook := addressbook.New(stateStore)
 
 	var (
-		swapBackend        transaction.Backend
+		swapBackend        transaction.Backend = mockSwapBackend(logger)
 		overlayEthAddress  common.Address
 		chainID            int64
 		transactionService transaction.Service
@@ -229,24 +229,30 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
-	swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
-		p2pCtx,
-		logger,
-		stateStore,
-		o.SwapEndpoint,
-		signer,
-		pollingInterval,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("init chain: %w", err)
+
+	var swapBackendEnabled bool // TODO: make configurable
+
+	if swapBackendEnabled {
+		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+			p2pCtx,
+			logger,
+			stateStore,
+			o.SwapEndpoint,
+			signer,
+			pollingInterval,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("init chain: %w", err)
+		}
+		b.ethClientCloser = swapBackend.Close
+
+		if o.ChainID != -1 && o.ChainID != chainID {
+			return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
+		}
 	}
-	b.ethClientCloser = swapBackend.Close
+
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
-
-	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
-	}
 
 	var authenticator *auth.Authenticator
 
@@ -386,19 +392,24 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
 
-	err = CheckOverlayWithStore(swarmAddress, stateStore)
-	if err != nil {
-		return nil, err
+	if swapBackendEnabled { // this is temporary
+		err = CheckOverlayWithStore(swarmAddress, stateStore)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	senderMatcher := transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
-
-	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
-	if err != nil {
-		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
+	if swapBackendEnabled {
+		senderMatcher := transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
+		_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
+		if err != nil {
+			return nil, fmt.Errorf("identity transaction verification failed: %w", err)
+		}
 	}
+
+	senderMatcher := new(fakeMatcher)
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
@@ -463,41 +474,43 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	)
 
 	var postageSyncStart uint64 = 0
-	chainCfg, found := config.GetChainConfig(chainID)
-	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
-	if o.PostageContractAddress != "" {
-		if !common.IsHexAddress(o.PostageContractAddress) {
-			return nil, errors.New("malformed postage stamp address")
+	if swapBackendEnabled {
+		chainCfg, found := config.GetChainConfig(chainID)
+		postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
+		if o.PostageContractAddress != "" {
+			if !common.IsHexAddress(o.PostageContractAddress) {
+				return nil, errors.New("malformed postage stamp address")
+			}
+			postageContractAddress = common.HexToAddress(o.PostageContractAddress)
+		} else if !found {
+			return nil, errors.New("no known postage stamp addresses for this network")
 		}
-		postageContractAddress = common.HexToAddress(o.PostageContractAddress)
-	} else if !found {
-		return nil, errors.New("no known postage stamp addresses for this network")
-	}
-	if found {
-		postageSyncStart = startBlock
-	}
+		if found {
+			postageSyncStart = startBlock
+		}
 
-	eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
-	b.listenerCloser = eventListener
+		eventListener = listener.New(logger, swapBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+		b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
-	if err != nil {
-		return nil, err
+		batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		if err != nil {
+			return nil, err
+		}
+
+		erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		postageContractService = postagecontract.New(
+			overlayEthAddress,
+			postageContractAddress,
+			erc20Address,
+			transactionService,
+			post,
+			batchStore,
+		)
 	}
-
-	erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	postageContractService = postagecontract.New(
-		overlayEthAddress,
-		postageContractAddress,
-		erc20Address,
-		transactionService,
-		post,
-		batchStore,
-	)
 
 	if natManager := p2ps.NATManager(); natManager != nil {
 		// wait for nat manager to init
@@ -839,8 +852,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			debugAPIService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
 
-		if swapBackendMetrics, ok := swapBackend.(metrics.Collector); ok {
-			debugAPIService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
+		if swapBackendEnabled {
+			if swapBackendMetrics, ok := swapBackend.(metrics.Collector); ok {
+				debugAPIService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
+			}
 		}
 
 		if apiService != nil {
