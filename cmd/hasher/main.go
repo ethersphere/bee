@@ -20,7 +20,8 @@ func main() {
 	hashed, err := bcrypt.GenerateFromPassword([]byte(plainText), bcrypt.DefaultCost)
 
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, "failed to generate password hash")
+		os.Exit(1)
 	}
 
 	fmt.Println(string(hashed))
