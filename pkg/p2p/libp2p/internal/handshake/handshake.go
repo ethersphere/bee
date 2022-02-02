@@ -57,10 +57,6 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
-type SenderMatcher interface {
-	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error)
-}
-
 type ResponseParser interface {
 	ParseAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error)
 }
@@ -69,7 +65,7 @@ type ResponseParser interface {
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	senderMatcher         SenderMatcher
+	senderMatcher         p2p.SenderMatcher
 	parser                ResponseParser
 	overlay               swarm.Address
 	fullNode              bool
@@ -97,7 +93,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, parser ResponseParser, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, parser ResponseParser, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
