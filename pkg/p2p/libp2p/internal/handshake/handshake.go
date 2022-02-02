@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
 
-	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -76,12 +74,9 @@ type Service struct {
 	transaction           []byte
 	networkID             uint64
 	welcomeMessage        atomic.Value
-	receivedHandshakes    map[libp2ppeer.ID]struct{}
-	receivedHandshakesMu  sync.Mutex
 	logger                logging.Logger
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
-	network.Notifiee      // handshake service can be the receiver for network.Notify
 	picker                p2p.Picker
 }
 
@@ -113,11 +108,9 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		fullNode:              fullNode,
 		transaction:           transaction,
 		senderMatcher:         isSender,
-		receivedHandshakes:    make(map[libp2ppeer.ID]struct{}),
 		libp2pID:              ownPeerID,
 		logger:                logger,
 		metrics:               newMetrics(),
-		Notifiee:              new(network.NoopNotifiee),
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
@@ -233,14 +226,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
-	s.receivedHandshakesMu.Lock()
-	if _, exists := s.receivedHandshakes[remotePeerID]; exists {
-		s.receivedHandshakesMu.Unlock()
-		return nil, ErrHandshakeDuplicate
-	}
-
-	s.receivedHandshakes[remotePeerID] = struct{}{}
-	s.receivedHandshakesMu.Unlock()
 	w, r := protobuf.NewWriterAndReader(stream)
 	fullRemoteMA, err := buildFullMA(remoteMultiaddr, remotePeerID)
 	if err != nil {
@@ -340,14 +325,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		BzzAddress: remoteBzzAddress,
 		FullNode:   ack.FullNode,
 	}, nil
-}
-
-// Disconnected is called when the peer disconnects.
-func (s *Service) Disconnected(_ network.Network, c network.Conn) {
-	s.receivedHandshakesMu.Lock()
-	defer s.receivedHandshakesMu.Unlock()
-	delete(s.receivedHandshakes, c.RemotePeer())
-	s.logger.Debugf("handshake: disconnected peer %s", c.RemotePeer())
 }
 
 // SetWelcomeMessage sets the new handshake welcome message.

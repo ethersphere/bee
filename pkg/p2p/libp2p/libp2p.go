@@ -287,8 +287,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	connMetricNotify := newConnMetricNotify(s.metrics)
-	h.Network().Notify(peerRegistry)       // update peer registry on network events
-	h.Network().Notify(s.handshakeService) // update handshake service on network events
+	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
 	return s, nil
 }
