@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 type fakeMatcher struct{}
@@ -30,7 +31,8 @@ type loggingSwapBackend struct {
 }
 
 func (m loggingSwapBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	panic("MockSwapBackend: CodeAt")
+	m.log.Debug("MockSwapBackend: CodeAt")
+	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0), nil
 }
 func (m loggingSwapBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	panic("MockSwapBackend: CallContract")
