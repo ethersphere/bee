@@ -232,6 +232,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var swapBackendEnabled bool // TODO: make configurable
 
+	if o.GatewayMode || o.BootnodeMode || o.SwapEnable || o.FullNodeMode {
+		swapBackendEnabled = true
+	}
+
 	if !swapBackendEnabled {
 		swapBackend = mockSwapBackend(logger)
 	}
