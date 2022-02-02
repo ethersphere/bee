@@ -57,8 +57,6 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		return 0, err
 	}
 
-	ctx := context.Background()
-
 	err = db.retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 
 		loc, err := sharky.LocationFromBinary(item.Location)
@@ -67,7 +65,7 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 		}
 
 		data := make([]byte, loc.Length)
-		err = db.sharky.Read(ctx, loc, data)
+		err = db.sharky.Read(context.TODO(), loc, data)
 		if err != nil {
 			return false, err
 		}

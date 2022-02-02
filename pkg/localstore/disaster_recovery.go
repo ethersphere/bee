@@ -13,6 +13,8 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 )
 
+const headerSize = 16 + postage.StampSize
+
 type locOrErr struct {
 	err error
 	loc sharky.Location
@@ -25,8 +27,6 @@ func recovery(db *DB) (chan locOrErr, error) {
 	// - return them so that sharky can be initialized with them
 
 	// first define the index instance
-	headerSize := 16 + postage.StampSize
-
 	retrievalDataIndex, err := db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Location", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
