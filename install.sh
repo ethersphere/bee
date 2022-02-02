@@ -40,7 +40,7 @@ run_as_root() {
 }
 
 supported() {
-  local supported="darwin-amd64\nlinux-386\nlinux-amd64\nlinux-arm64\nlinux-armv6"
+  local supported="darwin-arm64\ndarwin-amd64\nlinux-386\nlinux-amd64\nlinux-arm64\nlinux-armv6"
   if ! echo "${supported}" | grep -q "${OS}-${ARCH}"; then
     if [ $OS == "windows" ]; then
       echo "Auto install not supported for Windows."
