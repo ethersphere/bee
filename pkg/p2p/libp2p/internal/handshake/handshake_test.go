@@ -104,7 +104,11 @@ func TestHandshake(t *testing.T) {
 
 	senderMatcher := &MockSenderMatcher{v: true, blockHash: blockhash}
 
-	handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, nil, node1Info.BzzAddress.Overlay, networkID, true, trxHash, testWelcomeMessage, node1AddrInfo.ID, logger)
+	parser := &mockParser{
+		addr: node2BzzAddress,
+	}
+
+	handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, parser, node1Info.BzzAddress.Overlay, networkID, true, trxHash, testWelcomeMessage, node1AddrInfo.ID, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +136,13 @@ func TestHandshake(t *testing.T) {
 				WelcomeMessage: testWelcomeMessage,
 			},
 		}); err != nil {
+			t.Fatal(err)
+		}
+		parser := &mockParser{
+			addr: node2BzzAddress,
+		}
+		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, parser, node1Info.BzzAddress.Overlay, networkID, true, trxHash, testWelcomeMessage, node1AddrInfo.ID, logger)
+		if err != nil {
 			t.Fatal(err)
 		}
 
@@ -376,7 +387,14 @@ func TestHandshake(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-
+		parser := &mockParser{
+			addr: node2BzzAddress,
+			err:  handshake.ErrInvalidAck,
+		}
+		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, parser, node1Info.BzzAddress.Overlay, networkID, true, trxHash, testWelcomeMessage, node1AddrInfo.ID, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
 		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
 		if res != nil {
 			t.Fatal("res should be nil")
@@ -819,4 +837,13 @@ func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Addres
 	}
 
 	return nil, errors.New("")
+}
+
+type mockParser struct {
+	addr *bzz.Address
+	err  error
+}
+
+func (m *mockParser) ParseAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
+	return m.addr, m.err
 }
