@@ -347,6 +347,7 @@ func (s *Service) Disconnected(_ network.Network, c network.Conn) {
 	s.receivedHandshakesMu.Lock()
 	defer s.receivedHandshakesMu.Unlock()
 	delete(s.receivedHandshakes, c.RemotePeer())
+	s.logger.Debugf("handshake: disconnected peer %s", c.RemotePeer())
 }
 
 // SetWelcomeMessage sets the new handshake welcome message.

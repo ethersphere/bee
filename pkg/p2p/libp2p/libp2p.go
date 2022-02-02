@@ -806,6 +806,7 @@ func (s *Service) disconnected(address swarm.Address) {
 	if s.reacher != nil {
 		s.reacher.Disconnected(address)
 	}
+	s.logger.Debugf("libp2p: disconnected peer %s; overlay %s", peerID, address)
 }
 
 func (s *Service) Peers() []p2p.Peer {

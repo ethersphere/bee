@@ -154,6 +154,7 @@ type Peer struct {
 	Address         swarm.Address
 	FullNode        bool
 	EthereumAddress []byte
+	Connections     int
 }
 
 // HandlerFunc handles a received Stream from a Peer.

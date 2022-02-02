@@ -120,8 +120,9 @@ func (r *peerRegistry) peers() []p2p.Peer {
 	peers := make([]p2p.Peer, 0, len(r.overlays))
 	for p, a := range r.overlays {
 		peers = append(peers, p2p.Peer{
-			Address:  a,
-			FullNode: r.full[p],
+			Address:     a,
+			FullNode:    r.full[p],
+			Connections: len(r.connections[p]),
 		})
 	}
 	r.mu.RUnlock()

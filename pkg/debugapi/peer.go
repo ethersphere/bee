@@ -73,8 +73,9 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 
 // Peer holds information about a Peer.
 type Peer struct {
-	Address  swarm.Address `json:"address"`
-	FullNode bool          `json:"fullNode"`
+	Address     swarm.Address `json:"address"`
+	FullNode    bool          `json:"fullNode"`
+	Connections int           `json:"connections"`
 }
 
 type peersResponse struct {
@@ -103,8 +104,9 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request
 func mapPeers(peers []p2p.Peer) (out []Peer) {
 	for _, peer := range peers {
 		out = append(out, Peer{
-			Address:  peer.Address,
-			FullNode: peer.FullNode,
+			Address:     peer.Address,
+			FullNode:    peer.FullNode,
+			Connections: peer.Connections,
 		})
 	}
 	return
