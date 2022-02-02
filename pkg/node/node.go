@@ -405,15 +405,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
+	var senderMatcher p2p.SenderMatcher = new(fakeMatcher)
+
 	if swapBackendEnabled {
-		senderMatcher := transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
+		senderMatcher = transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
 		_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
 		if err != nil {
 			return nil, fmt.Errorf("identity transaction verification failed: %w", err)
 		}
 	}
-
-	senderMatcher := new(fakeMatcher)
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
