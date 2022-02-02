@@ -29,7 +29,7 @@ func migrateSharky(db *DB) error {
 		batchSize      = 10000
 		batchesCount   = 0
 		headerSize     = 16 + postage.StampSize
-		compactionRate = 100
+		compactionRate = 10
 		compactionSize = batchSize * compactionRate
 	)
 
