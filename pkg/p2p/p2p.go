@@ -60,6 +60,11 @@ type Halter interface {
 	Halt()
 }
 
+// SenderMatcher checks if the provided address matches sender details
+type SenderMatcher interface {
+	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error)
+}
+
 // PickyNotifier can decide whether a peer should be picked
 type PickyNotifier interface {
 	Picker
