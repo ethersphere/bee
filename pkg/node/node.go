@@ -218,7 +218,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	addressbook := addressbook.New(stateStore)
 
 	var (
-		swapBackend        transaction.Backend = mockSwapBackend(logger)
+		swapBackend        transaction.Backend
 		overlayEthAddress  common.Address
 		chainID            int64
 		transactionService transaction.Service
@@ -231,6 +231,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	)
 
 	var swapBackendEnabled bool // TODO: make configurable
+
+	if !swapBackendEnabled {
+		swapBackend = mockSwapBackend(logger)
+	}
 
 	if swapBackendEnabled {
 		swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
