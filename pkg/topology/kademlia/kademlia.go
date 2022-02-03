@@ -361,6 +361,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			k.logger.Debugf("kademlia: peer still in blocklist: %q", bzzAddr)
 			k.logger.Warningf("peer still in blocklist")
 			return
+		case errors.Is(err, p2p.ErrAlreadyConnected):
+			k.logger.Warningf("peer already connected")
+			return
 		case err != nil:
 			k.logger.Debugf("kademlia: peer not reachable from kademlia %q: %v", bzzAddr, err)
 			k.logger.Warningf("peer not reachable when attempting to connect")
@@ -912,7 +915,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if !i.Overlay.Equal(peer) {
 			return errOverlayMismatch
 		}
-		return nil
+		return err
 	case errors.Is(err, context.Canceled):
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):

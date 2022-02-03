@@ -335,7 +335,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := NewStream(stream)
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
-	if err != nil {
+	if err != nil && !errors.Is(err, handshake.ErrHandshakeDuplicate) {
 		s.logger.Debugf("stream handler: handshake: handle %s: %v", peerID, err)
 		s.logger.Errorf("stream handler: handshake: unable to handshake with peer id %v", peerID)
 		_ = handshakeStream.Reset()

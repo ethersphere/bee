@@ -195,11 +195,8 @@ func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr
 		return swarm.ZeroAddress, false
 	}
 
-	for c := range conns {
-		if c.RemoteMultiaddr().Equal(remoteAddr) {
-			// we ARE connected to the peer on expected address
-			return overlay, true
-		}
+	if len(conns) > 0 {
+		return overlay, true
 	}
 
 	return swarm.ZeroAddress, false
