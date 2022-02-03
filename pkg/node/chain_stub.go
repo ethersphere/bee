@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
@@ -87,7 +88,7 @@ func (m loggingSwapBackend) Close() {}
 type stubPostageContract struct{}
 
 func (m *stubPostageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
-	return nil, errors.New("chain backend disabled")
+	return nil, postagecontract.ErrSwapBackendDisabled
 }
 func (m *stubPostageContract) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error {
 	return errors.New("chain backend disabled")

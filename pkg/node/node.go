@@ -240,7 +240,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if swapBackendEnabled {
 		logger.Info("starting with an enabled swap backend")
 	} else {
-		logger.Info("starting with a stub swap backend")
+		logger.Info("starting with a disabled swap backend")
 	}
 
 	if swapBackendEnabled {
