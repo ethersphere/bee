@@ -13,8 +13,10 @@ import (
 // ChainStateKey is the statestore key for the chain state.
 const StateKey = chainStateKey
 
-// BatchKey returns the index key for the batch ID used in the by-ID batch index.
-var BatchKey = batchKey
+var (
+	BatchKey = batchKey
+	ValueKey = valueKey
+)
 
 // power of 2 function
 var Exp2 = exp2

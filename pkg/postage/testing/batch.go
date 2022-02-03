@@ -79,6 +79,27 @@ func WithOwner(owner []byte) BatchOption {
 	}
 }
 
+// WithValue will set the batch Value to the given value.
+func WithValue(value int64) BatchOption {
+	return func(b *postage.Batch) {
+		b.Value = big.NewInt(value)
+	}
+}
+
+// WithDepth will set the batch Depth to the given depth.
+func WithDepth(depth uint8) BatchOption {
+	return func(b *postage.Batch) {
+		b.Depth = depth
+	}
+}
+
+// WithStart will set the batch Start to the given start.
+func WithStart(start uint64) BatchOption {
+	return func(b *postage.Batch) {
+		b.Start = start
+	}
+}
+
 // CompareBatches is a testing helper that compares two batches and fails the
 // test if all fields are not equal.
 // Fails on first different value and prints the comparison.

@@ -84,6 +84,8 @@ func (s *store) unreserve(b []byte, radius uint8) error {
 	return nil
 }
 
+// Unreserve is implementation of postage.Storer interface Unreserve method.
+// The UnreserveIteratorFn is used to delete the chunks related to evicted batches.
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	var entries []string // entries to clean up
 	defer func() {
@@ -118,10 +120,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			}
 		}
 		entries = append(entries, string(key))
-		if stop {
-			return true, nil
-		}
-		return false, nil
+		return stop, nil
 	})
 }
 

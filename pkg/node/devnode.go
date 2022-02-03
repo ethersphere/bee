@@ -218,22 +218,20 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		mockPostContract.WithCreateBatchFunc(
 			func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
 				id := postagetesting.MustNewID()
-				b := &postage.Batch{
+				batch := &postage.Batch{
 					ID:        id,
 					Owner:     overlayEthAddress.Bytes(),
-					Value:     big.NewInt(0),
+					Value:     big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth))),
 					Depth:     depth,
 					Immutable: immutable,
 				}
 
-				totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
-
-				err := batchStore.Put(b, totalAmount, depth)
+				err := batchStore.Save(batch)
 				if err != nil {
 					return nil, err
 				}
 
-				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, totalAmount, depth, 0, 0, immutable)
+				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, batch.Value, batch.Depth, 0, 0, immutable)
 				_ = post.Add(stampIssuer)
 
 				return id, nil
@@ -250,7 +248,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				newBalance := big.NewInt(0).Add(totalAmount, batch.Value)
 
-				err = batchStore.Put(batch, newBalance, batch.Depth)
+				err = batchStore.Update(batch, newBalance, batch.Depth)
 				if err != nil {
 					return err
 				}
@@ -272,7 +270,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				newBalance := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(newDepth-batch.Depth))))
 
-				err = batchStore.Put(batch, newBalance, newDepth)
+				err = batchStore.Update(batch, newBalance, newDepth)
 				if err != nil {
 					return err
 				}

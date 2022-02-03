@@ -648,7 +648,7 @@ func topupBatch(t *testing.T, s postage.Storer, batches []*postage.Batch, bvp ..
 	t.Helper()
 	for _, v := range bvp {
 		batch := batches[v.batchIndex]
-		err := s.Put(batch, v.value, batch.Depth)
+		err := s.Update(batch, v.value, batch.Depth)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -664,7 +664,7 @@ func diluteBatch(t *testing.T, s postage.Storer, batches []*postage.Batch, bdp .
 		for i := batch.Depth; i < v.depth; i++ {
 			val = big.NewInt(0).Div(val, big.NewInt(2))
 		}
-		err := s.Put(batch, val, v.depth)
+		err := s.Update(batch, val, v.depth)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -673,24 +673,18 @@ func diluteBatch(t *testing.T, s postage.Storer, batches []*postage.Batch, bdp .
 
 func addBatch(t *testing.T, s postage.Storer, dvp ...depthValueTuple) []*postage.Batch {
 	t.Helper()
+
 	var batches []*postage.Batch
 	for _, v := range dvp {
-		b := postagetest.MustNewBatch()
-
-		// this is needed since the initial batch state should be
-		// always zero. should be rectified with less magical test
-		// helpers
-		b.Value = big.NewInt(0)
-		b.Depth = uint8(0)
-		b.Start = 111
-
-		val := big.NewInt(int64(v.value))
-
-		err := s.Put(b, val, v.depth)
-		if err != nil {
+		batch := postagetest.MustNewBatch(
+			postagetest.WithValue(int64(v.value)),
+			postagetest.WithDepth(v.depth),
+			postagetest.WithStart(111),
+		)
+		if err := s.Save(batch); err != nil {
 			t.Fatal(err)
 		}
-		batches = append(batches, b)
+		batches = append(batches, batch)
 	}
 
 	return batches
