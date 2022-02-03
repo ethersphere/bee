@@ -151,7 +151,7 @@ type Options struct {
 	SwapEnable                 bool
 	ChequebookEnable           bool
 	FullNodeMode               bool
-	SwapBackendEnabled         bool
+	StubChainBackend           bool
 	Transaction                string
 	BlockHash                  string
 	PostageContractAddress     string
@@ -231,15 +231,16 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 
-	var swapBackendEnabled = o.SwapBackendEnabled // will stay enabled only in LightNode mode
+	var swapBackendEnabled = !o.StubChainBackend // will stay enabled only in LightNode mode
 
 	if o.SwapEnable || o.FullNodeMode || o.GatewayMode || o.BootnodeMode {
 		swapBackendEnabled = true
-		logger.Info("starting with an enabled swap backend")
 	}
 
-	if !swapBackendEnabled {
-		logger.Info("starting with a disabled swap backend")
+	if swapBackendEnabled {
+		logger.Info("starting with an enabled swap backend")
+	} else {
+		logger.Info("starting with a stub swap backend")
 	}
 
 	if swapBackendEnabled {
