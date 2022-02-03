@@ -151,6 +151,7 @@ type Options struct {
 	SwapEnable                 bool
 	ChequebookEnable           bool
 	FullNodeMode               bool
+	SwapBackendEnabled         bool
 	Transaction                string
 	BlockHash                  string
 	PostageContractAddress     string
@@ -218,22 +219,27 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	addressbook := addressbook.New(stateStore)
 
 	var (
-		swapBackend        = mockSwapBackend(logger)
+		swapBackend        transaction.Backend = stubSwapBackend(logger)
 		overlayEthAddress  common.Address
 		chainID            int64
 		transactionService transaction.Service
 		transactionMonitor transaction.Monitor
 		chequebookFactory  chequebook.Factory
-		chequebookService  chequebook.Service
+		chequebookService  chequebook.Service = new(stubChequebookService)
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 
-	var swapBackendEnabled bool // TODO: make configurable
+	var swapBackendEnabled = o.SwapBackendEnabled // will stay enabled only in LightNode mode
 
-	if o.GatewayMode || o.BootnodeMode || o.SwapEnable || o.FullNodeMode {
+	if o.SwapEnable || o.FullNodeMode || o.GatewayMode || o.BootnodeMode {
 		swapBackendEnabled = true
+		logger.Info("starting with an enabled swap backend")
+	}
+
+	if !swapBackendEnabled {
+		logger.Info("starting with a disabled swap backend")
 	}
 
 	if swapBackendEnabled {
@@ -405,7 +411,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	var senderMatcher p2p.SenderMatcher = new(fakeMatcher)
+	var senderMatcher p2p.SenderMatcher = new(stubMatcher)
 
 	if swapBackendEnabled {
 		senderMatcher = transaction.NewMatcher(swapBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
@@ -472,7 +478,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	b.postageServiceCloser = post
 
 	var (
-		postageContractService postagecontract.Interface
+		postageContractService postagecontract.Interface = new(stubPostageContract)
 		batchSvc               postage.EventUpdater
 		eventListener          postage.Listener
 	)

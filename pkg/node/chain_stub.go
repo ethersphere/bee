@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"time"
 
@@ -9,18 +10,18 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
-type fakeMatcher struct{}
+type stubMatcher struct{}
 
-func (m *fakeMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
+func (m *stubMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
 	return nil, nil
 }
 
-func mockSwapBackend(log logging.Logger) transaction.Backend {
+func stubSwapBackend(log logging.Logger) *loggingSwapBackend {
 	return &loggingSwapBackend{
 		log: log,
 	}
@@ -82,3 +83,45 @@ func (m loggingSwapBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	panic("MockSwapBackend: ChainID")
 }
 func (m loggingSwapBackend) Close() {}
+
+type stubPostageContract struct{}
+
+func (m *stubPostageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+	return nil, errors.New("chain backend disabled")
+}
+func (m *stubPostageContract) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error {
+	return errors.New("chain backend disabled")
+}
+func (m *stubPostageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error {
+	return errors.New("chain backend disabled")
+}
+
+type stubChequebookService struct{}
+
+func (m *stubChequebookService) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	return hash, errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+	return hash, errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) WaitForDeposit(ctx context.Context, txHash common.Hash) error {
+	return errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) Balance(ctx context.Context) (*big.Int, error) {
+	return nil, errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) AvailableBalance(ctx context.Context) (*big.Int, error) {
+	return nil, errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) Address() common.Address {
+	return common.Address{}
+}
+func (m *stubChequebookService) Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
+	return nil, errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) LastCheque(beneficiary common.Address) (*chequebook.SignedCheque, error) {
+	return nil, errors.New("chain backend disabled")
+}
+func (m *stubChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
+	return nil, errors.New("chain backend disabled")
+}
