@@ -19,7 +19,6 @@ package localstore
 import (
 	"io"
 	"math/rand"
-	"os"
 	"strings"
 	"testing"
 
@@ -48,11 +47,7 @@ func TestOneMigration(t *testing.T) {
 		}},
 	}
 
-	dir, err := os.MkdirTemp("", "localstore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
@@ -136,11 +131,7 @@ func TestManyMigrations(t *testing.T) {
 		}},
 	}
 
-	dir, err := os.MkdirTemp("", "localstore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
@@ -216,11 +207,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 		}},
 	}
 
-	dir, err := os.MkdirTemp("", "localstore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
@@ -276,11 +263,7 @@ func TestMigrationErrorTo(t *testing.T) {
 		}},
 	}
 
-	dir, err := os.MkdirTemp("", "localstore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)

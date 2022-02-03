@@ -11,7 +11,6 @@ import (
 	"io"
 	"math/big"
 	"math/rand"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -27,15 +26,7 @@ func setupBatchStore(t *testing.T) (postage.Storer, map[string]uint8) {
 	t.Helper()
 	// we cannot  use the mock statestore here since the iterator is not giving the right order
 	// must use the leveldb statestore
-	dir, err := os.MkdirTemp("", "batchstore_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	})
+	dir := t.TempDir()
 	logger := logging.New(io.Discard, 0)
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
@@ -732,15 +723,7 @@ func TestUnreserveItemSequence(t *testing.T) {
 	batchstore.Capacity = batchstore.Exp2(5) // 32 chunks
 	initBatchDepth := uint8(8)
 
-	dir, err := os.MkdirTemp("", "batchstore_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	})
+	dir := t.TempDir()
 	logger := logging.New(io.Discard, 0)
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {

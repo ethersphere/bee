@@ -276,6 +276,8 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		// execute possible migrations
 		err = db.migrate(schemaName)
 		if err != nil {
+			_ = db.shed.Close()
+
 			return nil, err
 		}
 	}
