@@ -88,6 +88,12 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
+		if errors.Is(err, postagecontract.ErrSwapBackendDisabled) {
+			s.logger.Debugf("create batch: %v", err)
+			s.logger.Error("create batch:", err)
+			jsonhttp.MethodNotAllowed(w, "swap backend disabled")
+			return
+		}
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			s.logger.Debugf("create batch: out of funds: %v", err)
 			s.logger.Error("create batch: out of funds")
