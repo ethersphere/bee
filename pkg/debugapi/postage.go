@@ -90,7 +90,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrSwapBackendDisabled) {
 			s.logger.Debugf("create batch: %v", err)
-			s.logger.Error("create batch:", err)
+			s.logger.Error("create batch: ", err)
 			jsonhttp.MethodNotAllowed(w, "swap backend disabled")
 			return
 		}
