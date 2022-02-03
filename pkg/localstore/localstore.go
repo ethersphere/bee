@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -276,7 +277,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		// execute possible migrations
 		err = db.migrate(schemaName)
 		if err != nil {
-			return nil, err
+			return nil, multierror.Append(err, db.shed.Close())
 		}
 	}
 
