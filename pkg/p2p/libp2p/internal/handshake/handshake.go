@@ -239,8 +239,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, ErrHandshakeDuplicate
 	}
 
-	s.receivedHandshakes[remotePeerID] = struct{}{}
-	s.receivedHandshakesMu.Unlock()
+	defer func() {
+		if err == nil {
+			s.receivedHandshakes[remotePeerID] = struct{}{}
+		}
+		s.receivedHandshakesMu.Unlock()
+	}()
+
 	w, r := protobuf.NewWriterAndReader(stream)
 	fullRemoteMA, err := buildFullMA(remoteMultiaddr, remotePeerID)
 	if err != nil {

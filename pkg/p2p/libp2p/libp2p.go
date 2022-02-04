@@ -655,6 +655,13 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	handshakeStream := NewStream(stream)
 	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
+		if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
+			address = &bzz.Address{
+				Overlay:  overlay,
+				Underlay: addr,
+			}
+			return address, p2p.ErrAlreadyConnected
+		}
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, fmt.Errorf("handshake: %w", err)
