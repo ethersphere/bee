@@ -398,8 +398,8 @@ func TestConnectRepeatHandshake(t *testing.T) {
 		t.Fatalf("expected stream error")
 	}
 
-	expectPeersEventually(t, s2)
-	expectPeersEventually(t, s1)
+	expectPeersEventually(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
 }
 
 func TestBlocklisting(t *testing.T) {
