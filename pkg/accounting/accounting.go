@@ -255,7 +255,14 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 
+	fmt.Println("increasedEDR")
+	fmt.Println(increasedExpectedDebtReduced)
+
+	fmt.Println("currBalance")
+	fmt.Println(currentBalance)
+
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
+		fmt.Println("settleing")
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
@@ -416,7 +423,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
 		if timeElapsed > 0 {
-			shadowBalance, err := a.shadowBalance(peer)
+			shadowBalance, err := a.shadowBalance(peer, balance)
 			if err != nil {
 				return err
 			}
@@ -691,9 +698,13 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 	s := make(map[string]PeerInfo)
 
 	a.accountingPeersMu.Lock()
-	defer a.accountingPeersMu.Unlock()
-
+	accountingPeersList := make(map[string]*accountingPeer)
 	for peer, accountingPeer := range a.accountingPeers {
+		accountingPeersList[peer] = accountingPeer
+	}
+	a.accountingPeersMu.Unlock()
+
+	for peer, accountingPeer := range accountingPeersList {
 
 		peerAddress := swarm.MustParseHexAddress(peer)
 
@@ -895,8 +906,7 @@ func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
 
 // shadowBalance returns the current debt reduced by any potentially debitable amount stored in shadowReservedBalance
 // this represents how much less our debt could potentially be seen by the other party if it's ahead with processing credits corresponding to our shadow reserve
-func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, err error) {
-	accountingPeer := a.getAccountingPeer(peer)
+func (a *Accounting) shadowBalance(peer swarm.Address, accountingPeer *accountingPeer) (shadowBalance *big.Int, err error) {
 	balance := new(big.Int)
 	zero := big.NewInt(0)
 
