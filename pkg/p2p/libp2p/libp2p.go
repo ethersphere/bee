@@ -35,6 +35,7 @@ import (
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/mux"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -840,6 +841,9 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	// exchange headers
 	if err := sendHeaders(ctx, headers, stream); err != nil {
 		_ = stream.Reset()
+		if errors.Is(err, mux.ErrReset) {
+			_ = s.Disconnect(overlay, fmt.Sprintf("headers reset for peer %q", overlay))
+		}
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
 
