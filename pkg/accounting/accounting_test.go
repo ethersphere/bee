@@ -538,9 +538,13 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 
 	notTimeSettledAmount := big.NewInt(testRefreshRate * 2)
 
+	ts := int64(1000)
+
+	acc.SetTime(ts)
+
 	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: amount}
-		return new(big.Int).Sub(amount, notTimeSettledAmount), time.Now().Unix(), nil
+		return new(big.Int).Sub(amount, notTimeSettledAmount), ts, nil
 	})
 
 	acc.SetPayFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int) {
@@ -600,9 +604,12 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		t.Fatalf("expected balance to be adjusted. got %d", balance)
 	}
 
+	ts++
+	acc.SetTime(ts)
+
 	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: amount}
-		return big.NewInt(0), 0, nil
+		return big.NewInt(0), ts, nil
 	})
 
 	// Credit until the expected debt exceeds payment threshold

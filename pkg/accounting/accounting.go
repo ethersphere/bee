@@ -255,14 +255,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	// and we are actually in debt, trigger settlement.
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 
-	fmt.Println("increasedEDR")
-	fmt.Println(increasedExpectedDebtReduced)
-
-	fmt.Println("currBalance")
-	fmt.Println(currentBalance)
-
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
-		fmt.Println("settleing")
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
