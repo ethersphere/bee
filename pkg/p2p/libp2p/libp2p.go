@@ -841,6 +841,9 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	// exchange headers
 	if err := sendHeaders(ctx, headers, stream); err != nil {
 		_ = stream.Reset()
+
+		// kludge: this is meant to catch the edge case where we think we are
+		// connected to a peer but they don't share the same view.
 		if errors.Is(err, mux.ErrReset) {
 			_ = s.Disconnect(overlay, fmt.Sprintf("headers reset for peer %q", overlay))
 		}
