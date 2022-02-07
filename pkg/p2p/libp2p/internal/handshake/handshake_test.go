@@ -658,8 +658,8 @@ func TestHandshake(t *testing.T) {
 		})
 
 		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err != handshake.ErrHandshakeDuplicate {
-			t.Fatalf("expected %s, got %s", handshake.ErrHandshakeDuplicate, err)
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 
