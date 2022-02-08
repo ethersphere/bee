@@ -31,12 +31,12 @@ var (
 	batchTopUpTopic   = postageStampABI.Events["BatchTopUp"].ID
 	batchDiluteTopic  = postageStampABI.Events["BatchDepthIncrease"].ID
 
-	ErrBatchCreate         = errors.New("batch creation failed")
-	ErrInsufficientFunds   = errors.New("insufficient token balance")
-	ErrInvalidDepth        = errors.New("invalid depth")
-	ErrBatchTopUp          = errors.New("batch topUp failed")
-	ErrBatchDilute         = errors.New("batch dilute failed")
-	ErrSwapBackendDisabled = errors.New("swap backend disabled")
+	ErrBatchCreate       = errors.New("batch creation failed")
+	ErrInsufficientFunds = errors.New("insufficient token balance")
+	ErrInvalidDepth      = errors.New("invalid depth")
+	ErrBatchTopUp        = errors.New("batch topUp failed")
+	ErrBatchDilute       = errors.New("batch dilute failed")
+	ErrSwapChainDisabled = errors.New("swap chain disabled")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"
