@@ -784,6 +784,7 @@ func TestWithDisconnectStreams(t *testing.T) {
 }
 
 func TestWithBlocklistStreams(t *testing.T) {
+	t.Skip("test flakes")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -994,7 +995,7 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 
 		select {
 		// because read could block without erroring we should also expect timeout
-		case <-time.After(2 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Error("expected stream reset error, got timeout reading")
 		case err := <-readErr:
 			if !errors.Is(err, mux.ErrReset) {
