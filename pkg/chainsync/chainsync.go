@@ -110,6 +110,7 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 }
 
 func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+	var err error
 	if !s.inLimiter.Allow(peer.Address.ByteString(), 1) {
 		_ = stream.Reset()
 		return errRateLimitExceeded
@@ -119,7 +120,7 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
 	defer cancel()
 	var describe pb.Describe
-	if err := r.ReadMsgWithContext(ctx, &describe); err != nil {
+	if err = r.ReadMsgWithContext(ctx, &describe); err != nil {
 		_ = stream.Reset()
 		return fmt.Errorf("read describe: %w", err)
 	}
@@ -144,5 +145,6 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		_ = stream.Reset()
 		return fmt.Errorf("write proof: %w", err)
 	}
-	return nil
+
+	return stream.Close()
 }
