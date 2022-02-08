@@ -114,9 +114,9 @@ vet:
 .PHONY: test-race
 test-race:
 ifdef cover
-	$(GO) test -race -failfast -coverprofile=cover.out -v ./...
+	$(GO) test -race -failfast -coverprofile=cover.out -v ./... -run TestWithBlocklistStreams
 else
-	$(GO) test -race -failfast -v ./...
+	$(GO) test -race -failfast -v ./... -run TestWithBlocklistStreams
 endif
 
 .PHONY: test-integration
