@@ -109,8 +109,7 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 	return proof.BlockHash, nil
 }
 
-func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-	var err error
+func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) (err error) {
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -145,7 +144,7 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	}
 
 	var proof = pb.Proof{BlockHash: blockHash}
-	if err := w.WriteMsgWithContext(ctx, &proof); err != nil {
+	if err = w.WriteMsgWithContext(ctx, &proof); err != nil {
 		return fmt.Errorf("write proof: %w", err)
 	}
 
