@@ -677,6 +677,7 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 
 type PeerInfo struct {
 	Balance                  *big.Int
+	ConsumedBalance          *big.Int
 	ThresholdReceived        *big.Int
 	ThresholdGiven           *big.Int
 	CurrentThresholdReceived *big.Int
@@ -741,7 +742,8 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		currentThresholdReceived := new(big.Int).Add(accountingPeer.paymentThreshold, refreshDue)
 
 		s[peer] = PeerInfo{
-			Balance:                  new(big.Int).Set(balance),
+			Balance:                  new(big.Int).Sub(balance, surplusBalance),
+			ConsumedBalance:          new(big.Int).Set(balance),
 			ThresholdReceived:        new(big.Int).Set(accountingPeer.paymentThreshold),
 			CurrentThresholdReceived: currentThresholdReceived,
 			CurrentThresholdGiven:    currentThresholdGiven,

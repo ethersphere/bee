@@ -21,6 +21,7 @@ type peerData struct {
 
 type peerDataResponse struct {
 	Balance                  *bigint.BigInt `json:"balance"`
+	ConsumedBalance          *bigint.BigInt `json:"consumedBalance"`
 	ThresholdReceived        *bigint.BigInt `json:"thresholdReceived"`
 	ThresholdGiven           *bigint.BigInt `json:"thresholdGiven"`
 	CurrentThresholdReceived *bigint.BigInt `json:"currentThresholdReceived"`
@@ -44,6 +45,7 @@ func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) 
 	for k := range infos {
 		infoResponses[k] = peerDataResponse{
 			Balance:                  bigint.Wrap(infos[k].Balance),
+			ConsumedBalance:          bigint.Wrap(infos[k].ConsumedBalance),
 			ThresholdReceived:        bigint.Wrap(infos[k].ThresholdReceived),
 			ThresholdGiven:           bigint.Wrap(infos[k].ThresholdGiven),
 			CurrentThresholdReceived: bigint.Wrap(infos[k].CurrentThresholdReceived),
