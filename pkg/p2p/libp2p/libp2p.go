@@ -40,6 +40,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	goyamux "github.com/libp2p/go-libp2p-yamux"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-tcp-transport"
@@ -61,6 +62,11 @@ const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
 )
+
+func init() {
+	goyamux.DefaultTransport.AcceptBacklog = 1024
+	goyamux.DefaultTransport.MaxIncomingStreams = 5000
+}
 
 type Service struct {
 	ctx               context.Context
