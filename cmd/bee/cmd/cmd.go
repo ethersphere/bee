@@ -61,7 +61,7 @@ const (
 	optionNameSwapInitialDeposit         = "swap-initial-deposit"
 	optionNameSwapEnable                 = "swap-enable"
 	optionNameChequebookEnable           = "chequebook-enable"
-	optionNameStubChainBackend           = "stub-chain-backend" //TODO rename, add docs about no overlay,postage,accounting,settlements
+	optionNameStubSwapChain              = "stub-swap-chain" //TODO rename, add docs about no overlay,postage,accounting,settlements
 	optionNameTransactionHash            = "transaction"
 	optionNameBlockHash                  = "block-hash"
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
@@ -254,7 +254,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapInitialDeposit, "10000000000000000", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
-	cmd.Flags().Bool(optionNameStubChainBackend, false, "use an offline chain backend")
+	cmd.Flags().Bool(optionNameStubSwapChain, false, "use an offline swap chain backend")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
