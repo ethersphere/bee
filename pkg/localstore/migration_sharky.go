@@ -24,22 +24,12 @@ const DBSchemaSharky = "sharky"
 func migrateSharky(db *DB) error {
 	db.logger.Info("starting sharky migration; have patience, this might take a while...")
 	var (
-		start          = time.Now()
-		batch          = new(leveldb.Batch)
-		batchSize      = 10000
-		batchesCount   = 0
-		headerSize     = 16 + postage.StampSize
-		compactionRate = 10
-		compactionSize = batchSize * compactionRate
+		start        = time.Now()
+		batch        = new(leveldb.Batch)
+		batchSize    = 10000
+		batchesCount = 0
+		headerSize   = 16 + postage.StampSize
 	)
-
-	compaction := func() (time.Duration, error) {
-		compactStart := time.Now()
-		if err := db.shed.Compact(); err != nil {
-			return 0, fmt.Errorf("leveldb compaction failed: %w", err)
-		}
-		return time.Since(compactStart), nil
-	}
 
 	retrievalDataIndex, err := db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Data", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
@@ -129,7 +119,6 @@ func migrateSharky(db *DB) error {
 		return err
 	}
 
-	var compactionTime time.Duration
 	var dirtyLocations []sharky.Location
 
 	db.logger.Debugf("starting to move entries with batch size %d", batchSize)
@@ -176,23 +165,14 @@ func migrateSharky(db *DB) error {
 		dirtyLocations = nil
 		db.logger.Debugf("flush ok; progress so far: %d chunks", batchesCount)
 		batch.Reset()
-
-		if batchesCount%compactionSize == 0 {
-			dur, err := compaction()
-			if err != nil {
-				return err
-			}
-			compactionTime += dur
-		}
 	}
 
-	dur, err := compaction()
-	if err != nil {
-		return err
+	compactStart := time.Now()
+	if err := db.shed.Compact(); err != nil {
+		return fmt.Errorf("fail to compact levelDB: %w", err)
 	}
-	compactionTime += dur
 
-	db.logger.Debugf("leveldb compaction took: %v", compactionTime)
+	db.logger.Debugf("leveldb compaction took: %v", time.Since(compactStart))
 	db.logger.Infof("done migrating to sharky; it took me %s to move %d chunks.", time.Since(start), batchesCount)
 	return nil
 }

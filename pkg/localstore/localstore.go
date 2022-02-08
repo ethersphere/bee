@@ -678,6 +678,9 @@ func (db *DB) Close() error {
 		<-db.reserveEvictionWorkerDone
 		close(done)
 	}()
+
+	err := new(multierror.Error)
+
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -685,13 +688,9 @@ func (db *DB) Close() error {
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")
-		err := prof.WriteTo(os.Stdout, 2)
-		if err != nil {
-			return err
-		}
+		err = multierror.Append(err, prof.WriteTo(os.Stdout, 2))
 	}
 
-	err := new(multierror.Error)
 	err = multierror.Append(err, db.sharky.Close())
 	err = multierror.Append(err, db.shed.Close())
 	if db.fdirtyCloser != nil {
