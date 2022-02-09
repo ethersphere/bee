@@ -501,7 +501,13 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		err = fmt.Errorf("new stream for peer %s: %w", peer, err)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		if err != nil {
+			_ = streamer.Reset()
+		} else {
+			go streamer.FullClose()
+		}
+	}()
 
 	w, r := protobuf.NewWriterAndReader(streamer)
 	err = w.WriteMsgWithContext(ctx, &pb.Delivery{
@@ -620,7 +626,7 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 		if err != nil {
 			_ = streamer.Reset()
 		} else {
-			_ = streamer.FullClose()
+			go streamer.FullClose()
 		}
 	}()
 

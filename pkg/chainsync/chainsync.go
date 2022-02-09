@@ -87,7 +87,13 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
 	defer cancel()
@@ -114,7 +120,7 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.Close()
+			_ = stream.FullClose()
 		}
 	}()
 	if !s.inLimiter.Allow(peer.Address.ByteString(), 1) {
