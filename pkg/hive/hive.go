@@ -214,29 +214,32 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	return nil
 }
 
-func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) (err error) {
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			go stream.FullClose()
+		}
+	}()
 	s.metrics.PeersHandler.Inc()
 	_, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, messageTimeout)
 	defer cancel()
 	var peersReq pb.Peers
 	if err := r.ReadMsgWithContext(ctx, &peersReq); err != nil {
-		_ = stream.Reset()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
 	if !s.inLimiter.Allow(peer.Address.ByteString(), len(peersReq.Peers)) {
-		_ = stream.Reset()
 		return ErrRateLimitExceeded
 	}
 
 	// close the stream before processing in order to unblock the sending side
 	// fullclose is called async because there is no need to wait for confirmation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
-	go stream.FullClose()
-
 	if s.bootnode {
 		return nil
 	}
