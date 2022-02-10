@@ -33,16 +33,16 @@ type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
 type store struct {
+	mtx sync.Mutex
+
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	mtx         sync.Mutex
 	rs          *reserveState // the reserve state
 	unreserveFn unreserveFn   // unreserve function
 	evictFn     evictFn       // evict function
-	// queueIdx    uint64        // unreserve queue cardinality
-	metrics metrics // metrics
-	logger  logging.Logger
+	metrics     metrics       // metrics
+	logger      logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
@@ -84,9 +84,6 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 	}
 
 	s.unreserveFn = s.unreserve
-	// if s.queueIdx, err = s.getQueueCardinality(); err != nil {
-	// 	return nil, err
-	// }
 
 	return s, nil
 }
@@ -109,18 +106,26 @@ func (s *store) GetChainState() *postage.ChainState {
 
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	return s.get(id)
+}
+
+func (s *store) get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
 	if err != nil {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
 
-	// TODO:
-	// if s.rs.StorageRadius < s.rs.Radius {
-	// 	b.Radius = s.rs.StorageRadius
-	// } else {
-	// 	b.Radius = s.rs.radius(s.rs.tier(b.Value))
-	// }
+	// TODO: why is this necessary?
+	if s.rs.StorageRadius < s.rs.Radius {
+		b.Radius = s.rs.StorageRadius
+	} else {
+		b.Radius = s.rs.Radius
+	}
 
 	return b, nil
 }
@@ -232,34 +237,10 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	return nil
 }
 
-// func (s *store) getReservateState() reserveState {
-// 	s.rsMtx.Lock()
-// 	defer s.rsMtx.Unlock()
-// 	return *s.rs
-// }
-
-// func (s *store) setRadius(r uint8) {
-// 	s.rsMtx.Lock()
-// 	defer s.rsMtx.Unlock()
-// 	s.rs.Radius = r
-// }
-
-// func (s *store) setStorageRadius(r uint8) {
-// 	s.rsMtx.Lock()
-// 	defer s.rsMtx.Unlock()
-// 	s.rs.StorageRadius = r
-// }
-
-// func (s *store) addAvailable(a int64) {
-// 	s.rsMtx.Lock()
-// 	defer s.rsMtx.Unlock()
-// 	s.rs.Available += a
-// }
-
 // delete removes the batches with ids given as arguments.
 func (s *store) delete(ids ...[]byte) error {
 	for _, id := range ids {
-		b, err := s.Get(id)
+		b, err := s.get(id)
 		if err != nil {
 			return err
 		}
@@ -284,6 +265,7 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	defer s.mtx.Unlock()
 
 	s.cs = cs
+
 	err := s.cleanup()
 	if err != nil {
 		return err
@@ -305,6 +287,10 @@ func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
 
 // Reset is implementation of postage.Storer interface Reset method.
 func (s *store) Reset() error {
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	const prefix = "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
 		if strings.HasPrefix(string(k), prefix) {
@@ -316,19 +302,18 @@ func (s *store) Reset() error {
 	}); err != nil {
 		return err
 	}
+
 	s.cs = &postage.ChainState{
 		Block:        0,
 		TotalAmount:  big.NewInt(0),
 		CurrentPrice: big.NewInt(0),
 	}
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	s.rs = &reserveState{
 		Radius:    DefaultDepth,
 		Available: Capacity,
 	}
+
 	return nil
 }
 

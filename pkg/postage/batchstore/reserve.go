@@ -72,75 +72,6 @@ type reserveState struct {
 	Available int64
 }
 
-// Unreserve is implementation of postage.Storer interface Unreserve method.
-// The UnreserveIteratorFn is used to delete the chunks related to evicted batches.
-func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	fmt.Println("localstore: Unreserve")
-
-	var (
-		delete  []string
-		evicted []*UnreserveItem
-	)
-
-	err := s.store.Iterate(unreservePrefix, func(key, val []byte) (bool, error) {
-		if !strings.HasPrefix(string(key), unreservePrefix) {
-			return true, nil
-		}
-		v := &UnreserveItem{}
-		err := v.UnmarshalBinary(val)
-		if err != nil {
-			return true, err
-		}
-
-		// skip if eviction has already been called previously
-		if v.Evicted {
-			return false, nil
-		}
-
-		stop, err := cb(v.BatchID, v.Radius)
-		if err != nil {
-			return true, err
-		}
-
-		// delete from eviction index since the entire batch has been marked for deletion
-		if v.Radius == UnreserveRadius {
-			delete = append(delete, string(key))
-		} else {
-			evicted = append(evicted, v)
-		}
-
-		return stop, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, item := range evicted {
-		item.Evicted = true
-		if err := s.putUnreserveItem(item); err != nil {
-			s.logger.Warning(err)
-		}
-	}
-
-	for _, key := range delete {
-		if err := s.store.Delete(key); err != nil {
-			s.logger.Warning(err)
-		}
-	}
-
-	s.rs.StorageRadius = s.rs.Radius
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-	if err = s.store.Put(reserveStateKey, s.rs); err != nil {
-		return err
-	}
-
-	return err
-}
-
 // allocateBatch is the main point of entry for a new batch.
 // After computing a new radius, the available capacity of the node is deducted
 // using the new batch's depth.
@@ -194,11 +125,12 @@ func (s *store) cleanup() error {
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
 
 		batchID := valueKeyToID(key)
-		b, err := s.Get(batchID)
+		b, err := s.get(batchID)
 		if err != nil {
 			return true, fmt.Errorf("release get %x %v: %w", batchID, b, err)
 		}
 
+		// negative value batches
 		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
 			fmt.Println("clean up", hex.EncodeToString(batchID))
 			err := s.deallocateBatch(b)
@@ -219,12 +151,18 @@ func (s *store) cleanup() error {
 		return err
 	}
 
+	oldRadius := s.rs.Radius
+
 	err = s.computeRadius()
 	if err != nil {
 		return err
 	}
 
-	return s.lowerEvictionRadius(s.rs.Radius)
+	if s.rs.Radius < oldRadius {
+		return s.lowerEvictionRadius(s.rs.Radius)
+	}
+
+	return nil
 }
 
 // evictForCapacity iterates on the list of batches in ascending order of value and unreserves batches with the new radius
@@ -238,12 +176,12 @@ func (s *store) evictForCapacity(upto *big.Int) error {
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
 
 		batchID := valueKeyToID(key)
-		b, err := s.Get(batchID)
+		b, err := s.get(batchID)
 		if err != nil {
 			return true, fmt.Errorf("release get %x %v: %w", batchID, b, err)
 		}
 
-		// evict until positive available AND until the last added batch's value
+		// adjust evictions until positive available AND until the last added batch's value
 		if s.rs.Available >= 0 && b.Value.Cmp(upto) >= 0 {
 			return true, nil
 		}
@@ -317,7 +255,7 @@ func (s *store) lowerEvictionRadius(evictionRadius uint8) error {
 
 	defer func() {
 		for _, v := range toUpdate {
-			b, err := s.Get(v.BatchID)
+			b, err := s.get(v.BatchID)
 			if err != nil {
 				fmt.Println(err)
 				s.logger.Warning(err)
@@ -349,16 +287,6 @@ func (s *store) lowerEvictionRadius(evictionRadius uint8) error {
 	})
 }
 
-func (s *store) putUnreserveItem(item *UnreserveItem) error {
-	return s.store.Put(unreserveKey(item.BatchID), item)
-}
-
-func (s *store) getUnreserveItem(id []byte) (*UnreserveItem, error) {
-	item := &UnreserveItem{}
-	err := s.store.Get(unreserveKey(id), item)
-	return item, err
-}
-
 // computeRadius calculates the radius by using the sum up all the number of chunks from all batches
 // and the node capacity using the formula
 // total_needed_capacity/node_capacity = 2^R .
@@ -368,7 +296,7 @@ func (s *store) computeRadius() error {
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
 		batchID := valueKeyToID(key)
-		b, err := s.Get(valueKeyToID(key))
+		b, err := s.get(valueKeyToID(key))
 		if err != nil {
 			return true, fmt.Errorf("compute radius %x %v: %w", batchID, b, err)
 		}
@@ -393,26 +321,122 @@ func (s *store) computeRadius() error {
 	return nil
 }
 
+// Unreserve is implementation of postage.Storer interface Unreserve method.
+// The UnreserveIteratorFn is used to delete the chunks related to evicted batches.
+func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	fmt.Println("localstore: Unreserve")
+
+	var (
+		delete  []string
+		evicted []*UnreserveItem
+	)
+
+	err := s.store.Iterate(unreservePrefix, func(key, val []byte) (bool, error) {
+		if !strings.HasPrefix(string(key), unreservePrefix) {
+			return true, nil
+		}
+		v := &UnreserveItem{}
+		err := v.UnmarshalBinary(val)
+		if err != nil {
+			return true, err
+		}
+
+		// skip if eviction has already been called previously
+		if v.Evicted {
+			return false, nil
+		}
+
+		stop, err := cb(v.BatchID, v.Radius)
+		if err != nil {
+			return true, err
+		}
+
+		// delete from eviction index since the entire batch has been marked for deletion
+		if v.Radius == UnreserveRadius {
+			delete = append(delete, string(key))
+		} else {
+			evicted = append(evicted, v)
+		}
+
+		return stop, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, item := range evicted {
+		item.Evicted = true
+		if err := s.putUnreserveItem(item); err != nil {
+			s.logger.Warning(err)
+		}
+	}
+
+	for _, key := range delete {
+		if err := s.store.Delete(key); err != nil {
+			s.logger.Warning(err)
+		}
+	}
+
+	s.rs.StorageRadius = s.rs.Radius
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	if err = s.store.Put(reserveStateKey, s.rs); err != nil {
+		return err
+	}
+
+	return err
+}
+
+func (s *store) putUnreserveItem(item *UnreserveItem) error {
+	return s.store.Put(unreserveKey(item.BatchID), item)
+}
+
+func (s *store) getUnreserveItem(id []byte) (*UnreserveItem, error) {
+	item := &UnreserveItem{}
+	err := s.store.Get(unreserveKey(id), item)
+	return item, err
+}
+
 type UnreserveItem struct {
 	BatchID []byte
 	Radius  uint8
+
+	// is this necessary??? what happens if the owner uploads more and more chunks with the batch AFTER some POs were evicted
 	Evicted bool
 }
 
 func (u *UnreserveItem) MarshalBinary() ([]byte, error) {
-	out := make([]byte, 32+1) // 32 byte batch ID + 1 byte uint8 radius
+	out := make([]byte, 32+1+1) // 32 byte batch ID + 1 byte uint8 radius
 	copy(out, u.BatchID)
 	out[32] = u.Radius
+
+	var b byte = 0
+	if u.Evicted {
+		b = 1
+	}
+
+	out[33] = b
 	return out, nil
 }
 
 func (u *UnreserveItem) UnmarshalBinary(b []byte) error {
-	if len(b) != 33 {
+
+	if len(b) != 34 {
 		return errors.New("invalid unreserve item length")
 	}
+
 	u.BatchID = make([]byte, 32)
 	copy(u.BatchID, b[:32])
+
 	u.Radius = b[32]
+
+	if b[33] > 0 {
+		u.Evicted = true
+	}
+
 	return nil
 }
 
