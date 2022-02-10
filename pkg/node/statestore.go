@@ -26,22 +26,7 @@ func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, er
 		return ret, nil
 	}
 
-	store, err := leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
-	// var (
-	// 	newStateStore = true
-	// 	storedOverlay swarm.Address
-	// )
-
-	// if err := store.Get(secureOverlayKey, &storedOverlay); err == nil {
-	// 	newStateStore = false
-	// }
-
-	return store, err
+	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
 }
 
 const overlayKey = "overlay"
