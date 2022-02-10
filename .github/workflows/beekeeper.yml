@@ -18,6 +18,7 @@ jobs:
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
+      TIMEOUT: 10m
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -54,54 +55,54 @@ jobs:
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
-          timeout 10m make beelocal OPTS='ci skip-vet'
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set local cluster
         run: |
-          make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-dns
+          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
+          timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
       - name: Test pingpong
         id: pingpong
-        run: until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
       - name: Test fullconnectivity
         id: fullconnectivity
-        run: until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
       - name: Test settlements
         id: settlements
-        run: beekeeper check --cluster-name local-dns --checks=ci-settlements
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Sleep for time allowance to replenish
         run: sleep 2
       - name: Test pss
         id: pss
-        run: beekeeper check --cluster-name local-dns --checks=ci-pss
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pss
       - name: Test soc
         id: soc
-        run: beekeeper check --cluster-name local-dns --checks=ci-soc
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-soc
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
-        run: beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
       - name: Test retrieval
         id: retrieval
-        run: beekeeper check --cluster-name local-dns --checks=ci-retrieval
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
       - name: Test manifest
         id: manifest
-        run: beekeeper check --cluster-name local-dns --checks=ci-manifest
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest
       - name: Test content availability
         id: content-availability
-        run: beekeeper check --cluster-name local-dns --checks=ci-content-availability
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-content-availability
       - name: Test authenticate
         id: authenticate
-        run: until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done'
       - name: Test postage stamps
         id: postage-stamps
-        run: beekeeper check --cluster-name local-dns --checks ci-postage
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -139,6 +140,7 @@ jobs:
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
+      TIMEOUT: 10m
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -175,25 +177,25 @@ jobs:
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
-          timeout 10m make beelocal OPTS='ci skip-vet'
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set local cluster
         run: |
-          make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-clef
+          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
+          timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-clef
       - name: Test pingpong
         id: pingpong
-        run: until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-clef --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
       - name: Test fullconnectivity
         id: fullconnectivity
-        run: until beekeeper check --cluster-name local-clef --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-clef --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
       - name: Test settlements
         id: settlements
-        run: beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-clef --checks=ci-settlements-clef
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -224,6 +226,7 @@ jobs:
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
+      TIMEOUT: 10m
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -261,22 +264,22 @@ jobs:
       - name: Prepare testing cluster (storage incentives setup)
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
-          timeout 10m make beelocal OPTS='ci skip-vet'
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
-          make beelocal ACTION=add-hosts
-          timeout 10m make deploylocal BEEKEEPER_CLUSTER=local-gc
+          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
+          timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-gc
       - name: Test pingpong
         id: pingpong
-        run: until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
       - name: Test gc
         id: gc-chunk
-        run: beekeeper check --cluster-name local-gc --checks=ci-gc
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-gc --checks=ci-gc
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -298,6 +301,8 @@ jobs:
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
   retag:
     name: Retag and Trigger ArgoCD
+    env:
+      TIMEOUT: 10m
     needs: [beekeeper, beekeeper-si, beekeeper-clef]
     runs-on: ubuntu-latest
     steps:
@@ -330,7 +335,7 @@ jobs:
       - name: Build image
         run: |
           printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
-          timeout 10m make beelocal ACTION=build OPTS='ci skip-vet skip-push'
+          timeout ${TIMEOUT} make beelocal ACTION=build OPTS='ci skip-vet skip-push'
       - name: Retag Docker image and push for cache
         if: success()
         run: |
