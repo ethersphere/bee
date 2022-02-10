@@ -210,12 +210,16 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		tracerCloser:   tracerCloser,
 	}
 
-	var stateStore storage.StateStorer
-	stateStore, newStateStore, err := InitStateStore(logger, o.DataDir)
+	stateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
+
+	newStateStore := true
+	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); err == nil {
+		newStateStore = false
+	}
 
 	addressbook := addressbook.New(stateStore)
 
@@ -415,6 +419,32 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		bootnodes = append(bootnodes, addr)
 	}
 
+	// Perform checks related to payment threshold calculations here to not duplicate
+	// the checks in bootstrap process
+	minThreshold := big.NewInt(2 * refreshRate)
+	maxThreshold := big.NewInt(24 * refreshRate)
+
+	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
+	}
+
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
+
+	if paymentThreshold.Cmp(maxThreshold) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
+	}
+
+	if o.PaymentTolerance < 0 {
+		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
+	}
+
+	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
+		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
+	}
+
 	// bootstrap node to sync stamp events optimally by reading the events dump from the network
 	var initBatchState *postage.BatchSnapshot
 	if newStateStore || o.Resync {
@@ -436,7 +466,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			stateStore, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
 		logger.Infof("bootstrapper done, took", time.Since(start))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("bootstrapper failed to fetch batch state %w", err)
 		}
 	}
 
@@ -604,23 +634,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	}
 
-	minThreshold := big.NewInt(2 * refreshRate)
-	maxThreshold := big.NewInt(24 * refreshRate)
-
-	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
-	}
-
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
-
-	if paymentThreshold.Cmp(minThreshold) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
-	}
-
-	if paymentThreshold.Cmp(maxThreshold) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
-	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
@@ -635,14 +649,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	for _, addr := range addrs {
 		logger.Debugf("p2p address: %s", addr)
-	}
-
-	if o.PaymentTolerance < 0 {
-		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
-	}
-
-	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
-		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
 	acc, err := accounting.NewAccounting(
@@ -911,11 +917,15 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	// halt kademlia while shutting down other
 	// components.
-	b.topologyHalter.Halt()
+	if b.topologyHalter != nil {
+		b.topologyHalter.Halt()
+	}
 
 	// halt p2p layer from accepting new connections
 	// while shutting down other components
-	b.p2pHalter.Halt()
+	if b.p2pHalter != nil {
+		b.p2pHalter.Halt()
+	}
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {

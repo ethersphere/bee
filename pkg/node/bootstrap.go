@@ -34,6 +34,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
 )
@@ -53,7 +54,7 @@ func bootstrapNode(addr string,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
 	transactionService transaction.Service,
-	stateStore storage.StateStorer, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (*postage.BatchSnapshot, error) {
+	stateStore storage.StateStorer, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (snapshot *postage.BatchSnapshot, retErr error) {
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -65,17 +66,19 @@ func bootstrapNode(addr string,
 	}
 
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
-	defer func() {
-		if err != nil {
-			p2pCancel()
-		}
-	}()
 
 	b := &Bee{
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
 	}
+
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := multierror.Append(new(multierror.Error), retErr, b.Shutdown(ctx))
+		retErr = err.ErrorOrNil()
+	}()
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
@@ -106,7 +109,7 @@ func bootstrapNode(addr string,
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &pinger{}, metricsDB, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, metricsDB, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -117,35 +120,14 @@ func bootstrapNode(addr string,
 	p2ps.SetPickyNotifier(kad)
 
 	minThreshold := big.NewInt(2 * refreshRate)
-	maxThreshold := big.NewInt(24 * refreshRate)
-
-	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
-	}
+	paymentThreshold, _ := new(big.Int).SetString(o.PaymentThreshold, 10)
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
-
-	if paymentThreshold.Cmp(minThreshold) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
-	}
-
-	if paymentThreshold.Cmp(maxThreshold) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
-	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
-	}
-
-	if o.PaymentTolerance < 0 {
-		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
-	}
-
-	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
-		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
 	acc, err := accounting.NewAccounting(
@@ -244,7 +226,7 @@ func bootstrapNode(addr string,
 		return nil, err
 	}
 
-	return &events, b.Shutdown(ctx)
+	return &events, nil
 }
 
 // wait till some peers are connected. returns true if all is ok
@@ -274,9 +256,9 @@ func waitPeers(kad *kademlia.Kad) bool {
 	return false
 }
 
-type pinger struct {
+type noopPinger struct {
 }
 
-func (p *pinger) Ping(ctx context.Context, address swarm.Address, msgs ...string) (time.Duration, error) {
-	return time.Duration(0), nil
+func (p *noopPinger) Ping(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+	return time.Duration(1), nil
 }

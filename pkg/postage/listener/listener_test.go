@@ -333,6 +333,95 @@ func TestListener(t *testing.T) {
 	})
 }
 
+func TestListenerBatchState(t *testing.T) {
+	logger := logging.New(io.Discard, 0)
+	ev, evC := newEventUpdaterMock()
+	mf := newMockFilterer()
+
+	create := createArgs{
+		id:               hash[:],
+		owner:            addr[:],
+		amount:           big.NewInt(42),
+		normalisedAmount: big.NewInt(43),
+		depth:            100,
+	}
+
+	topup := topupArgs{
+		id:                hash[:],
+		amount:            big.NewInt(0),
+		normalisedBalance: big.NewInt(1),
+	}
+
+	depthIncrease := depthArgs{
+		id:                hash[:],
+		depth:             200,
+		normalisedBalance: big.NewInt(2),
+	}
+
+	priceUpdate := priceArgs{
+		price: big.NewInt(500),
+	}
+
+	snapshot := &postage.BatchSnapshot{
+		Events: []types.Log{
+			create.toLog(496),
+			topup.toLog(497),
+			depthIncrease.toLog(498),
+			priceUpdate.toLog(499),
+		},
+		FirstBlockNumber: 496,
+		LastBlockNumber:  499,
+		Timestamp:        time.Now().Unix(),
+	}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	noOfEvents := 0
+
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case e := <-evC:
+				noOfEvents++
+				switch e.(type) {
+				case blockNumberCall:
+					blkNum := e.(blockNumberCall).blockNumber
+					if blkNum < 497 && blkNum > 500 {
+						t.Fatal("invalid blocknumber call", blkNum)
+					}
+					if blkNum == 500 {
+						close(done)
+						return
+					}
+				case createArgs:
+					e.(createArgs).compare(t, create)
+				case topupArgs:
+					e.(topupArgs).compare(t, topup)
+				case depthArgs:
+					e.(depthArgs).compare(t, depthIncrease)
+				case priceArgs:
+					e.(priceArgs).compare(t, priceUpdate)
+				}
+			}
+		}
+	}()
+
+	l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+	l.Listen(0, ev, snapshot)
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("timedout waiting for events to be processed")
+		close(stop)
+	case <-done:
+		if noOfEvents != 9 {
+			t.Fatal("invalid count of events on completion", noOfEvents)
+		}
+	}
+}
+
 type countShutdowner struct {
 	mtx           sync.Mutex
 	shutdownCalls int

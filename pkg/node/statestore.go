@@ -19,29 +19,29 @@ import (
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, bool, error) {
+func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, error) {
 	if dataDir == "" {
 		ret := mock.NewStateStore()
 		log.Warning("using in-mem state store, no node state will be persisted")
-		return ret, true, nil
+		return ret, nil
 	}
 
 	store, err := leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
 	if err != nil {
 		log.Error(err)
-		return nil, false, err
+		return nil, err
 	}
 
-	var (
-		newStateStore = true
-		storedOverlay swarm.Address
-	)
+	// var (
+	// 	newStateStore = true
+	// 	storedOverlay swarm.Address
+	// )
 
-	if err := store.Get(secureOverlayKey, &storedOverlay); err == nil {
-		newStateStore = false
-	}
+	// if err := store.Get(secureOverlayKey, &storedOverlay); err == nil {
+	// 	newStateStore = false
+	// }
 
-	return store, newStateStore, err
+	return store, err
 }
 
 const overlayKey = "overlay"
