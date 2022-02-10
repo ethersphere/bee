@@ -248,7 +248,7 @@ func (s *store) capacity(b *postage.Batch, item *UnreserveItem, evictionRadius u
 }
 
 // lowerEvictionRadius reduces the eviction radius of batches if the current radius is lower than the eviction radius
-// if an eviction radius is lower, than the eviction is too aggresive, and is tweaked down.
+// if an eviction radius is lower, than the eviction is too aggressive, and is tweaked down.
 func (s *store) lowerEvictionRadius(evictionRadius uint8) error {
 
 	var toUpdate []*UnreserveItem

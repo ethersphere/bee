@@ -488,11 +488,14 @@ func TestUnreserve(t *testing.T) {
 		}
 
 		evictionRadiuses := map[string]uint8{}
-		store.Unreserve(func(id []byte, radius uint8) (bool, error) {
+		err := store.Unreserve(func(id []byte, radius uint8) (bool, error) {
 			evictionRadiuses[hex.EncodeToString(id)] = radius
 			t.Log("~ Unreserve", hex.EncodeToString(id), radius)
 			return false, nil
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		for i, b := range batches {
 			if evictionRadiuses[hex.EncodeToString(b.ID)] != tc.evictionRadius[i] {
