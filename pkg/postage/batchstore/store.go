@@ -5,6 +5,7 @@
 package batchstore
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -22,13 +23,12 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
-	unreservePrefix = "batchstore_unreserve_"
+	// unreservePrefix = "batchstore_unreserve_"
 )
 
 // ErrNotFound signals that the element was not found.
 var ErrNotFound = errors.New("batchstore: not found")
 
-type unreserveFn func(b *postage.Batch, radius uint8) error
 type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
@@ -38,11 +38,10 @@ type store struct {
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	rs          *reserveState // the reserve state
-	unreserveFn unreserveFn   // unreserve function
-	evictFn     evictFn       // evict function
-	metrics     metrics       // metrics
-	logger      logging.Logger
+	rs      *reserveState // the reserve state
+	evictFn evictFn       // evict function
+	metrics metrics       // metrics
+	logger  logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
@@ -82,8 +81,6 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		metrics: newMetrics(),
 		logger:  logger,
 	}
-
-	s.unreserveFn = s.unreserve
 
 	return s, nil
 }
@@ -167,10 +164,6 @@ func (s *store) Save(batch *postage.Batch) error {
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
-		if err := s.store.Put(valueKey(batch.Value, batch.ID), nil); err != nil {
-			fmt.Println("put error")
-			return err
-		}
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			fmt.Println("put error")
 			return err
@@ -216,10 +209,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	batch.Value.Set(value)
 	batch.Depth = depth
 
-	if err := s.store.Put(valueKey(batch.Value, batch.ID), nil); err != nil {
-		return err
-	}
-
 	err = s.store.Put(batchKey(batch.ID), batch)
 	if err != nil {
 		return err
@@ -237,25 +226,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	return nil
 }
 
-// delete removes the batches with ids given as arguments.
-func (s *store) delete(ids ...[]byte) error {
-	for _, id := range ids {
-		b, err := s.get(id)
-		if err != nil {
-			return err
-		}
-		err = s.store.Delete(valueKey(b.Value, id))
-		if err != nil {
-			return err
-		}
-		err = s.store.Delete(batchKey(id))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // PutChainState is implementation of postage.Storer interface PutChainState method.
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
@@ -267,6 +237,11 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	s.cs = cs
 
 	err := s.cleanup()
+	if err != nil {
+		return err
+	}
+
+	err = s.adjustRadius(0)
 	if err != nil {
 		return err
 	}
@@ -317,6 +292,37 @@ func (s *store) Reset() error {
 	return nil
 }
 
+func (s *store) putValueItem(id []byte, value *big.Int, radius uint8) error {
+	return s.store.Put(valueKey(value, id), &valueItem{Radius: radius})
+}
+
+func (s *store) getValueItem(b *postage.Batch) (*valueItem, error) {
+	item := &valueItem{}
+
+	err := s.store.Get(valueKey(b.Value, b.ID), item)
+	return item, err
+}
+
+type valueItem struct {
+	Radius uint8
+}
+
+func (u *valueItem) MarshalBinary() ([]byte, error) {
+
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(u.Radius))
+
+	return b, nil
+}
+
+func (u *valueItem) UnmarshalBinary(b []byte) error {
+
+	radius := binary.BigEndian.Uint16(b)
+	u.Radius = uint8(radius)
+
+	return nil
+}
+
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
 func batchKey(id []byte) string {
 	return batchKeyPrefix + string(id)
@@ -334,3 +340,12 @@ func valueKeyToID(key []byte) []byte {
 	l := len(key)
 	return key[l-32 : l]
 }
+
+// valueKeyToID extracts the batch ID from a value key - used in value-based iteration.
+// func valueKeyToValue(key []byte) *big.Int {
+// 	l := len(key)
+
+// 	ret := big.NewInt(0)
+
+// 	return ret.SetBytes(key[l-64 : l-32])
+// }

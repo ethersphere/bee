@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 func setupBatchStore(t *testing.T) postage.Storer {
@@ -148,8 +149,6 @@ func TestCapacityChange(t *testing.T) {
 
 		store := setupBatchStore(t)
 
-		store.SetRadiusSetter(noopRadiusSetter{})
-
 		var batches []*postage.Batch
 
 		for i, b := range tc.add {
@@ -166,8 +165,6 @@ func TestCapacityChange(t *testing.T) {
 			}
 
 			sum, capacities := getCapacities(t, store, batches, radius)
-			t.Log(state)
-			t.Log(capacities)
 
 			if sum+state.Available != totalCapacity {
 				t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
@@ -240,8 +237,6 @@ func TestBatchUpdate(t *testing.T) {
 
 		store := setupBatchStore(t)
 
-		store.SetRadiusSetter(noopRadiusSetter{})
-
 		var batches []*postage.Batch
 
 		for i, b := range tc.add {
@@ -257,9 +252,7 @@ func TestBatchUpdate(t *testing.T) {
 				t.Fatal("negative available")
 			}
 
-			sum, capacities := getCapacities(t, store, batches, radius)
-			t.Log(state)
-			t.Log(capacities)
+			sum, _ := getCapacities(t, store, batches, radius)
 
 			if sum+state.Available != totalCapacity {
 				t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
@@ -282,9 +275,6 @@ func TestBatchUpdate(t *testing.T) {
 			if state.Available < 0 {
 				t.Fatal("negative available")
 			}
-
-			t.Log(state)
-			t.Log(capacities)
 
 			for i, c := range u.capacities {
 				cap := capacities[hex.EncodeToString((batches[i].ID))]
@@ -318,7 +308,7 @@ func TestPutChainState(t *testing.T) {
 	type testcase struct {
 		add   []testBatch
 		chain []chain
-		name  string
+		// name  string
 	}
 
 	tcs := []testcase{
@@ -348,9 +338,13 @@ func TestPutChainState(t *testing.T) {
 
 		store := setupBatchStore(t)
 
-		store.SetRadiusSetter(noopRadiusSetter{})
-
 		var batches []*postage.Batch
+		// evictedBatches := map[string]bool{}
+
+		// batchstore.SetEvictFunc(store, func(batchID []byte) error {
+		// 	evictedBatches[hex.EncodeToString(batchID)] = true
+		// 	return nil
+		// })
 
 		for i, b := range tc.add {
 
@@ -365,9 +359,7 @@ func TestPutChainState(t *testing.T) {
 				t.Fatal("negative available")
 			}
 
-			sum, capacities := getCapacities(t, store, batches, radius)
-			t.Log(state)
-			t.Log(capacities)
+			sum, _ := getCapacities(t, store, batches, radius)
 
 			if sum+state.Available != totalCapacity {
 				t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
@@ -386,19 +378,14 @@ func TestPutChainState(t *testing.T) {
 			}
 
 			state := store.GetReserveState()
-			_, capacities := getCapacities(t, store, batches, state.Radius)
 
-			if state.Available < 0 {
-				t.Fatal("negative available")
-			}
+			for i, b := range batches {
+				new, change, err := batchstore.BatchCapacity(store, b, state.Radius)
 
-			t.Log(state)
-			t.Log(capacities)
-
-			for i, c := range c.capacities {
-				cap := capacities[hex.EncodeToString((batches[i].ID))]
-				if cap != c {
-					t.Fatalf("test update %s: got capacity %v, want %v", tc.name, cap, c)
+				if c.capacities[i] == 0 && err != storage.ErrNotFound {
+					t.Fatal("batch should have been fully evicted")
+				} else if c.capacities[i] != new+change {
+					t.Fatalf("got capacity %d, want %d", new+change, c.capacities[i])
 				}
 			}
 		}
@@ -418,90 +405,32 @@ func TestUnreserve(t *testing.T) {
 
 	initDepth := uint8(8)
 
-	type testcase struct {
-		add            []testBatch
-		evictionRadius []uint8
+	store := setupBatchStore(t)
+
+	values := []int{3, 4, 5}
+
+	addBatch(t, store, depthValue(initDepth, values[0]))
+	addBatch(t, store, depthValue(initDepth, values[1]))
+	addBatch(t, store, depthValue(initDepth, values[2]))
+
+	state := store.GetReserveState()
+
+	cb := func([]byte, uint8) (bool, error) {
+		return false, nil
 	}
 
-	tcs := []testcase{
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 5},
-			},
-			evictionRadius: []uint8{5, 5, 5},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth + 1, value: 5},
-			},
-			evictionRadius: []uint8{5, 5, 5},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth + 2, value: 5},
-			},
-			evictionRadius: []uint8{6, 6, 6},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 2},
-			},
-			evictionRadius: []uint8{5, 4, 5},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 2},
-				{depth: initDepth, value: 4},
-			},
-			evictionRadius: []uint8{5, 5, 5},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 5},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 3},
-			},
-			evictionRadius: []uint8{4, 5, 5},
-		},
+	for i := uint8(0); i <= state.Radius; i++ {
+		if store.GetReserveState().StorageRadius != i {
+			t.Fatalf("got storage radius %d, want %d", store.GetReserveState().StorageRadius, i)
+		}
+		_ = store.Unreserve(cb)
 	}
 
-	for _, tc := range tcs {
+	_ = store.Unreserve(cb)
 
-		store := setupBatchStore(t)
-
-		store.SetRadiusSetter(noopRadiusSetter{})
-
-		var batches []*postage.Batch
-
-		for _, b := range tc.add {
-			newBatch := addBatch(t, store, depthValue(b.depth, b.value))
-			batches = append(batches, newBatch)
-		}
-
-		evictionRadiuses := map[string]uint8{}
-		err := store.Unreserve(func(id []byte, radius uint8) (bool, error) {
-			evictionRadiuses[hex.EncodeToString(id)] = radius
-			t.Log("~ Unreserve", hex.EncodeToString(id), radius)
-			return false, nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		for i, b := range batches {
-			if evictionRadiuses[hex.EncodeToString(b.ID)] != tc.evictionRadius[i] {
-				t.Fatalf("want %d, got %d", tc.evictionRadius[i], evictionRadiuses[hex.EncodeToString(b.ID)])
-			}
-		}
+	state = store.GetReserveState()
+	if state.Radius != state.StorageRadius {
+		t.Fatalf("radius %d does not match %d", state.Radius, state.StorageRadius)
 	}
 }
 

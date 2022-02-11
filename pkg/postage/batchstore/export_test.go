@@ -18,15 +18,15 @@ var (
 
 var Exp2 = exp2
 
-func BatchCapacity(s postage.Storer, b *postage.Batch, evictionRadius uint8) (int64, int64, error) {
+func BatchCapacity(s postage.Storer, b *postage.Batch, radius uint8) (int64, int64, error) {
 
 	st := s.(*store)
-	item, err := st.getUnreserveItem(b.ID)
+	item, err := st.getValueItem(b)
 
 	if err != nil {
 		return 0, 0, err
 	}
 
-	newCapacity, change := st.capacity(b, item, evictionRadius)
+	newCapacity, change := st.capacity(b.Depth, item.Radius, radius)
 	return newCapacity, change, err
 }
