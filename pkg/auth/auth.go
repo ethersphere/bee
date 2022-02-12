@@ -296,10 +296,11 @@ func applyPolicies(e *casbin.Enforcer) error {
 		return err
 	}
 
-	// TODO rectify these based on requested inheritance rules
+	// consumer > creator > accountant > maintainer
 	_, err = e.AddGroupingPolicies([][]string{
+		{"creator", "consumer"},
 		{"accountant", "creator"},
-		{"maintainer", "creator"},
+		{"maintainer", "accountant"},
 	})
 
 	return err
