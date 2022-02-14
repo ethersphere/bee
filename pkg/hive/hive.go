@@ -180,7 +180,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		} else {
 			// added this because Recorder (unit test) emits an unnecessary EOF when Close is called
 			time.Sleep(time.Millisecond * 50)
-			go stream.Close()
+			_ = stream.Close()
 		}
 	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
@@ -218,8 +218,6 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-		} else {
-			go stream.Close()
 		}
 	}()
 	s.metrics.PeersHandler.Inc()
@@ -240,6 +238,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// close the stream before processing in order to unblock the sending side
 	// fullclose is called async because there is no need to wait for confirmation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
+	go stream.Close()
+
 	if s.bootnode {
 		return nil
 	}
