@@ -135,7 +135,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 				s.logger.Debugf("pullsync: error syncing peer %s ruid %d bin %d from %d to %d: %v", peer.String(), ru.Ruid, bin, from, to, err)
 			}
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 
@@ -281,7 +281,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 	var ru pb.Ruid
@@ -430,7 +430,7 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 				s.logger.Debugf("pullsync: error getting cursors from peer %s: %v", peer.String(), err)
 			}
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 
@@ -462,7 +462,7 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 				s.logger.Debugf("pullsync: error getting cursors for peer %s: %v", p.Address.String(), err)
 			}
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 
@@ -501,7 +501,7 @@ func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32
 				s.logger.Debugf("pullsync: error sending ruid %d cancellation to %s: %v", ruid, peer.String(), err)
 			}
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 
@@ -527,7 +527,7 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 				s.logger.Debugf("pullsync: peer %s failed cancelling %d: %v", p.Address.String(), c.Ruid, err)
 			}
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 
