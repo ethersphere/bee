@@ -91,7 +91,7 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 
@@ -120,7 +120,7 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 	if !s.inLimiter.Allow(peer.Address.ByteString(), 1) {

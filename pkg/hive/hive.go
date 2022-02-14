@@ -180,7 +180,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		} else {
 			// added this because Recorder (unit test) emits an unnecessary EOF when Close is called
 			time.Sleep(time.Millisecond * 50)
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
@@ -219,7 +219,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 	s.metrics.PeersHandler.Inc()
