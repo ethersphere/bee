@@ -626,7 +626,7 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 		if err != nil {
 			_ = streamer.Reset()
 		} else {
-			go streamer.Close()
+			_ = streamer.Close()
 		}
 	}()
 
