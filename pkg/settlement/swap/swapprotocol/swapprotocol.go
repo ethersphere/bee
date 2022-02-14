@@ -110,7 +110,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 
@@ -171,7 +171,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 

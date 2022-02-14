@@ -179,7 +179,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			_ = stream.Reset()
 			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 	var req pb.Payment
@@ -288,7 +288,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 

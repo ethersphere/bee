@@ -166,7 +166,7 @@ func TestNewStreamMulti(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.FullClose(); err != nil {
+	if err := stream.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if atomic.LoadInt32(&h1calls) != 1 {

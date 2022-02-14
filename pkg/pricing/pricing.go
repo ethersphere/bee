@@ -79,7 +79,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 
@@ -124,7 +124,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 

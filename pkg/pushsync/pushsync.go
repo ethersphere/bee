@@ -146,7 +146,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			_ = stream.Reset()
 		} else {
 			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 	var ch pb.Delivery
@@ -505,7 +505,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		if err != nil {
 			_ = streamer.Reset()
 		} else {
-			go streamer.FullClose()
+			go streamer.Close()
 		}
 	}()
 
@@ -626,7 +626,7 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 		if err != nil {
 			_ = streamer.Reset()
 		} else {
-			go streamer.FullClose()
+			go streamer.Close()
 		}
 	}()
 

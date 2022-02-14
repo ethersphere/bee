@@ -72,7 +72,7 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 
@@ -105,7 +105,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 

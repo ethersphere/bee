@@ -298,7 +298,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			go stream.Close()
 		}
 	}()
 
@@ -396,7 +396,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			_ = stream.FullClose()
+			_ = stream.Close()
 		}
 	}()
 	var req pb.Request
