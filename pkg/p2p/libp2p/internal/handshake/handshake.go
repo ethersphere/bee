@@ -57,20 +57,16 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
-type ResponseParser interface {
-	ParseAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error)
-}
-
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
 	senderMatcher         p2p.SenderMatcher
-	parser                ResponseParser
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           []byte
 	networkID             uint64
+	validateOverlay       bool
 	welcomeMessage        atomic.Value
 	logger                logging.Logger
 	libp2pID              libp2ppeer.ID
@@ -93,7 +89,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, parser ResponseParser, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -104,6 +100,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		overlay:               overlay,
 		networkID:             networkID,
 		fullNode:              fullNode,
+		validateOverlay:       validateOverlay,
 		transaction:           transaction,
 		senderMatcher:         isSender,
 		libp2pID:              ownPeerID,
@@ -187,7 +184,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
 	}
 
-	remoteBzzAddress, err := s.parser.ParseAck(resp.Ack, blockHash)
+	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, blockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +343,7 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Transaction, blockHash, s.networkID)
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Transaction, blockHash, s.validateOverlay, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
 	}
