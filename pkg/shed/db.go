@@ -186,8 +186,8 @@ func (db *DB) WriteBatch(batch *leveldb.Batch) (err error) {
 
 // Compact triggers a full database compaction on the underlying
 // LevelDB instance. Use with care! This can be very expensive!
-func (db *DB) Compact() error {
-	r := util.Range{Start: nil, Limit: nil}
+func (db *DB) Compact(start, end []byte) error {
+	r := util.Range{Start: start, Limit: end}
 	return db.ldb.CompactRange(r)
 }
 
