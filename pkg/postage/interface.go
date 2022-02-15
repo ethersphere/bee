@@ -7,6 +7,8 @@ package postage
 import (
 	"io"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
@@ -17,10 +19,17 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
 	UpdatePrice(price *big.Int, txHash []byte) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(startBlock uint64) (<-chan struct{}, error)
+	Start(startBlock uint64, initState *BatchSnapshot) (<-chan struct{}, error)
 
 	TransactionStart() error
 	TransactionEnd() error
+}
+
+type BatchSnapshot struct {
+	Events           []types.Log `json:"events"`
+	LastBlockNumber  uint64      `json:"lastBlockNumber"`
+	FirstBlockNumber uint64      `json:"firstBlockNumber"`
+	Timestamp        int64       `json:"timestamp"`
 }
 
 // UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
@@ -77,7 +86,7 @@ type RadiusSetter interface {
 // Listener provides a blockchain event iterator.
 type Listener interface {
 	io.Closer
-	Listen(from uint64, updater EventUpdater) <-chan struct{}
+	Listen(from uint64, updater EventUpdater, initState *BatchSnapshot) <-chan struct{}
 }
 
 type BatchEventListener interface {

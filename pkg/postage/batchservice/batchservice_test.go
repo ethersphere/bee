@@ -31,8 +31,10 @@ var (
 type mockListener struct {
 }
 
-func (*mockListener) Listen(from uint64, updater postage.EventUpdater) <-chan struct{} { return nil }
-func (*mockListener) Close() error                                                     { return nil }
+func (*mockListener) Listen(from uint64, updater postage.EventUpdater, _ *postage.BatchSnapshot) <-chan struct{} {
+	return nil
+}
+func (*mockListener) Close() error { return nil }
 
 func newMockListener() *mockListener {
 	return &mockListener{}
@@ -488,7 +490,7 @@ func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 
 func TestTransactionOk(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
-	if _, err := svc.Start(10); err != nil {
+	if _, err := svc.Start(10, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -504,7 +506,7 @@ func TestTransactionOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc2.Start(10); err != nil {
+	if _, err := svc2.Start(10, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -515,7 +517,7 @@ func TestTransactionOk(t *testing.T) {
 
 func TestTransactionError(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
-	if _, err := svc.Start(10); err != nil {
+	if _, err := svc.Start(10, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -527,7 +529,7 @@ func TestTransactionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc2.Start(10); err != nil {
+	if _, err := svc2.Start(10, nil); err != nil {
 		t.Fatal(err)
 	}
 
