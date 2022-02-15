@@ -39,6 +39,9 @@ func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authentica
 	[request_definition]
 	r = sub, obj, act
 
+	[role_definition]
+	g = _, _
+
 	[policy_definition]
 	p = sub, obj, act
 
@@ -46,7 +49,7 @@ func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authentica
 	e = some(where (p.eft == allow))
 
 	[matchers]
-	m = r.sub == p.sub && (keyMatch(r.obj, p.obj) || keyMatch(r.obj, '/v1'+p.obj)) && regexMatch(r.act, p.act)`)
+	m = (g(r.sub, p.sub) || r.sub == p.sub) && (keyMatch(r.obj, p.obj) || keyMatch(r.obj, '/v1'+p.obj)) && regexMatch(r.act, p.act)`)
 
 	if err != nil {
 		return nil, err
@@ -287,6 +290,17 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"consumer", "/chunks/stream", "GET"},
 		{"creator", "/stewardship/*", "GET"},
 		{"consumer", "/stewardship/*", "PUT"},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// consumer > creator > accountant > maintainer
+	_, err = e.AddGroupingPolicies([][]string{
+		{"creator", "consumer"},
+		{"accountant", "creator"},
+		{"maintainer", "accountant"},
 	})
 
 	return err
