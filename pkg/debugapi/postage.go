@@ -89,9 +89,9 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrSwapChainDisabled) {
-			s.logger.Debugf("create batch: swap chain disabled: %v", err)
-			s.logger.Error("create batch: swap chain disabled")
-			jsonhttp.MethodNotAllowed(w, "swap chain disabled")
+			s.logger.Debugf("create batch: chain disabled: %v", err)
+			s.logger.Error("create batch: chain disabled")
+			jsonhttp.MethodNotAllowed(w, "chain disabled")
 			return
 		}
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
