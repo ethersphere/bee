@@ -33,10 +33,13 @@ func (s *Store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 func (s *Store) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	for _, ch := range chs {
 		s.store[ch.Address().ByteString()] = ch
 	}
+
 	exist = make([]bool, len(chs))
+
 	return exist, err
 }
 

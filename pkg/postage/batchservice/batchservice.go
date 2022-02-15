@@ -228,18 +228,19 @@ func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
-func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
+func (svc *batchService) Start(startBlock uint64, initState *postage.BatchSnapshot) (<-chan struct{}, error) {
 	dirty := false
 	err := svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
 
-	if dirty || svc.resync {
-		if svc.resync {
-			svc.logger.Warning("batch service: resync requested, resetting batch store")
-		} else {
+	if dirty || svc.resync || initState != nil {
+
+		if dirty {
 			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+		} else {
+			svc.logger.Warning("batch service: resync requested, resetting batch store")
 		}
 
 		if err := svc.storer.Reset(); err != nil {
@@ -255,7 +256,12 @@ func (svc *batchService) Start(startBlock uint64) (<-chan struct{}, error) {
 	if cs.Block > startBlock {
 		startBlock = cs.Block
 	}
-	return svc.listener.Listen(startBlock+1, svc), nil
+
+	if initState != nil && initState.LastBlockNumber > startBlock {
+		startBlock = initState.LastBlockNumber
+	}
+
+	return svc.listener.Listen(startBlock+1, svc, initState), nil
 }
 
 // updateChecksum updates the batchservice checksum once an event gets

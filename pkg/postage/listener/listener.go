@@ -177,12 +177,52 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan struct{} {
+func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.BatchSnapshot) <-chan struct{} {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-l.quit
 		cancel()
 	}()
+
+	processEvents := func(events []types.Log, to uint64) error {
+		if err := updater.TransactionStart(); err != nil {
+			return err
+		}
+
+		for _, e := range events {
+			startEv := time.Now()
+			err := updater.UpdateBlockNumber(e.BlockNumber)
+			if err != nil {
+				return err
+			}
+			if err = l.processEvent(e, updater); err != nil {
+				// if we have a zero value batch - silence & log then move on
+				if !errors.Is(err, batchservice.ErrZeroValueBatch) {
+					return err
+				}
+				l.logger.Debugf("listener: %v", err)
+			}
+			totalTimeMetric(l.metrics.EventProcessDuration, startEv)
+		}
+
+		err := updater.UpdateBlockNumber(to)
+		if err != nil {
+			return err
+		}
+
+		if err := updater.TransactionEnd(); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	if initState != nil {
+		err := processEvents(initState.Events, initState.LastBlockNumber+1)
+		if err != nil {
+			l.logger.Errorf("failed bootstrapping from initial state %v", err)
+		}
+	}
 
 	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
 	if err != nil {
@@ -274,32 +314,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater) <-chan stru
 				continue
 			}
 
-			if err := updater.TransactionStart(); err != nil {
-				return err
-			}
-
-			for _, e := range events {
-				startEv := time.Now()
-				err = updater.UpdateBlockNumber(e.BlockNumber)
-				if err != nil {
-					return err
-				}
-				if err = l.processEvent(e, updater); err != nil {
-					// if we have a zero value batch - silence & log then move on
-					if !errors.Is(err, batchservice.ErrZeroValueBatch) {
-						return err
-					}
-					l.logger.Debugf("listener: %v", err)
-				}
-				totalTimeMetric(l.metrics.EventProcessDuration, startEv)
-			}
-
-			err = updater.UpdateBlockNumber(to)
-			if err != nil {
-				return err
-			}
-
-			if err := updater.TransactionEnd(); err != nil {
+			if err := processEvents(events, to); err != nil {
 				return err
 			}
 
