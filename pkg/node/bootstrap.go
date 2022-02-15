@@ -196,7 +196,10 @@ func bootstrapNode(addr string,
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err
 	}
-	p2ps.Ready()
+
+	if err := p2ps.Ready(); err != nil {
+		return nil, err
+	}
 
 	if !waitPeers(kad) {
 		return nil, errors.New("timed out waiting for kademlia peers")
