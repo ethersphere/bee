@@ -231,11 +231,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 
-	var swapBackendEnabled = !o.StubSwapChain || // Will stay enabled only in LightNode mode.
-		o.SwapEnable ||
+	var swapBackendEnabled = !o.StubSwapChain
+
+	// Will stay enabled only in LightNode mode.
+	if o.SwapEnable ||
 		o.FullNodeMode ||
 		o.GatewayMode ||
-		o.BootnodeMode
+		o.BootnodeMode {
+		swapBackendEnabled = true
+	}
 
 	if swapBackendEnabled {
 		logger.Info("starting with an enabled swap backend")
