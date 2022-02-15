@@ -104,14 +104,15 @@ type lightnodes interface {
 }
 
 type Options struct {
-	PrivateKey     *ecdsa.PrivateKey
-	NATAddr        string
-	EnableWS       bool
-	FullNode       bool
-	LightNodeLimit int
-	WelcomeMessage string
-	Transaction    []byte
-	hostFactory    func(...libp2p.Option) (host.Host, error)
+	PrivateKey      *ecdsa.PrivateKey
+	NATAddr         string
+	EnableWS        bool
+	FullNode        bool
+	LightNodeLimit  int
+	WelcomeMessage  string
+	Transaction     []byte
+	ValidateOverlay bool
+	hostFactory     func(...libp2p.Option) (host.Host, error)
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, swapBackend p2p.SenderMatcher, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -238,11 +239,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	mockParser := &MockParser{
-		networkID: networkID,
-	}
-
-	handshakeService, err := handshake.New(signer, advertisableAddresser, swapBackend, mockParser, overlay, networkID, o.FullNode, o.Transaction, o.WelcomeMessage, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, swapBackend, overlay, networkID, o.FullNode, o.Transaction, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}

@@ -151,7 +151,7 @@ type Options struct {
 	SwapEnable                 bool
 	ChequebookEnable           bool
 	FullNodeMode               bool
-	StubSwapChain              bool
+	NoChainBackend             bool
 	Transaction                string
 	BlockHash                  string
 	PostageContractAddress     string
@@ -219,35 +219,34 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	addressbook := addressbook.New(stateStore)
 
 	var (
-		swapChain          transaction.Backend = &swapChainTransactionStub{logger}
+		swapChain          transaction.Backend = &noOpswapChainTransaction{logger}
 		overlayEthAddress  common.Address
 		chainID            int64
 		transactionService transaction.Service
 		transactionMonitor transaction.Monitor
 		chequebookFactory  chequebook.Factory
-		chequebookService  chequebook.Service = &chequebookServiceStub{}
+		chequebookService  chequebook.Service = &noOpChequebookService{}
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 
-	var swapBackendEnabled = !o.StubSwapChain
+	var chainBackendEnabled = !o.NoChainBackend
 
-	// Will stay enabled only in LightNode mode.
 	if o.SwapEnable ||
 		o.FullNodeMode ||
 		o.GatewayMode ||
 		o.BootnodeMode {
-		swapBackendEnabled = true
+		chainBackendEnabled = true // will stay enabled only in LightNode mode.
 	}
 
-	if swapBackendEnabled {
-		logger.Info("starting with an enabled swap backend")
+	if chainBackendEnabled {
+		logger.Info("starting with an enabled chain backend")
 	} else {
-		logger.Info("starting with a disabled swap backend")
+		logger.Info("starting with a disabled chain backend")
 	}
 
-	if swapBackendEnabled {
+	if chainBackendEnabled {
 		swapChain, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 			p2pCtx,
 			logger,
@@ -407,7 +406,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
 
-	if swapBackendEnabled { // this is temporary
+	if chainBackendEnabled { //TODO get an answer if this is accurate
 		err = CheckOverlayWithStore(swarmAddress, stateStore)
 		if err != nil {
 			return nil, err
@@ -416,9 +415,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	var senderMatcher p2p.SenderMatcher = new(senderMatcherStub)
+	var senderMatcher p2p.SenderMatcher = new(noOpsenderMatcher)
 
-	if swapBackendEnabled {
+	if chainBackendEnabled {
 		senderMatcher = transaction.NewMatcher(swapChain, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
 		_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
 		if err != nil {
@@ -427,12 +426,13 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
-		PrivateKey:     libp2pPrivateKey,
-		NATAddr:        o.NATAddr,
-		EnableWS:       o.EnableWS,
-		WelcomeMessage: o.WelcomeMessage,
-		FullNode:       o.FullNodeMode,
-		Transaction:    txHash,
+		PrivateKey:      libp2pPrivateKey,
+		NATAddr:         o.NATAddr,
+		EnableWS:        o.EnableWS,
+		WelcomeMessage:  o.WelcomeMessage,
+		FullNode:        o.FullNodeMode,
+		Transaction:     txHash,
+		ValidateOverlay: chainBackendEnabled,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -483,13 +483,13 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	b.postageServiceCloser = post
 
 	var (
-		postageContractService postagecontract.Interface = new(stubPostageContract)
+		postageContractService postagecontract.Interface = new(noOpPostageContract)
 		batchSvc               postage.EventUpdater
 		eventListener          postage.Listener
 	)
 
 	var postageSyncStart uint64 = 0
-	if swapBackendEnabled {
+	if chainBackendEnabled {
 		chainCfg, found := config.GetChainConfig(chainID)
 		postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
 		if o.PostageContractAddress != "" {
@@ -867,7 +867,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			debugAPIService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
 
-		if swapBackendEnabled {
+		if chainBackendEnabled {
 			if swapBackendMetrics, ok := swapChain.(metrics.Collector); ok {
 				debugAPIService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 			}
