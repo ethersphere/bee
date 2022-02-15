@@ -339,12 +339,6 @@ func TestPutChainState(t *testing.T) {
 		store := setupBatchStore(t)
 
 		var batches []*postage.Batch
-		// evictedBatches := map[string]bool{}
-
-		// batchstore.SetEvictFunc(store, func(batchID []byte) error {
-		// 	evictedBatches[hex.EncodeToString(batchID)] = true
-		// 	return nil
-		// })
 
 		for i, b := range tc.add {
 
@@ -415,9 +409,7 @@ func TestUnreserve(t *testing.T) {
 
 	state := store.GetReserveState()
 
-	cb := func([]byte, uint8) (bool, error) {
-		return false, nil
-	}
+	cb := func([]byte, uint8) (bool, error) { return false, nil }
 
 	for i := uint8(0); i <= state.Radius; i++ {
 		if store.GetReserveState().StorageRadius != i {

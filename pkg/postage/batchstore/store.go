@@ -23,7 +23,6 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
-	// unreservePrefix = "batchstore_unreserve_"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -117,11 +116,15 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
 
-	// TODO: why is this necessary?
-	if s.rs.StorageRadius < s.rs.Radius {
-		b.Radius = s.rs.StorageRadius
+	v, err := s.getValueItem(b)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.StorageRadius < v.Radius {
+		b.Radius = v.StorageRadius
 	} else {
-		b.Radius = s.rs.Radius
+		b.Radius = v.Radius
 	}
 
 	return b, nil
@@ -292,8 +295,8 @@ func (s *store) Reset() error {
 	return nil
 }
 
-func (s *store) putValueItem(id []byte, value *big.Int, radius uint8) error {
-	return s.store.Put(valueKey(value, id), &valueItem{Radius: radius})
+func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius uint8) error {
+	return s.store.Put(valueKey(value, id), &valueItem{Radius: radius, StorageRadius: storageRadius})
 }
 
 func (s *store) getValueItem(b *postage.Batch) (*valueItem, error) {
@@ -304,21 +307,23 @@ func (s *store) getValueItem(b *postage.Batch) (*valueItem, error) {
 }
 
 type valueItem struct {
-	Radius uint8
+	Radius        uint8
+	StorageRadius uint8
 }
 
 func (u *valueItem) MarshalBinary() ([]byte, error) {
 
-	b := make([]byte, 2)
+	b := make([]byte, 4)
 	binary.BigEndian.PutUint16(b, uint16(u.Radius))
+	binary.BigEndian.PutUint16(b[2:], uint16(u.StorageRadius))
 
 	return b, nil
 }
 
 func (u *valueItem) UnmarshalBinary(b []byte) error {
 
-	radius := binary.BigEndian.Uint16(b)
-	u.Radius = uint8(radius)
+	u.Radius = uint8(binary.BigEndian.Uint16(b))
+	u.StorageRadius = uint8(binary.BigEndian.Uint16(b[2:]))
 
 	return nil
 }
@@ -340,12 +345,3 @@ func valueKeyToID(key []byte) []byte {
 	l := len(key)
 	return key[l-32 : l]
 }
-
-// valueKeyToID extracts the batch ID from a value key - used in value-based iteration.
-// func valueKeyToValue(key []byte) *big.Int {
-// 	l := len(key)
-
-// 	ret := big.NewInt(0)
-
-// 	return ret.SetBytes(key[l-64 : l-32])
-// }

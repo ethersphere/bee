@@ -38,7 +38,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -83,7 +82,7 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 		return err
 	}
 
-	if err := s.putValueItem(b.ID, b.Value, s.rs.Radius); err != nil {
+	if err := s.putValueItem(b.ID, b.Value, s.rs.Radius, 0); err != nil {
 		return err
 	}
 
@@ -226,7 +225,7 @@ func (s *store) adjustCapacity(b *postage.Batch, v *valueItem, radius uint8) err
 
 	v.Radius = radius
 
-	err := s.putValueItem(b.ID, b.Value, v.Radius)
+	err := s.putValueItem(b.ID, b.Value, v.Radius, v.StorageRadius)
 	if err != nil {
 		return err
 	}
@@ -284,9 +283,6 @@ func (s *store) lowerEvictionRadius() error {
 	}()
 
 	return s.store.Iterate(valueKeyPrefix, func(key, val []byte) (bool, error) {
-		if !strings.HasPrefix(string(key), valueKeyPrefix) {
-			return true, nil
-		}
 
 		id := valueKeyToID(key)
 
@@ -364,7 +360,21 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	var stopped = false
+	type updateItem struct {
+		item *valueItem
+		key  string
+	}
+
+	var (
+		stopped  = false
+		toUpdate []updateItem
+	)
+
+	defer func() {
+		for _, u := range toUpdate {
+			s.store.Put(u.key, u.item)
+		}
+	}()
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
 
@@ -374,12 +384,25 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, err
 		}
 
+		fmt.Println(v.StorageRadius, s.rs.StorageRadius)
+
+		// skip eviction if previous eviction has higher radius
+		if v.StorageRadius > s.rs.StorageRadius {
+			return false, nil
+		}
+
 		id := valueKeyToID(key)
 
-		stopped, err = cb(id, s.rs.StorageRadius)
+		stopped, err = cb(id, v.StorageRadius)
 		if err != nil {
 			return false, err
 		}
+
+		if v.StorageRadius < s.rs.Radius {
+			v.StorageRadius++
+		}
+
+		toUpdate = append(toUpdate, updateItem{item: v, key: string(key)})
 
 		return stopped, nil
 	})
@@ -388,11 +411,8 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	}
 
 	// full iteration, more eviction from localstore may be necessary, so increase storage radius
-	if !stopped {
+	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
-		if s.rs.StorageRadius > s.rs.Radius {
-			s.rs.StorageRadius = s.rs.Radius
-		}
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		return s.store.Put(reserveStateKey, s.rs)
 	}
