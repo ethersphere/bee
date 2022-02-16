@@ -168,11 +168,9 @@ func (s *store) Save(batch *postage.Batch) error {
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
-			fmt.Println("put error")
 			return err
 		}
 		if err := s.allocateBatch(batch); err != nil {
-			fmt.Println("allocated error")
 			return err
 		}
 		if s.radiusSetter != nil {
@@ -180,7 +178,6 @@ func (s *store) Save(batch *postage.Batch) error {
 		}
 		return nil
 	case err != nil:
-		fmt.Printf("%t\n", err)
 		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batch.ID), err)
 	}
 	return nil

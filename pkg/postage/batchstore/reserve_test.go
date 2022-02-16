@@ -20,48 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
-func setupBatchStore(t *testing.T) postage.Storer {
-	t.Helper()
-	// we cannot  use the mock statestore here since the iterator is not giving the right order
-	// must use the leveldb statestore
-	dir, err := os.MkdirTemp("", "batchstore_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	})
-	logger := logging.New(io.Discard, 0)
-	stateStore, err := leveldb.NewStateStore(dir, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := stateStore.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	evictFn := func(b []byte) error {
-		return nil
-	}
-
-	bStore, _ := batchstore.New(stateStore, evictFn, logger)
-	bStore.SetRadiusSetter(noopRadiusSetter{})
-
-	err = bStore.PutChainState(&postage.ChainState{
-		Block:        0,
-		TotalAmount:  big.NewInt(0),
-		CurrentPrice: big.NewInt(1),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bStore
-}
-
 type testBatch struct {
 	depth uint8
 	value int
@@ -153,7 +111,7 @@ func TestCapacityChange(t *testing.T) {
 
 		for i, b := range tc.add {
 
-			newBatch := addBatch(t, store, depthValue(b.depth, b.value))
+			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)
 			radius := calcRadius(tc.add[:i+1], batchstore.DefaultDepth)
 			state := store.GetReserveState()
@@ -241,7 +199,7 @@ func TestBatchUpdate(t *testing.T) {
 
 		for i, b := range tc.add {
 
-			newBatch := addBatch(t, store, depthValue(b.depth, b.value))
+			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)
 			radius := calcRadius(tc.add[:i+1], batchstore.DefaultDepth)
 			state := store.GetReserveState()
@@ -342,7 +300,7 @@ func TestPutChainState(t *testing.T) {
 
 		for i, b := range tc.add {
 
-			newBatch := addBatch(t, store, depthValue(b.depth, b.value))
+			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)
 			radius := calcRadius(tc.add[:i+1], batchstore.DefaultDepth)
 			state := store.GetReserveState()
@@ -403,9 +361,9 @@ func TestUnreserve(t *testing.T) {
 
 	values := []int{3, 4, 5}
 
-	addBatch(t, store, depthValue(initDepth, values[0]))
-	addBatch(t, store, depthValue(initDepth, values[1]))
-	addBatch(t, store, depthValue(initDepth, values[2]))
+	addBatch(t, store, initDepth, values[0])
+	addBatch(t, store, initDepth, values[1])
+	addBatch(t, store, initDepth, values[2])
 
 	state := store.GetReserveState()
 
@@ -424,6 +382,48 @@ func TestUnreserve(t *testing.T) {
 	if state.Radius != state.StorageRadius {
 		t.Fatalf("radius %d does not match %d", state.Radius, state.StorageRadius)
 	}
+}
+
+func setupBatchStore(t *testing.T) postage.Storer {
+	t.Helper()
+	// we cannot  use the mock statestore here since the iterator is not giving the right order
+	// must use the leveldb statestore
+	dir, err := os.MkdirTemp("", "batchstore_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	})
+	logger := logging.New(io.Discard, 0)
+	stateStore, err := leveldb.NewStateStore(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := stateStore.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	evictFn := func(b []byte) error {
+		return nil
+	}
+
+	bStore, _ := batchstore.New(stateStore, evictFn, logger)
+	bStore.SetRadiusSetter(noopRadiusSetter{})
+
+	err = bStore.PutChainState(&postage.ChainState{
+		Block:        0,
+		TotalAmount:  big.NewInt(0),
+		CurrentPrice: big.NewInt(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bStore
 }
 
 func calcRadius(batches []testBatch, depth uint8) uint8 {
@@ -453,19 +453,10 @@ func getCapacities(t *testing.T, st postage.Storer, batches []*postage.Batch, ra
 	return sum, m
 }
 
-type depthValueTuple struct {
-	depth uint8
-	value int
-}
-
-func depthValue(d uint8, v int) depthValueTuple {
-	return depthValueTuple{depth: d, value: v}
-}
-
-func addBatch(t *testing.T, s postage.Storer, dvp depthValueTuple) *postage.Batch {
+func addBatch(t *testing.T, s postage.Storer, depth uint8, value int) *postage.Batch {
 	batch := postagetest.MustNewBatch(
-		postagetest.WithValue(int64(dvp.value)),
-		postagetest.WithDepth(dvp.depth),
+		postagetest.WithValue(int64(value)),
+		postagetest.WithDepth(depth),
 		postagetest.WithStart(111),
 	)
 	if err := s.Save(batch); err != nil {

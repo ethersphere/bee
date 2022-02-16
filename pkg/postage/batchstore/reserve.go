@@ -5,7 +5,7 @@
 // Package batchstore implements the reserve
 // the reserve serves to maintain chunks in the area of responsibility
 // it has two components
-// -  the batchstore reserve which maintains information about batches, their values, priorities and synchronises with the blockchain
+// - the batchstore reserve which maintains information about batches, their values, priorities and synchronises with the blockchain
 // - the localstore which stores chunks and manages garbage collection
 //
 // when a new chunk arrives in the localstore, the batchstore reserve is asked to check
@@ -21,8 +21,8 @@
 //
 // the rules of the reserve
 // - if batch a is unreserved and val(b) <  val(a) then b is unreserved on any po
-// - if a batch is unreserved on po  p, then  it is unreserved also on any p'<p
-// - batch size based on fully filled the reserve should not  exceed Capacity
+// - if a batch is unreserved on po p, then  it is unreserved also on any p'<p
+// - batch size based on fully filled the reserve should not exceed Capacity
 // - batch reserve is maximally utilised, i.e, cannot be extended and have 1-3 remain true
 
 /*
@@ -50,8 +50,8 @@ var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging t
 // relatively near the current 5M chunks ~25GB.
 var Capacity = exp2(22)
 
-// EvictRadius is a flag to indicate that a batch may be fully unreserved.
-const EvictRadius = swarm.MaxPO + 1
+// EvictRadius is a PO value used to fully dealloacte a batch.
+const fullEvictionRadius = swarm.MaxPO + 1
 
 // reserveState records the state and is persisted in the state store
 type reserveState struct {
@@ -70,6 +70,7 @@ type reserveState struct {
 // allocateBatch is the main point of entry for a new batch.
 // After computing a new radius, the available capacity of the node is deducted
 // using the new batch's depth.
+// Must be called under the mutex lock.
 func (s *store) allocateBatch(b *postage.Batch) error {
 
 	err := s.cleanup()
@@ -95,6 +96,7 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 }
 
 // deallocateBatch unreserves a batch fully to regain previously allocated capacity.
+// Must be called under the mutex lock.
 func (s *store) deallocateBatch(b *postage.Batch) error {
 
 	v, err := s.getValueItem(b)
@@ -102,7 +104,7 @@ func (s *store) deallocateBatch(b *postage.Batch) error {
 		return err
 	}
 
-	err = s.adjustCapacity(b, v, EvictRadius)
+	err = s.adjustCapacity(b, v, fullEvictionRadius)
 	if err != nil {
 		return err
 	}
@@ -110,8 +112,8 @@ func (s *store) deallocateBatch(b *postage.Batch) error {
 	return nil
 }
 
-// radius < eviction_radius
-// cleanup removes negative value batches, computes a new radius, and lowers batch evictions if new radius is lower.
+// cleanup removes negative value batches.
+// Must be called under the mutex lock.
 func (s *store) cleanup() error {
 
 	var toDelete [][]byte
@@ -132,7 +134,7 @@ func (s *store) cleanup() error {
 
 		// negative value batches
 		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
-			err := s.adjustCapacity(b, v, EvictRadius)
+			err := s.adjustCapacity(b, v, fullEvictionRadius)
 			if err != nil {
 				return false, err
 			}
@@ -148,6 +150,7 @@ func (s *store) cleanup() error {
 	return s.evict(toDelete)
 }
 
+// Must be called under the mutex lock.
 func (s *store) adjustRadius(newBatch int64) error {
 
 	oldRadius := s.rs.Radius
@@ -179,6 +182,7 @@ func (s *store) adjustRadius(newBatch int64) error {
 
 // gainCapacity iterates on the list of batches in ascending order of value and unreserves batches with the new radius
 // until a positive node capacity is reached.
+// Must be called under the mutex lock.
 func (s *store) gainCapacity(upto *big.Int) error {
 
 	if s.rs.Available >= 0 {
@@ -190,7 +194,7 @@ func (s *store) gainCapacity(upto *big.Int) error {
 		batchID := valueKeyToID(key)
 		b, err := s.get(batchID)
 		if err != nil {
-			return true, fmt.Errorf("release get %x %v: %w", batchID, b, err)
+			return false, fmt.Errorf("release get %x %v: %w", batchID, b, err)
 		}
 
 		v := &valueItem{}
@@ -201,7 +205,7 @@ func (s *store) gainCapacity(upto *big.Int) error {
 
 		// adjust capacity until positive available AND until the last added batch's value
 		if s.rs.Available >= 0 && b.Value.Cmp(upto) >= 0 {
-			return true, nil
+			return false, nil
 		}
 
 		err = s.adjustCapacity(b, v, s.rs.Radius)
@@ -218,14 +222,13 @@ func (s *store) gainCapacity(upto *big.Int) error {
 	return nil
 }
 
-// unreserve adds extra capacity to the node by tweaking a batches eviction based on a new radius.
+// adjustCapacity adds extra capacity to the node by tweaking a batches radius based on a new radius.
+// Must be called under the mutex lock.
 func (s *store) adjustCapacity(b *postage.Batch, v *valueItem, radius uint8) error {
 
 	_, change := s.capacity(b.Depth, v.Radius, radius)
 
-	v.Radius = radius
-
-	err := s.putValueItem(b.ID, b.Value, v.Radius, v.StorageRadius)
+	err := s.putValueItem(b.ID, b.Value, radius, v.StorageRadius)
 	if err != nil {
 		return err
 	}
@@ -235,7 +238,8 @@ func (s *store) adjustCapacity(b *postage.Batch, v *valueItem, radius uint8) err
 	return nil
 }
 
-// capacity returns the new capacity and old capacity dedicated to a batch given the new eviction radius.
+// capacity returns the new capacity and old capacity dedicated to a batch given the new radius.
+// Must be called under the mutex lock.
 func (s *store) capacity(depth, batchRadius, radius uint8) (int64, int64) {
 
 	var (
@@ -258,6 +262,7 @@ func (s *store) capacity(depth, batchRadius, radius uint8) (int64, int64) {
 // lowerEvictionRadius reduces the radius of batches if the current radius is lower than the batch radius.
 // If a batch radius is lower, then the allocated capacity is not sufficient, so the batch radius is lowered.
 // A lower batch radius means more allocated capacity.
+// Must be called under the mutex lock.
 func (s *store) lowerEvictionRadius() error {
 
 	type updateValueItem struct {
@@ -302,7 +307,8 @@ func (s *store) lowerEvictionRadius() error {
 
 // computeRadius calculates the radius by using the sum up all the number of chunks from all batches
 // and the node capacity using the formula
-// total_needed_capacity/node_capacity = 2^R .
+// total_needed_capacity/node_capacity = 2^R.
+// Must be called under the mutex lock.
 func (s *store) computeRadius(newBatch int64) error {
 
 	var totalCommitment int64 = newBatch
@@ -311,7 +317,7 @@ func (s *store) computeRadius(newBatch int64) error {
 		batchID := valueKeyToID(key)
 		b, err := s.get(valueKeyToID(key))
 		if err != nil {
-			return true, fmt.Errorf("compute radius %x %v: %w", batchID, b, err)
+			return false, fmt.Errorf("compute radius %x %v: %w", batchID, b, err)
 		}
 
 		totalCommitment += exp2(uint(b.Depth))
@@ -372,7 +378,10 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
 	defer func() {
 		for _, u := range toUpdate {
-			s.store.Put(u.key, u.item)
+			err := s.store.Put(u.key, u.item)
+			if err != nil {
+				s.logger.Warningf("Unreserve: %v", err)
+			}
 		}
 	}()
 
@@ -383,8 +392,6 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		if err != nil {
 			return false, err
 		}
-
-		fmt.Println(v.StorageRadius, s.rs.StorageRadius)
 
 		// skip eviction if previous eviction has higher radius
 		if v.StorageRadius > s.rs.StorageRadius {
