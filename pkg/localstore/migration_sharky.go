@@ -194,11 +194,13 @@ func migrateSharky(db *DB) error {
 		batch.Reset()
 
 		if batchesCount%compactionSize == 0 {
+			db.logger.Debugf("starting compaction")
 			dur, err := compaction(compactStart, compactEnd)
 			if err != nil {
 				return err
 			}
 			compactionTime += dur
+			db.logger.Debugf("compaction done %s", dur)
 		}
 	}
 
