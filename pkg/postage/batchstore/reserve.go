@@ -25,13 +25,6 @@
 // - batch size based on fully filled the reserve should not exceed Capacity
 // - batch reserve is maximally utilised, i.e, cannot be extended and have 1-3 remain true
 
-/*
-
-Notes:
-	if batch depth < radius, batch is fully unreserved
-
-*/
-
 package batchstore
 
 import (
@@ -50,7 +43,7 @@ var DefaultDepth = uint8(12) // 12 is the testnet depth at the time of merging t
 // relatively near the current 5M chunks ~25GB.
 var Capacity = exp2(22)
 
-// EvictRadius is a PO value used to fully dealloacte a batch.
+// fullEvictionRadius is a PO value used to fully dealloacte a batch.
 const fullEvictionRadius = swarm.MaxPO + 1
 
 // reserveState records the state and is persisted in the state store
@@ -75,16 +68,16 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 
 	err := s.cleanup()
 	if err != nil {
-		return err
+		return fmt.Errorf("batchstore: allocate batch cleanup %x %w", b.ID, err)
 	}
 
 	err = s.adjustRadius(exp2(uint(b.Depth)))
 	if err != nil {
-		return err
+		return fmt.Errorf("batchstore: allocate batch adjust radius %x %w", b.ID, err)
 	}
 
 	if err := s.putValueItem(b.ID, b.Value, s.rs.Radius, 0); err != nil {
-		return err
+		return fmt.Errorf("batchstore: allocate batch %x %w", b.ID, err)
 	}
 
 	capacity := exp2(uint(b.Depth) - uint(s.rs.Radius))
@@ -92,7 +85,12 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 
 	s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
 
-	return s.gainCapacity(b.Value)
+	err = s.gainCapacity(b.Value)
+	if err != nil {
+		return fmt.Errorf("batchstore: allocate batch gain capacity %x %w", b.ID, err)
+	}
+
+	return nil
 }
 
 // deallocateBatch unreserves a batch fully to regain previously allocated capacity.
@@ -106,17 +104,17 @@ func (s *store) deallocateBatch(b *postage.Batch) error {
 
 	err = s.adjustCapacity(b, v, fullEvictionRadius)
 	if err != nil {
-		return err
+		return fmt.Errorf("batchstore: deallocate batch adjust capacity %x %w", b.ID, err)
 	}
 
 	return nil
 }
 
-// cleanup removes negative value batches.
+// cleanup evicts and removes negative value batches.
 // Must be called under the mutex lock.
 func (s *store) cleanup() error {
 
-	var toDelete [][]byte
+	var tofullyEvict [][]byte
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
 
@@ -138,7 +136,9 @@ func (s *store) cleanup() error {
 			if err != nil {
 				return false, err
 			}
-			toDelete = append(toDelete, b.ID)
+			tofullyEvict = append(tofullyEvict, b.ID)
+		} else {
+			return true, nil // stop early as an optimization at first non-negative value
 		}
 
 		return false, nil
@@ -147,7 +147,7 @@ func (s *store) cleanup() error {
 		return err
 	}
 
-	return s.evict(toDelete)
+	return s.evict(tofullyEvict)
 }
 
 // Must be called under the mutex lock.
@@ -160,11 +160,6 @@ func (s *store) adjustRadius(newBatch int64) error {
 		return err
 	}
 
-	// if reservestate radius is lower than storage radius, override
-	if s.rs.StorageRadius > s.rs.Radius {
-		s.rs.StorageRadius = s.rs.Radius
-	}
-
 	err = s.store.Put(reserveStateKey, s.rs)
 	if err != nil {
 		return err
@@ -173,8 +168,13 @@ func (s *store) adjustRadius(newBatch int64) error {
 	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 	s.metrics.Radius.Set(float64(s.rs.Radius))
 
+	// when batches expire, radius may decrease, so adjust value index accordingly
 	if s.rs.Radius < oldRadius {
-		return s.lowerEvictionRadius()
+		// if radius is lower than storage radius, override
+		if s.rs.StorageRadius > s.rs.Radius {
+			s.rs.StorageRadius = s.rs.Radius
+		}
+		return s.lowerBatchRadius()
 	}
 
 	return nil
@@ -194,7 +194,7 @@ func (s *store) gainCapacity(upto *big.Int) error {
 		batchID := valueKeyToID(key)
 		b, err := s.get(batchID)
 		if err != nil {
-			return false, fmt.Errorf("release get %x %v: %w", batchID, b, err)
+			return false, err
 		}
 
 		v := &valueItem{}
@@ -259,11 +259,11 @@ func (s *store) capacity(depth, batchRadius, radius uint8) (int64, int64) {
 	return newCapacity, oldCapacity - newCapacity
 }
 
-// lowerEvictionRadius reduces the radius of batches if the current radius is lower than the batch radius.
-// If a batch radius is lower, then the allocated capacity is not sufficient, so the batch radius is lowered.
+// lowerBatchRadius reduces the radius of batches if the current radius is lower than the batch radius.
+// If the radius is lower, then the allocated capacity is not sufficient, so the batch radius is lowered.
 // A lower batch radius means more allocated capacity.
 // Must be called under the mutex lock.
-func (s *store) lowerEvictionRadius() error {
+func (s *store) lowerBatchRadius() error {
 
 	type updateValueItem struct {
 		id   []byte
@@ -274,14 +274,13 @@ func (s *store) lowerEvictionRadius() error {
 
 	defer func() {
 		for _, v := range toUpdate {
-
 			b, err := s.get(v.id)
 			if err != nil {
-				s.logger.Warning(err)
+				s.logger.Warningf("lowerEvictionRadius: %v", err)
 			} else {
 				err := s.adjustCapacity(b, v.item, s.rs.Radius)
 				if err != nil {
-					s.logger.Warning(err)
+					s.logger.Warningf("lowerEvictionRadius: %v", err)
 				}
 			}
 		}
@@ -297,7 +296,10 @@ func (s *store) lowerEvictionRadius() error {
 			return false, err
 		}
 
-		if s.rs.Radius < v.Radius {
+		if s.rs.StorageRadius < v.StorageRadius {
+			v.StorageRadius = s.rs.StorageRadius
+			toUpdate = append(toUpdate, updateValueItem{item: v, id: id})
+		} else if s.rs.Radius < v.Radius {
 			toUpdate = append(toUpdate, updateValueItem{item: v, id: id})
 		}
 
@@ -335,7 +337,7 @@ func (s *store) computeRadius(newBatch int64) error {
 	return nil
 }
 
-// delete removes the batches with ids given as arguments.
+// delete calls the evict callback and removes the batches with ids given as arguments.
 func (s *store) evict(ids [][]byte) error {
 	for _, id := range ids {
 
@@ -405,9 +407,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, err
 		}
 
-		if v.StorageRadius < s.rs.Radius {
-			v.StorageRadius++
-		}
+		v.StorageRadius++
 
 		toUpdate = append(toUpdate, updateItem{item: v, key: string(key)})
 
@@ -417,7 +417,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		return err
 	}
 
-	// full iteration, more eviction from localstore may be necessary, so increase storage radius
+	// a full iteration has occurred, so more evictions from localstore may be necessary, increase storage radius
 	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))

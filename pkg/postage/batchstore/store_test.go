@@ -24,12 +24,15 @@ var noopEvictFn = func([]byte) error { return nil }
 
 func TestBatchStore_Get(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
-	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
-	stateStorePut(t, stateStore, key, testBatch)
+	err := batchStore.Save(testBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	got := batchStoreGetBatch(t, batchStore, testBatch.ID)
 	postagetest.CompareBatches(t, testBatch, got)
 }

@@ -121,11 +121,7 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 		return nil, err
 	}
 
-	if v.StorageRadius < v.Radius {
-		b.Radius = v.StorageRadius
-	} else {
-		b.Radius = v.Radius
-	}
+	b.Radius = v.StorageRadius
 
 	return b, nil
 }
@@ -238,12 +234,12 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 
 	err := s.cleanup()
 	if err != nil {
-		return err
+		return fmt.Errorf("batchstore: put chain state clean up %w", err)
 	}
 
 	err = s.adjustRadius(0)
 	if err != nil {
-		return err
+		return fmt.Errorf("batchstore: put chain state adjust radius %w", err)
 	}
 
 	// this needs to be improved, since we can miss some calls on
@@ -298,7 +294,6 @@ func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius ui
 
 func (s *store) getValueItem(b *postage.Batch) (*valueItem, error) {
 	item := &valueItem{}
-
 	err := s.store.Get(valueKey(b.Value, b.ID), item)
 	return item, err
 }
