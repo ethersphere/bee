@@ -1,8 +1,13 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package node
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +19,13 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/feeds"
+	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/file/joiner"
+	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -39,7 +48,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var snapshotReference = swarm.MustParseHexAddress("b36f03d995a04df1757c3a5ddbb795f48d279c532b11803864503f6b97fb20e1")
+var snapshotFeed = swarm.MustParseHexAddress("b36f03d995a04df1757c3a5ddbb795f48d279c532b11803864503f6b97fb20e1")
 
 func bootstrapNode(addr string,
 	swarmAddress swarm.Address,
@@ -209,6 +218,12 @@ func bootstrapNode(addr string,
 	defer cancel()
 
 	logger.Info("bootstrap: trying to fetch stamps snapshot")
+
+	snapshotReference, err := parseFeedUpdate(ctx, ns, snapshotFeed)
+	if err != nil {
+		return nil, err
+	}
+
 	reader, l, err := joiner.New(ctx, ns, snapshotReference)
 	if err != nil {
 		return nil, err
@@ -250,7 +265,7 @@ func waitPeers(kad *kademlia.Kad) bool {
 		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			items++
 			return false, false, nil
-		}, topology.Filter{Reachable: false})
+		}, topology.Filter{})
 		if items >= 5 {
 			return true
 		}
@@ -264,4 +279,71 @@ type noopPinger struct {
 
 func (p *noopPinger) Ping(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
 	return time.Duration(1), nil
+}
+
+func parseFeedUpdate(
+	ctx context.Context,
+	st storage.Storer,
+	address swarm.Address,
+) (swarm.Address, error) {
+	ls := loadsave.NewReadonly(st)
+	feedFactory := factory.New(st)
+
+	m, err := manifest.NewDefaultManifestReference(
+		address,
+		ls,
+	)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("not a manifest: %w", err)
+	}
+
+	e, err := m.Lookup(ctx, "/")
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("node lookup: %w", err)
+	}
+
+	var (
+		owner, topic []byte
+		t            = new(feeds.Type)
+	)
+	meta := e.Metadata()
+	if e := meta["swarm-feed-owner"]; e != "" {
+		owner, err = hex.DecodeString(e)
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
+	}
+	if e := meta["swarm-feed-topic"]; e != "" {
+		topic, err = hex.DecodeString(e)
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
+	}
+	if e := meta["swarm-feed-type"]; e != "" {
+		err := t.FromString(e)
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
+	}
+	if len(owner) == 0 || len(topic) == 0 {
+		return swarm.ZeroAddress, fmt.Errorf("node lookup: %s", "feed metadata absent")
+	}
+	f := feeds.New(topic, common.BytesToAddress(owner))
+
+	l, err := feedFactory.NewLookup(*t, f)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("feed lookup failed: %w", err)
+	}
+
+	u, _, _, err := l.At(ctx, time.Now().Unix(), 0)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	_, ref, err := feeds.FromChunk(u)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return swarm.NewAddress(ref), nil
 }
