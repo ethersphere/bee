@@ -17,9 +17,9 @@ func (c *command) initHasherCmd() (err error) {
 		Use:   "hasher",
 		Short: "Generate or validate a bcrypt hash",
 		Long: `Generate or validate a bcrypt hash
-		
+
 Takes a single plain text argument in order to generate a bcrypt hash.
-If '--check' flag is provided it will validate the first (plain text) argument against 
+If '--check' flag is provided it will validate the first (plain text) argument against
 the second one, which is expected to be a quoted bcrypt hash.`,
 		Example: `
 $> bee hasher super$ecret
