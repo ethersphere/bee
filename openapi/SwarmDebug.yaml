@@ -850,7 +850,7 @@ paths:
         - in: path
           name: amount
           schema:
-            type: integer
+            $ref: "SwarmCommon.yaml#/components/schemas/BigInt"
           required: true
           description: Amount of BZZ added that the postage batch will have.
         - in: path
