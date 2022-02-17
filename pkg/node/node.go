@@ -231,7 +231,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 	)
 
-	chainEnabled := chainEnabled(o, logger)
+	chainEnabled := isChainEnabled(o, logger)
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 		p2pCtx,
@@ -657,7 +657,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	acc.SetRefreshFunc(pseudosettleService.Pay)
 
-	if o.SwapEnable {
+	if o.SwapEnable && chainEnabled {
 		var priceOracle priceoracle.Service
 		swapService, priceOracle, err = InitSwap(
 			p2ps,
@@ -882,13 +882,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	return b, nil
 }
 
-func (b *Bee) EnableBlocklisting() {
-
-}
-
-func (b *Bee) DisableBlocklisting() {
-}
-
 func (b *Bee) Shutdown(ctx context.Context) error {
 	var mErr error
 
@@ -1042,21 +1035,15 @@ func (p *pidKiller) Shutdown(ctx context.Context) error {
 	return ps.Kill()
 }
 
-func chainEnabled(o *Options, logger logging.Logger) (enabled bool) {
-	enabled = o.ChainEnable
+func isChainEnabled(o *Options, logger logging.Logger) bool {
+	chainDisabled := !o.ChainEnable
+	lightMode := !o.FullNodeMode
 
-	switch { // will stay disabled only in LightNode mode.
-	case
-		o.SwapEnable,
-		o.FullNodeMode,
-		o.GatewayMode,
-		o.BootnodeMode:
-
-		enabled = true
-		logger.Info("starting with an enabled chain backend")
-		return
+	if lightMode && chainDisabled { // ultra light mode is LightNode mode with chain disabled
+		logger.Info("starting with a disabled chain backend")
+		return false
 	}
 
-	logger.Info("starting with a disabled chain backend")
-	return
+	logger.Info("starting with an enabled chain backend")
+	return true // all other modes operate require chain enabled
 }
