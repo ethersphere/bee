@@ -183,7 +183,7 @@ func (c *command) initStartCmd() (err error) {
 				SwapInitialDeposit:         c.config.GetString(optionNameSwapInitialDeposit),
 				SwapEnable:                 c.config.GetBool(optionNameSwapEnable),
 				ChequebookEnable:           c.config.GetBool(optionNameChequebookEnable),
-				NoChainBackend:             c.config.GetBool(optionNameNoChainBackend),
+				ChainEnable:                c.config.GetBool(optionNameChainEnable),
 				FullNodeMode:               fullNode,
 				Transaction:                c.config.GetString(optionNameTransactionHash),
 				BlockHash:                  c.config.GetString(optionNameBlockHash),
