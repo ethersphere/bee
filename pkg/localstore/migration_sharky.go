@@ -132,20 +132,20 @@ func migrateSharky(db *DB) error {
 	var (
 		compactionTime           time.Duration
 		dirtyLocations           []sharky.Location
-		compactStart, compactEnd []byte
+		compactStart, compactEnd *shed.Item
 	)
 
 	db.logger.Debugf("starting to move entries with batch size %d", batchSize)
 	for {
 		isBatchEmpty := true
-		compactStart = nil
+
+		rIdxCount, _ := retrievalDataIndex.Count()
+		nrIdxCount, _ := newRetrievalDataIndex.Count()
+		db.logger.Debugf("retrieval index count: %d newRetrievalIndex count: %d", rIdxCount, nrIdxCount)
+
 		err = retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 			if compactStart == nil {
-				k, err := retrievalDataIndex.ItemKey(item)
-				if err != nil {
-					return false, err
-				}
-				compactStart = k
+				compactStart = &item
 			}
 			loc, err := db.sharky.Write(context.TODO(), item.Data)
 			if err != nil {
@@ -165,16 +165,15 @@ func migrateSharky(db *DB) error {
 			batchesCount++
 			isBatchEmpty = false
 			if batchesCount%batchSize == 0 {
-				k, err := retrievalDataIndex.ItemKey(item)
-				if err != nil {
-					return false, err
-				}
-				compactEnd = k
+				compactEnd = &item
 				db.logger.Debugf("collected %d entries; trying to flush...", batchSize)
 				return true, nil
 			}
 			return false, nil
-		}, nil)
+		}, &shed.IterateOptions{
+			StartFrom:         compactEnd,
+			SkipStartFromItem: func() bool { return compactEnd != nil }(),
+		})
 		if err != nil {
 			return fmt.Errorf("iterate index: %w", err)
 		}
@@ -195,12 +194,18 @@ func migrateSharky(db *DB) error {
 
 		if batchesCount%compactionSize == 0 {
 			db.logger.Debugf("starting compaction")
-			dur, err := compaction(compactStart, compactEnd)
+
+			// the items are references from the iteration so encoding should be error-free
+			start, _ := retrievalDataIndex.ItemKey(*compactStart)
+			end, _ := retrievalDataIndex.ItemKey(*compactEnd)
+
+			dur, err := compaction(start, end)
 			if err != nil {
 				return err
 			}
 			compactionTime += dur
 			db.logger.Debugf("compaction done %s", dur)
+			compactStart = nil
 		}
 	}
 
