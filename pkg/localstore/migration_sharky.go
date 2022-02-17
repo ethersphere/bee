@@ -139,10 +139,6 @@ func migrateSharky(db *DB) error {
 	for {
 		isBatchEmpty := true
 
-		rIdxCount, _ := retrievalDataIndex.Count()
-		nrIdxCount, _ := newRetrievalDataIndex.Count()
-		db.logger.Debugf("retrieval index count: %d newRetrievalIndex count: %d", rIdxCount, nrIdxCount)
-
 		err = retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 			if compactStart == nil {
 				compactStart = &item
@@ -206,6 +202,10 @@ func migrateSharky(db *DB) error {
 			compactionTime += dur
 			db.logger.Debugf("compaction done %s", dur)
 			compactStart = nil
+
+			rIdxCount, _ := retrievalDataIndex.Count()
+			nrIdxCount, _ := newRetrievalDataIndex.Count()
+			db.logger.Debugf("retrieval index count: %d newRetrievalIndex count: %d", rIdxCount, nrIdxCount)
 		}
 	}
 
