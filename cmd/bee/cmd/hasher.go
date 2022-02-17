@@ -28,7 +28,7 @@ $2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u
 $> bee hasher --check super$ecret '$2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u'
 OK: password hash matches provided plain text`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
+			if len(args) < 1 || len(args) > 2 {
 				return cmd.Help()
 			}
 
@@ -36,7 +36,7 @@ OK: password hash matches provided plain text`,
 
 			if isCheck {
 				if len(args) != 2 {
-					fmt.Println("usage:", "hasher", "--check", "your-plain-text-password", "'password-hash'")
+					fmt.Println("Usage:", "bee hasher", "--check", "your-plain-text-password", "'password-hash'")
 					return nil
 				}
 
@@ -53,10 +53,7 @@ OK: password hash matches provided plain text`,
 				return cmd.Help()
 			}
 
-			plainText := args[0]
-
-			hashed, err := bcrypt.GenerateFromPassword([]byte(plainText), bcrypt.DefaultCost)
-
+			hashed, err := bcrypt.GenerateFromPassword([]byte(args[0]), bcrypt.DefaultCost)
 			if err != nil {
 				return errors.New("failed to generate password hash")
 			}
