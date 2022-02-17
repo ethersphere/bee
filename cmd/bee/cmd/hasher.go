@@ -18,14 +18,14 @@ func (c *command) initHasherCmd() (err error) {
 		Short: "Generate or validate a bcrypt hash",
 		Long: `Generate or validate a bcrypt hash
 		
-Takes one plain text argument in order to generate a bcrypt hash.
-If --check flag is provided, will validate the first plain text argument against 
-the second argument, which is expected to be a quoted bcrypt hash.`,
+Takes a single plain text argument in order to generate a bcrypt hash.
+If '--check' flag is provided it will validate the first (plain text) argument against 
+the second one, which is expected to be a quoted bcrypt hash.`,
 		Example: `
-./hasher super$ecret
+$> bee hasher super$ecret
 $2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u
 
-./hasher --check super$ecret '$2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u'
+$> bee hasher --check super$ecret '$2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u'
 OK: password hash matches provided plain text`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
