@@ -412,7 +412,7 @@ func (m noOpChainBackend) TransactionReceipt(context.Context, common.Hash) (*typ
 	return r, nil
 }
 func (m noOpChainBackend) TransactionByHash(context.Context, common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	return nil, false, nil
+	panic("chain no op: TransactionByHash")
 }
 func (m noOpChainBackend) BlockNumber(context.Context) (uint64, error) {
 	return 4, nil
