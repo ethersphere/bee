@@ -66,15 +66,20 @@ func New(
 	transactionService transaction.Service,
 	postageService postage.Service,
 	postageStorer postage.Storer,
+	chainEnabled bool,
 ) Interface {
-	return &postageContract{
-		owner:                  owner,
-		postageContractAddress: postageContractAddress,
-		bzzTokenAddress:        bzzTokenAddress,
-		transactionService:     transactionService,
-		postageService:         postageService,
-		postageStorer:          postageStorer,
+	if chainEnabled {
+		return &postageContract{
+			owner:                  owner,
+			postageContractAddress: postageContractAddress,
+			bzzTokenAddress:        bzzTokenAddress,
+			transactionService:     transactionService,
+			postageService:         postageService,
+			postageStorer:          postageStorer,
+		}
 	}
+
+	return new(noOpPostageContract)
 }
 
 func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
@@ -343,7 +348,11 @@ func parseABI(json string) abi.ABI {
 	return cabi
 }
 
-func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageContractAddress common.Address) (common.Address, error) {
+func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageContractAddress common.Address, chainEnabled bool) (common.Address, error) {
+	if !chainEnabled {
+		return common.Address{}, nil
+	}
+
 	callData, err := postageStampABI.Pack("bzzToken")
 	if err != nil {
 		return common.Address{}, err
@@ -363,4 +372,16 @@ func LookupERC20Address(ctx context.Context, transactionService transaction.Serv
 	}
 
 	return common.BytesToAddress(data), nil
+}
+
+type noOpPostageContract struct{}
+
+func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) ([]byte, error) {
+	return nil, ErrChainDisabled
+}
+func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) error {
+	return ErrChainDisabled
+}
+func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) error {
+	return ErrChainDisabled
 }
