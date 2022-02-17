@@ -41,6 +41,8 @@ jobs:
           ${{ runner.OS }}-build-${{ env.cache-name }}-
           ${{ runner.OS }}-build-
           ${{ runner.OS }}-
+    - name: Run tests using the performance cpu scaling governor
+      run: echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
     - name: Build
       run: make build
     - name: Lint
