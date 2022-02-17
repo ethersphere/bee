@@ -36,7 +36,7 @@ var (
 	ErrInvalidDepth      = errors.New("invalid depth")
 	ErrBatchTopUp        = errors.New("batch topUp failed")
 	ErrBatchDilute       = errors.New("batch dilute failed")
-	ErrSwapChainDisabled = errors.New("swap chain disabled")
+	ErrChainDisabled     = errors.New("chain disabled")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"

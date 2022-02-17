@@ -27,103 +27,98 @@ func (m *noOpsenderMatcher) Matches(context.Context, []byte, uint64, swarm.Addre
 	return nil, nil
 }
 
-// noOpswapChainTransaction is a noOp implementation for transaction.Backend interface.
-type noOpswapChainTransaction struct {
+// noOpChainTransaction is a noOp implementation for transaction.Backend interface.
+type noOpChainTransaction struct {
 	log logging.Logger
 }
 
-func (m noOpswapChainTransaction) CodeAt(_ context.Context, _ common.Address, _ *big.Int) ([]byte, error) {
-	m.log.Debug("swap chain no op: CodeAt")
+func (m noOpChainTransaction) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
 	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0), nil
 }
-func (m noOpswapChainTransaction) CallContract(_ context.Context, _ ethereum.CallMsg, _ *big.Int) ([]byte, error) {
-	panic("swap chain no op: CallContract")
+func (m noOpChainTransaction) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
+	panic("chain no op: CallContract")
 }
-func (m noOpswapChainTransaction) HeaderByNumber(_ context.Context, _ *big.Int) (*types.Header, error) {
-	m.log.Debug("swap chain no op: HeaderByNumber")
+func (m noOpChainTransaction) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
 	h := new(types.Header)
 	h.Time = uint64(time.Now().Unix())
 	return h, nil
 }
-func (m noOpswapChainTransaction) PendingNonceAt(_ context.Context, _ common.Address) (uint64, error) {
-	panic("swap chain no op: PendingNonceAt")
+func (m noOpChainTransaction) PendingNonceAt(context.Context, common.Address) (uint64, error) {
+	panic("chain no op: PendingNonceAt")
 }
-func (m noOpswapChainTransaction) SuggestGasPrice(_ context.Context) (*big.Int, error) {
-	panic("swap chain no op: SuggestGasPrice")
+func (m noOpChainTransaction) SuggestGasPrice(context.Context) (*big.Int, error) {
+	panic("chain no op: SuggestGasPrice")
 }
-func (m noOpswapChainTransaction) EstimateGas(_ context.Context, _ ethereum.CallMsg) (uint64, error) {
-	panic("swap chain no op: EstimateGas")
+func (m noOpChainTransaction) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
+	panic("chain no op: EstimateGas")
 }
-func (m noOpswapChainTransaction) SendTransaction(_ context.Context, _ *types.Transaction) error {
-	panic("swap chain no op: SendTransaction")
+func (m noOpChainTransaction) SendTransaction(context.Context, *types.Transaction) error {
+	panic("chain no op: SendTransaction")
 }
-func (m noOpswapChainTransaction) TransactionReceipt(_ context.Context, _ common.Hash) (*types.Receipt, error) {
-	m.log.Debug("swap chain no op: TransactionReceipt")
+func (m noOpChainTransaction) TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error) {
 	r := new(types.Receipt)
 	r.BlockNumber = big.NewInt(1)
 	return r, nil
 }
-func (m noOpswapChainTransaction) TransactionByHash(_ context.Context, _ common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	m.log.Debug("swap chain no op: TransactionByHash")
+func (m noOpChainTransaction) TransactionByHash(context.Context, common.Hash) (tx *types.Transaction, isPending bool, err error) {
 	return nil, false, nil
 }
-func (m noOpswapChainTransaction) BlockNumber(_ context.Context) (uint64, error) {
-	m.log.Debug("swap chain no op: BlockNumber")
+func (m noOpChainTransaction) BlockNumber(context.Context) (uint64, error) {
 	return 4, nil
 }
-func (m noOpswapChainTransaction) BalanceAt(_ context.Context, _ common.Address, _ *big.Int) (*big.Int, error) {
-	panic("swap chain no op: BalanceAt")
+func (m noOpChainTransaction) BalanceAt(context.Context, common.Address, *big.Int) (*big.Int, error) {
+	panic("chain no op: BalanceAt")
 }
-func (m noOpswapChainTransaction) NonceAt(_ context.Context, _ common.Address, _ *big.Int) (uint64, error) {
-	panic("swap chain no op: NonceAt")
+func (m noOpChainTransaction) NonceAt(context.Context, common.Address, *big.Int) (uint64, error) {
+	panic("chain no op: NonceAt")
 }
-func (m noOpswapChainTransaction) FilterLogs(_ context.Context, _ ethereum.FilterQuery) ([]types.Log, error) {
-	panic("swap chain no op: FilterLogs")
+func (m noOpChainTransaction) FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error) {
+	panic("chain no op: FilterLogs")
 }
-func (m noOpswapChainTransaction) ChainID(_ context.Context) (*big.Int, error) {
-	panic("swap chain no op: ChainID")
+func (m noOpChainTransaction) ChainID(context.Context) (*big.Int, error) {
+	panic("chain no op: ChainID")
 }
-func (m noOpswapChainTransaction) Close() {}
+func (m noOpChainTransaction) Close() {}
 
 type noOpPostageContract struct{}
 
-func (m *noOpPostageContract) CreateBatch(_ context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
-	return nil, postagecontract.ErrSwapChainDisabled
+func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) ([]byte, error) {
+	return nil, postagecontract.ErrChainDisabled
 }
-func (m *noOpPostageContract) TopUpBatch(_ context.Context, _ []byte, _ *big.Int) error {
-	return postagecontract.ErrSwapChainDisabled
+func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) error {
+	return postagecontract.ErrChainDisabled
 }
-func (m *noOpPostageContract) DiluteBatch(_ context.Context, _ []byte, _ uint8) error {
-	return postagecontract.ErrSwapChainDisabled
+func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) error {
+	return postagecontract.ErrChainDisabled
 }
 
 // noOpChequebookService is a noOp implementation for chequebook.Service interface.
 type noOpChequebookService struct{}
 
-func (m *noOpChequebookService) Deposit(_ context.Context, _ *big.Int) (hash common.Hash, err error) {
-	return hash, errors.New("swap chain disabled")
+func (m *noOpChequebookService) Deposit(context.Context, *big.Int) (hash common.Hash, err error) {
+	return hash, errors.New("chain disabled")
 }
-func (m *noOpChequebookService) Withdraw(_ context.Context, _ *big.Int) (hash common.Hash, err error) {
-	return hash, errors.New("swap chain disabled")
+func (m *noOpChequebookService) Withdraw(context.Context, *big.Int) (hash common.Hash, err error) {
+	return hash, errors.New("chain disabled")
 }
-func (m *noOpChequebookService) WaitForDeposit(_ context.Context, _ common.Hash) error {
-	return errors.New("swap chain disabled")
+func (m *noOpChequebookService) WaitForDeposit(context.Context, common.Hash) error {
+	return errors.New("chain disabled")
 }
-func (m *noOpChequebookService) Balance(_ context.Context) (*big.Int, error) {
-	return nil, errors.New("swap chain disabled")
+func (m *noOpChequebookService) Balance(context.Context) (*big.Int, error) {
+	return nil, errors.New("chain disabled")
 }
-func (m *noOpChequebookService) AvailableBalance(_ context.Context) (*big.Int, error) {
-	return nil, errors.New("swap chain disabled")
+func (m *noOpChequebookService) AvailableBalance(context.Context) (*big.Int, error) {
+	return nil, errors.New("chain disabled")
 }
 func (m *noOpChequebookService) Address() common.Address {
 	return common.Address{}
 }
-func (m *noOpChequebookService) Issue(_ context.Context, _ common.Address, _ *big.Int, _ chequebook.SendChequeFunc) (*big.Int, error) {
-	return nil, errors.New("swap chain disabled")
+func (m *noOpChequebookService) Issue(context.Context, common.Address, *big.Int, chequebook.SendChequeFunc) (*big.Int, error) {
+	return nil, errors.New("chain disabled")
 }
-func (m *noOpChequebookService) LastCheque(_ common.Address) (*chequebook.SignedCheque, error) {
-	return nil, errors.New("swap chain disabled")
+func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCheque, error) {
+	return nil, errors.New("chain disabled")
 }
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
-	return nil, errors.New("swap chain disabled")
+	return nil, errors.New("chain disabled")
 }

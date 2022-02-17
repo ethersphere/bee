@@ -219,7 +219,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	addressbook := addressbook.New(stateStore)
 
 	var (
-		swapChain          transaction.Backend = &noOpswapChainTransaction{logger}
+		chainBackend       transaction.Backend = &noOpChainTransaction{logger}
 		overlayEthAddress  common.Address
 		chainID            int64
 		transactionService transaction.Service
@@ -247,7 +247,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	if chainBackendEnabled {
-		swapChain, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+		chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 			p2pCtx,
 			logger,
 			stateStore,
@@ -258,7 +258,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if err != nil {
 			return nil, fmt.Errorf("init chain: %w", err)
 		}
-		b.ethClientCloser = swapChain.Close
+		b.ethClientCloser = chainBackend.Close
 
 		if o.ChainID != -1 && o.ChainID != chainID {
 			return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
@@ -325,14 +325,14 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(p2pCtx, swapChain, maxDelay)
+	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
 	if err != nil {
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
 		logger.Infof("waiting to sync with the Ethereum backend")
 
-		err := transaction.WaitSynced(p2pCtx, logger, swapChain, maxDelay)
+		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
 		if err != nil {
 			return nil, fmt.Errorf("waiting backend sync: %w", err)
 		}
@@ -341,7 +341,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if o.SwapEnable {
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
-			swapChain,
+			chainBackend,
 			chainID,
 			transactionService,
 			o.SwapFactoryAddress,
@@ -362,7 +362,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 				stateStore,
 				signer,
 				chainID,
-				swapChain,
+				chainBackend,
 				overlayEthAddress,
 				transactionService,
 				chequebookFactory,
@@ -376,7 +376,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 		chequeStore, cashoutService = initChequeStoreCashout(
 			stateStore,
-			swapChain,
+			chainBackend,
 			chequebookFactory,
 			chainID,
 			overlayEthAddress,
@@ -399,7 +399,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("invalid transaction hash: %w", err)
 	}
 
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, swapChain, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+	blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
 	if err != nil {
 		return nil, fmt.Errorf("invalid block hash: %w", err)
 	}
@@ -418,7 +418,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	var senderMatcher p2p.SenderMatcher = new(noOpsenderMatcher)
 
 	if chainBackendEnabled {
-		senderMatcher = transaction.NewMatcher(swapChain, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
+		senderMatcher = transaction.NewMatcher(chainBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore)
 		_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
 		if err != nil {
 			return nil, fmt.Errorf("identity transaction verification failed: %w", err)
@@ -504,7 +504,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			postageSyncStart = startBlock
 		}
 
-		eventListener = listener.New(logger, swapChain, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+		eventListener = listener.New(logger, chainBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 		b.listenerCloser = eventListener
 
 		batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
@@ -781,14 +781,14 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	var chainSyncer *chainsyncer.ChainSyncer
 
 	if o.FullNodeMode {
-		cs, err := chainsync.New(p2ps, swapChain)
+		cs, err := chainsync.New(p2ps, chainBackend)
 		if err != nil {
 			return nil, fmt.Errorf("new chainsync: %w", err)
 		}
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
-		chainSyncer, err = chainsyncer.New(swapChain, cs, kad, p2ps, logger, nil)
+		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
 		if err != nil {
 			return nil, fmt.Errorf("new chainsyncer: %w", err)
 		}
@@ -868,7 +868,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		if chainBackendEnabled {
-			if swapBackendMetrics, ok := swapChain.(metrics.Collector); ok {
+			if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
 				debugAPIService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 			}
 		}
@@ -901,6 +901,13 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	return b, nil
+}
+
+func (b *Bee) EnableBlocklisting() {
+
+}
+
+func (b *Bee) DisableBlocklisting() {
 }
 
 func (b *Bee) Shutdown(ctx context.Context) error {

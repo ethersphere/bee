@@ -88,7 +88,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
-		if errors.Is(err, postagecontract.ErrSwapChainDisabled) {
+		if errors.Is(err, postagecontract.ErrChainDisabled) {
 			s.logger.Debugf("create batch: no chain backend: %v", err)
 			s.logger.Error("create batch: no chain backend")
 			jsonhttp.MethodNotAllowed(w, "no chain backend")
@@ -190,6 +190,11 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			BatchTTL:      batchTTL,
 		})
 	}
+
+	if resp.Stamps == nil {
+		resp.Stamps = make([]postageStampResponse, 0)
+	}
+
 	jsonhttp.OK(w, resp)
 }
 
