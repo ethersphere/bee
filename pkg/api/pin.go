@@ -128,6 +128,10 @@ func (s *server) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if pinned == nil {
+		pinned = make([]swarm.Address, 0)
+	}
+
 	jsonhttp.OK(w, struct {
 		References []swarm.Address `json:"references"`
 	}{

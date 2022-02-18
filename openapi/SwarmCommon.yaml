@@ -287,7 +287,7 @@ components:
       properties:
         peers:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/Address"
 
@@ -321,7 +321,7 @@ components:
       properties:
         stamps:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/DebugPostageBatch"
 
@@ -531,7 +531,7 @@ components:
       properties:
         addresses:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
 
