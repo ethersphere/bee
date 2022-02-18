@@ -48,17 +48,13 @@ type overlayVerification struct {
 }
 
 func NewMatcher(backend Backend, signer types.Signer, storage storage.StateStorer, chainEnabled bool) p2p.SenderMatcher {
-	if chainEnabled {
-		return &Matcher{
-			storage:      storage,
-			backend:      backend,
-			signer:       signer,
-			timeNow:      time.Now,
-			chainEnabled: chainEnabled,
-		}
+	return &Matcher{
+		storage:      storage,
+		backend:      backend,
+		signer:       signer,
+		timeNow:      time.Now,
+		chainEnabled: chainEnabled,
 	}
-
-	return new(noOpSenderMatcher)
 }
 
 func (m *Matcher) greylist(senderOverlay swarm.Address, incomingTx common.Hash, err error) error {
@@ -73,6 +69,10 @@ func (m *Matcher) greylist(senderOverlay swarm.Address, incomingTx common.Hash, 
 }
 
 func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error) {
+	if !m.chainEnabled {
+		return nil, nil
+	}
+
 	incomingTx := common.BytesToHash(tx)
 
 	var val overlayVerification
@@ -150,11 +150,4 @@ func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, send
 	}
 
 	return nextBlockHash, nil
-}
-
-// noOpSenderMatcher is a noOp implementation for p2p.SenderMatcher interface.
-type noOpSenderMatcher struct{}
-
-func (m *noOpSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
-	return nil, nil
 }
