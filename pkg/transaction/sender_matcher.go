@@ -70,7 +70,7 @@ func (m *Matcher) greylist(senderOverlay swarm.Address, incomingTx common.Hash, 
 
 func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error) {
 	if !m.chainEnabled {
-		return nil, nil
+		return make([]byte, swarm.HashSize), nil
 	}
 
 	incomingTx := common.BytesToHash(tx)
