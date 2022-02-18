@@ -1,4 +1,4 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
+// Copyright 2022 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -14,7 +14,7 @@ import (
 
 func (c *command) initHasherCmd() (err error) {
 	cmd := &cobra.Command{
-		Use:   "hasher",
+		Use:   "bcrypt",
 		Short: "Generate or validate a bcrypt hash",
 		Long: `Generate or validate a bcrypt hash
 
@@ -22,10 +22,10 @@ Takes a single plain text argument in order to generate a bcrypt hash.
 If '--check' flag is provided it will validate the first (plain text) argument against
 the second one, which is expected to be a quoted bcrypt hash.`,
 		Example: `
-$> bee hasher super$ecret
+$> bee bcrypt super$ecret
 $2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u
 
-$> bee hasher --check super$ecret '$2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u'
+$> bee bcrypt --check super$ecret '$2a$10$eZP5YuhJq2k8DFmj9UJGWOIjDtXu6NcAQMrz7Zj1bgIVBcHA3bU5u'
 OK: password hash matches provided plain text`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 1 || len(args) > 2 {
@@ -36,7 +36,7 @@ OK: password hash matches provided plain text`,
 
 			if isCheck {
 				if len(args) != 2 {
-					fmt.Println("Usage:", "bee hasher", "--check", "your-plain-text-password", "'password-hash'")
+					fmt.Println("Usage:", "bee bcrypt", "--check", "your-plain-text-password", "'password-hash'")
 					return nil
 				}
 
