@@ -228,7 +228,7 @@ func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
-func (svc *batchService) Start(startBlock uint64, initState *postage.BatchSnapshot) (<-chan struct{}, error) {
+func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot) (<-chan struct{}, error) {
 	dirty := false
 	err := svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {

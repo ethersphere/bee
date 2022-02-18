@@ -177,7 +177,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.BatchSnapshot) <-chan struct{} {
+func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan struct{} {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-l.quit
@@ -200,7 +200,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				if !errors.Is(err, batchservice.ErrZeroValueBatch) {
 					return err
 				}
-				l.logger.Debugf("listener: %v", err)
+				l.logger.Debugf("listener: failed processing event: %v", err)
 			}
 			totalTimeMetric(l.metrics.EventProcessDuration, startEv)
 		}

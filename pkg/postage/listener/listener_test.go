@@ -363,7 +363,7 @@ func TestListenerBatchState(t *testing.T) {
 		price: big.NewInt(500),
 	}
 
-	snapshot := &postage.BatchSnapshot{
+	snapshot := &postage.ChainSnapshot{
 		Events: []types.Log{
 			create.toLog(496),
 			topup.toLog(497),
@@ -423,13 +423,13 @@ func TestListenerBatchState(t *testing.T) {
 	}()
 
 	l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
-	l.Listen(0, ev, snapshot)
+	l.Listen(snapshot.LastBlockNumber+1, ev, snapshot)
 
 	defer close(stop)
 
 	select {
 	case <-time.After(5 * time.Second):
-		t.Fatal("timedout waiting for events to be processed")
+		t.Fatal("timedout waiting for events to be processed", noOfEvents)
 	case err := <-errs:
 		t.Fatal(err)
 	case <-done:
@@ -518,7 +518,7 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(_ uint64, _ *postage.BatchSnapshot) (<-chan struct{}, error) { return nil, nil }
+func (u *updater) Start(_ uint64, _ *postage.ChainSnapshot) (<-chan struct{}, error) { return nil, nil }
 func (u *updater) TransactionStart() error                                           { return nil }
 func (u *updater) TransactionEnd() error                                             { return nil }
 

@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -20,13 +19,14 @@ import (
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
 func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, error) {
-	if dataDir == "" {
-		ret := mock.NewStateStore()
+	stateStoreDir := ""
+	if dataDir != "" {
+		stateStoreDir = filepath.Join(dataDir, "statestore")
+	} else {
 		log.Warning("using in-mem state store, no node state will be persisted")
-		return ret, nil
 	}
 
-	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
+	return leveldb.NewStateStore(stateStoreDir, log)
 }
 
 const secureOverlayKey = "non-mineable-overlay"

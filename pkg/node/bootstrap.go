@@ -51,7 +51,8 @@ import (
 
 var snapshotFeed = swarm.MustParseHexAddress("b36f03d995a04df1757c3a5ddbb795f48d279c532b11803864503f6b97fb20e1")
 
-func bootstrapNode(addr string,
+func bootstrapNode(
+	addr string,
 	swarmAddress swarm.Address,
 	txHash []byte,
 	chainID int64,
@@ -64,7 +65,13 @@ func bootstrapNode(addr string,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
 	transactionService transaction.Service,
-	stateStore storage.StateStorer, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (snapshot *postage.BatchSnapshot, retErr error) {
+	stateStore storage.StateStorer,
+	signer crypto.Signer,
+	networkID uint64,
+	logger logging.Logger,
+	libp2pPrivateKey *ecdsa.PrivateKey,
+	o *Options,
+) (snapshot *postage.ChainSnapshot, retErr error) {
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -86,8 +93,7 @@ func bootstrapNode(addr string,
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		err := multierror.Append(new(multierror.Error), retErr, b.Shutdown(ctx))
-		retErr = err.ErrorOrNil()
+		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown(ctx)).ErrorOrNil()
 	}()
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
@@ -135,7 +141,6 @@ func bootstrapNode(addr string,
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
-
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
@@ -155,37 +160,15 @@ func bootstrapNode(addr string,
 	}
 	b.accountingCloser = acc
 
+	// bootstraper mode uses the light node refresh rate
 	enforcedRefreshRate := big.NewInt(lightRefreshRate)
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, enforcedRefreshRate, p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
 
 	acc.SetRefreshFunc(pseudosettleService.Pay)
-
-	swapService, priceOracle, err := InitSwap(
-		p2ps,
-		logger,
-		stateStore,
-		networkID,
-		overlayEthAddress,
-		chequebookService,
-		chequeStore,
-		cashoutService,
-		acc,
-		o.PriceOracleAddress,
-		chainID,
-		transactionService,
-	)
-	if err != nil {
-		return nil, err
-	}
-	b.priceOracleCloser = priceOracle
-
-	if o.ChequebookEnable {
-		acc.SetPayFunc(swapService.Pay)
-	}
 
 	pricing.SetPaymentThresholdObserver(acc)
 
@@ -194,14 +177,13 @@ func bootstrapNode(addr string,
 	}
 
 	storer := inmemstore.New()
+
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
-	ns := netstore.New(storer, noopValidStamp, nil, retrieve, logger)
-
-	retrieveProtocolSpec := retrieve.Protocol()
-
-	if err = p2ps.AddProtocol(retrieveProtocolSpec); err != nil {
+	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
+
+	ns := netstore.New(storer, noopValidStamp, nil, retrieve, logger)
 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err
@@ -220,7 +202,7 @@ func bootstrapNode(addr string,
 
 	logger.Info("bootstrap: trying to fetch stamps snapshot")
 
-	snapshotReference, err := parseFeedUpdate(ctx, ns, snapshotFeed)
+	snapshotReference, err := getLatestSnapshot(ctx, ns, snapshotFeed)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +221,7 @@ func bootstrapNode(addr string,
 		return nil, err
 	}
 
-	events := postage.BatchSnapshot{}
+	events := postage.ChainSnapshot{}
 	err = json.Unmarshal(eventsJSON, &events)
 	if err != nil {
 		return nil, err
@@ -278,11 +260,11 @@ func waitPeers(kad *kademlia.Kad) bool {
 type noopPinger struct {
 }
 
-func (p *noopPinger) Ping(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
+func (p *noopPinger) Ping(context.Context, swarm.Address, ...string) (time.Duration, error) {
 	return time.Duration(1), nil
 }
 
-func parseFeedUpdate(
+func getLatestSnapshot(
 	ctx context.Context,
 	st storage.Storer,
 	address swarm.Address,
