@@ -175,6 +175,8 @@ const (
 	basePrice                     = 10000
 	postageSyncingStallingTimeout = 10 * time.Minute
 	postageSyncingBackoffTimeout  = 5 * time.Second
+	minPaymentThreshold           = 2 * refreshRate
+	maxPaymentThreshold           = 24 * refreshRate
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
@@ -216,9 +218,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.stateStoreCloser = stateStore
 
-	newStateStore := true
-	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); err == nil {
-		newStateStore = false
+	newStateStore := false
+	// Check if the overlay is found in the statestore. If not, we can assume it has
+	// not been created yet and treat this as a fresh install.
+	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); errors.Is(err, storage.ErrNotFound) {
+		newStateStore = true
 	}
 
 	addressbook := addressbook.New(stateStore)
@@ -421,20 +425,17 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	// Perform checks related to payment threshold calculations here to not duplicate
 	// the checks in bootstrap process
-	minThreshold := big.NewInt(2 * refreshRate)
-	maxThreshold := big.NewInt(24 * refreshRate)
-
 	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
 	if !ok {
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
-	if paymentThreshold.Cmp(minThreshold) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	if paymentThreshold.Cmp(big.NewInt(minPaymentThreshold)) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %d", minPaymentThreshold)
 	}
 
-	if paymentThreshold.Cmp(maxThreshold) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
+	if paymentThreshold.Cmp(big.NewInt(maxPaymentThreshold)) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %d", maxPaymentThreshold)
 	}
 
 	if o.PaymentTolerance < 0 {
@@ -446,11 +447,12 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	// bootstrap node to sync stamp events optimally by reading the events dump from the network
-	var initBatchState *postage.BatchSnapshot
+	var initBatchState *postage.ChainSnapshot
 	if newStateStore || o.Resync {
 		start := time.Now()
-		logger.Infof("cold postage start detected. fetching postage stamp snapshot from swarm")
-		initBatchState, err = bootstrapNode(addr,
+		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
+		initBatchState, err = bootstrapNode(
+			addr,
 			swarmAddress,
 			txHash,
 			chainID,
@@ -463,10 +465,16 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			chequeStore,
 			cashoutService,
 			transactionService,
-			stateStore, publicKey, signer, networkID, logger, libp2pPrivateKey, pssPrivateKey, o)
-		logger.Infof("bootstrapper done, took", time.Since(start))
+			stateStore,
+			signer,
+			networkID,
+			logger,
+			libp2pPrivateKey,
+			o,
+		)
+		logger.Infof("bootstrapper done, took %s", time.Since(start))
 		if err != nil {
-			return nil, fmt.Errorf("bootstrapper failed to fetch batch state %w", err)
+			return nil, fmt.Errorf("bootstrapper failed to fetch batch state: %w", err)
 		}
 	}
 
@@ -636,7 +644,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
+	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
