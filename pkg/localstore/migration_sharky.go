@@ -202,10 +202,6 @@ func migrateSharky(db *DB) error {
 			compactionTime += dur
 			db.logger.Debugf("compaction done %s", dur)
 			compactStart = nil
-
-			rIdxCount, _ := retrievalDataIndex.Count()
-			nrIdxCount, _ := newRetrievalDataIndex.Count()
-			db.logger.Debugf("retrieval index count: %d newRetrievalIndex count: %d", rIdxCount, nrIdxCount)
 		}
 	}
 
