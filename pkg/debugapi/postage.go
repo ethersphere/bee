@@ -184,6 +184,9 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			BatchTTL:      batchTTL,
 		})
 	}
+	if resp.Stamps == nil {
+		resp.Stamps = make([]postageStampResponse, 0)
+	}
 	jsonhttp.OK(w, resp)
 }
 

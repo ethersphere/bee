@@ -101,6 +101,7 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request
 }
 
 func mapPeers(peers []p2p.Peer) (out []Peer) {
+	out = make([]Peer, 0)
 	for _, peer := range peers {
 		out = append(out, Peer{
 			Address:  peer.Address,
