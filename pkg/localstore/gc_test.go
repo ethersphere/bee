@@ -22,7 +22,6 @@ import (
 	"errors"
 	"io"
 	"math/rand"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -478,11 +477,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 // TestDB_gcSize checks if gcSize has a correct value after
 // database is initialized with existing data.
 func TestDB_gcSize(t *testing.T) {
-	dir, err := os.MkdirTemp("", "localstore-stored-gc-size")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)

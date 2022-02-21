@@ -5,7 +5,6 @@
 package file_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/keystore/file"
@@ -13,11 +12,7 @@ import (
 )
 
 func TestService(t *testing.T) {
-	dir, err := os.MkdirTemp("", "bzz-keystore-file-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	test.Service(t, file.New(dir))
 }
