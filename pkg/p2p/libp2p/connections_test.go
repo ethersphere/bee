@@ -489,7 +489,6 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 
 // TestConnectRepeatHandshake tests if handshake was attempted more then once by the same peer
 func TestConnectRepeatHandshake(t *testing.T) {
-	t.Skip("test flaking")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -518,12 +517,12 @@ func TestConnectRepeatHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s2.HandshakeService().Handshake(ctx, libp2p.NewStream(stream), info.Addrs[0], info.ID); err == nil {
-		t.Fatalf("expected stream error")
+	if _, err := s2.HandshakeService().Handshake(ctx, libp2p.NewStream(stream), info.Addrs[0], info.ID); err != nil {
+		t.Fatal(err)
 	}
 
-	expectPeersEventually(t, s2)
-	expectPeersEventually(t, s1)
+	expectPeersEventually(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
 }
 
 func TestBlocklisting(t *testing.T) {
