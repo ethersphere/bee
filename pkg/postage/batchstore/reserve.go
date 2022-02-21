@@ -59,6 +59,10 @@ type reserveState struct {
 	// Available capacity of the reserve which can still be used.
 	Available int64
 }
+type updateValueItem struct {
+	id   []byte
+	item *valueItem
+}
 
 // allocateBatch is the main point of entry for a new batch.
 // After computing a new radius, the available capacity of the node is deducted
@@ -269,11 +273,6 @@ func (s *store) capacity(depth, batchRadius, radius uint8) (int64, int64) {
 // Must be called under the mutex lock.
 func (s *store) lowerBatchRadius() error {
 
-	type updateValueItem struct {
-		id   []byte
-		item *valueItem
-	}
-
 	var toUpdate []updateValueItem
 
 	defer func() {
@@ -332,6 +331,11 @@ func (s *store) computeRadius(newBatch int64) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if totalCommitment <= Capacity {
+		s.rs.Radius = 0
+		return nil
 	}
 
 	// total_needed_capacity/node_capacity = 2^R

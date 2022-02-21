@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -23,6 +22,11 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
+
+	unreserveQueueKey           = "batchstore_unreserve_queue_"
+	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
+
+	batchstoreVersion = "batchstore_version_1"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -79,6 +83,24 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		evictFn: ev,
 		metrics: newMetrics(),
 		logger:  logger,
+	}
+
+	// check for migration
+	var migrated bool
+	err = st.Get(batchstoreVersion, &migrated)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			err = s.migrate()
+			if err != nil {
+				return nil, err
+			}
+			err = st.Put(batchstoreVersion, true)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	return s, nil
@@ -264,10 +286,8 @@ func (s *store) Reset() error {
 
 	const prefix = "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
-		if strings.HasPrefix(string(k), prefix) {
-			if err := s.store.Delete(string(k)); err != nil {
-				return false, err
-			}
+		if err := s.store.Delete(string(k)); err != nil {
+			return false, err
 		}
 		return false, nil
 	}); err != nil {
@@ -286,6 +306,83 @@ func (s *store) Reset() error {
 	}
 
 	return nil
+}
+
+// migrate converts batchstore to the refactored version, removes unused indexes, computes radius, and
+// and calculates available capacity.
+func (s *store) migrate() error {
+
+	err := s.store.Delete(unreserveQueueKey)
+	if err != nil {
+		return err
+	}
+
+	err = s.store.Delete(ureserveQueueCardinalityKey)
+	if err != nil {
+		return err
+	}
+
+	err = s.store.Iterate(batchKeyPrefix, func(key, value []byte) (stop bool, err error) {
+
+		b := &postage.Batch{}
+		if err := b.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+
+		// put 0 values temporarily to compute radius
+		err = s.putValueItem(b.ID, b.Value, 0, 0)
+		return false, err
+	})
+	if err != nil {
+		return err
+	}
+
+	s.rs.Available = Capacity
+
+	err = s.computeRadius(0)
+	if err != nil {
+		return err
+	}
+
+	if s.rs.StorageRadius > s.rs.Radius {
+		s.rs.StorageRadius = s.rs.Radius
+	}
+
+	err = s.store.Iterate(batchKeyPrefix, func(key, value []byte) (stop bool, err error) {
+
+		b := &postage.Batch{}
+		if err := b.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+
+		if b.Depth > s.rs.Radius {
+			s.rs.Available -= exp2(uint(b.Depth) - uint(s.rs.Radius))
+		}
+
+		err = s.putValueItem(b.ID, b.Value, s.rs.Radius, s.rs.StorageRadius)
+		return false, err
+	})
+	if err != nil {
+		return err
+	}
+
+	err = s.store.Put(reserveStateKey, s.rs)
+	if err != nil {
+		return err
+	}
+
+	err = s.cleanup()
+	if err != nil {
+		return err
+	}
+
+	err = s.adjustRadius(0)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius uint8) error {

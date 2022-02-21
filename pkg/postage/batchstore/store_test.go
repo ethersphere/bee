@@ -223,6 +223,58 @@ func TestBatchStore_Reset(t *testing.T) {
 	}
 }
 
+func TestBatchStore_Migrate(t *testing.T) {
+
+	testBatch := postagetest.MustNewBatch(
+		postagetest.WithValue(15),
+		postagetest.WithDepth(23),
+	)
+
+	path := t.TempDir()
+	logger := logging.New(io.Discard, 0)
+
+	stateStore, err := leveldb.NewStateStore(path, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stateStore.Close()
+
+	store, _ := batchstore.New(stateStore, noopEvictFn, logger)
+	err = store.Save(testBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var migrated bool
+	err = stateStore.Get(batchstore.BatchstoreVersion, &migrated)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldRs := store.GetReserveState()
+
+	err = stateStore.Delete(batchstore.BatchstoreVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store, _ = batchstore.New(stateStore, noopEvictFn, logger)
+
+	newRs := store.GetReserveState()
+
+	if newRs.Available != oldRs.Available {
+		t.Fatalf("got available %d, want %d", newRs.Available, oldRs.Available)
+	}
+
+	if newRs.Radius != oldRs.Radius {
+		t.Fatalf("got radius %d, want %d", newRs.Radius, oldRs.Radius)
+	}
+
+	if newRs.StorageRadius != oldRs.StorageRadius {
+		t.Fatalf("got storage radius %d, want %d", newRs.StorageRadius, oldRs.StorageRadius)
+	}
+}
+
 func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v interface{}) {
 	t.Helper()
 
