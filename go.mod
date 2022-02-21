@@ -69,7 +69,7 @@ require (
 	resenje.org/web v0.4.3
 )
 
-require github.com/google/uuid v1.3.0
+require github.com/libp2p/go-libp2p-yamux v0.6.0
 
 require (
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
@@ -121,7 +121,6 @@ require (
 	github.com/libp2p/go-libp2p-testing v0.5.0 // indirect
 	github.com/libp2p/go-libp2p-tls v0.3.1 // indirect
 	github.com/libp2p/go-libp2p-transport-upgrader v0.5.0 // indirect
-	github.com/libp2p/go-libp2p-yamux v0.6.0 // indirect
 	github.com/libp2p/go-maddr-filter v0.1.0 // indirect
 	github.com/libp2p/go-mplex v0.3.0 // indirect
 	github.com/libp2p/go-msgio v0.1.0 // indirect
