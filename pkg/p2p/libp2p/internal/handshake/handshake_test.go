@@ -601,68 +601,6 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	t.Run("Handle - duplicate handshake", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", node1AddrInfo.ID, logger)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var buffer1 bytes.Buffer
-		var buffer2 bytes.Buffer
-		stream1 := mock.NewStream(&buffer1, &buffer2)
-		stream2 := mock.NewStream(&buffer2, &buffer1)
-
-		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
-		}); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := w.WriteMsg(&pb.Ack{
-			Address: &pb.BzzAddress{
-				Underlay:  node2maBinary,
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
-			},
-			NetworkID:   networkID,
-			Transaction: trxHash,
-			FullNode:    true,
-		}); err != nil {
-			t.Fatal(err)
-		}
-
-		res, err := handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		testInfo(t, *res, node2Info)
-
-		_, r := protobuf.NewWriterAndReader(stream2)
-		var got pb.SynAck
-		if err := r.ReadMsg(&got); err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(got.Syn.ObservedUnderlay, node2maBinary) {
-			t.Fatalf("got bad syn")
-		}
-		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.Transaction, blockhash, got.Ack.NetworkID)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		testInfo(t, node1Info, handshake.Info{
-			BzzAddress: bzzAddress,
-			FullNode:   got.Ack.FullNode,
-		})
-
-		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err != handshake.ErrHandshakeDuplicate {
-			t.Fatalf("expected %s, got %s", handshake.ErrHandshakeDuplicate, err)
-		}
-	})
-
 	t.Run("Handle - invalid ack", func(t *testing.T) {
 		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, nil, "", node1AddrInfo.ID, logger)
 		if err != nil {
