@@ -155,6 +155,7 @@ type bucketData struct {
 
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := postageStampsResponse{}
+	resp.Stamps = make([]postageStampResponse, 0, len(s.post.StampIssuers()))
 	for _, v := range s.post.StampIssuers() {
 		exists, err := s.batchStore.Exists(v.ID())
 		if err != nil {
@@ -183,9 +184,6 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			Exists:        exists,
 			BatchTTL:      batchTTL,
 		})
-	}
-	if resp.Stamps == nil {
-		resp.Stamps = make([]postageStampResponse, 0)
 	}
 	jsonhttp.OK(w, resp)
 }

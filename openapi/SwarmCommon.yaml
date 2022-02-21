@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 1.0.0
+  version: 1.0.1
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -529,7 +529,7 @@ components:
     SwarmOnlyReferencesList:
       type: object
       properties:
-        addresses:
+        references:
           type: array
           nullable: false
           items:
