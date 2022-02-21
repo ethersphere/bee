@@ -166,10 +166,7 @@ func migrateSharky(db *DB) error {
 				return true, nil
 			}
 			return false, nil
-		}, &shed.IterateOptions{
-			StartFrom:         compactEnd,
-			SkipStartFromItem: func() bool { return compactEnd != nil }(),
-		})
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("iterate index: %w", err)
 		}
@@ -189,7 +186,7 @@ func migrateSharky(db *DB) error {
 		batch.Reset()
 
 		if batchesCount%compactionSize == 0 {
-			db.logger.Debugf("starting compaction")
+			db.logger.Debugf("starting intermediate compaction")
 
 			// the items are references from the iteration so encoding should be error-free
 			start, _ := retrievalDataIndex.ItemKey(*compactStart)
@@ -200,11 +197,12 @@ func migrateSharky(db *DB) error {
 				return err
 			}
 			compactionTime += dur
-			db.logger.Debugf("compaction done %s", dur)
+			db.logger.Debugf("intermediate compaction done %s", dur)
 			compactStart = nil
 		}
 	}
 
+	// do a full compaction at the end
 	dur, err := compaction(nil, nil)
 	if err != nil {
 		return err
