@@ -134,12 +134,11 @@ func bootstrapNode(
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 
-	minThreshold := big.NewInt(2 * refreshRate)
 	paymentThreshold, _ := new(big.Int).SetString(o.PaymentThreshold, 10)
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
+	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
