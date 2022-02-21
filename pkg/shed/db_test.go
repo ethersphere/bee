@@ -17,7 +17,6 @@
 package shed
 
 import (
-	"os"
 	"testing"
 )
 
@@ -45,13 +44,9 @@ func TestNewDB(t *testing.T) {
 }
 
 // TestDB_persistence creates one DB, saves a field and closes that DB.
-// Then, it constructs another DB and trues to retrieve the saved value.
+// Then, it constructs another DB and tries to retrieve the saved value.
 func TestDB_persistence(t *testing.T) {
-	dir, err := os.MkdirTemp("", "shed-test-persistence")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	db, err := NewDB(dir, nil)
 	if err != nil {
@@ -85,6 +80,10 @@ func TestDB_persistence(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("got string %q, want %q", got, want)
+	}
+	err = db2.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
