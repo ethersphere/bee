@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 1.0.0
+  version: 2.0.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -136,7 +136,7 @@ components:
       properties:
         lastcheques:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/ChequePeerResponse"
 
@@ -287,7 +287,7 @@ components:
       properties:
         peers:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/Address"
 
@@ -321,16 +321,16 @@ components:
       properties:
         stamps:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/DebugPostageBatch"
 
     DebugPostageAllBatchesResponse:
       type: object
       properties:
-        stamps:
+        batches:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/PostageBatchShort"
 
@@ -469,7 +469,7 @@ components:
           type: integer
         buckets:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/StampBucketData"
 
@@ -492,7 +492,7 @@ components:
           type: integer
         settlements:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/Settlement"
 
@@ -529,9 +529,9 @@ components:
     SwarmOnlyReferencesList:
       type: object
       properties:
-        addresses:
+        references:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
 
@@ -606,7 +606,7 @@ components:
       properties:
         pendingTransactions:
           type: array
-          nullable: true
+          nullable: false
           items:
             $ref: "#/components/schemas/TransactionInfo"
 
