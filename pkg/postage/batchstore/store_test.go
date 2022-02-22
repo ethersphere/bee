@@ -226,7 +226,7 @@ func TestBatchStore_Reset(t *testing.T) {
 func TestBatchStore_Migrate(t *testing.T) {
 
 	testBatch := postagetest.MustNewBatch(
-		postagetest.WithValue(15),
+		postagetest.WithValue(1),
 		postagetest.WithDepth(23),
 	)
 
@@ -256,6 +256,14 @@ func TestBatchStore_Migrate(t *testing.T) {
 	err = stateStore.Delete(batchstore.BatchstoreVersion)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if oldRs.Available != 0 {
+		t.Fatalf("got available %d, want %d", oldRs.Available, 0)
+	}
+
+	if oldRs.Radius != 1 {
+		t.Fatalf("got radius %d, want %d", oldRs.Radius, 1)
 	}
 
 	store, _ = batchstore.New(stateStore, noopEvictFn, logger)

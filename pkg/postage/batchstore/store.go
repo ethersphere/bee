@@ -23,7 +23,7 @@ const (
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
 
-	unreserveQueueKey           = "batchstore_unreserve_queue_"
+	unreserveQueuePrefix        = "batchstore_unreserve_queue_"
 	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
 
 	batchstoreVersion = "batchstore_version_1"
@@ -312,7 +312,13 @@ func (s *store) Reset() error {
 // and calculates available capacity.
 func (s *store) migrate() error {
 
-	err := s.store.Delete(unreserveQueueKey)
+	err := s.store.Iterate(unreserveQueuePrefix, func(k, _ []byte) (bool, error) {
+		if err := s.store.Delete(string(k)); err != nil {
+			return false, err
+		}
+		return false, nil
+	})
+
 	if err != nil {
 		return err
 	}
