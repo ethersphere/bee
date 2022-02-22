@@ -240,21 +240,27 @@ func TestGetAllBatches(t *testing.T) {
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
 	ts := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs})
 
+	oneBatch := struct {
+		Batches []debugapi.PostageBatchResponse `json:"batches"`
+	}{
+		Batches: []debugapi.PostageBatchResponse{
+			{
+				BatchID:     b.ID,
+				Value:       bigint.Wrap(b.Value),
+				Start:       b.Start,
+				Owner:       b.Owner,
+				Depth:       b.Depth,
+				BucketDepth: b.BucketDepth,
+				Immutable:   b.Immutable,
+				Radius:      b.Radius,
+				BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+			},
+		},
+	}
+
 	t.Run("all stamps", func(t *testing.T) {
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/batches", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse([]debugapi.PostageBatchResponse{
-				{
-					BatchID:     b.ID,
-					Value:       bigint.Wrap(b.Value),
-					Start:       b.Start,
-					Owner:       b.Owner,
-					Depth:       b.Depth,
-					BucketDepth: b.BucketDepth,
-					Immutable:   b.Immutable,
-					Radius:      b.Radius,
-					BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
-				},
-			}),
+			jsonhttptest.WithExpectedJSONResponse(oneBatch),
 		)
 	})
 }
