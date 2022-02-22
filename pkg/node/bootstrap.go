@@ -230,19 +230,8 @@ func bootstrapNode(
 
 // wait till some peers are connected. returns true if all is ok
 func waitPeers(kad *kademlia.Kad) bool {
-	items := 0
-	c := make(chan struct{})
-	go func() {
-		time.After(10 * time.Second)
-		close(c)
-	}()
-
-	defer func() {
-		<-c
-	}()
-
 	for i := 0; i < 30; i++ {
-		items = 0
+		items := 0
 		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			items++
 			return false, false, nil
@@ -255,8 +244,7 @@ func waitPeers(kad *kademlia.Kad) bool {
 	return false
 }
 
-type noopPinger struct {
-}
+type noopPinger struct{}
 
 func (p *noopPinger) Ping(context.Context, swarm.Address, ...string) (time.Duration, error) {
 	return time.Duration(1), nil
