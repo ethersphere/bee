@@ -366,11 +366,6 @@ func (s *store) migrate() error {
 		return err
 	}
 
-	err = s.store.Put(reserveStateKey, s.rs)
-	if err != nil {
-		return err
-	}
-
 	err = s.cleanup()
 	if err != nil {
 		return err
