@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var keyPrefix = "blocklist-"
+const keyPrefix = "blocklist-"
 
 // timeNow is used to deterministically mock time.Now() in tests.
 var timeNow = time.Now
