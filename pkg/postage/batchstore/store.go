@@ -286,10 +286,7 @@ func (s *store) Reset() error {
 
 	const prefix = "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
-		if err := s.store.Delete(string(k)); err != nil {
-			return false, err
-		}
-		return false, nil
+		return false, s.store.Delete(string(k))
 	}); err != nil {
 		return err
 	}
@@ -313,10 +310,7 @@ func (s *store) Reset() error {
 func (s *store) migrate() error {
 
 	err := s.store.Iterate(unreserveQueuePrefix, func(k, _ []byte) (bool, error) {
-		if err := s.store.Delete(string(k)); err != nil {
-			return false, err
-		}
-		return false, nil
+		return false, s.store.Delete(string(k))
 	})
 
 	if err != nil {
