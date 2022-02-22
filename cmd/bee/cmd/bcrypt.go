@@ -58,7 +58,7 @@ OK: password hash matches provided plain text`,
 				return errors.New("failed to generate password hash")
 			}
 
-			fmt.Println(string(hashed))
+			fmt.Print(string(hashed))
 			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
