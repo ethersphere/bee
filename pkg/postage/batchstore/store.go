@@ -376,8 +376,7 @@ func (s *store) migrate() error {
 		return err
 	}
 
-	return nil
-
+	return s.gainCapacity(big.NewInt(0))
 }
 
 func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius uint8) error {
