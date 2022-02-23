@@ -1,0 +1,60 @@
+# api endpoints
+@api = http://localhost:1633
+@token = fijSzdudi8j4PYkWGMsqwdeKyCy/ykGTcvltoLQElHDQG/ULgZd4iJj6iOdzEtlm3K1mGSrucBjl5/Dixp0jUyqJmVbUXkvAolBZEg5npwKnHZNDUGUZFw==
+
+### auth dGVzdDp0ZXN0=test:test OmhlbGxv=:hello
+POST {{api}}/auth
+Content-Type: application/json
+
+{
+    "role": "maintainer",
+    "expiry": 315360000
+}
+
+### auth dGVzdDp0ZXN0=test:test
+POST {{api}}/refresh
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "expiry": 15
+}
+
+### tags
+GET {{api}}/tags
+Authorization: Bearer {{token}}
+
+### bytes
+GET {{api}}/bytes/123
+Authorization: Bearer {{token}}
+
+### pins
+GET {{api}}/pins
+Authorization: Bearer {{token}}
+
+### tags
+GET {{api}}/tags
+Authorization: Bearer {{token}}
+
+### post chunks
+@batchid = a5f698d1f00c940ad978fbfc5af9ada80ada6763a8d03969f9cd3c8691a23d3d
+
+POST {{api}}/chunks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+swarm-postage-batch-id: {{batchid}}
+
+{
+    "one": 1
+}
+
+### PSS
+@dest = 7b5cc
+@pubkey = e1dc994c87f641e6b7a0ccd73b510f3844a99f13a58d456e4d4d973623743459
+
+POST {{api}}/pss/send/test-topic/{{dest}}?recipient={{pubkey}}
+Content-Type: text/plain
+
+"hi"
+
+### END
