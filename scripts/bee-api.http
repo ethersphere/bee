@@ -11,7 +11,7 @@ Content-Type: application/json
     "expiry": 315360000
 }
 
-### auth dGVzdDp0ZXN0=test:test
+### refresh
 POST {{api}}/refresh
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -36,8 +36,9 @@ Authorization: Bearer {{token}}
 GET {{api}}/tags
 Authorization: Bearer {{token}}
 
-
+### batch ID var
 @batchid = a5f698d1f00c940ad978fbfc5af9ada80ada6763a8d03969f9cd3c8691a23d3d
+
 ### post chunks
 POST {{api}}/chunks
 Authorization: Bearer {{token}}
@@ -48,10 +49,11 @@ swarm-postage-batch-id: {{batchid}}
     "one": 1
 }
 
-### PSS
+### PSS vars
 @dest = 7b5cc
 @pubkey = e1dc994c87f641e6b7a0ccd73b510f3844a99f13a58d456e4d4d973623743459
 
+### PSS
 POST {{api}}/pss/send/test-topic/{{dest}}?recipient={{pubkey}}
 Content-Type: text/plain
 
