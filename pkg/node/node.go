@@ -283,6 +283,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		beeNodeMode := debugapi.LightMode
 		if o.FullNodeMode {
 			beeNodeMode = debugapi.FullMode
+		} else if !o.ChainEnable {
+			beeNodeMode = debugapi.UltraLightMode
 		}
 		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, o.Restricted, authenticator, o.GatewayMode, beeNodeMode)
 

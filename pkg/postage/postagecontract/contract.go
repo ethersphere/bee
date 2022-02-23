@@ -68,18 +68,18 @@ func New(
 	postageStorer postage.Storer,
 	chainEnabled bool,
 ) Interface {
-	if chainEnabled {
-		return &postageContract{
-			owner:                  owner,
-			postageContractAddress: postageContractAddress,
-			bzzTokenAddress:        bzzTokenAddress,
-			transactionService:     transactionService,
-			postageService:         postageService,
-			postageStorer:          postageStorer,
-		}
+	if !chainEnabled {
+		return new(noOpPostageContract)
 	}
 
-	return new(noOpPostageContract)
+	return &postageContract{
+		owner:                  owner,
+		postageContractAddress: postageContractAddress,
+		bzzTokenAddress:        bzzTokenAddress,
+		transactionService:     transactionService,
+		postageService:         postageService,
+		postageStorer:          postageStorer,
+	}
 }
 
 func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
