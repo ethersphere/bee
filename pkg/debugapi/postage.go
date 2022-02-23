@@ -192,10 +192,6 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	if resp.Stamps == nil {
-		resp.Stamps = make([]postageStampResponse, 0)
-	}
-
 	jsonhttp.OK(w, resp)
 }
 
