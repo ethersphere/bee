@@ -239,10 +239,34 @@ func TestBatchStore_Migrate(t *testing.T) {
 	}
 	defer stateStore.Close()
 
+	test := func(old *postage.ReserveState, new *postage.ReserveState) {
+		if new.Available != old.Available {
+			t.Fatalf("got available %d, want %d", new.Available, old.Available)
+		}
+
+		if new.Radius != old.Radius {
+			t.Fatalf("got radius %d, want %d", new.Radius, old.Radius)
+		}
+
+		if new.StorageRadius != old.StorageRadius {
+			t.Fatalf("got storage radius %d, want %d", new.StorageRadius, old.StorageRadius)
+		}
+	}
+
 	store, _ := batchstore.New(stateStore, noopEvictFn, logger)
 	err = store.Save(testBatch)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	originalRs := store.GetReserveState()
+
+	if originalRs.Available != 0 {
+		t.Fatalf("got available %d, want %d", originalRs.Available, 0)
+	}
+
+	if originalRs.Radius != 1 {
+		t.Fatalf("got radius %d, want %d", originalRs.Radius, 1)
 	}
 
 	var migrated bool
@@ -251,36 +275,23 @@ func TestBatchStore_Migrate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldRs := store.GetReserveState()
+	store, _ = batchstore.New(stateStore, noopEvictFn, logger)
+
+	test(originalRs, store.GetReserveState())
 
 	err = stateStore.Delete(batchstore.BatchstoreVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if oldRs.Available != 0 {
-		t.Fatalf("got available %d, want %d", oldRs.Available, 0)
-	}
-
-	if oldRs.Radius != 1 {
-		t.Fatalf("got radius %d, want %d", oldRs.Radius, 1)
-	}
-
 	store, _ = batchstore.New(stateStore, noopEvictFn, logger)
-
-	newRs := store.GetReserveState()
-
-	if newRs.Available != oldRs.Available {
-		t.Fatalf("got available %d, want %d", newRs.Available, oldRs.Available)
+	err = store.Save(testBatch)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if newRs.Radius != oldRs.Radius {
-		t.Fatalf("got radius %d, want %d", newRs.Radius, oldRs.Radius)
-	}
+	test(originalRs, store.GetReserveState())
 
-	if newRs.StorageRadius != oldRs.StorageRadius {
-		t.Fatalf("got storage radius %d, want %d", newRs.StorageRadius, oldRs.StorageRadius)
-	}
 }
 
 func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v interface{}) {

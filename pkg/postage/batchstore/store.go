@@ -23,9 +23,6 @@ const (
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
 
-	unreserveQueuePrefix        = "batchstore_unreserve_queue_"
-	ureserveQueueCardinalityKey = "batchstore_queue_cardinality"
-
 	batchstoreVersion = "batchstore_version_1"
 )
 
@@ -85,12 +82,12 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		logger:  logger,
 	}
 
-	// check for migration
+	// check batchstore version
 	var migrated bool
 	err = st.Get(batchstoreVersion, &migrated)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			err = s.migrate()
+		if errors.Is(err, storage.ErrNotFound) {
+			err = s.Reset()
 			if err != nil {
 				return nil, err
 			}
@@ -303,80 +300,6 @@ func (s *store) Reset() error {
 	}
 
 	return nil
-}
-
-// migrate converts batchstore to the refactored version, removes unused indexes, computes radius, and
-// and calculates available capacity.
-func (s *store) migrate() error {
-
-	err := s.store.Iterate(unreserveQueuePrefix, func(k, _ []byte) (bool, error) {
-		return false, s.store.Delete(string(k))
-	})
-
-	if err != nil {
-		return err
-	}
-
-	err = s.store.Delete(ureserveQueueCardinalityKey)
-	if err != nil {
-		return err
-	}
-
-	err = s.store.Iterate(batchKeyPrefix, func(key, value []byte) (stop bool, err error) {
-
-		b := &postage.Batch{}
-		if err := b.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-
-		// put 0 values temporarily to compute radius
-		err = s.putValueItem(b.ID, b.Value, 0, 0)
-		return false, err
-	})
-	if err != nil {
-		return err
-	}
-
-	s.rs.Available = Capacity
-
-	err = s.computeRadius(0)
-	if err != nil {
-		return err
-	}
-
-	if s.rs.StorageRadius > s.rs.Radius {
-		s.rs.StorageRadius = s.rs.Radius
-	}
-
-	err = s.store.Iterate(batchKeyPrefix, func(key, value []byte) (stop bool, err error) {
-
-		b := &postage.Batch{}
-		if err := b.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-
-		if b.Depth > s.rs.Radius {
-			s.rs.Available -= exp2(uint(b.Depth) - uint(s.rs.Radius))
-		}
-
-		err = s.putValueItem(b.ID, b.Value, s.rs.Radius, s.rs.StorageRadius)
-		return false, err
-	})
-	if err != nil {
-		return err
-	}
-
-	err = s.cleanup()
-	if err != nil {
-		return err
-	}
-
-	err = s.adjustRadius(0)
-	if err != nil {
-		return err
-	}
-
-	return s.gainCapacity(big.NewInt(0))
 }
 
 func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius uint8) error {

@@ -98,7 +98,7 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 		return fmt.Errorf("batchstore: allocate batch gain capacity %x %w", b.ID, err)
 	}
 
-	return nil
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 // deallocateBatch unreserves a batch fully to regain previously allocated capacity.
