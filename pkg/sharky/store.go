@@ -157,9 +157,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	case e := <-c:
 		if e.err == nil {
 			shard := strconv.Itoa(int(e.loc.Shard))
-			sizeStr := strconv.Itoa(int(e.loc.Length))
 			s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
-			s.metrics.ChunkSizes.WithLabelValues(sizeStr).Inc()
 			s.metrics.ShardFragmentation.WithLabelValues(shard).Add(float64(s.maxDataSize - int(e.loc.Length)))
 		} else {
 			s.metrics.TotalWriteCallsErr.Inc()
@@ -186,9 +184,7 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 	s.metrics.TotalReleaseCalls.Inc()
 	if err == nil {
 		shard := strconv.Itoa(int(sh.index))
-		sizeStr := strconv.Itoa(int(loc.Length))
 		s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
-		s.metrics.ChunkSizes.WithLabelValues(sizeStr).Inc()
 		s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
 	} else {
 		s.metrics.TotalReleaseCallsErr.Inc()

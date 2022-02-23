@@ -20,7 +20,6 @@ type metrics struct {
 	ShardCount           prometheus.Gauge
 	CurrentShardSize     *prometheus.GaugeVec
 	ShardFragmentation   *prometheus.GaugeVec
-	ChunkSizes           *prometheus.GaugeVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -89,15 +88,6 @@ The total fragmentation of the files on disc for current shard. This is obtained
 between actual lengths of chunks and the length of slot.
 			`,
 			}, []string{"shard_fragmentation"},
-		),
-		ChunkSizes: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "chunk_sizes",
-				Help:      "Count of different chunk sizes present in the store",
-			},
-			[]string{"chunk_sizes"},
 		),
 	}
 }
