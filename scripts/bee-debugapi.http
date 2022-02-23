@@ -1,0 +1,70 @@
+# debug endpoints
+@debug = http://localhost:1635
+@token = fijSzdudi8j4PYkWGMsqwdeKyCy/ykGTcvltoLQElHDQG/ULgZd4iJj6iOdzEtlm3K1mGSrucBjl5/Dixp0jUyqJmVbUXkvAolBZEg5npwKnHZNDUGUZFw==
+
+### health
+GET {{debug}}/health
+
+### metrics
+GET {{debug}}/metrics
+
+### addr
+GET {{debug}}/addresses
+
+### stamps
+GET {{debug}}/stamps
+Authorization: Bearer {{token}}
+
+### buy stamps
+POST {{debug}}/stamps/1/17
+Authorization: Bearer {{token}}
+
+### batches
+GET {{debug}}/batches
+Authorization: Bearer {{token}}
+
+### mode
+GET {{debug}}/node
+Authorization: Bearer {{token}}
+
+### topology
+GET {{debug}}/topology
+Authorization: Bearer {{token}}
+
+### blocklist
+GET {{debug}}/blocklist
+Authorization: Bearer {{token}}
+
+### settlements
+GET {{debug}}/settlements
+Authorization: Bearer {{token}}
+
+### peers
+GET {{debug}}/peers
+Authorization: Bearer {{token}}
+
+### balances
+GET {{debug}}/balances
+Authorization: Bearer {{token}}
+
+### reserve
+GET {{debug}}/reservestate
+Authorization: Bearer {{token}}
+
+### ts
+GET {{debug}}/transactions
+Authorization: Bearer {{token}}
+
+### batches
+GET {{debug}}/batches
+Authorization: Bearer {{token}}
+
+### chequebook/cheque
+GET {{debug}}/chequebook/cheque
+Authorization: Bearer {{token}}
+
+### settlements
+GET {{debug}}/chequebook/balance
+Authorization: Bearer {{token}}
+
+### END
