@@ -51,7 +51,7 @@ func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 		t.Fatal(err)
 	}
 
-	id := make([]byte, soc.IdSize)
+	id := make([]byte, swarm.HashSize)
 	hasher := swarm.NewHasher()
 	_, err = hasher.Write(append(id, ch.Address().Bytes()...))
 	if err != nil {

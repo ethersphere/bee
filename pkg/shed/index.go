@@ -40,6 +40,7 @@ import (
 type Item struct {
 	Address         []byte
 	Data            []byte
+	Location        []byte // Location of the chunk in sharky context
 	AccessTimestamp int64
 	StoreTimestamp  int64
 	BinID           uint64
@@ -64,6 +65,9 @@ func (i Item) Merge(i2 Item) Item {
 	}
 	if i.Data == nil {
 		i.Data = i2.Data
+	}
+	if i.Location == nil {
+		i.Location = i2.Location
 	}
 	if i.AccessTimestamp == 0 {
 		i.AccessTimestamp = i2.AccessTimestamp
