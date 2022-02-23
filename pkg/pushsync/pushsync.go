@@ -516,7 +516,6 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		Stamp:   stamp,
 	})
 	if err != nil {
-		_ = streamer.Reset()
 		err = fmt.Errorf("chunk %s deliver to peer %s: %w", ch.Address(), peer, err)
 		return
 	}
@@ -537,7 +536,6 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 
 	err = r.ReadMsgWithContext(ctx, &receipt)
 	if err != nil {
-		_ = streamer.Reset()
 		err = fmt.Errorf("chunk %s receive receipt from peer %s: %w", ch.Address(), peer, err)
 		return
 	}
