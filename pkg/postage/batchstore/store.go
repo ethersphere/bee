@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -23,6 +22,8 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
+
+	batchstoreVersion = "batchstore_version_1"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -81,6 +82,24 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		logger:  logger,
 	}
 
+	// check batchstore version
+	var migrated bool
+	err = st.Get(batchstoreVersion, &migrated)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			err = s.Reset()
+			if err != nil {
+				return nil, err
+			}
+			err = st.Put(batchstoreVersion, true)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+
 	return s, nil
 }
 
@@ -109,6 +128,8 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	return s.get(id)
 }
 
+// get returns the postage batch from the statestore.
+// Must be called under the mutex lock.
 func (s *store) get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
@@ -225,7 +246,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // PutChainState is implementation of postage.Storer interface PutChainState method.
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
-
 func (s *store) PutChainState(cs *postage.ChainState) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -240,6 +260,11 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	err = s.adjustRadius(0)
 	if err != nil {
 		return fmt.Errorf("batchstore: put chain state adjust radius %w", err)
+	}
+
+	err = s.store.Put(reserveStateKey, s.rs)
+	if err != nil {
+		return err
 	}
 
 	// this needs to be improved, since we can miss some calls on
@@ -264,12 +289,7 @@ func (s *store) Reset() error {
 
 	const prefix = "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
-		if strings.HasPrefix(string(k), prefix) {
-			if err := s.store.Delete(string(k)); err != nil {
-				return false, err
-			}
-		}
-		return false, nil
+		return false, s.store.Delete(string(k))
 	}); err != nil {
 		return err
 	}
