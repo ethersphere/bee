@@ -36,9 +36,9 @@ Authorization: Bearer {{token}}
 GET {{api}}/tags
 Authorization: Bearer {{token}}
 
-### post chunks
-@batchid = a5f698d1f00c940ad978fbfc5af9ada80ada6763a8d03969f9cd3c8691a23d3d
 
+@batchid = a5f698d1f00c940ad978fbfc5af9ada80ada6763a8d03969f9cd3c8691a23d3d
+### post chunks
 POST {{api}}/chunks
 Authorization: Bearer {{token}}
 Content-Type: application/json
