@@ -59,6 +59,10 @@ type reserveState struct {
 	// Available capacity of the reserve which can still be used.
 	Available int64
 }
+type updateValueItem struct {
+	id   []byte
+	item *valueItem
+}
 
 // allocateBatch is the main point of entry for a new batch.
 // After computing a new radius, the available capacity of the node is deducted
@@ -80,21 +84,17 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 		return fmt.Errorf("batchstore: allocate batch %x %w", b.ID, err)
 	}
 
-	var capacity int64
 	if b.Depth > s.rs.Radius {
-		capacity = exp2(uint(b.Depth) - uint(s.rs.Radius))
+		s.rs.Available -= exp2(uint(b.Depth) - uint(s.rs.Radius))
+		s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
 	}
-
-	s.rs.Available -= capacity
-
-	s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
 
 	err = s.gainCapacity(b.Value)
 	if err != nil {
 		return fmt.Errorf("batchstore: allocate batch gain capacity %x %w", b.ID, err)
 	}
 
-	return nil
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 // deallocateBatch unreserves a batch fully to regain previously allocated capacity.
@@ -111,7 +111,7 @@ func (s *store) deallocateBatch(b *postage.Batch) error {
 		return fmt.Errorf("batchstore: deallocate batch adjust capacity %x %w", b.ID, err)
 	}
 
-	return nil
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 // cleanup evicts and removes negative value batches.
@@ -164,11 +164,6 @@ func (s *store) adjustRadius(newBatch int64) error {
 		return err
 	}
 
-	err = s.store.Put(reserveStateKey, s.rs)
-	if err != nil {
-		return err
-	}
-
 	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 	s.metrics.Radius.Set(float64(s.rs.Radius))
 
@@ -187,8 +182,8 @@ func (s *store) adjustRadius(newBatch int64) error {
 // gainCapacity iterates on the list of batches in ascending order of value and unreserves batches with the new radius
 // until a positive node capacity is reached.
 // Must be called under the mutex lock.
-func (s *store) gainCapacity(upto *big.Int) error {
 
+func (s *store) gainCapacity(upto *big.Int) error {
 	if s.rs.Available >= 0 {
 		return nil
 	}
@@ -269,11 +264,6 @@ func (s *store) capacity(depth, batchRadius, radius uint8) (int64, int64) {
 // Must be called under the mutex lock.
 func (s *store) lowerBatchRadius() error {
 
-	type updateValueItem struct {
-		id   []byte
-		item *valueItem
-	}
-
 	var toUpdate []updateValueItem
 
 	defer func() {
@@ -332,6 +322,11 @@ func (s *store) computeRadius(newBatch int64) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if totalCommitment <= Capacity {
+		s.rs.Radius = 0
+		return nil
 	}
 
 	// total_needed_capacity/node_capacity = 2^R
