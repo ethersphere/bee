@@ -35,14 +35,18 @@ const (
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
-
-	logMore = false // enable this for more logging
 )
+
+const logMore = false // enable this for more logging
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
+)
 
-	cancellationTimeout = 5 * time.Second // explicit ruid cancellation message timeout
+const (
+	storagePutTimeout = 5 * time.Second
+	// explicit ruid cancellation message timeout
+	cancellationTimeout = 5 * time.Second
 )
 
 // how many maximum chunks in a batch
@@ -252,6 +256,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 	if len(chunksToPut) > 0 {
 		s.metrics.DbOps.Inc()
+		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
+		defer cancel()
 		if ierr := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); ierr != nil {
 			if err != nil {
 				ierr = fmt.Errorf(", sync err: %w", err)

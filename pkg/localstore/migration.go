@@ -41,6 +41,7 @@ var schemaMigrations = []migration{
 	{schemaName: DBSchemaYuj, fn: migrateYuj},
 	{schemaName: DBSchemaBatchIndex, fn: migrateBatchIndex},
 	{schemaName: DBSchemaDeadPush, fn: migrateDeadPush},
+	{schemaName: DBSchemaSharky, fn: migrateSharky},
 }
 
 func (db *DB) migrate(schemaName string) error {
@@ -54,6 +55,7 @@ func (db *DB) migrate(schemaName string) error {
 	}
 
 	db.logger.Infof("localstore migration: need to run %v data migrations on localstore to schema %s", len(migrations), schemaName)
+	db.logger.Info("localstore migration: warning: if one of the migration fails it wouldn't be possible to downgrade back to the old version")
 	for i, migration := range migrations {
 		if err := migration.fn(db); err != nil {
 			return err
