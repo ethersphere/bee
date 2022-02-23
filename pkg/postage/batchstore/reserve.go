@@ -84,14 +84,10 @@ func (s *store) allocateBatch(b *postage.Batch) error {
 		return fmt.Errorf("batchstore: allocate batch %x %w", b.ID, err)
 	}
 
-	var capacity int64
 	if b.Depth > s.rs.Radius {
-		capacity = exp2(uint(b.Depth) - uint(s.rs.Radius))
+		s.rs.Available -= exp2(uint(b.Depth) - uint(s.rs.Radius))
+		s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
 	}
-
-	s.rs.Available -= capacity
-
-	s.metrics.AvailableCapacity.Set(float64(s.rs.Available))
 
 	err = s.gainCapacity(b.Value)
 	if err != nil {
@@ -115,7 +111,7 @@ func (s *store) deallocateBatch(b *postage.Batch) error {
 		return fmt.Errorf("batchstore: deallocate batch adjust capacity %x %w", b.ID, err)
 	}
 
-	return nil
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 // cleanup evicts and removes negative value batches.
@@ -168,11 +164,6 @@ func (s *store) adjustRadius(newBatch int64) error {
 		return err
 	}
 
-	err = s.store.Put(reserveStateKey, s.rs)
-	if err != nil {
-		return err
-	}
-
 	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 	s.metrics.Radius.Set(float64(s.rs.Radius))
 
@@ -191,8 +182,8 @@ func (s *store) adjustRadius(newBatch int64) error {
 // gainCapacity iterates on the list of batches in ascending order of value and unreserves batches with the new radius
 // until a positive node capacity is reached.
 // Must be called under the mutex lock.
-func (s *store) gainCapacity(upto *big.Int) error {
 
+func (s *store) gainCapacity(upto *big.Int) error {
 	if s.rs.Available >= 0 {
 		return nil
 	}

@@ -128,6 +128,8 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	return s.get(id)
 }
 
+// get returns the postage batch from the statestore.
+// Must be called under the mutex lock.
 func (s *store) get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
@@ -244,7 +246,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // PutChainState is implementation of postage.Storer interface PutChainState method.
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
-
 func (s *store) PutChainState(cs *postage.ChainState) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -259,6 +260,11 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	err = s.adjustRadius(0)
 	if err != nil {
 		return fmt.Errorf("batchstore: put chain state adjust radius %w", err)
+	}
+
+	err = s.store.Put(reserveStateKey, s.rs)
+	if err != nil {
+		return err
 	}
 
 	// this needs to be improved, since we can miss some calls on
