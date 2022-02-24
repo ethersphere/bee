@@ -19,7 +19,7 @@ var (
 
 var Exp2 = exp2
 
-func BatchCapacity(s postage.Storer, b *postage.Batch, radius uint8) (int64, int64, error) {
+func BatchCommitment(s postage.Storer, b *postage.Batch, radius uint8) (int64, int64, error) {
 
 	st := s.(*store)
 	item, err := st.getValueItem(b)
@@ -28,6 +28,7 @@ func BatchCapacity(s postage.Storer, b *postage.Batch, radius uint8) (int64, int
 		return 0, 0, err
 	}
 
-	newCapacity, change := st.capacity(b.Depth, item.Radius, radius)
-	return newCapacity, change, err
+	newCommitment := exp2(uint(b.Depth - radius))
+	change := st.commitment(b.Depth, item.Radius, radius)
+	return newCommitment, change, err
 }
