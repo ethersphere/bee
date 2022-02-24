@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"gitlab.com/nolash/go-mockbytes"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -95,6 +96,24 @@ func TestAllVectors(t *testing.T) {
 			a := swarm.NewAddress(sum)
 			if !a.Equal(expect) {
 				t.Fatalf("failed run %d, expected address %s but got %s", i, expect.String(), a.String())
+			}
+		})
+	}
+}
+
+func TestOneByte(t *testing.T) {
+	for i := 1; i <= 32; i++ {
+		g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+		data, err := g.SequentialBytes(32 + i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
+			m := mock.NewStorer()
+			p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+			_, err := p.Write(data)
+			if err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
