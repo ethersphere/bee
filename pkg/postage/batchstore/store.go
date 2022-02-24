@@ -129,7 +129,7 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 }
 
 // get returns the postage batch from the statestore.
-// Must be called under the mutex lock.
+// Must be called under lock.
 func (s *store) get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
@@ -254,12 +254,12 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 
 	err := s.cleanup()
 	if err != nil {
-		return fmt.Errorf("batchstore: put chain state clean up %w", err)
+		return fmt.Errorf("batchstore: put chain state clean up: %w", err)
 	}
 
 	err = s.adjustRadius(0)
 	if err != nil {
-		return fmt.Errorf("batchstore: put chain state adjust radius %w", err)
+		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
 	err = s.store.Put(reserveStateKey, s.rs)
