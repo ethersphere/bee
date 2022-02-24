@@ -272,7 +272,7 @@ func (s *store) commitment(depth, batchRadius, radius uint8) int64 {
 		newCommitment = exp2(uint(depth - radius))
 	}
 
-	// if reserve state radius is greater than the depth of the batch, no commitment is provided for the batch, old capacity should be zero
+	// if reserve state radius is greater than the depth of the batch, no commitment is provided for the batch, old commitment should be zero
 	if depth > batchRadius {
 		oldCommitment = exp2(uint(depth - batchRadius))
 	}

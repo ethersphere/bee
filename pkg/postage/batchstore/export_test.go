@@ -19,16 +19,16 @@ var (
 
 var Exp2 = exp2
 
-func BatchCommitment(s postage.Storer, b *postage.Batch, radius uint8) (int64, int64, error) {
+func BatchCommitment(s postage.Storer, b *postage.Batch, radius uint8) (int64, error) {
 
 	st := s.(*store)
 	item, err := st.getValueItem(b)
 
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	newCommitment := exp2(uint(b.Depth - radius))
 	change := st.commitment(b.Depth, item.Radius, radius)
-	return newCommitment, change, err
+	return newCommitment + change, err
 }
