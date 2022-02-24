@@ -36,6 +36,7 @@ var (
 	ErrInvalidDepth      = errors.New("invalid depth")
 	ErrBatchTopUp        = errors.New("batch topUp failed")
 	ErrBatchDilute       = errors.New("batch dilute failed")
+	ErrChainDisabled     = errors.New("chain disabled")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"
@@ -65,7 +66,12 @@ func New(
 	transactionService transaction.Service,
 	postageService postage.Service,
 	postageStorer postage.Storer,
+	chainEnabled bool,
 ) Interface {
+	if !chainEnabled {
+		return new(noOpPostageContract)
+	}
+
 	return &postageContract{
 		owner:                  owner,
 		postageContractAddress: postageContractAddress,
@@ -342,7 +348,11 @@ func parseABI(json string) abi.ABI {
 	return cabi
 }
 
-func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageContractAddress common.Address) (common.Address, error) {
+func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageContractAddress common.Address, chainEnabled bool) (common.Address, error) {
+	if !chainEnabled {
+		return common.Address{}, nil
+	}
+
 	callData, err := postageStampABI.Pack("bzzToken")
 	if err != nil {
 		return common.Address{}, err
@@ -362,4 +372,16 @@ func LookupERC20Address(ctx context.Context, transactionService transaction.Serv
 	}
 
 	return common.BytesToAddress(data), nil
+}
+
+type noOpPostageContract struct{}
+
+func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) ([]byte, error) {
+	return nil, ErrChainDisabled
+}
+func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) error {
+	return ErrChainDisabled
+}
+func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) error {
+	return ErrChainDisabled
 }

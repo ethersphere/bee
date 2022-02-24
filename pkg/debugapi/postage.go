@@ -88,6 +88,12 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
 	if err != nil {
+		if errors.Is(err, postagecontract.ErrChainDisabled) {
+			s.logger.Debugf("create batch: no chain backend: %v", err)
+			s.logger.Error("create batch: no chain backend")
+			jsonhttp.MethodNotAllowed(w, "no chain backend")
+			return
+		}
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			s.logger.Debugf("create batch: out of funds: %v", err)
 			s.logger.Error("create batch: out of funds")
@@ -185,6 +191,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			BatchTTL:      batchTTL,
 		})
 	}
+
 	jsonhttp.OK(w, resp)
 }
 

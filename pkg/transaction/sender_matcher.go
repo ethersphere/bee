@@ -11,15 +11,17 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type Matcher struct {
-	backend Backend
-	storage storage.StateStorer
-	signer  types.Signer
-	timeNow func() time.Time
+	backend      Backend
+	storage      storage.StateStorer
+	signer       types.Signer
+	timeNow      func() time.Time
+	chainEnabled bool
 }
 
 const (
@@ -45,12 +47,13 @@ type overlayVerification struct {
 	TimeStamp     time.Time
 }
 
-func NewMatcher(backend Backend, signer types.Signer, storage storage.StateStorer) *Matcher {
+func NewMatcher(backend Backend, signer types.Signer, storage storage.StateStorer, chainEnabled bool) p2p.SenderMatcher {
 	return &Matcher{
-		storage: storage,
-		backend: backend,
-		signer:  signer,
-		timeNow: time.Now,
+		storage:      storage,
+		backend:      backend,
+		signer:       signer,
+		timeNow:      time.Now,
+		chainEnabled: chainEnabled,
 	}
 }
 
@@ -66,6 +69,10 @@ func (m *Matcher) greylist(senderOverlay swarm.Address, incomingTx common.Hash, 
 }
 
 func (m *Matcher) Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error) {
+	if !m.chainEnabled {
+		return make([]byte, swarm.HashSize), nil
+	}
+
 	incomingTx := common.BytesToHash(tx)
 
 	var val overlayVerification

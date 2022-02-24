@@ -58,8 +58,10 @@ func (c *command) initDeployCmd() error {
 				logger,
 				stateStore,
 				swapEndpoint,
+				0,
 				signer,
 				blocktime,
+				true,
 			)
 			if err != nil {
 				return err
@@ -91,6 +93,7 @@ func (c *command) initDeployCmd() error {
 				chequebookFactory,
 				swapInitialDeposit,
 				deployGasPrice,
+				true,
 			)
 			if err != nil {
 				return err
