@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -25,7 +24,10 @@ type testBatch struct {
 	value int
 }
 
-func TestCapacityChange(t *testing.T) {
+// TestCommitments adds batches to the batchstore and after each batch, checks
+// the allocated commitment with respect to batch depth and value. Also, checked are
+// the reserve state radius and available values.
+func TestCommitments(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 
@@ -41,8 +43,21 @@ func TestCapacityChange(t *testing.T) {
 	type testcase struct {
 		add        []testBatch
 		name       string
-		capacities [][]int64
+		commitment [][]int64 // keeps track of how much commitment is allocated for the batch at each step.
 	}
+
+	// Becase totalCapacity is 2^5, the node Capacity is 32 chunks.
+	// Batches are added one by one, using different depth and value values,
+	// and after each addition,
+	// 1)	the commitment values inside the commitment slice
+	// 		is checked against the commitment value allocated in the batchstore,
+	// 2) 	the the sum of left over reservate state available and allocated
+	// 		commitments should never exceed 32 chunks.
+	// 3)	reserve state available remains a positive value
+
+	// The first commitment is always 32 because the entire Capacity is allocated
+	// to the first batch. As more batches are added, the Capacity is divided with respect
+	// to depth and value.
 
 	tcs := []testcase{
 		{
@@ -51,7 +66,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 5},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {8, 8, 8}},
+			commitment: [][]int64{{32}, {16, 16}, {8, 8, 8}},
 		},
 		{
 			add: []testBatch{
@@ -59,7 +74,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth + 1, value: 5},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {8, 8, 16}},
+			commitment: [][]int64{{32}, {16, 16}, {8, 8, 16}},
 		},
 		{
 			add: []testBatch{
@@ -67,7 +82,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth + 2, value: 5},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {4, 4, 16}},
+			commitment: [][]int64{{32}, {16, 16}, {4, 4, 16}},
 		},
 		{
 			add: []testBatch{
@@ -75,7 +90,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 2},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {8, 16, 8}},
+			commitment: [][]int64{{32}, {16, 16}, {8, 16, 8}},
 		},
 		{
 			add: []testBatch{
@@ -83,7 +98,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 2},
 				{depth: initDepth, value: 4},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {8, 8, 8}},
+			commitment: [][]int64{{32}, {16, 16}, {8, 8, 8}},
 		},
 		{
 			add: []testBatch{
@@ -91,7 +106,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 3},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {16, 8, 8}},
+			commitment: [][]int64{{32}, {16, 16}, {16, 8, 8}},
 		},
 		{
 			add: []testBatch{
@@ -99,7 +114,7 @@ func TestCapacityChange(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth + 5, value: 5},
 			},
-			capacities: [][]int64{{32}, {16, 16}, {0, 0, 16}},
+			commitment: [][]int64{{32}, {16, 16}, {0, 0, 16}},
 		},
 	}
 
@@ -107,37 +122,28 @@ func TestCapacityChange(t *testing.T) {
 
 		store := setupBatchStore(t)
 
-		var batches []*postage.Batch
+		var (
+			batches    []*postage.Batch
+			commitment map[string]int64
+		)
 
 		for i, b := range tc.add {
 
-			newBatch := addBatch(t, store, b.depth, b.value)
-			batches = append(batches, newBatch)
-			radius := calcRadius(tc.add[:i+1], batchstore.DefaultDepth)
-			state := store.GetReserveState()
-			if radius != state.Radius {
-				t.Fatalf("got radius %v, want %v", state.Radius, radius)
-			}
-			if state.Available < 0 {
-				t.Fatal("negative available")
-			}
+			batches, commitment = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
 
-			sum, capacities := getCapacities(t, store, batches, radius)
-
-			if sum+state.Available != totalCapacity {
-				t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
-			}
-
-			for i, c := range tc.capacities[i] {
-				cap := capacities[hex.EncodeToString(batches[i].ID)]
-				if cap != c {
-					t.Fatalf("test %s: got capacity %v, want %v", tc.name, cap, c)
+			for i, c := range tc.commitment[i] {
+				com := commitment[hex.EncodeToString(batches[i].ID)]
+				if com != c {
+					t.Fatalf("test %s: got commitment %v, want %v", tc.name, com, c)
 				}
 			}
 		}
 	}
 }
 
+// TestBatchUpdate adds an initial group of batches to the batchstore and one by one
+// updates their depth and value to fields while checking their new commitment allocation
+// value in the batchstore.
 func TestBatchUpdate(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -155,11 +161,15 @@ func TestBatchUpdate(t *testing.T) {
 		value      int
 		depth      uint8
 		index      int
-		capacities []int64
+		commitment []int64
 	}
 
 	type testcase struct {
-		add    []testBatch
+		// the initial batches to add to the batchstore.
+		add []testBatch
+		// contains the new depth and value values for the added batches
+		// and the new commitment values that should be allocated for the batches
+		// after each update call.
 		update []update
 		name   string
 	}
@@ -172,9 +182,12 @@ func TestBatchUpdate(t *testing.T) {
 				{depth: initDepth, value: 3},
 			},
 			update: []update{
-				{index: 0, depth: initDepth + 1, value: 6, capacities: []int64{16, 8, 8}},
-				{index: 1, depth: initDepth + 1, value: 6, capacities: []int64{16, 8, 8}},
-				{index: 2, depth: initDepth + 2, value: 6, capacities: []int64{8, 8, 16}},
+				// after updating the first batch (index 0), the batch commitment values should reflect
+				// the commitment slice below. Notice, the updated batch's depth and value are higher so
+				// more commitment is allocated than the rest.
+				{index: 0, depth: initDepth + 1, value: 6, commitment: []int64{16, 8, 8}},
+				{index: 1, depth: initDepth + 1, value: 6, commitment: []int64{16, 8, 8}},
+				{index: 2, depth: initDepth + 2, value: 6, commitment: []int64{8, 8, 16}},
 			},
 		},
 		{
@@ -184,9 +197,9 @@ func TestBatchUpdate(t *testing.T) {
 				{depth: initDepth + 1, value: 5},
 			},
 			update: []update{
-				{index: 0, depth: initDepth + 1, value: 6, capacities: []int64{8, 8, 16}},
-				{index: 1, depth: initDepth + 1, value: 6, capacities: []int64{8, 8, 16}},
-				{index: 2, depth: initDepth + 1, value: 6, capacities: []int64{8, 8, 8}},
+				{index: 0, depth: initDepth + 1, value: 6, commitment: []int64{8, 8, 16}},
+				{index: 1, depth: initDepth + 1, value: 6, commitment: []int64{8, 8, 16}},
+				{index: 2, depth: initDepth + 1, value: 6, commitment: []int64{8, 8, 8}},
 			},
 		},
 	}
@@ -197,30 +210,15 @@ func TestBatchUpdate(t *testing.T) {
 
 		var batches []*postage.Batch
 
+		// add initial groupd of batches
 		for i, b := range tc.add {
-
-			newBatch := addBatch(t, store, b.depth, b.value)
-			batches = append(batches, newBatch)
-			radius := calcRadius(tc.add[:i+1], batchstore.DefaultDepth)
-			state := store.GetReserveState()
-			if radius != state.Radius {
-				t.Fatalf("got radius %v, want %v", state.Radius, radius)
-			}
-			if state.Available < 0 {
-				t.Fatal("negative available")
-			}
-
-			sum, _ := getCapacities(t, store, batches, radius)
-
-			if sum+state.Available != totalCapacity {
-				t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
-			}
+			batches, _ = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
 		}
 
+		// update batches one by one with new depth and values and check, for each batch,
+		// the allocated commitment matches the commitment values in the test case.
 		for _, u := range tc.update {
 			batch := batches[u.index]
-
-			big.NewInt(int64(u.value))
 
 			err := store.Update(batch, big.NewInt(int64(u.value)), u.depth)
 			if err != nil {
@@ -228,22 +226,23 @@ func TestBatchUpdate(t *testing.T) {
 			}
 
 			state := store.GetReserveState()
-			_, capacities := getCapacities(t, store, batches, state.Radius)
+			_, capacities := getCommitments(t, store, batches, state.Radius)
 
 			if state.Available < 0 {
 				t.Fatal("negative available")
 			}
 
-			for i, c := range u.capacities {
+			for i, c := range u.commitment {
 				cap := capacities[hex.EncodeToString(batches[i].ID)]
 				if cap != c {
-					t.Fatalf("test update %s: got capacity %v, want %v", tc.name, cap, c)
+					t.Fatalf("test update %s: got commitment %v, want %v", tc.name, cap, c)
 				}
 			}
 		}
 	}
 }
 
+// TODO: add comments
 func TestPutChainState(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -260,7 +259,7 @@ func TestPutChainState(t *testing.T) {
 	type chain struct {
 		block      uint64
 		amount     *big.Int
-		capacities []int64
+		commitment []int64
 	}
 
 	type testcase struct {
@@ -277,7 +276,7 @@ func TestPutChainState(t *testing.T) {
 				{depth: initDepth, value: 3},
 			},
 			chain: []chain{
-				{block: 1, amount: big.NewInt(4), capacities: []int64{0, 0, 0}},
+				{block: 1, amount: big.NewInt(4), commitment: []int64{0, 0, 0}},
 			},
 		},
 		{
@@ -287,7 +286,7 @@ func TestPutChainState(t *testing.T) {
 				{depth: initDepth, value: 5},
 			},
 			chain: []chain{
-				{block: 1, amount: big.NewInt(4), capacities: []int64{0, 0, 32}},
+				{block: 1, amount: big.NewInt(4), commitment: []int64{0, 0, 32}},
 			},
 		},
 	}
@@ -299,23 +298,7 @@ func TestPutChainState(t *testing.T) {
 		var batches []*postage.Batch
 
 		for i, b := range tc.add {
-
-			newBatch := addBatch(t, store, b.depth, b.value)
-			batches = append(batches, newBatch)
-			radius := calcRadius(tc.add[:i+1], batchstore.DefaultDepth)
-			state := store.GetReserveState()
-			if radius != state.Radius {
-				t.Fatalf("got radius %v, want %v", state.Radius, radius)
-			}
-			if state.Available < 0 {
-				t.Fatal("negative available")
-			}
-
-			sum, _ := getCapacities(t, store, batches, radius)
-
-			if sum+state.Available != totalCapacity {
-				t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
-			}
+			batches, _ = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
 		}
 
 		for _, c := range tc.chain {
@@ -332,18 +315,19 @@ func TestPutChainState(t *testing.T) {
 			state := store.GetReserveState()
 
 			for i, b := range batches {
-				new, change, err := batchstore.BatchCapacity(store, b, state.Radius)
+				new, change, err := batchstore.BatchCommitment(store, b, state.Radius)
 
-				if c.capacities[i] == 0 && err != storage.ErrNotFound {
+				if c.commitment[i] == 0 && err != storage.ErrNotFound {
 					t.Fatal("batch should have been fully evicted")
-				} else if c.capacities[i] != new+change {
-					t.Fatalf("got capacity %d, want %d", new+change, c.capacities[i])
+				} else if c.commitment[i] != new+change {
+					t.Fatalf("got commitment %d, want %d", new+change, c.commitment[i])
 				}
 			}
 		}
 	}
 }
 
+// TODO: add comments
 func TestUnreserve(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -361,9 +345,9 @@ func TestUnreserve(t *testing.T) {
 
 	values := []int{3, 4, 5}
 
-	addBatch(t, store, initDepth, values[0])
-	addBatch(t, store, initDepth, values[1])
-	addBatch(t, store, initDepth, values[2])
+	_ = addBatch(t, store, initDepth, values[0])
+	_ = addBatch(t, store, initDepth, values[1])
+	_ = addBatch(t, store, initDepth, values[2])
 
 	state := store.GetReserveState()
 
@@ -386,17 +370,8 @@ func TestUnreserve(t *testing.T) {
 
 func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
-	// we cannot  use the mock statestore here since the iterator is not giving the right order
-	// must use the leveldb statestore
-	dir, err := os.MkdirTemp("", "batchstore_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-	})
+	dir := t.TempDir()
+
 	logger := logging.New(io.Discard, 0)
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
@@ -426,6 +401,32 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	return bStore
 }
 
+func saveNewBatch(t *testing.T, testBatches []testBatch, batches []*postage.Batch, totalCapacity int64, store postage.Storer, depth uint8, value int) ([]*postage.Batch, map[string]int64) {
+
+	t.Helper()
+
+	newBatch := addBatch(t, store, depth, value)
+	batches = append(batches, newBatch)
+
+	radius := calcRadius(testBatches, batchstore.DefaultDepth)
+	state := store.GetReserveState()
+
+	if radius != state.Radius {
+		t.Fatalf("got radius %v, want %v", state.Radius, radius)
+	}
+	if state.Available < 0 {
+		t.Fatal("negative available")
+	}
+
+	sum, capacities := getCommitments(t, store, batches, radius)
+
+	if sum+state.Available != totalCapacity {
+		t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
+	}
+
+	return batches, capacities
+}
+
 func calcRadius(batches []testBatch, depth uint8) uint8 {
 
 	var total int64
@@ -436,24 +437,30 @@ func calcRadius(batches []testBatch, depth uint8) uint8 {
 	return uint8(math.Ceil(math.Log2(float64(total) / float64(batchstore.Exp2(uint(depth))))))
 }
 
-func getCapacities(t *testing.T, st postage.Storer, batches []*postage.Batch, radius uint8) (int64, map[string]int64) {
+func getCommitments(t *testing.T, st postage.Storer, batches []*postage.Batch, radius uint8) (int64, map[string]int64) {
+
+	t.Helper()
+
 	m := make(map[string]int64)
 
 	var sum int64
 
 	for _, b := range batches {
-		newCapacity, change, err := batchstore.BatchCapacity(st, b, radius)
+		newCommitment, change, err := batchstore.BatchCommitment(st, b, radius)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sum += change + newCapacity
-		m[hex.EncodeToString(b.ID)] = change + newCapacity
+		sum += change + newCommitment
+		m[hex.EncodeToString(b.ID)] = change + newCommitment
 	}
 
 	return sum, m
 }
 
 func addBatch(t *testing.T, s postage.Storer, depth uint8, value int) *postage.Batch {
+
+	t.Helper()
+
 	batch := postagetest.MustNewBatch(
 		postagetest.WithValue(int64(value)),
 		postagetest.WithDepth(depth),
