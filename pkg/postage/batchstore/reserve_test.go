@@ -42,17 +42,15 @@ func TestCommitments(t *testing.T) {
 
 	type testcase struct {
 		add        []testBatch
-		name       string
 		commitment [][]int64 // keeps track of how much commitment is allocated for the batch at each step.
 	}
 
-	// Becase totalCapacity is 2^5, the node Capacity is 32 chunks.
+	// The node Capacity is 32 (2^5) chunks.
 	// Batches are added one by one, using different depth and value values,
 	// and after each addition,
 	// 1)	the commitment values inside the commitment slice
-	// 		is checked against the commitment value allocated in the batchstore,
-	// 2) 	the the sum of left over reservate state available and allocated
-	// 		commitments should never exceed 32 chunks.
+	// 		is checked against the commitment allocated in the batchstore,
+	// 2) 	the the sum of reservate state available and commitments should never exceed 32 chunks.
 	// 3)	reserve state available remains a positive value
 
 	// The first commitment is always 32 because the entire Capacity is allocated
@@ -61,11 +59,13 @@ func TestCommitments(t *testing.T) {
 
 	tcs := []testcase{
 		{
+			// batches to add by one by
 			add: []testBatch{
 				{depth: initDepth, value: 3},
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 5},
 			},
+			// different commitment values after each added batch
 			commitment: [][]int64{{32}, {16, 16}, {8, 8, 8}},
 		},
 		{
@@ -134,7 +134,7 @@ func TestCommitments(t *testing.T) {
 			for i, c := range tc.commitment[i] {
 				com := commitment[hex.EncodeToString(batches[i].ID)]
 				if com != c {
-					t.Fatalf("test %s: got commitment %v, want %v", tc.name, com, c)
+					t.Fatalf("got commitment %v, want %v", com, c)
 				}
 			}
 		}
@@ -167,11 +167,10 @@ func TestBatchUpdate(t *testing.T) {
 	type testcase struct {
 		// the initial batches to add to the batchstore.
 		add []testBatch
-		// contains the new depth and value values for the added batches
+		// update contains the new depth and value values for the added batches
 		// and the new commitment values that should be allocated for the batches
 		// after each update call.
 		update []update
-		name   string
 	}
 
 	tcs := []testcase{
@@ -235,14 +234,15 @@ func TestBatchUpdate(t *testing.T) {
 			for i, c := range u.commitment {
 				cap := capacities[hex.EncodeToString(batches[i].ID)]
 				if cap != c {
-					t.Fatalf("test update %s: got commitment %v, want %v", tc.name, cap, c)
+					t.Fatalf("got commitment %v, want %v", cap, c)
 				}
 			}
 		}
 	}
 }
 
-// TODO: add comments
+// TestPutChainState add an initial group of batches to the batchstore, and after updating the chainstate,
+// checks that the proper commitments are allocated for the batches.
 func TestPutChainState(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -265,16 +265,19 @@ func TestPutChainState(t *testing.T) {
 	type testcase struct {
 		add   []testBatch
 		chain []chain
-		// name  string
 	}
 
 	tcs := []testcase{
 		{
+			// initial group of batches to add
 			add: []testBatch{
 				{depth: initDepth, value: 3},
 				{depth: initDepth, value: 3},
 				{depth: initDepth, value: 3},
 			},
+			// chain state update, notice that after the update, the amount is 4,
+			// which is greater than the values of the batches, the new commitment
+			// amounts are zero.
 			chain: []chain{
 				{block: 1, amount: big.NewInt(4), commitment: []int64{0, 0, 0}},
 			},
@@ -287,6 +290,7 @@ func TestPutChainState(t *testing.T) {
 			},
 			chain: []chain{
 				{block: 1, amount: big.NewInt(4), commitment: []int64{0, 0, 32}},
+				{block: 2, amount: big.NewInt(5), commitment: []int64{0, 0, 0}},
 			},
 		},
 	}
@@ -297,12 +301,14 @@ func TestPutChainState(t *testing.T) {
 
 		var batches []*postage.Batch
 
+		// add the group of batches
 		for i, b := range tc.add {
 			batches, _ = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
 		}
 
 		for _, c := range tc.chain {
 
+			// update chain state
 			err := store.PutChainState(&postage.ChainState{
 				Block:        c.block,
 				TotalAmount:  c.amount,
@@ -314,57 +320,56 @@ func TestPutChainState(t *testing.T) {
 
 			state := store.GetReserveState()
 
+			// confirm that the new commitments match
 			for i, b := range batches {
-				new, change, err := batchstore.BatchCommitment(store, b, state.Radius)
+				com, err := batchstore.BatchCommitment(store, b, state.Radius)
 
 				if c.commitment[i] == 0 && err != storage.ErrNotFound {
 					t.Fatal("batch should have been fully evicted")
-				} else if c.commitment[i] != new+change {
-					t.Fatalf("got commitment %d, want %d", new+change, c.commitment[i])
+				} else if c.commitment[i] != com {
+					t.Fatalf("got commitment %d, want %d", com, c.commitment[i])
 				}
 			}
 		}
 	}
 }
 
-// TODO: add comments
+// TestUnreserve tests the Unreserve call increases the storage radius after each
+// full iteration and that the storage radius never exceeds the global radius.
 func TestUnreserve(t *testing.T) {
-
-	totalCapacity := batchstore.Exp2(5)
 
 	defer func(i int64, d uint8) {
 		batchstore.Capacity = i
 		batchstore.DefaultDepth = d
 	}(batchstore.Capacity, batchstore.DefaultDepth)
 	batchstore.DefaultDepth = 5
-	batchstore.Capacity = totalCapacity
+	batchstore.Capacity = batchstore.Exp2(5)
 
 	initDepth := uint8(8)
 
 	store := setupBatchStore(t)
 
-	values := []int{3, 4, 5}
-
-	_ = addBatch(t, store, initDepth, values[0])
-	_ = addBatch(t, store, initDepth, values[1])
-	_ = addBatch(t, store, initDepth, values[2])
+	_ = addBatch(t, store, initDepth, 1)
+	_ = addBatch(t, store, initDepth, 1)
+	_ = addBatch(t, store, initDepth, 1)
 
 	state := store.GetReserveState()
 
 	cb := func([]byte, uint8) (bool, error) { return false, nil }
 
-	for i := uint8(0); i <= state.Radius; i++ {
-		if store.GetReserveState().StorageRadius != i {
-			t.Fatalf("got storage radius %d, want %d", store.GetReserveState().StorageRadius, i)
+	// storage radius should equal storage radius and not exceed it
+	for i := uint8(0); i <= state.Radius+1; i++ {
+
+		wantStorageRadius := i
+		if i > state.Radius {
+			wantStorageRadius = state.Radius
 		}
+
+		if store.GetReserveState().StorageRadius != wantStorageRadius {
+			t.Fatalf("got storage radius %d, want %d", store.GetReserveState().StorageRadius, wantStorageRadius)
+		}
+
 		_ = store.Unreserve(cb)
-	}
-
-	_ = store.Unreserve(cb)
-
-	state = store.GetReserveState()
-	if state.Radius != state.StorageRadius {
-		t.Fatalf("radius %d does not match %d", state.Radius, state.StorageRadius)
 	}
 }
 
@@ -446,12 +451,12 @@ func getCommitments(t *testing.T, st postage.Storer, batches []*postage.Batch, r
 	var sum int64
 
 	for _, b := range batches {
-		newCommitment, change, err := batchstore.BatchCommitment(st, b, radius)
+		com, err := batchstore.BatchCommitment(st, b, radius)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sum += change + newCommitment
-		m[hex.EncodeToString(b.ID)] = change + newCommitment
+		sum += com
+		m[hex.EncodeToString(b.ID)] = com
 	}
 
 	return sum, m
