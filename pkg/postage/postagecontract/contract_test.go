@@ -89,6 +89,7 @@ func TestCreateBatch(t *testing.T) {
 			),
 			postageMock,
 			postagestoreMock.New(),
+			true,
 		)
 
 		returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -120,6 +121,7 @@ func TestCreateBatch(t *testing.T) {
 			transactionMock.New(),
 			postageMock.New(),
 			postagestoreMock.New(),
+			true,
 		)
 
 		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -146,6 +148,7 @@ func TestCreateBatch(t *testing.T) {
 			),
 			postageMock.New(),
 			postagestoreMock.New(),
+			true,
 		)
 
 		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -189,6 +192,7 @@ func TestLookupERC20Address(t *testing.T) {
 			}),
 		),
 		postageStampAddress,
+		true,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -275,6 +279,7 @@ func TestTopUpBatch(t *testing.T) {
 			),
 			postageMock,
 			batchStoreMock,
+			true,
 		)
 
 		err = contract.TopUpBatch(ctx, batch.ID, topupBalance)
@@ -301,6 +306,7 @@ func TestTopUpBatch(t *testing.T) {
 			transactionMock.New(),
 			postageMock.New(),
 			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
+			true,
 		)
 
 		err := contract.TopUpBatch(ctx, postagetesting.MustNewID(), topupBalance)
@@ -328,6 +334,7 @@ func TestTopUpBatch(t *testing.T) {
 			),
 			postageMock.New(),
 			batchStoreMock,
+			true,
 		)
 
 		err := contract.TopUpBatch(ctx, batch.ID, topupBalance)
@@ -416,6 +423,7 @@ func TestDiluteBatch(t *testing.T) {
 			),
 			postageMock,
 			batchStoreMock,
+			true,
 		)
 
 		err = contract.DiluteBatch(ctx, batch.ID, newDepth)
@@ -442,6 +450,7 @@ func TestDiluteBatch(t *testing.T) {
 			transactionMock.New(),
 			postageMock.New(),
 			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
+			true,
 		)
 
 		err := contract.DiluteBatch(ctx, postagetesting.MustNewID(), uint8(17))
@@ -462,6 +471,7 @@ func TestDiluteBatch(t *testing.T) {
 			transactionMock.New(),
 			postageMock.New(),
 			batchStoreMock,
+			true,
 		)
 
 		err := contract.DiluteBatch(ctx, batch.ID, batch.Depth-1)

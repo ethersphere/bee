@@ -38,7 +38,7 @@ func TestMatchesSender(t *testing.T) {
 			return nil, false, errors.New("transaction not found by hash")
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore(), true)
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
@@ -51,7 +51,7 @@ func TestMatchesSender(t *testing.T) {
 			return nil, true, nil
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore(), true)
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionPending) {
@@ -67,7 +67,7 @@ func TestMatchesSender(t *testing.T) {
 		signer := &mockSigner{
 			err: errors.New("can not sign"),
 		}
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), signer, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), signer, statestore.NewStateStore(), true)
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionSenderInvalid) {
@@ -101,7 +101,7 @@ func TestMatchesSender(t *testing.T) {
 			}, nil
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash, trxReceipt, headerByNum), signer, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(txByHash, trxReceipt, headerByNum), signer, statestore.NewStateStore(), true)
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if err == nil {
@@ -135,7 +135,7 @@ func TestMatchesSender(t *testing.T) {
 			addr: common.HexToAddress("0xff"),
 		}
 
-		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore(), true)
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
@@ -174,7 +174,7 @@ func TestMatchesSender(t *testing.T) {
 			addr: common.HexToAddress("0xee"),
 		}
 
-		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore(), true)
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(overlayEth.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
@@ -222,7 +222,7 @@ func TestMatchesSender(t *testing.T) {
 			addr: common.HexToAddress("0xff"),
 		}
 
-		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore())
+		matcher := transaction.NewMatcher(backendmock.New(trxReceipt, headerByNum, txByHash), signer, statestore.NewStateStore(), true)
 
 		senderOverlay := crypto.NewOverlayFromEthereumAddress(signer.addr.Bytes(), 0, nextBlockHeader.Hash().Bytes())
 
@@ -246,8 +246,9 @@ func TestMatchesSender(t *testing.T) {
 			return nil, false, errors.New("transaction not found by hash")
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
-		matcher.SetTime(0)
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore(), true)
+		m := matcher.(*transaction.Matcher)
+		m.SetTime(0)
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
@@ -260,7 +261,8 @@ func TestMatchesSender(t *testing.T) {
 		}
 
 		// greylist expires
-		matcher.SetTime(5 * 60)
+		m2 := matcher.(*transaction.Matcher)
+		m2.SetTime(5 * 60)
 
 		_, err = matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {
@@ -273,8 +275,10 @@ func TestMatchesSender(t *testing.T) {
 			return nil, false, errors.New("transaction not found by hash")
 		})
 
-		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore())
-		matcher.SetTime(0)
+		matcher := transaction.NewMatcher(backendmock.New(txByHash), nil, statestore.NewStateStore(), true)
+
+		m := matcher.(*transaction.Matcher)
+		m.SetTime(0)
 
 		_, err := matcher.Matches(context.Background(), trx, 0, swarm.NewAddress([]byte{}), false)
 		if !errors.Is(err, transaction.ErrTransactionNotFound) {

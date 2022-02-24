@@ -16,6 +16,7 @@ const (
 	LightMode BeeNodeMode = iota
 	FullMode
 	DevMode
+	UltraLightMode
 )
 
 type nodeResponse struct {
@@ -33,6 +34,8 @@ func (b BeeNodeMode) String() string {
 		return "full"
 	case DevMode:
 		return "dev"
+	case UltraLightMode:
+		return "ultra-light"
 	}
 	return "unknown"
 }

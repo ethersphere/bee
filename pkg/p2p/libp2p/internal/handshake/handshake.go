@@ -57,19 +57,16 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
-type SenderMatcher interface {
-	Matches(ctx context.Context, tx []byte, networkID uint64, senderOverlay swarm.Address, ignoreGreylist bool) ([]byte, error)
-}
-
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	senderMatcher         SenderMatcher
+	senderMatcher         p2p.SenderMatcher
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           []byte
 	networkID             uint64
+	validateOverlay       bool
 	welcomeMessage        atomic.Value
 	logger                logging.Logger
 	libp2pID              libp2ppeer.ID
@@ -92,7 +89,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -103,6 +100,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		overlay:               overlay,
 		networkID:             networkID,
 		fullNode:              fullNode,
+		validateOverlay:       validateOverlay,
 		transaction:           transaction,
 		senderMatcher:         isSender,
 		libp2pID:              ownPeerID,
@@ -193,7 +191,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	// Synced read:
 	welcomeMessage := s.GetWelcomeMessage()
-	if err := w.WriteMsgWithContext(ctx, &pb.Ack{
+	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
 			Underlay:  advertisableUnderlayBytes,
 			Overlay:   bzzAddress.Overlay.Bytes(),
@@ -203,7 +201,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		FullNode:       s.fullNode,
 		Transaction:    s.transaction,
 		WelcomeMessage: welcomeMessage,
-	}); err != nil {
+	}
+
+	if err := w.WriteMsgWithContext(ctx, msg); err != nil {
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
@@ -343,7 +343,7 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Transaction, blockHash, s.networkID)
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Transaction, blockHash, s.validateOverlay, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
 	}
