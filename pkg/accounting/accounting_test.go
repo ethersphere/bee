@@ -423,10 +423,13 @@ func TestAccountingReserveAheadOfTime(t *testing.T) {
 
 	// apply half of minimal refreshment amount, expect no refreshment
 
-	credit1.Apply()
+	err = credit1.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	select {
-	case _ = <-refreshchan:
+	case <-refreshchan:
 		t.Fatal("unexpected refreshment below minimum debt")
 	case <-time.After(1 * time.Second):
 	}
@@ -470,12 +473,15 @@ func TestAccountingReserveAheadOfTime(t *testing.T) {
 
 	// credit until minimal refreshment sent, expect refreshment made
 
-	credit2.Apply()
+	err = credit2.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case call := <-refreshchan:
-		if call.amount.Cmp(big.NewInt(int64(2*testRefreshRate))) != 0 {
-			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, int64(2*testRefreshRate))
+		if call.amount.Cmp(big.NewInt(2*testRefreshRate)) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, 2*testRefreshRate)
 		}
 		if !call.peer.Equal(peer1Addr) {
 			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
