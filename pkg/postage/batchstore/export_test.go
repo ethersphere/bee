@@ -29,6 +29,6 @@ func BatchCommitment(s postage.Storer, b *postage.Batch, radius uint8) (int64, e
 	}
 
 	newCommitment := exp2(uint(b.Depth - radius))
-	change := st.commitment(b.Depth, item.Radius, radius)
+	change := st.commitmentChange(b.Depth, item.Radius, radius)
 	return newCommitment + change, err
 }
