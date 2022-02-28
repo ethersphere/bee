@@ -344,6 +344,148 @@ func TestAccountingReserve(t *testing.T) {
 	}
 }
 
+// TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded,
+// but extends this limit by 'n' (max 2) seconds worth of refresh rate if last refreshment was 'n' seconds ago.
+func TestAccountingReserveAheadOfTime(t *testing.T) {
+	logger := logging.New(io.Discard, 0)
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	pricing := &pricingMock{}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, logger, store, pricing, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refreshchan := make(chan paymentCall, 1)
+
+	f := func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
+		refreshchan <- paymentCall{peer: peer, amount: amount}
+		return amount, 0, nil
+	}
+
+	pay := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
+	}
+
+	acc.SetRefreshFunc(f)
+	acc.SetPayFunc(pay)
+
+	peer1Addr, err := swarm.ParseHexAddress("00112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	acc.Connect(peer1Addr, true)
+
+	ts := int64(0)
+	acc.SetTime(ts)
+
+	// reserve until limit
+
+	_, err = acc.PrepareCredit(peer1Addr, testPaymentThreshold.Uint64(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// attempt further reserve, expect overdraft
+
+	_, err = acc.PrepareCredit(peer1Addr, 1, false)
+	if err == nil {
+		t.Fatal("expected error from reserve")
+	}
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatalf("expected overdraft error from reserve, got %v", err)
+	}
+
+	// pass time to increase reserve limit
+
+	ts = int64(1)
+	acc.SetTime(ts)
+
+	// reserve until limit extended by 1 second passed
+
+	credit1, err := acc.PrepareCredit(peer1Addr, uint64(testRefreshRate), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// attempt further reserve, expect overdraft
+
+	_, err = acc.PrepareCredit(peer1Addr, 1, false)
+	if err == nil {
+		t.Fatal("expected error from reserve")
+	}
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatalf("expected overdraft error from reserve, got %v", err)
+	}
+
+	// apply half of minimal refreshment amount, expect no refreshment
+
+	credit1.Apply()
+
+	select {
+	case _ = <-refreshchan:
+		t.Fatal("unexpected refreshment below minimum debt")
+	case <-time.After(1 * time.Second):
+	}
+
+	// pass time to increase reserve limit
+
+	ts = int64(2)
+	acc.SetTime(ts)
+
+	// reserve until limit extended by 2 seconds passed
+
+	credit2, err := acc.PrepareCredit(peer1Addr, uint64(testRefreshRate), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// attempt further reserve, expect overdraft
+
+	_, err = acc.PrepareCredit(peer1Addr, 1, false)
+	if err == nil {
+		t.Fatal("expected error from reserve")
+	}
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatalf("expected overdraft error from reserve, got %v", err)
+	}
+
+	// pass time to see it doesn't mean a further increase to reserve limit beyond 2 seconds
+
+	ts = int64(3)
+	acc.SetTime(ts)
+
+	// attempt further reserve, expect overdraft
+
+	_, err = acc.PrepareCredit(peer1Addr, 1, false)
+	if err == nil {
+		t.Fatal("expected error from reserve")
+	}
+	if !errors.Is(err, accounting.ErrOverdraft) {
+		t.Fatalf("expected overdraft error from reserve, got %v", err)
+	}
+
+	// credit until minimal refreshment sent, expect refreshment made
+
+	credit2.Apply()
+
+	select {
+	case call := <-refreshchan:
+		if call.amount.Cmp(big.NewInt(int64(2*testRefreshRate))) != 0 {
+			t.Fatalf("paid wrong amount. got %d wanted %d", call.amount, int64(2*testRefreshRate))
+		}
+		if !call.peer.Equal(peer1Addr) {
+			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for payment")
+	}
+
+}
+
 // TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.DisconnectError
 func TestAccountingDisconnect(t *testing.T) {
 	logger := logging.New(io.Discard, 0)
