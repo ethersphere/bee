@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -225,7 +226,7 @@ func (s *store) gainCapacity(upto *big.Int) error {
 			return false, nil
 		}
 
-		if v.Radius > s.rs.Radius {
+		if v.Radius >= s.rs.Radius {
 			return false, nil
 		}
 
@@ -247,7 +248,7 @@ func (s *store) gainCapacity(upto *big.Int) error {
 // Must be called under lock.
 func (s *store) adjustCommitment(b *postage.Batch, v *valueItem, radius uint8) error {
 
-	change := s.commitment(b.Depth, v.Radius, radius)
+	change := s.commitmentChange(b.Depth, v.Radius, radius)
 
 	err := s.putValueItem(b.ID, b.Value, radius, v.StorageRadius)
 	if err != nil {
@@ -261,7 +262,7 @@ func (s *store) adjustCommitment(b *postage.Batch, v *valueItem, radius uint8) e
 
 // capacity returns the new capacity and old capacity dedicated to a batch given the new radius.
 // Must be called under lock.
-func (s *store) commitment(depth, batchRadius, radius uint8) int64 {
+func (s *store) commitmentChange(depth, batchRadius, radius uint8) int64 {
 
 	var (
 		newCommitment int64
@@ -363,6 +364,11 @@ func (s *store) computeRadius(newBatch int64) error {
 
 // Unreserve is implementation of postage.Storer interface Unreserve method.
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
+
+	now := time.Now()
+	defer func() {
+		s.metrics.UnreserveDuration.Observe(time.Since(now).Seconds())
+	}()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
