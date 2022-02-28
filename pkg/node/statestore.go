@@ -19,14 +19,11 @@ import (
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
 func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, error) {
-	stateStoreDir := ""
-	if dataDir != "" {
-		stateStoreDir = filepath.Join(dataDir, "statestore")
-	} else {
+	if dataDir == "" {
 		log.Warning("using in-mem state store, no node state will be persisted")
+		return leveldb.NewInMemoryStateStore(log)
 	}
-
-	return leveldb.NewStateStore(stateStoreDir, log)
+	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
 }
 
 const secureOverlayKey = "non-mineable-overlay"
