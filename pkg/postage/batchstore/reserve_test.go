@@ -5,7 +5,7 @@
 package batchstore_test
 
 import (
-	"encoding/hex"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/storage"
 )
 
 type testBatch struct {
@@ -31,18 +30,15 @@ func TestCommitments(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 
-	defer func(i int64, d uint8) {
+	defer func(i int64) {
 		batchstore.Capacity = i
-		batchstore.DefaultDepth = d
-	}(batchstore.Capacity, batchstore.DefaultDepth)
-	batchstore.DefaultDepth = 5
+	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
 	initDepth := uint8(8)
 
 	type testcase struct {
-		add        []testBatch
-		commitment [][]int64 // keeps track of how much commitment is allocated for the batch at each step.
+		add []testBatch
 	}
 
 	// The node Capacity is 32 (2^5) chunks.
@@ -65,8 +61,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 5},
 			},
-			// different commitment values after each added batch
-			commitment: [][]int64{{32}, {16, 16}, {8, 8, 8}},
 		},
 		{
 			add: []testBatch{
@@ -74,7 +68,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth + 1, value: 5},
 			},
-			commitment: [][]int64{{32}, {16, 16}, {8, 8, 16}},
 		},
 		{
 			add: []testBatch{
@@ -82,7 +75,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth + 2, value: 5},
 			},
-			commitment: [][]int64{{32}, {16, 16}, {4, 4, 16}},
 		},
 		{
 			add: []testBatch{
@@ -90,7 +82,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 2},
 			},
-			commitment: [][]int64{{32}, {16, 16}, {8, 16, 8}},
 		},
 		{
 			add: []testBatch{
@@ -98,7 +89,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 2},
 				{depth: initDepth, value: 4},
 			},
-			commitment: [][]int64{{32}, {16, 16}, {8, 8, 8}},
 		},
 		{
 			add: []testBatch{
@@ -106,7 +96,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth, value: 3},
 			},
-			commitment: [][]int64{{32}, {16, 16}, {16, 8, 8}},
 		},
 		{
 			add: []testBatch{
@@ -114,7 +103,6 @@ func TestCommitments(t *testing.T) {
 				{depth: initDepth, value: 4},
 				{depth: initDepth + 5, value: 5},
 			},
-			commitment: [][]int64{{32}, {16, 16}, {0, 0, 16}},
 		},
 	}
 
@@ -122,22 +110,12 @@ func TestCommitments(t *testing.T) {
 
 		store := setupBatchStore(t)
 
-		var (
-			batches    []*postage.Batch
-			commitment map[string]int64
-		)
-
-		for i, b := range tc.add {
-
-			batches, commitment = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
-
-			for i, c := range tc.commitment[i] {
-				com := commitment[hex.EncodeToString(batches[i].ID)]
-				if com != c {
-					t.Fatalf("got commitment %v, want %v", com, c)
-				}
-			}
+		for _, b := range tc.add {
+			_ = addBatch(t, store, b.depth, b.value)
+			checkState(t, store, totalCapacity)
 		}
+
+		fmt.Println("~~~~~~~~~")
 	}
 }
 
@@ -148,20 +126,17 @@ func TestBatchUpdate(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 
-	defer func(i int64, d uint8) {
+	defer func(i int64) {
 		batchstore.Capacity = i
-		batchstore.DefaultDepth = d
-	}(batchstore.Capacity, batchstore.DefaultDepth)
-	batchstore.DefaultDepth = 5
+	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
 	initDepth := uint8(8)
 
 	type update struct {
-		value      int
-		depth      uint8
-		index      int
-		commitment []int64
+		value int
+		depth uint8
+		index int
 	}
 
 	type testcase struct {
@@ -184,9 +159,9 @@ func TestBatchUpdate(t *testing.T) {
 				// after updating the first batch (index 0), the batch commitment values should reflect
 				// the commitment slice below. Notice, the updated batch's depth and value are higher so
 				// more commitment is allocated than the rest.
-				{index: 0, depth: initDepth + 1, value: 6, commitment: []int64{16, 8, 8}},
-				{index: 1, depth: initDepth + 1, value: 6, commitment: []int64{16, 8, 8}},
-				{index: 2, depth: initDepth + 2, value: 6, commitment: []int64{8, 8, 16}},
+				{index: 0, depth: initDepth + 1, value: 6},
+				{index: 1, depth: initDepth + 1, value: 6},
+				{index: 2, depth: initDepth + 2, value: 6},
 			},
 		},
 		{
@@ -196,9 +171,9 @@ func TestBatchUpdate(t *testing.T) {
 				{depth: initDepth + 1, value: 5},
 			},
 			update: []update{
-				{index: 0, depth: initDepth + 1, value: 6, commitment: []int64{8, 8, 16}},
-				{index: 1, depth: initDepth + 1, value: 6, commitment: []int64{8, 8, 16}},
-				{index: 2, depth: initDepth + 1, value: 6, commitment: []int64{8, 8, 8}},
+				{index: 0, depth: initDepth + 1, value: 6},
+				{index: 1, depth: initDepth + 1, value: 6},
+				{index: 2, depth: initDepth + 1, value: 6},
 			},
 		},
 	}
@@ -210,8 +185,10 @@ func TestBatchUpdate(t *testing.T) {
 		var batches []*postage.Batch
 
 		// add initial groupd of batches
-		for i, b := range tc.add {
-			batches, _ = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
+		for _, b := range tc.add {
+			newBatch := addBatch(t, store, b.depth, b.value)
+			batches = append(batches, newBatch)
+			checkState(t, store, totalCapacity)
 		}
 
 		// update batches one by one with new depth and values and check, for each batch,
@@ -224,19 +201,7 @@ func TestBatchUpdate(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			state := store.GetReserveState()
-			_, capacities := getCommitments(t, store, batches, state.Radius)
-
-			if state.Available < 0 {
-				t.Fatal("negative available")
-			}
-
-			for i, c := range u.commitment {
-				cap := capacities[hex.EncodeToString(batches[i].ID)]
-				if cap != c {
-					t.Fatalf("got commitment %v, want %v", cap, c)
-				}
-			}
+			checkState(t, store, totalCapacity)
 		}
 	}
 }
@@ -247,19 +212,16 @@ func TestPutChainState(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 
-	defer func(i int64, d uint8) {
+	defer func(i int64) {
 		batchstore.Capacity = i
-		batchstore.DefaultDepth = d
-	}(batchstore.Capacity, batchstore.DefaultDepth)
-	batchstore.DefaultDepth = 5
+	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
 	initDepth := uint8(8)
 
 	type chain struct {
-		block      uint64
-		amount     *big.Int
-		commitment []int64
+		block  uint64
+		amount *big.Int
 	}
 
 	type testcase struct {
@@ -279,7 +241,7 @@ func TestPutChainState(t *testing.T) {
 			// which is greater than the values of the batches, the new commitment
 			// amounts are zero.
 			chain: []chain{
-				{block: 1, amount: big.NewInt(4), commitment: []int64{0, 0, 0}},
+				{block: 1, amount: big.NewInt(4)},
 			},
 		},
 		{
@@ -289,8 +251,8 @@ func TestPutChainState(t *testing.T) {
 				{depth: initDepth, value: 5},
 			},
 			chain: []chain{
-				{block: 1, amount: big.NewInt(4), commitment: []int64{0, 0, 32}},
-				{block: 2, amount: big.NewInt(5), commitment: []int64{0, 0, 0}},
+				{block: 1, amount: big.NewInt(4)},
+				{block: 2, amount: big.NewInt(5)},
 			},
 		},
 	}
@@ -299,11 +261,10 @@ func TestPutChainState(t *testing.T) {
 
 		store := setupBatchStore(t)
 
-		var batches []*postage.Batch
-
 		// add the group of batches
-		for i, b := range tc.add {
-			batches, _ = saveNewBatch(t, tc.add[:i+1], batches, totalCapacity, store, b.depth, b.value)
+		for _, b := range tc.add {
+			_ = addBatch(t, store, b.depth, b.value)
+			checkState(t, store, totalCapacity)
 		}
 
 		for _, c := range tc.chain {
@@ -318,18 +279,7 @@ func TestPutChainState(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			state := store.GetReserveState()
-
-			// confirm that the new commitments match
-			for i, b := range batches {
-				com, err := batchstore.BatchCommitment(store, b, state.Radius)
-
-				if c.commitment[i] == 0 && err != storage.ErrNotFound {
-					t.Fatal("batch should have been fully evicted")
-				} else if c.commitment[i] != com {
-					t.Fatalf("got commitment %d, want %d", com, c.commitment[i])
-				}
-			}
+			checkState(t, store, totalCapacity)
 		}
 	}
 }
@@ -338,12 +288,11 @@ func TestPutChainState(t *testing.T) {
 // full iteration and that the storage radius never exceeds the global radius.
 func TestUnreserve(t *testing.T) {
 
-	defer func(i int64, d uint8) {
+	totalCapacity := batchstore.Exp2(5)
+	defer func(i int64) {
 		batchstore.Capacity = i
-		batchstore.DefaultDepth = d
-	}(batchstore.Capacity, batchstore.DefaultDepth)
-	batchstore.DefaultDepth = 5
-	batchstore.Capacity = batchstore.Exp2(5)
+	}(batchstore.Capacity)
+	batchstore.Capacity = totalCapacity
 
 	initDepth := uint8(8)
 
@@ -406,60 +355,48 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	return bStore
 }
 
-func saveNewBatch(t *testing.T, testBatches []testBatch, batches []*postage.Batch, totalCapacity int64, store postage.Storer, depth uint8, value int) ([]*postage.Batch, map[string]int64) {
+func checkState(t *testing.T, store postage.Storer, totalCapacity int64) {
 
 	t.Helper()
 
-	newBatch := addBatch(t, store, depth, value)
-	batches = append(batches, newBatch)
+	totalCommitment := calcCommitment(store)
+	radius := calcRadius(totalCommitment, batchstore.Capacity)
+	avail := calcAvailable(totalCommitment, totalCapacity, radius)
 
-	radius := calcRadius(testBatches, batchstore.DefaultDepth)
 	state := store.GetReserveState()
 
 	if radius != state.Radius {
 		t.Fatalf("got radius %v, want %v", state.Radius, radius)
 	}
+
 	if state.Available < 0 {
-		t.Fatal("negative available")
+		t.Fatalf("available must be greater than zero, got %d", state.Available)
 	}
 
-	sum, capacities := getCommitments(t, store, batches, radius)
-
-	if sum+state.Available != totalCapacity {
-		t.Fatalf("want %d, got %d", totalCapacity, sum+state.Available)
+	if state.Available > totalCapacity {
+		t.Fatalf("available must not be greater than %d, got %d", totalCapacity, state.Available)
 	}
 
-	return batches, capacities
+	if avail != state.Available {
+		t.Fatalf("got available %v, want %v", state.Available, avail)
+	}
 }
 
-func calcRadius(batches []testBatch, depth uint8) uint8 {
-
+func calcCommitment(store postage.Storer) int64 {
 	var total int64
-	for _, b := range batches {
-		total += batchstore.Exp2(uint(b.depth))
-	}
-
-	return uint8(math.Ceil(math.Log2(float64(total) / float64(batchstore.Exp2(uint(depth))))))
+	_ = store.Iterate(func(b *postage.Batch) (bool, error) {
+		total += batchstore.Exp2(uint(b.Depth))
+		return false, nil
+	})
+	return total
 }
 
-func getCommitments(t *testing.T, st postage.Storer, batches []*postage.Batch, radius uint8) (int64, map[string]int64) {
+func calcRadius(totalCommitment int64, capacity int64) uint8 {
+	return uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(capacity))))
+}
 
-	t.Helper()
-
-	m := make(map[string]int64)
-
-	var sum int64
-
-	for _, b := range batches {
-		com, err := batchstore.BatchCommitment(st, b, radius)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sum += com
-		m[hex.EncodeToString(b.ID)] = com
-	}
-
-	return sum, m
+func calcAvailable(totalCommitment int64, capacity int64, radius uint8) int64 {
+	return int64(float64(capacity) - (float64(totalCommitment) / math.Pow(2, float64(radius))))
 }
 
 func addBatch(t *testing.T, s postage.Storer, depth uint8, value int) *postage.Batch {

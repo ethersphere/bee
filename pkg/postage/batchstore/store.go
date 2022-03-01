@@ -69,7 +69,7 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 			return nil, err
 		}
 		rs = &reserveState{
-			Radius:    DefaultDepth,
+			Radius:    0,
 			Available: Capacity,
 		}
 	}
@@ -138,12 +138,13 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
 
-	v, err := s.getValueItem(b)
+	item := &valueItem{}
+	err = s.store.Get(valueKey(b.Value, b.ID), item)
 	if err != nil {
 		return nil, err
 	}
 
-	b.Radius = v.StorageRadius
+	b.Radius = item.StorageRadius
 
 	return b, nil
 }
@@ -220,11 +221,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batch.ID), err)
 	}
 
-	err := s.deallocateBatch(batch)
-	if err != nil {
-		return err
-	}
-
 	if err := s.store.Delete(valueKey(batch.Value, batch.ID)); err != nil {
 		return err
 	}
@@ -232,7 +228,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	batch.Value.Set(value)
 	batch.Depth = depth
 
-	err = s.store.Put(batchKey(batch.ID), batch)
+	err := s.store.Put(batchKey(batch.ID), batch)
 	if err != nil {
 		return err
 	}
@@ -263,7 +259,7 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state clean up: %w", err)
 	}
 
-	err = s.adjustRadius(0)
+	err = s.computeRadius()
 	if err != nil {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
@@ -307,42 +303,25 @@ func (s *store) Reset() error {
 	}
 
 	s.rs = &reserveState{
-		Radius:    DefaultDepth,
+		Radius:    0,
 		Available: Capacity,
 	}
 
 	return nil
 }
 
-func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius uint8) error {
-	return s.store.Put(valueKey(value, id), &valueItem{Radius: radius, StorageRadius: storageRadius})
-}
-
-func (s *store) getValueItem(b *postage.Batch) (*valueItem, error) {
-	item := &valueItem{}
-	err := s.store.Get(valueKey(b.Value, b.ID), item)
-	return item, err
-}
-
 type valueItem struct {
-	Radius        uint8
 	StorageRadius uint8
 }
 
 func (u *valueItem) MarshalBinary() ([]byte, error) {
-
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint16(b, uint16(u.Radius))
-	binary.BigEndian.PutUint16(b[2:], uint16(u.StorageRadius))
-
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(u.StorageRadius))
 	return b, nil
 }
 
 func (u *valueItem) UnmarshalBinary(b []byte) error {
-
-	u.Radius = uint8(binary.BigEndian.Uint16(b))
-	u.StorageRadius = uint8(binary.BigEndian.Uint16(b[2:]))
-
+	u.StorageRadius = uint8(binary.BigEndian.Uint16(b))
 	return nil
 }
 
