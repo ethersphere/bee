@@ -317,7 +317,6 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 type reserveStateResponse struct {
 	Radius        uint8 `json:"radius"`
 	StorageRadius uint8 `json:"storageRadius"`
-	Available     int64 `json:"available"`
 	Commitment    int64 `json:"commitment"`
 }
 
@@ -345,7 +344,6 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, reserveStateResponse{
 		Radius:        state.Radius,
 		StorageRadius: state.StorageRadius,
-		Available:     state.Available,
 		Commitment:    commitment,
 	})
 }
