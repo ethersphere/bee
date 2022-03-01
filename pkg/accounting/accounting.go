@@ -102,8 +102,8 @@ type accountingPeer struct {
 	earlyPayment                   *big.Int   // individual early payment threshold calculated from from payment threshold and early payment percentage
 	paymentThresholdForPeer        *big.Int   // individual payment threshold at which the peer is expected to pay
 	disconnectLimit                *big.Int   // individual disconnect threshold calculated from tolerance and payment threshold for peer
-	refreshTimestamp               int64      // last time we attempted time-based settlement
-	refreshReceivedTimestamp       int64      // last time we attempted time-based settlement
+	refreshTimestamp               int64      // last time we attempted and succeeded time-based settlement
+	refreshReceivedTimestamp       int64      // last time we accepted time-based settlement
 	paymentOngoing                 bool       // indicate if we are currently settling with the peer
 	lastSettlementFailureTimestamp int64      // time of last unsuccessful attempt to issue a cheque
 	connected                      bool       // indicates whether the peer is currently connected
@@ -333,7 +333,7 @@ func (c *creditAction) Apply() error {
 		if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
 			err = c.accounting.settle(c.peer, c.accountingPeer)
 			if err != nil {
-				c.accounting.logger.Errorf("failed to settle with credited peer %v: %w", c.peer, err)
+				c.accounting.logger.Errorf("failed to settle with credited peer %v: %v", c.peer, err)
 			}
 		}
 
@@ -376,7 +376,7 @@ func (c *creditAction) Apply() error {
 	if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
 		err = c.accounting.settle(c.peer, c.accountingPeer)
 		if err != nil {
-			c.accounting.logger.Errorf("failed to settle with credited peer %v: %w", c.peer, err)
+			c.accounting.logger.Errorf("failed to settle with credited peer %v: %v", c.peer, err)
 		}
 	}
 
