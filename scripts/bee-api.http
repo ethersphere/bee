@@ -5,6 +5,7 @@
 ### auth dGVzdDp0ZXN0=test:test OmhlbGxv=:hello
 POST {{api}}/auth
 Content-Type: application/json
+Authorization: Basic OmhlbGxv
 
 {
     "role": "maintainer",
