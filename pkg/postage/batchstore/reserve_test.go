@@ -5,7 +5,6 @@
 package batchstore_test
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -23,10 +22,9 @@ type testBatch struct {
 	value int
 }
 
-// TestCommitments adds batches to the batchstore and after each batch, checks
-// the allocated commitment with respect to batch depth and value. Also, checked are
+// TestBatchSave adds batches to the batchstore, and after each batch, checks
 // the reserve state radius and available values.
-func TestCommitments(t *testing.T) {
+func TestBatchSave(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 
@@ -41,21 +39,8 @@ func TestCommitments(t *testing.T) {
 		add []testBatch
 	}
 
-	// The node Capacity is 32 (2^5) chunks.
-	// Batches are added one by one, using different depth and value values,
-	// and after each addition,
-	// 1)	the commitment values inside the commitment slice
-	// 		is checked against the commitment allocated in the batchstore,
-	// 2) 	the the sum of reservate state available and commitments should never exceed 32 chunks.
-	// 3)	reserve state available remains a positive value
-
-	// The first commitment is always 32 because the entire Capacity is allocated
-	// to the first batch. As more batches are added, the Capacity is divided with respect
-	// to depth and value.
-
 	tcs := []testcase{
 		{
-			// batches to add by one by
 			add: []testBatch{
 				{depth: initDepth, value: 3},
 				{depth: initDepth, value: 4},
@@ -112,16 +97,13 @@ func TestCommitments(t *testing.T) {
 
 		for _, b := range tc.add {
 			_ = addBatch(t, store, b.depth, b.value)
-			checkState(t, store, totalCapacity)
+			checkState(t, store)
 		}
-
-		fmt.Println("~~~~~~~~~")
 	}
 }
 
 // TestBatchUpdate adds an initial group of batches to the batchstore and one by one
-// updates their depth and value to fields while checking their new commitment allocation
-// value in the batchstore.
+// updates their depth and value to fields while checking the batchstore available and radius values.
 func TestBatchUpdate(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -143,8 +125,6 @@ func TestBatchUpdate(t *testing.T) {
 		// the initial batches to add to the batchstore.
 		add []testBatch
 		// update contains the new depth and value values for the added batches
-		// and the new commitment values that should be allocated for the batches
-		// after each update call.
 		update []update
 	}
 
@@ -152,28 +132,25 @@ func TestBatchUpdate(t *testing.T) {
 		{
 			add: []testBatch{
 				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 3},
+				{depth: initDepth, value: 4},
+				{depth: initDepth, value: 5},
 			},
 			update: []update{
-				// after updating the first batch (index 0), the batch commitment values should reflect
-				// the commitment slice below. Notice, the updated batch's depth and value are higher so
-				// more commitment is allocated than the rest.
 				{index: 0, depth: initDepth + 1, value: 6},
 				{index: 1, depth: initDepth + 1, value: 6},
-				{index: 2, depth: initDepth + 2, value: 6},
+				{index: 2, depth: initDepth + 1, value: 6},
 			},
 		},
 		{
 			add: []testBatch{
 				{depth: initDepth, value: 3},
 				{depth: initDepth, value: 4},
-				{depth: initDepth + 1, value: 5},
+				{depth: initDepth + 2, value: 5},
 			},
 			update: []update{
-				{index: 0, depth: initDepth + 1, value: 6},
-				{index: 1, depth: initDepth + 1, value: 6},
-				{index: 2, depth: initDepth + 1, value: 6},
+				{index: 0, depth: initDepth + 2, value: 6},
+				{index: 1, depth: initDepth + 2, value: 6},
+				{index: 2, depth: initDepth + 2, value: 6},
 			},
 		},
 	}
@@ -188,7 +165,7 @@ func TestBatchUpdate(t *testing.T) {
 		for _, b := range tc.add {
 			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)
-			checkState(t, store, totalCapacity)
+			checkState(t, store)
 		}
 
 		// update batches one by one with new depth and values and check, for each batch,
@@ -201,13 +178,13 @@ func TestBatchUpdate(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			checkState(t, store, totalCapacity)
+			checkState(t, store)
 		}
 	}
 }
 
 // TestPutChainState add an initial group of batches to the batchstore, and after updating the chainstate,
-// checks that the proper commitments are allocated for the batches.
+// checks that the batchstore available and radius values.
 func TestPutChainState(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -264,7 +241,7 @@ func TestPutChainState(t *testing.T) {
 		// add the group of batches
 		for _, b := range tc.add {
 			_ = addBatch(t, store, b.depth, b.value)
-			checkState(t, store, totalCapacity)
+			checkState(t, store)
 		}
 
 		for _, c := range tc.chain {
@@ -279,7 +256,7 @@ func TestPutChainState(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			checkState(t, store, totalCapacity)
+			checkState(t, store)
 		}
 	}
 }
@@ -299,8 +276,8 @@ func TestUnreserve(t *testing.T) {
 	store := setupBatchStore(t)
 
 	_ = addBatch(t, store, initDepth, 1)
-	_ = addBatch(t, store, initDepth, 1)
-	_ = addBatch(t, store, initDepth, 1)
+	_ = addBatch(t, store, initDepth, 2)
+	_ = addBatch(t, store, initDepth, 3)
 
 	state := store.GetReserveState()
 
@@ -355,26 +332,30 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	return bStore
 }
 
-func checkState(t *testing.T, store postage.Storer, totalCapacity int64) {
+func checkState(t *testing.T, store postage.Storer) {
 
 	t.Helper()
 
 	totalCommitment := calcCommitment(store)
 	radius := calcRadius(totalCommitment, batchstore.Capacity)
-	avail := calcAvailable(totalCommitment, totalCapacity, radius)
+	avail := calcAvailable(totalCommitment, batchstore.Capacity, radius)
 
 	state := store.GetReserveState()
-
-	if radius != state.Radius {
-		t.Fatalf("got radius %v, want %v", state.Radius, radius)
-	}
 
 	if state.Available < 0 {
 		t.Fatalf("available must be greater than zero, got %d", state.Available)
 	}
 
-	if state.Available > totalCapacity {
-		t.Fatalf("available must not be greater than %d, got %d", totalCapacity, state.Available)
+	if state.Available > batchstore.Capacity {
+		t.Fatalf("available must not be greater than %d, got %d", batchstore.Capacity, state.Available)
+	}
+
+	if state.StorageRadius > state.Radius {
+		t.Fatalf("storage radius %d must not exceed radius %d", state.StorageRadius, state.Radius)
+	}
+
+	if radius != state.Radius {
+		t.Fatalf("got radius %v, want %v", state.Radius, radius)
 	}
 
 	if avail != state.Available {

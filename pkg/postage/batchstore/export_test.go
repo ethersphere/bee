@@ -6,7 +6,6 @@ package batchstore
 
 // ChainStateKey is the statestore key for the chain state.
 const StateKey = chainStateKey
-const BatchstoreVersion = batchstoreVersion
 
 var (
 	BatchKey = batchKey

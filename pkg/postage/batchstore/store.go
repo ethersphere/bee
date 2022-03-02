@@ -23,8 +23,6 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
-
-	batchstoreVersion = "batchstore_version_1"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -69,8 +67,9 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 			return nil, err
 		}
 		rs = &reserveState{
-			Radius:    0,
-			Available: Capacity,
+			Radius:        0,
+			StorageRadius: 0,
+			Available:     Capacity,
 		}
 	}
 
@@ -81,24 +80,6 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		evictFn: ev,
 		metrics: newMetrics(),
 		logger:  logger,
-	}
-
-	// check batchstore version
-	var migrated bool
-	err = st.Get(batchstoreVersion, &migrated)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			err = s.Reset()
-			if err != nil {
-				return nil, err
-			}
-			err = st.Put(batchstoreVersion, true)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
 	}
 
 	return s, nil
@@ -194,7 +175,7 @@ func (s *store) Save(batch *postage.Batch) error {
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			return err
 		}
-		if err := s.allocateBatch(batch); err != nil {
+		if err := s.saveBatch(batch); err != nil {
 			return err
 		}
 		if s.radiusSetter != nil {
@@ -233,7 +214,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return err
 	}
 
-	err = s.allocateBatch(batch)
+	err = s.saveBatch(batch)
 	if err != nil {
 		return err
 	}
@@ -326,15 +307,15 @@ func (u *valueItem) UnmarshalBinary(b []byte) error {
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
-func batchKey(id []byte) string {
-	return batchKeyPrefix + string(id)
+func batchKey(batchID []byte) string {
+	return batchKeyPrefix + string(batchID)
 }
 
 // valueKey returns the index key for the batch ID used in the by-ID batch index.
-func valueKey(val *big.Int, id []byte) string {
+func valueKey(val *big.Int, batchID []byte) string {
 	value := make([]byte, 32)
 	val.FillBytes(value) // zero-extended big-endian byte slice
-	return valueKeyPrefix + string(value) + string(id)
+	return valueKeyPrefix + string(value) + string(batchID)
 }
 
 // valueKeyToID extracts the batch ID from a value key - used in value-based iteration.
