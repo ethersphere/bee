@@ -5,7 +5,6 @@
 package batchstore
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,8 +22,6 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
-
-	batchstoreVersion = "batchstore_version_1"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -69,8 +66,8 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 			return nil, err
 		}
 		rs = &reserveState{
-			Radius:    DefaultDepth,
-			Available: Capacity,
+			Radius:        0,
+			StorageRadius: 0,
 		}
 	}
 
@@ -81,24 +78,6 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		evictFn: ev,
 		metrics: newMetrics(),
 		logger:  logger,
-	}
-
-	// check batchstore version
-	var migrated bool
-	err = st.Get(batchstoreVersion, &migrated)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			err = s.Reset()
-			if err != nil {
-				return nil, err
-			}
-			err = st.Put(batchstoreVersion, true)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
 	}
 
 	return s, nil
@@ -112,7 +91,6 @@ func (s *store) GetReserveState() *postage.ReserveState {
 	return &postage.ReserveState{
 		Radius:        s.rs.Radius,
 		StorageRadius: s.rs.StorageRadius,
-		Available:     s.rs.Available,
 	}
 }
 
@@ -138,7 +116,8 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
 
-	v, err := s.getValueItem(b)
+	v := &valueItem{}
+	err = s.store.Get(valueKey(b.Value, b.ID), v)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +172,7 @@ func (s *store) Save(batch *postage.Batch) error {
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			return err
 		}
-		if err := s.allocateBatch(batch); err != nil {
+		if err := s.saveBatch(batch); err != nil {
 			return err
 		}
 		if s.radiusSetter != nil {
@@ -220,11 +199,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batch.ID), err)
 	}
 
-	err := s.deallocateBatch(batch)
-	if err != nil {
-		return err
-	}
-
 	if err := s.store.Delete(valueKey(batch.Value, batch.ID)); err != nil {
 		return err
 	}
@@ -232,12 +206,12 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	batch.Value.Set(value)
 	batch.Depth = depth
 
-	err = s.store.Put(batchKey(batch.ID), batch)
+	err := s.store.Put(batchKey(batch.ID), batch)
 	if err != nil {
 		return err
 	}
 
-	err = s.allocateBatch(batch)
+	err = s.saveBatch(batch)
 	if err != nil {
 		return err
 	}
@@ -263,14 +237,9 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state clean up: %w", err)
 	}
 
-	err = s.adjustRadius(0)
+	err = s.computeRadius()
 	if err != nil {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
-	}
-
-	err = s.store.Put(reserveStateKey, s.rs)
-	if err != nil {
-		return err
 	}
 
 	// this needs to be improved, since we can miss some calls on
@@ -307,55 +276,37 @@ func (s *store) Reset() error {
 	}
 
 	s.rs = &reserveState{
-		Radius:    DefaultDepth,
-		Available: Capacity,
+		Radius: 0,
 	}
 
 	return nil
 }
 
-func (s *store) putValueItem(id []byte, value *big.Int, radius, storageRadius uint8) error {
-	return s.store.Put(valueKey(value, id), &valueItem{Radius: radius, StorageRadius: storageRadius})
-}
-
-func (s *store) getValueItem(b *postage.Batch) (*valueItem, error) {
-	item := &valueItem{}
-	err := s.store.Get(valueKey(b.Value, b.ID), item)
-	return item, err
-}
-
 type valueItem struct {
-	Radius        uint8
 	StorageRadius uint8
 }
 
 func (u *valueItem) MarshalBinary() ([]byte, error) {
-
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint16(b, uint16(u.Radius))
-	binary.BigEndian.PutUint16(b[2:], uint16(u.StorageRadius))
-
+	b := make([]byte, 1)
+	b[0] = u.StorageRadius
 	return b, nil
 }
 
 func (u *valueItem) UnmarshalBinary(b []byte) error {
-
-	u.Radius = uint8(binary.BigEndian.Uint16(b))
-	u.StorageRadius = uint8(binary.BigEndian.Uint16(b[2:]))
-
+	u.StorageRadius = b[0]
 	return nil
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.
-func batchKey(id []byte) string {
-	return batchKeyPrefix + string(id)
+func batchKey(batchID []byte) string {
+	return batchKeyPrefix + string(batchID)
 }
 
 // valueKey returns the index key for the batch ID used in the by-ID batch index.
-func valueKey(val *big.Int, id []byte) string {
+func valueKey(val *big.Int, batchID []byte) string {
 	value := make([]byte, 32)
 	val.FillBytes(value) // zero-extended big-endian byte slice
-	return valueKeyPrefix + string(value) + string(id)
+	return valueKeyPrefix + string(value) + string(batchID)
 }
 
 // valueKeyToID extracts the batch ID from a value key - used in value-based iteration.
