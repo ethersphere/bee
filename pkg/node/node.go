@@ -225,7 +225,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		transactionService transaction.Service
 		transactionMonitor transaction.Monitor
 		chequebookFactory  chequebook.Factory
-		chequebookService  chequebook.Service
+		chequebookService  chequebook.Service = new(noOpChequebookService)
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
@@ -343,7 +343,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
-		if o.ChequebookEnable {
+		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
 				p2pCtx,
 				logger,
@@ -356,7 +356,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 				chequebookFactory,
 				o.SwapInitialDeposit,
 				o.DeployGasPrice,
-				chainEnabled,
 			)
 			if err != nil {
 				return nil, err
@@ -1041,7 +1040,7 @@ func isChainEnabled(o *Options, logger logging.Logger) bool {
 	chainDisabled := !o.ChainEnable
 	lightMode := !o.FullNodeMode
 
-	if lightMode && chainDisabled { // ultra light mode is LightNode mode with chain disabled
+	if lightMode && chainDisabled && !o.SwapEnable { // ultra light mode is LightNode mode with chain disabled
 		logger.Info("starting with a disabled chain backend")
 		return false
 	}

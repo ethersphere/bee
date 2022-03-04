@@ -93,7 +93,6 @@ func (c *command) initDeployCmd() error {
 				chequebookFactory,
 				swapInitialDeposit,
 				deployGasPrice,
-				true,
 			)
 			if err != nil {
 				return err

@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
@@ -160,12 +161,7 @@ func InitChequebookService(
 	chequebookFactory chequebook.Factory,
 	initialDeposit string,
 	deployGasPrice string,
-	chainEnabled bool,
 ) (chequebook.Service, error) {
-	if !chainEnabled {
-		return new(noOpChequebookService), nil
-	}
-
 	chequeSigner := chequebook.NewChequeSigner(signer, chainID)
 
 	deposit, ok := new(big.Int).SetString(initialDeposit, 10)
@@ -347,31 +343,31 @@ func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transact
 type noOpChequebookService struct{}
 
 func (m *noOpChequebookService) Deposit(context.Context, *big.Int) (hash common.Hash, err error) {
-	return hash, errors.New("chain disabled")
+	return hash, postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) Withdraw(context.Context, *big.Int) (hash common.Hash, err error) {
-	return hash, errors.New("chain disabled")
+	return hash, postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) WaitForDeposit(context.Context, common.Hash) error {
-	return errors.New("chain disabled")
+	return postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) Balance(context.Context) (*big.Int, error) {
-	return nil, errors.New("chain disabled")
+	return nil, postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) AvailableBalance(context.Context) (*big.Int, error) {
-	return nil, errors.New("chain disabled")
+	return nil, postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) Address() common.Address {
 	return common.Address{}
 }
 func (m *noOpChequebookService) Issue(context.Context, common.Address, *big.Int, chequebook.SendChequeFunc) (*big.Int, error) {
-	return nil, errors.New("chain disabled")
+	return nil, postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCheque, error) {
-	return nil, errors.New("chain disabled")
+	return nil, postagecontract.ErrChainDisabled
 }
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
-	return nil, errors.New("chain disabled")
+	return nil, postagecontract.ErrChainDisabled
 }
 
 // noOpChainBackend is a noOp implementation for transaction.Backend interface.
