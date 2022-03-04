@@ -10,7 +10,6 @@ import (
 )
 
 type metrics struct {
-	AvailableCapacity prometheus.Gauge
 	Radius            prometheus.Gauge
 	StorageRadius     prometheus.Gauge
 	UnreserveDuration prometheus.Histogram
@@ -21,12 +20,6 @@ func newMetrics() metrics {
 	subsystem := "batchstore"
 
 	return metrics{
-		AvailableCapacity: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "available_capacity",
-			Help:      "Available capacity observed by the batchstore.",
-		}),
 		Radius: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,

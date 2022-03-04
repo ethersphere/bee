@@ -160,7 +160,6 @@ func (bs *BatchStore) GetReserveState() *postage.ReserveState {
 	rs := new(postage.ReserveState)
 	if bs.rs != nil {
 		rs.Radius = bs.rs.Radius
-		rs.Available = bs.rs.Available
 	}
 	return rs
 }
