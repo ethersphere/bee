@@ -1040,7 +1040,7 @@ func isChainEnabled(o *Options, logger logging.Logger) bool {
 	chainDisabled := !o.ChainEnable
 	lightMode := !o.FullNodeMode
 
-	if lightMode && chainDisabled && !o.SwapEnable { // ultra light mode is LightNode mode with chain disabled
+	if lightMode && chainDisabled { // ultra light mode is LightNode mode with chain disabled
 		logger.Info("starting with a disabled chain backend")
 		return false
 	}
