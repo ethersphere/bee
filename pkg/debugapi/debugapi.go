@@ -8,6 +8,7 @@
 package debugapi
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"math/big"
 	"net/http"
@@ -114,7 +115,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, swapEnabled bool, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, post postage.Service, postageContract postagecontract.Interface, traverser traversal.Traverser) {
+func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, swapEnabled bool, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, post postage.Service, postageContract postagecontract.Interface, traverser traversal.Traverser, chainEnabled bool) {
 	s.p2p = p2p
 	s.pingpong = pingpong
 	s.topologyDriver = topologyDriver
@@ -125,6 +126,9 @@ func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpon
 	s.chequebook = chequebook
 	s.swapEnabled = swapEnabled
 	s.swap = swap
+	if !chainEnabled {
+		s.swap = new(noOpSwap)
+	}
 	s.lightNodes = lightNodes
 	s.batchStore = batchStore
 	s.pseudosettle = pseudosettle
@@ -144,4 +148,55 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handlerMu.RUnlock()
 
 	h.ServeHTTP(w, r)
+}
+
+type noOpSwap struct {
+}
+
+func (*noOpSwap) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) {
+	return big.NewInt(0), nil
+}
+
+// TotalReceived returns the total amount received from a peer
+func (*noOpSwap) TotalReceived(peer swarm.Address) (totalSent *big.Int, err error) {
+	return big.NewInt(0), nil
+}
+
+// SettlementsSent returns sent settlements for each individual known peer
+func (*noOpSwap) SettlementsSent() (map[string]*big.Int, error) {
+	return nil, nil
+}
+
+// SettlementsReceived returns received settlements for each individual known peer
+func (*noOpSwap) SettlementsReceived() (map[string]*big.Int, error) {
+	return nil, nil
+}
+
+func (*noOpSwap) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
+	return nil, nil
+}
+
+// LastSentCheques returns the list of last sent cheques for all peers
+func (*noOpSwap) LastSentCheques() (map[string]*chequebook.SignedCheque, error) {
+	return nil, nil
+}
+
+// LastReceivedCheque returns the last received cheque for the peer
+func (*noOpSwap) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
+	return nil, nil
+}
+
+// LastReceivedCheques returns the list of last received cheques for all peers
+func (*noOpSwap) LastReceivedCheques() (map[string]*chequebook.SignedCheque, error) {
+	return nil, nil
+}
+
+// CashCheque sends a cashing transaction for the last cheque of the peer
+func (*noOpSwap) CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+	return common.Hash{}, nil
+}
+
+// CashoutStatus gets the status of the latest cashout transaction for the peers chequebook
+func (*noOpSwap) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+	return nil, nil
 }
