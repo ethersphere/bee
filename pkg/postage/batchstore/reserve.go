@@ -172,11 +172,15 @@ func (s *store) computeRadius() error {
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
 	defer func(t time.Time) {
-		s.metrics.UnreserveDuration.Observe(time.Since(t).Seconds())
+		s.metrics.UnreserveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
 	}(time.Now())
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	defer func(t time.Time) {
+		s.metrics.UnreserveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
+	}(time.Now())
 
 	var (
 		stopped = false
