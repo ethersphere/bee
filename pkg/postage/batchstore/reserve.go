@@ -60,8 +60,6 @@ type reserveState struct {
 // Must be called under lock.
 func (s *store) saveBatch(b *postage.Batch) error {
 
-	fmt.Println("saveBatch state", s.rs)
-
 	if err := s.store.Put(valueKey(b.Value, b.ID), &valueItem{StorageRadius: s.rs.StorageRadius}); err != nil {
 		return fmt.Errorf("batchstore: allocate batch %x: %w", b.ID, err)
 	}
@@ -147,7 +145,7 @@ func (s *store) computeRadius() error {
 		return err
 	}
 
-	// edge case where the sum of all 2^depths of all batches is below the node capacity.
+	// edge case where the sum of all batches is below the node capacity.
 	if totalCommitment <= Capacity {
 		s.rs.Radius = 0
 	} else {
@@ -156,13 +154,15 @@ func (s *store) computeRadius() error {
 		s.rs.Radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(Capacity))))
 	}
 
-	// fmt.Printf("radius %d, available %d, %f \n", s.rs.Radius, s.rs.Available, (float64(totalCommitment) / math.Pow(2, float64(s.rs.Radius))))
-
 	s.metrics.Radius.Set(float64(s.rs.Radius))
 
-	err = s.lowerStorageRadius()
-	if err != nil {
-		s.logger.Warningf("batchstore: lower storage radius: %v", err)
+	// if the new radius is lower than storage radius, lower the storage radius of batches
+	if s.rs.StorageRadius > s.rs.Radius {
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		s.rs.StorageRadius = s.rs.Radius
+		if err = s.lowerStorageRadius(); err != nil {
+			s.logger.Warningf("batchstore: lower storage radius: %v", err)
+		}
 	}
 
 	return s.store.Put(reserveStateKey, s.rs)
@@ -196,8 +196,8 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, err
 		}
 
-		fmt.Println("storage radius", v.StorageRadius)
-		fmt.Println("resrve state", s.rs)
+		// fmt.Println("storage radius", v.StorageRadius)
+		// fmt.Println("resrve state", s.rs)
 
 		// skip eviction if previous eviction has higher radius
 		if v.StorageRadius > s.rs.StorageRadius {
@@ -237,16 +237,9 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 }
 
 // lowerStorageRadius lowers the storage radius of batches to the radius.
-// radius is based on maximum batch utilization, as such, storage radius cannot exceed the radius.
+// radius is based on maximum batch utilization, as such, batch storage radius cannot exceed the radius.
 // Must be called under lock.
 func (s *store) lowerStorageRadius() error {
-
-	if s.rs.StorageRadius <= s.rs.Radius {
-		return nil
-	}
-
-	s.rs.StorageRadius = s.rs.Radius
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 
 	var updates [][]byte
 
@@ -259,6 +252,7 @@ func (s *store) lowerStorageRadius() error {
 		}
 
 		if s.rs.StorageRadius < v.StorageRadius {
+			fmt.Println("old", v.StorageRadius, "new", s.rs.StorageRadius)
 			updates = append(updates, key)
 		}
 

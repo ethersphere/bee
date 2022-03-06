@@ -6,7 +6,6 @@ package batchstore_test
 
 import (
 	"io"
-	"math"
 	"math/big"
 	"testing"
 
@@ -18,12 +17,13 @@ import (
 )
 
 type testBatch struct {
-	depth uint8
-	value int
+	depth  uint8
+	value  int
+	radius uint8
 }
 
 // TestBatchSave adds batches to the batchstore, and after each batch, checks
-// the reserve state radius and available values.
+// the reserve state radius.
 func TestBatchSave(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -33,60 +33,52 @@ func TestBatchSave(t *testing.T) {
 	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
-	initDepth := uint8(8)
+	defaultDepth := uint8(8)
+	defaultValue := 1
 
-	type testcase struct {
-		add []testBatch
+	type testCase struct {
+		add  []testBatch
+		name string
 	}
 
-	tcs := []testcase{
+	// Test cases define each batches's depth, value, and the new radius
+	// of the reserve state after the batch is saved.
+	// In some cases, batches with zero values are added to check that radius is not altered.
+
+	tcs := []testCase{
 		{
+			name: "first batch's depth is below capacity",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 5},
+				// first batch's total chunks (2^3) is below capacity (2^5) so radius is 0
+				{depth: 3, value: defaultValue, radius: 0},
+				{depth: defaultDepth, value: defaultValue, radius: 4},
+				{depth: defaultDepth, value: defaultValue, radius: 5},
+				{depth: defaultDepth, value: defaultValue, radius: 5},
 			},
 		},
 		{
+			name: "large last depth",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth + 1, value: 5},
+				{depth: defaultDepth, value: defaultValue, radius: 3},
+				{depth: defaultDepth, value: defaultValue, radius: 4},
+				{depth: defaultDepth + 2, value: defaultValue, radius: 6},
 			},
 		},
 		{
+			name: "large depths",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth + 2, value: 5},
+				{depth: defaultDepth + 2, value: defaultValue, radius: 5},
+				{depth: defaultDepth + 2, value: defaultValue, radius: 6},
+				{depth: defaultDepth + 2, value: defaultValue, radius: 7},
 			},
 		},
 		{
+			name: "zero valued batch",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 2},
-			},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 2},
-				{depth: initDepth, value: 4},
-			},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 5},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 3},
-			},
-		},
-		{
-			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth + 3, value: 5},
+				// batches with values <= cumulative payout get evicted, so
+				// the radius remains 0 after the addition of the first batch
+				{depth: defaultDepth, value: 0, radius: 0},
+				{depth: defaultDepth, value: defaultValue, radius: 3},
 			},
 		},
 	}
@@ -97,13 +89,13 @@ func TestBatchSave(t *testing.T) {
 
 		for _, b := range tc.add {
 			_ = addBatch(t, store, b.depth, b.value)
-			checkState(t, store)
+			checkState(t, tc.name, store, b.radius)
 		}
 	}
 }
 
 // TestBatchUpdate adds an initial group of batches to the batchstore and one by one
-// updates their depth and value to fields while checking the batchstore available and radius values.
+// updates their depth and value to fields while checking the batchstore radius values.
 func TestBatchUpdate(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -113,44 +105,61 @@ func TestBatchUpdate(t *testing.T) {
 	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
-	initDepth := uint8(8)
+	defaultDepth := uint8(8)
+	defaultValue := 1
 
-	type update struct {
-		value int
-		depth uint8
-		index int
-	}
+	type testCase struct {
+		name string
 
-	type testcase struct {
 		// the initial batches to add to the batchstore.
 		add []testBatch
 		// update contains the new depth and value values for the added batches
-		update []update
+		update []testBatch
 	}
 
-	tcs := []testcase{
+	// Test cases define each batches's depth, value, and the new radius
+	// of the reserve state after the batch is saved/updated.
+	// Unlike depth updates, value updates should NOT result in any radius changes.
+
+	tcs := []testCase{
 		{
+			name: "depth increase",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 5},
+				{depth: defaultDepth, value: defaultValue, radius: 3},
+				{depth: defaultDepth, value: defaultValue, radius: 4},
+				{depth: defaultDepth, value: defaultValue, radius: 5},
 			},
-			update: []update{
-				{index: 0, depth: initDepth + 1, value: 6},
-				{index: 1, depth: initDepth + 1, value: 6},
-				{index: 2, depth: initDepth + 1, value: 6},
+			update: []testBatch{
+				{depth: defaultDepth + 1, value: defaultValue, radius: 5},
+				{depth: defaultDepth + 1, value: defaultValue, radius: 6},
+				{depth: defaultDepth + 1, value: defaultValue, radius: 6},
 			},
 		},
 		{
+			name: "value updates",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth + 2, value: 5},
+				{depth: defaultDepth, value: defaultValue, radius: 3},
+				{depth: defaultDepth, value: defaultValue, radius: 4},
+				{depth: defaultDepth, value: defaultValue, radius: 5},
 			},
-			update: []update{
-				{index: 0, depth: initDepth + 2, value: 6},
-				{index: 1, depth: initDepth + 2, value: 6},
-				{index: 2, depth: initDepth + 2, value: 6},
+			// since not depths are altered, radius should remain the same
+			update: []testBatch{
+				{depth: defaultDepth, value: defaultValue + 1, radius: 5},
+				{depth: defaultDepth, value: defaultValue + 1, radius: 5},
+				{depth: defaultDepth, value: defaultValue + 1, radius: 5},
+			},
+		},
+		{
+			name: "zero value updates",
+			add: []testBatch{
+				{depth: defaultDepth, value: defaultValue, radius: 3},
+				{depth: defaultDepth, value: defaultValue, radius: 4},
+				{depth: defaultDepth, value: defaultValue, radius: 5},
+			},
+			update: []testBatch{
+				{depth: defaultDepth + 1, value: 0, radius: 4},
+				{depth: defaultDepth + 1, value: 0, radius: 3},
+				{depth: defaultDepth + 1, value: 0, radius: 0},
 			},
 		},
 	}
@@ -165,20 +174,22 @@ func TestBatchUpdate(t *testing.T) {
 		for _, b := range tc.add {
 			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)
-			checkState(t, store)
+			checkState(t, tc.name, store, b.radius)
+
 		}
 
 		// update batches one by one with new depth and values and check, for each batch,
 		// the allocated commitment matches the commitment values in the test case.
-		for _, u := range tc.update {
-			batch := batches[u.index]
+		for i, u := range tc.update {
+			batch := batches[i]
 
 			err := store.Update(batch, big.NewInt(int64(u.value)), u.depth)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("name: %s, %v", tc.name, err)
 			}
 
-			checkState(t, store)
+			checkState(t, tc.name, store, u.radius)
+
 		}
 	}
 }
@@ -194,42 +205,46 @@ func TestPutChainState(t *testing.T) {
 	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
-	initDepth := uint8(8)
+	defaultDepth := uint8(8)
 
-	type chain struct {
+	type chainUpdate struct {
 		block  uint64
 		amount *big.Int
+		radius uint8
 	}
 
-	type testcase struct {
+	type testCase struct {
+		name  string
 		add   []testBatch
-		chain []chain
+		chain []chainUpdate
 	}
 
-	tcs := []testcase{
+	tcs := []testCase{
 		{
+			name: "evict all at once",
 			// initial group of batches to add
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 3},
+				{depth: defaultDepth, value: 3, radius: 3},
+				{depth: defaultDepth, value: 3, radius: 4},
+				{depth: defaultDepth, value: 3, radius: 5},
 			},
-			// chain state update, notice that after the update, the amount is 4,
-			// which is greater than the values of the batches, the new commitment
-			// amounts are zero.
-			chain: []chain{
-				{block: 1, amount: big.NewInt(4)},
+			// notice that after the chain state update, the new amount is 4,
+			// which is greater than the values of the batches.
+			// All the batches get evicted, and the new radius is zero.
+			chain: []chainUpdate{
+				{block: 1, amount: big.NewInt(4), radius: 0},
 			},
 		},
 		{
+			name: "evict all with two updates",
 			add: []testBatch{
-				{depth: initDepth, value: 3},
-				{depth: initDepth, value: 4},
-				{depth: initDepth, value: 5},
+				{depth: defaultDepth, value: 3, radius: 3},
+				{depth: defaultDepth, value: 4, radius: 4},
+				{depth: defaultDepth, value: 5, radius: 5},
 			},
-			chain: []chain{
-				{block: 1, amount: big.NewInt(4)},
-				{block: 2, amount: big.NewInt(5)},
+			chain: []chainUpdate{
+				{block: 1, amount: big.NewInt(4), radius: 3},
+				{block: 2, amount: big.NewInt(5), radius: 0},
 			},
 		},
 	}
@@ -241,7 +256,7 @@ func TestPutChainState(t *testing.T) {
 		// add the group of batches
 		for _, b := range tc.add {
 			_ = addBatch(t, store, b.depth, b.value)
-			checkState(t, store)
+			checkState(t, tc.name, store, b.radius)
 		}
 
 		for _, c := range tc.chain {
@@ -253,10 +268,10 @@ func TestPutChainState(t *testing.T) {
 				CurrentPrice: big.NewInt(1),
 			})
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("name: %s, %v", tc.name, err)
 			}
 
-			checkState(t, store)
+			checkState(t, tc.name, store, c.radius)
 		}
 	}
 }
@@ -277,9 +292,10 @@ func TestUnreserve(t *testing.T) {
 
 	_ = addBatch(t, store, initDepth, 1)
 	_ = addBatch(t, store, initDepth, 2)
-	_ = addBatch(t, store, initDepth, 3)
+	_ = addBatch(t, store, initDepth, 2)
 
 	state := store.GetReserveState()
+	t.Log(state)
 
 	cb := func([]byte, uint8) (bool, error) { return false, nil }
 
@@ -297,6 +313,19 @@ func TestUnreserve(t *testing.T) {
 
 		_ = store.Unreserve(cb)
 	}
+
+	err := store.PutChainState(&postage.ChainState{
+		Block:        1,
+		TotalAmount:  big.NewInt(1),
+		CurrentPrice: big.NewInt(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state = store.GetReserveState()
+	t.Log(state)
+
 }
 
 func setupBatchStore(t *testing.T) postage.Storer {
@@ -332,35 +361,19 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	return bStore
 }
 
-func checkState(t *testing.T, store postage.Storer) {
+func checkState(t *testing.T, name string, store postage.Storer, radius uint8) {
 
 	t.Helper()
-
-	totalCommitment := calcCommitment(store)
-	radius := calcRadius(totalCommitment, batchstore.Capacity)
 
 	state := store.GetReserveState()
 
 	if state.StorageRadius > state.Radius {
-		t.Fatalf("storage radius %d must not exceed radius %d", state.StorageRadius, state.Radius)
+		t.Fatalf("storage radius %d must not exceed radius %d, test case: %s", state.StorageRadius, state.Radius, name)
 	}
 
 	if radius != state.Radius {
-		t.Fatalf("got radius %v, want %v", state.Radius, radius)
+		t.Fatalf("got radius %v, want %v, test case: %s", state.Radius, radius, name)
 	}
-}
-
-func calcCommitment(store postage.Storer) int64 {
-	var total int64
-	_ = store.Iterate(func(b *postage.Batch) (bool, error) {
-		total += batchstore.Exp2(uint(b.Depth))
-		return false, nil
-	})
-	return total
-}
-
-func calcRadius(totalCommitment int64, capacity int64) uint8 {
-	return uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(capacity))))
 }
 
 func addBatch(t *testing.T, s postage.Storer, depth uint8, value int) *postage.Batch {
