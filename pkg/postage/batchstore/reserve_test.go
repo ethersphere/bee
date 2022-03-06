@@ -231,7 +231,7 @@ func TestPutChainState(t *testing.T) {
 				{depth: defaultDepth, value: 3, radius: 4},
 				{depth: defaultDepth, value: 3, radius: 5},
 			},
-			// notice that after the chain state update, the new amount is 4,
+			// after the chain state update, the new amount is 4,
 			// which is greater than the values of the batches.
 			// All the batches get evicted, and the new radius is zero.
 			chain: []chainUpdate{

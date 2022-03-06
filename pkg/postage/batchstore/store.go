@@ -150,13 +150,16 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
 
-	now := time.Now()
-	defer func() {
-		s.metrics.SaveDuration.Observe(time.Since(now).Seconds())
-	}()
+	defer func(t time.Time) {
+		s.metrics.SaveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
+	}(time.Now())
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	defer func(t time.Time) {
+		s.metrics.SaveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
+	}(time.Now())
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
