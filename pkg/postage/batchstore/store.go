@@ -115,15 +115,6 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
-
-	v := &valueItem{}
-	err = s.store.Get(valueKey(b.Value, b.ID), v)
-	if err != nil {
-		return nil, err
-	}
-
-	b.Radius = v.StorageRadius
-
 	return b, nil
 }
 
@@ -279,21 +270,6 @@ func (s *store) Reset() error {
 		Radius: 0,
 	}
 
-	return nil
-}
-
-type valueItem struct {
-	StorageRadius uint8
-}
-
-func (u *valueItem) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 1)
-	b[0] = u.StorageRadius
-	return b, nil
-}
-
-func (u *valueItem) UnmarshalBinary(b []byte) error {
-	u.StorageRadius = b[0]
 	return nil
 }
 

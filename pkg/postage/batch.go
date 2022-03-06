@@ -18,14 +18,14 @@ type Batch struct {
 	Depth       uint8    // batch depth, i.e., size = 2^{depth}
 	BucketDepth uint8    // the depth of neighbourhoods t
 	Immutable   bool     // if the batch allows adding new capacity (dilution)
-	Radius      uint8    // reserve radius, non-serialised
+	Radius      uint8    // reserve radius
 }
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the
 // postage batch to a byte slice.
 // serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|BucketDepth(1)|depth(1)|immutable(1)
 func (b *Batch) MarshalBinary() ([]byte, error) {
-	out := make([]byte, 95)
+	out := make([]byte, 96)
 	copy(out, b.ID)
 	value := b.Value.Bytes()
 	copy(out[64-len(value):], value)
@@ -36,6 +36,7 @@ func (b *Batch) MarshalBinary() ([]byte, error) {
 	if b.Immutable {
 		out[94] = 1
 	}
+	out[95] = b.Radius
 	return out, nil
 }
 
@@ -49,5 +50,6 @@ func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.BucketDepth = buf[92]
 	b.Depth = buf[93]
 	b.Immutable = buf[94] > 0
+	b.Radius = buf[95]
 	return nil
 }
