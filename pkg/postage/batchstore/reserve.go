@@ -60,7 +60,7 @@ type reserveState struct {
 // Must be called under lock.
 func (s *store) saveBatch(b *postage.Batch) error {
 
-	if err := s.store.Put(valueKey(b.Value, b.ID), &valueItem{StorageRadius: s.rs.StorageRadius}); err != nil {
+	if err := s.store.Put(valueKey(b.Value, b.ID), nil); err != nil {
 		return fmt.Errorf("batchstore: allocate batch %x: %w", b.ID, err)
 	}
 
@@ -158,8 +158,8 @@ func (s *store) computeRadius() error {
 
 	// if the new radius is lower than storage radius, lower the storage radius of batches
 	if s.rs.StorageRadius > s.rs.Radius {
-		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		s.rs.StorageRadius = s.rs.Radius
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		if err = s.lowerStorageRadius(); err != nil {
 			s.logger.Warningf("batchstore: lower storage radius: %v", err)
 		}
@@ -178,40 +178,33 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	type updateItem struct {
-		item *valueItem
-		key  []byte
-	}
-
 	var (
 		stopped = false
-		updates []updateItem
+		updates []*postage.Batch
 	)
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
 
-		v := &valueItem{}
-		err := v.UnmarshalBinary(value)
+		id := valueKeyToID(key)
+
+		b, err := s.get(id)
 		if err != nil {
 			return false, err
 		}
 
-		// fmt.Println("storage radius", v.StorageRadius)
-		// fmt.Println("resrve state", s.rs)
-
 		// skip eviction if previous eviction has higher radius
-		if v.StorageRadius > s.rs.StorageRadius {
+		if b.Radius > s.rs.StorageRadius {
 			return false, nil
 		}
 
-		stopped, err := cb(valueKeyToID(key), v.StorageRadius)
+		stopped, err := cb(id, b.Radius)
 		if err != nil {
 			return false, err
 		}
 
-		v.StorageRadius++
+		b.Radius++
 
-		updates = append(updates, updateItem{item: v, key: key})
+		updates = append(updates, b)
 
 		return stopped, nil
 	})
@@ -220,7 +213,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	}
 
 	for _, u := range updates {
-		err := s.store.Put(string(u.key), u.item)
+		err := s.store.Put(batchKey(u.ID), u)
 		if err != nil {
 			s.logger.Warningf("batchstore: Unreserve: %v", err)
 		}
@@ -241,19 +234,19 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 // Must be called under lock.
 func (s *store) lowerStorageRadius() error {
 
-	var updates [][]byte
+	var updates []*postage.Batch
 
-	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
+	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 
-		v := &valueItem{}
-		err := v.UnmarshalBinary(value)
+		b := &postage.Batch{}
+		err := b.UnmarshalBinary(value)
 		if err != nil {
 			return false, err
 		}
 
-		if s.rs.StorageRadius < v.StorageRadius {
-			fmt.Println("old", v.StorageRadius, "new", s.rs.StorageRadius)
-			updates = append(updates, key)
+		if b.Radius > s.rs.StorageRadius {
+			b.Radius = s.rs.StorageRadius
+			updates = append(updates, b)
 		}
 
 		return false, nil
@@ -262,8 +255,8 @@ func (s *store) lowerStorageRadius() error {
 		return err
 	}
 
-	for _, k := range updates {
-		err := s.store.Put(string(k), &valueItem{StorageRadius: s.rs.StorageRadius})
+	for _, u := range updates {
+		err := s.store.Put(batchKey(u.ID), u)
 		if err != nil {
 			s.logger.Warningf("batchstore: lower eviction radius: %v", err)
 		}
