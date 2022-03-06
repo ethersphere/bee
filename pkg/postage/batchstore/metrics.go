@@ -12,8 +12,8 @@ import (
 type metrics struct {
 	Radius            prometheus.Gauge
 	StorageRadius     prometheus.Gauge
-	UnreserveDuration prometheus.Histogram
-	SaveDuration      prometheus.Histogram
+	UnreserveDuration prometheus.HistogramVec
+	SaveDuration      prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -32,18 +32,18 @@ func newMetrics() metrics {
 			Name:      "storage_radius",
 			Help:      "Radius of responsibility communicated to the localstore",
 		}),
-		UnreserveDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		UnreserveDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "unreserve_duration",
 			Help:      "Duration in seconds for the Unreserve call.",
-		}),
-		SaveDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		}, []string{"beforeLock"}),
+		SaveDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "save_batch_duration",
 			Help:      "Duration in seconds for the Save call.",
-		}),
+		}, []string{"beforeLock"}),
 	}
 }
 
