@@ -120,6 +120,10 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	switch err := s.store.Get(batchKey(id), new(postage.Batch)); {
 	case err == nil:
 		return true, nil
@@ -132,6 +136,10 @@ func (s *store) Exists(id []byte) (bool, error) {
 
 // Iterate is implementation of postage.Storer interface Iterate method.
 func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	return s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
@@ -221,10 +229,10 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
+	s.cs = cs
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-
-	s.cs = cs
 
 	err := s.cleanup()
 	if err != nil {
