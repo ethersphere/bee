@@ -43,7 +43,7 @@ func TestBatchSave(t *testing.T) {
 
 	// Test cases define each batches's depth, value, and the new radius
 	// of the reserve state after the batch is saved.
-	// In some cases, batches with zero values are added to check that radius is not altered.
+	// In some cases, batches with zero values are added to check that the radius is not altered.
 
 	tcs := []testCase{
 		{
@@ -95,7 +95,7 @@ func TestBatchSave(t *testing.T) {
 }
 
 // TestBatchUpdate adds an initial group of batches to the batchstore and one by one
-// updates their depth and value to fields while checking the batchstore radius values.
+// updates their depth and value fields while checking the batchstore radius values.
 func TestBatchUpdate(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -111,15 +111,16 @@ func TestBatchUpdate(t *testing.T) {
 	type testCase struct {
 		name string
 
-		// the initial batches to add to the batchstore.
+		// the batches to add to the batchstore.
 		add []testBatch
-		// update contains the new depth and value values for the added batches
+		// update contains the new depth and value values for added batches in the order that they were saved.
 		update []testBatch
 	}
 
 	// Test cases define each batches's depth, value, and the new radius
 	// of the reserve state after the batch is saved/updated.
-	// Unlike depth updates, value updates should NOT result in any radius changes.
+	// Unlike depth updates, value updates that are above cumulative amount should NOT result in any radius changes.
+	// Value updates that are less than or equal to the cumulative triggers the eviction for the the batch, as such, radius may be altered.
 
 	tcs := []testCase{
 		{
@@ -157,6 +158,8 @@ func TestBatchUpdate(t *testing.T) {
 				{depth: defaultDepth, value: defaultValue, radius: 5},
 			},
 			update: []testBatch{
+				// batches whose value is <= cumulative amount get evicted
+				// so radius is affected after each update.
 				{depth: defaultDepth + 1, value: 0, radius: 4},
 				{depth: defaultDepth + 1, value: 0, radius: 3},
 				{depth: defaultDepth + 1, value: 0, radius: 0},
@@ -194,8 +197,8 @@ func TestBatchUpdate(t *testing.T) {
 	}
 }
 
-// TestPutChainState add an initial group of batches to the batchstore, and after updating the chainstate,
-// checks that the batchstore available and radius values.
+// TestPutChainState add a group of batches to the batchstore, and after updating the chainstate,
+// checks the batchstore radius reflects the updates.
 func TestPutChainState(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -277,7 +280,7 @@ func TestPutChainState(t *testing.T) {
 }
 
 // TestUnreserve tests the Unreserve call increases the storage radius after each
-// full iteration and that the storage radius never exceeds the global radius.
+// full iteration and that the storage radius never exceeds the radius.
 func TestUnreserve(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
@@ -290,16 +293,17 @@ func TestUnreserve(t *testing.T) {
 
 	store := setupBatchStore(t)
 
+	// add some batches
 	_ = addBatch(t, store, initDepth, 1)
 	_ = addBatch(t, store, initDepth, 2)
 	_ = addBatch(t, store, initDepth, 2)
 
 	state := store.GetReserveState()
-	t.Log(state)
 
 	cb := func([]byte, uint8) (bool, error) { return false, nil }
 
-	// storage radius should equal storage radius and not exceed it
+	// Unreserve is called multiple times (radius + 1) to confirm that the
+	// storage radius of the node never exceeds the radius
 	for i := uint8(0); i <= state.Radius+1; i++ {
 
 		wantStorageRadius := i
@@ -314,6 +318,9 @@ func TestUnreserve(t *testing.T) {
 		_ = store.Unreserve(cb)
 	}
 
+	// in the final step, the chain state is updated to evict one batch,
+	// causing the radius to decrease, in return, the storage radius of batches are lowered
+	// to the current storage radius.
 	err := store.PutChainState(&postage.ChainState{
 		Block:        1,
 		TotalAmount:  big.NewInt(1),
@@ -323,9 +330,24 @@ func TestUnreserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state = store.GetReserveState()
-	t.Log(state)
+	newState := store.GetReserveState()
 
+	// check that after the chain state update, radius has been lowered.
+	if newState.Radius >= state.Radius {
+		t.Fatalf("new radius %d should be lower than the old radius %d", newState.Radius, state.Radius)
+	}
+
+	// the radius of every batch must not exceed the current storage radius.
+	state = store.GetReserveState()
+	err = store.Iterate(func(b *postage.Batch) (bool, error) {
+		if b.Radius > state.StorageRadius {
+			t.Fatalf("batch radius %d should not exceed storate radius %d", b.Radius, state.StorageRadius)
+		}
+		return false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func setupBatchStore(t *testing.T) postage.Storer {
