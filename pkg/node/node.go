@@ -225,7 +225,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		transactionService transaction.Service
 		transactionMonitor transaction.Monitor
 		chequebookFactory  chequebook.Factory
-		chequebookService  chequebook.Service
+		chequebookService  chequebook.Service = new(noOpChequebookService)
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
@@ -343,7 +343,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
-		if o.ChequebookEnable {
+		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
 				p2pCtx,
 				logger,
@@ -356,7 +356,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 				chequebookFactory,
 				o.SwapInitialDeposit,
 				o.DeployGasPrice,
-				chainEnabled,
 			)
 			if err != nil {
 				return nil, err
@@ -869,8 +868,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if chainSyncer != nil {
 			debugAPIService.MustRegisterMetrics(chainSyncer.Metrics()...)
 		}
+
+		var debugSwapService swap.Interface = swapService
+
+		if !chainEnabled {
+			debugSwapService = new(swap.NoOpSwap)
+		}
+
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, swapService, chequebookService, batchStore, post, postageContractService, traversalService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, debugSwapService, chequebookService, batchStore, post, postageContractService, traversalService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {

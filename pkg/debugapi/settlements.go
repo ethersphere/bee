@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -36,6 +37,12 @@ type settlementsResponse struct {
 func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 
 	settlementsSent, err := s.swap.SettlementsSent()
+	if errors.Is(err, postagecontract.ErrChainDisabled) {
+		jsonhttp.MethodNotAllowed(w, err)
+		s.logger.Debugf("debug api: sent settlements: %v", err)
+		s.logger.Error("debug api: can not get sent settlements")
+		return
+	}
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantSettlements)
 		s.logger.Debugf("debug api: sent settlements: %v", err)
