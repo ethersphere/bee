@@ -28,6 +28,7 @@ import (
 	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
+	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
@@ -39,7 +40,10 @@ const (
 
 	addPeerBatchSize = 500
 
-	peerConnectionAttemptTimeout = 5 * time.Second // timeout for establishing a new connection with peer.
+	// To avoid context.Timeout errors during network failure, the value of
+	// the peerConnectionAttemptTimeout constant must be equal to or greater
+	// than 10 seconds (empirically verified).
+	peerConnectionAttemptTimeout = 10 * time.Second // timeout for establishing a new connection with peer.
 
 	flagTimeout      = 5 * time.Minute  // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
@@ -1624,23 +1628,32 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 
 // isNetworkError is checking various conditions that relate to network problems.
 func isNetworkError(err error) bool {
-	var netOpErr *net.OpError
-	if errors.As(err, &netOpErr) {
-		if netOpErr.Op == "dial" {
+	isNetOpError := func(err error) bool {
+		var netOpErr *net.OpError
+		if !errors.As(err, &netOpErr) {
+			return false
+		}
+		switch netOpErr.Op {
+		case "dial", "read":
 			return true
 		}
-		if netOpErr.Op == "read" {
-			return true
+		return false
+	}
+
+	// Since TransportError doesn't implement the Unwrap
+	// method we need to inspect the errors manually.
+	var de *lp2pswarm.DialError
+	if errors.As(err, &de) {
+		var te *lp2pswarm.TransportError
+		for i := range de.DialErrors {
+			if errors.As(&de.DialErrors[i], &te) && isNetOpError(te.Cause) {
+				return true
+			}
 		}
 	}
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		return true
-	}
-	if errors.Is(err, syscall.EPIPE) {
-		return true
-	}
-	if errors.Is(err, syscall.ETIMEDOUT) {
-		return true
-	}
-	return false
+
+	return isNetOpError(err) ||
+		errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ETIMEDOUT)
 }
