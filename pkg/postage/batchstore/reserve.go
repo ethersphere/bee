@@ -156,7 +156,9 @@ func (s *store) computeRadius() error {
 
 	s.metrics.Radius.Set(float64(s.rs.Radius))
 
-	// if the new radius is lower than storage radius, lower the storage radius of batches
+	// if the new radius is lower than the storage radius, adjust the storage radius.
+	// also, lower the storage radius of each batch to the new radius to prevent higher than radius POs
+	// from being evicted when localstore calls the Unreserve.
 	if s.rs.StorageRadius > s.rs.Radius {
 		s.rs.StorageRadius = s.rs.Radius
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
