@@ -45,6 +45,13 @@ func TestBatchSave(t *testing.T) {
 	// of the reserve state after the batch is saved.
 	// In some cases, batches with zero values are added to check that the radius is not altered.
 
+	// To calculate radius, the formula totalCommitment/node_capacity = 2^R is used where
+	// total_commitment is the sum of all batches.
+	// For example: to compute the radius where the node has capacity 2^5 (32) and a batch with depth 8 (2^8 or 256 chunks),
+	// using the formula, 256 / 32 = 2^R, R = log2(8) produces a radius of 4.
+	// With two batches of the same depth, the calculation is as such: log2((256 + 256) / 32) = 5.
+	// The ceiling function is used to round up results so the actual formula is ceil(log2(totalCommitment/node_capacity)) = R
+
 	tcs := []testCase{
 		{
 			name: "first batch's depth is below capacity",
@@ -120,7 +127,7 @@ func TestBatchUpdate(t *testing.T) {
 	// Test cases define each batches's depth, value, and the new radius
 	// of the reserve state after the batch is saved/updated.
 	// Unlike depth updates, value updates that are above cumulative amount should NOT result in any radius changes.
-	// Value updates that are less than or equal to the cumulative triggers the eviction for the the batch, as such, radius may be altered.
+	// Value updates that are less than or equal to the cumulative amount trigger the eviction for the the batch, as such, radius may be altered.
 
 	tcs := []testCase{
 		{
@@ -181,8 +188,6 @@ func TestBatchUpdate(t *testing.T) {
 
 		}
 
-		// update batches one by one with new depth and values and check, for each batch,
-		// the allocated commitment matches the commitment values in the test case.
 		for i, u := range tc.update {
 			batch := batches[i]
 
