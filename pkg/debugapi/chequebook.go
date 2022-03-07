@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -68,6 +69,12 @@ type chequebookLastChequesResponse struct {
 
 func (s *Service) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.chequebook.Balance(r.Context())
+	if errors.Is(err, postagecontract.ErrChainDisabled) {
+		jsonhttp.MethodNotAllowed(w, err)
+		s.logger.Debugf("debug api: chequebook balance: %v", err)
+		s.logger.Error("debug api: cannot get chequebook balance")
+		return
+	}
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookBalance)
 		s.logger.Debugf("debug api: chequebook balance: %v", err)
