@@ -117,17 +117,17 @@ func TestBatchUpdate(t *testing.T) {
 
 	type testCase struct {
 		name string
-
 		// the batches to add to the batchstore.
 		add []testBatch
 		// update contains the new depth and value values for added batches in the order that they were saved.
 		update []testBatch
 	}
 
-	// Test cases define each batches's depth, value, and the new radius
-	// of the reserve state after the batch is saved/updated.
-	// Unlike depth updates, value updates that are above cumulative amount should NOT result in any radius changes.
-	// Value updates that are less than or equal to the cumulative amount trigger the eviction for the the batch, as such, radius may be altered.
+	// Test cases define each batches's depth, value, and the new radius of the reserve
+	// state after the batch is saved/updated. Unlike depth updates, value updates
+	// that are above cumulative amount should NOT result in any radius changes.
+	// Value updates that are less than or equal to the cumulative amount trigger
+	// the eviction for the the batch, as such, radius may be altered.
 
 	tcs := []testCase{
 		{
@@ -193,7 +193,7 @@ func TestBatchUpdate(t *testing.T) {
 
 			err := store.Update(batch, big.NewInt(int64(u.value)), u.depth)
 			if err != nil {
-				t.Fatalf("name: %s, %v", tc.name, err)
+				t.Fatalf("test case: %s, %v", tc.name, err)
 			}
 
 			checkState(t, tc.name, store, u.radius)
@@ -276,7 +276,7 @@ func TestPutChainState(t *testing.T) {
 				CurrentPrice: big.NewInt(1),
 			})
 			if err != nil {
-				t.Fatalf("name: %s, %v", tc.name, err)
+				t.Fatalf("test case: %s, %v", tc.name, err)
 			}
 
 			checkState(t, tc.name, store, c.radius)
