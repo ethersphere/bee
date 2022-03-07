@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
@@ -379,4 +380,55 @@ func (s *Service) GetDeductionByPeer(peer swarm.Address) (bool, error) {
 
 func (s *Service) AddDeductionByPeer(peer swarm.Address) error {
 	return s.addressbook.AddDeductionBy(peer)
+}
+
+type NoOpSwap struct {
+}
+
+func (*NoOpSwap) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// TotalReceived returns the total amount received from a peer
+func (*NoOpSwap) TotalReceived(peer swarm.Address) (totalSent *big.Int, err error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// SettlementsSent returns sent settlements for each individual known peer
+func (*NoOpSwap) SettlementsSent() (map[string]*big.Int, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// SettlementsReceived returns received settlements for each individual known peer
+func (*NoOpSwap) SettlementsReceived() (map[string]*big.Int, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+func (*NoOpSwap) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// LastSentCheques returns the list of last sent cheques for all peers
+func (*NoOpSwap) LastSentCheques() (map[string]*chequebook.SignedCheque, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// LastReceivedCheque returns the last received cheque for the peer
+func (*NoOpSwap) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// LastReceivedCheques returns the list of last received cheques for all peers
+func (*NoOpSwap) LastReceivedCheques() (map[string]*chequebook.SignedCheque, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+// CashCheque sends a cashing transaction for the last cheque of the peer
+func (*NoOpSwap) CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+	return common.Hash{}, postagecontract.ErrChainDisabled
+}
+
+// CashoutStatus gets the status of the latest cashout transaction for the peers chequebook
+func (*NoOpSwap) CashoutStatus(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+	return nil, postagecontract.ErrChainDisabled
 }

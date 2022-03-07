@@ -868,8 +868,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		if chainSyncer != nil {
 			debugAPIService.MustRegisterMetrics(chainSyncer.Metrics()...)
 		}
+
+		var debugSwapService swap.Interface = swapService
+
+		if !chainEnabled {
+			debugSwapService = new(swap.NoOpSwap)
+		}
+
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, swapService, chequebookService, batchStore, post, postageContractService, traversalService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, debugSwapService, chequebookService, batchStore, post, postageContractService, traversalService)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
