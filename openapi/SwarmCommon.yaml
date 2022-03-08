@@ -48,7 +48,7 @@ components:
           type: integer
         commitment:
           type: integer
-          
+
     ChainState:
       type: object
       properties:
