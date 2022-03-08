@@ -44,13 +44,11 @@ components:
       properties:
         radius:
           type: integer
-        available:
+        storageRadius:
           type: integer
-        outer:
-          $ref: "#/components/schemas/BigInt"
-        inner:
-          $ref: "#/components/schemas/BigInt"
-
+        commitment:
+          type: integer
+          
     ChainState:
       type: object
       properties:
