@@ -428,13 +428,13 @@ components:
       properties:
         batchID:
           $ref: "#/components/schemas/BatchID"
-        depth:
-          type: integer
         value:
           $ref: "#/components/schemas/BigInt"
-        bucketDepth:
+        start:
           type: integer
-        blockNumber:
+        depth:
+          type: integer
+        bucketDepth:
           type: integer
         immutableFlag:
           type: boolean
@@ -442,6 +442,8 @@ components:
           type: integer
         owner:
           $ref: "#/components/schemas/EthereumAddress"
+        storageRadius:
+          type: integer
 
     DebugPostageBatch:
       anyOf:
