@@ -252,7 +252,7 @@ func TestGetAllBatches(t *testing.T) {
 				Depth:       b.Depth,
 				BucketDepth: b.BucketDepth,
 				Immutable:   b.Immutable,
-				Radius:      b.Radius,
+				Radius:      b.StorageRadius,
 				BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			},
 		},

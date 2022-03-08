@@ -199,16 +199,16 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		}
 
 		// skip eviction if previous eviction has higher radius
-		if b.Radius > s.rs.StorageRadius {
+		if b.StorageRadius > s.rs.StorageRadius {
 			return false, nil
 		}
 
-		stopped, err := cb(id, b.Radius)
+		stopped, err := cb(id, b.StorageRadius)
 		if err != nil {
 			return false, err
 		}
 
-		b.Radius++
+		b.StorageRadius++
 
 		updates = append(updates, b)
 
@@ -250,8 +250,8 @@ func (s *store) lowerStorageRadius() error {
 			return false, err
 		}
 
-		if b.Radius > s.rs.StorageRadius {
-			b.Radius = s.rs.StorageRadius
+		if b.StorageRadius > s.rs.StorageRadius {
+			b.StorageRadius = s.rs.StorageRadius
 			updates = append(updates, b)
 		}
 

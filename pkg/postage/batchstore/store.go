@@ -229,10 +229,11 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
-	s.cs = cs
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	s.cs = cs
 
 	err := s.cleanup()
 	if err != nil {

@@ -211,7 +211,7 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 			Depth:       b.Depth,
 			BucketDepth: b.BucketDepth,
 			Immutable:   b.Immutable,
-			Radius:      b.Radius,
+			Radius:      b.StorageRadius,
 			BatchTTL:    batchTTL,
 		})
 		return false, nil

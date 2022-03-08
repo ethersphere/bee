@@ -48,7 +48,7 @@ func TestBatchMarshalling(t *testing.T) {
 	if a.Immutable != b.Immutable {
 		t.Fatalf("depth mismatch, expected %v, got %v", a.Immutable, b.Immutable)
 	}
-	if a.Radius != b.Radius {
-		t.Fatalf("radius mismatch, expected %v, got %v", a.Radius, b.Radius)
+	if a.StorageRadius != b.StorageRadius {
+		t.Fatalf("radius mismatch, expected %v, got %v", a.StorageRadius, b.StorageRadius)
 	}
 }
