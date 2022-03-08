@@ -245,15 +245,15 @@ func TestGetAllBatches(t *testing.T) {
 	}{
 		Batches: []debugapi.PostageBatchResponse{
 			{
-				BatchID:     b.ID,
-				Value:       bigint.Wrap(b.Value),
-				Start:       b.Start,
-				Owner:       b.Owner,
-				Depth:       b.Depth,
-				BucketDepth: b.BucketDepth,
-				Immutable:   b.Immutable,
-				Radius:      b.StorageRadius,
-				BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:       b.ID,
+				Value:         bigint.Wrap(b.Value),
+				Start:         b.Start,
+				Owner:         b.Owner,
+				Depth:         b.Depth,
+				BucketDepth:   b.BucketDepth,
+				Immutable:     b.Immutable,
+				StorageRadius: b.StorageRadius,
+				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			},
 		},
 	}
