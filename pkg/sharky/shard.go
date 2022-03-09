@@ -128,7 +128,11 @@ LOOP:
 			if writes != nil {
 				sh.slots.wg.Add(1) // Done after the slots process pops from slots.in
 				go func() {
-					sh.slots.in <- slot
+					defer sh.slots.wg.Done()
+					select {
+					case sh.slots.in <- slot:
+					case <-sh.quit:
+					}
 				}()
 			}
 			return
@@ -180,7 +184,6 @@ func (sh *shard) release(ctx context.Context, slot uint32) error {
 	case sh.slots.in <- slot:
 		return nil
 	case <-ctx.Done():
-		sh.slots.wg.Done()
 		return ctx.Err()
 	}
 }

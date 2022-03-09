@@ -102,10 +102,15 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 	terminated := make(chan struct{})
 	sh.slots.wg.Add(1)
 	go func() {
+		defer sh.slots.wg.Done()
 		sh.process()
 		close(terminated)
 	}()
-	go sl.process(terminated)
+	sh.slots.wg.Add(1)
+	go func() {
+		defer sh.slots.wg.Done()
+		sl.process(terminated)
+	}()
 	return sh, nil
 }
 
@@ -178,8 +183,6 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // rest of the old blob bytes untouched
 func (s *Store) Release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
-	// we add the current routine and will be Done in slots.process
-	sh.slots.wg.Add(1)
 	err := sh.release(ctx, loc.Slot)
 	s.metrics.TotalReleaseCalls.Inc()
 	if err == nil {

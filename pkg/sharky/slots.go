@@ -93,6 +93,7 @@ func (sl *slots) pop() uint32 {
 
 // forever loop processing.
 func (sl *slots) process(quit chan struct{}) {
+	done := make(chan struct{})
 	var head uint32     // the currently pending next free slots
 	var out chan uint32 // nullable output channel, need to pop a free slot when nil
 	for {
@@ -110,7 +111,6 @@ func (sl *slots) process(quit chan struct{}) {
 				return
 			}
 			sl.push(slot)
-			sl.wg.Done()
 
 			// let out channel capture the free slot and set out to nil to pop a new free slot
 		case out <- head:
@@ -123,11 +123,9 @@ func (sl *slots) process(quit chan struct{}) {
 				out = nil
 			}
 			quit = nil
-			sl.wg.Done()
-			go func() {
-				sl.wg.Wait()
-				close(sl.in)
-			}()
+			close(done)
+		case <-done:
+			return
 		}
 	}
 }
