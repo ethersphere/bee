@@ -109,6 +109,12 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	peerexists := false
 
 	received, err := s.swap.TotalReceived(peer)
+	if errors.Is(err, postagecontract.ErrChainDisabled) {
+		jsonhttp.MethodNotAllowed(w, err)
+		s.logger.Debugf("debug api: settlements peer: %v", err)
+		s.logger.Errorf("debug api: settlements peer: can't get peer %s received settlement", peer.String())
+		return
+	}
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
 			s.logger.Debugf("debug api: settlements peer: get peer %s received settlement: %v", peer.String(), err)
