@@ -203,7 +203,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, nil
 		}
 
-		stopped, err := cb(id, b.StorageRadius)
+		stopped, err = cb(id, b.StorageRadius)
 		if err != nil {
 			return false, err
 		}
