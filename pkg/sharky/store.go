@@ -147,7 +147,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	c := make(chan entry)
+	c := make(chan entry, 1) // buffer the channel to avoid blocking in shard.process on quit or context done
 
 	select {
 	case s.writes <- write{data, c}:
