@@ -63,8 +63,6 @@ func TestShard(t *testing.T) {
 func writePayload(t *testing.T, shard *shard, payload write) (loc Location) {
 	t.Helper()
 
-	//shard.slots.wg.Add(1)
-
 	select {
 	case shard.writes <- payload:
 		e := <-payload.res
