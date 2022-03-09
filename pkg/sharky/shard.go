@@ -126,13 +126,10 @@ LOOP:
 		case <-sh.quit:
 			// this condition checks if an slot is in limbo (popped but not used for write op)
 			if writes != nil {
-				sh.slots.wg.Add(1) // Done after the slots process pops from slots.in
+				sh.slots.limboWG.Add(1)
 				go func() {
-					defer sh.slots.wg.Done()
-					select {
-					case sh.slots.in <- slot:
-					case <-sh.quit:
-					}
+					defer sh.slots.limboWG.Done()
+					sh.slots.in <- slot
 				}()
 			}
 			return
