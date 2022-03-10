@@ -10,13 +10,14 @@ import (
 )
 
 type slots struct {
-	data []byte          // byteslice serving as bitvector: i-t bit set <>
-	size uint32          // number of slots
-	head uint32          // the first free slot
-	file sharkyFile      // file to persist free slots across sessions
-	in   chan uint32     // incoming channel for free slots,
-	out  chan uint32     // outgoing channel for free slots
-	wg   *sync.WaitGroup // count started write operations
+	data    []byte          // byteslice serving as bitvector: i-t bit set <>
+	size    uint32          // number of slots
+	head    uint32          // the first free slot
+	file    sharkyFile      // file to persist free slots across sessions
+	in      chan uint32     // incoming channel for free slots,
+	out     chan uint32     // outgoing channel for free slots
+	wg      *sync.WaitGroup // count started write operations
+	limboWG sync.WaitGroup  // wait for the limbo writes to in chan after the quit is closed
 }
 
 func newSlots(file sharkyFile, wg *sync.WaitGroup) *slots {
@@ -110,7 +111,6 @@ func (sl *slots) process(quit chan struct{}) {
 				return
 			}
 			sl.push(slot)
-			sl.wg.Done()
 
 			// let out channel capture the free slot and set out to nil to pop a new free slot
 		case out <- head:
@@ -123,9 +123,10 @@ func (sl *slots) process(quit chan struct{}) {
 				out = nil
 			}
 			quit = nil
-			sl.wg.Done()
+			sl.wg.Add(1)
 			go func() {
-				sl.wg.Wait()
+				defer sl.wg.Done()
+				sl.limboWG.Wait()
 				close(sl.in)
 			}()
 		}

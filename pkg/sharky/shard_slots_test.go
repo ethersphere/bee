@@ -63,8 +63,6 @@ func TestShard(t *testing.T) {
 func writePayload(t *testing.T, shard *shard, payload write) (loc Location) {
 	t.Helper()
 
-	shard.slots.wg.Add(1)
-
 	select {
 	case shard.writes <- payload:
 		e := <-payload.res
@@ -148,7 +146,7 @@ func newShard(t *testing.T) *shard {
 	}
 
 	t.Cleanup(func() {
-		quit <- struct{}{}
+		close(quit)
 		if err := shard.close(); err != nil {
 			t.Fatal("close shard", err)
 		}
@@ -156,13 +154,18 @@ func newShard(t *testing.T) *shard {
 
 	terminated := make(chan struct{})
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		shard.process()
 		close(terminated)
 	}()
 
-	shard.slots.wg.Add(1)
-	go slots.process(terminated)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		slots.process(terminated)
+	}()
 
 	return shard
 }
