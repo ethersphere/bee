@@ -91,7 +91,7 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 	}
 	sh := &shard{
 		reads:       make(chan read),
-		errc:        make(chan error),
+		errc:        make(chan error, 1), // buffer to avoid deadlock on quit
 		writes:      s.writes,
 		index:       index,
 		maxDataSize: maxDataSize,
@@ -102,10 +102,15 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 	terminated := make(chan struct{})
 	sh.slots.wg.Add(1)
 	go func() {
+		defer sh.slots.wg.Done()
 		sh.process()
 		close(terminated)
 	}()
-	go sl.process(terminated)
+	sh.slots.wg.Add(1)
+	go func() {
+		defer sh.slots.wg.Done()
+		sl.process(terminated)
+	}()
 	return sh, nil
 }
 
@@ -142,7 +147,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	c := make(chan entry)
+	c := make(chan entry, 1) // buffer the channel to avoid blocking in shard.process on quit or context done
 
 	select {
 	case s.writes <- write{data, c}:
@@ -178,8 +183,6 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // rest of the old blob bytes untouched
 func (s *Store) Release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
-	// we add the current routine and will be Done in slots.process
-	sh.slots.wg.Add(1)
 	err := sh.release(ctx, loc.Slot)
 	s.metrics.TotalReleaseCalls.Inc()
 	if err == nil {
