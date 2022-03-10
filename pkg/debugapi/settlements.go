@@ -38,22 +38,22 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 
 	settlementsSent, err := s.swap.SettlementsSent()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: sent settlements: %v", err)
 		s.logger.Error("debug api: can not get sent settlements")
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
-		jsonhttp.InternalServerError(w, errCantSettlements)
 		s.logger.Debugf("debug api: sent settlements: %v", err)
 		s.logger.Error("debug api: can not get sent settlements")
+		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
 	}
 	settlementsReceived, err := s.swap.SettlementsReceived()
 	if err != nil {
-		jsonhttp.InternalServerError(w, errCantSettlements)
 		s.logger.Debugf("debug api: received settlements: %v", err)
 		s.logger.Error("debug api: can not get received settlements")
+		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
 	}
 
@@ -110,9 +110,9 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 
 	received, err := s.swap.TotalReceived(peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: settlements peer: %v", err)
 		s.logger.Errorf("debug api: settlements peer: can't get peer %s received settlement", peer.String())
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {

@@ -70,9 +70,9 @@ type chequebookLastChequesResponse struct {
 func (s *Service) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.chequebook.Balance(r.Context())
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: chequebook balance: %v", err)
 		s.logger.Error("debug api: cannot get chequebook balance")
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
@@ -111,9 +111,9 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.swap.LastSentCheque(peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: chequebook cheque peer: %v", err)
 		s.logger.Errorf("debug api: chequebook cheque peer: can't get peer %s last cheque", peer.String())
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) && !errors.Is(err, swap.ErrNoChequebook) {
@@ -156,9 +156,9 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
 	lastchequessent, err := s.swap.LastSentCheques()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: chequebook cheque all: %v", err)
 		s.logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
@@ -268,9 +268,9 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.swap.CashCheque(ctx, peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: cashout peer: %v", err)
 		s.logger.Errorf("debug api: cashout peer: cannot cash %s", addr)
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
@@ -309,9 +309,9 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 
 	status, err := s.swap.CashoutStatus(r.Context(), peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		jsonhttp.MethodNotAllowed(w, err)
 		s.logger.Debugf("debug api: cashout status peer: %v", err)
 		s.logger.Errorf("debug api: cashout status peer: %s", addr)
+		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
