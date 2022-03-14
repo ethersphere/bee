@@ -8,12 +8,18 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"io"
+	"io/ioutil"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/localstore"
+	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -108,6 +114,58 @@ func TestSplitThreeLevels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestSplitValidation(t *testing.T) {
+	testData, err := ioutil.ReadFile("testdata/4-0-8.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseKey := make([]byte, 32)
+	if _, err := rand.Read(baseKey); err != nil {
+		t.Fatal(err)
+	}
+	o := &localstore.Options{}
+	if o.UnreserveFunc == nil {
+		o.UnreserveFunc = func(postage.UnreserveIteratorFn) error {
+			return nil
+		}
+	}
+	logger := logging.New(io.Discard, 0)
+	store, err := localstore.New("", baseKey, nil, o, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		err := store.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+
+	testDataReader := file.NewSimpleReadCloser(testData)
+	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testHashHex := "a75ba41c407009cd2d57cda6d3e80bc0a53e8ca53d4ca5dbbe3ae20881e9731d"
+	testHashAddress := swarm.MustParseHexAddress(testHashHex)
+	if !testHashAddress.Equal(resultAddress) {
+		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
+	}
+
+	ch, err := store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !cac.Valid(ch) {
+		t.Error("got invalid cac chunk")
 	}
 }
 
