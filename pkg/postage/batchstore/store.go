@@ -101,8 +101,16 @@ func (s *store) GetChainState() *postage.ChainState {
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
 
+	defer func(t time.Time) {
+		s.metrics.GetDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
+	}(time.Now())
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	defer func(t time.Time) {
+		s.metrics.GetDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
+	}(time.Now())
 
 	return s.get(id)
 }
@@ -121,8 +129,16 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
 
+	defer func(t time.Time) {
+		s.metrics.ExistsDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
+	}(time.Now())
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	defer func(t time.Time) {
+		s.metrics.ExistsDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
+	}(time.Now())
 
 	switch err := s.store.Get(batchKey(id), new(postage.Batch)); {
 	case err == nil:
