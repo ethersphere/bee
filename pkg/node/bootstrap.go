@@ -49,7 +49,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var snapshotFeed = swarm.MustParseHexAddress("b36f03d995a04df1757c3a5ddbb795f48d279c532b11803864503f6b97fb20e1")
+var snapshotFeed = swarm.MustParseHexAddress("b181b084df07a550c9fc0007110bff67000fa92a090af6c5212fe8e19f888a28")
 
 func bootstrapNode(
 	addr string,

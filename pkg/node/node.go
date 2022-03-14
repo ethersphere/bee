@@ -168,6 +168,7 @@ type Options struct {
 	Restricted                 bool
 	TokenEncryptionKey         string
 	AdminPasswordHash          string
+	UsePostageSnapshot         bool
 }
 
 const (
@@ -178,6 +179,7 @@ const (
 	postageSyncingBackoffTimeout  = 5 * time.Second
 	minPaymentThreshold           = 2 * refreshRate
 	maxPaymentThreshold           = 24 * refreshRate
+	mainnetNetworkID              = uint64(1)
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
@@ -218,13 +220,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
-
-	newStateStore := false
-	// Check if the overlay is found in the statestore. If not, we can assume it has
-	// not been created yet and treat this as a fresh install.
-	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); errors.Is(err, storage.ErrNotFound) {
-		newStateStore = true
-	}
 
 	addressbook := addressbook.New(stateStore)
 
@@ -454,10 +449,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
-	// bootstrap node to sync stamp events optimally by reading the events dump from the network
 	var initBatchState *postage.ChainSnapshot
-	// only use bootstrapping for mainnet nodes
-	if networkID == 1 && (newStateStore || o.Resync) {
+	if networkID == mainnetNetworkID && o.UsePostageSnapshot {
 		start := time.Now()
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(
