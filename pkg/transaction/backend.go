@@ -50,6 +50,9 @@ func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (boo
 	}
 
 	header, err := backend.HeaderByNumber(ctx, big.NewInt(int64(number)))
+	if errors.Is(err, ethereum.NotFound) {
+		return false, time.Time{}, nil
+	}
 	if err != nil {
 		return false, time.Time{}, err
 	}
