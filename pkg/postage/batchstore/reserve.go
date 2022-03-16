@@ -104,6 +104,9 @@ func (s *store) cleanup() error {
 	}
 
 	for _, b := range evictions {
+
+		s.logger.Debugf("batchstore: cleaning up batch %x", b.ID)
+
 		err := s.evictFn(b.ID)
 		if err != nil {
 			return err
@@ -167,6 +170,8 @@ func (s *store) computeRadius() error {
 		}
 	}
 
+	s.logger.Debugf("batchstore: computed radius %d", s.rs.Radius)
+
 	return s.store.Put(reserveStateKey, s.rs)
 }
 
@@ -203,6 +208,8 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, nil
 		}
 
+		s.logger.Debugf("batchstore: Unreserve callback batch %x storage radius %d", id, b.StorageRadius)
+
 		stopped, err = cb(id, b.StorageRadius)
 		if err != nil {
 			return false, err
@@ -229,6 +236,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		s.logger.Debugf("batchstore: new storage radius %d ", s.rs.StorageRadius)
 		return s.store.Put(reserveStateKey, s.rs)
 	}
 
@@ -252,6 +260,7 @@ func (s *store) lowerStorageRadius() error {
 
 		if b.StorageRadius > s.rs.StorageRadius {
 			b.StorageRadius = s.rs.StorageRadius
+			s.logger.Debugf("batchstore: lowering storage radius for batch %x from %d to %d", b.ID, b.StorageRadius, s.rs.StorageRadius)
 			updates = append(updates, b)
 		}
 
