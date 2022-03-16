@@ -57,6 +57,18 @@ func (r *releaseLocations) add(loc sharky.Location) {
 	*r = append(*r, loc)
 }
 
+func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
+	exist = make([]bool, len(chs))
+	for i, ch := range chs {
+		e, err := db.putSingle(ctx, mode, ch)
+		if err != nil {
+			return nil, err
+		}
+		exist[i] = e[0]
+	}
+	return exist, nil
+}
+
 // put stores Chunks to database and updates other indexes. It acquires batchMu
 // to protect two calls of this function for the same address in parallel. Item
 // fields Address and Data must not be with their nil values. If chunks with the
@@ -64,7 +76,7 @@ func (r *releaseLocations) add(loc sharky.Location) {
 // and following ones will have exist set to true for their index in exist
 // slice. This is the same behaviour as if the same chunks are passed one by one
 // in multiple put method calls.
-func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
+func (db *DB) putSingle(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
 	// this is an optimization that tries to optimize on already existing chunks
 	// not needing to acquire batchMu. This is in order to reduce lock contention
 	// when chunks are retried across the network for whatever reason.
