@@ -187,7 +187,7 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 	s.metrics.TotalReleaseCalls.Inc()
 	if err == nil {
 		shard := strconv.Itoa(int(sh.index))
-		s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
+		s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()
 		s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
 	} else {
 		s.metrics.TotalReleaseCallsErr.Inc()

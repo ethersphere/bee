@@ -320,6 +320,14 @@ func TestModePutSyncUpload_SameIndex(t *testing.T) {
 	if !yes {
 		t.Fatal("chunk should be there")
 	}
+
+	out, err := db.retrievalDataIndex.Get(chunkToItem(chunks[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	validateData(t, db, out, chunks[1].Data())
+
 	binIDs := make(map[uint8]uint64)
 
 	for _, ch := range chunks {

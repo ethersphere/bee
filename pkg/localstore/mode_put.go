@@ -295,7 +295,12 @@ func (db *DB) putRequest(
 			return false, 0, 0, err
 		}
 
-		l, err := sharky.LocationFromBinary(previous.Location)
+		previousIdx, err := db.retrievalDataIndex.Get(previous)
+		if err != nil {
+			return false, 0, 0, fmt.Errorf("could not fetch previous item: %w", err)
+		}
+
+		l, err := sharky.LocationFromBinary(previousIdx.Location)
 		if err != nil {
 			return false, 0, 0, err
 		}
@@ -383,7 +388,12 @@ func (db *DB) putUpload(
 			return false, 0, fmt.Errorf("same slot remove: %w", err)
 		}
 
-		l, err := sharky.LocationFromBinary(previous.Location)
+		previousIdx, err := db.retrievalDataIndex.Get(previous)
+		if err != nil {
+			return false, 0, fmt.Errorf("could not fetch previous item: %w", err)
+		}
+
+		l, err := sharky.LocationFromBinary(previousIdx.Location)
 		if err != nil {
 			return false, 0, err
 		}
@@ -443,7 +453,12 @@ func (db *DB) putSync(batch *leveldb.Batch, loc *releaseLocations, binIDs map[ui
 			return false, 0, 0, err
 		}
 
-		l, err := sharky.LocationFromBinary(previous.Location)
+		previousIdx, err := db.retrievalDataIndex.Get(previous)
+		if err != nil {
+			return false, 0, 0, fmt.Errorf("could not fetch previous item: %w", err)
+		}
+
+		l, err := sharky.LocationFromBinary(previousIdx.Location)
 		if err != nil {
 			return false, 0, 0, err
 		}
