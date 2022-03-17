@@ -120,6 +120,12 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
 
+	// call Unreserve once to increase storage radius of the test batch
+	batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil })
+
+	//get test batch after save call
+	stateStoreGet(t, stateStore, key, testBatch)
+
 	var have postage.Batch
 	stateStoreGet(t, stateStore, key, &have)
 	postagetest.CompareBatches(t, testBatch, &have)
@@ -128,6 +134,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 	if err := batchStore.Save(testBatch); err != nil {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
+
 	cnt := 0
 	if err := stateStore.Iterate(batchstore.ValueKey(testBatch.Value, testBatch.ID), func(k, v []byte) (stop bool, err error) {
 		cnt++

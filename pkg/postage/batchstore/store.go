@@ -187,12 +187,17 @@ func (s *store) Save(batch *postage.Batch) error {
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
+
+		batch.StorageRadius = s.rs.StorageRadius
+
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			return err
 		}
+
 		if err := s.saveBatch(batch); err != nil {
 			return err
 		}
+
 		if s.radiusSetter != nil {
 			s.radiusSetter.SetRadius(s.rs.Radius)
 		}
@@ -210,7 +215,9 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
+	oldBatch := &postage.Batch{}
+
+	switch err := s.store.Get(batchKey(batch.ID), oldBatch); {
 	case errors.Is(err, storage.ErrNotFound):
 		return ErrNotFound
 	case err != nil:
@@ -223,6 +230,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	batch.Value.Set(value)
 	batch.Depth = depth
+	batch.StorageRadius = oldBatch.StorageRadius
 
 	err := s.store.Put(batchKey(batch.ID), batch)
 	if err != nil {
