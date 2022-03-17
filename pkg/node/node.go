@@ -457,7 +457,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	var initBatchState *postage.ChainSnapshot
-	if networkID == mainnetNetworkID && o.UsePostageSnapshot && newStateStore {
+	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
+	// install or explicitly asked by user to resync
+	if networkID == mainnetNetworkID && o.UsePostageSnapshot && (newStateStore || o.Resync) {
 		start := time.Now()
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(
