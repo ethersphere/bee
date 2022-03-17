@@ -202,9 +202,12 @@ func (s *store) Save(batch *postage.Batch) error {
 			s.radiusSetter.SetRadius(s.rs.Radius)
 		}
 		return nil
+	case err == nil:
+		return fmt.Errorf("batchstore: save batch %s already exists", hex.EncodeToString(batch.ID))
 	case err != nil:
-		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batch.ID), err)
+		return fmt.Errorf("batchstore: get batch %s: %w", hex.EncodeToString(batch.ID), err)
 	}
+
 	return nil
 }
 

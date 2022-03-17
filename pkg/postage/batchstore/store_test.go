@@ -109,6 +109,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
+
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -121,7 +122,9 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 	}
 
 	// call Unreserve once to increase storage radius of the test batch
-	batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil })
+	if err := batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil }); err != nil {
+		t.Fatalf("storer.Unreserve(...): unexpected error: %v", err)
+	}
 
 	//get test batch after save call
 	stateStoreGet(t, stateStore, key, testBatch)
@@ -131,8 +134,8 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 	postagetest.CompareBatches(t, testBatch, &have)
 
 	// Check for idempotency.
-	if err := batchStore.Save(testBatch); err != nil {
-		t.Fatalf("storer.Save(...): unexpected error: %v", err)
+	if err := batchStore.Save(testBatch); err == nil {
+		t.Fatalf("storer.Save(...): expected error")
 	}
 
 	cnt := 0
