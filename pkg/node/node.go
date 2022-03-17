@@ -221,6 +221,13 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.stateStoreCloser = stateStore
 
+	newStateStore := false
+	// Check if the overlay is found in the statestore. If not, we can assume it has
+	// not been created yet and treat this as a fresh install.
+	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); errors.Is(err, storage.ErrNotFound) {
+		newStateStore = true
+	}
+
 	addressbook := addressbook.New(stateStore)
 
 	var (
@@ -450,7 +457,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	var initBatchState *postage.ChainSnapshot
-	if networkID == mainnetNetworkID && o.UsePostageSnapshot {
+	if networkID == mainnetNetworkID && o.UsePostageSnapshot && newStateStore {
 		start := time.Now()
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(
