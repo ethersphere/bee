@@ -261,7 +261,7 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 
 	s.cs = cs
 
-	s.logger.Debugf("batchstore: put chain state block %d amout %d price %d", cs.Block, cs.TotalAmount.Int64(), cs.CurrentPrice.Int64())
+	s.logger.Debugf("batchstore: put chain state block %d amount %d price %d", cs.Block, cs.TotalAmount.Int64(), cs.CurrentPrice.Int64())
 
 	err := s.cleanup()
 	if err != nil {
