@@ -161,12 +161,7 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err
 		}
-		stop, err := cb(b)
-		if stop {
-			return true, nil
-		}
-
-		return false, err
+		return cb(b)
 	})
 }
 
@@ -184,6 +179,8 @@ func (s *store) Save(batch *postage.Batch) error {
 	defer func(t time.Time) {
 		s.metrics.SaveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
 	}(time.Now())
+
+	s.logger.Debugf("batchstore: save batch %x depth %d value %d", batch.ID, batch.Depth, batch.Value.Int64())
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
@@ -219,6 +216,8 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	defer s.mtx.Unlock()
 
 	oldBatch := &postage.Batch{}
+
+	s.logger.Debugf("batchstore: update batch %x depth %d value %d", batch.ID, depth, value.Int64())
 
 	switch err := s.store.Get(batchKey(batch.ID), oldBatch); {
 	case errors.Is(err, storage.ErrNotFound):
@@ -261,6 +260,8 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	defer s.mtx.Unlock()
 
 	s.cs = cs
+
+	s.logger.Debugf("batchstore: put chain state block %d amout %d price %d", cs.Block, cs.TotalAmount.Int64(), cs.CurrentPrice.Int64())
 
 	err := s.cleanup()
 	if err != nil {
