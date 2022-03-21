@@ -413,7 +413,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 				p.logger.Tracef("liveSyncWorker context cancelled. peer %s bin %d cur %d", peer, bin, cur)
 			}
 			return
-		default:
 		}
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, math.MaxUint64)
 		if err != nil {
