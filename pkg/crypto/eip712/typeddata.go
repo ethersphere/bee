@@ -7,15 +7,15 @@ package eip712
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/signer/core"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 )
 
 // type aliases to avoid importing "core" everywhere
-type TypedData = core.TypedData
-type TypedDataDomain = core.TypedDataDomain
-type Types = core.Types
-type Type = core.Type
-type TypedDataMessage = core.TypedDataMessage
+type TypedData = apitypes.TypedData
+type TypedDataDomain = apitypes.TypedDataDomain
+type Types = apitypes.Types
+type Type = apitypes.Type
+type TypedDataMessage = apitypes.TypedDataMessage
 
 // EncodeForSigning encodes the hash that will be signed for the given EIP712 data
 func EncodeForSigning(typedData *TypedData) ([]byte, error) {
