@@ -114,7 +114,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
-
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 		maxPeers := 1
 		if origin {
@@ -155,7 +154,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					// cancel the goroutine just with the timeout
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
-
 					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
 					select {
 					case resultC <- retrievalResult{
@@ -309,7 +307,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		s.metrics.TotalErrors.Inc()
 		return nil, peer, false, fmt.Errorf("write request: %w peer %s", err, peer.String())
 	}
-
 	var d pb.Delivery
 	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
 		s.metrics.TotalErrors.Inc()

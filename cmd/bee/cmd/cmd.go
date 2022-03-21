@@ -82,6 +82,7 @@ const (
 	optionNameRestrictedAPI              = "restricted"
 	optionNameTokenEncryptionKey         = "token-encryption-key"
 	optionNameAdminPasswordHash          = "admin-password"
+	optionNameUsePostageSnapshot         = "use-postage-snapshot"
 )
 
 func init() {
@@ -277,6 +278,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
 	cmd.Flags().String(optionNameTokenEncryptionKey, "", "admin username to get the security token")
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
+	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {

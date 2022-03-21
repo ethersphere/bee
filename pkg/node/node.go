@@ -168,6 +168,7 @@ type Options struct {
 	Restricted                 bool
 	TokenEncryptionKey         string
 	AdminPasswordHash          string
+	UsePostageSnapshot         bool
 }
 
 const (
@@ -176,9 +177,13 @@ const (
 	basePrice                     = 10000
 	postageSyncingStallingTimeout = 10 * time.Minute
 	postageSyncingBackoffTimeout  = 5 * time.Second
+	minPaymentThreshold           = 2 * refreshRate
+	maxPaymentThreshold           = 24 * refreshRate
+	mainnetNetworkID              = uint64(1)
 )
 
 func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -215,6 +220,13 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
+
+	newStateStore := false
+	// Check if the overlay is found in the statestore. If not, we can assume it has
+	// not been created yet and treat this as a fresh install.
+	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); errors.Is(err, storage.ErrNotFound) {
+		newStateStore = true
+	}
 
 	addressbook := addressbook.New(stateStore)
 
@@ -407,6 +419,75 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
 	}
 
+	var bootnodes []ma.Multiaddr
+
+	for _, a := range o.Bootnodes {
+		addr, err := ma.NewMultiaddr(a)
+		if err != nil {
+			logger.Debugf("multiaddress fail %s: %v", a, err)
+			logger.Warningf("invalid bootnode address %s", a)
+			continue
+		}
+
+		bootnodes = append(bootnodes, addr)
+	}
+
+	// Perform checks related to payment threshold calculations here to not duplicate
+	// the checks in bootstrap process
+	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
+	}
+
+	if paymentThreshold.Cmp(big.NewInt(minPaymentThreshold)) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %d", minPaymentThreshold)
+	}
+
+	if paymentThreshold.Cmp(big.NewInt(maxPaymentThreshold)) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %d", maxPaymentThreshold)
+	}
+
+	if o.PaymentTolerance < 0 {
+		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
+	}
+
+	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
+		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
+	}
+
+	var initBatchState *postage.ChainSnapshot
+	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
+	// install or explicitly asked by user to resync
+	if networkID == mainnetNetworkID && o.UsePostageSnapshot && (newStateStore || o.Resync) {
+		start := time.Now()
+		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
+		initBatchState, err = bootstrapNode(
+			addr,
+			swarmAddress,
+			txHash,
+			chainID,
+			overlayEthAddress,
+			addressbook,
+			bootnodes,
+			lightNodes,
+			senderMatcher,
+			chequebookService,
+			chequeStore,
+			cashoutService,
+			transactionService,
+			stateStore,
+			signer,
+			networkID,
+			logger,
+			libp2pPrivateKey,
+			o,
+		)
+		logger.Infof("bootstrapper done, took %s", time.Since(start))
+		if err != nil {
+			return nil, fmt.Errorf("bootstrapper failed to fetch batch state: %w", err)
+		}
+	}
+
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
@@ -540,19 +621,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.hiveCloser = hive
 
-	var bootnodes []ma.Multiaddr
-
-	for _, a := range o.Bootnodes {
-		addr, err := ma.NewMultiaddr(a)
-		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
-			continue
-		}
-
-		bootnodes = append(bootnodes, addr)
-	}
-
 	var swapService *swap.Service
 
 	metricsDB, err := shed.NewDBWrap(stateStore.DB())
@@ -572,7 +640,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil && chainEnabled {
-		syncedChan, err := batchSvc.Start(postageSyncStart)
+		syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
 		if err != nil {
 			return nil, fmt.Errorf("unable to start batch service: %w", err)
 		}
@@ -587,25 +655,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	}
 
-	minThreshold := big.NewInt(2 * refreshRate)
-	maxThreshold := big.NewInt(24 * refreshRate)
-
-	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
-	}
-
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	if paymentThreshold.Cmp(minThreshold) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
-	}
-
-	if paymentThreshold.Cmp(maxThreshold) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
-	}
-
-	pricing := pricing.New(p2ps, logger, paymentThreshold, minThreshold)
+	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
@@ -618,14 +670,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	for _, addr := range addrs {
 		logger.Debugf("p2p address: %s", addr)
-	}
-
-	if o.PaymentTolerance < 0 {
-		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
-	}
-
-	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
-		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
 	acc, err := accounting.NewAccounting(
@@ -904,11 +948,15 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 
 	// halt kademlia while shutting down other
 	// components.
-	b.topologyHalter.Halt()
+	if b.topologyHalter != nil {
+		b.topologyHalter.Halt()
+	}
 
 	// halt p2p layer from accepting new connections
 	// while shutting down other components
-	b.p2pHalter.Halt()
+	if b.p2pHalter != nil {
+		b.p2pHalter.Halt()
+	}
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
 	tryClose := func(c io.Closer, errMsg string) {
