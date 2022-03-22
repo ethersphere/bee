@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -28,6 +30,7 @@ import (
 	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
+	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
@@ -39,7 +42,10 @@ const (
 
 	addPeerBatchSize = 500
 
-	peerConnectionAttemptTimeout = 5 * time.Second // timeout for establishing a new connection with peer.
+	// To avoid context.Timeout errors during network failure, the value of
+	// the peerConnectionAttemptTimeout constant must be equal to or greater
+	// than 15 seconds (empirically verified).
+	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
 	flagTimeout      = 5 * time.Minute  // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
@@ -917,6 +923,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
+	case isNetworkUnreachableError(err):
+		k.metrics.NetworkUnreachableErrors.Inc()
+		return nil // Don't change the know peers list when there is a network outage.
 	case err != nil:
 		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
@@ -1620,6 +1629,36 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
 		Reachability:               ss.Reachability.String(),
 	}
+}
+
+// isNetworkUnreachableError determines based on the
+// given error whether the network is unreachable.
+func isNetworkUnreachableError(err error) bool {
+	var de *lp2pswarm.DialError
+	if !errors.As(err, &de) {
+		return false
+	}
+
+	// Since TransportError doesn't implement the Unwrap
+	// method we need to inspect the errors manually.
+	for i := range de.DialErrors {
+		var te *lp2pswarm.TransportError
+		if !errors.As(&de.DialErrors[i], &te) {
+			continue
+		}
+
+		var ne *net.OpError
+		if !errors.As(te.Cause, &ne) || ne.Op != "dial" {
+			continue
+		}
+
+		var se *os.SyscallError
+		if errors.As(ne, &se) && strings.HasPrefix(se.Syscall, "connect") &&
+			(errors.Is(se.Err, errHostUnreachable) || errors.Is(se.Err, errNetworkUnreachable)) {
+			return true
+		}
+	}
+	return false
 }
 
 // isNetworkError is checking various conditions that relate to network problems.
