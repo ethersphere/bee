@@ -203,7 +203,8 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, err
 		}
 
-		// skip eviction if previous eviction has higher radius
+		// skip eviction and try the next batch if the batch storage radius is higher than
+		// the global storage radius.
 		if b.StorageRadius > s.rs.StorageRadius {
 			return false, nil
 		}
@@ -215,6 +216,10 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, err
 		}
 
+		// each call of Unreseve means that the eviction of chunks is required to recover storage space, as such,
+		// the storage radius of the batch is inreased so that future Unreserve calls will
+		// evict higher PO chunks of the batch. When the storage radius of a batch becomes higher than
+		// the global storage radius, other batches are attemped for eviction.
 		b.StorageRadius++
 
 		updates = append(updates, b)
