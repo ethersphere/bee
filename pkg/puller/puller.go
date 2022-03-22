@@ -402,7 +402,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		p.metrics.LiveWorkerIterCounter.Inc()
 		select {
 		case <-time.After(2 * time.Second):
-			p.logger.Debug("liveSyncWorker: SyncInterval hit 2 seconds")
+			p.logger.Debug("liveSyncWorker: throttled SyncInterval for 2 seconds")
 		case <-p.quit:
 			if logMore {
 				p.logger.Tracef("liveSyncWorker quit on shutdown. peer %s bin %d cur %d", peer, bin, cur)
