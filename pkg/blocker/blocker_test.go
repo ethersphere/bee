@@ -6,6 +6,7 @@ package blocker_test
 
 import (
 	"io/ioutil"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,15 @@ var (
 	addr      = test.RandomAddress()
 	logger    = logging.New(ioutil.Discard, 0)
 )
+
+func TestMain(m *testing.M) {
+	defer func(resolution time.Duration) {
+		*blocker.Resolution = resolution
+	}(*blocker.Resolution)
+	*blocker.Resolution = time.Millisecond
+
+	os.Exit(m.Run())
+}
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
 	var (
