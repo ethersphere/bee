@@ -219,7 +219,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		// each call of Unreseve means that the eviction of chunks is required to recover storage space, as such,
 		// the storage radius of the batch is inreased so that future Unreserve calls will
 		// evict higher PO chunks of the batch. When the storage radius of a batch becomes higher than
-		// the global storage radius, other batches are attemped for eviction.
+		// the global storage radius, other batches are attempted for eviction.
 		b.StorageRadius++
 
 		updates = append(updates, b)
