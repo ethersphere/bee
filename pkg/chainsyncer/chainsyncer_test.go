@@ -53,9 +53,9 @@ func TestChainsyncer(t *testing.T) {
 		proofBlockHash = blockHash
 		return func(t *testing.T) {
 			cs, err := chainsyncer.New(backend, p, topology, d, logger, &chainsyncer.Options{
-				FlagTimeout:     500 * time.Millisecond,
-				PollEvery:       100 * time.Millisecond,
-				BlockerPollTime: 100 * time.Millisecond,
+				FlagTimeout:     1500 * time.Millisecond,
+				PollEvery:       1100 * time.Millisecond,
+				BlockerPollTime: 1100 * time.Millisecond,
 			})
 			if err != nil {
 				t.Fatal(err)
