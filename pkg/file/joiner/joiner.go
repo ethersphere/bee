@@ -143,12 +143,8 @@ func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffse
 					return err
 				}
 
-				chData := ch.Data()
-				data := make([]byte, len(chData))
-				copy(data, chData)
-
-				chunkData := data[8:]
-				subtrieSpan := int64(chunkToSpan(data))
+				chunkData := ch.Data()[8:]
+				subtrieSpan := int64(chunkToSpan(ch.Data()))
 
 				if subtrieSpan > subtrieSpanLimit {
 					return ErrMalformedTrie
@@ -275,12 +271,8 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 					return err
 				}
 
-				chData := ch.Data()
-				data := make([]byte, len(chData))
-				copy(data, chData)
-
-				chunkData := data[8:]
-				subtrieSpan := int64(chunkToSpan(data))
+				chunkData := ch.Data()[8:]
+				subtrieSpan := int64(chunkToSpan(ch.Data()))
 
 				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan)
 			})
