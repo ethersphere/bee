@@ -212,7 +212,9 @@ func (c *chunk) Address() Address {
 }
 
 func (c *chunk) Data() []byte {
-	return c.sdata
+	d := make([]byte, len(c.sdata))
+	copy(d, c.sdata)
+	return d
 }
 
 func (c *chunk) TagID() uint32 {
