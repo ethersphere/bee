@@ -72,7 +72,7 @@ BEE_RESOLVER_OPTIONS=[https://cloudflare-eth.com]
 ## enable swap (default true)
 # BEE_SWAP_ENABLE=true
 ## swap ethereum blockchain endpoint (default ws://localhost:8546)
-BEE_SWAP_ENDPOINT=https://rpc.xdaichain.com
+BEE_SWAP_ENDPOINT=https://rpc.gnosischain.com
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
 ## legacy swap factory addresses

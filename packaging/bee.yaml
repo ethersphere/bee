@@ -67,7 +67,7 @@ resolver-options: [https://cloudflare-eth.com]
 ## enable swap (default true)
 # swap-enable: true
 ## swap ethereum blockchain endpoint (default "ws://localhost:8546")
-swap-endpoint: https://rpc.xdaichain.com
+swap-endpoint: https://rpc.gnosischain.com
 ## swap factory address
 # swap-factory-address: ""
 ## legacy swap factory addresses
