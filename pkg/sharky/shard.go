@@ -93,6 +93,16 @@ type shard struct {
 func (sh *shard) process() {
 	var writes chan write
 	var slot uint32
+	defer func() {
+		// this condition checks if an slot is in limbo (popped but not used for write op)
+		if writes != nil {
+			sh.slots.limboWG.Add(1)
+			go func() {
+				defer sh.slots.limboWG.Done()
+				sh.slots.in <- slot
+			}()
+		}
+	}()
 	free := sh.slots.out
 LOOP:
 	for {
@@ -102,9 +112,15 @@ LOOP:
 			// this will block any writes on this shard effectively making store-wide
 			// write op to use a differenct shard while this one is busy
 			for {
-				sh.errc <- sh.read(op)
+				select {
+				case sh.errc <- sh.read(op):
+				case <-sh.quit:
+					return
+				}
 				select {
 				case op = <-sh.reads:
+				case <-sh.quit:
+					return
 				default:
 					continue LOOP
 				}
@@ -124,14 +140,6 @@ LOOP:
 			free = nil         // disabling getting a new slot until a write is actually done
 
 		case <-sh.quit:
-			// this condition checks if an slot is in limbo (popped but not used for write op)
-			if writes != nil {
-				sh.slots.limboWG.Add(1)
-				go func() {
-					defer sh.slots.limboWG.Done()
-					sh.slots.in <- slot
-				}()
-			}
 			return
 		}
 	}
