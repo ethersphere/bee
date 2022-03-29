@@ -663,11 +663,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		minThreshold = big.NewInt(2 * lightRefreshRate)
 	}
 
-	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
-	}
-
 	lightPaymentThreshold := new(big.Int).Div(paymentThreshold, big.NewInt(lightFactor))
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
