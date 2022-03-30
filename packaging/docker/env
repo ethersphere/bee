@@ -3,7 +3,7 @@
 ### CLEF
 
 ## chain id to use for signing (100=mainnet(xdai), 5=testnet(goerli)) (default: 12345)
-CLEF_CHAINID=100
+CLEF_CHAINID=5
 
 ### BEE
 
@@ -68,11 +68,11 @@ BEE_CLEF_SIGNER_ENABLE=true
 ## postage stamp contract address
 # BEE_POSTAGE_STAMP_ADDRESS=
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
-BEE_RESOLVER_OPTIONS=[https://cloudflare-eth.com]
+# BEE_RESOLVER_OPTIONS=[]
 ## enable swap (default true)
 # BEE_SWAP_ENABLE=true
 ## swap ethereum blockchain endpoint (default ws://localhost:8546)
-BEE_SWAP_ENDPOINT=https://rpc.gnosischain.com
+# BEE_SWAP_ENDPOINT=ws://localhost:8546
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
 ## legacy swap factory addresses

@@ -51,13 +51,13 @@ password-file: ./password
 ## postage stamp contract address
 # postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
-resolver-options: [https://cloudflare-eth.com]
+# resolver-options: []
 ## use a blockchain backend (default true)
 # chain-enable: true
 ## enable swap (default true)
 # swap-enable: true
 ## swap ethereum blockchain endpoint (default "ws://localhost:8546")
-swap-endpoint: https://rpc.gnosischain.com
+# swap-endpoint: ws://localhost:8546
 ## swap factory address
 # swap-factory-address: ""
 ## legacy swap factory addresses
