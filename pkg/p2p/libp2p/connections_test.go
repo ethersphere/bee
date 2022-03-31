@@ -864,7 +864,7 @@ func TestWithDisconnectStreams(t *testing.T) {
 	defer func(t time.Duration) {
 		*libp2p.SendHeadersTimeout = t
 	}(*libp2p.SendHeadersTimeout)
-	*libp2p.SendHeadersTimeout = 60
+	*libp2p.SendHeadersTimeout = 60 * time.Second
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
