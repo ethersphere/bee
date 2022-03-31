@@ -860,6 +860,12 @@ func TestTopologyOverSaturated(t *testing.T) {
 }
 
 func TestWithDisconnectStreams(t *testing.T) {
+
+	defer func(t time.Duration) {
+		*libp2p.SendHeadersTimeout = t
+	}(*libp2p.SendHeadersTimeout)
+	*libp2p.SendHeadersTimeout = 60 * time.Second
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1117,7 +1123,7 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 
 		select {
 		// because read could block without erroring we should also expect timeout
-		case <-time.After(10 * time.Second):
+		case <-time.After(60 * time.Second):
 			t.Error("expected stream reset error, got timeout reading")
 		case err := <-readErr:
 			if !errors.Is(err, mux.ErrReset) {
