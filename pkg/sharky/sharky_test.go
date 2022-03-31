@@ -254,7 +254,6 @@ func TestConcurrency(t *testing.T) {
 		// the store has extra slots capacity
 		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 		for i := 0; i < extraSlots; i++ {
-			t.Logf("checking extra slot %d\n", i)
 			_, err = s.Write(cctx, []byte{0})
 			if err != nil {
 				t.Fatal(err)

@@ -860,6 +860,12 @@ func TestTopologyOverSaturated(t *testing.T) {
 }
 
 func TestWithDisconnectStreams(t *testing.T) {
+
+	defer func(t time.Duration) {
+		*libp2p.SendHeadersTimeout = t
+	}(*libp2p.SendHeadersTimeout)
+	*libp2p.SendHeadersTimeout = 60
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
