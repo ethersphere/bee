@@ -29,7 +29,6 @@ import (
 func TestBytes(t *testing.T) {
 	const (
 		resource = "/bytes"
-		targets  = "0x222"
 		expHash  = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
 	)
 
@@ -120,14 +119,6 @@ func TestBytes(t *testing.T) {
 
 		if !bytes.Equal(data, content) {
 			t.Fatalf("data mismatch. got %s, want %s", string(data), string(content))
-		}
-	})
-
-	t.Run("download-with-targets", func(t *testing.T) {
-		resp := request(t, client, http.MethodGet, resource+"/"+expHash+"?targets="+targets, nil, http.StatusOK)
-
-		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {
-			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
 		}
 	})
 
