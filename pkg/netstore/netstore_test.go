@@ -18,8 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -246,11 +244,11 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore(t *testing.T, rec recovery.Callback, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
+func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(io.Discard, 0)
-	ns = netstore.New(store, validStamp, rec, retrieve, logger)
+	ns = netstore.New(store, validStamp, retrieve, logger)
 	t.Cleanup(func() {
 		err := ns.Close()
 		if err != nil {
@@ -275,19 +273,6 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address, o
 	atomic.AddInt32(&r.callCount, 1)
 	r.addr = addr
 	return testChunk.WithStamp(chunkStamp), nil
-}
-
-type mockRecovery struct {
-	callbackC chan bool
-}
-
-// Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets) {
-	mr.callbackC <- true
-}
-
-func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address, orig bool) (chunk swarm.Chunk, err error) {
-	return nil, fmt.Errorf("chunk not found")
 }
 
 var noopValidStamp = func(c swarm.Chunk, _ []byte) (swarm.Chunk, error) {

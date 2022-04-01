@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -32,14 +31,13 @@ const (
 
 type store struct {
 	storage.Storer
-	retrieval        retrieval.Interface
-	logger           logging.Logger
-	validStamp       postage.ValidStampFn
-	recoveryCallback recovery.Callback // this is the callback to be executed when a chunk fails to be retrieved
-	bgWorkers        chan struct{}
-	sCtx             context.Context
-	sCancel          context.CancelFunc
-	wg               sync.WaitGroup
+	retrieval  retrieval.Interface
+	logger     logging.Logger
+	validStamp postage.ValidStampFn
+	bgWorkers  chan struct{}
+	sCtx       context.Context
+	sCancel    context.CancelFunc
+	wg         sync.WaitGroup
 }
 
 var (
@@ -48,8 +46,8 @@ var (
 )
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callback, r retrieval.Interface, logger logging.Logger) storage.Storer {
-	ns := &store{Storer: s, validStamp: validStamp, recoveryCallback: rcb, retrieval: r, logger: logger}
+func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interface, logger logging.Logger) storage.Storer {
+	ns := &store{Storer: s, validStamp: validStamp, retrieval: r, logger: logger}
 	ns.sCtx, ns.sCancel = context.WithCancel(context.Background())
 	ns.bgWorkers = make(chan struct{}, maxBgPutters)
 	return ns
@@ -78,11 +76,9 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
 			if err != nil {
 				targets := sctx.GetTargets(ctx)
-				if targets == nil || s.recoveryCallback == nil {
+				if targets == nil {
 					return nil, err
 				}
-				go s.recoveryCallback(addr, targets)
-				return nil, ErrRecoveryAttempt
 			}
 			s.wg.Add(1)
 			s.put(ch, mode)
