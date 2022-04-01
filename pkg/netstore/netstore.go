@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/retrieval"
-	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -75,10 +74,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
 			if err != nil {
-				targets := sctx.GetTargets(ctx)
-				if targets == nil {
-					return nil, err
-				}
+				return nil, err
 			}
 			s.wg.Add(1)
 			s.put(ch, mode)
