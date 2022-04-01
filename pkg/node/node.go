@@ -106,14 +106,13 @@ type Bee struct {
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
-	// recoveryHandleCleanup    func()
-	listenerCloser       io.Closer
-	postageServiceCloser io.Closer
-	priceOracleCloser    io.Closer
-	hiveCloser           io.Closer
-	chainSyncerCloser    io.Closer
-	shutdownInProgress   bool
-	shutdownMutex        sync.Mutex
+	listenerCloser           io.Closer
+	postageServiceCloser     io.Closer
+	priceOracleCloser        io.Closer
+	hiveCloser               io.Closer
+	chainSyncerCloser        io.Closer
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
 }
 
 type Options struct {
