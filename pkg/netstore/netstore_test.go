@@ -18,9 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/recovery"
-	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -32,7 +29,7 @@ var chunkStamp = postagetesting.MustNewStamp()
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := swarm.MustParseHexAddress("000001")
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -73,7 +70,7 @@ func TestNetstoreRetrieval(t *testing.T) {
 // TestNetstoreNoRetrieval verifies that a chunk is not requested from the network
 // whenever it is found locally.
 func TestNetstoreNoRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := swarm.MustParseHexAddress("000001")
 
 	// store should have the chunk in advance
@@ -97,49 +94,11 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 	}
 }
 
-func TestRecovery(t *testing.T) {
-	callbackWasCalled := make(chan bool, 1)
-	rec := &mockRecovery{
-		callbackC: callbackWasCalled,
-	}
-
-	retrieve, _, nstore := newRetrievingNetstore(t, rec.recovery, noopValidStamp)
-	addr := swarm.MustParseHexAddress("deadbeef")
-	retrieve.failure = true
-	ctx := context.Background()
-	ctx = sctx.SetTargets(ctx, "be, cd")
-
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-callbackWasCalled:
-		break
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery callback was not called")
-	}
-}
-
-func TestInvalidRecoveryFunction(t *testing.T) {
-	retrieve, _, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
-	addr := swarm.MustParseHexAddress("deadbeef")
-	retrieve.failure = true
-	ctx := context.Background()
-	ctx = sctx.SetTargets(ctx, "be, cd")
-
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && err.Error() != "chunk not found" {
-		t.Fatal(err)
-	}
-}
-
 func TestInvalidPostageStamp(t *testing.T) {
 	f := func(c swarm.Chunk, _ []byte) (swarm.Chunk, error) {
 		return nil, errors.New("invalid postage stamp")
 	}
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, f)
+	retrieve, store, nstore := newRetrievingNetstore(t, f)
 	addr := swarm.MustParseHexAddress("000001")
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -199,11 +158,11 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore(t *testing.T, rec recovery.Callback, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
+func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := logging.New(io.Discard, 0)
-	ns = netstore.New(store, validStamp, rec, retrieve, logger)
+	ns = netstore.New(store, validStamp, retrieve, logger)
 	t.Cleanup(func() {
 		err := ns.Close()
 		if err != nil {
@@ -228,19 +187,6 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address, o
 	atomic.AddInt32(&r.callCount, 1)
 	r.addr = addr
 	return swarm.NewChunk(addr, chunkData).WithStamp(chunkStamp), nil
-}
-
-type mockRecovery struct {
-	callbackC chan bool
-}
-
-// Send mocks the pss Send function
-func (mr *mockRecovery) recovery(chunkAddress swarm.Address, targets pss.Targets) {
-	mr.callbackC <- true
-}
-
-func (r *mockRecovery) RetrieveChunk(ctx context.Context, addr swarm.Address, orig bool) (chunk swarm.Chunk, err error) {
-	return nil, fmt.Errorf("chunk not found")
 }
 
 var noopValidStamp = func(c swarm.Chunk, _ []byte) (swarm.Chunk, error) {
