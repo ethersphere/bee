@@ -663,11 +663,6 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
-    SwarmRecoveryTargets:
-      description: "The targets provided for recovery"
-      schema:
-        type: string
-
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
@@ -695,14 +690,6 @@ components:
         $ref: "SwarmCommon.yaml#/components/schemas/GasLimit"
       required: false
       description: "Gas limit for transaction"
-
-    SwarmRecoveryTargetsParameter:
-      in: query
-      name: targets
-      schema:
-        type: string
-      required: false
-      description: Global pinning targets prefix
 
     SwarmTagParameter:
       in: header
