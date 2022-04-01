@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/retrieval"
-	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -37,10 +36,6 @@ type store struct {
 	sCancel    context.CancelFunc
 	wg         sync.WaitGroup
 }
-
-var (
-	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
-)
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interface, logger logging.Logger) storage.Storer {
@@ -61,10 +56,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			// request from network
 			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
 			if err != nil {
-				targets := sctx.GetTargets(ctx)
-				if targets == nil {
-					return nil, err
-				}
+				return nil, err
 			}
 			s.wg.Add(1)
 			s.put(ch, mode)
