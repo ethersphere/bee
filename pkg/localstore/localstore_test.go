@@ -188,7 +188,6 @@ func TestParallelPutAndGet(t *testing.T) {
 	readWorkerCount := 10
 
 	for worker := 0; worker < readWorkerCount; worker++ {
-		worker := worker
 		readWG.Add(1)
 		go func() {
 			defer readWG.Done()
@@ -200,8 +199,6 @@ func TestParallelPutAndGet(t *testing.T) {
 				ch := chunks[n]
 
 				chData := ch.Data()
-
-				ctx := context.WithValue(ctx, "A", fmt.Sprintf("%v-%v-%s", worker, i, ch.Address()))
 
 				got, err := db.Get(ctx, storage.ModeGetRequest, ch.Address())
 				if err != nil {
