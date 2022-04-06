@@ -65,10 +65,11 @@ var (
 )
 
 var (
-	errOverlayMismatch   = errors.New("overlay mismatch")
-	errPruneEntry        = errors.New("prune entry")
-	errEmptyBin          = errors.New("empty bin")
-	errAnnounceLightNode = errors.New("announcing light node")
+	errNetworkUnavailable = errors.New("network unavailable")
+	errOverlayMismatch    = errors.New("overlay mismatch")
+	errPruneEntry         = errors.New("prune entry")
+	errEmptyBin           = errors.New("empty bin")
+	errAnnounceLightNode  = errors.New("announcing light node")
 )
 
 type (
@@ -355,6 +356,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
+		case errors.Is(err, errNetworkUnavailable):
+			k.logger.Debugf("kademlia: network unavailable for overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
+			return
 		case errors.Is(err, errPruneEntry):
 			k.logger.Debugf("kademlia: dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
 			remove(peer)
@@ -601,18 +605,20 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			l, err := k.pinger.Ping(ctx, addr, "ping")
-			if err != nil {
+			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
+			case !k.isNetworkAvailable(err):
+				k.logger.Tracef("kademlia: network unavailable for peer %s: %v", addr.String(), err)
+			case err != nil:
 				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
 				k.blocker.Flag(addr)
 				k.metrics.Flag.Inc()
-				return
+			default:
+				k.blocker.Unflag(addr)
+				k.metrics.Unflag.Inc()
+				k.collector.Record(addr, im.PeerLatency(l))
+				v := k.collector.Inspect(addr).LatencyEWMA
+				k.metrics.PeerLatencyEWMA.Observe(v.Seconds())
 			}
-			k.blocker.Unflag(addr)
-			k.metrics.Unflag.Inc()
-			k.collector.Record(addr, im.PeerLatency(l))
-			v := k.collector.Inspect(addr).LatencyEWMA
-			k.metrics.PeerLatencyEWMA.Observe(v.Seconds())
 		}()
 		return false, false, nil
 	})
@@ -923,9 +929,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
-	case isNetworkUnreachableError(err):
-		k.metrics.NetworkUnreachableErrors.Inc()
-		return nil // Don't change the know peers list when there is a network outage.
+	case !k.isNetworkAvailable(err):
+		return errNetworkUnavailable
 	case err != nil:
 		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
@@ -1613,27 +1618,22 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	return peers[rndIndx.Int64()], nil
 }
 
-// createMetricsSnapshotView creates new topology.MetricSnapshotView from the
-// given metrics.Snapshot and rounds all the timestamps and durations to its
-// nearest second, except for the peer latency, which is given in milliseconds.
-func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
-	if ss == nil {
-		return nil
+// isNetworkAvailable determines based on the
+// given error whether the network is available/unavailable
+// and base on the result also resumes/suspends the blocker.
+func (k *Kad) isNetworkAvailable(err error) (available bool) {
+	if isNetworkOrHostUnreachableError(err) {
+		k.metrics.NetworkUnavailableErrors.Inc()
+		k.blocker.Suspend()
+		return false
 	}
-	return &topology.MetricSnapshotView{
-		LastSeenTimestamp:          time.Unix(0, ss.LastSeenTimestamp).Unix(),
-		SessionConnectionRetry:     ss.SessionConnectionRetry,
-		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
-		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
-		SessionConnectionDirection: string(ss.SessionConnectionDirection),
-		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
-		Reachability:               ss.Reachability.String(),
-	}
+	k.blocker.Resume()
+	return true
 }
 
-// isNetworkUnreachableError determines based on the
-// given error whether the network is unreachable.
-func isNetworkUnreachableError(err error) bool {
+// isNetworkOrHostUnreachableError determines based on the
+// given error whether the host or network is unavailable.
+func isNetworkOrHostUnreachableError(err error) bool {
 	var de *lp2pswarm.DialError
 	if !errors.As(err, &de) {
 		return false
@@ -1659,6 +1659,24 @@ func isNetworkUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+// createMetricsSnapshotView creates new topology.MetricSnapshotView from the
+// given metrics.Snapshot and rounds all the timestamps and durations to its
+// nearest second, except for the peer latency, which is given in milliseconds.
+func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
+	if ss == nil {
+		return nil
+	}
+	return &topology.MetricSnapshotView{
+		LastSeenTimestamp:          time.Unix(0, ss.LastSeenTimestamp).Unix(),
+		SessionConnectionRetry:     ss.SessionConnectionRetry,
+		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
+		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
+		SessionConnectionDirection: string(ss.SessionConnectionDirection),
+		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
+		Reachability:               ss.Reachability.String(),
+	}
 }
 
 // isNetworkError is checking various conditions that relate to network problems.
