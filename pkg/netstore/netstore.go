@@ -68,6 +68,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 		if !cac.Valid(ch) && !soc.Valid(ch) {
 			err = errors.New("invalid chunk")
 			ch = nil
+			s.logger.Warning("netstore: got invalid chunk from localstore, falling back to retrieval")
 		}
 	}
 	if err != nil {
