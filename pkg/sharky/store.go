@@ -91,7 +91,7 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 	}
 	sh := &shard{
 		reads:       make(chan read),
-		errc:        make(chan error, 1), // buffer to avoid deadlock on quit
+		errc:        make(chan error),
 		writes:      s.writes,
 		index:       index,
 		maxDataSize: maxDataSize,
