@@ -110,6 +110,7 @@ jobs:
         run: |
           bash .github/bin/beekeeper_artifacts.sh
       - uses: actions/upload-artifact@v3
+        if: failure()
         with:
           name: debug-dump
           path: dump/
