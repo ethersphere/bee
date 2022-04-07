@@ -15,11 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -41,7 +43,8 @@ type store struct {
 }
 
 var (
-	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
+	ErrRecoveryAttempt   = errors.New("failed to retrieve chunk, recovery initiated")
+	errInvalidLocalChunk = errors.New("invalid chunk found locally")
 )
 
 // New returns a new NetStore that wraps a given Storer.
@@ -58,8 +61,19 @@ func New(s storage.Storer, validStamp postage.ValidStampFn, rcb recovery.Callbac
 // local-store.
 func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	ch, err = s.Storer.Get(ctx, mode, addr)
+	if err == nil {
+		// ensure the chunk we get locally is valid. If not, retrieve the chunk
+		// from network. If there is any corruption of data in the local storage,
+		// this would ensure it is retrieved again from network and added back with
+		// the correct data
+		if !cac.Valid(ch) && !soc.Valid(ch) {
+			err = errInvalidLocalChunk
+			ch = nil
+			s.logger.Warning("netstore: got invalid chunk from localstore, falling back to retrieval")
+		}
+	}
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, errInvalidLocalChunk) {
 			// request from network
 			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
 			if err != nil {

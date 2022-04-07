@@ -148,6 +148,78 @@ func TestDB_updateGCSem(t *testing.T) {
 	}
 }
 
+// TestParallelPutAndGet validates that the integrity of the chunks in
+// concurrent operations is preserved.
+func TestParallelPutAndGet(t *testing.T) {
+	db := newTestDB(t, nil)
+
+	ctx := context.Background()
+
+	chunkCount := 1000
+	writeWorkerCount := 10
+
+	chunks := make([]swarm.Chunk, 0, chunkCount)
+	var chunksMu sync.Mutex
+	var writeWG sync.WaitGroup
+
+	for worker := 0; worker < writeWorkerCount; worker++ {
+		writeWG.Add(1)
+		go func() {
+			defer writeWG.Done()
+
+			for i := 0; i < chunkCount/writeWorkerCount; i++ {
+				ch := generateTestRandomChunk()
+				_, err := db.Put(ctx, storage.ModePutUpload, ch)
+				if err != nil {
+					t.Error(err)
+				}
+
+				chunksMu.Lock()
+				chunks = append(chunks, ch)
+				chunksMu.Unlock()
+			}
+		}()
+	}
+
+	writeWG.Wait()
+
+	var readWG sync.WaitGroup
+
+	readWorkerCount := 10
+
+	for worker := 0; worker < readWorkerCount; worker++ {
+		readWG.Add(1)
+		go func() {
+			defer readWG.Done()
+
+			random := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+			for i := 0; i < chunkCount; i++ {
+				n := random.Int63n(int64(chunkCount))
+				ch := chunks[n]
+
+				chData := ch.Data()
+
+				got, err := db.Get(ctx, storage.ModeGetRequest, ch.Address())
+				if err != nil {
+					t.Error(err)
+				}
+
+				gotData := got.Data()
+
+				if !bytes.Equal(gotData, chData) {
+					if !ch.Address().Equal(got.Address()) {
+						t.Errorf("got address %s, want %s", got.Address(), ch.Address())
+					}
+					t.Errorf("chunk %s: got data %x, want %x", ch.Address(), gotData, chData)
+				}
+			}
+		}()
+	}
+
+	readWG.Wait()
+}
+
 // newTestDB is a helper function that constructs a
 // temporary database and returns a cleanup function that must
 // be called to remove the data.

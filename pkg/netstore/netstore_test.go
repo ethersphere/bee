@@ -23,17 +23,18 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
+	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var chunkData = []byte("mockdata")
+var testChunk = chunktesting.GenerateTestRandomChunk()
 var chunkStamp = postagetesting.MustNewStamp()
 
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
 	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
-	addr := swarm.MustParseHexAddress("000001")
+	addr := testChunk.Address()
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +52,7 @@ func TestNetstoreRetrieval(t *testing.T) {
 	// store should have the chunk once the background PUT is complete
 	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
 
-	if !bytes.Equal(d.Data(), chunkData) {
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
 		t.Fatal("chunk data not equal to expected data")
 	}
 
@@ -64,7 +65,7 @@ func TestNetstoreRetrieval(t *testing.T) {
 	if retrieve.callCount != 1 {
 		t.Fatalf("call count %d", retrieve.callCount)
 	}
-	if !bytes.Equal(d.Data(), chunkData) {
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
 		t.Fatal("chunk data not equal to expected data")
 	}
 
@@ -74,10 +75,10 @@ func TestNetstoreRetrieval(t *testing.T) {
 // whenever it is found locally.
 func TestNetstoreNoRetrieval(t *testing.T) {
 	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
-	addr := swarm.MustParseHexAddress("000001")
+	addr := testChunk.Address()
 
 	// store should have the chunk in advance
-	_, err := store.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(addr, chunkData))
+	_, err := store.Put(context.Background(), storage.ModePutUpload, testChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,8 +93,54 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 	if retrieve.callCount != 0 {
 		t.Fatalf("call count %d", retrieve.callCount)
 	}
-	if !bytes.Equal(c.Data(), chunkData) {
+	if !bytes.Equal(c.Data(), testChunk.Data()) {
 		t.Fatal("chunk data mismatch")
+	}
+}
+
+func TestInvalidChunkNetstoreRetrieval(t *testing.T) {
+	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+
+	invalidChunk := swarm.NewChunk(testChunk.Address(), []byte("deadbeef"))
+	// store invalid chunk, i.e. hash doesnt match the data to simulate corruption
+	_, err := store.Put(context.Background(), storage.ModePutUpload, invalidChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr := testChunk.Address()
+	_, err = nstore.Get(context.Background(), storage.ModeGetRequest, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !retrieve.called {
+		t.Fatal("retrieve request not issued")
+	}
+	if retrieve.callCount != 1 {
+		t.Fatalf("call count %d", retrieve.callCount)
+	}
+	if !retrieve.addr.Equal(addr) {
+		t.Fatalf("addresses not equal. got %s want %s", retrieve.addr, addr)
+	}
+
+	// store should have the chunk once the background PUT is complete
+	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
+
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
+		t.Fatal("chunk data not equal to expected data")
+	}
+
+	// check that the second call does not result in another retrieve request
+	d, err = nstore.Get(context.Background(), storage.ModeGetRequest, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if retrieve.callCount != 1 {
+		t.Fatalf("call count %d", retrieve.callCount)
+	}
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
+		t.Fatal("chunk data not equal to expected data")
 	}
 }
 
@@ -104,7 +151,7 @@ func TestRecovery(t *testing.T) {
 	}
 
 	retrieve, _, nstore := newRetrievingNetstore(t, rec.recovery, noopValidStamp)
-	addr := swarm.MustParseHexAddress("deadbeef")
+	addr := testChunk.Address()
 	retrieve.failure = true
 	ctx := context.Background()
 	ctx = sctx.SetTargets(ctx, "be, cd")
@@ -140,7 +187,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 		return nil, errors.New("invalid postage stamp")
 	}
 	retrieve, store, nstore := newRetrievingNetstore(t, nil, f)
-	addr := swarm.MustParseHexAddress("000001")
+	addr := testChunk.Address()
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +205,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 	// store should have the chunk once the background PUT is complete
 	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
 
-	if !bytes.Equal(d.Data(), chunkData) {
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
 		t.Fatal("chunk data not equal to expected data")
 	}
 
@@ -175,7 +222,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 	if retrieve.callCount != 1 {
 		t.Fatalf("call count %d", retrieve.callCount)
 	}
-	if !bytes.Equal(d.Data(), chunkData) {
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
 		t.Fatal("chunk data not equal to expected data")
 	}
 }
@@ -227,7 +274,7 @@ func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address, o
 	r.called = true
 	atomic.AddInt32(&r.callCount, 1)
 	r.addr = addr
-	return swarm.NewChunk(addr, chunkData).WithStamp(chunkStamp), nil
+	return testChunk.WithStamp(chunkStamp), nil
 }
 
 type mockRecovery struct {
