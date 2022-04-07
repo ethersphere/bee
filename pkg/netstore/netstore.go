@@ -40,7 +40,6 @@ type store struct {
 }
 
 var (
-	ErrRecoveryAttempt   = errors.New("failed to retrieve chunk, recovery initiated")
 	errInvalidLocalChunk = errors.New("invalid chunk found locally")
 )
 
