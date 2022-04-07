@@ -43,7 +43,8 @@ type store struct {
 }
 
 var (
-	ErrRecoveryAttempt = errors.New("failed to retrieve chunk, recovery initiated")
+	ErrRecoveryAttempt   = errors.New("failed to retrieve chunk, recovery initiated")
+	errInvalidLocalChunk = errors.New("invalid chunk found locally")
 )
 
 // New returns a new NetStore that wraps a given Storer.
@@ -66,13 +67,13 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 		// this would ensure it is retrieved again from network and added back with
 		// the correct data
 		if !cac.Valid(ch) && !soc.Valid(ch) {
-			err = errors.New("invalid chunk")
+			err = errInvalidLocalChunk
 			ch = nil
 			s.logger.Warning("netstore: got invalid chunk from localstore, falling back to retrieval")
 		}
 	}
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, errInvalidLocalChunk) {
 			// request from network
 			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
 			if err != nil {

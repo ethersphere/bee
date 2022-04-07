@@ -98,6 +98,52 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 	}
 }
 
+func TestInvalidChunkNetstoreRetrieval(t *testing.T) {
+	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+
+	invalidChunk := swarm.NewChunk(testChunk.Address(), []byte("deadbeef"))
+	// store invalid chunk, i.e. hash doesnt match the data to simulate corruption
+	_, err := store.Put(context.Background(), storage.ModePutUpload, invalidChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr := testChunk.Address()
+	_, err = nstore.Get(context.Background(), storage.ModeGetRequest, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !retrieve.called {
+		t.Fatal("retrieve request not issued")
+	}
+	if retrieve.callCount != 1 {
+		t.Fatalf("call count %d", retrieve.callCount)
+	}
+	if !retrieve.addr.Equal(addr) {
+		t.Fatalf("addresses not equal. got %s want %s", retrieve.addr, addr)
+	}
+
+	// store should have the chunk once the background PUT is complete
+	d := waitAndGetChunk(t, store, addr, storage.ModeGetRequest)
+
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
+		t.Fatal("chunk data not equal to expected data")
+	}
+
+	// check that the second call does not result in another retrieve request
+	d, err = nstore.Get(context.Background(), storage.ModeGetRequest, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if retrieve.callCount != 1 {
+		t.Fatalf("call count %d", retrieve.callCount)
+	}
+	if !bytes.Equal(d.Data(), testChunk.Data()) {
+		t.Fatal("chunk data not equal to expected data")
+	}
+}
+
 func TestRecovery(t *testing.T) {
 	callbackWasCalled := make(chan bool, 1)
 	rec := &mockRecovery{
