@@ -15,19 +15,19 @@ do
 done
 kubectl -n local get pods > dump/kubectl_get_pods
 kubectl -n local logs -l app.kubernetes.io/part-of=bee --tail -1 --prefix -c bee > dump/kubectl_logs
-endpoint=$AWS_ENDPOINT
-if [[ "$endpoint" != http* ]]
-then
-  endpoint=https://$endpoint
-fi
-fname=artifacts_${VERTAG}.tar.gz
-tar -cz dump | aws --endpoint-url "$endpoint" s3 cp - s3://"$BUCKET_NAME"/"$fname"
-aws --endpoint-url "$endpoint" s3api put-object-acl --bucket "$BUCKET_NAME" --acl public-read --key "$fname"
-out="== Uploaded debugging artifacts to https://${BUCKET_NAME}.${AWS_ENDPOINT}/$fname =="
-ln=${#out}
-while [ "$ln" -gt 0 ]; do printf '=%.0s' '='; ((ln--));done;
-echo ""
-echo "$out"
-ln=${#out}
-while [ "$ln" -gt 0 ]; do printf '=%.0s' '='; ((ln--));done;
-echo ""
+# endpoint=$AWS_ENDPOINT
+# if [[ "$endpoint" != http* ]]
+# then
+#   endpoint=https://$endpoint
+# fi
+# fname=artifacts_${VERTAG}.tar.gz
+# tar -cz dump | aws --endpoint-url "$endpoint" s3 cp - s3://"$BUCKET_NAME"/"$fname"
+# aws --endpoint-url "$endpoint" s3api put-object-acl --bucket "$BUCKET_NAME" --acl public-read --key "$fname"
+# out="== Uploaded debugging artifacts to https://${BUCKET_NAME}.${AWS_ENDPOINT}/$fname =="
+# ln=${#out}
+# while [ "$ln" -gt 0 ]; do printf '=%.0s' '='; ((ln--));done;
+# echo ""
+# echo "$out"
+# ln=${#out}
+# while [ "$ln" -gt 0 ]; do printf '=%.0s' '='; ((ln--));done;
+# echo ""
