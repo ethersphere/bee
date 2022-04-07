@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -50,6 +51,12 @@ const (
 	flagTimeout      = 5 * time.Minute  // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
 	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
+)
+
+const (
+	networkStatusUnknown     = 0
+	networkStatusAvailable   = 1
+	networkStatusUnavailable = 2
 )
 
 var (
@@ -128,6 +135,7 @@ type Kad struct {
 	blocker           *blocker.Blocker
 	reachability      p2p.ReachabilityStatus
 	peerFilter        peerFilterFunc
+	networkStatus     atomic.Int32
 }
 
 // New returns a new Kademlia.
@@ -606,7 +614,7 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
-			case !k.isNetworkAvailable(err):
+			case !k.determineNetworkStatus(err):
 				k.logger.Tracef("kademlia: network unavailable for peer %s: %v", addr.String(), err)
 			case err != nil:
 				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
@@ -929,9 +937,14 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
-	case !k.isNetworkAvailable(err):
+	case !k.determineNetworkStatus(err):
 		return errNetworkUnavailable
 	case err != nil:
+		if k.networkStatus.Load() == networkStatusUnavailable {
+			k.logger.Debugf("could not connect to peer %q; network unavailable: %v", peer, err)
+			return err
+		}
+
 		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
 		retryTime := time.Now().Add(timeToRetry)
@@ -1465,13 +1478,14 @@ func (k *Kad) Snapshot() *topology.KadParams {
 	})
 
 	return &topology.KadParams{
-		Base:           k.base.String(),
-		Population:     k.knownPeers.Length(),
-		Connected:      k.connectedPeers.Length(),
-		Timestamp:      time.Now(),
-		NNLowWatermark: nnLowWatermark,
-		Depth:          k.NeighborhoodDepth(),
-		Reachability:   k.reachability.String(),
+		Base:                k.base.String(),
+		Population:          k.knownPeers.Length(),
+		Connected:           k.connectedPeers.Length(),
+		Timestamp:           time.Now(),
+		NNLowWatermark:      nnLowWatermark,
+		Depth:               k.NeighborhoodDepth(),
+		Reachability:        k.reachability.String(),
+		NetworkAvailability: k.networkAvailability(),
 		Bins: topology.KadBins{
 			Bin0:  infos[0],
 			Bin1:  infos[1],
@@ -1618,15 +1632,32 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	return peers[rndIndx.Int64()], nil
 }
 
-// isNetworkAvailable determines based on the
+// networkAvailability returns the network availability status.
+func (k *Kad) networkAvailability() string {
+	val := k.networkStatus.Load()
+	str := [...]string{
+		networkStatusUnknown:     "Unknown",
+		networkStatusAvailable:   "Available",
+		networkStatusUnavailable: "Unavailable",
+	}
+	if val < 0 || int(val) >= len(str) {
+		return "(unrecognized)"
+	}
+	return str[val]
+}
+
+// determineNetworkStatus determines based on the
 // given error whether the network is available/unavailable
-// and base on the result also resumes/suspends the blocker.
-func (k *Kad) isNetworkAvailable(err error) (available bool) {
+// and base on the result also resumes/suspends the blocker
+// and sets/unsets the network availability flag.
+func (k *Kad) determineNetworkStatus(err error) (available bool) {
 	if isNetworkOrHostUnreachableError(err) {
 		k.metrics.NetworkUnavailableErrors.Inc()
+		k.networkStatus.Store(networkStatusUnavailable)
 		k.blocker.Suspend()
 		return false
 	}
+	k.networkStatus.Store(networkStatusAvailable)
 	k.blocker.Resume()
 	return true
 }
