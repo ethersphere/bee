@@ -107,6 +107,7 @@ jobs:
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
       - name: Debug workflow if failed
         if: failure()
+        run: |
           bash .github/bin/beekeeper_artifacts.sh
       - uses: actions/upload-artifact@v3
         with:
