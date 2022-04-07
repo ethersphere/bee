@@ -31,7 +31,7 @@ var chunkStamp = postagetesting.MustNewStamp()
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := testChunk.Address()
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestNetstoreRetrieval(t *testing.T) {
 // TestNetstoreNoRetrieval verifies that a chunk is not requested from the network
 // whenever it is found locally.
 func TestNetstoreNoRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := testChunk.Address()
 
 	// store should have the chunk in advance
@@ -97,7 +97,7 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 }
 
 func TestInvalidChunkNetstoreRetrieval(t *testing.T) {
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 
 	invalidChunk := swarm.NewChunk(testChunk.Address(), []byte("deadbeef"))
 	// store invalid chunk, i.e. hash doesnt match the data to simulate corruption
@@ -142,33 +142,8 @@ func TestInvalidChunkNetstoreRetrieval(t *testing.T) {
 	}
 }
 
-func TestRecovery(t *testing.T) {
-	callbackWasCalled := make(chan bool, 1)
-	rec := &mockRecovery{
-		callbackC: callbackWasCalled,
-	}
-
-	retrieve, _, nstore := newRetrievingNetstore(t, rec.recovery, noopValidStamp)
-	addr := testChunk.Address()
-	retrieve.failure = true
-	ctx := context.Background()
-	ctx = sctx.SetTargets(ctx, "be, cd")
-
-	_, err := nstore.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil && !errors.Is(err, netstore.ErrRecoveryAttempt) {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-callbackWasCalled:
-		break
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("recovery callback was not called")
-	}
-}
-
 func TestInvalidRecoveryFunction(t *testing.T) {
-	retrieve, _, nstore := newRetrievingNetstore(t, nil, noopValidStamp)
+	retrieve, _, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := swarm.MustParseHexAddress("deadbeef")
 	retrieve.failure = true
 	ctx := context.Background()
@@ -184,7 +159,7 @@ func TestInvalidPostageStamp(t *testing.T) {
 	f := func(c swarm.Chunk, _ []byte) (swarm.Chunk, error) {
 		return nil, errors.New("invalid postage stamp")
 	}
-	retrieve, store, nstore := newRetrievingNetstore(t, nil, f)
+	retrieve, store, nstore := newRetrievingNetstore(t, f)
 	addr := testChunk.Address()
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
 	if err != nil {
