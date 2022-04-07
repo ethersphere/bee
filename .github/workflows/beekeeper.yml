@@ -115,7 +115,7 @@ jobs:
           name: debug-dump
           path: dump/
       - name: Debug workflow if failed
-        # if: failure()
+        if: failure()
         run: |
           # export BUCKET_NAME=beekeeper-artifacts
           # export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
@@ -136,7 +136,7 @@ jobs:
           if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
           if ${{ steps.content-availability.outcome=='failure' }}; then FAILED=content-availability; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://github.com/ethersphere/bee/actions/runs/${GITHUB_RUN_ID}#artifacts)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
