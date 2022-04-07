@@ -22,6 +22,10 @@ type testBatch struct {
 	reserveRadius uint8 // expected radius of the reserve state after the batch is added/updated
 }
 
+var defaultReserveSizeFn = func() (uint64, error) {
+	return 0, nil
+}
+
 // TestBatchSave adds batches to the batchstore, and after each batch, checks
 // the reserve state radius.
 func TestBatchSave(t *testing.T) {
@@ -92,7 +96,7 @@ func TestBatchSave(t *testing.T) {
 
 	for _, tc := range tcs {
 
-		store := setupBatchStore(t)
+		store := setupBatchStore(t, defaultReserveSizeFn)
 
 		for _, b := range tc.add {
 			_ = addBatch(t, store, b.depth, b.value)
@@ -176,7 +180,7 @@ func TestBatchUpdate(t *testing.T) {
 
 	for _, tc := range tcs {
 
-		store := setupBatchStore(t)
+		store := setupBatchStore(t, defaultReserveSizeFn)
 
 		var batches []*postage.Batch
 
@@ -259,7 +263,7 @@ func TestPutChainState(t *testing.T) {
 
 	for _, tc := range tcs {
 
-		store := setupBatchStore(t)
+		store := setupBatchStore(t, defaultReserveSizeFn)
 
 		// add the group of batches
 		for _, b := range tc.add {
@@ -296,7 +300,12 @@ func TestUnreserve(t *testing.T) {
 
 	initDepth := uint8(8)
 
-	store := setupBatchStore(t)
+	// return half of total capacity to emulate 50% utilization
+	reserveSize := func() (uint64, error) {
+		return uint64(totalCapacity / 2), nil
+	})
+
+	store := setupBatchStore(t, reserveSize)
 
 	// add some batches
 	_ = addBatch(t, store, initDepth, 1)
@@ -355,7 +364,7 @@ func TestUnreserve(t *testing.T) {
 	}
 }
 
-func setupBatchStore(t *testing.T) postage.Storer {
+func setupBatchStore(t *testing.T, reserveSizeFn func() (uint64, error)) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -374,7 +383,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, logger)
+	bStore, _ := batchstore.New(stateStore, evictFn, reserveSizeFn, logger)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{

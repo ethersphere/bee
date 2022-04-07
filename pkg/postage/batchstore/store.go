@@ -28,6 +28,7 @@ const (
 var ErrNotFound = errors.New("batchstore: not found")
 
 type evictFn func(batchID []byte) error
+type reserveSizeFn func() (uint64, error)
 
 // store implements postage.Storer
 type store struct {
@@ -36,17 +37,18 @@ type store struct {
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	rs      *reserveState // the reserve state
-	evictFn evictFn       // evict function
-	metrics metrics       // metrics
-	logger  logging.Logger
+	rs            *reserveState // the reserve state
+	evictFn       evictFn       // evict function
+	reserveSizeFn reserveSizeFn // evict function
+	metrics       metrics       // metrics
+	logger        logging.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
-func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, resSizeFunc reserveSizeFn, logger logging.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -72,12 +74,13 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 	}
 
 	s := &store{
-		store:   st,
-		cs:      cs,
-		rs:      rs,
-		evictFn: ev,
-		metrics: newMetrics(),
-		logger:  logger,
+		store:         st,
+		cs:            cs,
+		rs:            rs,
+		evictFn:       ev,
+		reserveSizeFn: resSizeFunc,
+		metrics:       newMetrics(),
+		logger:        logger,
 	}
 
 	return s, nil

@@ -148,6 +148,8 @@ func (s *store) computeRadius() error {
 		return err
 	}
 
+	oldRadius := s.rs.Radius
+
 	// edge case where the sum of all batches is below the node capacity.
 	if totalCommitment <= Capacity {
 		s.rs.Radius = 0
@@ -158,21 +160,50 @@ func (s *store) computeRadius() error {
 	}
 
 	s.metrics.Radius.Set(float64(s.rs.Radius))
+	s.logger.Debugf("batchstore: computed radius %d", s.rs.Radius)
 
-	// if the new radius is lower than the storage radius, adjust the storage radius.
-	// also, lower the storage radius of each batch to the new radius to prevent higher than radius POs
-	// from being evicted when localstore calls the Unreserve.
-	if s.rs.StorageRadius > s.rs.Radius {
-		s.rs.StorageRadius = s.rs.Radius
-		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		if err = s.lowerStorageRadius(); err != nil {
-			s.logger.Warningf("batchstore: lower storage radius: %v", err)
+	// Unreserve calls increase the global storage radius, but in the edge case that the new radius
+	// is lower because total commitment has decreased, the global storage radius has to be readjusted
+	// to prevent over aggressive eviction of future chunks, with respect to the current size of the localstore reserve.
+	if s.rs.Radius < oldRadius {
+		if err := s.estimateStorageRadius(totalCommitment); err != nil {
+			s.logger.Warningf("batchstore: estimate storage radius: %v", err)
 		}
 	}
 
-	s.logger.Debugf("batchstore: computed radius %d", s.rs.Radius)
-
 	return s.store.Put(reserveStateKey, s.rs)
+}
+
+// estimateStorageRadius uses the current size of the localstore reserve
+// to estimate a network wide batch utilization rate to compute a new storage radius.
+// The estimated storage radius is only assigned if it's lower than the current storage radius,
+// because the Unreserve function is responsible for increasing the radius.
+func (s *store) estimateStorageRadius(totalCommitment int64) error {
+
+	reserveSize, err := s.reserveSizeFn()
+	if err != nil {
+		return err
+	}
+
+	utilizationRate := float64(reserveSize) / float64(Capacity)
+	adjuctedTotalCommitment := utilizationRate * float64(totalCommitment)
+
+	if int64(adjuctedTotalCommitment) <= Capacity {
+		s.rs.StorageRadius = 0
+		return nil
+	}
+
+	newStorageRadius := uint8(math.Ceil(math.Log2(adjuctedTotalCommitment / float64(Capacity))))
+
+	if newStorageRadius < s.rs.StorageRadius {
+		s.rs.StorageRadius = newStorageRadius
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		if err = s.lowerStorageRadius(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Unreserve is implementation of postage.Storer interface Unreserve method.
@@ -237,7 +268,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		}
 	}
 
-	// a full iteration has occurred, so more evictions from localstore may be necessary, increase storage radius
+	// a full iteration has occurred, so more evictions from localstore may be necessary, increase global storage radius
 	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
@@ -278,7 +309,7 @@ func (s *store) lowerStorageRadius() error {
 	for _, u := range updates {
 		err := s.store.Put(batchKey(u.ID), u)
 		if err != nil {
-			s.logger.Warningf("batchstore: lower eviction radius: %v", err)
+			return err
 		}
 	}
 
