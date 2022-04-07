@@ -25,7 +25,9 @@ type peer struct {
 }
 
 type Blocker struct {
-	sequence          atomic.Uint64 // Monotonic clock.
+	sequence     atomic.Uint64 // Monotonic clock.
+	seqSuspended atomic.Bool   // Clock state.
+
 	mu                sync.Mutex
 	disconnector      p2p.Blocklister
 	flagTimeout       time.Duration // how long before blocking a flagged peer
@@ -66,7 +68,9 @@ func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Durati
 			case <-b.quit:
 				return
 			case <-time.After(sequencerResolution):
-				b.sequence.Inc()
+				if !b.seqSuspended.Load() {
+					b.sequence.Inc()
+				}
 			}
 		}
 	}()
@@ -147,6 +151,12 @@ func (b *Blocker) PruneUnseen(seen []swarm.Address) {
 		}
 	}
 }
+
+// Suspend will suspend the execution of the blocker, so no block-listing will happen.
+func (b *Blocker) Suspend() { b.seqSuspended.CAS(false, true) }
+
+// Resume will resume the suspended blocker.
+func (b *Blocker) Resume() { b.seqSuspended.CAS(true, false) }
 
 // Close will exit the worker loop.
 // must be called only once.
