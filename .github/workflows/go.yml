@@ -67,7 +67,7 @@ jobs:
       if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
       uses: peter-evans/repository-dispatch@v1
       with:
-        token: ${{ secrets.REPO_GHA_PAT }}
+        token: ${{ secrets.GHA_PAT_BASIC }}
         repository: ${{ github.repository }}
         event-type: trigger-beekeeper
         client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
