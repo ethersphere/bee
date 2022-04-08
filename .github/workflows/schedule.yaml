@@ -26,6 +26,6 @@ jobs:
         if: env.GHA_REPO_RUN == 'true'
         uses: peter-evans/repository-dispatch@v1
         with:
-          token: ${{ secrets.REPO_GHA_PAT }}
+          token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/bee-argo
           event-type: trigger-install
