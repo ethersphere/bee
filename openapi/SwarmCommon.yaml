@@ -92,6 +92,18 @@ components:
           type: integer
         depth:
           type: integer
+        reachability:
+          type: string
+          enum:
+            - "Unknown"
+            - "Public"
+            - "Private"
+        networkAvailability:
+          type: string
+          enum:
+            - "Unknown"
+            - "Available"
+            - "Unavailable"
         bins:
           type: object
           additionalProperties:

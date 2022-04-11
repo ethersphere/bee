@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"os"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,9 +28,7 @@ import (
 	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
-	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -53,12 +49,6 @@ const (
 	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
 )
 
-const (
-	networkStatusUnknown     = 0
-	networkStatusAvailable   = 1
-	networkStatusUnavailable = 2
-)
-
 var (
 	nnLowWatermark              = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	quickSaturationPeers        = 4
@@ -72,11 +62,10 @@ var (
 )
 
 var (
-	errNetworkUnavailable = errors.New("network unavailable")
-	errOverlayMismatch    = errors.New("overlay mismatch")
-	errPruneEntry         = errors.New("prune entry")
-	errEmptyBin           = errors.New("empty bin")
-	errAnnounceLightNode  = errors.New("announcing light node")
+	errOverlayMismatch   = errors.New("overlay mismatch")
+	errPruneEntry        = errors.New("prune entry")
+	errEmptyBin          = errors.New("empty bin")
+	errAnnounceLightNode = errors.New("announcing light node")
 )
 
 type (
@@ -135,7 +124,6 @@ type Kad struct {
 	blocker           *blocker.Blocker
 	reachability      p2p.ReachabilityStatus
 	peerFilter        peerFilterFunc
-	networkStatus     atomic.Int32
 }
 
 // New returns a new Kademlia.
@@ -364,8 +352,8 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
-		case errors.Is(err, errNetworkUnavailable):
-			k.logger.Debugf("kademlia: network unavailable for overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
+		case errors.Is(err, p2p.ErrNetworkUnavailable):
+			k.logger.Debugf("kademlia: network unavailable when reaching peer with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
 			return
 		case errors.Is(err, errPruneEntry):
 			k.logger.Debugf("kademlia: dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
@@ -614,8 +602,6 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
-			case !k.determineNetworkStatus(err):
-				k.logger.Tracef("kademlia: network unavailable for peer %s: %v", addr.String(), err)
 			case err != nil:
 				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
 				k.blocker.Flag(addr)
@@ -769,7 +755,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 		}
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-			k.logger.Tracef("connecting to bootnode %s", addr)
+			k.logger.Tracef("kademlia: connecting to bootnode %s", addr)
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
@@ -780,11 +766,11 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debugf("connect fail %s: %v", addr, err)
-					k.logger.Warningf("connect to bootnode %s", addr)
+					k.logger.Debugf("kademlia: connect fail %s: %v", addr, err)
+					k.logger.Warningf("kademlia: connect to bootnode %s", addr)
 					return false, err
 				}
-				k.logger.Debugf("connect to bootnode fail: %v", err)
+				k.logger.Debugf("kademlia: connect to bootnode fail: %v", err)
 				return false, nil
 			}
 
@@ -794,14 +780,14 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			k.metrics.TotalOutboundConnections.Inc()
 			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
-			k.logger.Tracef("connected to bootnode %s", addr)
+			k.logger.Tracef("kademlia: connected to bootnode %s", addr)
 			connected++
 
 			// connect to max 3 bootnodes
 			return connected >= 3, nil
 		}); err != nil && !errors.Is(err, context.Canceled) {
-			k.logger.Debugf("discover fail %s: %v", addr, err)
-			k.logger.Warningf("discover to bootnode %s", addr)
+			k.logger.Debugf("kademlia: discover fail %s: %v", addr, err)
+			k.logger.Warningf("kademlia: discover to bootnode %s", addr)
 			return
 		}
 	}
@@ -926,6 +912,10 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	k.metrics.TotalOutboundConnectionAttempts.Inc()
 
 	switch i, err := k.p2p.Connect(ctx, ma); {
+	case errors.Is(err, p2p.ErrNetworkUnavailable):
+		return err
+	case k.p2p.NetworkStatus() == p2p.NetworkStatusUnavailable:
+		return p2p.ErrNetworkUnavailable
 	case errors.Is(err, p2p.ErrDialLightNode):
 		return errPruneEntry
 	case errors.Is(err, p2p.ErrAlreadyConnected):
@@ -937,14 +927,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
-	case !k.determineNetworkStatus(err):
-		return errNetworkUnavailable
 	case err != nil:
-		if k.networkStatus.Load() == networkStatusUnavailable {
-			k.logger.Debugf("could not connect to peer %q; network unavailable: %v", peer, err)
-			return err
-		}
-
 		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
 
 		retryTime := time.Now().Add(timeToRetry)
@@ -1485,7 +1468,7 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		NNLowWatermark:      nnLowWatermark,
 		Depth:               k.NeighborhoodDepth(),
 		Reachability:        k.reachability.String(),
-		NetworkAvailability: k.networkAvailability(),
+		NetworkAvailability: k.p2p.NetworkStatus().String(),
 		Bins: topology.KadBins{
 			Bin0:  infos[0],
 			Bin1:  infos[1],
@@ -1630,66 +1613,6 @@ func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
 	}
 
 	return peers[rndIndx.Int64()], nil
-}
-
-// networkAvailability returns the network availability status.
-func (k *Kad) networkAvailability() string {
-	val := k.networkStatus.Load()
-	str := [...]string{
-		networkStatusUnknown:     "Unknown",
-		networkStatusAvailable:   "Available",
-		networkStatusUnavailable: "Unavailable",
-	}
-	if val < 0 || int(val) >= len(str) {
-		return "(unrecognized)"
-	}
-	return str[val]
-}
-
-// determineNetworkStatus determines based on the
-// given error whether the network is available/unavailable
-// and base on the result also resumes/suspends the blocker
-// and sets/unsets the network availability flag.
-func (k *Kad) determineNetworkStatus(err error) (available bool) {
-	if isNetworkOrHostUnreachableError(err) {
-		k.metrics.NetworkUnavailableErrors.Inc()
-		k.networkStatus.Store(networkStatusUnavailable)
-		k.blocker.Suspend()
-		return false
-	}
-	k.networkStatus.Store(networkStatusAvailable)
-	k.blocker.Resume()
-	return true
-}
-
-// isNetworkOrHostUnreachableError determines based on the
-// given error whether the host or network is unavailable.
-func isNetworkOrHostUnreachableError(err error) bool {
-	var de *lp2pswarm.DialError
-	if !errors.As(err, &de) {
-		return false
-	}
-
-	// Since TransportError doesn't implement the Unwrap
-	// method we need to inspect the errors manually.
-	for i := range de.DialErrors {
-		var te *lp2pswarm.TransportError
-		if !errors.As(&de.DialErrors[i], &te) {
-			continue
-		}
-
-		var ne *net.OpError
-		if !errors.As(te.Cause, &ne) || ne.Op != "dial" {
-			continue
-		}
-
-		var se *os.SyscallError
-		if errors.As(ne, &se) && strings.HasPrefix(se.Syscall, "connect") &&
-			(errors.Is(se.Err, errHostUnreachable) || errors.Is(se.Err, errNetworkUnreachable)) {
-			return true
-		}
-	}
-	return false
 }
 
 // createMetricsSnapshotView creates new topology.MetricSnapshotView from the

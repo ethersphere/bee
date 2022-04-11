@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
@@ -103,10 +104,22 @@ type m struct {
 	f func(swarm.Address, time.Duration)
 }
 
-func (m *m) Disconnect(overlay swarm.Address, reason string) error {
+func (m *m) Disconnect(_ swarm.Address, _ string) error {
 	panic("not implemented")
 }
 func (m *m) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	m.f(overlay, duration)
+	return nil
+}
+
+// NetworkStatus implements p2p.NetworkStatuser interface.
+// It always returns p2p.NetworkStatusAvailable.
+func (m *m) NetworkStatus() p2p.NetworkStatus {
+	return p2p.NetworkStatusAvailable
+}
+
+// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
+// The network is considered always online, and so nil is always returned.
+func (m *m) DetermineCurrentNetworkStatus(_ error) error {
 	return nil
 }
