@@ -136,15 +136,15 @@ type postageStampsResponse struct {
 }
 
 type postageBatchResponse struct {
-	BatchID     hexByte        `json:"batchID"`
-	Value       *bigint.BigInt `json:"value"`
-	Start       uint64         `json:"start"`
-	Owner       hexByte        `json:"owner"`
-	Depth       uint8          `json:"depth"`
-	BucketDepth uint8          `json:"bucketDepth"`
-	Immutable   bool           `json:"immutable"`
-	Radius      uint8          `json:"radius"`
-	BatchTTL    int64          `json:"batchTTL"`
+	BatchID       hexByte        `json:"batchID"`
+	Value         *bigint.BigInt `json:"value"`
+	Start         uint64         `json:"start"`
+	Owner         hexByte        `json:"owner"`
+	Depth         uint8          `json:"depth"`
+	BucketDepth   uint8          `json:"bucketDepth"`
+	Immutable     bool           `json:"immutable"`
+	StorageRadius uint8          `json:"storageRadius"`
+	BatchTTL      int64          `json:"batchTTL"`
 }
 
 type postageStampBucketsResponse struct {
@@ -204,15 +204,15 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 		}
 
 		batches = append(batches, postageBatchResponse{
-			BatchID:     b.ID,
-			Value:       bigint.Wrap(b.Value),
-			Start:       b.Start,
-			Owner:       b.Owner,
-			Depth:       b.Depth,
-			BucketDepth: b.BucketDepth,
-			Immutable:   b.Immutable,
-			Radius:      b.Radius,
-			BatchTTL:    batchTTL,
+			BatchID:       b.ID,
+			Value:         bigint.Wrap(b.Value),
+			Start:         b.Start,
+			Owner:         b.Owner,
+			Depth:         b.Depth,
+			BucketDepth:   b.BucketDepth,
+			Immutable:     b.Immutable,
+			StorageRadius: b.StorageRadius,
+			BatchTTL:      batchTTL,
 		})
 		return false, nil
 	})
@@ -329,12 +329,9 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius        uint8          `json:"radius"`
-	StorageRadius uint8          `json:"storageRadius"`
-	Available     int64          `json:"available"`
-	Commitment    int64          `json:"commitment"`
-	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner         *bigint.BigInt `json:"inner"`
+	Radius        uint8 `json:"radius"`
+	StorageRadius uint8 `json:"storageRadius"`
+	Commitment    int64 `json:"commitment"`
 }
 
 type chainStateResponse struct {
@@ -361,10 +358,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, reserveStateResponse{
 		Radius:        state.Radius,
 		StorageRadius: state.StorageRadius,
-		Available:     state.Available,
 		Commitment:    commitment,
-		Outer:         bigint.Wrap(state.Outer),
-		Inner:         bigint.Wrap(state.Inner),
 	})
 }
 

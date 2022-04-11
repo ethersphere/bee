@@ -24,12 +24,15 @@ var noopEvictFn = func([]byte) error { return nil }
 
 func TestBatchStore_Get(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
-	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
-	stateStorePut(t, stateStore, key, testBatch)
+	err := batchStore.Save(testBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	got := batchStoreGetBatch(t, batchStore, testBatch.ID)
 	postagetest.CompareBatches(t, testBatch, got)
 }
@@ -106,6 +109,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
+
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -117,14 +121,23 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
 
+	// call Unreserve once to increase storage radius of the test batch
+	if err := batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil }); err != nil {
+		t.Fatalf("storer.Unreserve(...): unexpected error: %v", err)
+	}
+
+	//get test batch after save call
+	stateStoreGet(t, stateStore, key, testBatch)
+
 	var have postage.Batch
 	stateStoreGet(t, stateStore, key, &have)
 	postagetest.CompareBatches(t, testBatch, &have)
 
 	// Check for idempotency.
-	if err := batchStore.Save(testBatch); err != nil {
-		t.Fatalf("storer.Save(...): unexpected error: %v", err)
+	if err := batchStore.Save(testBatch); err == nil {
+		t.Fatalf("storer.Save(...): expected error")
 	}
+
 	cnt := 0
 	if err := stateStore.Iterate(batchstore.ValueKey(testBatch.Value, testBatch.ID), func(k, v []byte) (stop bool, err error) {
 		cnt++

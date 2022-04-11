@@ -245,15 +245,15 @@ func TestGetAllBatches(t *testing.T) {
 	}{
 		Batches: []debugapi.PostageBatchResponse{
 			{
-				BatchID:     b.ID,
-				Value:       bigint.Wrap(b.Value),
-				Start:       b.Start,
-				Owner:       b.Owner,
-				Depth:       b.Depth,
-				BucketDepth: b.BucketDepth,
-				Immutable:   b.Immutable,
-				Radius:      b.Radius,
-				BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:       b.ID,
+				Value:         bigint.Wrap(b.Value),
+				Start:         b.Start,
+				Owner:         b.Owner,
+				Depth:         b.Depth,
+				BucketDepth:   b.BucketDepth,
+				Immutable:     b.Immutable,
+				StorageRadius: b.StorageRadius,
+				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			},
 		},
 	}
@@ -359,15 +359,11 @@ func TestReserveState(t *testing.T) {
 		ts := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(mock.WithReserveState(&postage.ReserveState{
 				Radius: 5,
-				Outer:  big.NewInt(5),
-				Inner:  big.NewInt(5),
 			})),
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{
 				Radius: 5,
-				Outer:  bigint.Wrap(big.NewInt(5)),
-				Inner:  bigint.Wrap(big.NewInt(5)),
 			}),
 		)
 	})
