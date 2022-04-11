@@ -178,6 +178,7 @@ func (s *store) computeRadius() error {
 // to estimate a network wide batch utilization rate to compute a new storage radius.
 // The estimated storage radius is only assigned if it's lower than the current storage radius,
 // because the Unreserve function is responsible for increasing the radius.
+// Must be called under lock.
 func (s *store) estimateStorageRadius(totalCommitment int64) error {
 
 	reserveSize, err := s.reserveSizeFn()

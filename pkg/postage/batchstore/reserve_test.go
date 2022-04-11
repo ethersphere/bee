@@ -303,7 +303,7 @@ func TestUnreserve(t *testing.T) {
 	// return half of total capacity to emulate 50% utilization
 	reserveSize := func() (uint64, error) {
 		return uint64(totalCapacity / 2), nil
-	})
+	}
 
 	store := setupBatchStore(t, reserveSize)
 
