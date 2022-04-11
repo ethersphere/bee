@@ -58,7 +58,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
-	"github.com/ethersphere/bee/pkg/recovery"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
@@ -107,7 +106,6 @@ type Bee struct {
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
-	recoveryHandleCleanup    func()
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
 	priceOracleCloser        io.Closer
@@ -136,7 +134,6 @@ type Options struct {
 	TracingEnabled             bool
 	TracingEndpoint            string
 	TracingServiceName         string
-	GlobalPinningEnabled       bool
 	PaymentThreshold           string
 	PaymentTolerance           int64
 	PaymentEarly               int64
@@ -737,14 +734,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
-	var ns storage.Storer
-	if o.GlobalPinningEnabled {
-		// create recovery callback for content repair
-		recoverFunc := recovery.NewCallback(pssService)
-		ns = netstore.New(storer, validStamp, recoverFunc, retrieve, logger)
-	} else {
-		ns = netstore.New(storer, validStamp, nil, retrieve, logger)
-	}
+	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, logger)
 	b.nsCloser = ns
 
 	traversalService := traversal.New(ns)
@@ -755,12 +745,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
-
-	if o.GlobalPinningEnabled {
-		// register function for chunk repair upon receiving a trojan message
-		chunkRepairHandler := recovery.NewRepairHandler(ns, logger, pushSyncProtocol)
-		b.recoveryHandleCleanup = pssService.Register(recovery.Topic, chunkRepairHandler)
-	}
 
 	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime)
 	b.pusherCloser = pusherService
@@ -992,9 +976,6 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 		mErr = multierror.Append(mErr, err)
 	}
 
-	if b.recoveryHandleCleanup != nil {
-		b.recoveryHandleCleanup()
-	}
 	var wg sync.WaitGroup
 	wg.Add(7)
 	go func() {

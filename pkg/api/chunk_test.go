@@ -32,10 +32,8 @@ import (
 func TestChunkUploadDownload(t *testing.T) {
 
 	var (
-		targets         = "0x222"
 		chunksEndpoint  = "/chunks"
 		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
-		resourceTargets = func(addr swarm.Address) string { return "/chunks/" + addr.String() + "?targets=" + targets }
 		chunk           = testingc.GenerateTestRandomChunk()
 		statestoreMock  = statestore.NewStateStore()
 		logger          = logging.New(io.Discard, 0)
@@ -134,15 +132,6 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 		if have, want := refs[0], reference; !have.Equal(want) {
 			t.Fatalf("root pin reference mismatch: have %q; want %q", have, want)
-		}
-
-	})
-	t.Run("retrieve-targets", func(t *testing.T) {
-		resp := request(t, client, http.MethodGet, resourceTargets(chunk.Address()), nil, http.StatusOK)
-
-		// Check if the target is obtained correctly
-		if resp.Header.Get(api.TargetsRecoveryHeader) != targets {
-			t.Fatalf("targets mismatch. got %s, want %s", resp.Header.Get(api.TargetsRecoveryHeader), targets)
 		}
 	})
 }

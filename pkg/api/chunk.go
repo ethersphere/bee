@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/netstore"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -165,11 +164,6 @@ func (s *server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
-	targets := r.URL.Query().Get("targets")
-	if targets != "" {
-		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
-	}
-
 	nameOrHex := mux.Vars(r)["addr"]
 	ctx := r.Context()
 
@@ -189,19 +183,11 @@ func (s *server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			return
 
 		}
-		if errors.Is(err, netstore.ErrRecoveryAttempt) {
-			s.logger.Tracef("chunk: chunk recovery initiated. addr %s", address)
-			jsonhttp.Accepted(w, "chunk recovery initiated. retry after sometime.")
-			return
-		}
 		s.logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
 		s.logger.Error("chunk: chunk read error")
 		jsonhttp.InternalServerError(w, "chunk read error")
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
-	if targets != "" {
-		w.Header().Set(TargetsRecoveryHeader, targets)
-	}
 	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
 }

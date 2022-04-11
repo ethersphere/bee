@@ -35,7 +35,6 @@ import (
 func TestBzzFiles(t *testing.T) {
 	var (
 		fileUploadResource   = "/bzz"
-		targets              = "0x222"
 		fileDownloadResource = func(addr string) string { return "/bzz/" + addr }
 		simpleData           = []byte("this is a simple text")
 		storerMock           = smock.NewStorer()
@@ -350,16 +349,6 @@ func TestBzzFiles(t *testing.T) {
 		)
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
-
-		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
-			fileDownloadResource(rootHash)+"?targets="+targets, http.StatusOK,
-			jsonhttptest.WithExpectedResponse(simpleData),
-		)
-
-		if rcvdHeader.Get(api.TargetsRecoveryHeader) != targets {
-			t.Fatalf("targets mismatch. got %s, want %s",
-				rcvdHeader.Get(api.TargetsRecoveryHeader), targets)
-		}
 	})
 
 }

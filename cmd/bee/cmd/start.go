@@ -170,7 +170,6 @@ func (c *command) initStartCmd() (err error) {
 				TracingEndpoint:            tracingEndpoint,
 				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
 				Logger:                     logger,
-				GlobalPinningEnabled:       c.config.GetBool(optionNameGlobalPinningEnabled),
 				PaymentThreshold:           c.config.GetString(optionNamePaymentThreshold),
 				PaymentTolerance:           c.config.GetInt64(optionNamePaymentTolerance),
 				PaymentEarly:               c.config.GetInt64(optionNamePaymentEarly),

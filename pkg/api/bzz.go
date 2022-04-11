@@ -242,10 +242,6 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	ls := loadsave.NewReadonly(s.storer)
 	feedDereferenced := false
 
-	targets := r.URL.Query().Get("targets")
-	if targets != "" {
-		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
-	}
 	ctx := r.Context()
 
 	nameOrHex := mux.Vars(r)["address"]
@@ -429,10 +425,6 @@ func (s *server) serveManifestEntry(
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-	targets := r.URL.Query().Get("targets")
-	if targets != "" {
-		r = r.WithContext(sctx.SetTargets(r.Context(), targets))
-	}
 
 	reader, l, err := joiner.New(r.Context(), s.storer, reference)
 	if err != nil {
@@ -458,9 +450,6 @@ func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, referen
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
-	if targets != "" {
-		w.Header().Set(TargetsRecoveryHeader, targets)
-	}
 	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 
