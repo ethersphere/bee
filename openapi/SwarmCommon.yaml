@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 2.0.1
+  version: 2.0.2
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -44,12 +44,10 @@ components:
       properties:
         radius:
           type: integer
-        available:
+        storageRadius:
           type: integer
-        outer:
-          $ref: "#/components/schemas/BigInt"
-        inner:
-          $ref: "#/components/schemas/BigInt"
+        commitment:
+          type: integer
 
     ChainState:
       type: object
@@ -430,13 +428,13 @@ components:
       properties:
         batchID:
           $ref: "#/components/schemas/BatchID"
-        depth:
-          type: integer
         value:
           $ref: "#/components/schemas/BigInt"
-        bucketDepth:
+        start:
           type: integer
-        blockNumber:
+        depth:
+          type: integer
+        bucketDepth:
           type: integer
         immutableFlag:
           type: boolean
@@ -444,6 +442,8 @@ components:
           type: integer
         owner:
           $ref: "#/components/schemas/EthereumAddress"
+        storageRadius:
+          type: integer
 
     DebugPostageBatch:
       anyOf:

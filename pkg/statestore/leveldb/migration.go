@@ -41,10 +41,11 @@ const (
 	dbSchemaFlushBlock      = "flushblock"
 	dbSchemaSwapAddr        = "swapaddr"
 	dBSchemaKademliaMetrics = "kademlia-metrics"
+	dBSchemaBatchStore      = "batchstore"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaKademliaMetrics
+	dbSchemaCurrent = dBSchemaBatchStore
 )
 
 type migration struct {
@@ -62,10 +63,19 @@ var schemaMigrations = []migration{
 	{name: dbSchemaFlushBlock, fn: migrateFB},
 	{name: dbSchemaSwapAddr, fn: migrateSwap},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
+	{name: dBSchemaBatchStore, fn: migrateBatchstore},
 }
 
 func migrateFB(s *Store) error {
 	collectedKeys, err := collectKeys(s, "blocklist-")
+	if err != nil {
+		return err
+	}
+	return deleteKeys(s, collectedKeys)
+}
+
+func migrateBatchstore(s *Store) error {
+	collectedKeys, err := collectKeys(s, "batchstore_")
 	if err != nil {
 		return err
 	}
