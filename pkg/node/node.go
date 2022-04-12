@@ -850,7 +850,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		debugAPIService.MustRegisterMetrics(acc.Metrics()...)
 		debugAPIService.MustRegisterMetrics(storer.Metrics()...)
 		debugAPIService.MustRegisterMetrics(kad.Metrics()...)
-		debugAPIService.MustRegisterMetrics(ns.Metrics()...)
 
 		if pullerService != nil {
 			debugAPIService.MustRegisterMetrics(pullerService.Metrics()...)
@@ -887,6 +886,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 		if l, ok := logger.(metrics.Collector); ok {
 			debugAPIService.MustRegisterMetrics(l.Metrics()...)
+		}
+
+		if nsMetrics, ok := ns.(metrics.Collector); ok {
+			debugAPIService.MustRegisterMetrics(nsMetrics.Metrics()...)
 		}
 
 		debugAPIService.MustRegisterMetrics(pseudosettleService.Metrics()...)
