@@ -290,7 +290,7 @@ func TestPutChainState(t *testing.T) {
 
 // TestUnreserve tests the Unreserve call increases the storage radius after each
 // full iteration and that the storage radius is calculated correctly after a radius decrease.
-func TestUnreserveAndStorageRadius(t *testing.T) {
+func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 	defer func(i int64) {

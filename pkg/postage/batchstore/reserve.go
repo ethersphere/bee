@@ -190,14 +190,13 @@ func (s *store) estimateStorageRadius(totalCommitment int64) error {
 	adjuctedTotalCommitment := utilizationRate * float64(totalCommitment)
 
 	var newStorageRadius uint8
-
 	if int64(adjuctedTotalCommitment) <= Capacity {
 		newStorageRadius = 0
 	} else {
 		newStorageRadius = uint8(math.Ceil(math.Log2(adjuctedTotalCommitment / float64(Capacity))))
 	}
 
-	// if the new storage radius is lower, lower every batch's storage radius.
+	// if the new storage radius is lower, assign new value and lower every batch's storage radius.
 	if newStorageRadius < s.rs.StorageRadius {
 		s.rs.StorageRadius = newStorageRadius
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
