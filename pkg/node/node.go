@@ -506,12 +506,12 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return err
 	}
 
-	var reserveSizeFunc func() (uint64, error)
-	var reserSizeFn = func() (uint64, error) {
-		return reserveSizeFunc()
+	var reserveSizeFn func() (uint64, error)
+	var reserveSizeCallback = func() (uint64, error) {
+		return reserveSizeFn()
 	}
 
-	batchStore, err := batchstore.New(stateStore, evictFn, reserSizeFn, logger)
+	batchStore, err := batchstore.New(stateStore, evictFn, reserveSizeCallback, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -539,7 +539,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
-	reserveSizeFunc = storer.ReserveSize
+	reserveSizeFn = storer.ReserveSize
 
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)

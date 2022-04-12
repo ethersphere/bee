@@ -208,8 +208,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	// TODO: reserve size func
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, nil, logger)
+	batchStore, err := batchstore.New(
+		stateStore,
+		func(b []byte) error { return nil },
+		func() (uint64, error) { return 0, nil },
+		logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}

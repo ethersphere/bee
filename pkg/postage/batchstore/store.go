@@ -48,7 +48,7 @@ type store struct {
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
-func New(st storage.StateStorer, ev evictFn, resSizeFunc reserveSizeFn, logger logging.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, resFn reserveSizeFn, logger logging.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -78,7 +78,7 @@ func New(st storage.StateStorer, ev evictFn, resSizeFunc reserveSizeFn, logger l
 		cs:            cs,
 		rs:            rs,
 		evictFn:       ev,
-		reserveSizeFn: resSizeFunc,
+		reserveSizeFn: resFn,
 		metrics:       newMetrics(),
 		logger:        logger,
 	}

@@ -289,8 +289,8 @@ func TestPutChainState(t *testing.T) {
 }
 
 // TestUnreserve tests the Unreserve call increases the storage radius after each
-// full iteration and that the storage radius never exceeds the radius.
-func TestUnreserve(t *testing.T) {
+// full iteration and that the storage radius is calculated correctly after a radius decrease.
+func TestUnreserveAndStorageRadius(t *testing.T) {
 
 	totalCapacity := batchstore.Exp2(5)
 	defer func(i int64) {
@@ -300,10 +300,21 @@ func TestUnreserve(t *testing.T) {
 
 	initDepth := uint8(8)
 
+	// with a depth of 8, each batch's commitment is 2^8 (256) chunks.
+	// After adding 3 batches to the store, the radius becomes 5.
+	// After expiring one batch, the radius falls to 4.
+	// As a result of the radius decreasing, a new storage radius (3) is
+	// calculated with reserve size half of the total commitment.
+
 	// return half of total capacity to emulate 50% utilization
 	reserveSize := func() (uint64, error) {
 		return uint64(totalCapacity / 2), nil
 	}
+	const (
+		radiusAfterBatches       = 5 // radius after three batches of depth 8
+		radiusAfterChainUpdate   = 4 // radius after expiring one batch
+		storageRadiusAfterUpdate = 3 // storage radius with two batches of depth 8 at 50% utilization.
+	)
 
 	store := setupBatchStore(t, reserveSize)
 
@@ -314,6 +325,10 @@ func TestUnreserve(t *testing.T) {
 
 	state := store.GetReserveState()
 
+	if state.Radius != radiusAfterBatches {
+		t.Fatalf("got radius %d, want %d", state.Radius, radiusAfterBatches)
+	}
+
 	cb := func([]byte, uint8) (bool, error) { return false, nil }
 
 	// Unreserve is called multiple times (radius + 1) to confirm that the
@@ -321,20 +336,22 @@ func TestUnreserve(t *testing.T) {
 	for i := uint8(0); i <= state.Radius+1; i++ {
 
 		wantStorageRadius := i
-		if i > state.Radius {
+		if wantStorageRadius >= state.Radius {
 			wantStorageRadius = state.Radius
 		}
 
-		if store.GetReserveState().StorageRadius != wantStorageRadius {
-			t.Fatalf("got storage radius %d, want %d", store.GetReserveState().StorageRadius, wantStorageRadius)
+		state := store.GetReserveState()
+
+		if state.StorageRadius != wantStorageRadius {
+			t.Fatalf("got storage radius %d, want %d", state.StorageRadius, wantStorageRadius)
 		}
 
 		_ = store.Unreserve(cb)
 	}
 
 	// in the final step, the chain state is updated to evict one batch,
-	// causing the radius to decrease, in return, the storage radius of batches are lowered
-	// to the current storage radius.
+	// causing the radius to decrease, in return, a new storage radius is calculated,
+	// and the storage radius of batches are lowered to the current storage radius.
 	err := store.PutChainState(&postage.ChainState{
 		Block:        1,
 		TotalAmount:  big.NewInt(1),
@@ -344,15 +361,19 @@ func TestUnreserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newState := store.GetReserveState()
+	state = store.GetReserveState()
 
 	// check that after the chain state update, radius has been lowered.
-	if newState.Radius >= state.Radius {
-		t.Fatalf("new radius %d should be lower than the old radius %d", newState.Radius, state.Radius)
+	if state.Radius != radiusAfterChainUpdate {
+		t.Fatalf("got radius %d, want %d", state.Radius, radiusAfterChainUpdate)
+	}
+
+	// check that after the chain state update, radius has been lowered.
+	if state.StorageRadius != storageRadiusAfterUpdate {
+		t.Fatalf("got storage radius %d, want %d", state.StorageRadius, storageRadiusAfterUpdate)
 	}
 
 	// the radius of every batch must not exceed the current storage radius.
-	state = store.GetReserveState()
 	err = store.Iterate(func(b *postage.Batch) (bool, error) {
 		if b.StorageRadius > state.StorageRadius {
 			t.Fatalf("batch radius %d should not exceed storate radius %d", b.StorageRadius, state.StorageRadius)
