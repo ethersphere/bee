@@ -189,19 +189,19 @@ func (s *store) estimateStorageRadius(totalCommitment int64) error {
 	utilizationRate := float64(reserveSize) / float64(Capacity)
 	adjuctedTotalCommitment := utilizationRate * float64(totalCommitment)
 
+	var newStorageRadius uint8
+
 	if int64(adjuctedTotalCommitment) <= Capacity {
-		s.rs.StorageRadius = 0
-		return nil
+		newStorageRadius = 0
+	} else {
+		newStorageRadius = uint8(math.Ceil(math.Log2(adjuctedTotalCommitment / float64(Capacity))))
 	}
 
-	newStorageRadius := uint8(math.Ceil(math.Log2(adjuctedTotalCommitment / float64(Capacity))))
-
+	// if the new storage radius is lower, lower every batch's storage radius.
 	if newStorageRadius < s.rs.StorageRadius {
 		s.rs.StorageRadius = newStorageRadius
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		if err = s.lowerStorageRadius(); err != nil {
-			return err
-		}
+		return s.lowerBatchStorageRadius()
 	}
 
 	return nil
@@ -280,10 +280,10 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	return nil
 }
 
-// lowerStorageRadius lowers the storage radius of batches to the radius.
+// lowerBatchStorageRadius lowers the storage radius of batches to the radius.
 // radius is based on maximum batch utilization, as such, batch storage radius cannot exceed the radius.
 // Must be called under lock.
-func (s *store) lowerStorageRadius() error {
+func (s *store) lowerBatchStorageRadius() error {
 
 	var updates []*postage.Batch
 
