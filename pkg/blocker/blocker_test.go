@@ -174,9 +174,3 @@ func (b *blocklister) Blocklist(addr swarm.Address, t time.Duration, r string) e
 func (b *blocklister) NetworkStatus() p2p.NetworkStatus {
 	return p2p.NetworkStatusAvailable
 }
-
-// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
-// The network is considered always online, and so nil is always returned.
-func (b *blocklister) DetermineCurrentNetworkStatus(_ error) error {
-	return nil
-}

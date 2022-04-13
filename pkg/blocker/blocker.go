@@ -66,7 +66,7 @@ func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime tim
 			case <-b.quit:
 				return
 			case <-time.After(sequencerResolution):
-				if b.blocklister.NetworkStatus() != p2p.NetworkStatusUnavailable {
+				if b.blocklister.NetworkStatus() == p2p.NetworkStatusAvailable {
 					b.sequence.Inc()
 				}
 			}
@@ -113,7 +113,7 @@ func (b *Blocker) block() {
 }
 
 func (b *Blocker) Flag(addr swarm.Address) {
-	if b.blocklister.NetworkStatus() == p2p.NetworkStatusUnavailable {
+	if b.blocklister.NetworkStatus() != p2p.NetworkStatusAvailable {
 		return
 	}
 

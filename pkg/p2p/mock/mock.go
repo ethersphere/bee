@@ -183,12 +183,6 @@ func (s *Service) NetworkStatus() p2p.NetworkStatus {
 	return p2p.NetworkStatusAvailable
 }
 
-// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
-// The network is considered always online, and so nil is always returned.
-func (s *Service) DetermineCurrentNetworkStatus(_ error) error {
-	return nil
-}
-
 type Option interface {
 	apply(*Service)
 }
