@@ -93,7 +93,7 @@ func TestConnectToLightPeer(t *testing.T) {
 	addr := serviceUnderlayAddress(t, s1)
 
 	_, err := s2.Connect(ctx, addr)
-	if err != p2p.ErrDialLightNode {
+	if !errors.Is(err, p2p.ErrDialLightNode) {
 		t.Fatalf("expected err %v, got %v", p2p.ErrDialLightNode, err)
 	}
 

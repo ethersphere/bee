@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/hashicorp/go-multierror"
 	"github.com/libp2p/go-libp2p"
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
@@ -40,6 +43,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	goyamux "github.com/libp2p/go-libp2p-yamux"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -47,6 +51,7 @@ import (
 	ws "github.com/libp2p/go-ws-transport"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
+	"go.uber.org/atomic"
 )
 
 var (
@@ -93,6 +98,7 @@ type Service struct {
 	lightNodeLimit    int
 	protocolsmu       sync.RWMutex
 	reacher           p2p.Reacher
+	networkStatus     atomic.Int32
 }
 
 type lightnodes interface {
@@ -594,6 +600,10 @@ func (s *Service) NATManager() basichost.NATManager {
 }
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
+	if s.NetworkStatus() == p2p.NetworkStatusUnavailable {
+		return nil
+	}
+
 	s.logger.Tracef("libp2p blocklist: peer %s for %v reason: %s", overlay.String(), duration, reason)
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
@@ -621,6 +631,8 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
+	defer func() { err = multierror.Append(err, s.DetermineCurrentNetworkStatus(err)).ErrorOrNil() }()
+
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
@@ -741,7 +753,9 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	return i.BzzAddress, nil
 }
 
-func (s *Service) Disconnect(overlay swarm.Address, reason string) error {
+func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
+	defer func() { err = multierror.Append(err, s.DetermineCurrentNetworkStatus(err)).ErrorOrNil() }()
+
 	s.metrics.DisconnectCount.Inc()
 
 	s.logger.Debugf("libp2p disconnect: disconnecting peer %s reason: %s", overlay, reason)
@@ -971,6 +985,24 @@ func (s *Service) peerUserAgent(ctx context.Context, peerID libp2ppeer.ID) strin
 	return ua
 }
 
+// NetworkStatus implements the p2p.NetworkStatuser interface.
+func (s *Service) NetworkStatus() p2p.NetworkStatus {
+	return p2p.NetworkStatus(s.networkStatus.Load())
+}
+
+// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
+func (s *Service) DetermineCurrentNetworkStatus(err error) error {
+	ns := p2p.NetworkStatusAvailable
+	if isNetworkOrHostUnreachableError(err) {
+		ns = p2p.NetworkStatusUnavailable
+	}
+	s.networkStatus.Store(int32(ns))
+	if ns == p2p.NetworkStatusUnavailable {
+		return p2p.ErrNetworkUnavailable
+	}
+	return nil
+}
+
 // appendSpace adds a leading space character if the string is not empty.
 // It is useful for constructing log messages with conditional substrings.
 func appendSpace(s string) string {
@@ -999,4 +1031,34 @@ type connectionNotifier struct {
 
 func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
 	c.metrics.HandledConnectionCount.Inc()
+}
+
+// isNetworkOrHostUnreachableError determines based on the
+// given error whether the host or network is reachable.
+func isNetworkOrHostUnreachableError(err error) bool {
+	var de *lp2pswarm.DialError
+	if !errors.As(err, &de) {
+		return false
+	}
+
+	// Since TransportError doesn't implement the Unwrap
+	// method we need to inspect the errors manually.
+	for i := range de.DialErrors {
+		var te *lp2pswarm.TransportError
+		if !errors.As(&de.DialErrors[i], &te) {
+			continue
+		}
+
+		var ne *net.OpError
+		if !errors.As(te.Cause, &ne) || ne.Op != "dial" {
+			continue
+		}
+
+		var se *os.SyscallError
+		if errors.As(ne, &se) && strings.HasPrefix(se.Syscall, "connect") &&
+			(errors.Is(se.Err, errHostUnreachable) || errors.Is(se.Err, errNetworkUnreachable)) {
+			return true
+		}
+	}
+	return false
 }
