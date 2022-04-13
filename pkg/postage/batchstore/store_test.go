@@ -26,7 +26,7 @@ func TestBatchStore_Get(t *testing.T) {
 	testBatch := postagetest.MustNewBatch()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
 	err := batchStore.Save(testBatch)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestBatchStore_Iterate(t *testing.T) {
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
 	stateStorePut(t, stateStore, key, testBatch)
 
@@ -66,7 +66,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 	key2 := batchstore.BatchKey(testBatch2.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
 	stateStorePut(t, stateStore, key1, testBatch1)
 	stateStorePut(t, stateStore, key2, testBatch2)
@@ -114,7 +114,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	if err := batchStore.Save(testBatch); err != nil {
@@ -163,7 +163,7 @@ func TestBatchStore_GetChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err := batchStore.PutChainState(testChainState)
@@ -178,7 +178,7 @@ func TestBatchStore_PutChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	batchStorePutChainState(t, batchStore, testChainState)
@@ -206,7 +206,7 @@ func TestBatchStore_Reset(t *testing.T) {
 	}
 	defer stateStore.Close()
 
-	batchStore, _ := batchstore.New(stateStore, noopEvictFn, nil, logger)
+	batchStore, _ := batchstore.New(stateStore, noopEvictFn, logger)
 	batchStore.SetRadiusSetter(noopRadiusSetter{})
 	err = batchStore.Save(testBatch)
 	if err != nil {

@@ -164,46 +164,28 @@ func (s *store) computeRadius() error {
 
 	// Unreserve calls increase the global storage radius, but in the edge case that the new radius
 	// is lower because total commitment has decreased, the global storage radius has to be readjusted
-	// to prevent over aggressive eviction of future chunks, with respect to the current size of the localstore reserve.
+	// to prevent over aggressive eviction of future chunks.
 	if s.rs.Radius < oldRadius {
-		if err := s.estimateStorageRadius(totalCommitment); err != nil {
-			s.logger.Warningf("batchstore: estimate storage radius: %v", err)
+
+		// compute the different between new and old radius
+		radiusDiff := oldRadius - s.rs.Radius
+
+		// subtract the difference from the storage radius
+		if radiusDiff < s.rs.StorageRadius {
+			s.rs.StorageRadius -= radiusDiff
+		} else {
+			s.rs.StorageRadius = 0 // maintain that the radius is always a non-negative value
+		}
+
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		s.logger.Debugf("batchstore: computed storage radius %d", s.rs.StorageRadius)
+
+		if err := s.lowerBatchStorageRadius(); err != nil {
+			return err
 		}
 	}
 
 	return s.store.Put(reserveStateKey, s.rs)
-}
-
-// estimateStorageRadius uses the current size of the localstore reserve
-// to estimate a network wide batch utilization rate to compute a new storage radius.
-// The estimated storage radius is only assigned if it's lower than the current storage radius,
-// because the Unreserve function is responsible for increasing the radius.
-// Must be called under lock.
-func (s *store) estimateStorageRadius(totalCommitment int64) error {
-
-	reserveSize, err := s.reserveSizeFn()
-	if err != nil {
-		return err
-	}
-
-	utilizationRate := float64(reserveSize) / float64(Capacity)
-	adjuctedTotalCommitment := utilizationRate * float64(totalCommitment)
-
-	var newStorageRadius uint8
-	if int64(adjuctedTotalCommitment) <= Capacity {
-		newStorageRadius = 0
-	} else {
-		newStorageRadius = uint8(math.Ceil(math.Log2(adjuctedTotalCommitment / float64(Capacity))))
-	}
-
-	// if the new storage radius is lower, assign new value and lower every batch's storage radius.
-	if newStorageRadius < s.rs.StorageRadius {
-		s.rs.StorageRadius = newStorageRadius
-		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		return s.lowerBatchStorageRadius()
-	}
-
-	return nil
 }
 
 // Unreserve is implementation of postage.Storer interface Unreserve method.

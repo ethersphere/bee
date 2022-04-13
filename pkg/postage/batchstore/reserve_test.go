@@ -22,10 +22,6 @@ type testBatch struct {
 	reserveRadius uint8 // expected radius of the reserve state after the batch is added/updated
 }
 
-var defaultReserveSizeFn = func() (uint64, error) {
-	return 0, nil
-}
-
 // TestBatchSave adds batches to the batchstore, and after each batch, checks
 // the reserve state radius.
 func TestBatchSave(t *testing.T) {
@@ -96,7 +92,7 @@ func TestBatchSave(t *testing.T) {
 
 	for _, tc := range tcs {
 
-		store := setupBatchStore(t, defaultReserveSizeFn)
+		store := setupBatchStore(t)
 
 		for _, b := range tc.add {
 			_ = addBatch(t, store, b.depth, b.value)
@@ -180,7 +176,7 @@ func TestBatchUpdate(t *testing.T) {
 
 	for _, tc := range tcs {
 
-		store := setupBatchStore(t, defaultReserveSizeFn)
+		store := setupBatchStore(t)
 
 		var batches []*postage.Batch
 
@@ -263,7 +259,7 @@ func TestPutChainState(t *testing.T) {
 
 	for _, tc := range tcs {
 
-		store := setupBatchStore(t, defaultReserveSizeFn)
+		store := setupBatchStore(t)
 
 		// add the group of batches
 		for _, b := range tc.add {
@@ -298,45 +294,36 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 	}(batchstore.Capacity)
 	batchstore.Capacity = totalCapacity
 
-	initDepth := uint8(8)
-
-	// with a depth of 8, each batch's commitment is 2^8 (256) chunks.
-	// After adding 3 batches to the store, the radius becomes 5.
-	// After expiring one batch, the radius falls to 4.
-	// As a result of the radius decreasing, a new storage radius (3) is
-	// calculated with reserve size half of the total commitment.
-
-	// return half of total capacity to emulate 50% utilization
-	reserveSize := func() (uint64, error) {
-		return uint64(totalCapacity / 2), nil
-	}
 	const (
-		radiusAfterBatches       = 5 // radius after three batches of depth 8
-		radiusAfterChainUpdate   = 4 // radius after expiring one batch
-		storageRadiusAfterUpdate = 3 // storage radius with two batches of depth 8 at 50% utilization.
+		initDepth                = 8 // batch depth
+		expiredValue             = 1 // new chain state total amount that causes some batches to expire
+		radiusAfterFirstBatches  = 5 // radius after three batches of depth 8
+		radiusAfterSecondBatches = 6 // radius after three batches of depth 8
+		radiusAfterChainUpdate   = 5 // radius after expiring the first two batches
+		storageRadiusAfterUpdate = 4 // storage radius with two batches of depth 8 at 50% utilization.
 	)
 
-	store := setupBatchStore(t, reserveSize)
+	store := setupBatchStore(t)
 
 	// add some batches
-	_ = addBatch(t, store, initDepth, 1)
-	_ = addBatch(t, store, initDepth, 2)
-	_ = addBatch(t, store, initDepth, 2)
+	_ = addBatch(t, store, initDepth, expiredValue)
+	_ = addBatch(t, store, initDepth, expiredValue)
+	_ = addBatch(t, store, initDepth, expiredValue+1)
 
 	state := store.GetReserveState()
 
-	if state.Radius != radiusAfterBatches {
-		t.Fatalf("got radius %d, want %d", state.Radius, radiusAfterBatches)
+	if state.Radius != radiusAfterFirstBatches {
+		t.Fatalf("got radius %d, want %d", state.Radius, radiusAfterFirstBatches)
 	}
 
 	cb := func([]byte, uint8) (bool, error) { return false, nil }
 
 	// Unreserve is called multiple times (radius + 1) to confirm that the
-	// storage radius of the node never exceeds the radius
+	// storage radius of the node never exceeds the radius.
 	for i := uint8(0); i <= state.Radius+1; i++ {
 
 		wantStorageRadius := i
-		if wantStorageRadius >= state.Radius {
+		if wantStorageRadius > state.Radius {
 			wantStorageRadius = state.Radius
 		}
 
@@ -349,12 +336,22 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		_ = store.Unreserve(cb)
 	}
 
-	// in the final step, the chain state is updated to evict one batch,
+	// add some batches to increase the radius by one
+	_ = addBatch(t, store, initDepth, expiredValue+1)
+	_ = addBatch(t, store, initDepth, expiredValue+1)
+
+	state = store.GetReserveState()
+
+	if state.Radius != radiusAfterSecondBatches {
+		t.Fatalf("got radius %d, want %d", state.Radius, radiusAfterSecondBatches)
+	}
+
+	// in the final step, the chain state is updated to evict two batches,
 	// causing the radius to decrease, in return, a new storage radius is calculated,
 	// and the storage radius of batches are lowered to the current storage radius.
 	err := store.PutChainState(&postage.ChainState{
 		Block:        1,
-		TotalAmount:  big.NewInt(1),
+		TotalAmount:  big.NewInt(expiredValue),
 		CurrentPrice: big.NewInt(1),
 	})
 	if err != nil {
@@ -385,7 +382,7 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 	}
 }
 
-func setupBatchStore(t *testing.T, reserveSizeFn func() (uint64, error)) postage.Storer {
+func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -404,7 +401,7 @@ func setupBatchStore(t *testing.T, reserveSizeFn func() (uint64, error)) postage
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, reserveSizeFn, logger)
+	bStore, _ := batchstore.New(stateStore, evictFn, logger)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{
