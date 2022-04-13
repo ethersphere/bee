@@ -33,7 +33,6 @@ type metrics struct {
 	Blocklist                             prometheus.Counter
 	ReachabilityStatus                    *prometheus.GaugeVec
 	PeersReachabilityStatus               *prometheus.GaugeVec
-	NetworkUnavailableErrors              prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -179,12 +178,6 @@ func newMetrics() metrics {
 			},
 			[]string{"peers_reachability_status"},
 		),
-		NetworkUnavailableErrors: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "network_unavailable_total_errors",
-			Help:      "Number of network unavailable errors returned during the connection attempt.",
-		}),
 	}
 }
 

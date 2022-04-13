@@ -5,12 +5,12 @@
 //go:build windows
 // +build windows
 
-package kademlia
+package libp2p
 
 import "golang.org/x/sys/windows"
 
-// Collection of errors returned by the libp2p library when the
-// underlying operating system considers the network unreachable.
+// Collection of errors returned by the underlying
+// operating system that signals network unavailability.
 var (
 	errHostUnreachable    error = windows.WSAEHOSTUNREACH
 	errNetworkUnreachable error = windows.WSAENETUNREACH

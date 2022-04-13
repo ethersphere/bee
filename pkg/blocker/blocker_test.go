@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 
@@ -166,4 +167,16 @@ func mockBlockLister(f func(swarm.Address, time.Duration, string) error) *blockl
 
 func (b *blocklister) Blocklist(addr swarm.Address, t time.Duration, r string) error {
 	return b.blocklistFunc(addr, t, r)
+}
+
+// NetworkStatus implements p2p.NetworkStatuser interface.
+// It always returns p2p.NetworkStatusAvailable.
+func (b *blocklister) NetworkStatus() p2p.NetworkStatus {
+	return p2p.NetworkStatusAvailable
+}
+
+// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
+// The network is considered always online, and so nil is always returned.
+func (b *blocklister) DetermineCurrentNetworkStatus(_ error) error {
+	return nil
 }
