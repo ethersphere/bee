@@ -25,11 +25,9 @@ type peer struct {
 }
 
 type Blocker struct {
-	sequence     atomic.Uint64 // Monotonic clock.
-	seqSuspended atomic.Bool   // Clock state.
-
+	sequence          atomic.Uint64 // Monotonic clock.
 	mu                sync.Mutex
-	disconnector      p2p.Blocklister
+	blocklister       p2p.Blocklister
 	flagTimeout       time.Duration // how long before blocking a flagged peer
 	blockDuration     time.Duration // how long to blocklist a bad peer
 	peers             map[string]*peer
@@ -40,7 +38,7 @@ type Blocker struct {
 	blocklistCallback func(swarm.Address)
 }
 
-func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, callback func(swarm.Address), logger logging.Logger) *Blocker {
+func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, callback func(swarm.Address), logger logging.Logger) *Blocker {
 	if flagTimeout <= sequencerResolution {
 		panic(fmt.Errorf("flag timeout %v cannot be equal to or lower then the sequencer resolution %v", flagTimeout, sequencerResolution))
 	}
@@ -49,7 +47,7 @@ func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Durati
 	}
 
 	b := &Blocker{
-		disconnector:      dis,
+		blocklister:       blocklister,
 		flagTimeout:       flagTimeout,
 		blockDuration:     blockDuration,
 		peers:             map[string]*peer{},
@@ -68,7 +66,7 @@ func New(dis p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Durati
 			case <-b.quit:
 				return
 			case <-time.After(sequencerResolution):
-				if !b.seqSuspended.Load() {
+				if b.blocklister.NetworkStatus() != p2p.NetworkStatusUnavailable {
 					b.sequence.Inc()
 				}
 			}
@@ -102,8 +100,8 @@ func (b *Blocker) block() {
 		default:
 		}
 
-		if peer.blockAfter > 0 && b.sequence.Load() > peer.blockAfter {
-			if err := b.disconnector.Blocklist(peer.address, b.blockDuration, "blocker: flag timeout"); err != nil {
+		if 0 < peer.blockAfter && peer.blockAfter < b.sequence.Load() {
+			if err := b.blocklister.Blocklist(peer.address, b.blockDuration, "blocker: flag timeout"); err != nil {
 				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.address, err)
 			}
 			if b.blocklistCallback != nil {
@@ -115,6 +113,10 @@ func (b *Blocker) block() {
 }
 
 func (b *Blocker) Flag(addr swarm.Address) {
+	if b.blocklister.NetworkStatus() == p2p.NetworkStatusUnavailable {
+		return
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -151,12 +153,6 @@ func (b *Blocker) PruneUnseen(seen []swarm.Address) {
 		}
 	}
 }
-
-// Suspend will suspend the execution of the blocker, so no block-listing will happen.
-func (b *Blocker) Suspend() { b.seqSuspended.CAS(false, true) }
-
-// Resume will resume the suspended blocker.
-func (b *Blocker) Resume() { b.seqSuspended.CAS(true, false) }
 
 // Close will exit the worker loop.
 // must be called only once.
