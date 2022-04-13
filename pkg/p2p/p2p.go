@@ -74,12 +74,6 @@ type Service interface {
 type NetworkStatuser interface {
 	// NetworkStatus returns current network availability status.
 	NetworkStatus() NetworkStatus
-	// DetermineCurrentNetworkStatus determines if the network
-	// is available/unavailable based on the given error, and
-	// returns ErrNetworkUnavailable if unavailable.
-	// The result of this operation is stored and can be reflected
-	// in the results of future NetworkStatus method calls
-	DetermineCurrentNetworkStatus(err error) error
 }
 
 type Disconnecter interface {

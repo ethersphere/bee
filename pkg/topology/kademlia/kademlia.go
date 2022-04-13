@@ -914,8 +914,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	switch i, err := k.p2p.Connect(ctx, ma); {
 	case errors.Is(err, p2p.ErrNetworkUnavailable):
 		return err
-	case k.p2p.NetworkStatus() == p2p.NetworkStatusUnavailable:
-		return p2p.ErrNetworkUnavailable
 	case errors.Is(err, p2p.ErrDialLightNode):
 		return errPruneEntry
 	case errors.Is(err, p2p.ErrAlreadyConnected):

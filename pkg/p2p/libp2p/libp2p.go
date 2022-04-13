@@ -600,7 +600,7 @@ func (s *Service) NATManager() basichost.NATManager {
 }
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
-	if s.NetworkStatus() == p2p.NetworkStatusUnavailable {
+	if s.NetworkStatus() != p2p.NetworkStatusAvailable {
 		return nil
 	}
 
@@ -631,7 +631,7 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 }
 
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
-	defer func() { err = multierror.Append(err, s.DetermineCurrentNetworkStatus(err)).ErrorOrNil() }()
+	defer func() { err = multierror.Append(err, s.determineCurrentNetworkStatus(err)).ErrorOrNil() }()
 
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
@@ -754,8 +754,6 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 }
 
 func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
-	defer func() { err = multierror.Append(err, s.DetermineCurrentNetworkStatus(err)).ErrorOrNil() }()
-
 	s.metrics.DisconnectCount.Inc()
 
 	s.logger.Debugf("libp2p disconnect: disconnecting peer %s reason: %s", overlay, reason)
@@ -990,17 +988,28 @@ func (s *Service) NetworkStatus() p2p.NetworkStatus {
 	return p2p.NetworkStatus(s.networkStatus.Load())
 }
 
-// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
-func (s *Service) DetermineCurrentNetworkStatus(err error) error {
-	ns := p2p.NetworkStatusAvailable
-	if isNetworkOrHostUnreachableError(err) {
-		ns = p2p.NetworkStatusUnavailable
+// determineCurrentNetworkStatus determines if the network
+// is available/unavailable based on the given error, and
+// returns ErrNetworkUnavailable if unavailable.
+// The result of this operation is stored and can be reflected
+// in the results of future NetworkStatus method calls.
+func (s *Service) determineCurrentNetworkStatus(err error) error {
+	switch {
+	case err == nil:
+		s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
+	case errors.Is(err, lp2pswarm.ErrDialBackoff):
+		if s.NetworkStatus() == p2p.NetworkStatusUnavailable {
+			err = p2p.ErrNetworkUnavailable
+		}
+	case isNetworkOrHostUnreachableError(err):
+		s.networkStatus.Store(int32(p2p.NetworkStatusUnavailable))
+		err = p2p.ErrNetworkUnavailable
+	default:
+		if s.NetworkStatus() != p2p.NetworkStatusUnavailable {
+			s.networkStatus.Store(int32(p2p.NetworkStatusUnknown))
+		}
 	}
-	s.networkStatus.Store(int32(ns))
-	if ns == p2p.NetworkStatusUnavailable {
-		return p2p.ErrNetworkUnavailable
-	}
-	return nil
+	return err
 }
 
 // appendSpace adds a leading space character if the string is not empty.

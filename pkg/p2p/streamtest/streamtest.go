@@ -436,9 +436,3 @@ func (r *RecorderDisconnecter) IsBlocklisted(overlay swarm.Address) (bool, time.
 func (r *RecorderDisconnecter) NetworkStatus() p2p.NetworkStatus {
 	return p2p.NetworkStatusAvailable
 }
-
-// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
-// The network is considered always online, and so nil is always returned.
-func (r *RecorderDisconnecter) DetermineCurrentNetworkStatus(_ error) error {
-	return nil
-}

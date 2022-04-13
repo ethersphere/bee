@@ -117,9 +117,3 @@ func (m *m) Blocklist(overlay swarm.Address, duration time.Duration, reason stri
 func (m *m) NetworkStatus() p2p.NetworkStatus {
 	return p2p.NetworkStatusAvailable
 }
-
-// DetermineCurrentNetworkStatus implements p2p.NetworkStatuser interface.
-// The network is considered always online, and so nil is always returned.
-func (m *m) DetermineCurrentNetworkStatus(_ error) error {
-	return nil
-}
