@@ -20,8 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// TODO: reserve size func
-
 var noopEvictFn = func([]byte) error { return nil }
 
 func TestBatchStore_Get(t *testing.T) {
