@@ -164,7 +164,7 @@ func (s *store) computeRadius() error {
 
 	// Unreserve calls increase the global storage radius, but in the edge case that the new radius
 	// is lower because total commitment has decreased, the global storage radius has to be readjusted
-	// to prevent over aggressive eviction of future chunks.
+	// to maintain the same average batch utilization rate using the following: 1 / 2^(Radius - StorageRadius).
 	if s.rs.Radius < oldRadius {
 
 		// compute the different between new and old radius
