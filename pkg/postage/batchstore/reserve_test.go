@@ -297,10 +297,10 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 	const (
 		initDepth                = 8 // batch depth
 		expiredValue             = 1 // new chain state total amount that causes some batches to expire
-		radiusAfterFirstBatches  = 5 // radius after three batches of depth 8
-		radiusAfterSecondBatches = 6 // radius after three batches of depth 8
-		radiusAfterChainUpdate   = 5 // radius after expiring the first two batches
-		storageRadiusAfterUpdate = 4 // storage radius with two batches of depth 8 at 50% utilization.
+		radiusAfterFirstBatches  = 5 // radius after three batches
+		radiusAfterSecondBatches = 6 // radius after two more batches
+		radiusAfterChainUpdate   = 5 // radius after expiring two batches with the chain update
+		storageRadiusAfterUpdate = 4 // storage radius after chain update
 	)
 
 	store := setupBatchStore(t)

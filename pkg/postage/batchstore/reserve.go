@@ -266,8 +266,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	return nil
 }
 
-// lowerBatchStorageRadius lowers the storage radius of batches to the radius.
-// radius is based on maximum batch utilization, as such, batch storage radius cannot exceed the radius.
+// lowerBatchStorageRadius lowers the storage radius of batches to the current storage radius.
 // Must be called under lock.
 func (s *store) lowerBatchStorageRadius() error {
 
