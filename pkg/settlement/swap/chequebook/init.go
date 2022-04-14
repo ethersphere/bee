@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -48,9 +49,13 @@ func checkBalance(
 			return err
 		}
 
-		gasPrice, err := swapBackend.SuggestGasPrice(timeoutCtx)
-		if err != nil {
-			return err
+		gasPrice := sctx.GetGasPrice(ctx)
+
+		if gasPrice == nil {
+			gasPrice, err = swapBackend.SuggestGasPrice(timeoutCtx)
+			if err != nil {
+				return err
+			}
 		}
 
 		minimumEth := gasPrice.Mul(gasPrice, big.NewInt(250000))
@@ -65,10 +70,12 @@ func checkBalance(
 				neededERC20.Add(neededERC20, big.NewInt(1))
 			}
 
+			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), big.NewFloat(1000000000000000000))
+
 			if insufficientETH && insufficientERC20 {
-				logger.Warningf("cannot continue until there is sufficient xDAI (for Gas) and at least %d BZZ bridged on the xDAI network available on %x", neededERC20, overlayEthAddress)
+				logger.Warningf("cannot continue until there is at least %f xDAI (for Gas) and at least %d BZZ bridged on the xDAI network available on %x", neededETH, neededERC20, overlayEthAddress)
 			} else if insufficientETH {
-				logger.Warningf("cannot continue until there is sufficient xDAI (for Gas) available on %x", overlayEthAddress)
+				logger.Warningf("cannot continue until there is at least %f xDAI (for Gas) available on %x", neededETH, overlayEthAddress)
 			} else {
 				logger.Warningf("cannot continue until there is at least %d BZZ available on %x", neededERC20, overlayEthAddress)
 			}
