@@ -840,9 +840,8 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		headers = make(p2p.Headers)
 	}
 	if err := s.tracer.AddContextHeader(ctx, headers); err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-		s.logger.Errorf("new stream add context header: %v", err)
 		_ = stream.Reset()
-		return nil, err
+		return nil, fmt.Errorf("new stream add context header fail: %w", err)
 	}
 
 	// exchange headers
