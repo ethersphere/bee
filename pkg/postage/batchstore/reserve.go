@@ -170,6 +170,8 @@ func (s *store) computeRadius() error {
 		// compute the different between new and old radius
 		radiusDiff := oldRadius - s.rs.Radius
 
+		oldStorageRadius := s.rs.StorageRadius
+
 		// subtract the difference from the storage radius
 		if radiusDiff < s.rs.StorageRadius {
 			s.rs.StorageRadius -= radiusDiff
@@ -180,8 +182,11 @@ func (s *store) computeRadius() error {
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		s.logger.Debugf("batchstore: computed storage radius %d", s.rs.StorageRadius)
 
-		if err := s.lowerBatchStorageRadius(); err != nil {
-			return err
+		// lower batches' storage radius if new value is lower
+		if s.rs.StorageRadius < oldStorageRadius {
+			if err := s.lowerBatchStorageRadius(); err != nil {
+				return err
+			}
 		}
 	}
 
