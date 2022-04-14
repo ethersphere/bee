@@ -332,11 +332,11 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		bzzAddr, err := k.addressBook.Get(peer.addr)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
-			k.logger.Debugf("kademlia: empty address book entry for peer %q", peer.addr)
+			k.logger.Debugf("kademlia: empty address book entry for peer %s", peer.addr)
 			k.knownPeers.Remove(peer.addr)
 			return
 		case err != nil:
-			k.logger.Debugf("kademlia: failed to get address book entry for peer %q: %v", peer.addr, err)
+			k.logger.Debugf("kademlia: failed to get address book entry for peer %s: %v", peer.addr, err)
 			return
 		}
 
@@ -344,25 +344,25 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
 			if err := k.addressBook.Remove(peer.addr); err != nil {
-				k.logger.Debugf("kademlia: could not remove peer %q from addressbook", peer.addr)
+				k.logger.Debugf("kademlia: could not remove peer %s from addressbook", peer.addr)
 			}
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debugf("kademlia: dial to light node with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
+			k.logger.Debugf("kademlia: dial to light node with overlay %s and underlay %s", peer.addr, bzzAddr.Underlay)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debugf("kademlia: overlay mismatch has occurred to an overlay %q with underlay %q", peer.addr, bzzAddr.Underlay)
+			k.logger.Debugf("kademlia: overlay mismatch has occurred to an overlay %s with underlay %s", peer.addr, bzzAddr.Underlay)
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
-			k.logger.Debugf("kademlia: peer still in blocklist: %q", bzzAddr)
+			k.logger.Debugf("kademlia: peer still in blocklist: %s", bzzAddr)
 			k.logger.Warningf("peer still in blocklist")
 			return
 		case err != nil:
-			k.logger.Debugf("kademlia: peer not reachable from kademlia %q: %v", bzzAddr, err)
+			k.logger.Debugf("kademlia: peer not reachable from kademlia %s: %v", bzzAddr, err)
 			k.logger.Warningf("peer not reachable when attempting to connect")
 			return
 		}
@@ -378,7 +378,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 		k.depthMu.Unlock()
 
-		k.logger.Debugf("kademlia: connected to peer: %q in bin: %d", peer.addr, peer.po)
+		k.logger.Debugf("kademlia: connected to peer: %s in bin: %d", peer.addr, peer.po)
 		k.notifyManageLoop()
 		k.notifyPeerSig()
 	}
@@ -898,7 +898,7 @@ func recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
-	k.logger.Infof("attempting to connect to peer %q", peer)
+	k.logger.Infof("attempting to connect to peer %s", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
@@ -918,7 +918,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
 	case err != nil:
-		k.logger.Debugf("could not connect to peer %q: %v", peer, err)
+		k.logger.Debugf("could not connect to peer %s: %v", peer, err)
 
 		retryTime := time.Now().Add(timeToRetry)
 		var e *p2p.ConnectionBackoffError
@@ -939,9 +939,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
 			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debugf("could not remove peer from addressbook: %q", peer)
+				k.logger.Debugf("could not remove peer from addressbook: %s", peer)
 			}
-			k.logger.Debugf("kademlia pruned peer from address book %q", peer)
+			k.logger.Debugf("kademlia pruned peer from address book %s", peer)
 		} else {
 			k.waitNext.Set(peer, retryTime, failedAttempts)
 		}
