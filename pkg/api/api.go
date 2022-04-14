@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,6 +24,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -30,20 +34,28 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
 	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/settlement"
+	"github.com/ethersphere/bee/pkg/settlement/swap"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -125,6 +137,32 @@ type server struct {
 
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
+
+	// from debug API
+	overlay           *swarm.Address
+	publicKey         ecdsa.PublicKey
+	pssPublicKey      ecdsa.PublicKey
+	ethereumAddress   common.Address
+	chequebookEnabled bool
+	swapEnabled       bool
+
+	topologyDriver topology.Driver
+	p2p            p2p.DebugService
+	accounting     accounting.Interface
+	chequebook     chequebook.Service
+	pseudosettle   settlement.Interface
+	pingpong       pingpong.Interface
+	batchStore     postage.Storer
+
+	swap        swap.Interface
+	transaction transaction.Service
+	lightNodes  *lightnode.Container
+	blockTime   *big.Int
+	beeMode     BeeNodeMode
+	gatewayMode bool
+
+	postageSem       *semaphore.Weighted
+	cashOutChequeSem *semaphore.Weighted
 }
 
 type Options struct {
@@ -134,13 +172,32 @@ type Options struct {
 	Restricted         bool
 }
 
+type DebugOptions struct {
+	Overlay                 swarm.Address
+	P2P                     p2p.DebugService
+	Pingpong                pingpong.Interface
+	TopologyDriver          topology.Driver
+	LightNodes              *lightnode.Container
+	Accounting              accounting.Interface
+	Pseudosettle            settlement.Interface
+	SwapEnabled             bool
+	ChequebookEnabled       bool
+	Swap                    swap.Interface
+	Chequebook              chequebook.Service
+	BatchStore              postage.Storer
+	PublicKey, PSSPublicKey ecdsa.PublicKey
+	EthereumAddress         common.Address
+	BlockTime               *big.Int
+	Transaction             transaction.Service
+}
+
 const (
 	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) (Service, <-chan *pusher.Op) {
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (Service, <-chan *pusher.Op) {
 	s := &server{
 		auth:            auth,
 		tags:            tags,
@@ -161,6 +218,27 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		metrics:         newMetrics(),
 		quit:            make(chan struct{}),
 	}
+
+	s.p2p = do.P2P
+	s.pingpong = do.Pingpong
+	s.topologyDriver = do.TopologyDriver
+	s.accounting = do.Accounting
+	s.chequebookEnabled = do.ChequebookEnabled
+	s.chequebook = do.Chequebook
+	s.swapEnabled = do.SwapEnabled
+	s.swap = do.Swap
+	s.lightNodes = do.LightNodes
+	s.batchStore = do.BatchStore
+	s.pseudosettle = do.Pseudosettle
+	s.overlay = &do.Overlay
+	s.publicKey = do.PublicKey
+	s.pssPublicKey = do.PSSPublicKey
+	s.ethereumAddress = do.EthereumAddress
+	s.blockTime = do.BlockTime
+	s.transaction = do.Transaction
+
+	s.postageSem = semaphore.NewWeighted(1)
+	s.cashOutChequeSem = semaphore.NewWeighted(1)
 
 	s.setupRouting()
 
