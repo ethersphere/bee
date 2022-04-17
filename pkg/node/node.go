@@ -888,6 +888,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			debugAPIService.MustRegisterMetrics(l.Metrics()...)
 		}
 
+		if nsMetrics, ok := ns.(metrics.Collector); ok {
+			debugAPIService.MustRegisterMetrics(nsMetrics.Metrics()...)
+		}
+
 		debugAPIService.MustRegisterMetrics(pseudosettleService.Metrics()...)
 
 		if swapService != nil {
