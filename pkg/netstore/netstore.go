@@ -37,6 +37,7 @@ type store struct {
 	sCtx       context.Context
 	sCancel    context.CancelFunc
 	wg         sync.WaitGroup
+	metrics    metrics
 }
 
 var (
@@ -45,9 +46,15 @@ var (
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interface, logger logging.Logger) storage.Storer {
-	ns := &store{Storer: s, validStamp: validStamp, retrieval: r, logger: logger}
+	ns := &store{
+		Storer:     s,
+		validStamp: validStamp,
+		retrieval:  r,
+		logger:     logger,
+		bgWorkers:  make(chan struct{}, maxBgPutters),
+		metrics:    newMetrics(),
+	}
 	ns.sCtx, ns.sCancel = context.WithCancel(context.Background())
-	ns.bgWorkers = make(chan struct{}, maxBgPutters)
 	return ns
 }
 
@@ -58,6 +65,7 @@ func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interfac
 func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
 	ch, err = s.Storer.Get(ctx, mode, addr)
 	if err == nil {
+		s.metrics.LocalChunksCounter.Inc()
 		// ensure the chunk we get locally is valid. If not, retrieve the chunk
 		// from network. If there is any corruption of data in the local storage,
 		// this would ensure it is retrieved again from network and added back with
@@ -66,6 +74,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			err = errInvalidLocalChunk
 			ch = nil
 			s.logger.Warning("netstore: got invalid chunk from localstore, falling back to retrieval")
+			s.metrics.InvalidLocalChunksCounter.Inc()
 		}
 	}
 	if err != nil {
@@ -77,6 +86,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 			}
 			s.wg.Add(1)
 			s.put(ch, mode)
+			s.metrics.RetrievedChunksCounter.Inc()
 			return ch, nil
 		}
 		return nil, fmt.Errorf("netstore get: %w", err)
