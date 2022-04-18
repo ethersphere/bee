@@ -296,7 +296,7 @@ func TestParseName(t *testing.T) {
 		s, _ := api.New(nil, nil, tC.res, nil, nil, nil, nil, mockPostage, nil, nil, signer, nil, log, nil, api.Options{}, api.DebugOptions{})
 
 		t.Run(tC.desc, func(t *testing.T) {
-			got, err := s.(*api.Server).ResolveNameOrAddress(tC.name)
+			got, err := s.ResolveNameOrAddress(tC.name)
 			if err != nil && !errors.Is(err, tC.wantErr) {
 				t.Fatalf("bad error: %v", err)
 			}

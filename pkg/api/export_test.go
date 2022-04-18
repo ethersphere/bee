@@ -6,7 +6,7 @@ package api
 
 import "github.com/ethersphere/bee/pkg/swarm"
 
-type Server = server
+type ServerExport = Server
 
 type (
 	BytesPostResponse     = bytesPostResponse
@@ -51,7 +51,7 @@ var (
 	ToFileSizeBucket      = toFileSizeBucket
 )
 
-func (s *Server) ResolveNameOrAddress(str string) (swarm.Address, error) {
+func (s *ServerExport) ResolveNameOrAddress(str string) (swarm.Address, error) {
 	return s.resolveNameOrAddress(str)
 }
 

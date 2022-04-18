@@ -23,7 +23,7 @@ type addressesResponse struct {
 	PSSPublicKey string                `json:"pssPublicKey"`
 }
 
-func (s *server) addressesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) addressesHandler(w http.ResponseWriter, r *http.Request) {
 	// initialize variable to json encode as [] instead null if p2p is nil
 	underlay := make([]multiaddr.Multiaddr, 0)
 	// addresses endpoint is exposed before p2p service is configured

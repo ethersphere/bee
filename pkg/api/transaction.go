@@ -42,7 +42,7 @@ type transactionPendingList struct {
 	PendingTransactions []transactionInfo `json:"pendingTransactions"`
 }
 
-func (s *server) transactionListHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) transactionListHandler(w http.ResponseWriter, r *http.Request) {
 	txHashes, err := s.transaction.PendingTransactions()
 	if err != nil {
 		s.logger.Debugf("debug api: transactions: get pending transactions: %v", err)
@@ -80,7 +80,7 @@ func (s *server) transactionListHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (s *server) transactionDetailHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) transactionDetailHandler(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	txHash := common.HexToHash(hash)
 
@@ -113,7 +113,7 @@ type transactionHashResponse struct {
 	TransactionHash common.Hash `json:"transactionHash"`
 }
 
-func (s *server) transactionResendHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) transactionResendHandler(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	txHash := common.HexToHash(hash)
 
@@ -136,7 +136,7 @@ func (s *server) transactionResendHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *server) transactionCancelHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) transactionCancelHandler(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	txHash := common.HexToHash(hash)
 

@@ -41,7 +41,7 @@ func (b BeeNodeMode) String() string {
 }
 
 // nodeGetHandler gives back information about the Bee node configuration.
-func (s *server) nodeGetHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) nodeGetHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, nodeResponse{
 		BeeMode:           s.beeMode.String(),
 		GatewayMode:       s.gatewayMode,

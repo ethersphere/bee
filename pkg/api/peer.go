@@ -19,7 +19,7 @@ type peerConnectResponse struct {
 	Address string `json:"address"`
 }
 
-func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr, err := multiaddr.NewMultiaddr("/" + mux.Vars(r)["multi-address"])
 	if err != nil {
 		s.logger.Debugf("debug api: peer connect: parse multiaddress: %v", err)
@@ -48,7 +48,7 @@ func (s *server) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["address"]
 	swarmAddr, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -81,13 +81,13 @@ type peersResponse struct {
 	Peers []Peer `json:"peers"`
 }
 
-func (s *server) peersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) peersHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, peersResponse{
 		Peers: mapPeers(s.p2p.Peers()),
 	})
 }
 
-func (s *server) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request) {
 	peers, err := s.p2p.BlocklistedPeers()
 	if err != nil {
 		s.logger.Debugf("debug api: blocklisted peers: %v", err)

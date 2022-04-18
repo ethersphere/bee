@@ -807,7 +807,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	var (
-		apiService       api.Service
+		apiService       *api.Server
 		debugSwapService swap.Interface = swapService
 	)
 

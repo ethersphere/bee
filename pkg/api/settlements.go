@@ -34,7 +34,7 @@ type settlementsResponse struct {
 	Settlements             []settlementResponse `json:"settlements"`
 }
 
-func (s *server) settlementsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 
 	settlementsSent, err := s.swap.SettlementsSent()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
@@ -96,7 +96,7 @@ func (s *server) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, settlementsResponse{TotalSettlementReceived: bigint.Wrap(totalReceived), TotalSettlementSent: bigint.Wrap(totalSent), Settlements: settlementResponsesArray})
 }
 
-func (s *server) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -158,7 +158,7 @@ func (s *server) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (s *server) settlementsHandlerPseudosettle(w http.ResponseWriter, r *http.Request) {
+func (s *Server) settlementsHandlerPseudosettle(w http.ResponseWriter, r *http.Request) {
 
 	settlementsSent, err := s.pseudosettle.SettlementsSent()
 	if err != nil {

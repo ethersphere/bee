@@ -31,7 +31,7 @@ type balancesResponse struct {
 	Balances []balanceResponse `json:"balances"`
 }
 
-func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
@@ -53,7 +53,7 @@ func (s *server) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
 }
 
-func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -81,7 +81,7 @@ func (s *server) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) compensatedBalancesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) compensatedBalancesHandler(w http.ResponseWriter, r *http.Request) {
 	balances, err := s.accounting.CompensatedBalances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
@@ -103,7 +103,7 @@ func (s *server) compensatedBalancesHandler(w http.ResponseWriter, r *http.Reque
 	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
 }
 
-func (s *server) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {

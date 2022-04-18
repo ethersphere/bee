@@ -23,7 +23,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func (s *server) postageAccessHandler(h http.Handler) http.Handler {
+func (s *Server) postageAccessHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.postageSem.TryAcquire(1) {
 			s.logger.Debug("postage access: simultaneous on-chain operations not supported")
@@ -49,7 +49,7 @@ type postageCreateResponse struct {
 	BatchID hexByte `json:"batchID"`
 }
 
-func (s *server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	depthStr := mux.Vars(r)["depth"]
 
 	amount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
@@ -159,7 +159,7 @@ type bucketData struct {
 	Collisions uint32 `json:"collisions"`
 }
 
-func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	resp := postageStampsResponse{}
 	resp.Stamps = make([]postageStampResponse, 0, len(s.post.StampIssuers()))
 	for _, v := range s.post.StampIssuers() {
@@ -195,7 +195,7 @@ func (s *server) postageGetStampsHandler(w http.ResponseWriter, r *http.Request)
 	jsonhttp.OK(w, resp)
 }
 
-func (s *server) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Request) {
 	batches := make([]postageBatchResponse, 0)
 	err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
 		batchTTL, err := s.estimateBatchTTL(b)
@@ -232,7 +232,7 @@ func (s *server) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Reque
 	jsonhttp.OK(w, batchesRes)
 }
 
-func (s *server) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
@@ -270,7 +270,7 @@ func (s *server) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Re
 	jsonhttp.OK(w, resp)
 }
 
-func (s *server) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
@@ -340,7 +340,7 @@ type chainStateResponse struct {
 	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
 }
 
-func (s *server) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetReserveState()
 
 	commitment := int64(0)
@@ -363,7 +363,7 @@ func (s *server) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 // chainStateHandler returns the current chain state.
-func (s *server) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
 	state := s.batchStore.GetChainState()
 
 	jsonhttp.OK(w, chainStateResponse{
@@ -375,7 +375,7 @@ func (s *server) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
 
 // estimateBatchTTL estimates the time remaining until the batch expires.
 // The -1 signals that the batch never expires.
-func (s *server) estimateBatchTTLFromID(id []byte) (int64, error) {
+func (s *Server) estimateBatchTTLFromID(id []byte) (int64, error) {
 	batch, err := s.batchStore.Get(id)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
@@ -389,7 +389,7 @@ func (s *server) estimateBatchTTLFromID(id []byte) (int64, error) {
 
 // estimateBatchTTL estimates the time remaining until the batch expires.
 // The -1 signals that the batch never expires.
-func (s *server) estimateBatchTTL(batch *postage.Batch) (int64, error) {
+func (s *Server) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 	state := s.batchStore.GetChainState()
 	if len(state.CurrentPrice.Bits()) == 0 {
 		return -1, nil
@@ -407,7 +407,7 @@ func (s *server) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 	return ttl.Int64(), nil
 }
 
-func (s *server) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error("topup batch: invalid batchID")
@@ -459,7 +459,7 @@ func (s *server) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error("dilute batch: invalid batchID")

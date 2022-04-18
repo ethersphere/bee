@@ -19,7 +19,7 @@ import (
 	"resenje.org/web"
 )
 
-func (s *server) setupRouting() {
+func (s *Server) setupRouting() {
 	const (
 		apiVersion = "v1" // Only one api version exists, this should be configurable with more.
 		rootPath   = "/" + apiVersion
@@ -396,7 +396,7 @@ func (s *server) setupRouting() {
 	)
 }
 
-func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
+func (s *Server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			s.logger.Tracef("gateway mode: forbidden %s", r.URL.String())
@@ -407,7 +407,7 @@ func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	})
 }
 
-func (s *server) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
+func (s *Server) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {

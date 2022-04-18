@@ -30,7 +30,7 @@ const (
 	targetMaxLength = 3               // max target length in bytes, in order to prevent grieving by excess computation
 )
 
-func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	topicVar := mux.Vars(r)["topic"]
 	topic := pss.NewTopic(topicVar)
 
@@ -118,7 +118,7 @@ func (s *server) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.Created(w, nil)
 }
 
-func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  swarm.ChunkSize,
@@ -139,7 +139,7 @@ func (s *server) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 	go s.pumpWs(conn, t)
 }
 
-func (s *server) pumpWs(conn *websocket.Conn, t string) {
+func (s *Server) pumpWs(conn *websocket.Conn, t string) {
 	defer s.wsWg.Done()
 
 	var (

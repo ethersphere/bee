@@ -33,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
-	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -101,13 +100,6 @@ var (
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 )
 
-// Service is the API service interface.
-type Service interface {
-	http.Handler
-	m.Collector
-	io.Closer
-}
-
 type authenticator interface {
 	Authorize(string) bool
 	GenerateKey(string, int) (string, error)
@@ -115,7 +107,7 @@ type authenticator interface {
 	Enforce(string, string, string) (bool, error)
 }
 
-type server struct {
+type Server struct {
 	auth            authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
@@ -197,8 +189,8 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (Service, <-chan *pusher.Op) {
-	s := &server{
+func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (*Server, <-chan *pusher.Op) {
+	s := &Server{
 		auth:            auth,
 		tags:            tags,
 		storer:          storer,
@@ -246,7 +238,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 }
 
 // Close hangs up running websockets on shutdown.
-func (s *server) Close() error {
+func (s *Server) Close() error {
 	s.logger.Info("api shutting down")
 	close(s.quit)
 
@@ -267,7 +259,7 @@ func (s *server) Close() error {
 
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
 // If no id is supplied, it will attempt to create a new tag with a generated name and return it.
-func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
+func (s *Server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	// if tag ID is not supplied, create a new tag
 	if tagUid == "" {
 		tag, err := s.tags.Create(0)
@@ -280,7 +272,7 @@ func (s *server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	return t, false, err
 }
 
-func (s *server) getTag(tagUid string) (*tags.Tag, error) {
+func (s *Server) getTag(tagUid string) (*tags.Tag, error) {
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse taguid: %w", err)
@@ -288,7 +280,7 @@ func (s *server) getTag(tagUid string) (*tags.Tag, error) {
 	return s.tags.Get(uint32(uid))
 }
 
-func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
+func (s *Server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	log := s.logger
 
 	// Try and parse the name as a bzz address.
@@ -357,7 +349,7 @@ type securityTokenReq struct {
 	Expiry int    `json:"expiry"`
 }
 
-func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) authHandler(w http.ResponseWriter, r *http.Request) {
 	_, pass, ok := r.BasicAuth()
 
 	if !ok {
@@ -409,7 +401,7 @@ func (s *server) authHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) refreshHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	reqToken := r.Header.Get("Authorization")
 	if !strings.HasPrefix(reqToken, "Bearer ") {
 		jsonhttp.Forbidden(w, "Missing bearer token")
@@ -461,7 +453,7 @@ func (s *server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
+func (s *Server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, err := s.tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
@@ -484,7 +476,7 @@ func (s *server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 	}
 }
 
-func (s *server) contentLengthMetricMiddleware() func(h http.Handler) http.Handler {
+func (s *Server) contentLengthMetricMiddleware() func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
@@ -516,7 +508,7 @@ func lookaheadBufferSize(size int64) int {
 }
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.
-func (s *server) checkOrigin(r *http.Request) bool {
+func (s *Server) checkOrigin(r *http.Request) bool {
 	origin := r.Header["Origin"]
 	if len(origin) == 0 {
 		return true
@@ -563,7 +555,7 @@ func equalASCIIFold(s, t string) bool {
 // according to whether the upload is a deferred upload or not. in the case of
 // direct push to the network (default) a pushStamperPutter is returned.
 // returns a function to wait on the errorgroup in case of a pushing stamper putter.
-func (s *server) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
+func (s *Server) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)

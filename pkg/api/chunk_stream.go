@@ -22,7 +22,7 @@ import (
 
 var successWsMsg = []byte{}
 
-func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx, tag, putter, wait, err := s.processUploadRequest(r)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *server) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request
 	)
 }
 
-func (s *server) handleUploadStream(
+func (s *Server) handleUploadStream(
 	ctx context.Context,
 	conn *websocket.Conn,
 	tag *tags.Tag,
