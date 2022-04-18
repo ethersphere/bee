@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -346,7 +347,7 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	// Get the existing pin counter of the chunk
 	i, err := db.pinIndex.Get(item)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get pin index: %w", err)
 	}
 	item.PinCounter = i.PinCounter
 	// Decrement the pin counter or
@@ -364,21 +365,27 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	}
 	i, err = db.retrievalDataIndex.Get(item)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get retrieval data index: %w", err)
 	}
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 	item.BatchID = i.BatchID
 	i, err = db.pushIndex.Get(item)
-	if !errors.Is(err, leveldb.ErrNotFound) {
-		// err is either nil or not leveldb.ErrNotFound
-		return 0, err
+	switch {
+	case err == nil:
+		// this is a bit odd, but we return a nil here, causing the pending batch to
+		// be written to leveldb, removing the item from the pin index, but not moving it to
+		// the gc index because it still exists in the push index.
+		return 0, nil
+	case !errors.Is(err, leveldb.ErrNotFound):
+		// err is not leveldb.ErrNotFound
+		return 0, fmt.Errorf("get push index: %w", err)
 	}
 
 	i, err = db.retrievalAccessIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return 0, err
+			return 0, fmt.Errorf("get retrieval access index: %w", err)
 		}
 		item.AccessTimestamp = now()
 		err = db.retrievalAccessIndex.PutInBatch(batch, item)
