@@ -360,7 +360,7 @@ func TestReserveState(t *testing.T) {
 				Radius: 5,
 			})),
 		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{
 				Radius: 5,
 			}),
@@ -370,7 +370,7 @@ func TestReserveState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(),
 		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{}),
 		)
 	})
