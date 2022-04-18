@@ -164,11 +164,18 @@ func (s *Server) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
-	nameOrHex := mux.Vars(r)["addr"]
+	nameOrHex := mux.Vars(r)["address"]
 	ctx := r.Context()
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
+		s.logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
+		s.logger.Error("chunk: parse chunk address error")
+		jsonhttp.NotFound(w, nil)
+		return
+	}
+
+	if address.IsZero() {
 		s.logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
 		s.logger.Error("chunk: parse chunk address error")
 		jsonhttp.NotFound(w, nil)

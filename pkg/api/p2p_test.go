@@ -48,7 +48,7 @@ func TestAddresses(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/addresses", http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/addresses", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.AddressesResponse{
 				Overlay:      &overlay,
 				Underlay:     addresses,
@@ -60,7 +60,7 @@ func TestAddresses(t *testing.T) {
 	})
 
 	t.Run("post method not allowed", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/addresses", http.StatusMethodNotAllowed,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/addresses", http.StatusMethodNotAllowed,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
 				Message: http.StatusText(http.StatusMethodNotAllowed),
@@ -68,7 +68,7 @@ func TestAddresses(t *testing.T) {
 		)
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/node", http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/node", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.NodeResponse{
 			BeeMode:           api.LightMode.String(),
 			GatewayMode:       false,
@@ -87,7 +87,7 @@ func TestAddresses_error(t *testing.T) {
 		})),
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/addresses", http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/addresses", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),

@@ -50,7 +50,7 @@ func TestChequebookBalance(t *testing.T) {
 	}
 
 	var got *api.ChequebookBalanceResponse
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/balance", http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/balance", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -69,7 +69,7 @@ func TestChequebookBalanceError(t *testing.T) {
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/balance", http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrChequebookBalance,
 			Code:    http.StatusInternalServerError,
@@ -93,7 +93,7 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 		},
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/balance", http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrChequebookBalance,
 			Code:    http.StatusInternalServerError,
@@ -117,7 +117,7 @@ func TestChequebookAddress(t *testing.T) {
 	}
 
 	var got *api.ChequebookAddressResponse
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/address", http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/address", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -145,7 +145,7 @@ func TestChequebookWithdraw(t *testing.T) {
 		expected := &api.ChequebookTxResponse{TransactionHash: txHash}
 
 		var got *api.ChequebookTxResponse
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/chequebook/withdraw?amount=500", http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -172,7 +172,7 @@ func TestChequebookWithdraw(t *testing.T) {
 		expected := &api.ChequebookTxResponse{TransactionHash: txHash}
 
 		var got *api.ChequebookTxResponse
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/chequebook/withdraw?amount=500", http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
@@ -202,7 +202,7 @@ func TestChequebookDeposit(t *testing.T) {
 		expected := &api.ChequebookTxResponse{TransactionHash: txHash}
 
 		var got *api.ChequebookTxResponse
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/chequebook/deposit?amount=700", http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -230,7 +230,7 @@ func TestChequebookDeposit(t *testing.T) {
 		expected := &api.ChequebookTxResponse{TransactionHash: txHash}
 
 		var got *api.ChequebookTxResponse
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/chequebook/deposit?amount=700", http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
@@ -391,7 +391,7 @@ func TestChequebookLastCheques(t *testing.T) {
 
 	// We expect a list of items unordered by peer:
 	var got *api.ChequebookLastChequesResponse
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/cheque", http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cheque", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -460,7 +460,7 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	}
 
 	var got *api.ChequebookLastChequesPeerResponse
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/cheque/"+addr.String(), http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cheque/"+addr.String(), http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -486,7 +486,7 @@ func TestChequebookCashout(t *testing.T) {
 	expected := &api.SwapCashoutResponse{TransactionHash: deployCashingHash.String()}
 
 	var got *api.SwapCashoutResponse
-	jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/chequebook/cashout/"+addr.String(), http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/cashout/"+addr.String(), http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -515,7 +515,7 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 	expected := &api.SwapCashoutResponse{TransactionHash: deployCashingHash.String()}
 
 	var got *api.SwapCashoutResponse
-	jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/chequebook/cashout/"+addr.String(), http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/cashout/"+addr.String(), http.StatusOK,
 		jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
 		jsonhttptest.WithRequestHeader("Gas-Limit", "12221"),
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
@@ -601,7 +601,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		var got *api.SwapCashoutStatusResponse
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/cashout/"+addr.String(), http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -641,7 +641,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		var got *api.SwapCashoutStatusResponse
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/cashout/"+addr.String(), http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -672,7 +672,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		var got *api.SwapCashoutStatusResponse
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chequebook/cashout/"+addr.String(), http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 

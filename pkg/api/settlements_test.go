@@ -69,7 +69,7 @@ func TestSettlements(t *testing.T) {
 
 	// We expect a list of items unordered by peer:
 	var got *api.SettlementsResponse
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements", http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -88,7 +88,7 @@ func TestSettlementsError(t *testing.T) {
 		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc)},
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements", http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrCantSettlements,
 			Code:    http.StatusInternalServerError,
@@ -105,7 +105,7 @@ func TestSettlementsPeers(t *testing.T) {
 		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements/"+peer, http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements/"+peer, http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.SettlementResponse{
 			Peer:               peer,
 			SettlementSent:     bigint.Wrap(big.NewInt(1000000000000000000)),
@@ -131,7 +131,7 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements/"+peer, http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements/"+peer, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.SettlementResponse{
 				Peer:               peer,
 				SettlementSent:     bigint.Wrap(big.NewInt(0)),
@@ -148,7 +148,7 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements/"+peer, http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements/"+peer, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.SettlementResponse{
 				Peer:               peer,
 				SettlementSent:     bigint.Wrap(big.NewInt(1000000000000000000)),
@@ -168,7 +168,7 @@ func TestSettlementsPeersError(t *testing.T) {
 		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements/"+peer, http.StatusInternalServerError,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements/"+peer, http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrCantSettlementsPeer,
 			Code:    http.StatusInternalServerError,
@@ -181,7 +181,7 @@ func TestSettlementsInvalidAddress(t *testing.T) {
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/settlements/"+peer, http.StatusNotFound,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrInvalidAddress,
 			Code:    http.StatusNotFound,

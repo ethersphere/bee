@@ -41,7 +41,7 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/pingpong/"+peerID.String(), http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+peerID.String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PingpongResponse{
 				RTT: rtt.String(),
 			}),
@@ -49,7 +49,7 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("peer not found", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/pingpong/"+unknownPeerID.String(), http.StatusNotFound,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+unknownPeerID.String(), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
 				Message: "peer not found",
@@ -58,7 +58,7 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/pingpong/invalid-address", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid peer address",
@@ -67,7 +67,7 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
@@ -76,7 +76,7 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
 				Message: http.StatusText(http.StatusMethodNotAllowed),

@@ -30,7 +30,6 @@ import (
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
-
 	var (
 		chunksEndpoint  = "/chunks"
 		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
@@ -59,15 +58,25 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		reference := chunk.Address()
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: reference}),
 		)
 
+		has, err := storerMock.Has(context.Background(), reference)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("storer check root chunk reference: have none; want one")
+		}
+
 		// try to fetch the same chunk
-		resp := request(t, client, http.MethodGet, chunksResource(chunk.Address()), nil, http.StatusOK)
+		endpoint := chunksResource(chunk.Address())
+		resp := request(t, client, http.MethodGet, endpoint, nil, http.StatusOK)
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -151,34 +160,22 @@ func TestHasChunkHandler(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chunks/"+key.String(), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
-		)
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/"+key.String(), http.StatusOK,
+			jsonhttptest.WithNoResponseBody())
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chunks/abbbbb", http.StatusNotFound,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusNotFound),
-				Code:    http.StatusNotFound,
-			}),
-		)
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abbbbb", http.StatusNotFound,
+			jsonhttptest.WithNoResponseBody())
 	})
 
 	t.Run("bad address", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/chunks/abcd1100zz", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad address",
-				Code:    http.StatusBadRequest,
-			}),
-		)
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abcd1100zz", http.StatusBadRequest,
+			jsonhttptest.WithNoResponseBody())
 	})
 
 	t.Run("remove-chunk", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/restricted/chunks/"+key.String(), http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
@@ -195,7 +192,7 @@ func TestHasChunkHandler(t *testing.T) {
 
 	t.Run("remove-not-present-chunk", func(t *testing.T) {
 		notPresentChunkAddress := "deadbeef"
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/restricted/chunks/"+notPresentChunkAddress, http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,

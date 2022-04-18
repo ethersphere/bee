@@ -16,7 +16,7 @@ func TestTopologyOK(t *testing.T) {
 
 	var body []byte
 	opts := jsonhttptest.WithPutResponseBody(&body)
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/topology", http.StatusOK, opts)
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/topology", http.StatusOK, opts)
 
 	if len(body) == 0 {
 		t.Error("empty response")

@@ -53,7 +53,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/transactions/"+txHashStr, http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.TransactionInfo{
 				TransactionHash: txHash,
 				Created:         time.Unix(created, 0),
@@ -77,7 +77,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/transactions/"+txHashStr, http.StatusNotFound,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: api.ErrUnknownTransaction,
 				Code:    http.StatusNotFound,
@@ -93,7 +93,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/transactions/"+txHashStr, http.StatusInternalServerError,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: api.ErrCantGetTransaction,
 				Code:    http.StatusInternalServerError,
@@ -139,7 +139,7 @@ func TestTransactionList(t *testing.T) {
 		},
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/transactions", http.StatusOK,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.TransactionPendingList{
 			PendingTransactions: []api.TransactionInfo{
 				{
@@ -183,7 +183,7 @@ func TestTransactionListError(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/transactions", http.StatusInternalServerError,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: api.ErrCantGetTransaction,
@@ -203,7 +203,7 @@ func TestTransactionListError(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/restricted/transactions", http.StatusInternalServerError,
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: api.ErrCantGetTransaction,
@@ -223,7 +223,7 @@ func TestTransactionResend(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/transactions/"+txHash.String(), http.StatusOK,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.TransactionHashResponse{
 				TransactionHash: txHash,
 			}),
@@ -239,7 +239,7 @@ func TestTransactionResend(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/transactions/"+txHash.String(), http.StatusNotFound,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
 				Message: api.ErrUnknownTransaction,
@@ -256,7 +256,7 @@ func TestTransactionResend(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/transactions/"+txHash.String(), http.StatusBadRequest,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: api.ErrAlreadyImported,
@@ -273,7 +273,7 @@ func TestTransactionResend(t *testing.T) {
 			},
 		})
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/restricted/transactions/"+txHash.String(), http.StatusInternalServerError,
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: api.ErrCantResendTransaction,

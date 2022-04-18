@@ -152,35 +152,6 @@ paths:
         default:
           description: Default response
 
-  "/chunks/{reference}":
-    get:
-      summary: "Get Chunk"
-      tags:
-        - Chunk
-      parameters:
-        - in: path
-          name: reference
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
-          required: true
-          description: Swarm address of chunk
-      responses:
-        "200":
-          description: Retrieved chunk content
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
   "/chunks":
     post:
       summary: "Upload Chunk"
@@ -879,7 +850,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/addresses":
+  "/addresses":
     get:
       summary: Get overlay and underlay addresses of the node
       tags:
@@ -896,7 +867,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/balances":
+  "/balances":
     get:
       summary: Get the balances with all known peers including prepaid services
       tags:
@@ -913,7 +884,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/balances/{address}":
+  "/balances/{address}":
     get:
       summary: Get the balances with a specific peer including prepaid services
       tags:
@@ -939,7 +910,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/blocklist":
+  "/blocklist":
     get:
       summary: Get a list of blocklisted peers
       tags:
@@ -956,7 +927,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/consumed":
+  "/consumed":
     get:
       summary: Get the past due consumption balances with all known peers
       tags:
@@ -973,7 +944,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/consumed/{address}":
+  "/consumed/{address}":
     get:
       summary: Get the past due consumption balance with a specific peer
       tags:
@@ -999,7 +970,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chequebook/address":
+  "/chequebook/address":
     get:
       summary: Get the address of the chequebook contract used
       tags:
@@ -1012,7 +983,7 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ChequebookAddress"
 
-  "/restricted/chequebook/balance":
+  "/chequebook/balance":
     get:
       summary: Get the balance of the chequebook
       tags:
@@ -1029,8 +1000,35 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chunks/{address}":
+  "/chunks/{address}":
     get:
+        summary: "Get Chunk"
+        tags:
+          - Chunk
+        parameters:
+          - in: path
+            name: reference
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+            required: true
+            description: Swarm address of chunk
+        responses:
+          "200":
+            description: Retrieved chunk content
+            content:
+              application/octet-stream:
+                schema:
+                  type: string
+                  format: binary
+          "400":
+            $ref: "SwarmCommon.yaml#/components/responses/400"
+          "404":
+            $ref: "SwarmCommon.yaml#/components/responses/404"
+          "500":
+            $ref: "SwarmCommon.yaml#/components/responses/500"
+          default:
+            description: Default response
+    head:
       summary: Check if chunk at address exists locally
       tags:
         - Chunk
@@ -1079,7 +1077,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/connect/{multiAddress}":
+  "/connect/{multiAddress}":
     post:
       summary: Connect to address
       tags:
@@ -1106,7 +1104,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/reservestate":
+  "/reservestate":
     get:
       summary: Get reserve state
       tags:
@@ -1121,7 +1119,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chainstate":
+  "/chainstate":
     get:
       summary: Get chain state
       tags:
@@ -1136,7 +1134,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/node":
+  "/node":
     get:
       summary: Get information about the node
       tags:
@@ -1151,7 +1149,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/peers":
+  "/peers":
     get:
       summary: Get a list of peers
       tags:
@@ -1166,7 +1164,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/peers/{address}":
+  "/peers/{address}":
     delete:
       summary: Remove peer
       tags:
@@ -1192,7 +1190,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/pingpong/{peer-id}":
+  "/pingpong/{peer-id}":
     post:
       summary: Try connection to node
       tags:
@@ -1220,7 +1218,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/settlements/{address}":
+  "/settlements/{address}":
     get:
       summary: Get amount of sent and received from settlements with a peer
       tags:
@@ -1246,7 +1244,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/settlements":
+  "/settlements":
     get:
       summary: Get settlements with all known peers and total amount sent or received
       tags:
@@ -1263,7 +1261,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/timesettlements":
+  "/timesettlements":
     get:
       summary: Get time based settlements with all known peers and total amount sent or received
       tags:
@@ -1280,7 +1278,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/topology":
+  "/topology":
     get:
       description: Get topology of known network
       tags:
@@ -1293,7 +1291,7 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/BzzTopology"
 
-  "/restricted/welcome-message":
+  "/welcome-message":
     get:
       summary: Get configured P2P welcome message
       tags:
@@ -1332,7 +1330,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chequebook/cashout/{peer-id}":
+  "/chequebook/cashout/{peer-id}":
     get:
       summary: Get last cashout action for the peer
       parameters:
@@ -1386,7 +1384,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chequebook/cheque/{peer-id}":
+  "/chequebook/cheque/{peer-id}":
     get:
       summary: Get last cheques for the peer
       parameters:
@@ -1412,7 +1410,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chequebook/cheque":
+  "/chequebook/cheque":
     get:
       summary: Get last cheques for all peers
       tags:
@@ -1431,7 +1429,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chequebook/deposit":
+  "/chequebook/deposit":
     post:
       summary: Deposit tokens from overlay address into chequebook
       parameters:
@@ -1458,7 +1456,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/chequebook/withdraw":
+  "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook to the overlay address
       parameters:
@@ -1485,7 +1483,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/transactions":
+  "/transactions":
     get:
       summary: Get list of pending transactions
       tags:
@@ -1502,7 +1500,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/transactions/{txHash}":
+  "/transactions/{txHash}":
     get:
       summary: Get information about a sent transaction
       parameters:
@@ -1577,7 +1575,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/stamps":
+  "/stamps":
     get:
       summary: Get all available stamps for this node
       tags:
@@ -1593,7 +1591,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/stamps/{id}":
+  "/stamps/{id}":
     parameters:
       - in: path
         name: id
@@ -1617,7 +1615,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/stamps/{id}/buckets":
+  "/stamps/{id}/buckets":
     parameters:
       - in: path
         name: id
@@ -1641,7 +1639,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/stamps/{amount}/{depth}":
+  "/stamps/{amount}/{depth}":
     post:
       summary: Buy a new postage batch.
       description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
@@ -1688,7 +1686,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/stamps/topup/{id}/{amount}":
+  "/stamps/topup/{id}/{amount}":
     patch:
       summary: Top up an existing postage batch.
       description: Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
@@ -1725,7 +1723,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/stamps/dilute/{id}/{depth}":
+  "/stamps/dilute/{id}/{depth}":
     patch:
       summary: Dilute an existing postage batch.
       description: Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
@@ -1760,7 +1758,7 @@ paths:
         default:
           description: Default response
 
-  "/restricted/batches":
+  "/batches":
     get:
       summary: Get all globally available batches that were purchased by all nodes.
       tags:

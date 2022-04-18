@@ -25,7 +25,7 @@ func TestGetWelcomeMessage(t *testing.T) {
 			return DefaultTestWelcomeMessage
 		}))})
 
-	jsonhttptest.Request(t, srv, http.MethodGet, "/restricted/welcome-message", http.StatusOK,
+	jsonhttptest.Request(t, srv, http.MethodGet, "/welcome-message", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.WelcomeMessageResponse{
 			WelcomeMesssage: DefaultTestWelcomeMessage,
 		}),
@@ -64,7 +64,7 @@ func TestSetWelcomeMessage(t *testing.T) {
 			wantStatus: http.StatusRequestEntityTooLarge,
 		},
 	}
-	testURL := "/restricted/welcome-message"
+	testURL := "/welcome-message"
 
 	mockP2P := mock.New()
 
@@ -102,7 +102,7 @@ func TestSetWelcomeMessage(t *testing.T) {
 func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 	testMessage := "NO CHANCE BYE"
 	testError := errors.New("Could not set value")
-	testURL := "/restricted/welcome-message"
+	testURL := "/welcome-message"
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithSetWelcomeMessageFunc(func(string) error {

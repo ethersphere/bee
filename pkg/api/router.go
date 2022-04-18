@@ -27,7 +27,7 @@ func (s *Server) setupRouting() {
 
 	router := mux.NewRouter()
 
-	// handleRestricted is a helper closure which simplifies the router setup.
+	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
 		if s.Restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
@@ -90,8 +90,10 @@ func (s *Server) setupRouting() {
 		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
 	))
 
-	handle("/chunks/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chunkGetHandler),
+	handle("/chunks/{address}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.chunkGetHandler),
+		"HEAD":   http.HandlerFunc(s.hasChunkHandler),
+		"DELETE": http.HandlerFunc(s.removeChunk),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
@@ -196,70 +198,57 @@ func (s *Server) setupRouting() {
 		),
 	})
 
-	restricted := router.PathPrefix("/restricted").Subrouter()
-
-	handleRestricted := func(path string, handler http.Handler) {
-		if s.Restricted {
-			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
-		}
-		restricted.Handle(path, handler)
-		restricted.Handle(rootPath+path, handler)
-	}
-
-	handleRestricted("/node", jsonhttp.MethodHandler{
+	handle("/node", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.nodeGetHandler),
 	})
 
-	handleRestricted("/addresses", jsonhttp.MethodHandler{
+	handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
 	if s.transaction != nil {
-		handleRestricted("/transactions", jsonhttp.MethodHandler{
+		handle("/transactions", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.transactionListHandler),
 		})
-		handleRestricted("/transactions/{hash}", jsonhttp.MethodHandler{
+		handle("/transactions/{hash}", jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.transactionDetailHandler),
 			"POST":   http.HandlerFunc(s.transactionResendHandler),
 			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
 		})
 	}
 
-	handleRestricted("/peers", jsonhttp.MethodHandler{
+	handle("/peers", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
 
-	handleRestricted("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
-	handleRestricted("/reservestate", jsonhttp.MethodHandler{
+	handle("/reservestate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.reserveStateHandler),
 	})
 
-	handleRestricted("/chainstate", jsonhttp.MethodHandler{
+	handle("/chainstate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
-	handleRestricted("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
+	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
 
-	handleRestricted("/blocklist", jsonhttp.MethodHandler{
+	handle("/blocklist", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
 	})
 
-	handleRestricted("/peers/{address}", jsonhttp.MethodHandler{
+	handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
-	handleRestricted("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.hasChunkHandler),
-		"DELETE": http.HandlerFunc(s.removeChunk),
-	})
-	handleRestricted("/topology", jsonhttp.MethodHandler{
+
+	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
-	handleRestricted("/welcome-message", jsonhttp.MethodHandler{
+	handle("/welcome-message", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
@@ -267,107 +256,107 @@ func (s *Server) setupRouting() {
 		),
 	})
 
-	handleRestricted("/balances", jsonhttp.MethodHandler{
+	handle("/balances", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
 	})
 
-	handleRestricted("/balances/{peer}", jsonhttp.MethodHandler{
+	handle("/balances/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
 	})
 
-	handleRestricted("/consumed", jsonhttp.MethodHandler{
+	handle("/consumed", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.balancesHandler),
 	})
 
-	handleRestricted("/consumed/{peer}", jsonhttp.MethodHandler{
+	handle("/consumed/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
-	handleRestricted("/timesettlements", jsonhttp.MethodHandler{
+	handle("/timesettlements", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
 	if s.swapEnabled {
-		handleRestricted("/settlements", jsonhttp.MethodHandler{
+		handle("/settlements", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.settlementsHandler),
 		})
 
-		handleRestricted("/settlements/{peer}", jsonhttp.MethodHandler{
+		handle("/settlements/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.peerSettlementsHandler),
 		})
 
-		handleRestricted("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
+		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
 		})
 
-		handleRestricted("/chequebook/cheque", jsonhttp.MethodHandler{
+		handle("/chequebook/cheque", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
 		})
 
-		handleRestricted("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
+		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
 			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
 			"POST": http.HandlerFunc(s.swapCashoutHandler),
 		})
 	}
 
 	if s.chequebookEnabled {
-		handleRestricted("/chequebook/balance", jsonhttp.MethodHandler{
+		handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})
 
-		handleRestricted("/chequebook/address", jsonhttp.MethodHandler{
+		handle("/chequebook/address", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookAddressHandler),
 		})
 
-		handleRestricted("/chequebook/deposit", jsonhttp.MethodHandler{
+		handle("/chequebook/deposit", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookDepositHandler),
 		})
 
-		handleRestricted("/chequebook/withdraw", jsonhttp.MethodHandler{
+		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
 	}
 
-	handleRestricted("/stamps", web.ChainHandlers(
+	handle("/stamps", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
-	handleRestricted("/stamps/{id}", web.ChainHandlers(
+	handle("/stamps/{id}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
-	handleRestricted("/stamps/{id}/buckets", web.ChainHandlers(
+	handle("/stamps/{id}/buckets", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
 		})),
 	)
 
-	handleRestricted("/stamps/{amount}/{depth}", web.ChainHandlers(
+	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
 	)
 
-	handleRestricted("/stamps/topup/{id}/{amount}", web.ChainHandlers(
+	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
 	)
 
-	handleRestricted("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
+	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
 	)
 
-	handleRestricted("/batches", web.ChainHandlers(
+	handle("/batches", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
 		})),

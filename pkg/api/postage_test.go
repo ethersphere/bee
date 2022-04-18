@@ -34,7 +34,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	depth := uint8(1)
 	label := "label"
 	createBatch := func(amount int64, depth uint8, label string) string {
-		return fmt.Sprintf("/restricted/stamps/%d/%d?label=%s", amount, depth, label)
+		return fmt.Sprintf("/stamps/%d/%d?label=%s", amount, depth, label)
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -132,7 +132,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	t.Run("invalid depth", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/stamps/1000/ab", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/ab", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid depth",
@@ -150,7 +150,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/stamps/1000/9", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/9", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid depth",
@@ -161,7 +161,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	t.Run("invalid balance", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/stamps/abcd/2", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid postage amount",
@@ -182,7 +182,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/restricted/stamps/1000/24", http.StatusCreated,
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
 			jsonhttptest.WithRequestHeader("Immutable", "true"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
@@ -206,7 +206,7 @@ func TestPostageGetStamps(t *testing.T) {
 	ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
 
 	t.Run("single stamp", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{
 					{
@@ -258,7 +258,7 @@ func TestGetAllBatches(t *testing.T) {
 	}
 
 	t.Run("all stamps", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/batches", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(oneBatch),
 		)
 	})
@@ -274,7 +274,7 @@ func TestPostageGetStamp(t *testing.T) {
 	ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
 				BatchID:       b.ID,
 				Utilization:   si.Utilization(),
@@ -293,7 +293,7 @@ func TestPostageGetStamp(t *testing.T) {
 	t.Run("bad request", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2}
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
@@ -303,7 +303,7 @@ func TestPostageGetStamp(t *testing.T) {
 	t.Run("bad request", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2, 4}
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
@@ -322,7 +322,7 @@ func TestPostageGetBuckets(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps/"+batchOkStr+"/buckets", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+batchOkStr+"/buckets", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampBucketsResponse{
 				Depth:            si.Depth(),
 				BucketDepth:      si.BucketDepth(),
@@ -334,7 +334,7 @@ func TestPostageGetBuckets(t *testing.T) {
 	t.Run("bad batch", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2}
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
@@ -344,7 +344,7 @@ func TestPostageGetBuckets(t *testing.T) {
 	t.Run("bad batch", func(t *testing.T) {
 		badBatch := []byte{0, 1, 2, 4}
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
@@ -360,7 +360,7 @@ func TestReserveState(t *testing.T) {
 				Radius: 5,
 			})),
 		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/reservestate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{
 				Radius: 5,
 			}),
@@ -370,7 +370,7 @@ func TestReserveState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(),
 		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/reservestate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{}),
 		)
 	})
@@ -385,7 +385,7 @@ func TestChainState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(mock.WithChainState(cs)),
 		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/chainstate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{
 				Block:        123456,
 				TotalAmount:  bigint.Wrap(big.NewInt(50)),
@@ -398,7 +398,7 @@ func TestChainState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(),
 		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/restricted/chainstate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{}),
 		)
 	})
@@ -407,7 +407,7 @@ func TestChainState(t *testing.T) {
 func TestPostageTopUpStamp(t *testing.T) {
 	topupAmount := int64(1000)
 	topupBatch := func(id string, amount int64) string {
-		return fmt.Sprintf("/restricted/stamps/topup/%s/%d", id, amount)
+		return fmt.Sprintf("/stamps/topup/%s/%d", id, amount)
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -499,7 +499,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 	t.Run("invalid batch id", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{})
 
-		jsonhttptest.Request(t, ts, http.MethodPatch, "/restricted/stamps/topup/abcd/2", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/topup/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
@@ -510,7 +510,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 	t.Run("invalid amount", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{})
 
-		wrongURL := fmt.Sprintf("/restricted/stamps/topup/%s/amount", batchOkStr)
+		wrongURL := fmt.Sprintf("/stamps/topup/%s/amount", batchOkStr)
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, wrongURL, http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
@@ -524,7 +524,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 func TestPostageDiluteStamp(t *testing.T) {
 	newBatchDepth := uint8(17)
 	diluteBatch := func(id string, depth uint8) string {
-		return fmt.Sprintf("/restricted/stamps/dilute/%s/%d", id, depth)
+		return fmt.Sprintf("/stamps/dilute/%s/%d", id, depth)
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -616,7 +616,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 	t.Run("invalid batch id", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{})
 
-		jsonhttptest.Request(t, ts, http.MethodPatch, "/restricted/stamps/dilute/abcd/2", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/dilute/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid batchID",
@@ -627,7 +627,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 	t.Run("invalid depth", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{})
 
-		wrongURL := fmt.Sprintf("/restricted/stamps/dilute/%s/depth", batchOkStr)
+		wrongURL := fmt.Sprintf("/stamps/dilute/%s/depth", batchOkStr)
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, wrongURL, http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
@@ -654,7 +654,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "create batch ok",
 			method:   http.MethodPost,
-			url:      "/restricted/stamps/1000/17?label=test",
+			url:      "/stamps/1000/17?label=test",
 			respCode: http.StatusCreated,
 			resp: &api.PostageCreateResponse{
 				BatchID: batchOk,
@@ -663,7 +663,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "topup batch ok",
 			method:   http.MethodPatch,
-			url:      fmt.Sprintf("/restricted/stamps/topup/%s/10", batchOkStr),
+			url:      fmt.Sprintf("/stamps/topup/%s/10", batchOkStr),
 			respCode: http.StatusAccepted,
 			resp: &api.PostageCreateResponse{
 				BatchID: batchOk,
@@ -672,7 +672,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "dilute batch ok",
 			method:   http.MethodPatch,
-			url:      fmt.Sprintf("/restricted/stamps/dilute/%s/18", batchOkStr),
+			url:      fmt.Sprintf("/stamps/dilute/%s/18", batchOkStr),
 			respCode: http.StatusAccepted,
 			resp: &api.PostageCreateResponse{
 				BatchID: batchOk,
@@ -684,7 +684,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "create batch not ok",
 			method:   http.MethodPost,
-			url:      "/restricted/stamps/1000/17?label=test",
+			url:      "/stamps/1000/17?label=test",
 			respCode: http.StatusTooManyRequests,
 			resp: &jsonhttp.StatusResponse{
 				Code:    http.StatusTooManyRequests,
@@ -694,7 +694,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "topup batch not ok",
 			method:   http.MethodPatch,
-			url:      fmt.Sprintf("/restricted/stamps/topup/%s/10", batchOkStr),
+			url:      fmt.Sprintf("/stamps/topup/%s/10", batchOkStr),
 			respCode: http.StatusTooManyRequests,
 			resp: &jsonhttp.StatusResponse{
 				Code:    http.StatusTooManyRequests,
@@ -704,7 +704,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "dilute batch not ok",
 			method:   http.MethodPatch,
-			url:      fmt.Sprintf("/restricted/stamps/dilute/%s/18", batchOkStr),
+			url:      fmt.Sprintf("/stamps/dilute/%s/18", batchOkStr),
 			respCode: http.StatusTooManyRequests,
 			resp: &jsonhttp.StatusResponse{
 				Code:    http.StatusTooManyRequests,
