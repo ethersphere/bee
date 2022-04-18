@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-func (s *Server) topologyHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) topologyHandler(w http.ResponseWriter, r *http.Request) {
 	params := s.topologyDriver.Snapshot()
 
 	params.LightNodes = s.lightNodes.PeerInfo()

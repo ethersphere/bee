@@ -21,12 +21,10 @@ import (
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
-	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -231,8 +229,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	traversalService := traversal.New(storer)
 
-	pinningService := pinning.NewService(storer, stateStore, traversalService)
-
 	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
@@ -305,8 +301,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			},
 		),
 	)
-
-	feedFactory := factory.New(storer)
 
 	var (
 		lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
@@ -396,7 +390,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		BlockTime:         big.NewInt(2),
 	}
 
-	apiService, _ := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, nil, signer, authenticator, logger, tracer, api.Options{
+	apiService, _ := api.New(signer, authenticator, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,

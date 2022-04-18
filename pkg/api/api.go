@@ -53,6 +53,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
@@ -107,7 +108,7 @@ type authenticator interface {
 	Enforce(string, string, string) (bool, error)
 }
 
-type Server struct {
+type Service struct {
 	auth            authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
@@ -123,6 +124,7 @@ type Server struct {
 	post            postage.Service
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
+	metricsRegistry *prometheus.Registry
 	Options
 	http.Handler
 	metrics metrics
@@ -188,20 +190,23 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
+func (s *Service) Configure(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface) {
+	s.tags = tags
+	s.storer = storer
+	s.resolver = resolver
+	s.pss = pss
+	s.traversal = traversalService
+	s.pinning = pinning
+	s.feedFactory = feedFactory
+	s.post = post
+	s.postageContract = postageContract
+	s.steward = steward
+}
+
 // New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (*Server, <-chan *pusher.Op) {
-	s := &Server{
+func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (*Service, <-chan *pusher.Op) {
+	s := &Service{
 		auth:            auth,
-		tags:            tags,
-		storer:          storer,
-		resolver:        resolver,
-		pss:             pss,
-		traversal:       traversalService,
-		pinning:         pinning,
-		feedFactory:     feedFactory,
-		post:            post,
-		postageContract: postageContract,
-		steward:         steward,
 		chunkPushC:      make(chan *pusher.Op),
 		signer:          signer,
 		Options:         o,
@@ -209,6 +214,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 		tracer:          tracer,
 		metrics:         newMetrics(),
 		quit:            make(chan struct{}),
+		metricsRegistry: newDebugMetrics(),
 	}
 
 	s.p2p = do.P2P
@@ -238,7 +244,7 @@ func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, ps
 }
 
 // Close hangs up running websockets on shutdown.
-func (s *Server) Close() error {
+func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
 	close(s.quit)
 
@@ -259,7 +265,7 @@ func (s *Server) Close() error {
 
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
 // If no id is supplied, it will attempt to create a new tag with a generated name and return it.
-func (s *Server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
+func (s *Service) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	// if tag ID is not supplied, create a new tag
 	if tagUid == "" {
 		tag, err := s.tags.Create(0)
@@ -272,7 +278,7 @@ func (s *Server) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 	return t, false, err
 }
 
-func (s *Server) getTag(tagUid string) (*tags.Tag, error) {
+func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse taguid: %w", err)
@@ -280,7 +286,7 @@ func (s *Server) getTag(tagUid string) (*tags.Tag, error) {
 	return s.tags.Get(uint32(uid))
 }
 
-func (s *Server) resolveNameOrAddress(str string) (swarm.Address, error) {
+func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	log := s.logger
 
 	// Try and parse the name as a bzz address.
@@ -349,7 +355,7 @@ type securityTokenReq struct {
 	Expiry int    `json:"expiry"`
 }
 
-func (s *Server) authHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 	_, pass, ok := r.BasicAuth()
 
 	if !ok {
@@ -401,7 +407,7 @@ func (s *Server) authHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	reqToken := r.Header.Get("Authorization")
 	if !strings.HasPrefix(reqToken, "Bearer ") {
 		jsonhttp.Forbidden(w, "Missing bearer token")
@@ -453,7 +459,7 @@ func (s *Server) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
+func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, err := s.tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
@@ -476,7 +482,7 @@ func (s *Server) newTracingHandler(spanName string) func(h http.Handler) http.Ha
 	}
 }
 
-func (s *Server) contentLengthMetricMiddleware() func(h http.Handler) http.Handler {
+func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
@@ -508,7 +514,7 @@ func lookaheadBufferSize(size int64) int {
 }
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.
-func (s *Server) checkOrigin(r *http.Request) bool {
+func (s *Service) checkOrigin(r *http.Request) bool {
 	origin := r.Header["Origin"]
 	if len(origin) == 0 {
 		return true
@@ -555,7 +561,7 @@ func equalASCIIFold(s, t string) bool {
 // according to whether the upload is a deferred upload or not. in the case of
 // direct push to the network (default) a pushStamperPutter is returned.
 // returns a function to wait on the errorgroup in case of a pushing stamper putter.
-func (s *Server) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
+func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)

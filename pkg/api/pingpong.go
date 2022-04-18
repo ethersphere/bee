@@ -18,7 +18,7 @@ type pingpongResponse struct {
 	RTT string `json:"rtt"`
 }
 
-func (s *Server) pingpongHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
 	ctx := r.Context()
 

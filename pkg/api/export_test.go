@@ -6,7 +6,7 @@ package api
 
 import "github.com/ethersphere/bee/pkg/swarm"
 
-type ServerExport = Server
+type ServerExport = Service
 
 type (
 	BytesPostResponse     = bytesPostResponse
@@ -107,10 +107,3 @@ var (
 	ErrCantResendTransaction = errCantResendTransaction
 	ErrAlreadyImported       = errAlreadyImported
 )
-
-type statusResponse struct {
-	Status          string `json:"status"`
-	Version         string `json:"version"`
-	APIVersion      string `json:"apiVersion"`
-	DebugAPIVersion string `json:"debugApiVersion"`
-}

@@ -67,7 +67,7 @@ type chequebookLastChequesResponse struct {
 	LastCheques []chequebookLastChequesPeerResponse `json:"lastcheques"`
 }
 
-func (s *Server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	balance, err := s.chequebook.Balance(r.Context())
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debugf("debug api: chequebook balance: %v", err)
@@ -93,12 +93,12 @@ func (s *Server) chequebookBalanceHandler(w http.ResponseWriter, r *http.Request
 	jsonhttp.OK(w, chequebookBalanceResponse{TotalBalance: bigint.Wrap(balance), AvailableBalance: bigint.Wrap(availableBalance)})
 }
 
-func (s *Server) chequebookAddressHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) chequebookAddressHandler(w http.ResponseWriter, r *http.Request) {
 	address := s.chequebook.Address()
 	jsonhttp.OK(w, chequebookAddressResponse{Address: address.String()})
 }
 
-func (s *Server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *Server) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func (s *Server) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, r *http.Request) {
 	lastchequessent, err := s.swap.LastSentCheques()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debugf("debug api: chequebook cheque all: %v", err)
@@ -226,7 +226,7 @@ type swapCashoutResponse struct {
 	TransactionHash string `json:"transactionHash"`
 }
 
-func (s *Server) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -297,7 +297,7 @@ type swapCashoutStatusResponse struct {
 	UncashedAmount  *bigint.BigInt                    `json:"uncashedAmount"`
 }
 
-func (s *Server) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
@@ -365,7 +365,7 @@ type chequebookTxResponse struct {
 	TransactionHash common.Hash `json:"transactionHash"`
 }
 
-func (s *Server) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Request) {
 	amountStr := r.URL.Query().Get("amount")
 	if amountStr == "" {
 		jsonhttp.BadRequest(w, errChequebookNoAmount)
@@ -408,7 +408,7 @@ func (s *Server) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reques
 	jsonhttp.OK(w, chequebookTxResponse{TransactionHash: txHash})
 }
 
-func (s *Server) chequebookDepositHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Request) {
 	amountStr := r.URL.Query().Get("amount")
 	if amountStr == "" {
 		jsonhttp.BadRequest(w, errChequebookNoAmount)

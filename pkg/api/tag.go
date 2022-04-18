@@ -44,7 +44,7 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 	}
 }
 
-func (s *Server) createTagHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
@@ -78,7 +78,7 @@ func (s *Server) createTagHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.Created(w, newTagResponse(tag))
 }
 
-func (s *Server) getTagHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 
 	id, err := strconv.Atoi(idStr)
@@ -107,7 +107,7 @@ func (s *Server) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, newTagResponse(tag))
 }
 
-func (s *Server) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 
 	id, err := strconv.Atoi(idStr)
@@ -136,7 +136,7 @@ func (s *Server) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.NoContent(w)
 }
 
-func (s *Server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 
 	id, err := strconv.Atoi(idStr)
@@ -193,7 +193,7 @@ func (s *Server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, "ok")
 }
 
-func (s *Server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err           error
 		offset, limit = 0, 100 // default offset is 0, default limit 100

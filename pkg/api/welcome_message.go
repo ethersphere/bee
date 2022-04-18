@@ -21,14 +21,14 @@ type welcomeMessageResponse struct {
 	WelcomeMesssage string `json:"welcomeMessage"`
 }
 
-func (s *Server) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
 	val := s.p2p.GetWelcomeMessage()
 	jsonhttp.OK(w, welcomeMessageResponse{
 		WelcomeMesssage: val,
 	})
 }
 
-func (s *Server) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
 	var data welcomeMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {

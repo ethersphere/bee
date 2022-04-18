@@ -5,8 +5,10 @@
 package api
 
 import (
+	"expvar"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/auth"
@@ -15,16 +17,66 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
-func (s *Server) setupRouting() {
-	const (
-		apiVersion = "v1" // Only one api version exists, this should be configurable with more.
-		rootPath   = "/" + apiVersion
-	)
+const (
+	apiVersion = "v1" // Only one api version exists, this should be configurable with more.
+	rootPath   = "/" + apiVersion
+)
 
+func (s *Service) SetupDebugRoutes() {
+	router := mux.NewRouter()
+
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Ethereum Swarm Bee")
+	})
+
+	router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
+	})
+
+	router.Handle("/node", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.nodeGetHandler),
+	})
+
+	router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
+
+	router.Path("/metrics").Handler(web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandler(promhttp.InstrumentMetricHandler(
+			s.metricsRegistry,
+			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+		)),
+	))
+
+	router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
+	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
+
+	router.Handle("/debug/vars", expvar.Handler())
+
+	router.Handle("/health", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
+
+}
+
+func (s *Service) setupRouting() {
 	router := mux.NewRouter()
 
 	// handle is a helper closure which simplifies the router setup.
@@ -385,7 +437,7 @@ func (s *Server) setupRouting() {
 	)
 }
 
-func (s *Server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
+func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			s.logger.Tracef("gateway mode: forbidden %s", r.URL.String())
@@ -396,7 +448,7 @@ func (s *Server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
+func (s *Service) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {

@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func (s *Server) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
 		s.logger.Debugf("debug api: parse chunk address: %v", err)
@@ -35,7 +35,7 @@ func (s *Server) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, nil)
 }
 
-func (s *Server) removeChunk(w http.ResponseWriter, r *http.Request) {
+func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
 		s.logger.Debugf("debug api: parse chunk address: %v", err)

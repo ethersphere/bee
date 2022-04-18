@@ -43,7 +43,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
-	statemock "github.com/ethersphere/bee/pkg/statestore/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -139,7 +138,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	transaction := transactionmock.New(o.TransactionOpts...)
-	storeRecipient := statemock.NewStateStore()
+	storeRecipient := statestore.NewStateStore()
 	p2ps := p2pmock.New()
 	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
 
@@ -163,7 +162,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		BlockTime:         o.BlockTime,
 	}
 
-	s, chC := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Authenticator, o.Logger, nil, api.Options{
+	s, chC := api.New(signer, o.Authenticator, o.Logger, nil, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
@@ -291,9 +290,8 @@ func TestParseName(t *testing.T) {
 
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
-		mockPostage := mockpost.New()
 
-		s, _ := api.New(nil, nil, tC.res, nil, nil, nil, nil, mockPostage, nil, nil, signer, nil, log, nil, api.Options{}, api.DebugOptions{})
+		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.DebugOptions{})
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)

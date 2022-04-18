@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethersphere/bee"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 const bytesInKB = 1000
@@ -76,11 +78,11 @@ func toFileSizeBucket(bytes int64) int64 {
 	return fileSizeBucketsKBytes[len(fileSizeBucketsKBytes)-1] * bytesInKB
 }
 
-func (s *Server) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
-func (s *Server) pageviewMetricsHandler(h http.Handler) http.Handler {
+func (s *Service) pageviewMetricsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		s.metrics.RequestCount.Inc()
@@ -89,7 +91,7 @@ func (s *Server) pageviewMetricsHandler(h http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) responseCodeMetricsHandler(h http.Handler) http.Handler {
+func (s *Service) responseCodeMetricsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrapper := newResponseWriter(w)
 		h.ServeHTTP(wrapper, r)
@@ -134,4 +136,30 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.UpgradedResponseWriter.WriteHeader(code)
 	rw.wroteHeader = true
+}
+
+func newDebugMetrics() (r *prometheus.Registry) {
+	r = prometheus.NewRegistry()
+
+	// register standard metrics
+	r.MustRegister(
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{
+			Namespace: m.Namespace,
+		}),
+		collectors.NewGoCollector(),
+		prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Name:      "info",
+			Help:      "Bee information.",
+			ConstLabels: prometheus.Labels{
+				"version": bee.Version,
+			},
+		}),
+	)
+
+	return r
+}
+
+func (s *Service) MustRegisterMetrics(cs ...prometheus.Collector) {
+	s.metricsRegistry.MustRegister(cs...)
 }
