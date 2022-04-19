@@ -148,6 +148,8 @@ func (s *store) computeRadius() error {
 		return err
 	}
 
+	oldRadius := s.rs.Radius
+
 	// edge case where the sum of all batches is below the node capacity.
 	if totalCommitment <= Capacity {
 		s.rs.Radius = 0
@@ -158,19 +160,35 @@ func (s *store) computeRadius() error {
 	}
 
 	s.metrics.Radius.Set(float64(s.rs.Radius))
+	s.logger.Debugf("batchstore: computed radius %d", s.rs.Radius)
 
-	// if the new radius is lower than the storage radius, adjust the storage radius.
-	// also, lower the storage radius of each batch to the new radius to prevent higher than radius POs
-	// from being evicted when localstore calls the Unreserve.
-	if s.rs.StorageRadius > s.rs.Radius {
-		s.rs.StorageRadius = s.rs.Radius
+	// Unreserve calls increase the global storage radius, but in the edge case that the new radius
+	// is lower because total commitment has decreased, the global storage radius has to be readjusted
+	// to maintain the same average batch utilization rate using the following: 1 / 2^(Radius - StorageRadius).
+	if s.rs.Radius < oldRadius {
+
+		// compute the different between new and old radius
+		radiusDiff := oldRadius - s.rs.Radius
+
+		oldStorageRadius := s.rs.StorageRadius
+
+		// subtract the difference from the storage radius
+		if radiusDiff < s.rs.StorageRadius {
+			s.rs.StorageRadius -= radiusDiff
+		} else {
+			s.rs.StorageRadius = 0 // maintain that the radius is always a non-negative value
+		}
+
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		if err = s.lowerStorageRadius(); err != nil {
-			s.logger.Warningf("batchstore: lower storage radius: %v", err)
+		s.logger.Debugf("batchstore: computed storage radius %d", s.rs.StorageRadius)
+
+		// lower batches' storage radius if new value is lower
+		if s.rs.StorageRadius < oldStorageRadius {
+			if err := s.lowerBatchStorageRadius(); err != nil {
+				return err
+			}
 		}
 	}
-
-	s.logger.Debugf("batchstore: computed radius %d", s.rs.Radius)
 
 	return s.store.Put(reserveStateKey, s.rs)
 }
@@ -237,7 +255,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 		}
 	}
 
-	// a full iteration has occurred, so more evictions from localstore may be necessary, increase storage radius
+	// a full iteration has occurred, so more evictions from localstore may be necessary, increase global storage radius
 	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
@@ -248,10 +266,9 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	return nil
 }
 
-// lowerStorageRadius lowers the storage radius of batches to the radius.
-// radius is based on maximum batch utilization, as such, batch storage radius cannot exceed the radius.
+// lowerBatchStorageRadius lowers the storage radius of batches to the current storage radius.
 // Must be called under lock.
-func (s *store) lowerStorageRadius() error {
+func (s *store) lowerBatchStorageRadius() error {
 
 	var updates []*postage.Batch
 
@@ -278,7 +295,7 @@ func (s *store) lowerStorageRadius() error {
 	for _, u := range updates {
 		err := s.store.Put(batchKey(u.ID), u)
 		if err != nil {
-			s.logger.Warningf("batchstore: lower eviction radius: %v", err)
+			return err
 		}
 	}
 
