@@ -365,12 +365,12 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		t.Fatalf("got radius %d, want %d", state.Radius, radiusAfterChainUpdate)
 	}
 
-	// check that after the chain state update, radius has been lowered.
+	// check that after the chain state update, storage radius has been lowered.
 	if state.StorageRadius != storageRadiusAfterUpdate {
 		t.Fatalf("got storage radius %d, want %d", state.StorageRadius, storageRadiusAfterUpdate)
 	}
 
-	// the radius of every batch must not exceed the current storage radius.
+	// the radius of every batch must not exceed the current storage radius after a storage radius decrease.
 	err = store.Iterate(func(b *postage.Batch) (bool, error) {
 		if b.StorageRadius > state.StorageRadius {
 			t.Fatalf("batch radius %d should not exceed storate radius %d", b.StorageRadius, state.StorageRadius)
