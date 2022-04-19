@@ -601,7 +601,7 @@ func (s *Service) NATManager() basichost.NATManager {
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	if s.NetworkStatus() != p2p.NetworkStatusAvailable {
-		return nil
+		return errors.New("blocklisting peer when network not available")
 	}
 
 	s.logger.Tracef("libp2p blocklist: peer %s for %v reason: %s", overlay.String(), duration, reason)
