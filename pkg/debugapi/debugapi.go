@@ -64,6 +64,7 @@ type Service struct {
 	swap               swap.Interface
 	batchStore         postage.Storer
 	transaction        transaction.Service
+	chainBackend       transaction.Backend
 	post               postage.Service
 	postageContract    postagecontract.Interface
 	logger             logging.Logger
@@ -88,7 +89,7 @@ type Service struct {
 // to expose /addresses, /health endpoints, Go metrics and pprof. It is useful to expose
 // these endpoints before all dependencies are configured and injected to have
 // access to basic debugging tools and /health endpoint.
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, restrict bool, auth authenticator, gatewayMode bool, beeMode BeeNodeMode) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, chainBackend transaction.Backend, restrict bool, auth authenticator, gatewayMode bool, beeMode BeeNodeMode) *Service {
 	s := new(Service)
 	s.auth = auth
 	s.restricted = restrict
@@ -101,6 +102,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.blockTime = blockTime
 	s.metricsRegistry = newMetricsRegistry()
 	s.transaction = transaction
+	s.chainBackend = chainBackend
 	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
 	s.beeMode = beeMode

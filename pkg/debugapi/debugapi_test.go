@@ -37,6 +37,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/multiformats/go-multiaddr"
@@ -72,6 +73,7 @@ type testServerOptions struct {
 	SwapOpts           []swapmock.Option
 	BatchStore         postage.Storer
 	TransactionOpts    []transactionmock.Option
+	BackendOpts        []backendmock.Option
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
 	Traverser          traversal.Traverser
@@ -89,8 +91,9 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	swapserv := swapmock.New(o.SwapOpts...)
 	transaction := transactionmock.New(o.TransactionOpts...)
+	backend := backendmock.New(o.BackendOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction, false, nil, false, debugapi.FullMode)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction, backend, false, nil, false, debugapi.FullMode)
 	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract, o.Traverser)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
@@ -159,7 +162,7 @@ func TestServer_Configure(t *testing.T) {
 	transaction := transactionmock.New(o.TransactionOpts...)
 	gatewayMode := false
 	beeMode := debugapi.FullMode
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, false, nil, gatewayMode, beeMode)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, nil, false, nil, gatewayMode, beeMode)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
