@@ -28,7 +28,7 @@ import (
 
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
-	tailSize           = 4         // how many blocks to tail from the tip of the chain
+	TailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // // minimal number of blocks to sync at once
 )
 
@@ -280,13 +280,13 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				continue
 			}
 
-			if to < tailSize {
+			if to < TailSize {
 				// in a test blockchain there might be not be enough blocks yet
 				continue
 			}
 
 			// consider to-tailSize as the "latest" block we need to sync to
-			to = to - tailSize
+			to = to - TailSize
 			lastConfirmedBlock = to
 
 			// round down to the largest multiple of batchFactor
