@@ -49,6 +49,7 @@ import (
 	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/hashicorp/go-multierror"
@@ -154,7 +155,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 		)
 
-		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction, o.Restricted, authenticator, false, debugapi.DevMode)
+		chainBackend := backendmock.New(backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
+			return 1, nil
+		}))
+
+		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, nil, big.NewInt(0), mockTransaction, chainBackend, o.Restricted, authenticator, false, debugapi.DevMode)
 
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,

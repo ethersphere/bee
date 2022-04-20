@@ -52,6 +52,8 @@ components:
     ChainState:
       type: object
       properties:
+        chainTip:
+          type: integer
         block:
           type: integer
         totalAmount:
