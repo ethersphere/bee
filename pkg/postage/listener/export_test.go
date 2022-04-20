@@ -12,5 +12,6 @@ var (
 	BatchDepthIncreaseTopic = batchDepthIncreaseTopic
 	PriceUpdateTopic        = priceUpdateTopic
 
+	TailSize    = tailSize
 	BatchFactor = defaultBatchFactor
 )
