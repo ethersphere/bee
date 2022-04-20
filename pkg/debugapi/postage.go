@@ -136,15 +136,15 @@ type postageStampsResponse struct {
 }
 
 type postageBatchResponse struct {
-	BatchID     hexByte        `json:"batchID"`
-	Value       *bigint.BigInt `json:"value"`
-	Start       uint64         `json:"start"`
-	Owner       hexByte        `json:"owner"`
-	Depth       uint8          `json:"depth"`
-	BucketDepth uint8          `json:"bucketDepth"`
-	Immutable   bool           `json:"immutable"`
-	Radius      uint8          `json:"radius"`
-	BatchTTL    int64          `json:"batchTTL"`
+	BatchID       hexByte        `json:"batchID"`
+	Value         *bigint.BigInt `json:"value"`
+	Start         uint64         `json:"start"`
+	Owner         hexByte        `json:"owner"`
+	Depth         uint8          `json:"depth"`
+	BucketDepth   uint8          `json:"bucketDepth"`
+	Immutable     bool           `json:"immutable"`
+	StorageRadius uint8          `json:"storageRadius"`
+	BatchTTL      int64          `json:"batchTTL"`
 }
 
 type postageStampBucketsResponse struct {
@@ -204,15 +204,15 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 		}
 
 		batches = append(batches, postageBatchResponse{
-			BatchID:     b.ID,
-			Value:       bigint.Wrap(b.Value),
-			Start:       b.Start,
-			Owner:       b.Owner,
-			Depth:       b.Depth,
-			BucketDepth: b.BucketDepth,
-			Immutable:   b.Immutable,
-			Radius:      b.Radius,
-			BatchTTL:    batchTTL,
+			BatchID:       b.ID,
+			Value:         bigint.Wrap(b.Value),
+			Start:         b.Start,
+			Owner:         b.Owner,
+			Depth:         b.Depth,
+			BucketDepth:   b.BucketDepth,
+			Immutable:     b.Immutable,
+			StorageRadius: b.StorageRadius,
+			BatchTTL:      batchTTL,
 		})
 		return false, nil
 	})
@@ -329,15 +329,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius        uint8          `json:"radius"`
-	StorageRadius uint8          `json:"storageRadius"`
-	Available     int64          `json:"available"`
-	Commitment    int64          `json:"commitment"`
-	Outer         *bigint.BigInt `json:"outer"` // lower value limit for outer layer = the further half of chunks
-	Inner         *bigint.BigInt `json:"inner"`
+	Radius        uint8 `json:"radius"`
+	StorageRadius uint8 `json:"storageRadius"`
+	Commitment    int64 `json:"commitment"`
 }
 
 type chainStateResponse struct {
+	ChainTip     uint64         `json:"chainTip"`     // The current highest block number from the chain backend.
 	Block        uint64         `json:"block"`        // The block number of the last postage event.
 	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
 	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
@@ -361,18 +359,24 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, reserveStateResponse{
 		Radius:        state.Radius,
 		StorageRadius: state.StorageRadius,
-		Available:     state.Available,
 		Commitment:    commitment,
-		Outer:         bigint.Wrap(state.Outer),
-		Inner:         bigint.Wrap(state.Inner),
 	})
 }
 
 // chainStateHandler returns the current chain state.
-func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 	state := s.batchStore.GetChainState()
 
+	chainBlock, err := s.chainBackend.BlockNumber(r.Context())
+	if err != nil {
+		s.logger.Debugf("chain state: unable to fetch current block height: %v", err)
+		s.logger.Error("chain state: unable to fetch current block height")
+		jsonhttp.InternalServerError(w, "unable to fetch current block height")
+		return
+	}
+
 	jsonhttp.OK(w, chainStateResponse{
+		ChainTip:     chainBlock,
 		Block:        state.Block,
 		TotalAmount:  bigint.Wrap(state.TotalAmount),
 		CurrentPrice: bigint.Wrap(state.CurrentPrice),

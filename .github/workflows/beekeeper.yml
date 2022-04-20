@@ -49,7 +49,6 @@ jobs:
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Apply patches
         run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare local cluster
@@ -125,7 +124,7 @@ jobs:
           if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
           if ${{ steps.content-availability.outcome=='failure' }}; then FAILED=content-availability; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
@@ -171,7 +170,6 @@ jobs:
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Apply patches
         run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare testing cluster (Node connection and clef enabled)
@@ -211,7 +209,7 @@ jobs:
           if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
           if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
@@ -257,7 +255,6 @@ jobs:
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Apply patches
         run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve.patch
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
@@ -294,7 +291,7 @@ jobs:
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
           if ${{ steps.gc-chunk.outcome=='failure' }}; then FAILED=gc-chunk; fi
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.WEBHOOK_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
@@ -358,7 +355,7 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         uses: peter-evans/repository-dispatch@v1
         with:
-          token: ${{ secrets.REPO_GHA_PAT }}
+          token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/bee-argo
           event-type: trigger-argo
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'

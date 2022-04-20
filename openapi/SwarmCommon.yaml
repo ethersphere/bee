@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 2.0.0
+  version: 2.0.2
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -44,16 +44,16 @@ components:
       properties:
         radius:
           type: integer
-        available:
+        storageRadius:
           type: integer
-        outer:
-          $ref: "#/components/schemas/BigInt"
-        inner:
-          $ref: "#/components/schemas/BigInt"
+        commitment:
+          type: integer
 
     ChainState:
       type: object
       properties:
+        chainTip:
+          type: integer
         block:
           type: integer
         totalAmount:
@@ -92,6 +92,18 @@ components:
           type: integer
         depth:
           type: integer
+        reachability:
+          type: string
+          enum:
+            - "Unknown"
+            - "Public"
+            - "Private"
+        networkAvailability:
+          type: string
+          enum:
+            - "Unknown"
+            - "Available"
+            - "Unavailable"
         bins:
           type: object
           additionalProperties:
@@ -430,13 +442,13 @@ components:
       properties:
         batchID:
           $ref: "#/components/schemas/BatchID"
-        depth:
-          type: integer
         value:
           $ref: "#/components/schemas/BigInt"
-        bucketDepth:
+        start:
           type: integer
-        blockNumber:
+        depth:
+          type: integer
+        bucketDepth:
           type: integer
         immutableFlag:
           type: boolean
@@ -444,6 +456,8 @@ components:
           type: integer
         owner:
           $ref: "#/components/schemas/EthereumAddress"
+        storageRadius:
+          type: integer
 
     DebugPostageBatch:
       anyOf:
@@ -663,11 +677,6 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
-    SwarmRecoveryTargets:
-      description: "The targets provided for recovery"
-      schema:
-        type: string
-
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
@@ -695,14 +704,6 @@ components:
         $ref: "SwarmCommon.yaml#/components/schemas/GasLimit"
       required: false
       description: "Gas limit for transaction"
-
-    SwarmRecoveryTargetsParameter:
-      in: query
-      name: targets
-      schema:
-        type: string
-      required: false
-      description: Global pinning targets prefix
 
     SwarmTagParameter:
       in: header

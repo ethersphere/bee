@@ -28,12 +28,14 @@ func (s *Service) Host() host.Host {
 
 type StaticAddressResolver = staticAddressResolver
 
-var NewStaticAddressResolver = newStaticAddressResolver
+var (
+	NewStaticAddressResolver = newStaticAddressResolver
+	SendHeadersTimeout       = &sendHeadersTimeout
+	UserAgent                = userAgent
+)
 
 func WithHostFactory(factory func(...libp2pm.Option) (host.Host, error)) Options {
 	return Options{
 		hostFactory: factory,
 	}
 }
-
-var UserAgent = userAgent

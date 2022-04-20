@@ -26,6 +26,7 @@ import (
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {
@@ -245,15 +246,15 @@ func TestGetAllBatches(t *testing.T) {
 	}{
 		Batches: []debugapi.PostageBatchResponse{
 			{
-				BatchID:     b.ID,
-				Value:       bigint.Wrap(b.Value),
-				Start:       b.Start,
-				Owner:       b.Owner,
-				Depth:       b.Depth,
-				BucketDepth: b.BucketDepth,
-				Immutable:   b.Immutable,
-				Radius:      b.Radius,
-				BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:       b.ID,
+				Value:         bigint.Wrap(b.Value),
+				Start:         b.Start,
+				Owner:         b.Owner,
+				Depth:         b.Depth,
+				BucketDepth:   b.BucketDepth,
+				Immutable:     b.Immutable,
+				StorageRadius: b.StorageRadius,
+				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			},
 		},
 	}
@@ -359,15 +360,11 @@ func TestReserveState(t *testing.T) {
 		ts := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(mock.WithReserveState(&postage.ReserveState{
 				Radius: 5,
-				Outer:  big.NewInt(5),
-				Inner:  big.NewInt(5),
 			})),
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.ReserveStateResponse{
 				Radius: 5,
-				Outer:  bigint.Wrap(big.NewInt(5)),
-				Inner:  bigint.Wrap(big.NewInt(5)),
 			}),
 		)
 	})
@@ -382,6 +379,7 @@ func TestReserveState(t *testing.T) {
 }
 
 func TestChainState(t *testing.T) {
+
 	t.Run("ok", func(t *testing.T) {
 		cs := &postage.ChainState{
 			Block:        123456,
@@ -389,10 +387,12 @@ func TestChainState(t *testing.T) {
 			CurrentPrice: big.NewInt(5),
 		}
 		ts := newTestServer(t, testServerOptions{
-			BatchStore: mock.New(mock.WithChainState(cs)),
+			BatchStore:  mock.New(mock.WithChainState(cs)),
+			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) { return 1, nil })},
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{
+				ChainTip:     1,
 				Block:        123456,
 				TotalAmount:  bigint.Wrap(big.NewInt(50)),
 				CurrentPrice: bigint.Wrap(big.NewInt(5)),
@@ -402,7 +402,8 @@ func TestChainState(t *testing.T) {
 
 	t.Run("empty", func(t *testing.T) {
 		ts := newTestServer(t, testServerOptions{
-			BatchStore: mock.New(),
+			BatchStore:  mock.New(),
+			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) { return 0, nil })},
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{}),
