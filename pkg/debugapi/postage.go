@@ -335,10 +335,10 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
-	CurrentBlockHeight uint64         `json:"currentBlockHeight"` // The current highest block number from the chain backend.
-	Block              uint64         `json:"block"`              // The block number of the last postage event.
-	TotalAmount        *bigint.BigInt `json:"totalAmount"`        // Cumulative amount paid per stamp.
-	CurrentPrice       *bigint.BigInt `json:"currentPrice"`       // Bzz/chunk/block normalised price.
+	ChainTip     uint64         `json:"chainTip"`     // The current highest block number from the chain backend.
+	Block        uint64         `json:"block"`        // The block number of the last postage event.
+	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
+	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
 }
 
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
@@ -369,15 +369,17 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 
 	chainBlock, err := s.chainBackend.BlockNumber(r.Context())
 	if err != nil {
+		s.logger.Debugf("chain state: unable to fetch current block height: %v", err)
+		s.logger.Error("chain state: unable to fetch current block height")
 		jsonhttp.InternalServerError(w, "unable to fetch current block height")
 		return
 	}
 
 	jsonhttp.OK(w, chainStateResponse{
-		CurrentBlockHeight: chainBlock,
-		Block:              state.Block,
-		TotalAmount:        bigint.Wrap(state.TotalAmount),
-		CurrentPrice:       bigint.Wrap(state.CurrentPrice),
+		ChainTip:     chainBlock,
+		Block:        state.Block,
+		TotalAmount:  bigint.Wrap(state.TotalAmount),
+		CurrentPrice: bigint.Wrap(state.CurrentPrice),
 	})
 }
 

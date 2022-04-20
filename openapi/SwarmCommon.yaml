@@ -52,7 +52,7 @@ components:
     ChainState:
       type: object
       properties:
-        currentBlockHeight:
+        chainTip:
           type: integer
         block:
           type: integer
