@@ -51,6 +51,7 @@ type ChainSyncer struct {
 	logger                 logging.Logger
 	lru                    *lru.Cache
 	blocker                *blocker.Blocker
+	disconnecter           p2p.Disconnecter
 	metrics                metrics
 
 	quit chan struct{}
@@ -78,6 +79,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		flagTimeout:  o.FlagTimeout,
 		logger:       logger,
 		lru:          lruCache,
+		disconnecter: disconnecter,
 		metrics:      newMetrics(),
 		quit:         make(chan struct{}),
 	}

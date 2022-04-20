@@ -131,15 +131,16 @@ type KadBins struct {
 }
 
 type KadParams struct {
-	Base           string    `json:"baseAddr"`       // base address string
-	Population     int       `json:"population"`     // known
-	Connected      int       `json:"connected"`      // connected count
-	Timestamp      time.Time `json:"timestamp"`      // now
-	NNLowWatermark int       `json:"nnLowWatermark"` // low watermark for depth calculation
-	Depth          uint8     `json:"depth"`          // current depth
-	Reachability   string    `json:"reachability"`   // current reachability status
-	Bins           KadBins   `json:"bins"`           // individual bin info
-	LightNodes     BinInfo   `json:"lightNodes"`     // light nodes bin info
+	Base                string    `json:"baseAddr"`            // base address string
+	Population          int       `json:"population"`          // known
+	Connected           int       `json:"connected"`           // connected count
+	Timestamp           time.Time `json:"timestamp"`           // now
+	NNLowWatermark      int       `json:"nnLowWatermark"`      // low watermark for depth calculation
+	Depth               uint8     `json:"depth"`               // current depth
+	Reachability        string    `json:"reachability"`        // current reachability status
+	NetworkAvailability string    `json:"networkAvailability"` // network availability
+	Bins                KadBins   `json:"bins"`                // individual bin info
+	LightNodes          BinInfo   `json:"lightNodes"`          // light nodes bin info
 }
 
 type Halter interface {
