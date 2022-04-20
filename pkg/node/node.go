@@ -218,8 +218,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.stateStoreCloser = stateStore
 
-	// Check if the overlay is found in the statestore. If not, we can assume it has
-	// not been created yet and treat this as a fresh install.
+	// Check if the the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
 	batchStoreExists, err := batchStoreExists(stateStore)
 	if err != nil {
 		return nil, err
