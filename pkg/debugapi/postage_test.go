@@ -392,10 +392,10 @@ func TestChainState(t *testing.T) {
 		})
 		jsonhttptest.Request(t, ts.Client, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&debugapi.ChainStateResponse{
-				ChainBlock:   1,
-				Block:        123456,
-				TotalAmount:  bigint.Wrap(big.NewInt(50)),
-				CurrentPrice: bigint.Wrap(big.NewInt(5)),
+				CurrentBlockHeight: 1,
+				Block:              123456,
+				TotalAmount:        bigint.Wrap(big.NewInt(50)),
+				CurrentPrice:       bigint.Wrap(big.NewInt(5)),
 			}),
 		)
 	})

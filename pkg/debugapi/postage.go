@@ -335,10 +335,10 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
-	ChainBlock   uint64         `json:"chainBlock"`
-	Block        uint64         `json:"block"`        // The block number of the last postage event.
-	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
-	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
+	CurrentBlockHeight uint64         `json:"currentBlockHeight"` // The current highest block number from the chain backend.
+	Block              uint64         `json:"block"`              // The block number of the last postage event.
+	TotalAmount        *bigint.BigInt `json:"totalAmount"`        // Cumulative amount paid per stamp.
+	CurrentPrice       *bigint.BigInt `json:"currentPrice"`       // Bzz/chunk/block normalised price.
 }
 
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
@@ -374,10 +374,10 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, chainStateResponse{
-		ChainBlock:   chainBlock,
-		Block:        state.Block,
-		TotalAmount:  bigint.Wrap(state.TotalAmount),
-		CurrentPrice: bigint.Wrap(state.CurrentPrice),
+		CurrentBlockHeight: chainBlock,
+		Block:              state.Block,
+		TotalAmount:        bigint.Wrap(state.TotalAmount),
+		CurrentPrice:       bigint.Wrap(state.CurrentPrice),
 	})
 }
 
