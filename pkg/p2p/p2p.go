@@ -8,6 +8,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -31,6 +32,30 @@ const (
 	ReachabilityStatusPrivate = ReachabilityStatus(network.ReachabilityPrivate)
 )
 
+// NetworkStatus represents the network availability status.
+type NetworkStatus int
+
+// String implements the fmt.Stringer interface.
+func (ns NetworkStatus) String() string {
+	str := [...]string{
+		NetworkStatusUnknown:     "Unknown",
+		NetworkStatusAvailable:   "Available",
+		NetworkStatusUnavailable: "Unavailable",
+	}
+	if ns < 0 || int(ns) >= len(str) {
+		return "(unrecognized)"
+	}
+	return str[ns]
+}
+
+const (
+	NetworkStatusUnknown     NetworkStatus = 0
+	NetworkStatusAvailable   NetworkStatus = 1
+	NetworkStatusUnavailable NetworkStatus = 2
+)
+
+var ErrNetworkUnavailable = errors.New("network unavailable")
+
 // Service provides methods to handle p2p Peers and Protocols.
 type Service interface {
 	AddProtocol(ProtocolSpec) error
@@ -42,6 +67,13 @@ type Service interface {
 	Addresses() ([]ma.Multiaddr, error)
 	SetPickyNotifier(PickyNotifier)
 	Halter
+	NetworkStatuser
+}
+
+// NetworkStatuser handles bookkeeping of the network availability status.
+type NetworkStatuser interface {
+	// NetworkStatus returns current network availability status.
+	NetworkStatus() NetworkStatus
 }
 
 type Disconnecter interface {
@@ -50,6 +82,8 @@ type Disconnecter interface {
 }
 
 type Blocklister interface {
+	NetworkStatuser
+
 	// Blocklist will disconnect a peer and put it on a blocklist (blocking in & out connections) for provided duration
 	// Duration 0 is treated as an infinite duration.
 	Blocklist(overlay swarm.Address, duration time.Duration, reason string) error

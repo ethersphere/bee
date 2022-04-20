@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
@@ -53,9 +54,9 @@ func TestChainsyncer(t *testing.T) {
 		proofBlockHash = blockHash
 		return func(t *testing.T) {
 			cs, err := chainsyncer.New(backend, p, topology, d, logger, &chainsyncer.Options{
-				FlagTimeout:     500 * time.Millisecond,
-				PollEvery:       100 * time.Millisecond,
-				BlockerPollTime: 100 * time.Millisecond,
+				FlagTimeout:     1500 * time.Millisecond,
+				PollEvery:       1100 * time.Millisecond,
+				BlockerPollTime: 1100 * time.Millisecond,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -103,10 +104,16 @@ type m struct {
 	f func(swarm.Address, time.Duration)
 }
 
-func (m *m) Disconnect(overlay swarm.Address, reason string) error {
+func (m *m) Disconnect(_ swarm.Address, _ string) error {
 	panic("not implemented")
 }
 func (m *m) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	m.f(overlay, duration)
 	return nil
+}
+
+// NetworkStatus implements p2p.NetworkStatuser interface.
+// It always returns p2p.NetworkStatusAvailable.
+func (m *m) NetworkStatus() p2p.NetworkStatus {
+	return p2p.NetworkStatusAvailable
 }
