@@ -122,7 +122,7 @@ func Init(
 		return nil, err
 	}
 
-	erc20Service := erc20.New(swapBackend, transactionService, erc20Address)
+	erc20Service := erc20.New(transactionService, erc20Address)
 
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)
