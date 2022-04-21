@@ -110,19 +110,13 @@ func Init(
 	chainId int64,
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
+	erc20Service erc20.Service,
 ) (chequebookService Service, err error) {
 	// verify that the supplied factory is valid
 	err = chequebookFactory.VerifyBytecode(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	erc20Address, err := chequebookFactory.ERC20Address(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	erc20Service := erc20.New(transactionService, erc20Address)
 
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)

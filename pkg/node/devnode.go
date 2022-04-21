@@ -159,7 +159,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			return 1, nil
 		}))
 
-		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(0), mockTransaction, chainBackend, o.Restricted, authenticator, false, debugapi.DevMode)
+		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(0), mockTransaction, chainBackend, o.Restricted, authenticator, false, debugapi.DevMode, 1)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -385,7 +385,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		)
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, true, mockSwap, mockChequebook, batchStore, post, postageContract, traversalService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, true, mockSwap, mockChequebook, batchStore, post, postageContract, traversalService, nil)
 	}
 
 	return b, nil
