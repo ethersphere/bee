@@ -218,11 +218,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 	b.stateStoreCloser = stateStore
 
-	newStateStore := false
-	// Check if the overlay is found in the statestore. If not, we can assume it has
-	// not been created yet and treat this as a fresh install.
-	if err := stateStore.Get(secureOverlayKey, new(swarm.Address)); errors.Is(err, storage.ErrNotFound) {
-		newStateStore = true
+	// Check if the the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
+	batchStoreExists, err := batchStoreExists(stateStore)
+	if err != nil {
+		return nil, err
 	}
 
 	addressbook := addressbook.New(stateStore)
@@ -455,7 +455,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	var initBatchState *postage.ChainSnapshot
 	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
 	// install or explicitly asked by user to resync
-	if networkID == mainnetNetworkID && o.UsePostageSnapshot && (newStateStore || o.Resync) {
+	if networkID == mainnetNetworkID && o.UsePostageSnapshot && (!batchStoreExists || o.Resync) {
 		start := time.Now()
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(

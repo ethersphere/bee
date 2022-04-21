@@ -317,3 +317,14 @@ func getLatestSnapshot(
 
 	return swarm.NewAddress(ref), nil
 }
+
+func batchStoreExists(s storage.StateStorer) (bool, error) {
+
+	hasOne := false
+	err := s.Iterate("batchstore_", func(key, value []byte) (stop bool, err error) {
+		hasOne = true
+		return true, err
+	})
+
+	return hasOne, err
+}
