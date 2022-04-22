@@ -160,7 +160,6 @@ func (s *store) computeRadius() error {
 	}
 
 	s.metrics.Radius.Set(float64(s.rs.Radius))
-	s.logger.Debugf("batchstore: computed radius %d", s.rs.Radius)
 
 	// Unreserve calls increase the global storage radius, but in the edge case that the new radius
 	// is lower because total commitment has decreased, the global storage radius has to be readjusted
@@ -180,7 +179,6 @@ func (s *store) computeRadius() error {
 		}
 
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		s.logger.Debugf("batchstore: computed storage radius %d", s.rs.StorageRadius)
 
 		// lower batches' storage radius if new value is lower
 		if s.rs.StorageRadius < oldStorageRadius {
