@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
 
 type walletResponse struct {
@@ -21,30 +22,31 @@ type walletResponse struct {
 
 func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 
-	xdaiInt, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
+	xdai, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
 	if err != nil {
-		s.logger.Debugf("wallet: unable to acquire balance from chain backend: %v", err)
-		s.logger.Debugf("wallet: unable to acquire balance from chain backend")
-		jsonhttp.InternalServerError(w, "unable to acquire balance from chain backend")
+		s.logger.Debugf("wallet: unable to acquire balance from the chain backend: %v", err)
+		s.logger.Errorf("wallet: unable to acquire balance from the chain backend")
+		jsonhttp.InternalServerError(w, "unable to acquire balance from the chain backend")
 		return
 	}
 
-	xdai, _ := new(big.Float).Quo(new(big.Float).SetInt(xdaiInt), big.NewFloat(1000000000000000000)).Float64()
-
-	bzzInt, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
+	bzz, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
 	if err != nil {
 		s.logger.Debugf("wallet: unable to acquire erc20 balance: %v", err)
-		s.logger.Debugf("wallet: unable to acquire erc20 balance")
+		s.logger.Errorf("wallet: unable to acquire erc20 balance")
 		jsonhttp.InternalServerError(w, "unable to acquire erc20 balance")
 		return
 	}
 
-	bzz, _ := new(big.Float).Quo(new(big.Float).SetInt(bzzInt), big.NewFloat(10000000000000000)).Float64()
-
 	jsonhttp.OK(w, walletResponse{
-		BZZ:             bzz,
-		XDai:            xdai,
+		BZZ:             bigUnit(bzz, chequebook.Erc20SmallUnit),
+		XDai:            bigUnit(xdai, chequebook.EthSmallUnit),
 		ChainID:         s.chainID,
 		ContractAddress: s.chequebook.Address(),
 	})
+}
+
+func bigUnit(n *big.Int, subunit float64) float64 {
+	f, _ := new(big.Float).Quo(new(big.Float).SetInt(n), big.NewFloat(subunit)).Float64()
+	return f
 }

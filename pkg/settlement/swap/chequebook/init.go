@@ -27,6 +27,11 @@ const (
 	balanceCheckMaxRetries      = 10
 )
 
+const (
+	Erc20SmallUnit = 10000000000000000
+	EthSmallUnit   = 1000000000000000000
+)
+
 func checkBalance(
 	ctx context.Context,
 	logger logging.Logger,
@@ -64,13 +69,13 @@ func checkBalance(
 		insufficientETH := ethBalance.Cmp(minimumEth) < 0
 
 		if insufficientERC20 || insufficientETH {
-			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, big.NewInt(10000000000000000), new(big.Int))
+			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, big.NewInt(Erc20SmallUnit), new(big.Int))
 			if mod.Cmp(big.NewInt(0)) > 0 {
 				// always round up the division as the bzzaar cannot handle decimals
 				neededERC20.Add(neededERC20, big.NewInt(1))
 			}
 
-			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), big.NewFloat(1000000000000000000))
+			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), big.NewFloat(EthSmallUnit))
 
 			if insufficientETH && insufficientERC20 {
 				logger.Warningf("cannot continue until there is at least %f xDAI (for Gas) and at least %d BZZ bridged on the xDAI network available on %x", neededETH, neededERC20, overlayEthAddress)

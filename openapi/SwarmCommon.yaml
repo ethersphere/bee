@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 2.0.2
+  version: 2.0.3
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -614,6 +614,18 @@ components:
           type: string
         value:
           $ref: "#/components/schemas/BigInt"
+
+    WalletResponse:
+      type: object
+      properties:
+        bzz:
+          type: integer
+        xDai:
+          type: integer
+      chainID:
+          type: integer
+      contractAddress:
+          $ref: "#/components/schemas/EthereumAddress"
 
     PendingTransactionsResponse:
       type: object
