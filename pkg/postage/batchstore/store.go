@@ -168,7 +168,6 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 // Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
-
 	defer func(t time.Time) {
 		s.metrics.SaveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
 	}(time.Now())
@@ -180,13 +179,9 @@ func (s *store) Save(batch *postage.Batch) error {
 		s.metrics.SaveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
 	}(time.Now())
 
-	s.logger.Debugf("batchstore: save batch %x depth %d value %d", batch.ID, batch.Depth, batch.Value.Int64())
-
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
-
 		batch.StorageRadius = s.rs.StorageRadius
-
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			return err
 		}
@@ -200,10 +195,12 @@ func (s *store) Save(batch *postage.Batch) error {
 		}
 		return nil
 	case err == nil:
-		return fmt.Errorf("batchstore: save batch %s already exists", hex.EncodeToString(batch.ID))
+		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
 	case err != nil:
-		return fmt.Errorf("batchstore: get batch %s: %w", hex.EncodeToString(batch.ID), err)
+		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
 	}
+
+	s.logger.Debugf("batchstore: saved batch %x depth %d value %d, radius %d, storage radius %d", batch.ID, batch.Depth, batch.Value.Int64(), s.rs.Radius, s.rs.StorageRadius)
 
 	return nil
 }
