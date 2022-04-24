@@ -15,7 +15,7 @@ import (
 
 type walletResponse struct {
 	BZZ             float64        `json:"bzz"`
-	XDai            float64        `json:"xdai"`
+	XDai            float64        `json:"xDai"`
 	ChainID         int64          `json:"chainID"`
 	ContractAddress common.Address `json:"contractAddress"`
 }
@@ -39,14 +39,15 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, walletResponse{
-		BZZ:             bigUnit(bzz, chequebook.Erc20SmallUnit),
-		XDai:            bigUnit(xdai, chequebook.EthSmallUnit),
+		BZZ:             bigUnit(bzz, chequebook.Erc20SmallUnitStr),
+		XDai:            bigUnit(xdai, chequebook.EthSmallUnitStr),
 		ChainID:         s.chainID,
 		ContractAddress: s.chequebook.Address(),
 	})
 }
 
-func bigUnit(n *big.Int, subunit float64) float64 {
-	f, _ := new(big.Float).Quo(new(big.Float).SetInt(n), big.NewFloat(subunit)).Float64()
+func bigUnit(n *big.Int, subUnitStr string) float64 {
+	subUnit, _ := new(big.Float).SetString(subUnitStr)
+	f, _ := new(big.Float).Quo(new(big.Float).SetInt(n), subUnit).Float64()
 	return f
 }
