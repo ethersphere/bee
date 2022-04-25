@@ -65,7 +65,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 			mu.Unlock()
 
 			midway := time.After(flagTime / 2)
-			check := time.After(checkTime)
+			check := time.After(checkTime * 5)
 
 			<-midway
 			b.Flag(addr) // check thats this flag call does not overide previous call
