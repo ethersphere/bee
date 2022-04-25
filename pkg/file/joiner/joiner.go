@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -248,15 +249,21 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 	var wg sync.WaitGroup
 
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
+		ref := data[cursor : cursor+j.refLength]
+		var reportAddr swarm.Address
+		address := swarm.NewAddress(ref)
+		if len(ref) == encryption.ReferenceSize {
+			reportAddr = swarm.NewAddress(ref[:swarm.HashSize])
+		} else {
+			reportAddr = swarm.NewAddress(ref)
+		}
 
-		address := swarm.NewAddress(data[cursor : cursor+j.refLength])
-
-		if err := fn(address); err != nil {
+		if err := fn(reportAddr); err != nil {
 			return err
 		}
 
 		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
-		if sec <= 4096 {
+		if sec <= swarm.ChunkSize {
 			continue
 		}
 
