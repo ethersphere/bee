@@ -7,6 +7,7 @@ package blocker_test
 import (
 	"io/ioutil"
 	"os"
+	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
@@ -71,6 +72,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	blockedTime, ok := blocked[addr.ByteString()]
 	mu.Unlock()
 	if !ok {
+		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 		t.Fatal("address should be blocked")
 	}
 
