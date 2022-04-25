@@ -277,6 +277,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"maintainer", "/chequebook/cheque", "GET"},
 		{"maintainer", "/chequebook/address", "GET"},
 		{"maintainer", "/chequebook/balance", "GET"},
+		{"maintainer", "/wallet", "GET"},
 		{"maintainer", "/chunks/*", "(GET)|(DELETE)"},
 		{"maintainer", "/reservestate", "GET"},
 		{"maintainer", "/chainstate", "GET"},
