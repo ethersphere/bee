@@ -877,3 +877,53 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 		checkAddressFound(t, foundAddresses, createdAddress)
 	}
 }
+
+func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
+	store := mock.NewStorer()
+
+	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	testData, err := g.SequentialBytes(10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	pipe := builder.NewPipelineBuilder(ctx, store, storage.ModePutUpload, true)
+	testDataReader := bytes.NewReader(testData)
+	resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, l, err := joiner.New(context.Background(), store, resultAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l != int64(len(testData)) {
+		t.Fatalf("expected join data length %d, got %d", len(testData), l)
+	}
+
+	foundAddresses := make(map[string]struct{})
+	var foundAddressesMu sync.Mutex
+
+	err = j.IterateChunkAddresses(func(addr swarm.Address) error {
+		foundAddressesMu.Lock()
+		defer foundAddressesMu.Unlock()
+
+		foundAddresses[addr.String()] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(foundAddresses); l != 4 {
+		t.Fatalf("got %d addresses, want 4", l)
+	}
+
+	for v := range foundAddresses {
+		// this is 64 because 32 bytes hex is 64 chars
+		if len(v) != 64 {
+			t.Fatalf("got wrong ref size %d, %s", len(v), v)
+		}
+	}
+}

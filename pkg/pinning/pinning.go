@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
@@ -103,6 +104,16 @@ func (s *Service) DeletePin(ctx context.Context, ref swarm.Address) error {
 	var iterErr error
 	// iterFn is a unpinning iterator function over the leaves of the root.
 	iterFn := func(leaf swarm.Address) error {
+		if len(leaf.Bytes()) == encryption.ReferenceSize {
+			// the traversal service might report back encrypted reference.
+			// this is not so trivial to mitigate inside the traversal service
+			// since it might introduce complexity with determining which entries
+			// should be treated with which address length, since the decryption keys
+			// on encrypted references are still needed for correct traversal.
+			// we therefore just make sure that localstore gets the correct reference size
+			// for unpinning.
+			leaf = swarm.NewAddress(leaf.Bytes()[:swarm.HashSize])
+		}
 		err := s.pinStorage.Set(ctx, storage.ModeSetUnpin, leaf)
 		if err != nil {
 			iterErr = multierror.Append(err, fmt.Errorf("unable to unpin the chunk for leaf %q of root %q: %w", leaf, ref, err))
