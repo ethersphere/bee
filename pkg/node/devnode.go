@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
+	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -34,12 +35,14 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	mockPushsync "github.com/ethersphere/bee/pkg/pushsync/mock"
+	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockStateStore "github.com/ethersphere/bee/pkg/statestore/mock"
+	mockSteward "github.com/ethersphere/bee/pkg/steward/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
@@ -395,6 +398,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts)
+
+	mockResolver := resolverMock.NewResolver()
+	mockPinning := pinning.NewServiceMock()
+	mockSteward := new(mockSteward.Steward)
+	apiService.Configure(tagService, storer, mockResolver, pssService, traversalService, mockPinning, nil, post, postageContract, mockSteward)
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
