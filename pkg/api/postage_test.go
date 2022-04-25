@@ -62,7 +62,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 	})
-
 	t.Run("with-custom-gas", func(t *testing.T) {
 		contract := contractMock.New(
 			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
@@ -192,7 +191,6 @@ func TestPostageCreateStamp(t *testing.T) {
 		if !immutable {
 			t.Fatalf("want true, got %v", immutable)
 		}
-
 	})
 }
 

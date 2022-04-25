@@ -168,6 +168,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
 	}, debugOpts)
+
+	s.Configure(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward)
+
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
 		t.Cleanup(chanStore.stop)
@@ -292,6 +295,8 @@ func TestParseName(t *testing.T) {
 		signer := crypto.NewDefaultSigner(pk)
 
 		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.DebugOptions{})
+
+		s.Configure(nil, nil, tC.res, nil, nil, nil, nil, nil, nil, nil)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
