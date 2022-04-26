@@ -169,15 +169,15 @@ type Options struct {
 }
 
 const (
-	refreshRate                   = int64(4500000)
-	lightFactor                   = 10
-	lightRefreshRate              = refreshRate / lightFactor
-	basePrice                     = 10000
-	postageSyncingStallingTimeout = 10 * time.Minute
-	postageSyncingBackoffTimeout  = 5 * time.Second
-	minPaymentThreshold           = 2 * refreshRate
-	maxPaymentThreshold           = 24 * refreshRate
-	mainnetNetworkID              = uint64(1)
+	refreshRate                   = int64(4500000)            // accounting units refreshed per second
+	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
+	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
+	basePrice                     = 10000                     // minimal price for retrieval and pushsync requests of maximum proximity
+	postageSyncingStallingTimeout = 10 * time.Minute          //
+	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
+	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
+	mainnetNetworkID              = uint64(1)                 //
 )
 
 var ErrInterruped = errors.New("interrupted")

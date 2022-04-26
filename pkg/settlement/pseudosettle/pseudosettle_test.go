@@ -299,9 +299,6 @@ func TestTimeLimitedPayment(t *testing.T) {
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate), sentSum)
 
-	// set time to same second as previous case, attempt settlement, expect error too soon
-	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, big.NewInt(4*testRefreshRate), big.NewInt(4*testRefreshRate), pseudosettle.ErrSettlementTooSoon)
-
 	// set time to same second as previous case on recipient, 1 second later on payer, attempt settlement, expect sent but failed
 	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10005, 10004, 4, big.NewInt(2*testRefreshRate), big.NewInt(2*testRefreshRate), io.EOF)
 
@@ -353,8 +350,6 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 	// set time 1 seconds later, attempt settlement over the time-based light allowed limit, expect partial amount accepted
 	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight)
 	testCaseAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRateLight), sentSum)
-	// set time to same second as previous case, attempt settlement, expect error too soon
-	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10004, 10004, 3, big.NewInt(4*testRefreshRate), big.NewInt(4*testRefreshRate), pseudosettle.ErrSettlementTooSoon)
 	// set time to same second as previous case on recipient, 1 second later on payer, attempt settlement, expect sent but failed
 	testCaseNotAccepted(t, recorder, observer, payer, recipient, peerID, 10005, 10004, 4, big.NewInt(2*testRefreshRate), big.NewInt(2*testRefreshRate), io.EOF)
 	// set time 6 seconds later, attempt with debt over time based light allowance, expect partial accept
