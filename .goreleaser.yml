@@ -170,12 +170,13 @@ archives:
     - README.md
 
 nfpms:
-  - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+  - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}"
 
-    vendor: Ethereum Swarm
-    homepage: https://swarm.ethereum.org/
+    vendor: Swarm Foundation
 
-    maintainer: Janoš Guljaš <janos@ethswarm.org>
+    homepage: https://www.ethswarm.org
+
+    maintainer: Swarm Devops <devops@ethswarm.org>
 
     description: Ethereum Swarm node
 
@@ -206,6 +207,8 @@ nfpms:
         dependencies:
           - passwd
           - ca-certificates
+        replacements:
+          arm: armhf
         scripts:
           preinstall: ./packaging/deb/preinst
           postinstall: ./packaging/deb/postinst
@@ -215,6 +218,10 @@ nfpms:
         dependencies:
           - ca-certificates
           - shadow-utils
+        file_name_template: "{{ tolower .ProjectName }}-{{ tolower .Version }}.{{ tolower .Arch }}"
+        replacements:
+          amd64: x86_64
+          arm64: aarch64
         scripts:
           preinstall: ./packaging/rpm/pre
           postinstall: ./packaging/rpm/post

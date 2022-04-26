@@ -9,7 +9,7 @@
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
 ## enable clef signer
-clef-signer-enable: true
+# clef-signer-enable: false
 ## clef signer endpoint
 clef-signer-endpoint: /var/lib/bee-clef/clef.ipc
 ## config file (default is /home/<user>/.bee.yaml)

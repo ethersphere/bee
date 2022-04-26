@@ -9,14 +9,13 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
-
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Get the released tags version
         id: get-version
         run: |
           REF="${{ github.event.workflow_run.head_branch }}"
           echo ::set-output name=VERSION::${REF/refs\/tags\//}
-
       - name: Trigger Bee Factory image build
         uses: peter-evans/repository-dispatch@v1
         with:
@@ -24,3 +23,10 @@ jobs:
           repository: ethersphere/bee-factory
           event-type: build-images
           client-payload: '{"tag": "${{ steps.get-version.outputs.VERSION }}"}'
+      - name: Trigger repo publishing
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.GHA_PAT_BASIC }}
+          repository: ethersphere/repos
+          event-type: publish-repos
+          client-payload: '{"package": "bee", "tag": "${{ steps.get-version.outputs.VERSION }}"}'
