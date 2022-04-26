@@ -267,7 +267,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 		}
 	}
 
-	timeElapsed := a.timeNow().Unix() - accountingPeer.refreshTimestamp
+	timeElapsed := (a.timeNow().UnixMilli() - accountingPeer.refreshTimestamp) / 1000
 	if timeElapsed > 2 {
 		timeElapsed = 2
 	}
@@ -402,7 +402,7 @@ func (c *creditAction) Cleanup() {
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
 // called.
 func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
-	now := a.timeNow().Unix()
+	now := a.timeNow().UnixMilli()
 	timeElapsed := now - balance.refreshTimestamp
 
 	// compute the debt including debt created by incoming payments
@@ -415,7 +415,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
-		if timeElapsed > 0 {
+		if timeElapsed > 999 {
 			shadowBalance, err := a.shadowBalance(peer, balance)
 			if err != nil {
 				return err
@@ -463,7 +463,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		if a.payFunction != nil && !balance.paymentOngoing {
 
-			difference := now - balance.lastSettlementFailureTimestamp
+			difference := now/1000 - balance.lastSettlementFailureTimestamp
 			if difference > failedSettlementInterval {
 
 				// if there is no monetary settlement happening, check if there is something to settle
@@ -729,7 +729,7 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		refreshDue := new(big.Int).Mul(big.NewInt(timeElapsed), refreshRate)
 		currentThresholdGiven := new(big.Int).Add(accountingPeer.disconnectLimit, refreshDue)
 
-		timeElapsed = t - accountingPeer.refreshTimestamp
+		timeElapsed = t - accountingPeer.refreshTimestamp/1000
 		if timeElapsed > 2 {
 			timeElapsed = 2
 		}
