@@ -776,7 +776,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		if !call.peer.Equal(peer1Addr) {
 			t.Fatalf("wrong peer address got %v wanted %v", call.peer, peer1Addr)
 		}
-	case <-time.After(1 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for refreshment")
 	}
 
