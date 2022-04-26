@@ -415,7 +415,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
-		if timeElapsed > 0 {
+		if timeElapsed > 1 {
 			shadowBalance, err := a.shadowBalance(peer, balance)
 			if err != nil {
 				return err
@@ -459,30 +459,30 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			if err != nil {
 				return fmt.Errorf("settle: failed to decrease originated balance: %w", err)
 			}
-		}
 
-		if a.payFunction != nil && !balance.paymentOngoing {
+			if a.payFunction != nil && !balance.paymentOngoing {
 
-			difference := now - balance.lastSettlementFailureTimestamp
-			if difference > failedSettlementInterval {
+				difference := now - balance.lastSettlementFailureTimestamp
+				if difference > failedSettlementInterval {
 
-				// if there is no monetary settlement happening, check if there is something to settle
-				// compute debt excluding debt created by incoming payments
-				originatedBalance, err := a.OriginatedBalance(peer)
-				if err != nil {
-					if !errors.Is(err, ErrPeerNoBalance) {
-						return fmt.Errorf("failed to load originated balance to settle: %w", err)
+					// if there is no monetary settlement happening, check if there is something to settle
+					// compute debt excluding debt created by incoming payments
+					originatedBalance, err := a.OriginatedBalance(peer)
+					if err != nil {
+						if !errors.Is(err, ErrPeerNoBalance) {
+							return fmt.Errorf("failed to load originated balance to settle: %w", err)
+						}
 					}
-				}
 
-				paymentAmount := new(big.Int).Neg(originatedBalance)
-				// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
-				if paymentAmount.Cmp(a.minimumPayment) >= 0 {
-					balance.paymentOngoing = true
-					// add settled amount to shadow reserve before sending it
-					balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
-					a.wg.Add(1)
-					go a.payFunction(context.Background(), peer, paymentAmount)
+					paymentAmount := new(big.Int).Neg(originatedBalance)
+					// if the remaining debt is still larger than some minimum amount, trigger monetary settlement
+					if paymentAmount.Cmp(a.minimumPayment) >= 0 {
+						balance.paymentOngoing = true
+						// add settled amount to shadow reserve before sending it
+						balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+						a.wg.Add(1)
+						go a.payFunction(context.Background(), peer, paymentAmount)
+					}
 				}
 			}
 		}
