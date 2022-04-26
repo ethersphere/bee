@@ -207,7 +207,6 @@ nfpms:
         dependencies:
           - passwd
           - ca-certificates
-          - bee-clef
         replacements:
           arm: armhf
         scripts:
@@ -219,7 +218,6 @@ nfpms:
         dependencies:
           - ca-certificates
           - shadow-utils
-          - bee-clef
         file_name_template: "{{ tolower .ProjectName }}-{{ tolower .Version }}.{{ tolower .Arch }}"
         replacements:
           amd64: x86_64
