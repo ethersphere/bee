@@ -341,7 +341,7 @@ func (c *creditAction) Cleanup() {
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
 // called.
 func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
-	now := a.timeNow().Unix()
+	now := a.timeNow().UnixMilli()
 	timeElapsed := now - balance.refreshTimestamp
 
 	oldBalance, err := a.Balance(peer)
@@ -360,7 +360,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	paymentAmount := new(big.Int).Neg(compensatedBalance)
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
-	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 0 {
+	if paymentAmount.Cmp(big.NewInt(0)) > 0 && timeElapsed > 999 {
 		shadowBalance, err := a.shadowBalance(peer)
 		if err != nil {
 			return err
@@ -407,7 +407,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 	if a.payFunction != nil && !balance.paymentOngoing {
 
-		difference := now - balance.lastSettlementFailureTimestamp
+		difference := now/1000 - balance.lastSettlementFailureTimestamp
 		if difference > failedSettlementInterval {
 
 			// if there is no monetary settlement happening, check if there is something to settle
