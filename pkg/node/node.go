@@ -758,8 +758,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			Restricted:         o.Restricted,
 		}, debugOpts)
 
-		apiService.SetupDebugRoutes()
-
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
