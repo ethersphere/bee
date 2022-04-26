@@ -5,10 +5,8 @@
 package blocker_test
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
-	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
@@ -39,50 +37,45 @@ func TestMain(m *testing.M) {
 }
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
-	for i := 0; i < 100; i++ {
-		t.Run(fmt.Sprintf("run %d", i), func(t *testing.T) {
-			var (
-				mu      sync.Mutex
-				blocked = make(map[string]time.Duration)
-				mock    = mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-					mu.Lock()
-					blocked[a.ByteString()] = d
-					mu.Unlock()
-
-					return nil
-				})
-				b = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-			)
-			defer b.Close()
-
-			b.Flag(addr)
-
+	var (
+		mu      sync.Mutex
+		blocked = make(map[string]time.Duration)
+		mock    = mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
 			mu.Lock()
-			if _, ok := blocked[addr.ByteString()]; ok {
-				mu.Unlock()
-				t.Fatal("blocker did not wait flag duration")
-			}
+			blocked[a.ByteString()] = d
 			mu.Unlock()
 
-			midway := time.After(flagTime / 2)
-			check := time.After(checkTime * 5)
-
-			<-midway
-			b.Flag(addr) // check thats this flag call does not overide previous call
-			<-check
-
-			mu.Lock()
-			blockedTime, ok := blocked[addr.ByteString()]
-			mu.Unlock()
-			if !ok {
-				_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-				t.Fatal("address should be blocked")
-			}
-
-			if blockedTime != blockTime {
-				t.Fatalf("block time: want %v, got %v", blockTime, blockedTime)
-			}
+			return nil
 		})
+		b = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
+	)
+	defer b.Close()
+
+	b.Flag(addr)
+
+	mu.Lock()
+	if _, ok := blocked[addr.ByteString()]; ok {
+		mu.Unlock()
+		t.Fatal("blocker did not wait flag duration")
+	}
+	mu.Unlock()
+
+	midway := time.After(flagTime / 2)
+	check := time.After(checkTime * 5)
+
+	<-midway
+	b.Flag(addr) // check thats this flag call does not overide previous call
+	<-check
+
+	mu.Lock()
+	blockedTime, ok := blocked[addr.ByteString()]
+	mu.Unlock()
+	if !ok {
+		t.Fatal("address should be blocked")
+	}
+
+	if blockedTime != blockTime {
+		t.Fatalf("block time: want %v, got %v", blockTime, blockedTime)
 	}
 }
 
