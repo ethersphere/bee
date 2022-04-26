@@ -692,7 +692,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 
 	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: amount}
-		return new(big.Int).Sub(amount, notTimeSettledAmount), ts, nil
+		return new(big.Int).Sub(amount, notTimeSettledAmount), ts * 1000, nil
 	})
 
 	acc.SetPayFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int) {
@@ -757,7 +757,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 
 	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: amount}
-		return big.NewInt(0), ts, nil
+		return big.NewInt(0), ts * 1000, nil
 	})
 
 	// Credit until the expected debt exceeds payment threshold
@@ -808,7 +808,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 
 	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: amount}
-		return amount, ts, nil
+		return amount, ts * 1000, nil
 	})
 
 	acc.SetPayFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int) {
@@ -1372,7 +1372,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 
 	acc.SetRefreshFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int, shadowBalance *big.Int) (*big.Int, int64, error) {
 		refreshchan <- paymentCall{peer: peer, amount: big.NewInt(1)}
-		return big.NewInt(1), ts, nil
+		return big.NewInt(1), ts * 1000, nil
 	})
 
 	acc.SetPayFunc(func(ctx context.Context, peer swarm.Address, amount *big.Int) {
