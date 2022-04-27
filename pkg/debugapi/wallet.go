@@ -14,8 +14,8 @@ import (
 )
 
 type walletResponse struct {
-	BZZ             float64        `json:"bzz"`             // the BZZ balance of the wallet associated with the eth address of the node
-	XDai            float64        `json:"xDai"`            // the xDai balance of the wallet associated with the eth address of the node
+	BZZ             string         `json:"bzz"`             // the BZZ balance of the wallet associated with the eth address of the node
+	XDai            string         `json:"xDai"`            // the xDai balance of the wallet associated with the eth address of the node
 	ChainID         int64          `json:"chainID"`         // the id of the block chain
 	ContractAddress common.Address `json:"contractAddress"` // the address of the chequebook contract
 }
@@ -46,8 +46,8 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func bigUnit(n *big.Int, subUnitStr string) float64 {
+func bigUnit(n *big.Int, subUnitStr string) string {
 	subUnit, _ := new(big.Float).SetString(subUnitStr)
-	f, _ := new(big.Float).Quo(new(big.Float).SetInt(n), subUnit).Float64()
+	f := new(big.Float).Quo(new(big.Float).SetInt(n), subUnit).String()
 	return f
 }

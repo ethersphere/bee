@@ -43,8 +43,8 @@ func TestWallet(t *testing.T) {
 
 		jsonhttptest.Request(t, srv.Client, http.MethodGet, "/wallet", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(debugapi.WalletResponse{
-				BZZ:     10,
-				XDai:    20,
+				BZZ:     "10",
+				XDai:    "20",
 				ChainID: 1,
 			}),
 		)

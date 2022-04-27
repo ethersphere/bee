@@ -39,6 +39,11 @@ components:
       type: string
       example: "1000000000000000000"
 
+    BigFloat:
+      description: Numeric string that represents a float which might overflow the native float64 
+      type: string
+      example: "17.8"
+
     ReserveState:
       type: object
       properties:
@@ -619,9 +624,9 @@ components:
       type: object
       properties:
         bzz:
-          type: integer
+          $ref: "#/components/schemas/BigFloat"
         xDai:
-          type: integer
+          $ref: "#/components/schemas/BigFloat"
       chainID:
           type: integer
       contractAddress:
