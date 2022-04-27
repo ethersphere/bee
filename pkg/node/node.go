@@ -63,6 +63,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
@@ -238,6 +239,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
+		erc20Service       erc20.Service
 	)
 
 	chainEnabled := isChainEnabled(o, logger)
@@ -295,7 +297,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		} else if !o.ChainEnable {
 			beeNodeMode = debugapi.UltraLightMode
 		}
-		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, chainBackend, o.Restricted, authenticator, o.GatewayMode, beeNodeMode)
+		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, chainBackend, o.Restricted, authenticator, o.GatewayMode, beeNodeMode, chainID)
 
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 		if err != nil {
@@ -352,6 +354,13 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
+		erc20Address, err := chequebookFactory.ERC20Address(p2pCtx)
+		if err != nil {
+			return nil, fmt.Errorf("factory fail: %w", err)
+		}
+
+		erc20Service = erc20.New(transactionService, erc20Address)
+
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
 				p2pCtx,
@@ -365,6 +374,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 				chequebookFactory,
 				o.SwapInitialDeposit,
 				o.DeployGasPrice,
+				erc20Service,
 			)
 			if err != nil {
 				return nil, err
@@ -908,7 +918,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, debugSwapService, chequebookService, batchStore, post, postageContractService, traversalService)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudosettleService, o.SwapEnable, o.ChequebookEnable, debugSwapService, chequebookService, batchStore, post, postageContractService, traversalService, erc20Service)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {

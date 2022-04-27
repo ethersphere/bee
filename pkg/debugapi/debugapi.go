@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -75,6 +76,9 @@ type Service struct {
 	traverser          traversal.Traverser
 	beeMode            BeeNodeMode
 	gatewayMode        bool
+	erc20Service       erc20.Service
+	chainID            int64
+
 	// handler is changed in the Configure method
 	handler   http.Handler
 	handlerMu sync.RWMutex
@@ -89,7 +93,7 @@ type Service struct {
 // to expose /addresses, /health endpoints, Go metrics and pprof. It is useful to expose
 // these endpoints before all dependencies are configured and injected to have
 // access to basic debugging tools and /health endpoint.
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, chainBackend transaction.Backend, restrict bool, auth authenticator, gatewayMode bool, beeMode BeeNodeMode) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, tracer *tracing.Tracer, corsAllowedOrigins []string, blockTime *big.Int, transaction transaction.Service, chainBackend transaction.Backend, restrict bool, auth authenticator, gatewayMode bool, beeMode BeeNodeMode, chainID int64) *Service {
 	s := new(Service)
 	s.auth = auth
 	s.restricted = restrict
@@ -107,6 +111,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
 	s.beeMode = beeMode
 	s.gatewayMode = gatewayMode
+	s.chainID = chainID
 
 	s.setRouter(s.newBasicRouter())
 
@@ -116,7 +121,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 // Configure injects required dependencies and configuration parameters and
 // constructs HTTP routes that depend on them. It is intended and safe to call
 // this method only once.
-func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, swapEnabled bool, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, post postage.Service, postageContract postagecontract.Interface, traverser traversal.Traverser) {
+func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpong pingpong.Interface, topologyDriver topology.Driver, lightNodes *lightnode.Container, storer storage.Storer, tags *tags.Tags, accounting accounting.Interface, pseudosettle settlement.Interface, swapEnabled bool, chequebookEnabled bool, swap swap.Interface, chequebook chequebook.Service, batchStore postage.Storer, post postage.Service, postageContract postagecontract.Interface, traverser traversal.Traverser, erc20Service erc20.Service) {
 	s.p2p = p2p
 	s.pingpong = pingpong
 	s.topologyDriver = topologyDriver
@@ -134,6 +139,7 @@ func (s *Service) Configure(overlay swarm.Address, p2p p2p.DebugService, pingpon
 	s.post = post
 	s.postageContract = postageContract
 	s.traverser = traverser
+	s.erc20Service = erc20Service
 
 	s.setRouter(s.newRouter())
 }

@@ -163,6 +163,12 @@ func WithCodeAtFunc(f func(ctx context.Context, contract common.Address, blockNu
 	})
 }
 
+func WithBalanceAt(f func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.balanceAt = f
+	})
+}
+
 func WithPendingNonceAtFunc(f func(ctx context.Context, account common.Address) (uint64, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.pendingNonceAt = f

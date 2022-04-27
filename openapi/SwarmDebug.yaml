@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 2.0.0
+  version: 2.0.1
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 
@@ -679,6 +679,23 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/NewTagDebugResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/wallet":
+    get:
+      summary: Get wallet balance for BZZ and xDai
+      tags:
+        - Wallet
+      responses:
+        "200":
+          description: Wallet balance info
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/WalletResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:

@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/transaction"
-	backendmock "github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
@@ -27,7 +26,6 @@ func TestBalanceOf(t *testing.T) {
 	expectedBalance := big.NewInt(100)
 
 	erc20 := erc20.New(
-		backendmock.New(),
 		transactionmock.New(
 			transactionmock.WithABICall(
 				&erc20ABI,
@@ -57,7 +55,6 @@ func TestTransfer(t *testing.T) {
 	txHash := common.HexToHash("0xdddd")
 
 	erc20 := erc20.New(
-		backendmock.New(),
 		transactionmock.New(
 			transactionmock.WithABISend(&erc20ABI, txHash, address, big.NewInt(0), "transfer", account, value),
 		),

@@ -42,6 +42,8 @@ import (
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/multiformats/go-multiaddr"
 	"resenje.org/web"
+
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 )
 
 var (
@@ -77,6 +79,8 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
 	Traverser          traversal.Traverser
+	Erc20Opts          []erc20mock.Option
+	ChainID            int64
 }
 
 type testServer struct {
@@ -92,9 +96,10 @@ func newTestServer(t *testing.T, o testServerOptions) *testServer {
 	swapserv := swapmock.New(o.SwapOpts...)
 	transaction := transactionmock.New(o.TransactionOpts...)
 	backend := backendmock.New(o.BackendOpts...)
+	erc20 := erc20mock.New(o.Erc20Opts...)
 	ln := lightnode.NewContainer(o.Overlay)
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction, backend, false, nil, false, debugapi.FullMode)
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract, o.Traverser)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, o.CORSAllowedOrigins, big.NewInt(2), transaction, backend, false, nil, false, debugapi.FullMode, o.ChainID)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, true, swapserv, chequebook, o.BatchStore, o.Post, o.PostageContract, o.Traverser, erc20)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -162,7 +167,7 @@ func TestServer_Configure(t *testing.T) {
 	transaction := transactionmock.New(o.TransactionOpts...)
 	gatewayMode := false
 	beeMode := debugapi.FullMode
-	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, nil, false, nil, gatewayMode, beeMode)
+	s := debugapi.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, logging.New(io.Discard, 0), nil, nil, big.NewInt(2), transaction, nil, false, nil, gatewayMode, beeMode, 1)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
@@ -193,7 +198,7 @@ func TestServer_Configure(t *testing.T) {
 		}),
 	)
 
-	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, true, swapserv, chequebook, nil, mockpost.New(), nil, nil)
+	s.Configure(o.Overlay, o.P2P, o.Pingpong, topologyDriver, ln, o.Storer, o.Tags, acc, settlement, true, true, swapserv, chequebook, nil, mockpost.New(), nil, nil, nil)
 
 	testBasicRouter(t, client)
 	jsonhttptest.Request(t, client, http.MethodGet, "/readiness", http.StatusOK,

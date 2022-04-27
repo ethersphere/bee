@@ -27,14 +27,12 @@ type Service interface {
 }
 
 type erc20Service struct {
-	backend            transaction.Backend
 	transactionService transaction.Service
 	address            common.Address
 }
 
-func New(backend transaction.Backend, transactionService transaction.Service, address common.Address) Service {
+func New(transactionService transaction.Service, address common.Address) Service {
 	return &erc20Service{
-		backend:            backend,
 		transactionService: transactionService,
 		address:            address,
 	}
