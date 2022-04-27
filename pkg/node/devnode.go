@@ -39,6 +39,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockStateStore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -155,9 +156,14 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 		)
 
-		chainBackend := backendmock.New(backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
-			return 1, nil
-		}))
+		chainBackend := backendmock.New(
+			backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
+				return 1, nil
+			}),
+			backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+				return big.NewInt(0), nil
+			}),
+		)
 
 		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(0), mockTransaction, chainBackend, o.Restricted, authenticator, false, debugapi.DevMode, 1)
 		debugAPIServer := &http.Server{
@@ -382,10 +388,18 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 					return common.Hash{}, nil
 				},
 			))
+			erc20 = erc20mock.New(
+				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
+					return big.NewInt(0), nil
+				}),
+				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+					return common.Hash{}, nil
+				}),
+			)
 		)
 
 		// inject dependencies and configure full debug api http path routes
-		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, true, mockSwap, mockChequebook, batchStore, post, postageContract, traversalService, nil)
+		debugAPIService.Configure(swarmAddress, p2ps, pingPong, kad, lightNodes, storer, tagService, acc, pseudoset, true, true, mockSwap, mockChequebook, batchStore, post, postageContract, traversalService, erc20)
 	}
 
 	return b, nil

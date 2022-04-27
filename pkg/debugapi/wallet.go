@@ -14,10 +14,10 @@ import (
 )
 
 type walletResponse struct {
-	BZZ             float64        `json:"bzz"`
-	XDai            float64        `json:"xDai"`
-	ChainID         int64          `json:"chainID"`
-	ContractAddress common.Address `json:"contractAddress"`
+	BZZ             float64        `json:"bzz"`             // the BZZ balance of the wallet associated with the eth address of the node
+	XDai            float64        `json:"xDai"`            // the xDai balance of the wallet associated with the eth address of the node
+	ChainID         int64          `json:"chainID"`         // the id of the block chain
+	ContractAddress common.Address `json:"contractAddress"` // the address of the chequebook contract
 }
 
 func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
