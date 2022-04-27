@@ -479,9 +479,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			libp2pPrivateKey,
 			o,
 		)
-		logger.Infof("bootstrapper done, took %s", time.Since(start))
+		logger.Infof("bootstrapper took %s", time.Since(start))
 		if err != nil {
-			return nil, fmt.Errorf("bootstrapper failed to fetch batch state: %w", err)
+			logger.Errorf("bootstrapper failed to fetch batch state: %v", err)
 		}
 	}
 
