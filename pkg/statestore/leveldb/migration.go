@@ -305,7 +305,6 @@ func deleteKeys(s *Store, keys []string) error {
 		if err != nil {
 			return fmt.Errorf("error deleting key %s: %w", v, err)
 		}
-		s.logger.Debugf("deleted key %s", v)
 	}
 	s.logger.Debugf("deleted keys: %d", len(keys))
 	return nil
