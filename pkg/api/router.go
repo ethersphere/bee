@@ -5,8 +5,10 @@
 package api
 
 import (
+	"expvar"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/auth"
@@ -15,17 +17,84 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
-func (s *server) setupRouting() {
-	const (
-		apiVersion = "v1" // Only one api version exists, this should be configurable with more.
-		rootPath   = "/" + apiVersion
-	)
+const (
+	apiVersion = "v1" // Only one api version exists, this should be configurable with more.
+	rootPath   = "/" + apiVersion
+)
 
+func (s *Service) newBasicRouter() *mux.Router {
 	router := mux.NewRouter()
+
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Ethereum Swarm Bee")
+	})
+
+	router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
+	})
+
+	router.Handle("/node", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.nodeGetHandler),
+	})
+
+	router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
+
+	if s.transaction != nil {
+		router.Handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		router.Handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
+	}
+
+	router.Path("/metrics").Handler(web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandler(promhttp.InstrumentMetricHandler(
+			s.metricsRegistry,
+			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+		)),
+	))
+
+	router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
+	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
+
+	router.Handle("/debug/vars", expvar.Handler())
+
+	router.Handle("/health", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
+
+	return router
+}
+
+func (s *Service) setupRouting() {
+	router := s.newBasicRouter()
+
+	router.Handle("/readiness", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
 
 	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
@@ -90,8 +159,10 @@ func (s *server) setupRouting() {
 		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
 	))
 
-	handle("/chunks/{addr}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chunkGetHandler),
+	handle("/chunks/{address}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.chunkGetHandler),
+		"HEAD":   http.HandlerFunc(s.hasChunkHandler),
+		"DELETE": http.HandlerFunc(s.removeChunk),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
@@ -196,6 +267,151 @@ func (s *server) setupRouting() {
 		),
 	})
 
+	handle("/peers", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peersHandler),
+	})
+
+	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.pingpongHandler),
+	})
+
+	handle("/reservestate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.reserveStateHandler),
+	})
+
+	handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
+	})
+
+	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.peerConnectHandler),
+	})
+
+	handle("/blocklist", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
+	})
+
+	handle("/peers/{address}", jsonhttp.MethodHandler{
+		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
+	})
+
+	handle("/topology", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.topologyHandler),
+	})
+	handle("/welcome-message", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
+			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
+		),
+	})
+
+	handle("/balances", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
+	})
+
+	handle("/balances/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
+	})
+
+	handle("/consumed", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.balancesHandler),
+	})
+
+	handle("/consumed/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peerBalanceHandler),
+	})
+
+	handle("/timesettlements", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
+	})
+
+	if s.swapEnabled {
+		handle("/settlements", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.settlementsHandler),
+		})
+
+		handle("/settlements/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+		})
+
+		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+		})
+
+		handle("/chequebook/cheque", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
+		})
+
+		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
+			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
+			"POST": http.HandlerFunc(s.swapCashoutHandler),
+		})
+	}
+
+	if s.chequebookEnabled {
+		handle("/chequebook/balance", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
+		})
+
+		handle("/chequebook/address", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.chequebookAddressHandler),
+		})
+
+		handle("/chequebook/deposit", jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.chequebookDepositHandler),
+		})
+
+		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
+		})
+	}
+
+	handle("/stamps", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+		})),
+	)
+
+	handle("/stamps/{id}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampHandler),
+		})),
+	)
+
+	handle("/stamps/{id}/buckets", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
+		})),
+	)
+
+	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+		s.postageAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageCreateHandler),
+		})),
+	)
+
+	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
+		s.postageAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
+		})),
+	)
+
+	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
+		s.postageAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
+		})),
+	)
+
+	handle("/batches", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
+		})),
+	)
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
@@ -219,7 +435,7 @@ func (s *server) setupRouting() {
 	)
 }
 
-func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
+func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			s.logger.Tracef("gateway mode: forbidden %s", r.URL.String())
@@ -230,7 +446,7 @@ func (s *server) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	})
 }
 
-func (s *server) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
+func (s *Service) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {

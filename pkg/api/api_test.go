@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
 	mockauth "github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -27,6 +30,8 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -35,6 +40,9 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
+	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -42,6 +50,9 @@ import (
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/websocket"
 	"resenje.org/web"
@@ -81,6 +92,22 @@ type testServerOptions struct {
 	Authenticator      *mockauth.Auth
 	Restricted         bool
 	DirectUpload       bool
+
+	Overlay         swarm.Address
+	PublicKey       ecdsa.PublicKey
+	PSSPublicKey    ecdsa.PublicKey
+	EthereumAddress common.Address
+	BlockTime       *big.Int
+	P2P             *p2pmock.Service
+	Pingpong        pingpong.Interface
+	TopologyOpts    []topologymock.Option
+	AccountingOpts  []accountingmock.Option
+	// SettlementOpts  []swapmock.Option
+	ChequebookOpts  []chequebookmock.Option
+	SwapOpts        []swapmock.Option
+	BatchStore      postage.Storer
+	TransactionOpts []transactionmock.Option
+	Traverser       traversal.Traverser
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -104,12 +131,46 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.Authenticator = &mockauth.Auth{}
 	}
 	var chanStore *chanStorer
-	s, chC := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Authenticator, o.Logger, nil, api.Options{
+
+	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
+	acc := accountingmock.NewAccounting(o.AccountingOpts...)
+	settlement := swapmock.New(o.SwapOpts...)
+	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
+	ln := lightnode.NewContainer(o.Overlay)
+	transaction := transactionmock.New(o.TransactionOpts...)
+	storeRecipient := statestore.NewStateStore()
+	p2ps := p2pmock.New()
+	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
+
+	var debugOpts = api.DebugOptions{
+		TopologyDriver:    topologyDriver,
+		Accounting:        acc,
+		Pseudosettle:      recipient,
+		LightNodes:        ln,
+		Transaction:       transaction,
+		SwapEnabled:       true,
+		Swap:              settlement,
+		ChequebookEnabled: true,
+		Chequebook:        chequebook,
+		PublicKey:         o.PublicKey,
+		PSSPublicKey:      o.PSSPublicKey,
+		Overlay:           o.Overlay,
+		P2P:               o.P2P,
+		Pingpong:          o.Pingpong,
+		BatchStore:        o.BatchStore,
+		EthereumAddress:   o.EthereumAddress,
+		BlockTime:         o.BlockTime,
+	}
+
+	s, chC := api.New(signer, o.Authenticator, o.Logger, nil, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
-	})
+	}, debugOpts)
+
+	s.Configure(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward)
+
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
 		t.Cleanup(chanStore.stop)
@@ -232,12 +293,13 @@ func TestParseName(t *testing.T) {
 
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
-		mockPostage := mockpost.New()
 
-		s, _ := api.New(nil, nil, tC.res, nil, nil, nil, nil, mockPostage, nil, nil, signer, nil, log, nil, api.Options{})
+		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.DebugOptions{})
+
+		s.Configure(nil, nil, tC.res, nil, nil, nil, nil, nil, nil, nil)
 
 		t.Run(tC.desc, func(t *testing.T) {
-			got, err := s.(*api.Server).ResolveNameOrAddress(tC.name)
+			got, err := s.ResolveNameOrAddress(tC.name)
 			if err != nil && !errors.Is(err, tC.wantErr) {
 				t.Fatalf("bad error: %v", err)
 			}
