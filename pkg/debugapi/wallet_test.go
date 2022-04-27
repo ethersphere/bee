@@ -23,9 +23,6 @@ func TestWallet(t *testing.T) {
 
 	t.Run("Okay", func(t *testing.T) {
 
-		// erc20SmallUnit.SetString(chequebook.Erc20SmallUnitStr, 10)
-		// ethSmallUnit.SetString(chequebook.EthSmallUnitStr, 10)
-
 		srv := newTestServer(t, testServerOptions{
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
