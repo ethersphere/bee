@@ -205,6 +205,10 @@ func (s *Service) newRouter() *mux.Router {
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
+
+		handle("/wallet", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.walletHandler),
+		})
 	}
 
 	handle("/tags/{id}", jsonhttp.MethodHandler{

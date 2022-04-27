@@ -27,6 +27,11 @@ const (
 	balanceCheckMaxRetries      = 10
 )
 
+const (
+	erc20SmallUnitStr = "10000000000000000"
+	ethSmallUnitStr   = "1000000000000000000"
+)
+
 func checkBalance(
 	ctx context.Context,
 	logger logging.Logger,
@@ -63,14 +68,18 @@ func checkBalance(
 		insufficientERC20 := erc20Balance.Cmp(swapInitialDeposit) < 0
 		insufficientETH := ethBalance.Cmp(minimumEth) < 0
 
+		erc20SmallUnit, ethSmallUnit := new(big.Int), new(big.Float)
+		erc20SmallUnit.SetString(erc20SmallUnitStr, 10)
+		ethSmallUnit.SetString(ethSmallUnitStr)
+
 		if insufficientERC20 || insufficientETH {
-			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, big.NewInt(10000000000000000), new(big.Int))
+			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, erc20SmallUnit, new(big.Int))
 			if mod.Cmp(big.NewInt(0)) > 0 {
 				// always round up the division as the bzzaar cannot handle decimals
 				neededERC20.Add(neededERC20, big.NewInt(1))
 			}
 
-			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), big.NewFloat(1000000000000000000))
+			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), ethSmallUnit)
 
 			if insufficientETH && insufficientERC20 {
 				logger.Warningf("cannot continue until there is at least %f xDAI (for Gas) and at least %d BZZ bridged on the xDAI network available on %x", neededETH, neededERC20, overlayEthAddress)
@@ -110,19 +119,13 @@ func Init(
 	chainId int64,
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
+	erc20Service erc20.Service,
 ) (chequebookService Service, err error) {
 	// verify that the supplied factory is valid
 	err = chequebookFactory.VerifyBytecode(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	erc20Address, err := chequebookFactory.ERC20Address(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	erc20Service := erc20.New(swapBackend, transactionService, erc20Address)
 
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)

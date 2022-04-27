@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -161,6 +162,7 @@ func InitChequebookService(
 	chequebookFactory chequebook.Factory,
 	initialDeposit string,
 	deployGasPrice string,
+	erc20Service erc20.Service,
 ) (chequebook.Service, error) {
 	chequeSigner := chequebook.NewChequeSigner(signer, chainID)
 
@@ -188,6 +190,7 @@ func InitChequebookService(
 		chainID,
 		overlayEthAddress,
 		chequeSigner,
+		erc20Service,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("chequebook init: %w", err)
