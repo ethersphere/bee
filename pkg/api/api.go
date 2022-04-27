@@ -417,7 +417,12 @@ func (s *server) contentLengthMetricMiddleware() func(h http.Handler) http.Handl
 				contentLength, err := strconv.Atoi(hdr)
 				if err != nil {
 					s.logger.Debugf("api: decompressed content length: '%s', int conversion failed: %v", hdr, err)
-					return
+					hdr = w.Header().Get("Content-Length")
+					contentLength, err = strconv.Atoi(hdr)
+					if err != nil {
+						s.logger.Debugf("api: content length: '%s', int conversion failed: %v", hdr, err)
+						return
+					}
 				}
 				if contentLength > 0 {
 					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(int64(contentLength))), r.Method).Observe(time.Since(now).Seconds())
