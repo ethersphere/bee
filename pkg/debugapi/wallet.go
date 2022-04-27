@@ -5,17 +5,16 @@
 package debugapi
 
 import (
-	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 )
 
 type walletResponse struct {
-	BZZ             string         `json:"bzz"`             // the BZZ balance of the wallet associated with the eth address of the node
-	XDai            string         `json:"xDai"`            // the xDai balance of the wallet associated with the eth address of the node
+	BZZ             *bigint.BigInt `json:"bzz"`             // the BZZ balance of the wallet associated with the eth address of the node
+	XDai            *bigint.BigInt `json:"xDai"`            // the xDai balance of the wallet associated with the eth address of the node
 	ChainID         int64          `json:"chainID"`         // the id of the block chain
 	ContractAddress common.Address `json:"contractAddress"` // the address of the chequebook contract
 }
@@ -39,15 +38,15 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, walletResponse{
-		BZZ:             bigUnit(bzz, chequebook.Erc20SmallUnitStr),
-		XDai:            bigUnit(xdai, chequebook.EthSmallUnitStr),
+		BZZ:             bigint.Wrap(bzz),
+		XDai:            bigint.Wrap(xdai),
 		ChainID:         s.chainID,
 		ContractAddress: s.chequebook.Address(),
 	})
 }
 
-func bigUnit(n *big.Int, subUnitStr string) string {
-	subUnit, _ := new(big.Float).SetString(subUnitStr)
-	f := new(big.Float).Quo(new(big.Float).SetInt(n), subUnit).String()
-	return f
-}
+// func bigUnit(n *big.Int, subUnitStr string) string {
+// 	subUnit, _ := new(big.Float).SetString(subUnitStr)
+// 	f := new(big.Float).Quo(new(big.Float).SetInt(n), subUnit).String()
+// 	return f
+// }

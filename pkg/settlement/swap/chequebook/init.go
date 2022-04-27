@@ -28,8 +28,8 @@ const (
 )
 
 const (
-	Erc20SmallUnitStr = "10000000000000000"
-	EthSmallUnitStr   = "1000000000000000000"
+	erc20SmallUnitStr = "10000000000000000"
+	ethSmallUnitStr   = "1000000000000000000"
 )
 
 func checkBalance(
@@ -69,8 +69,8 @@ func checkBalance(
 		insufficientETH := ethBalance.Cmp(minimumEth) < 0
 
 		erc20SmallUnit, ethSmallUnit := new(big.Int), new(big.Float)
-		erc20SmallUnit.SetString(Erc20SmallUnitStr, 10)
-		ethSmallUnit.SetString(EthSmallUnitStr)
+		erc20SmallUnit.SetString(erc20SmallUnitStr, 10)
+		ethSmallUnit.SetString(ethSmallUnitStr)
 
 		if insufficientERC20 || insufficientETH {
 			neededERC20, mod := new(big.Int).DivMod(swapInitialDeposit, erc20SmallUnit, new(big.Int))

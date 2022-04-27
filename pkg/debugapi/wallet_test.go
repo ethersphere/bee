@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/debugapi"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 )
@@ -23,19 +23,18 @@ func TestWallet(t *testing.T) {
 
 	t.Run("Okay", func(t *testing.T) {
 
-		erc20SmallUnit, ethSmallUnit := new(big.Int), new(big.Int)
-		erc20SmallUnit.SetString(chequebook.Erc20SmallUnitStr, 10)
-		ethSmallUnit.SetString(chequebook.EthSmallUnitStr, 10)
+		// erc20SmallUnit.SetString(chequebook.Erc20SmallUnitStr, 10)
+		// ethSmallUnit.SetString(chequebook.EthSmallUnitStr, 10)
 
 		srv := newTestServer(t, testServerOptions{
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
-					return new(big.Int).Mul(erc20SmallUnit, big.NewInt(10)), nil
+					return big.NewInt(10000000000000000), nil
 				}),
 			},
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
-					return new(big.Int).Mul(ethSmallUnit, big.NewInt(20)), nil
+					return big.NewInt(2000000000000000000), nil
 				}),
 			},
 			ChainID: 1,
@@ -43,8 +42,8 @@ func TestWallet(t *testing.T) {
 
 		jsonhttptest.Request(t, srv.Client, http.MethodGet, "/wallet", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(debugapi.WalletResponse{
-				BZZ:     "10",
-				XDai:    "20",
+				BZZ:     bigint.Wrap(big.NewInt(10000000000000000)),
+				XDai:    bigint.Wrap(big.NewInt(2000000000000000000)),
 				ChainID: 1,
 			}),
 		)
