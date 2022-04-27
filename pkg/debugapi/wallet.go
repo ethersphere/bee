@@ -44,9 +44,3 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 		ContractAddress: s.chequebook.Address(),
 	})
 }
-
-// func bigUnit(n *big.Int, subUnitStr string) string {
-// 	subUnit, _ := new(big.Float).SetString(subUnitStr)
-// 	f := new(big.Float).Quo(new(big.Float).SetInt(n), subUnit).String()
-// 	return f
-// }
