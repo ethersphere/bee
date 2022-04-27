@@ -42,7 +42,6 @@ BEE_CLEF_SIGNER_ENABLE=true
 ## disable a set of sensitive features in the api
 # BEE_GATEWAY_MODE=false
 ## enable global pinning
-# BEE_GLOBAL_PINNING_ENABLE=false
 ## cause the node to start in full mode
 # BEE_FULL_NODE=false
 ## NAT exposed address

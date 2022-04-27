@@ -24,8 +24,6 @@ data-dir: ./data
 # debug-api-enable: false
 ## disable a set of sensitive features in the api
 # gateway-mode: false
-## enable global pinning
-# global-pinning-enable: false
 ## cause the node to start in full mode
 # full-node: false
 ## NAT exposed address
