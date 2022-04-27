@@ -816,19 +816,45 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 		b.chainSyncerCloser = chainSyncer
 	}
-	var apiService api.Service
+	var apiService *api.Service
 	if o.APIAddr != "" {
 		// API server
+		debugOpts := api.DebugOptions{
+			Overlay:           swarmAddress,
+			P2P:               p2ps,
+			Pingpong:          pingPong,
+			TopologyDriver:    kad,
+			LightNodes:        lightNodes,
+			Accounting:        acc,
+			Pseudosettle:      pseudosettleService,
+			Swap:              swapService,
+			SwapEnabled:       o.SwapEnable,
+			Chequebook:        chequebookService,
+			ChequebookEnabled: o.ChequebookEnable,
+			BatchStore:        batchStore,
+			PublicKey:         *publicKey,
+			PSSPublicKey:      pssPrivateKey.PublicKey,
+			EthereumAddress:   overlayEthAddress,
+			BlockTime:         big.NewInt(int64(o.BlockTime)),
+			Transaction:       transactionService,
+		}
+
 		var chunkC <-chan *pusher.Op
-		feedFactory := factory.New(ns)
-		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
-		apiService, chunkC = api.New(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward, signer, authenticator, logger, tracer, api.Options{
+
+		apiService, chunkC = api.New(signer, authenticator, logger, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		})
+		}, debugOpts)
+
 		pusherService.AddFeed(chunkC)
+
+		feedFactory := factory.New(ns)
+		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
+
+		apiService.Configure(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward)
+
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)

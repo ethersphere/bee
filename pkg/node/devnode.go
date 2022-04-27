@@ -21,12 +21,11 @@ import (
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/debugapi"
-	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
-	"github.com/ethersphere/bee/pkg/pinning"
+	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -36,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	mockPushsync "github.com/ethersphere/bee/pkg/pushsync/mock"
+	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
@@ -43,7 +43,7 @@ import (
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	mockStateStore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/steward/mock"
+	mockSteward "github.com/ethersphere/bee/pkg/steward/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
@@ -126,6 +126,27 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}
 		logger.Info("starting with restricted APIs")
 	}
+
+	var mockTransaction transaction.Service = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
+		return []common.Hash{common.HexToHash("abcd")}, nil
+	}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
+		return nil
+	}), transactionmock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
+		recipient := common.HexToAddress("dfff")
+		return &transaction.StoredTransaction{
+			To:          &recipient,
+			Created:     1,
+			Data:        []byte{1, 2, 3, 4},
+			GasPrice:    big.NewInt(12),
+			GasLimit:    5345,
+			Value:       big.NewInt(4),
+			Nonce:       3,
+			Description: "test",
+		}, nil
+	}), transactionmock.WithCancelTransactionFunc(func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+		return common.Hash{}, nil
+	}),
+	)
 
 	var debugAPIService *debugapi.Service
 
@@ -217,8 +238,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	traversalService := traversal.New(storer)
 
-	pinningService := pinning.NewService(storer, stateStore, traversalService)
-
 	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
@@ -292,13 +311,101 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 	)
 
-	feedFactory := factory.New(storer)
+	var (
+		lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
+		pingPong   = mockPingPong.New(pong)
+		p2ps       = mockP2P.New(
+			mockP2P.WithConnectFunc(func(ctx context.Context, addr multiaddr.Multiaddr) (address *bzz.Address, err error) {
+				return &bzz.Address{}, nil
+			}), mockP2P.WithDisconnectFunc(
+				func(swarm.Address, string) error {
+					return nil
+				},
+			), mockP2P.WithAddressesFunc(
+				func() ([]multiaddr.Multiaddr, error) {
+					ma, _ := multiaddr.NewMultiaddr("mock")
+					return []multiaddr.Multiaddr{ma}, nil
+				},
+			))
+		acc            = mockAccounting.NewAccounting()
+		kad            = mockTopology.NewTopologyDriver()
+		storeRecipient = mockStateStore.NewStateStore()
+		pseudoset      = pseudosettle.New(nil, logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
+		mockSwap       = swapmock.New(swapmock.WithCashoutStatusFunc(
+			func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
+				return &chequebook.CashoutStatus{
+					Last:           &chequebook.LastCashout{},
+					UncashedAmount: big.NewInt(0),
+				}, nil
+			},
+		), swapmock.WithLastSentChequeFunc(
+			func(a swarm.Address) (*chequebook.SignedCheque, error) {
+				return &chequebook.SignedCheque{
+					Cheque: chequebook.Cheque{
+						Beneficiary: common.Address{},
+						Chequebook:  common.Address{},
+					},
+				}, nil
+			},
+		), swapmock.WithLastReceivedChequeFunc(
+			func(a swarm.Address) (*chequebook.SignedCheque, error) {
+				return &chequebook.SignedCheque{
+					Cheque: chequebook.Cheque{
+						Beneficiary: common.Address{},
+						Chequebook:  common.Address{},
+					},
+				}, nil
+			},
+		))
+		mockChequebook = mockchequebook.NewChequebook(mockchequebook.WithChequebookBalanceFunc(
+			func(context.Context) (ret *big.Int, err error) {
+				return big.NewInt(0), nil
+			},
+		), mockchequebook.WithChequebookAvailableBalanceFunc(
+			func(context.Context) (ret *big.Int, err error) {
+				return big.NewInt(0), nil
+			},
+		), mockchequebook.WithChequebookWithdrawFunc(
+			func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+				return common.Hash{}, nil
+			},
+		), mockchequebook.WithChequebookDepositFunc(
+			func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+				return common.Hash{}, nil
+			},
+		))
+	)
 
-	apiService, _ := api.New(tagService, storer, nil, pssService, traversalService, pinningService, feedFactory, post, postageContract, &mock.Steward{}, signer, authenticator, logger, tracer, api.Options{
+	debugOpts := api.DebugOptions{
+		Overlay:           swarmAddress,
+		P2P:               p2ps,
+		Pingpong:          pingPong,
+		TopologyDriver:    kad,
+		LightNodes:        lightNodes,
+		Accounting:        acc,
+		Pseudosettle:      pseudoset,
+		SwapEnabled:       true,
+		Swap:              mockSwap,
+		ChequebookEnabled: true,
+		Chequebook:        mockChequebook,
+		BatchStore:        batchStore,
+		Transaction:       mockTransaction,
+		PublicKey:         mockKey.PublicKey,
+		PSSPublicKey:      mockKey.PublicKey,
+		EthereumAddress:   overlayEthAddress,
+		BlockTime:         big.NewInt(2),
+	}
+
+	apiService, _ := api.New(signer, authenticator, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
-	})
+	}, debugOpts)
+
+	mockResolver := resolverMock.NewResolver()
+	mockPinning := pinning.NewServiceMock()
+	mockSteward := new(mockSteward.Steward)
+	apiService.Configure(tagService, storer, mockResolver, pssService, traversalService, mockPinning, nil, post, postageContract, mockSteward)
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
