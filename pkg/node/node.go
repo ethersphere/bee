@@ -90,6 +90,7 @@ type Bee struct {
 	apiCloser                io.Closer
 	apiServer                *http.Server
 	debugAPIServer           *http.Server
+	debugAPIServer2          *http.Server
 	resolverCloser           io.Closer
 	errorLogWriter           *io.PipeWriter
 	tracerCloser             io.Closer
@@ -276,6 +277,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	var debugAPIService *debugapi.Service
 
+	apiListener, err := net.Listen("tcp", o.APIAddr)
+	if err != nil {
+		return nil, fmt.Errorf("api listener: %w", err)
+	}
+
 	if o.DebugAPIAddr != "" {
 		overlayEthAddress, err := signer.EthereumAddress()
 		if err != nil {
@@ -299,11 +305,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, chainBackend, o.Restricted, authenticator, o.GatewayMode, beeNodeMode, chainID)
 
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -312,9 +313,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+			logger.Infof("debug api address: %s", apiListener.Addr())
 
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+			if err := debugAPIServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
 				logger.Debugf("debug api server: %v", err)
 				logger.Error("unable to serve debug api")
 			}
@@ -862,11 +863,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}, debugOpts)
 
 		pusherService.AddFeed(chunkC)
-
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,

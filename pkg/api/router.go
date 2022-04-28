@@ -27,7 +27,7 @@ const (
 	rootPath   = "/" + apiVersion
 )
 
-func (s *Service) newBasicRouter() *mux.Router {
+func (s *Service) NewDebugHandler() http.Handler {
 	router := mux.NewRouter()
 
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
@@ -89,7 +89,7 @@ func (s *Service) newBasicRouter() *mux.Router {
 }
 
 func (s *Service) setupRouting() {
-	router := s.newBasicRouter()
+	router := mux.NewRouter()
 
 	router.Handle("/readiness", web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
