@@ -201,10 +201,6 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func (s *Service) Configure() {
-
-}
-
 // New will create a and initialize a new API service.
 func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (*Service, <-chan *pusher.Op) {
 	s := &Service{

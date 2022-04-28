@@ -282,6 +282,11 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("api listener: %w", err)
 	}
 
+	debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+	if err != nil {
+		return nil, fmt.Errorf("debug api listener: %w", err)
+	}
+
 	if o.DebugAPIAddr != "" {
 		overlayEthAddress, err := signer.EthereumAddress()
 		if err != nil {
@@ -313,15 +318,33 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}
 
 		go func() {
-			logger.Infof("debug api address: %s", apiListener.Addr())
+			logger.Infof("debug api address: %s", debugAPIListener.Addr())
 
-			if err := debugAPIServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
 				logger.Debugf("debug api server: %v", err)
 				logger.Error("unable to serve debug api")
 			}
 		}()
 
 		b.debugAPIServer = debugAPIServer
+
+		debugAPIServer2 := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           debugAPIService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		go func() {
+			logger.Infof("debug api address: %s", apiListener.Addr())
+
+			if err := debugAPIServer2.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+				logger.Debugf("debug api server: %v", err)
+				logger.Error("unable to serve debug api")
+			}
+		}()
+
+		b.debugAPIServer2 = debugAPIServer2
 	}
 
 	// Sync the with the given Ethereum backend:
@@ -1011,6 +1034,14 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	if b.debugAPIServer != nil {
 		eg.Go(func() error {
 			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
+				return fmt.Errorf("debug api server: %w", err)
+			}
+			return nil
+		})
+	}
+	if b.debugAPIServer2 != nil {
+		eg.Go(func() error {
+			if err := b.debugAPIServer2.Shutdown(ctx); err != nil {
 				return fmt.Errorf("debug api server: %w", err)
 			}
 			return nil

@@ -179,8 +179,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Restricted:         o.Restricted,
 	}, debugOpts)
 
-	s.Configure()
-
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
 		t.Cleanup(chanStore.stop)
