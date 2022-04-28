@@ -90,10 +90,7 @@ func migrateBatchstore(s *Store) error {
 		return err
 	}
 
-	err = deleteKeys(s, collectedPostageKeys)
-	if err != nil {
-		return err
-	}
+	return deleteKeys(s, collectedPostageKeys)
 }
 
 func migrateStamp(s *Store) error {
