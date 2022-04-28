@@ -75,11 +75,25 @@ func migrateFB(s *Store) error {
 }
 
 func migrateBatchstore(s *Store) error {
-	collectedKeys, err := collectKeys(s, "batchstore_")
+	collectedBatchKeys, err := collectKeys(s, "batchstore_")
 	if err != nil {
 		return err
 	}
-	return deleteKeys(s, collectedKeys)
+
+	collectedPostageKeys, err := collectKeys(s, "postage")
+	if err != nil {
+		return err
+	}
+
+	err = deleteKeys(s, collectedBatchKeys)
+	if err != nil {
+		return err
+	}
+
+	err = deleteKeys(s, collectedPostageKeys)
+	if err != nil {
+		return err
+	}
 }
 
 func migrateStamp(s *Store) error {

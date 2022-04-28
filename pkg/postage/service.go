@@ -57,21 +57,17 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		chainID:      chainID,
 	}
 
-	n := 0
-	if err := s.store.Iterate(s.key(), func(_, _ []byte) (stop bool, err error) {
-		n++
+	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
+		st := &StampIssuer{}
+		if err := st.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+		_ = s.add(st)
 		return false, nil
 	}); err != nil {
 		return nil, err
 	}
-	for i := 0; i < n; i++ {
-		st := &StampIssuer{}
-		err := s.store.Get(s.keyForIndex(i), st)
-		if err != nil {
-			return nil, err
-		}
-		_ = s.add(st)
-	}
+
 	return s, nil
 }
 
@@ -196,11 +192,11 @@ func (ps *service) Close() error {
 
 // keyForIndex returns the statestore key for an issuer
 func (ps *service) keyForIndex(i int) string {
-	return fmt.Sprintf(ps.key()+"%d", i)
+	return fmt.Sprintf(ps.key()+"_%d", i)
 }
 
 // key returns the statestore base key for an issuer
 // to disambiguate batches on different chains, chainID is part of the key
 func (ps *service) key() string {
-	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
+	return fmt.Sprintf(postagePrefix+"_%d", ps.chainID)
 }
