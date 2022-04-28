@@ -281,47 +281,52 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		return nil, fmt.Errorf("debug api listener: %w", err)
 	}
 
-	if o.DebugAPIAddr != "" {
-		overlayEthAddress, err := signer.EthereumAddress()
-		if err != nil {
-			return nil, fmt.Errorf("eth address: %w", err)
-		}
-
-		if o.MutexProfile {
-			_ = runtime.SetMutexProfileFraction(1)
-		}
-
-		if o.BlockProfile {
-			runtime.SetBlockProfileRate(1)
-		}
-
-		// set up basic debug api endpoints for debugging and /health endpoint
-		beeNodeMode := debugapi.LightMode
-		if o.FullNodeMode {
-			beeNodeMode = debugapi.FullMode
-		} else if !o.ChainEnable {
-			beeNodeMode = debugapi.UltraLightMode
-		}
-		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, chainBackend, o.Restricted, authenticator, o.GatewayMode, beeNodeMode, chainID)
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugAPIService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Infof("debug api address: %s", apiListener.Addr())
-
-			if err := debugAPIServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
+	signerEthereumAddress, err := signer.EthereumAddress()
+	if err != nil {
+		return nil, fmt.Errorf("eth address: %w", err)
 	}
+
+	if o.MutexProfile {
+		_ = runtime.SetMutexProfileFraction(1)
+	}
+
+	if o.BlockProfile {
+		runtime.SetBlockProfileRate(1)
+	}
+
+	// set up basic debug api endpoints for debugging and /health endpoint
+	beeNodeMode := debugapi.LightMode
+	if o.FullNodeMode {
+		beeNodeMode = debugapi.FullMode
+	} else if !o.ChainEnable {
+		beeNodeMode = debugapi.UltraLightMode
+	}
+	debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, signerEthereumAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, chainBackend, o.Restricted, authenticator, o.GatewayMode, beeNodeMode, chainID)
+
+	debugAPIServer := &http.Server{
+		IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           debugAPIService,
+		ErrorLog:          log.New(b.errorLogWriter, "", 0),
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		logger.Infof("debug api address: %s", apiListener.Addr())
+		wg.Done()
+		if err := debugAPIServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+			logger.Debugf("debug api server: %v", err)
+			logger.Error("unable to serve debug api")
+		}
+	}()
+
+	logger.Infof("waiting for the debug server to come up")
+	wg.Wait()
+	logger.Infof("continuing with debug...")
+
+	b.debugAPIServer = debugAPIServer
 
 	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
