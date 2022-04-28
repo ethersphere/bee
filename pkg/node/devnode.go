@@ -376,6 +376,10 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		))
 	)
 
+	mockResolver := resolverMock.NewResolver()
+	mockPinning := pinning.NewServiceMock()
+	mockSteward := new(mockSteward.Steward)
+
 	debugOpts := api.DebugOptions{
 		Overlay:           swarmAddress,
 		P2P:               p2ps,
@@ -394,6 +398,16 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		PSSPublicKey:      mockKey.PublicKey,
 		EthereumAddress:   overlayEthAddress,
 		BlockTime:         big.NewInt(2),
+		Tags:              tagService,
+		Storer:            storer,
+		Resolver:          mockResolver,
+		Pss:               pssService,
+		TraversalService:  traversalService,
+		Pinning:           mockPinning,
+		FeedFactory:       nil,
+		Post:              post,
+		PostageContract:   postageContract,
+		Steward:           mockSteward,
 	}
 
 	apiService, _ := api.New(signer, authenticator, logger, tracer, api.Options{
@@ -401,11 +415,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts)
-
-	mockResolver := resolverMock.NewResolver()
-	mockPinning := pinning.NewServiceMock()
-	mockSteward := new(mockSteward.Steward)
-	apiService.Configure(tagService, storer, mockResolver, pssService, traversalService, mockPinning, nil, post, postageContract, mockSteward)
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {

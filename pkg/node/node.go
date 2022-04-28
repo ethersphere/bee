@@ -818,6 +818,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	var apiService *api.Service
 	if o.APIAddr != "" {
 		// API server
+		feedFactory := factory.New(ns)
+		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
+
 		debugOpts := api.DebugOptions{
 			Overlay:           swarmAddress,
 			P2P:               p2ps,
@@ -836,6 +839,17 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			EthereumAddress:   overlayEthAddress,
 			BlockTime:         big.NewInt(int64(o.BlockTime)),
 			Transaction:       transactionService,
+
+			Tags:             tagService,
+			Storer:           ns,
+			Resolver:         multiResolver,
+			Pss:              pssService,
+			TraversalService: traversalService,
+			Pinning:          pinningService,
+			FeedFactory:      feedFactory,
+			Post:             post,
+			PostageContract:  postageContractService,
+			Steward:          steward,
 		}
 
 		var chunkC <-chan *pusher.Op
@@ -848,11 +862,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}, debugOpts)
 
 		pusherService.AddFeed(chunkC)
-
-		feedFactory := factory.New(ns)
-		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
-
-		apiService.Configure(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward)
 
 		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {

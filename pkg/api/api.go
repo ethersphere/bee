@@ -183,6 +183,17 @@ type DebugOptions struct {
 	EthereumAddress         common.Address
 	BlockTime               *big.Int
 	Transaction             transaction.Service
+
+	Tags             *tags.Tags
+	Storer           storage.Storer
+	Resolver         resolver.Interface
+	Pss              pss.Interface
+	TraversalService traversal.Traverser
+	Pinning          pinning.Interface
+	FeedFactory      feeds.Factory
+	Post             postage.Service
+	PostageContract  postagecontract.Interface
+	Steward          steward.Interface
 }
 
 const (
@@ -190,17 +201,8 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func (s *Service) Configure(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface) {
-	s.tags = tags
-	s.storer = storer
-	s.resolver = resolver
-	s.pss = pss
-	s.traversal = traversalService
-	s.pinning = pinning
-	s.feedFactory = feedFactory
-	s.post = post
-	s.postageContract = postageContract
-	s.steward = steward
+func (s *Service) Configure() {
+
 }
 
 // New will create a and initialize a new API service.
@@ -237,6 +239,17 @@ func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer
 
 	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
+
+	s.tags = do.Tags
+	s.storer = do.Storer
+	s.resolver = do.Resolver
+	s.pss = do.Pss
+	s.traversal = do.TraversalService
+	s.pinning = do.Pinning
+	s.feedFactory = do.FeedFactory
+	s.post = do.Post
+	s.postageContract = do.PostageContract
+	s.steward = do.Steward
 
 	s.setupRouting()
 

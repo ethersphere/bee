@@ -160,6 +160,16 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		BatchStore:        o.BatchStore,
 		EthereumAddress:   o.EthereumAddress,
 		BlockTime:         o.BlockTime,
+		Tags:              o.Tags,
+		Storer:            o.Storer,
+		Resolver:          o.Resolver,
+		Pss:               o.Pss,
+		TraversalService:  o.Traversal,
+		Pinning:           o.Pinning,
+		FeedFactory:       o.Feeds,
+		Post:              o.Post,
+		PostageContract:   o.PostageContract,
+		Steward:           o.Steward,
 	}
 
 	s, chC := api.New(signer, o.Authenticator, o.Logger, nil, api.Options{
@@ -169,7 +179,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Restricted:         o.Restricted,
 	}, debugOpts)
 
-	s.Configure(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward)
+	s.Configure()
 
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
@@ -294,9 +304,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.DebugOptions{})
-
-		s.Configure(nil, nil, tC.res, nil, nil, nil, nil, nil, nil, nil)
+		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.DebugOptions{Resolver: tC.res})
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
