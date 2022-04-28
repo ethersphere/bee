@@ -327,25 +327,29 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}()
 
 		b.debugAPIServer = debugAPIServer
-
-		debugAPIServer2 := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugAPIService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Infof("debug api address: %s", apiListener.Addr())
-
-			if err := debugAPIServer2.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
-			}
-		}()
-
-		b.debugAPIServer2 = debugAPIServer2
 	}
+
+	debugAPIServer2 := &http.Server{
+		IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 3 * time.Second,
+		Handler:           debugAPIService,
+		ErrorLog:          log.New(b.errorLogWriter, "", 0),
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		logger.Infof("debug api address: %s", apiListener.Addr())
+		wg.Done()
+		if err := debugAPIServer2.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+			logger.Debugf("debug api server: %v", err)
+			logger.Error("unable to serve debug api")
+		}
+	}()
+	wg.Wait()
+
+	b.debugAPIServer2 = debugAPIServer2
 
 	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
