@@ -135,6 +135,9 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 // handler handles chunk delivery from other node and forwards to its destination node.
 // If the current node is the destination, it stores in the local store and sends a receipt.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	stream.Reset()
+	return nil
+
 	now := time.Now()
 	w, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
@@ -357,8 +360,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer timer.Stop()
 
 	nextPeer := func() (swarm.Address, error) {
-
+		ps.logger.Tracef("pushsync: chunk: %s", ch.Address().String())
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
+		ps.logger.Tracef("pushsync: fullSkipList: %v", fullSkipList)
 
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
@@ -390,19 +394,25 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-ctx.Done():
 			return nil, ErrNoPush
 		case <-timer.C:
+			ps.logger.Tracef("pushsync: ps.skipList: %s", ps.skipList)
 
 			allowedRetries--
 			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
 			allowedPushes--
 
+			ps.logger.Tracef("pushsync: allowed retries %d; allowed pushes %d", allowedRetries, allowedPushes)
+
 			peer, err := nextPeer()
 			if err != nil {
+				ps.logger.Tracef("pushsync: nextPeer error: %v", err)
 				return nil, err
 			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 
+			ps.logger.Tracef("pushsync: skipPeers: %v", skipPeers)
 			skipPeers = append(skipPeers, peer)
+			ps.logger.Tracef("pushsync: added peer: %s", peer)
 
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
@@ -419,6 +429,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			timer.Reset(p90TTL)
 
 		case result := <-resultChan:
+			ps.logger.Tracef("pushsync: ps.skipList: %s", ps.skipList)
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
@@ -438,6 +449,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// pushPeer returned early, do not count as an attempt
 			if !result.pushed {
 				allowedPushes++
+				ps.logger.Tracef("pushsync: allowed pushes %d", allowedPushes)
 			}
 
 			if allowedRetries <= 0 || allowedPushes <= 0 {
@@ -730,4 +742,11 @@ func (l *peerSkipList) PruneExpired() {
 			delete(l.skip, k)
 		}
 	}
+}
+
+func (l *peerSkipList) String() string {
+	l.Lock()
+	defer l.Unlock()
+
+	return fmt.Sprintf("%#v", l.skip)
 }
