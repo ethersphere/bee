@@ -66,8 +66,7 @@ func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 	return &finder{feeds.NewGetter(getter, feed)}
 }
 
-// At looks up the version valid at time `at`
-// after is a unix time hint of the latest known update
+// At looks for incremental feed updates from 0 upwards, if it does not find one, it assumes that the last found update is the most recent
 func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, current, next feeds.Index, err error) {
 	for i := uint64(0); ; i++ {
 		u, err := f.getter.Get(ctx, &index{i})
