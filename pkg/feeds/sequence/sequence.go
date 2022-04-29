@@ -83,7 +83,7 @@ func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, curre
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// if timestamp is later than the `at` target datetime, then return previous chunk  and index
+		// if index is later than the `at` target index, then return previous chunk  and index
 		if ts > uint64(at) {
 			return ch, &index{i - 1}, &index{i}, nil
 		}
