@@ -274,7 +274,23 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		logger.Info("starting with restricted APIs")
 	}
 
-	var debugAPIService *debugapi.Service
+	var (
+		debugAPIService *debugapi.Service
+		apiService      *api.Service
+	)
+
+	apiListener, err := net.Listen("tcp", o.APIAddr)
+	if err != nil {
+		return nil, fmt.Errorf("api listener: %w", err)
+	}
+
+	// set up basic debug api endpoints for debugging and /health endpoint
+	beeNodeMode := debugapi.LightMode
+	if o.FullNodeMode {
+		beeNodeMode = debugapi.FullMode
+	} else if !o.ChainEnable {
+		beeNodeMode = debugapi.UltraLightMode
+	}
 
 	if o.DebugAPIAddr != "" {
 		overlayEthAddress, err := signer.EthereumAddress()
@@ -290,13 +306,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			runtime.SetBlockProfileRate(1)
 		}
 
-		// set up basic debug api endpoints for debugging and /health endpoint
-		beeNodeMode := debugapi.LightMode
-		if o.FullNodeMode {
-			beeNodeMode = debugapi.FullMode
-		} else if !o.ChainEnable {
-			beeNodeMode = debugapi.UltraLightMode
-		}
 		debugAPIService = debugapi.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(int64(o.BlockTime)), transactionService, chainBackend, o.Restricted, authenticator, o.GatewayMode, beeNodeMode, chainID)
 
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
@@ -319,6 +328,29 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 				logger.Error("unable to serve debug api")
 			}
 		}()
+
+		b.debugAPIServer = debugAPIServer
+	} else {
+		apiService = api.NewDebugService(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, o.GatewayMode, api.BeeNodeMode(beeNodeMode), nil, nil, o.ChequebookEnable, o.SwapEnable)
+
+		debugAPIServer := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           apiService,
+			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			logger.Infof("new debug api address: %s", apiListener.Addr())
+			wg.Done()
+			if err := debugAPIServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+				logger.Debugf("debug api server: %v", err)
+				logger.Error("unable to serve debug api")
+			}
+		}()
+		wg.Wait()
 
 		b.debugAPIServer = debugAPIServer
 	}
@@ -412,12 +444,16 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	}
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
-
-	err = CheckOverlayWithStore(swarmAddress, stateStore)
 	if err != nil {
 		return nil, err
 	}
 	logger.Infof("using overlay address %s", swarmAddress)
+
+	apiService.SetSwarmAddress(&swarmAddress)
+
+	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
+		return nil, err
+	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
@@ -508,6 +544,9 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
+
+	apiService.SetP2P(p2ps)
+
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
@@ -816,10 +855,21 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 		b.chainSyncerCloser = chainSyncer
 	}
-	var apiService *api.Service
+
 	if o.APIAddr != "" {
 		// API server
-		debugOpts := api.DebugOptions{
+
+		if apiService != nil {
+			//TODO fixme
+			if err := b.debugAPIServer.Shutdown(context.Background()); err != nil {
+				logger.Debug("could not shutdown previous debug", err)
+			}
+		}
+
+		feedFactory := factory.New(ns)
+		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
+
+		extraOpts := api.ExtraOptions{
 			Overlay:           swarmAddress,
 			P2P:               p2ps,
 			Pingpong:          pingPong,
@@ -837,6 +887,16 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			EthereumAddress:   overlayEthAddress,
 			BlockTime:         big.NewInt(int64(o.BlockTime)),
 			Transaction:       transactionService,
+			Tags:              tagService,
+			Storer:            ns,
+			Resolver:          multiResolver,
+			Pss:               pssService,
+			TraversalService:  traversalService,
+			Pinning:           pinningService,
+			FeedFactory:       feedFactory,
+			Post:              post,
+			PostageContract:   postageContractService,
+			Steward:           steward,
 		}
 
 		var chunkC <-chan *pusher.Op
@@ -846,25 +906,20 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, debugOpts)
+		}, extraOpts)
 
 		pusherService.AddFeed(chunkC)
-
-		feedFactory := factory.New(ns)
-		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
-
-		apiService.Configure(tagService, ns, multiResolver, pssService, traversalService, pinningService, feedFactory, post, postageContractService, steward)
-
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		apiListener, err := net.Listen("tcp", o.APIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("api listener: %w", err)
 		}
 
 		go func() {

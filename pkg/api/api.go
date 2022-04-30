@@ -124,7 +124,6 @@ type Service struct {
 	post            postage.Service
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
-	metricsRegistry *prometheus.Registry
 	Options
 	http.Handler
 	metrics metrics
@@ -133,12 +132,10 @@ type Service struct {
 	quit chan struct{}
 
 	// from debug API
-	overlay           *swarm.Address
-	publicKey         ecdsa.PublicKey
-	pssPublicKey      ecdsa.PublicKey
-	ethereumAddress   common.Address
-	chequebookEnabled bool
-	swapEnabled       bool
+	overlay         *swarm.Address
+	publicKey       ecdsa.PublicKey
+	pssPublicKey    ecdsa.PublicKey
+	ethereumAddress common.Address
 
 	topologyDriver topology.Driver
 	p2p            p2p.DebugService
@@ -148,15 +145,51 @@ type Service struct {
 	pingpong       pingpong.Interface
 	batchStore     postage.Storer
 
-	swap        swap.Interface
-	transaction transaction.Service
-	lightNodes  *lightnode.Container
-	blockTime   *big.Int
-	beeMode     BeeNodeMode
-	gatewayMode bool
+	swap              swap.Interface
+	transaction       transaction.Service
+	lightNodes        *lightnode.Container
+	blockTime         *big.Int
+	chequebookEnabled bool
+	swapEnabled       bool
 
 	postageSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
+	beeMode          BeeNodeMode
+	gatewayMode      bool
+	metricsRegistry  *prometheus.Registry
+}
+
+func (s *Service) SetP2P(p2p p2p.DebugService) {
+	if s != nil {
+		s.p2p = p2p
+	}
+}
+
+func (s *Service) SetSwarmAddress(addr *swarm.Address) {
+	if s != nil {
+		s.overlay = addr
+	}
+}
+
+func NewDebugService(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, p2p p2p.DebugService, overlay *swarm.Address, chequebookEnabled bool, swapEnabled bool) *Service {
+	s := new(Service)
+
+	s.beeMode = beeMode
+	s.gatewayMode = gatewayMode
+	s.logger = logger
+	s.p2p = p2p
+	s.chequebookEnabled = chequebookEnabled
+	s.swapEnabled = swapEnabled
+	s.overlay = overlay
+	s.publicKey = publicKey
+	s.pssPublicKey = pssPublicKey
+	s.ethereumAddress = ethereumAddress
+	s.transaction = transaction
+	s.metricsRegistry = newDebugMetrics()
+
+	s.Handler = s.newDebugRouter()
+
+	return s
 }
 
 type Options struct {
@@ -166,7 +199,7 @@ type Options struct {
 	Restricted         bool
 }
 
-type DebugOptions struct {
+type ExtraOptions struct {
 	Overlay                 swarm.Address
 	P2P                     p2p.DebugService
 	Pingpong                pingpong.Interface
@@ -183,6 +216,16 @@ type DebugOptions struct {
 	EthereumAddress         common.Address
 	BlockTime               *big.Int
 	Transaction             transaction.Service
+	Tags                    *tags.Tags
+	Storer                  storage.Storer
+	Resolver                resolver.Interface
+	Pss                     pss.Interface
+	TraversalService        traversal.Traverser
+	Pinning                 pinning.Interface
+	FeedFactory             feeds.Factory
+	Post                    postage.Service
+	PostageContract         postagecontract.Interface
+	Steward                 steward.Interface
 }
 
 const (
@@ -190,21 +233,8 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func (s *Service) Configure(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface) {
-	s.tags = tags
-	s.storer = storer
-	s.resolver = resolver
-	s.pss = pss
-	s.traversal = traversalService
-	s.pinning = pinning
-	s.feedFactory = feedFactory
-	s.post = post
-	s.postageContract = postageContract
-	s.steward = steward
-}
-
 // New will create a and initialize a new API service.
-func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, do DebugOptions) (*Service, <-chan *pusher.Op) {
+func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, e ExtraOptions) (*Service, <-chan *pusher.Op) {
 	s := &Service{
 		auth:            auth,
 		chunkPushC:      make(chan *pusher.Op),
@@ -213,27 +243,39 @@ func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer
 		logger:          logger,
 		tracer:          tracer,
 		metrics:         newMetrics(),
-		quit:            make(chan struct{}),
 		metricsRegistry: newDebugMetrics(),
+
+		quit: make(chan struct{}),
 	}
 
-	s.p2p = do.P2P
-	s.pingpong = do.Pingpong
-	s.topologyDriver = do.TopologyDriver
-	s.accounting = do.Accounting
-	s.chequebookEnabled = do.ChequebookEnabled
-	s.chequebook = do.Chequebook
-	s.swapEnabled = do.SwapEnabled
-	s.swap = do.Swap
-	s.lightNodes = do.LightNodes
-	s.batchStore = do.BatchStore
-	s.pseudosettle = do.Pseudosettle
-	s.overlay = &do.Overlay
-	s.publicKey = do.PublicKey
-	s.pssPublicKey = do.PSSPublicKey
-	s.ethereumAddress = do.EthereumAddress
-	s.blockTime = do.BlockTime
-	s.transaction = do.Transaction
+	s.tags = e.Tags
+	s.storer = e.Storer
+	s.resolver = e.Resolver
+	s.pss = e.Pss
+	s.traversal = e.TraversalService
+	s.pinning = e.Pinning
+	s.feedFactory = e.FeedFactory
+	s.post = e.Post
+	s.postageContract = e.PostageContract
+	s.steward = e.Steward
+
+	s.p2p = e.P2P
+	s.pingpong = e.Pingpong
+	s.topologyDriver = e.TopologyDriver
+	s.accounting = e.Accounting
+	s.chequebookEnabled = e.ChequebookEnabled
+	s.chequebook = e.Chequebook
+	s.swapEnabled = e.SwapEnabled
+	s.swap = e.Swap
+	s.lightNodes = e.LightNodes
+	s.batchStore = e.BatchStore
+	s.pseudosettle = e.Pseudosettle
+	s.overlay = &e.Overlay
+	s.publicKey = e.PublicKey
+	s.pssPublicKey = e.PSSPublicKey
+	s.ethereumAddress = e.EthereumAddress
+	s.blockTime = e.BlockTime
+	s.transaction = e.Transaction
 
 	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
