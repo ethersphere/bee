@@ -59,7 +59,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20220227234510-4e6760a101f9
+	golang.org/x/sys v0.0.0-20220422013727-9388b58f7150
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	google.golang.org/protobuf v1.27.1 // indirect
@@ -121,7 +121,7 @@ require (
 	github.com/libp2p/go-nat v0.1.0 // indirect
 	github.com/libp2p/go-netroute v0.1.6 // indirect
 	github.com/libp2p/go-openssl v0.0.7 // indirect
-	github.com/libp2p/go-reuseport v0.1.0 // indirect
+	github.com/libp2p/go-reuseport v0.2.0 // indirect
 	github.com/libp2p/go-reuseport-transport v0.1.0 // indirect
 	github.com/libp2p/go-sockaddr v0.1.1 // indirect
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0 // indirect
