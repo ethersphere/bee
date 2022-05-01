@@ -126,7 +126,10 @@ type Service struct {
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
 	Options
+
 	http.Handler
+	handlerMu sync.RWMutex
+
 	metrics metrics
 
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
@@ -175,16 +178,14 @@ func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 	}
 }
 
-func NewDebugService(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, p2p p2p.DebugService, overlay *swarm.Address, chequebookEnabled bool, swapEnabled bool) *Service {
+func NewDebugService(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
 	s := new(Service)
 
 	s.beeMode = beeMode
 	s.gatewayMode = gatewayMode
 	s.logger = logger
-	s.p2p = p2p
 	s.chequebookEnabled = chequebookEnabled
 	s.swapEnabled = swapEnabled
-	s.overlay = overlay
 	s.publicKey = publicKey
 	s.pssPublicKey = pssPublicKey
 	s.ethereumAddress = ethereumAddress
@@ -204,32 +205,25 @@ type Options struct {
 }
 
 type ExtraOptions struct {
-	Overlay                 swarm.Address
-	P2P                     p2p.DebugService
-	Pingpong                pingpong.Interface
-	TopologyDriver          topology.Driver
-	LightNodes              *lightnode.Container
-	Accounting              accounting.Interface
-	Pseudosettle            settlement.Interface
-	SwapEnabled             bool
-	ChequebookEnabled       bool
-	Swap                    swap.Interface
-	Chequebook              chequebook.Service
-	BatchStore              postage.Storer
-	PublicKey, PSSPublicKey ecdsa.PublicKey
-	EthereumAddress         common.Address
-	BlockTime               *big.Int
-	Transaction             transaction.Service
-	Tags                    *tags.Tags
-	Storer                  storage.Storer
-	Resolver                resolver.Interface
-	Pss                     pss.Interface
-	TraversalService        traversal.Traverser
-	Pinning                 pinning.Interface
-	FeedFactory             feeds.Factory
-	Post                    postage.Service
-	PostageContract         postagecontract.Interface
-	Steward                 steward.Interface
+	Pingpong         pingpong.Interface
+	TopologyDriver   topology.Driver
+	LightNodes       *lightnode.Container
+	Accounting       accounting.Interface
+	Pseudosettle     settlement.Interface
+	Swap             swap.Interface
+	Chequebook       chequebook.Service
+	BatchStore       postage.Storer
+	BlockTime        *big.Int
+	Tags             *tags.Tags
+	Storer           storage.Storer
+	Resolver         resolver.Interface
+	Pss              pss.Interface
+	TraversalService traversal.Traverser
+	Pinning          pinning.Interface
+	FeedFactory      feeds.Factory
+	Post             postage.Service
+	PostageContract  postagecontract.Interface
+	Steward          steward.Interface
 }
 
 const (
@@ -237,20 +231,16 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-// New will create a and initialize a new API service.
-func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) (*Service, <-chan *pusher.Op) {
-	s := &Service{
-		auth:            auth,
-		chunkPushC:      make(chan *pusher.Op),
-		signer:          signer,
-		Options:         o,
-		logger:          logger,
-		tracer:          tracer,
-		metrics:         newMetrics(),
-		metricsRegistry: newDebugMetrics(),
+// Configure will create a and initialize a new API service.
+func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) <-chan *pusher.Op {
+	s.auth = auth
+	s.chunkPushC = make(chan *pusher.Op)
+	s.signer = signer
+	s.Options = o
+	s.tracer = tracer
+	s.metrics = newMetrics()
 
-		quit: make(chan struct{}),
-	}
+	s.quit = make(chan struct{})
 
 	s.tags = e.Tags
 	s.storer = e.Storer
@@ -263,23 +253,15 @@ func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 
-	s.p2p = e.P2P
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver
 	s.accounting = e.Accounting
-	s.chequebookEnabled = e.ChequebookEnabled
 	s.chequebook = e.Chequebook
-	s.swapEnabled = e.SwapEnabled
 	s.swap = e.Swap
 	s.lightNodes = e.LightNodes
 	s.batchStore = e.BatchStore
 	s.pseudosettle = e.Pseudosettle
-	s.overlay = &e.Overlay
-	s.publicKey = e.PublicKey
-	s.pssPublicKey = e.PSSPublicKey
-	s.ethereumAddress = e.EthereumAddress
 	s.blockTime = e.BlockTime
-	s.transaction = e.Transaction
 
 	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
@@ -288,9 +270,12 @@ func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer
 	s.erc20Service = erc20
 	s.chainBackend = chainBackend
 
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
 	s.setupRouting()
 
-	return s, s.chunkPushC
+	return s.chunkPushC
 }
 
 // Close hangs up running websockets on shutdown.

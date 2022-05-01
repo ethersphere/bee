@@ -53,6 +53,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
@@ -143,48 +144,52 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 	transaction := transactionmock.New(o.TransactionOpts...)
+
 	storeRecipient := statestore.NewStateStore()
-	p2ps := p2pmock.New()
-	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
+	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P)
+
 	erc20 := erc20mock.New(o.Erc20Opts...)
 	backend := backendmock.New(o.BackendOpts...)
 
-	var debugOpts = api.ExtraOptions{
-		TopologyDriver:    topologyDriver,
-		Accounting:        acc,
-		Pseudosettle:      recipient,
-		LightNodes:        ln,
-		Transaction:       transaction,
-		SwapEnabled:       true,
-		Swap:              settlement,
-		ChequebookEnabled: true,
-		Chequebook:        chequebook,
-		PublicKey:         o.PublicKey,
-		PSSPublicKey:      o.PSSPublicKey,
-		Overlay:           o.Overlay,
-		P2P:               o.P2P,
-		Pingpong:          o.Pingpong,
-		BatchStore:        o.BatchStore,
-		EthereumAddress:   o.EthereumAddress,
-		BlockTime:         o.BlockTime,
-		Tags:              o.Tags,
-		Storer:            o.Storer,
-		Resolver:          o.Resolver,
-		Pss:               o.Pss,
-		TraversalService:  o.Traversal,
-		Pinning:           o.Pinning,
-		FeedFactory:       o.Feeds,
-		Post:              o.Post,
-		PostageContract:   o.PostageContract,
-		Steward:           o.Steward,
+	var extraOpts = api.ExtraOptions{
+		TopologyDriver:   topologyDriver,
+		Accounting:       acc,
+		Pseudosettle:     recipient,
+		LightNodes:       ln,
+		Swap:             settlement,
+		Chequebook:       chequebook,
+		Pingpong:         o.Pingpong,
+		BatchStore:       o.BatchStore,
+		BlockTime:        o.BlockTime,
+		Tags:             o.Tags,
+		Storer:           o.Storer,
+		Resolver:         o.Resolver,
+		Pss:              o.Pss,
+		TraversalService: o.Traversal,
+		Pinning:          o.Pinning,
+		FeedFactory:      o.Feeds,
+		Post:             o.Post,
+		PostageContract:  o.PostageContract,
+		Steward:          o.Steward,
 	}
 
-	s, chC := api.New(signer, o.Authenticator, o.Logger, nil, api.Options{
+	s := api.NewDebugService(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.GatewayMode, api.FullMode, true, true)
+
+	s.SetP2P(o.P2P)
+	s.SetSwarmAddress(&o.Overlay)
+
+	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
+		Enabled: false,
+	})
+
+	t.Cleanup(func() { _ = tracerCloser.Close() })
+
+	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
-	}, debugOpts, 1, backend, erc20)
+	}, extraOpts, 1, backend, erc20)
 
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
@@ -309,7 +314,9 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
+		s := api.NewDebugService(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, false, 1, false, false)
+
+		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
