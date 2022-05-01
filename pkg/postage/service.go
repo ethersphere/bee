@@ -192,11 +192,11 @@ func (ps *service) Close() error {
 
 // keyForIndex returns the statestore key for an issuer
 func (ps *service) keyForIndex(i int) string {
-	return fmt.Sprintf(ps.key()+"_%d", i)
+	return fmt.Sprintf(ps.key()+"%d", i)
 }
 
 // key returns the statestore base key for an issuer
 // to disambiguate batches on different chains, chainID is part of the key
 func (ps *service) key() string {
-	return fmt.Sprintf(postagePrefix+"_%d", ps.chainID)
+	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
 }
