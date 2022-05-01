@@ -92,6 +92,7 @@ type (
 	PostageBatchResponse              = postageBatchResponse
 	PostageStampBucketsResponse       = postageStampBucketsResponse
 	BucketData                        = bucketData
+	WalletResponse                    = walletResponse
 )
 
 var (
