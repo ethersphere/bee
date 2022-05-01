@@ -88,8 +88,8 @@ type Bee struct {
 	p2pHalter                p2p.Halter
 	p2pCancel                context.CancelFunc
 	apiCloser                io.Closer
-	apiServer                *http.Server
 	debugAPIServer           *http.Server
+	apiServer                *http.Server
 	resolverCloser           io.Closer
 	errorLogWriter           *io.PipeWriter
 	tracerCloser             io.Closer
@@ -274,10 +274,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		logger.Info("starting with restricted APIs")
 	}
 
-	var (
-		debugAPIService *debugapi.Service
-		apiService      *api.Service
-	)
+	var debugAPIService *debugapi.Service
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
@@ -291,6 +288,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	} else if !o.ChainEnable {
 		beeNodeMode = debugapi.UltraLightMode
 	}
+
+	apiService := api.NewDebugService(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, o.GatewayMode, api.BeeNodeMode(beeNodeMode), o.ChequebookEnable, o.SwapEnable)
 
 	if o.DebugAPIAddr != "" {
 		overlayEthAddress, err := signer.EthereumAddress()
@@ -331,8 +330,6 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 		b.debugAPIServer = debugAPIServer
 	} else {
-		apiService = api.NewDebugService(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, o.GatewayMode, api.BeeNodeMode(beeNodeMode), nil, nil, o.ChequebookEnable, o.SwapEnable)
-
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -352,7 +349,8 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		}()
 		wg.Wait()
 
-		b.debugAPIServer = debugAPIServer
+		b.apiServer = debugAPIServer
+		b.apiCloser = apiService
 	}
 
 	// Sync the with the given Ethereum backend:
@@ -859,49 +857,32 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if o.APIAddr != "" {
 		// API server
 
-		if apiService != nil {
-			//TODO fixme
-			if err := b.debugAPIServer.Shutdown(context.Background()); err != nil {
-				logger.Debug("could not shutdown previous debug", err)
-			}
-		}
-
 		feedFactory := factory.New(ns)
 		steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
 		extraOpts := api.ExtraOptions{
-			Overlay:           swarmAddress,
-			P2P:               p2ps,
-			Pingpong:          pingPong,
-			TopologyDriver:    kad,
-			LightNodes:        lightNodes,
-			Accounting:        acc,
-			Pseudosettle:      pseudosettleService,
-			Swap:              swapService,
-			SwapEnabled:       o.SwapEnable,
-			Chequebook:        chequebookService,
-			ChequebookEnabled: o.ChequebookEnable,
-			BatchStore:        batchStore,
-			PublicKey:         *publicKey,
-			PSSPublicKey:      pssPrivateKey.PublicKey,
-			EthereumAddress:   overlayEthAddress,
-			BlockTime:         big.NewInt(int64(o.BlockTime)),
-			Transaction:       transactionService,
-			Tags:              tagService,
-			Storer:            ns,
-			Resolver:          multiResolver,
-			Pss:               pssService,
-			TraversalService:  traversalService,
-			Pinning:           pinningService,
-			FeedFactory:       feedFactory,
-			Post:              post,
-			PostageContract:   postageContractService,
-			Steward:           steward,
+			Pingpong:         pingPong,
+			TopologyDriver:   kad,
+			LightNodes:       lightNodes,
+			Accounting:       acc,
+			Pseudosettle:     pseudosettleService,
+			Swap:             swapService,
+			Chequebook:       chequebookService,
+			BatchStore:       batchStore,
+			BlockTime:        big.NewInt(int64(o.BlockTime)),
+			Tags:             tagService,
+			Storer:           ns,
+			Resolver:         multiResolver,
+			Pss:              pssService,
+			TraversalService: traversalService,
+			Pinning:          pinningService,
+			FeedFactory:      feedFactory,
+			Post:             post,
+			PostageContract:  postageContractService,
+			Steward:          steward,
 		}
 
-		var chunkC <-chan *pusher.Op
-
-		apiService, chunkC = api.New(signer, authenticator, logger, tracer, api.Options{
+		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
@@ -910,29 +891,29 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 		pusherService.AddFeed(chunkC)
 
-		apiServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
-		}
-
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
-
-		go func() {
-			logger.Infof("api address: %s", apiListener.Addr())
-
-			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("api server: %v", err)
-				logger.Error("unable to serve api")
+		if o.DebugAPIAddr != "" {
+			apiServer := &http.Server{
+				IdleTimeout:       30 * time.Second,
+				ReadHeaderTimeout: 3 * time.Second,
+				Handler:           apiService,
+				ErrorLog:          log.New(b.errorLogWriter, "", 0),
 			}
-		}()
 
-		b.apiServer = apiServer
-		b.apiCloser = apiService
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				logger.Infof("new debug api address: %s", apiListener.Addr())
+				wg.Done()
+				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+					logger.Debugf("debug api server: %v", err)
+					logger.Error("unable to serve debug api")
+				}
+			}()
+			wg.Wait()
+
+			b.apiServer = apiServer
+			b.apiCloser = apiService
+		}
 	}
 
 	if debugAPIService != nil {

@@ -392,33 +392,25 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	mockSteward := new(mockSteward.Steward)
 
 	debugOpts := api.ExtraOptions{
-		Overlay:           swarmAddress,
-		P2P:               p2ps,
-		Pingpong:          pingPong,
-		TopologyDriver:    kad,
-		LightNodes:        lightNodes,
-		Accounting:        acc,
-		Pseudosettle:      pseudoset,
-		SwapEnabled:       true,
-		Swap:              mockSwap,
-		ChequebookEnabled: true,
-		Chequebook:        mockChequebook,
-		BatchStore:        batchStore,
-		Transaction:       mockTransaction,
-		PublicKey:         mockKey.PublicKey,
-		PSSPublicKey:      mockKey.PublicKey,
-		EthereumAddress:   overlayEthAddress,
-		BlockTime:         big.NewInt(2),
-		Tags:              tagService,
-		Storer:            storer,
-		Resolver:          mockResolver,
-		Pss:               pssService,
-		TraversalService:  traversalService,
-		Pinning:           mockPinning,
-		FeedFactory:       mockFeeds,
-		Post:              post,
-		PostageContract:   postageContract,
-		Steward:           mockSteward,
+		Pingpong:         pingPong,
+		TopologyDriver:   kad,
+		LightNodes:       lightNodes,
+		Accounting:       acc,
+		Pseudosettle:     pseudoset,
+		Swap:             mockSwap,
+		Chequebook:       mockChequebook,
+		BatchStore:       batchStore,
+		BlockTime:        big.NewInt(2),
+		Tags:             tagService,
+		Storer:           storer,
+		Resolver:         mockResolver,
+		Pss:              pssService,
+		TraversalService: traversalService,
+		Pinning:          mockPinning,
+		FeedFactory:      mockFeeds,
+		Post:             post,
+		PostageContract:  postageContract,
+		Steward:          mockSteward,
 	}
 
 	var erc20 = erc20mock.New(
@@ -430,7 +422,9 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService, _ := api.New(signer, authenticator, logger, tracer, api.Options{
+	apiService := api.NewDebugService(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, false, api.FullMode, true, true)
+
+	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
