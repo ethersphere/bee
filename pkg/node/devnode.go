@@ -150,6 +150,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	)
 
 	var debugAPIService *debugapi.Service
+	var chainBackend transaction.Backend
 
 	if o.DebugAPIAddr != "" {
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
@@ -178,7 +179,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 		)
 
-		chainBackend := backendmock.New(
+		chainBackend = backendmock.New(
 			backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
 				return 1, nil
 			}),
@@ -412,11 +413,20 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		Steward:           mockSteward,
 	}
 
+	var erc20 = erc20mock.New(
+		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
+			return big.NewInt(0), nil
+		}),
+		erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+			return common.Hash{}, nil
+		}),
+	)
+
 	apiService, _ := api.New(signer, authenticator, logger, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
-	}, debugOpts)
+	}, debugOpts, 1, chainBackend, erc20)
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
@@ -506,14 +516,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 					return common.Hash{}, nil
 				},
 			))
-			erc20 = erc20mock.New(
-				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
-					return big.NewInt(0), nil
-				}),
-				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
-					return common.Hash{}, nil
-				}),
-			)
 		)
 
 		// inject dependencies and configure full debug api http path routes

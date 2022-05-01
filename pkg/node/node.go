@@ -905,7 +905,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, extraOpts)
+		}, extraOpts, chainID, chainBackend, erc20Service)
 
 		pusherService.AddFeed(chunkC)
 

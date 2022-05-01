@@ -28,7 +28,7 @@ func TestBalances(t *testing.T) {
 		ret["PARTY"] = big.NewInt(0)
 		return ret, err
 	}
-	// s, _, _, _ := newTestServer(t, o)
+
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})

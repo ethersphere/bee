@@ -412,6 +412,10 @@ func (s *Service) setupRouting() {
 		})),
 	)
 
+	handle("/wallet", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.walletHandler),
+	})
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
 		handlers.CompressHandler,
