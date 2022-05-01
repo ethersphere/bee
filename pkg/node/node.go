@@ -88,8 +88,8 @@ type Bee struct {
 	p2pHalter                p2p.Halter
 	p2pCancel                context.CancelFunc
 	apiCloser                io.Closer
-	debugAPIServer           *http.Server
 	apiServer                *http.Server
+	debugAPIServer           *http.Server
 	resolverCloser           io.Closer
 	errorLogWriter           *io.PipeWriter
 	tracerCloser             io.Closer
@@ -443,7 +443,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 
 	apiService.SetSwarmAddress(&swarmAddress)
