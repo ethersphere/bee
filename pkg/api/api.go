@@ -44,6 +44,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -157,6 +158,9 @@ type Service struct {
 	beeMode          BeeNodeMode
 	gatewayMode      bool
 	metricsRegistry  *prometheus.Registry
+	chainBackend     transaction.Backend
+	erc20Service     erc20.Service
+	chainID          int64
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -234,7 +238,7 @@ const (
 )
 
 // New will create a and initialize a new API service.
-func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, e ExtraOptions) (*Service, <-chan *pusher.Op) {
+func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) (*Service, <-chan *pusher.Op) {
 	s := &Service{
 		auth:            auth,
 		chunkPushC:      make(chan *pusher.Op),
@@ -279,6 +283,10 @@ func New(signer crypto.Signer, auth authenticator, logger logging.Logger, tracer
 
 	s.postageSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
+
+	s.chainID = chainID
+	s.erc20Service = erc20
+	s.chainBackend = chainBackend
 
 	s.setupRouting()
 

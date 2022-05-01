@@ -42,6 +42,7 @@ import (
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward"
@@ -52,6 +53,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/websocket"
@@ -102,12 +104,15 @@ type testServerOptions struct {
 	Pingpong        pingpong.Interface
 	TopologyOpts    []topologymock.Option
 	AccountingOpts  []accountingmock.Option
-	// SettlementOpts  []swapmock.Option
 	ChequebookOpts  []chequebookmock.Option
 	SwapOpts        []swapmock.Option
 	BatchStore      postage.Storer
 	TransactionOpts []transactionmock.Option
 	Traverser       traversal.Traverser
+
+	BackendOpts []backendmock.Option
+	Erc20Opts   []erc20mock.Option
+	ChainID     int64
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -141,6 +146,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	storeRecipient := statestore.NewStateStore()
 	p2ps := p2pmock.New()
 	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
+	erc20 := erc20mock.New(o.Erc20Opts...)
+	backend := backendmock.New(o.BackendOpts...)
 
 	var debugOpts = api.ExtraOptions{
 		TopologyDriver:    topologyDriver,
@@ -177,7 +184,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
-	}, debugOpts)
+	}, debugOpts, 1, backend, erc20)
 
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
@@ -302,7 +309,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res})
+		s, _ := api.New(signer, nil, log, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)
