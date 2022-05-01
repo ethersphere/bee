@@ -125,6 +125,7 @@ type Service struct {
 	post            postage.Service
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
+	metricsRegistry *prometheus.Registry
 	Options
 
 	http.Handler
@@ -136,10 +137,12 @@ type Service struct {
 	quit chan struct{}
 
 	// from debug API
-	overlay         *swarm.Address
-	publicKey       ecdsa.PublicKey
-	pssPublicKey    ecdsa.PublicKey
-	ethereumAddress common.Address
+	overlay           *swarm.Address
+	publicKey         ecdsa.PublicKey
+	pssPublicKey      ecdsa.PublicKey
+	ethereumAddress   common.Address
+	chequebookEnabled bool
+	swapEnabled       bool
 
 	topologyDriver topology.Driver
 	p2p            p2p.DebugService
@@ -149,21 +152,19 @@ type Service struct {
 	pingpong       pingpong.Interface
 	batchStore     postage.Storer
 
-	swap              swap.Interface
-	transaction       transaction.Service
-	lightNodes        *lightnode.Container
-	blockTime         *big.Int
-	chequebookEnabled bool
-	swapEnabled       bool
+	swap        swap.Interface
+	transaction transaction.Service
+	lightNodes  *lightnode.Container
+	blockTime   *big.Int
 
 	postageSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
 	beeMode          BeeNodeMode
 	gatewayMode      bool
-	metricsRegistry  *prometheus.Registry
-	chainBackend     transaction.Backend
-	erc20Service     erc20.Service
-	chainID          int64
+
+	chainBackend transaction.Backend
+	erc20Service erc20.Service
+	chainID      int64
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
