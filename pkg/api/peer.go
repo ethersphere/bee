@@ -22,14 +22,14 @@ type peerConnectResponse struct {
 func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 	addr, err := multiaddr.NewMultiaddr("/" + mux.Vars(r)["multi-address"])
 	if err != nil {
-		s.logger.Debugf("debug api: peer connect: parse multiaddress: %v", err)
+		s.logger.Debugf("peer connect: parse multiaddress: %v", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
 
 	bzzAddr, err := s.p2p.Connect(r.Context(), addr)
 	if err != nil {
-		s.logger.Debugf("debug api: peer connect %s: %v", addr, err)
+		s.logger.Debugf("peer connect %s: %v", addr, err)
 		s.logger.Errorf("unable to connect to peer %s", addr)
 		jsonhttp.InternalServerError(w, err)
 		return
@@ -37,7 +37,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
 		_ = s.p2p.Disconnect(bzzAddr.Overlay, "failed to notify topology")
-		s.logger.Debugf("debug api: peer connect handler %s: %v", addr, err)
+		s.logger.Debugf("peer connect handler %s: %v", addr, err)
 		s.logger.Errorf("unable to connect to peer %s", addr)
 		jsonhttp.InternalServerError(w, err)
 		return
@@ -52,13 +52,13 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	addr := mux.Vars(r)["address"]
 	swarmAddr, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.logger.Debugf("debug api: parse peer address %s: %v", addr, err)
+		s.logger.Debugf("parse peer address %s: %v", addr, err)
 		jsonhttp.BadRequest(w, "invalid peer address")
 		return
 	}
 
 	if err := s.p2p.Disconnect(swarmAddr, "user requested disconnect"); err != nil {
-		s.logger.Debugf("debug api: peer disconnect %s: %v", addr, err)
+		s.logger.Debugf("peer disconnect %s: %v", addr, err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.BadRequest(w, "peer not found")
 			return
@@ -90,7 +90,7 @@ func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request) {
 	peers, err := s.p2p.BlocklistedPeers()
 	if err != nil {
-		s.logger.Debugf("debug api: blocklisted peers: %v", err)
+		s.logger.Debugf("blocklisted peers: %v", err)
 		jsonhttp.InternalServerError(w, nil)
 		return
 	}
