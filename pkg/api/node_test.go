@@ -7,17 +7,17 @@ package api_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/debugapi"
+	"github.com/ethersphere/bee/pkg/api"
 )
 
 func TestBeeNodeMode_String(t *testing.T) {
-	const nonExistingMode debugapi.BeeNodeMode = 4
+	const nonExistingMode api.BeeNodeMode = 4
 
 	mapping := map[string]string{
-		debugapi.LightMode.String(): "light",
-		debugapi.FullMode.String():  "full",
-		debugapi.DevMode.String():   "dev",
-		nonExistingMode.String():    "unknown",
+		api.LightMode.String():   "light",
+		api.FullMode.String():    "full",
+		api.DevMode.String():     "dev",
+		nonExistingMode.String(): "unknown",
 	}
 
 	for have, want := range mapping {
