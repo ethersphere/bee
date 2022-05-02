@@ -61,7 +61,7 @@ func (s *server) createTagHandler(w http.ResponseWriter, r *http.Request) {
 		err = json.Unmarshal(body, &tagr)
 		if err != nil {
 			s.logger.Debugf("create tag: unmarshal tag name error: %v", err)
-			s.logger.Errorf("create tag: unmarshal tag name error")
+			s.logger.Error("create tag: unmarshal tag name error")
 			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 			return
 		}
@@ -163,7 +163,7 @@ func (s *server) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		err = json.Unmarshal(body, &tagr)
 		if err != nil {
 			s.logger.Debugf("done split tag: unmarshal tag name error: %v", err)
-			s.logger.Errorf("done split tag: unmarshal tag name error")
+			s.logger.Error("done split tag: unmarshal tag name error")
 			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 			return
 		}
@@ -203,7 +203,7 @@ func (s *server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		offset, err = strconv.Atoi(v)
 		if err != nil {
 			s.logger.Debugf("list tags: parse offset: %v", err)
-			s.logger.Errorf("list tags: bad offset")
+			s.logger.Error("list tags: bad offset")
 			jsonhttp.BadRequest(w, "bad offset")
 		}
 	}
@@ -211,7 +211,7 @@ func (s *server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		limit, err = strconv.Atoi(v)
 		if err != nil {
 			s.logger.Debugf("list tags: parse limit: %v", err)
-			s.logger.Errorf("list tags: bad limit")
+			s.logger.Error("list tags: bad limit")
 			jsonhttp.BadRequest(w, "bad limit")
 		}
 	}
@@ -219,7 +219,7 @@ func (s *server) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 	tagList, err := s.tags.ListAll(r.Context(), offset, limit)
 	if err != nil {
 		s.logger.Debugf("list tags: listing: %v", err)
-		s.logger.Errorf("list tags: listing")
+		s.logger.Error("list tags: listing")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

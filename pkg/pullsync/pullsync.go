@@ -191,7 +191,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
-			s.logger.Errorf("syncer got a zero address hash on offer")
+			s.logger.Error("syncer got a zero address hash on offer")
 			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
 		}
 		s.metrics.Offered.Inc()

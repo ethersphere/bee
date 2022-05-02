@@ -39,7 +39,7 @@ func (s *Service) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Reques
 
 	if err := s.p2p.SetWelcomeMessage(data.WelcomeMesssage); err != nil {
 		s.logger.Debugf("debugapi: welcome message: failed to set: %v", err)
-		s.logger.Errorf("Failed to set welcome message")
+		s.logger.Error("Failed to set welcome message")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

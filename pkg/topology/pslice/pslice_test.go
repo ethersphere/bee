@@ -363,7 +363,7 @@ func testIteratorRev(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, itera
 			t.Fatal("too many iterations!")
 		}
 		if !p.Equal(peerseq[i]) {
-			t.Errorf("got wrong peer seq from iterator")
+			t.Error("got wrong peer seq from iterator")
 		}
 		i++
 		return stop, skipNext, nil
@@ -383,7 +383,7 @@ func testIterator(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iteratio
 			t.Fatal("too many iterations!")
 		}
 		if !p.Equal(peerseq[i]) {
-			t.Errorf("got wrong peer seq from iterator")
+			t.Error("got wrong peer seq from iterator")
 		}
 		i++
 		return stop, skipNext, nil
