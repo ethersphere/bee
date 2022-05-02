@@ -29,8 +29,61 @@ func (c *command) initDBCmd() {
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
+	dbIndicesCmd(cmd)
 
 	c.root.AddCommand(cmd)
+}
+
+func dbIndicesCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "indices",
+		Short: "Prints the DB indices",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			start := time.Now()
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Infof("getting db indices with data-dir at %s", dataDir)
+
+			path := filepath.Join(dataDir, "localstore")
+
+			storer, err := localstore.New(path, nil, nil, nil, logger)
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			indices, err := storer.DebugIndices()
+			if err != nil {
+				return fmt.Errorf("error fetching indices: %w", err)
+			}
+
+			for k, v := range indices {
+				logger.Infof("localstore index: %s, value: %d", k, v)
+			}
+
+			logger.Infof("done. took %s", time.Since(start))
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
 }
 
 func dbExportCmd(cmd *cobra.Command) {

@@ -718,6 +718,7 @@ func (db *DB) DebugIndices() (indexInfo map[string]int, err error) {
 		"pinIndex":             db.pinIndex,
 		"postageChunksIndex":   db.postageChunksIndex,
 		"postageRadiusIndex":   db.postageRadiusIndex,
+		"postageIndexIndex":    db.postageIndexIndex,
 	} {
 		indexSize, err := v.Count()
 		if err != nil {
