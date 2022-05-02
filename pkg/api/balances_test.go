@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/accounting/mock"
-	debugapi "github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
@@ -33,8 +33,8 @@ func TestBalances(t *testing.T) {
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
-	expected := &debugapi.BalancesResponse{
-		[]debugapi.BalanceResponse{
+	expected := &api.BalancesResponse{
+		[]api.BalanceResponse{
 			{
 				Peer:    "DEAD",
 				Balance: bigint.Wrap(big.NewInt(1000000000000000000)),
@@ -51,7 +51,7 @@ func TestBalances(t *testing.T) {
 	}
 
 	// We expect a list of items unordered by peer:
-	var got *debugapi.BalancesResponse
+	var got *api.BalancesResponse
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
@@ -72,7 +72,7 @@ func TestBalancesError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantBalances,
+			Message: api.ErrCantBalances,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
@@ -88,7 +88,7 @@ func TestBalancesPeers(t *testing.T) {
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances/"+peer, http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(debugapi.BalanceResponse{
+		jsonhttptest.WithExpectedJSONResponse(api.BalanceResponse{
 			Peer:    peer,
 			Balance: bigint.Wrap(big.NewInt(100000000000000000)),
 		}),
@@ -107,7 +107,7 @@ func TestBalancesPeersError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances/"+peer, http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantBalance,
+			Message: api.ErrCantBalance,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
@@ -124,7 +124,7 @@ func TestBalancesPeersNoBalance(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrNoBalance,
+			Message: api.ErrNoBalance,
 			Code:    http.StatusNotFound,
 		}),
 	)
@@ -137,13 +137,13 @@ func TestBalancesInvalidAddress(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrInvalidAddress,
+			Message: api.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)
 }
 
-func equalBalances(a, b *debugapi.BalancesResponse) bool {
+func equalBalances(a, b *api.BalancesResponse) bool {
 	var state bool
 
 	for akeys := range a.Balances {
@@ -185,8 +185,8 @@ func TestConsumedBalances(t *testing.T) {
 		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
 	})
 
-	expected := &debugapi.BalancesResponse{
-		[]debugapi.BalanceResponse{
+	expected := &api.BalancesResponse{
+		[]api.BalanceResponse{
 			{
 				Peer:    "DEAD",
 				Balance: bigint.Wrap(big.NewInt(1000000000000000000)),
@@ -203,7 +203,7 @@ func TestConsumedBalances(t *testing.T) {
 	}
 
 	// We expect a list of items unordered by peer:
-	var got *debugapi.BalancesResponse
+	var got *api.BalancesResponse
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
@@ -225,7 +225,7 @@ func TestConsumedError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed", http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantBalances,
+			Message: api.ErrCantBalances,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
@@ -241,7 +241,7 @@ func TestConsumedPeers(t *testing.T) {
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed/"+peer, http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(debugapi.BalanceResponse{
+		jsonhttptest.WithExpectedJSONResponse(api.BalanceResponse{
 			Peer:    peer,
 			Balance: bigint.Wrap(big.NewInt(1000000000000000000)),
 		}),
@@ -260,7 +260,7 @@ func TestConsumedPeersError(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed/"+peer, http.StatusInternalServerError,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrCantBalance,
+			Message: api.ErrCantBalance,
 			Code:    http.StatusInternalServerError,
 		}),
 	)
@@ -277,7 +277,7 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrNoBalance,
+			Message: api.ErrNoBalance,
 			Code:    http.StatusNotFound,
 		}),
 	)
@@ -290,7 +290,7 @@ func TestConsumedInvalidAddress(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: debugapi.ErrInvalidAddress,
+			Message: api.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)
