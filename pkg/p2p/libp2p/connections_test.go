@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"strings"
@@ -868,47 +869,50 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	for i := 0; i < 50; i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+				FullNode: true,
+			}})
+			s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
-	}})
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
-
-	testSpec := p2p.ProtocolSpec{
-		Name:    testProtocolName,
-		Version: testProtocolVersion,
-		StreamSpecs: []p2p.StreamSpec{
-			{
-				Name: testStreamName,
-				Handler: func(c context.Context, p p2p.Peer, s p2p.Stream) error {
-					return nil
+			testSpec := p2p.ProtocolSpec{
+				Name:    testProtocolName,
+				Version: testProtocolVersion,
+				StreamSpecs: []p2p.StreamSpec{
+					{
+						Name: testStreamName,
+						Handler: func(c context.Context, p p2p.Peer, s p2p.Stream) error {
+							return nil
+						},
+					},
 				},
-			},
-		},
+			}
+
+			p2p.WithDisconnectStreams(testSpec)
+
+			_ = s1.AddProtocol(testSpec)
+
+			s1_underlay := serviceUnderlayAddress(t, s1)
+
+			expectPeers(t, s1)
+			expectPeers(t, s2)
+
+			if _, err := s2.Connect(ctx, s1_underlay); err != nil {
+				t.Fatal(err)
+			}
+
+			expectPeers(t, s1, overlay2)
+			expectPeers(t, s2, overlay1)
+
+			s, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+
+			expectStreamReset(t, s, err)
+
+			expectPeersEventually(t, s2)
+			expectPeersEventually(t, s1)
+		})
 	}
-
-	p2p.WithDisconnectStreams(testSpec)
-
-	_ = s1.AddProtocol(testSpec)
-
-	s1_underlay := serviceUnderlayAddress(t, s1)
-
-	expectPeers(t, s1)
-	expectPeers(t, s2)
-
-	if _, err := s2.Connect(ctx, s1_underlay); err != nil {
-		t.Fatal(err)
-	}
-
-	expectPeers(t, s1, overlay2)
-	expectPeers(t, s2, overlay1)
-
-	s, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
-
-	expectStreamReset(t, s, err)
-
-	expectPeersEventually(t, s2)
-	expectPeersEventually(t, s1)
 }
 
 func TestWithBlocklistStreams(t *testing.T) {
