@@ -202,7 +202,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	defer accountingPeer.lock.Unlock()
 
 	if !accountingPeer.connected {
-		return nil, fmt.Errorf("connection not initialized yet")
+		return nil, errors.New("connection not initialized yet")
 	}
 
 	a.metrics.AccountingReserveCount.Inc()
@@ -909,7 +909,7 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) (Action, err
 	defer accountingPeer.lock.Unlock()
 
 	if !accountingPeer.connected {
-		return nil, fmt.Errorf("connection not initialized yet")
+		return nil, errors.New("connection not initialized yet")
 	}
 
 	bigPrice := new(big.Int).SetUint64(price)
@@ -955,7 +955,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 
 		// a sanity check
 		if debitIncrease.Cmp(big.NewInt(0)) <= 0 {
-			return nil, fmt.Errorf("sanity check failed for partial debit after surplus balance drawn")
+			return nil, errors.New("sanity check failed for partial debit after surplus balance drawn")
 		}
 		cost.Set(debitIncrease)
 

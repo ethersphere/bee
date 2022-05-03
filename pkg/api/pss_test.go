@@ -338,7 +338,7 @@ func waitReadMessage(t *testing.T, mtx *sync.Mutex, cl *websocket.Conn, targetCo
 		case <-done:
 			return
 		case <-timeout:
-			t.Errorf("timed out waiting for message")
+			t.Error("timed out waiting for message")
 			return
 		default:
 		}
