@@ -913,7 +913,7 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 			expectPeersEventually(t, s2)
 			expectPeersEventually(t, s1)
-			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 
 		})
 	}
