@@ -175,13 +175,6 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if address.IsZero() {
-		s.logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
-		s.logger.Error("chunk: parse chunk address error")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
