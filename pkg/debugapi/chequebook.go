@@ -157,14 +157,14 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, r *http.Reques
 	lastchequessent, err := s.swap.LastSentCheques()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debugf("debug api: chequebook cheque all: %v", err)
-		s.logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
+		s.logger.Error("debug api: chequebook cheque all: can't get all last cheques")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoChequebook) {
 			s.logger.Debugf("debug api: chequebook cheque all: get all last cheques: %v", err)
-			s.logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
+			s.logger.Error("debug api: chequebook cheque all: can't get all last cheques")
 			jsonhttp.InternalServerError(w, errCantLastCheque)
 			return
 		}
@@ -173,7 +173,7 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, r *http.Reques
 	lastchequesreceived, err := s.swap.LastReceivedCheques()
 	if err != nil {
 		s.logger.Debugf("debug api: chequebook cheque all: get all last cheques: %v", err)
-		s.logger.Errorf("debug api: chequebook cheque all: can't get all last cheques")
+		s.logger.Error("debug api: chequebook cheque all: can't get all last cheques")
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 		return
 	}

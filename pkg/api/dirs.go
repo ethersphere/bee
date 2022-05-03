@@ -42,7 +42,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	contentType := r.Header.Get(contentTypeHeader)
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		logger.Errorf("bzz upload dir: invalid content-type")
+		logger.Error("bzz upload dir: invalid content-type")
 		logger.Debugf("bzz upload dir: invalid content-type err: %v", err)
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
@@ -86,7 +86,7 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 	)
 	if err != nil {
 		logger.Debugf("bzz upload dir: store dir err: %v", err)
-		logger.Errorf("bzz upload dir: store dir")
+		logger.Error("bzz upload dir: store dir")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -150,7 +150,7 @@ func storeDir(
 	}
 
 	if indexFilename != "" && strings.ContainsRune(indexFilename, '/') {
-		return swarm.ZeroAddress, fmt.Errorf("index document suffix must not include slash character")
+		return swarm.ZeroAddress, errors.New("index document suffix must not include slash character")
 	}
 
 	filesAdded := 0
@@ -196,7 +196,7 @@ func storeDir(
 
 	// check if files were uploaded through the manifest
 	if filesAdded == 0 {
-		return swarm.ZeroAddress, fmt.Errorf("no files in tar")
+		return swarm.ZeroAddress, errors.New("no files in tar")
 	}
 
 	// store website information

@@ -49,7 +49,7 @@ var (
 	ErrWelcomeMessageLength = fmt.Errorf("handshake welcome message longer than maximum of %d characters", MaxWelcomeMessageLength)
 
 	// ErrPicker is returned if the picker (kademlia) rejects the peer
-	ErrPicker = fmt.Errorf("picker rejection")
+	ErrPicker = errors.New("picker rejection")
 )
 
 // AdvertisableAddressResolver can Resolve a Multiaddress.

@@ -103,7 +103,7 @@ func (s *server) handleUploadStream(
 			time.Now().Add(writeDeadline),
 		)
 		if err != nil {
-			s.logger.Errorf("chunk stream handler: failed sending close msg")
+			s.logger.Error("chunk stream handler: failed sending close msg")
 		}
 	}
 

@@ -684,7 +684,7 @@ func (db *DB) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		db.logger.Errorf("localstore closed with still active goroutines")
+		db.logger.Error("localstore closed with still active goroutines")
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")

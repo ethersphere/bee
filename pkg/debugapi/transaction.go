@@ -46,7 +46,7 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 	txHashes, err := s.transaction.PendingTransactions()
 	if err != nil {
 		s.logger.Debugf("debug api: transactions: get pending transactions: %v", err)
-		s.logger.Errorf("debug api: transactions: can't get pending transactions")
+		s.logger.Error("debug api: transactions: can't get pending transactions")
 		jsonhttp.InternalServerError(w, errCantGetTransaction)
 		return
 	}
