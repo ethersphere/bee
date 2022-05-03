@@ -876,7 +876,10 @@ func TestWithDisconnectStreams(t *testing.T) {
 			s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 				FullNode: true,
 			}})
+			defer s1.Close()
+
 			s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+			defer s2.Close()
 
 			testSpec := p2p.ProtocolSpec{
 				Name:    testProtocolName,
