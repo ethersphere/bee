@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"testing"
@@ -911,6 +913,8 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 			expectPeersEventually(t, s2)
 			expectPeersEventually(t, s1)
+			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+
 		})
 	}
 }

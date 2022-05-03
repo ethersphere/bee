@@ -134,7 +134,7 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	t.Helper()
 
 	var peers []p2p.Peer
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 200; i++ {
 		peers = s.Peers()
 		if len(peers) == len(addrs) {
 			break
@@ -143,7 +143,7 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	}
 
 	if len(peers) != len(addrs) {
-		t.Fatalf("got peers %v, want %v", len(peers), len(addrs))
+		t.Errorf("got peers %v, want %v", len(peers), len(addrs))
 	}
 
 	sort.Slice(addrs, func(i, j int) bool {
