@@ -57,21 +57,17 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		chainID:      chainID,
 	}
 
-	n := 0
-	if err := s.store.Iterate(s.key(), func(_, _ []byte) (stop bool, err error) {
-		n++
+	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
+		st := &StampIssuer{}
+		if err := st.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+		_ = s.add(st)
 		return false, nil
 	}); err != nil {
 		return nil, err
 	}
-	for i := 0; i < n; i++ {
-		st := &StampIssuer{}
-		err := s.store.Get(s.keyForIndex(i), st)
-		if err != nil {
-			return nil, err
-		}
-		_ = s.add(st)
-	}
+
 	return s, nil
 }
 
