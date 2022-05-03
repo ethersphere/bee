@@ -7,6 +7,7 @@
 package pushsync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -135,9 +136,6 @@ func (s *PushSync) Protocol() p2p.ProtocolSpec {
 // handler handles chunk delivery from other node and forwards to its destination node.
 // If the current node is the destination, it stores in the local store and sends a receipt.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	stream.Reset()
-	return nil
-
 	now := time.Now()
 	w, r := protobuf.NewWriterAndReader(stream)
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
@@ -748,5 +746,15 @@ func (l *peerSkipList) String() string {
 	l.Lock()
 	defer l.Unlock()
 
-	return fmt.Sprintf("%#v", l.skip)
+	mm := make(map[string]struct{})
+	bb := new(bytes.Buffer)
+	for _, v := range l.skip {
+		for p := range v {
+			if _, ok := mm[p]; !ok {
+				mm[p] = struct{}{}
+				fmt.Fprintf(bb, "%x;", p)
+			}
+		}
+	}
+	return bb.String()
 }
