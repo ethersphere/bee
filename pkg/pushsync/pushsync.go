@@ -158,7 +158,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
 	stamp := new(postage.Stamp)
@@ -246,12 +246,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if !storerNode && ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				ps.logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
+				logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
 				return
 			}
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, verifiedChunk)
 			if err != nil {
-				ps.logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
+				logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
 			}
 		}
 	}()
@@ -581,12 +581,6 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) {
 	var err error
 	ps.metrics.TotalReplicatedAttempts.Inc()
-	defer func() {
-		if err != nil {
-			ps.logger.Tracef("pushsync replication: %v", err)
-			ps.metrics.TotalReplicatedError.Inc()
-		}
-	}()
 
 	// price for neighborhood replication
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
@@ -600,8 +594,14 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 
 	// now bring in the span data to the new context
 	ctx = tracing.WithContext(ctx, span)
-	spanInner, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	spanInner, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer spanInner.Finish()
+	defer func() {
+		if err != nil {
+			logger.Tracef("pushsync replication: %v", err)
+			ps.metrics.TotalReplicatedError.Inc()
+		}
+	}()
 
 	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, origin)
 	if err != nil {
