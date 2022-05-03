@@ -149,8 +149,10 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}),
 	)
 
-	var debugAPIService *debugapi.Service
-	var chainBackend transaction.Backend
+	var (
+		debugAPIService *debugapi.Service
+		chainBackend    transaction.Backend
+	)
 
 	if o.DebugAPIAddr != "" {
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
