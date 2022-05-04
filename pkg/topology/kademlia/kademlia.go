@@ -87,6 +87,7 @@ type Options struct {
 	PruneFunc        pruneFunc
 	StaticNodes      []swarm.Address
 	ReachabilityFunc peerFilterFunc
+	IgnoreRadius     bool
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -124,6 +125,7 @@ type Kad struct {
 	blocker           *blocker.Blocker
 	reachability      p2p.ReachabilityStatus
 	peerFilter        peerFilterFunc
+	ignoreRadius      bool
 }
 
 // New returns a new Kademlia.
@@ -137,12 +139,13 @@ func New(
 	logger logging.Logger,
 	o Options,
 ) (*Kad, error) {
+	var k *Kad
 	if o.SaturationFunc == nil {
 		os := overSaturationPeers
 		if o.BootnodeMode {
 			os = bootNodeOverSaturationPeers
 		}
-		o.SaturationFunc = binSaturated(os, isStaticPeer(o.StaticNodes))
+		o.SaturationFunc = binSaturated(os, isStaticPeer(o.StaticNodes), k)
 	}
 	if o.BitSuffixLength == 0 {
 		o.BitSuffixLength = defaultBitSuffixLength
@@ -155,7 +158,7 @@ func New(
 	}
 	logger.Debugf("kademlia: NewCollector(...) took %v", time.Since(start))
 
-	k := &Kad{
+	k = &Kad{
 		base:              base,
 		discovery:         discovery,
 		addressBook:       addressbook,
@@ -179,6 +182,7 @@ func New(
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(o.StaticNodes),
 		peerFilter:        o.ReachabilityFunc,
+		ignoreRadius:      o.IgnoreRadius,
 	}
 
 	blocklistCallback := func(a swarm.Address) {
@@ -381,7 +385,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 
 		k.depthMu.Lock()
-		k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 		k.depthMu.Unlock()
 
 		k.logger.Debugf("kademlia: connected to peer: %s in bin: %d", peer.addr, peer.po)
@@ -796,9 +800,9 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSaturationFunc {
+func binSaturated(oversaturationAmount int, staticNode staticPeerFunc, k *Kad) binSaturationFunc {
 	return func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) (bool, bool) {
-		potentialDepth := recalcDepth(peers, swarm.MaxPO, filter)
+		potentialDepth := k.recalcDepth(peers, swarm.MaxPO, filter)
 
 		// short circuit for bins which are >= depth
 		if bin >= potentialDepth {
@@ -838,7 +842,7 @@ func (k *Kad) peerUnreachable(addr swarm.Address) bool {
 }
 
 // recalcDepth calculates and returns the kademlia depth.
-func recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint8 {
+func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint8 {
 	// handle edge case separately
 	if peers.Length() <= nnLowWatermark {
 		return 0
@@ -889,13 +893,13 @@ func recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint
 		return false, false, nil
 	})
 	if shallowestUnsaturated > candidate {
-		if radius < candidate {
+		if radius < candidate && !k.ignoreRadius {
 			return radius
 		}
 		return candidate
 	}
 
-	if radius < shallowestUnsaturated {
+	if radius < shallowestUnsaturated && !k.ignoreRadius {
 		return radius
 	}
 	return shallowestUnsaturated
@@ -1130,7 +1134,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 	k.waitNext.Remove(addr)
 
 	k.depthMu.Lock()
-	k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+	k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
@@ -1150,7 +1154,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
 
 	k.depthMu.Lock()
-	k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+	k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
@@ -1325,7 +1329,7 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.logger.Tracef("kademlia: reachability of peer %s is %s", addr.String(), status.String())
 	if status == p2p.ReachabilityStatusPublic {
 		k.depthMu.Lock()
-		k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 		k.depthMu.Unlock()
 		k.notifyManageLoop()
 	}
@@ -1413,7 +1417,7 @@ func (k *Kad) SetRadius(r uint8) {
 	}
 	k.radius = r
 	oldD := k.depth
-	k.depth = recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+	k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 	if k.depth != oldD {
 		k.notifyManageLoop()
 	}
