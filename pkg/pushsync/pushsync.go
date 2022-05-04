@@ -267,6 +267,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync storer invalid stamp: %w", err)
 			}
 
+			span, _, ctx = ps.tracer.StartSpanFromContext(ctx, "pushsync-nn-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+			defer span.Finish()
+
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 			if err != nil {
 				return fmt.Errorf("chunk store: %w", err)
@@ -333,6 +336,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
+
+	span0, _, ctx0 := span, logger, ctx
 
 	var (
 		// limits "attempted" requests, see pushPeer when a request becomes attempted
@@ -412,11 +417,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			skipPeers = append(skipPeers, peer)
 			logger.Tracef("pushsync: added peer: %s", peer)
 
-			go func() {
-				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
+			go func(ctx0 context.Context) {
+				ctxd, cancel := context.WithTimeout(ctx0, defaultTTL)
 				defer cancel()
+				span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "push-closest-pushpeer", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+				defer span.Finish()
+
 				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
-			}()
+			}(ctx0)
 
 			// reached the limit, do not set timer to retry
 			if allowedRetries <= 0 || allowedPushes <= 0 {
@@ -440,6 +448,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if result.err == nil {
 				return result.receipt, nil
 			}
+
+			span0, _, ctx0 = ps.tracer.StartSpanFromContext(ctx, "push-closest-error", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+			defer span0.Finish()
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
