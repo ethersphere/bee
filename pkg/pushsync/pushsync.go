@@ -337,8 +337,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
 
-	span0, _, ctx0 := span, logger, ctx
-
 	var (
 		// limits "attempted" requests, see pushPeer when a request becomes attempted
 		allowedPushes = 1
@@ -417,14 +415,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			skipPeers = append(skipPeers, peer)
 			logger.Tracef("pushsync: added peer: %s", peer)
 
-			go func(ctx0 context.Context) {
-				ctxd, cancel := context.WithTimeout(ctx0, defaultTTL)
+			go func(ctx context.Context) {
+				ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 				defer cancel()
-				span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "push-closest-pushpeer", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+				span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest-pushpeer", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 				defer span.Finish()
 
-				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
-			}(ctx0)
+				ps.pushPeer(ctx, resultChan, doneChan, peer, ch, origin)
+			}(ctx)
 
 			// reached the limit, do not set timer to retry
 			if allowedRetries <= 0 || allowedPushes <= 0 {
@@ -449,8 +447,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				return result.receipt, nil
 			}
 
-			span0, _, ctx0 = ps.tracer.StartSpanFromContext(ctx, "push-closest-error", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
-			defer span0.Finish()
+			span, _, _ := ps.tracer.StartSpanFromContext(ctx, "push-closest-error", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
@@ -462,11 +459,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			if allowedRetries <= 0 || allowedPushes <= 0 {
+				span.Finish()
 				return nil, ErrNoPush
 			}
 
 			// retry immediately
 			timer.Reset(0)
+			span.Finish()
 		}
 	}
 }
