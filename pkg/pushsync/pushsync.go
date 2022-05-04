@@ -162,6 +162,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
+	logger.Infof("pushsync handler: got chunk %s from %s", chunkAddress.String(), p.Address.String())
 	stamp := new(postage.Stamp)
 	// attaching the stamp is required becase pushToClosest expects a chunk with a stamp
 	err = stamp.UnmarshalBinary(ch.Stamp)
@@ -267,9 +268,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync storer invalid stamp: %w", err)
 			}
 
-			span, _, ctx = ps.tracer.StartSpanFromContext(ctx, "pushsync-nn-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+			span, logger, ctx = ps.tracer.StartSpanFromContext(ctx, "pushsync-nn-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 			defer span.Finish()
 
+			logger.Infof("storing chunk %s", chunkAddress.String())
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
 			if err != nil {
 				return fmt.Errorf("chunk store: %w", err)
@@ -361,9 +363,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer timer.Stop()
 
 	nextPeer := func() (swarm.Address, error) {
-		logger.Tracef("pushsync: chunk: %s", ch.Address().String())
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
-		logger.Tracef("pushsync: fullSkipList: %v", fullSkipList)
+		logger.Tracef("pushsync nextpeer: chunk %s fullSkipList: %v", ch.Address().String(), fullSkipList)
 
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
@@ -395,31 +396,31 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-ctx.Done():
 			return nil, ErrNoPush
 		case <-timer.C:
-			logger.Tracef("pushsync: ps.skipList: %s", ps.skipList)
+			logger.Tracef("pushsync: pushing chunk %s", ch.Address().String())
 
 			allowedRetries--
 			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
 			allowedPushes--
 
-			logger.Tracef("pushsync: allowed retries %d; allowed pushes %d", allowedRetries, allowedPushes)
+			logger.Tracef("pushsync: chunk %s allowed retries %d; allowed pushes %d", ch.Address().String(), allowedRetries, allowedPushes)
 
 			peer, err := nextPeer()
 			if err != nil {
-				logger.Tracef("pushsync: nextPeer error: %v", err)
+				logger.Tracef("pushsync:chunk %s nextPeer error: %v", ch.Address().String(), err)
 				return nil, err
 			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 
-			logger.Tracef("pushsync: skipPeers: %v", skipPeers)
 			skipPeers = append(skipPeers, peer)
-			logger.Tracef("pushsync: added peer: %s", peer)
+			logger.Tracef("pushsync: chunks %s added peer to skipPeers: %s", ch.Address().String(), peer)
 
 			go func(ctx context.Context) {
 				ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 				defer cancel()
 				span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest-pushpeer", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 				defer span.Finish()
+				logger.Tracef("pushsync: pushing chunk %s to peer %s", ch.Address().String(), peer.String())
 
 				ps.pushPeer(ctx, resultChan, doneChan, peer, ch, origin)
 			}(ctx)
@@ -433,14 +434,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			timer.Reset(p90TTL)
 
 		case result := <-resultChan:
-			logger.Tracef("pushsync: ps.skipList: %s", ps.skipList)
+			logger.Tracef("pushsync: chunk %s got result", ch.Address().String())
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
 			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
-				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
+				logger.Debugf("pushsync: chunk %s adding to skiplist peer %s", ch.Address().String(), result.peer.String())
 			}
 
 			if result.err == nil {
@@ -450,12 +451,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			span, _, _ := ps.tracer.StartSpanFromContext(ctx, "push-closest-error", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
+			logger.Debugf("pushsync: chunk %s could not push to peer %s: %v", ch.Address().String(), result.peer, result.err)
 
 			// pushPeer returned early, do not count as an attempt
 			if !result.pushed {
 				allowedPushes++
-				logger.Tracef("pushsync: allowed pushes %d", allowedPushes)
+				logger.Tracef("pushsync: chunk %s allowed pushes %d", ch.Address().String(), allowedPushes)
 			}
 
 			if allowedRetries <= 0 || allowedPushes <= 0 {
