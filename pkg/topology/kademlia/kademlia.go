@@ -893,13 +893,13 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 		return false, false, nil
 	})
 	if shallowestUnsaturated > candidate {
-		if radius < candidate && k.ignoreRadius {
+		if radius < candidate && !k.ignoreRadius {
 			return radius
 		}
 		return candidate
 	}
 
-	if radius < shallowestUnsaturated && k.ignoreRadius {
+	if radius < shallowestUnsaturated && !k.ignoreRadius {
 		return radius
 	}
 	return shallowestUnsaturated
