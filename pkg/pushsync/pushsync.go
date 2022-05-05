@@ -433,7 +433,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			logger.Debugf("pushsync: could not push to peer %s: %v", result.peer, result.err)
+			logger.Debugf("pushsync: could not push to peer: %v", result.err)
 
 			// pushPeer returned early, do not count as an attempt
 			if !result.pushed {
