@@ -82,7 +82,7 @@ func readFromLocation(t *testing.T, shard *shard, loc Location) []byte {
 	buf := make([]byte, loc.Length)
 
 	select {
-	case shard.reads <- read{buf[:loc.Length], loc.Slot}:
+	case shard.reads <- read{ctx: context.Background(), buf: buf[:loc.Length], slot: loc.Slot}:
 		if err := <-shard.errc; err != nil {
 			t.Fatal("read", err)
 		}
