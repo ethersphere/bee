@@ -417,6 +417,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	if err != nil {
 		return nil, err
 	}
+	logger.Infof("using overlay address %s", swarmAddress)
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
