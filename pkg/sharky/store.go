@@ -119,7 +119,7 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
-	case sh.reads <- read{buf[:loc.Length], loc.Slot}:
+	case sh.reads <- read{ctx: ctx, buf: buf[:loc.Length], slot: loc.Slot}:
 		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
@@ -133,8 +133,6 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 		return err
 	case <-s.quit:
 		return ErrQuitting
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 
