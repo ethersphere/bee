@@ -125,6 +125,10 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 		return ctx.Err()
 	}
 
+	// it is important that this select would NEVER respect the context
+	// cancellation. this would result in a deadlock on the shard, since
+	// the result of the operation must be drained from errc, allowing the
+	// shard to be able to handle new operations (#2932).
 	select {
 	case err = <-sh.errc:
 		if err != nil {
