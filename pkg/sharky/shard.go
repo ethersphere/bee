@@ -73,6 +73,7 @@ type entry struct {
 
 // read models the input to read operation (the output is an error)
 type read struct {
+	ctx  context.Context
 	buf  []byte // variable size read buffer
 	slot uint32 // slot to read from
 }
@@ -114,6 +115,7 @@ LOOP:
 			for {
 				select {
 				case sh.errc <- sh.read(op):
+				case <-op.ctx.Done():
 				case <-sh.quit:
 					return
 				}
