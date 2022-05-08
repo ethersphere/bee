@@ -115,9 +115,10 @@ func (idx *Index) Close() error {
 }
 
 // Iterate wraps the underlying pot's iterator
-func (idx *Index) Iterate(f func(pot.Entry)) {
-	pot.Iterate(pot.NewAt(0, <-idx.read), f)
+func (idx *Index) ForAll(p, k []byte, f func(pot.Entry) (stop bool, err error)) error {
+	return pot.ForAll(pot.NewAt(-1, <-idx.read), p, k, idx.mode, f)
 }
+
 
 // Size returns the size (number of entries) of the pot
 func (idx *Index) Size() int {
@@ -131,5 +132,5 @@ func (idx *Index) Size() int {
 // String pretty prints the current state of the pot
 func (idx *Index) String() string {
 	root := <-idx.read
-	return root.String()
+	return pot.NewAt(-1, root).String()
 }

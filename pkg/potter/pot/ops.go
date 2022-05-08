@@ -57,7 +57,7 @@ func update(acc Node, cn CNode, k []byte, eqf func(Entry) Entry, mode Mode) Node
 		}
 		n := mode.New()
 		n.Pin(entry)
-		Whack(acc, cn, NewAt(MaxDepth, n))
+		Whack(acc, cn, NewAt(mode.Depth(), n))
 		return acc
 	}
 	if Empty(cm.Node) {
@@ -125,7 +125,7 @@ func pull(acc Node, cn CNode, mode Mode) Node {
 func pullTail(acc Node, cn CNode, mode Mode) Node {
 	cm := FindFork(cn, nil, mode)
 	if Empty(cm.Node) {
-		Wedge(acc, cn, NewAt(MaxDepth, nil))
+		Wedge(acc, cn, NewAt(mode.Depth(), nil))
 		return acc
 	}
 	Whirl(acc, cn, cm)

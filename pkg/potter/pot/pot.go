@@ -7,6 +7,8 @@ import (
 	"fmt"
 )
 
+// const MaxDepth =32
+
 const MaxDepth = 256
 
 var (
@@ -59,6 +61,8 @@ func NewAt(at int, n Node) CNode {
 // Next returns a CNode, that is the view of the same Node from a po following the At of the receiver CNode
 func (c CNode) Next() CNode {
 	return NewAt(c.At+1, c.Node)
+	// 	n := c.Node.Fork(c.At)
+	// return CNode{c.At + 1, c.Node, c.Size() - n.Size()}
 }
 
 // Size returns the number of entries (=Nodes) subsumed under the node
@@ -77,7 +81,7 @@ func Label(k []byte) string {
 	if len(k) == 0 {
 		return "none"
 	}
-	return fmt.Sprintf("%08b", binary.BigEndian.Uint32(k[:4])>>24)
+	return fmt.Sprintf("%032b", binary.BigEndian.Uint32(k[:4]))
 }
 
 // Empty
@@ -113,12 +117,44 @@ func find(n CNode, k []byte, mode Mode) (Entry, error) {
 	return find(m, k, mode)
 }
 
-func ForAll(n Node, k []byte, mode Mode) (Node, int, error) {
-	cn, err := findNode(NewAt(-1, n), k, mode)
-	if err != nil {
-		return nil, 0, err
+// ForAll is an iterator that walks all the entries subsumed under the given CNode
+// in ascending order of distance from a given key
+func ForAll(n CNode, p, k []byte, mode Mode, f func(Entry) (bool, error)) error {
+	m, _ := findNode(n, p, mode)
+	if Empty(m.Node) {
+		return nil
 	}
-	return cn.Node, cn.size, nil
+	fmt.Printf("\n\nnon-empty: %v\n", m)
+	_, err := forAll(m, k, mode, f)
+	return err
+}
+
+func forAll(n CNode, k []byte, mode Mode, f func(Entry) (bool, error)) (stop bool, err error) {
+	if Empty(n.Node) {
+		return false, nil
+	}
+	if n.Size() == 1 {
+		fmt.Printf("apply f to : %v\n", n.Node.Entry())
+		return f(n.Node.Entry())
+	}
+	fmt.Printf("forAll: %v\n", n)
+	cn, _ := FindNext(n, k, mode)
+	forks := append(Slice(n.Node, n.At+1, cn.At), NewAt(cn.At, n.Node), cn)
+	for i := len(forks) - 1; !stop && err == nil && i >= 0; i-- {
+		stop, err = forAll(forks[i], k, mode, f)
+	}
+	return stop, err
+}
+
+func Slice(n Node, from, to int) (forks []CNode) {
+	_ = n.Iterate(from, func(c CNode) (bool, error) {
+		if c.At >= to {
+			return true, nil
+		}
+		forks = append(forks, c)
+		return false, nil
+	})
+	return forks
 }
 
 func findNode(n CNode, k []byte, mode Mode) (CNode, error) {
@@ -126,23 +162,29 @@ func findNode(n CNode, k []byte, mode Mode) (CNode, error) {
 		return CNode{}, ErrNotFound
 	}
 	if len(k) == n.At {
+		fmt.Printf("len(k) = n.At:  %v\n", n)
 		return n, nil
 	}
-	m, _ := FindNext(n, k, mode)
+	m, ok := FindNext(n, k, mode)
+	if ok {
+		fmt.Printf("MATCH: %v\n", n)
+		return NewAt(8*len(k), n.Node), nil
+	}
+	fmt.Printf("returned %v\n", m)
 	return findNode(m, k, mode)
 }
 
 // FindNext finds the fork on a node that matches the key bytes
 func FindNext(n CNode, k []byte, mode Mode) (CNode, bool) {
 	po := Compare(n.Node, k, n.At)
-	if po < mode.Depth() {
+	if po < mode.Depth() && po < 8*len(k) {
 		cn := n.Node.Fork(po)
 		if err := mode.Unpack(cn.Node); err != nil {
 			panic(err.Error())
 		}
 		return cn, false
 	}
-	return NewAt(MaxDepth, nil), true
+	return NewAt(mode.Depth(), nil), true
 }
 
 // FindFork iterates through the forks on a node and returns the fork
@@ -170,7 +212,7 @@ func Compare(n Node, k []byte, at int) int {
 // po returns the proximity order of two fixed length byte sequences
 // assuming po > pos
 func PO(one, other []byte, pos int) int {
-	for i := pos / 8; i < len(one); i++ {
+	for i := pos / 8; i < len(one) && i < len(other); i++ {
 		if one[i] == other[i] {
 			continue
 		}
@@ -181,18 +223,13 @@ func PO(one, other []byte, pos int) int {
 		}
 		for j := start; j < 8; j++ {
 			if (oxo>>uint8(7-j))&0x01 != 0 {
-				return i*8 + j
+				po := i*8 + j
+				// fmt.Printf("%08b ^ %08b from %d -> PO %d\n", one[:4], other[:4], pos, po)
+				return po
 			}
 		}
 	}
-	return len(one) * 8
-}
-
-// Iterate iterates through the entries of a pot top down depth first
-func Iterate(n CNode, f func(Entry)) {
-	f(n.Node.Entry())
-	_ = n.Node.Iterate(n.At, func(c CNode) (bool, error) {
-		Iterate(c.Next(), f)
-		return false, nil
-	})
+	po := len(other) * 8
+	// fmt.Printf("%08b ^ %08b -> PO %d\n", one[:4], other[:4], po)
+	return po
 }
