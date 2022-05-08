@@ -213,9 +213,9 @@ func TestEdgeCasesCorrectness(t *testing.T) {
 	})
 }
 
-func TestIterate(t *testing.T) {
-	count := 20
-	idx, err := potter.New(basePotMode, testLogger)
+func XTestForAll(t *testing.T) {
+	count := 64
+	idx, err := potter.New(pot.NewSingleOrder(256), testLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,12 +224,40 @@ func TestIterate(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	for i := 0; i < count; i++ {
-		idx.Add(ctx, newDetMockEntry(i))
-		n := 0
-		idx.Iterate(func(e pot.Entry) { n++ })
-		if n != i+1 {
-			t.Fatalf("incorrect number of items. want %d, got %d", i+1, n)
+	pivot := make([]byte, 4)
+	for _, b := range []int{0} {
+		// for _, b := range []int{0, 256, 512} {
+		s := make([]byte, 4)
+		binary.BigEndian.PutUint32(s, uint32(b))
+		s = s[:3]
+		r := make([]int, count)
+		for i := range r {
+			r[i] = i
+		}
+		rand.Shuffle(count, func(i, j int) { k := r[i]; r[i] = r[j]; r[j] = k })
+		for i := 0; i < count; i++ {
+			k := make([]byte, 32)
+			binary.BigEndian.PutUint32(k, uint32(b+r[i]))
+			e := &mockEntry{k, b + r[i]}
+			// fmt.Printf("adding mockentry: %v, was index: %v\n", e, idx)
+			idx.Add(ctx, e)
+			// fmt.Printf("adding mockentry: %v, index: %v\n", e, idx)
+			n := 0
+			max := 0
+			if err := idx.ForAll(s, pivot, func(e pot.Entry) (bool, error) {
+				item := e.(*mockEntry).val
+				if max > item {
+					t.Fatalf("not ordered correclty: %v > %v", max, item)
+				}
+				max = item
+				n++
+				return false, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if n != i+1 {
+				t.Fatalf("incorrect number of items. want %d, got %d", i+1, n)
+			}
 		}
 	}
 }
