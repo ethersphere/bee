@@ -1,6 +1,8 @@
 package bmt
 
-import "fmt"
+import (
+	"fmt"
+)
 
 const (
 	DefaultMaxPayload = 4096
