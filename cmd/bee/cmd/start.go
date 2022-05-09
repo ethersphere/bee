@@ -151,7 +151,7 @@ func (c *command) initStartCmd() (err error) {
 				return errors.New("static nodes can only be configured on bootnodes")
 			}
 
-			b, err := node.NewBee(c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -206,11 +206,6 @@ func (c *command) initStartCmd() (err error) {
 			if err != nil {
 				return err
 			}
-
-			// Wait for termination or interrupt signals.
-			// We want to clean up things at the end.
-			interruptChannel := make(chan os.Signal, 1)
-			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
 			p := &program{
 				start: func() {
