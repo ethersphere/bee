@@ -5,13 +5,11 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/kardianos/service"
@@ -105,11 +103,7 @@ func (c *command) initStartDevCmd() (err error) {
 					done := make(chan struct{})
 					go func() {
 						defer close(done)
-
-						ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-						defer cancel()
-
-						if err := b.Shutdown(ctx); err != nil {
+						if err := b.Shutdown(); err != nil {
 							logger.Errorf("shutdown: %v", err)
 						}
 					}()

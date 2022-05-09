@@ -59,7 +59,7 @@ type BlockHeightContractFilterer interface {
 // Shutdowner interface is passed to the listener to shutdown the node if we hit
 // error while listening for blockchain events.
 type Shutdowner interface {
-	Shutdown(context.Context) error
+	Shutdown() error
 }
 
 type listener struct {
@@ -335,7 +335,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			}
 			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
 			if l.shutdowner != nil {
-				err = l.shutdowner.Shutdown(context.Background())
+				err = l.shutdowner.Shutdown()
 				if err != nil {
 					l.logger.Errorf("failed shutting down node: %v", err)
 				}
