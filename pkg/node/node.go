@@ -180,7 +180,7 @@ const (
 	mainnetNetworkID              = uint64(1)
 )
 
-func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -212,6 +212,15 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
 	}
+
+	defer func() {
+		if err != nil {
+			logger.Errorf("got error %v, shutting down...", err)
+			if err2 := b.Shutdown(); err2 != nil {
+				logger.Errorf("got error while shutting down: %v", err2)
+			}
+		}
+	}()
 
 	stateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
@@ -659,8 +668,10 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 		// interrupts at this stage of the application lifecycle. some changes
 		// would be needed on the cmd level to support context cancellation at
 		// this stage
-		<-syncedChan
-
+		select {
+		case <-syncedChan:
+		case <-interrupt:
+		}
 	}
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
@@ -933,7 +944,7 @@ func NewBee(addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, netwo
 	return b, nil
 }
 
-func (b *Bee) Shutdown(ctx context.Context) error {
+func (b *Bee) Shutdown() error {
 	var mErr error
 
 	// if a shutdown is already in process, return here
@@ -968,6 +979,9 @@ func (b *Bee) Shutdown(ctx context.Context) error {
 	}
 
 	tryClose(b.apiCloser, "api")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	var eg errgroup.Group
 	if b.apiServer != nil {
@@ -1075,8 +1089,8 @@ type pidKiller struct {
 
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
-func (p *pidKiller) Shutdown(ctx context.Context) error {
-	err := p.node.Shutdown(ctx)
+func (p *pidKiller) Shutdown() error {
+	err := p.node.Shutdown()
 	if err != nil {
 		return err
 	}

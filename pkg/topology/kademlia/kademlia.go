@@ -1550,8 +1550,7 @@ func (k *Kad) Close() error {
 		select {
 		case <-cc:
 		case <-time.After(peerConnectionAttemptTimeout):
-			k.logger.Warning("kademlia shutting down with announce goroutines")
-			return errTimeout
+			return fmt.Errorf("kademlia shutting down with running goroutines: %w", errTimeout)
 		}
 		return nil
 	})
@@ -1560,8 +1559,7 @@ func (k *Kad) Close() error {
 		select {
 		case <-k.done:
 		case <-time.After(time.Second * 5):
-			k.logger.Warning("kademlia manage loop did not shut down properly")
-			return errTimeout
+			return fmt.Errorf("kademlia manage loop did not shut down properly: %w", errTimeout)
 		}
 		return nil
 	})
