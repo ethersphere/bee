@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -88,7 +89,7 @@ type DevOptions struct {
 
 // NewDevBee starts the bee instance in 'development' mode
 // this implies starting an API and a Debug endpoints while mocking all their services.
-func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
+func NewDevBee(_ chan os.Signal, logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})

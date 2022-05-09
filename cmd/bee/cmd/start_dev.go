@@ -68,8 +68,13 @@ func (c *command) initStartDevCmd() (err error) {
 				debugAPIAddr = ""
 			}
 
+			// Wait for termination or interrupt signals.
+			// We want to clean up things at the end.
+			interruptChannel := make(chan os.Signal, 1)
+			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
 			// generate signer in here
-			b, err := node.NewDevBee(logger, &node.DevOptions{
+			b, err := node.NewDevBee(interruptChannel, logger, &node.DevOptions{
 				APIAddr:                  c.config.GetString(optionNameAPIAddr),
 				DebugAPIAddr:             debugAPIAddr,
 				Logger:                   logger,
@@ -86,11 +91,6 @@ func (c *command) initStartDevCmd() (err error) {
 			if err != nil {
 				return err
 			}
-
-			// Wait for termination or interrupt signals.
-			// We want to clean up things at the end.
-			interruptChannel := make(chan os.Signal, 1)
-			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
 			p := &program{
 				start: func() {
