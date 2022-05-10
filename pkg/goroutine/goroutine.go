@@ -11,7 +11,7 @@ import (
 )
 
 func Dump(out io.Writer) {
-	pprof.Lookup("goroutine").WriteTo(out, 1)
+	_ = pprof.Lookup("goroutine").WriteTo(out, 2)
 }
 
 func Stack() string {
