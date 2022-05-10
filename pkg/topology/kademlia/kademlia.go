@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/discovery"
+	"github.com/ethersphere/bee/pkg/goroutine"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -454,7 +455,11 @@ func (k *Kad) manage() {
 	go func() {
 		<-k.quit
 		if !timer.Stop() {
-			<-timer.C
+			select {
+			case <-timer.C:
+			case <-time.After(1 * time.Second):
+				k.logger.Debugf("kademlia timer not drained after 1 second, goroutine dump...\n%s\n*** end\n", goroutine.Dump())
+			}
 		}
 		cancel()
 	}()
