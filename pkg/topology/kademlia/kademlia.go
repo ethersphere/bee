@@ -607,6 +607,14 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 	var wg sync.WaitGroup
 
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		select {
+		case <-ctx.Done():
+			return false, false, nil
+		case <-k.halt:
+			cancel()
+			return false, false, nil
+		default:
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
