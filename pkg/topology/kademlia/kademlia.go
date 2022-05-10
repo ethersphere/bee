@@ -980,6 +980,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	var addrs []swarm.Address
 
+outer:
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 
 		connectedPeers, err := randomSubset(k.binReachablePeers(bin), broadcastBinSize)
@@ -1004,6 +1005,8 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 			case <-k.bgBroadcastCtx.Done():
 				// we will not interfere with the announce operation by returning here
 				continue
+			case <-k.halt:
+				break outer
 			default:
 			}
 			go func(connectedPeer swarm.Address) {
@@ -1021,6 +1024,12 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 
 	if len(addrs) == 0 {
 		return nil
+	}
+
+	select {
+	case <-k.halt:
+		return nil
+	default:
 	}
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
