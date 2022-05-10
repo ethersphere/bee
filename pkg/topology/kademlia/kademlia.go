@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -458,7 +459,8 @@ func (k *Kad) manage() {
 			select {
 			case <-timer.C:
 			case <-time.After(1 * time.Second):
-				k.logger.Debugf("kademlia timer not drained after 1 second, goroutine dump...\n%s\n*** end\n", goroutine.Dump())
+				k.logger.Debug("kademlia timer not drained after 1 second")
+				goroutine.Dump(os.Stdout)
 			}
 		}
 		cancel()
