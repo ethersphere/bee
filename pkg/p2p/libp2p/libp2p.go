@@ -553,10 +553,15 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					}
 					logger.Tracef("handler(%s): blocklisted %s", p.Name, overlay.String())
 				}
-				// count unexpected requests
+
 				if errors.Is(err, p2p.ErrUnexpected) {
 					s.metrics.UnexpectedProtocolReqCount.Inc()
 				}
+
+				if errors.Is(err, network.ErrReset) {
+					s.metrics.StreamHandlerErrResetCount.Inc()
+				}
+
 				logger.Debugf("could not handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
 			}
