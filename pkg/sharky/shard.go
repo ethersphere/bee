@@ -112,7 +112,11 @@ func (sh *shard) process() {
 			select {
 			case sh.errc <- sh.read(op):
 			case <-op.ctx.Done():
-				sh.errc <- op.ctx.Err()
+				select {
+				case sh.errc <- op.ctx.Err():
+				case <-sh.quit:
+					return
+				}
 			case <-sh.quit:
 				return
 			}
