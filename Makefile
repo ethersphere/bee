@@ -12,7 +12,7 @@ BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 
-GO_MIN_VERSION ?= "1.17"
+GO_MIN_VERSION ?= "1.18"
 GO_BUILD_VERSION ?= "1.18.1"
 GO_MOD_ENABLED_VERSION ?= "1.12"
 GO_MOD_VERSION ?= "$(shell go mod edit -print | awk '/^go[ \t]+[0-9]+\.[0-9]+(\.[0-9]+)?[ \t]*$$/{print $$2}')"
