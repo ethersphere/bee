@@ -165,7 +165,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			}),
 		)
 
-		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(0), mockTransaction, chainBackend, o.Restricted, authenticator, false, debugapi.DevMode, 1)
+		debugAPIService = debugapi.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, tracer, o.CORSAllowedOrigins, big.NewInt(1), mockTransaction, chainBackend, o.Restricted, authenticator, false, debugapi.DevMode, 1)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -223,6 +223,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
+
+	batchStore.PutChainState(&postage.ChainState{
+		CurrentPrice: big.NewInt(1),
+		TotalAmount:  big.NewInt(1),
+	})
 
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
