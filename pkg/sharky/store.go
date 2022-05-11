@@ -123,6 +123,8 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-sh.quit:
+		return ErrQuitting
 	}
 
 	// it is important that this select would NEVER respect the context
