@@ -138,6 +138,8 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 		}
 		return err
 	case <-s.quit:
+		// we need to make sure that the forever loop in shard.go can
+		// always return due to shutdown in case this goroutine goes away.
 		return ErrQuitting
 	}
 }
