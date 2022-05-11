@@ -105,27 +105,16 @@ func (sh *shard) process() {
 		}
 	}()
 	free := sh.slots.out
-LOOP:
+
 	for {
 		select {
 		case op := <-sh.reads:
-			// prioritise read ops i.e., continue processing read ops (only) as long as any
-			// this will block any writes on this shard effectively making store-wide
-			// write op to use a differenct shard while this one is busy
-			for {
-				select {
-				case sh.errc <- sh.read(op):
-				case <-op.ctx.Done():
-				case <-sh.quit:
-					return
-				}
-				select {
-				case op = <-sh.reads:
-				case <-sh.quit:
-					return
-				default:
-					continue LOOP
-				}
+			select {
+			case sh.errc <- sh.read(op):
+			case <-op.ctx.Done():
+				sh.errc <- op.ctx.Err()
+			case <-sh.quit:
+				return
 			}
 
 			// only enabled if there is a free slot previously popped
