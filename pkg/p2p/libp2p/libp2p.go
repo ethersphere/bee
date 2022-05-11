@@ -37,7 +37,6 @@ import (
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/mux"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -554,13 +553,15 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					}
 					logger.Tracef("handler(%s): blocklisted %s", p.Name, overlay.String())
 				}
-				// count unexpected requests
+
 				if errors.Is(err, p2p.ErrUnexpected) {
 					s.metrics.UnexpectedProtocolReqCount.Inc()
 				}
-				if errors.Is(err, mux.ErrReset) {
+
+				if errors.Is(err, network.ErrReset) {
 					s.metrics.StreamHandlerErrResetCount.Inc()
 				}
+
 				logger.Debugf("could not handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
 			}
@@ -837,12 +838,6 @@ func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return nil, p2p.ErrPeerNotFound
