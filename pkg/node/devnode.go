@@ -224,10 +224,13 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
 
-	batchStore.PutChainState(&postage.ChainState{
+	err = batchStore.PutChainState(&postage.ChainState{
 		CurrentPrice: big.NewInt(1),
 		TotalAmount:  big.NewInt(1),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
 
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
