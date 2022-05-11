@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"runtime/pprof"
 	"sync"
 	"syscall"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/discovery"
-	"github.com/ethersphere/bee/pkg/goroutine"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -460,7 +460,7 @@ func (k *Kad) manage() {
 			case <-timer.C:
 			case <-time.After(1 * time.Second):
 				k.logger.Debug("kademlia timer not drained after 1 second")
-				goroutine.Dump(os.Stdout)
+				_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 2)
 			}
 		}
 		cancel()
