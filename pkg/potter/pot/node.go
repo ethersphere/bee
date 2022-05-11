@@ -83,7 +83,7 @@ var indent = "                                                                  
 
 // String pretty prints the pot
 func (m *MemNode) String() string {
-	return NewAt(-1, m).string(0)
+	return NewAt(-1, m).String()
 }
 
 func (n CNode) String() string {
@@ -100,7 +100,7 @@ func (n CNode) string(i int) string {
 	j := 0
 	s := fmt.Sprintf("K: %s, V: %s\n", Label(KeyOf(n.Node)), n.Node.Entry())
 	n.Node.Iterate(n.At+1, func(c CNode) (bool, error) {
-		s = fmt.Sprintf("%s%s> %d (%d) - %s", s, indent[:i], c.At, c.Size(), c.Next().string(i+1))
+		s = fmt.Sprintf("%s%s> %d (%d) - %s", s, indent[:i], c.At, c.Size(), c.string(i+1))
 		j++
 		return false, nil
 	})

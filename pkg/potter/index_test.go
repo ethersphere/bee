@@ -213,62 +213,87 @@ func TestEdgeCasesCorrectness(t *testing.T) {
 	})
 }
 
-func XTestForAll(t *testing.T) {
+func TestIterate(t *testing.T) {
 	count := 64
-	idx, err := potter.New(pot.NewSingleOrder(256), testLogger)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer idx.Close()
-
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	pivot := make([]byte, 4)
-	for _, b := range []int{0} {
-		// for _, b := range []int{0, 256, 512} {
-		s := make([]byte, 4)
-		binary.BigEndian.PutUint32(s, uint32(b))
-		s = s[:3]
-		r := make([]int, count)
-		for i := range r {
-			r[i] = i
-		}
-		rand.Shuffle(count, func(i, j int) { k := r[i]; r[i] = r[j]; r[j] = k })
-		for i := 0; i < count; i++ {
-			k := make([]byte, 32)
-			binary.BigEndian.PutUint32(k, uint32(b+r[i]))
-			e := &mockEntry{k, b + r[i]}
-			// fmt.Printf("adding mockentry: %v, was index: %v\n", e, idx)
-			idx.Add(ctx, e)
-			// fmt.Printf("adding mockentry: %v, index: %v\n", e, idx)
-			n := 0
-			max := 0
-			if err := idx.ForAll(s, pivot, func(e pot.Entry) (bool, error) {
-				item := e.(*mockEntry).val
-				if max > item {
-					t.Fatalf("not ordered correclty: %v > %v", max, item)
+	test := func(t *testing.T, idx *potter.Index) {
+		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		pivot := make([]byte, 4)
+		for e, b := range []int{0, 256, 512} {
+			s := make([]byte, 4)
+			binary.BigEndian.PutUint32(s, uint32(b))
+			s = s[:3]
+			r := make([]int, count)
+			for i := range r {
+				r[i] = i
+			}
+			rand.Shuffle(count, func(i, j int) { k := r[i]; r[i] = r[j]; r[j] = k })
+			for i := 0; i < count; i++ {
+				k := make([]byte, 32)
+				binary.BigEndian.PutUint32(k, uint32(b+r[i]))
+				e := &mockEntry{k, b + r[i]}
+				idx.Add(ctx, e)
+				n := 0
+				max := 0
+				if err := idx.Iterate(s, pivot, func(e pot.Entry) (bool, error) {
+					item := e.(*mockEntry).val
+					if max > item {
+						t.Fatalf("not ordered correclty: %v > %v", max, item)
+					}
+					max = item
+					n++
+					return false, nil
+				}); err != nil {
+					t.Fatal(err)
 				}
-				max = item
+				if n != i+1 {
+					t.Fatalf("incorrect number of items. want %d, got %d", i+1, n)
+				}
+			}
+			n := 0
+			if err := idx.Iterate(nil, pivot, func(e pot.Entry) (bool, error) {
 				n++
 				return false, nil
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if n != i+1 {
-				t.Fatalf("incorrect number of items. want %d, got %d", i+1, n)
+			if n != (e+1)*count {
+				t.Fatalf("incorrect number of items. want %d, got %d", (e+1)*count, n)
 			}
 		}
 	}
+	t.Run("in memory", func(t *testing.T) {
+		idx, err := potter.New(pot.NewSingleOrder(32), testLogger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer idx.Close()
+		test(t, idx)
+	})
+	t.Run("persisted", func(t *testing.T) {
+		dir := t.TempDir()
+		ls, err := potter.NewLoadSaver(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mode := pot.NewPersistedPot(dir, pot.NewSingleOrder(32), ls, func() pot.Entry { return &mockEntry{} })
+		idx, err := potter.New(mode, testLogger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer idx.Close()
+		test(t, idx)
+	})
 }
 
 func TestSize(t *testing.T) {
-	count := 8
+	count := 16
 	test := func(t *testing.T, idx *potter.Index) {
 		ctx := context.Background()
 		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
-		t.Run(fmt.Sprintf("add"), func(t *testing.T) {
+		t.Run("add", func(t *testing.T) {
 			for i := 0; i < count; i++ {
 				size := idx.Size()
 				if size != i {
@@ -277,7 +302,7 @@ func TestSize(t *testing.T) {
 				idx.Add(ctx, newDetMockEntry(i))
 			}
 		})
-		t.Run(fmt.Sprintf("update"), func(t *testing.T) {
+		t.Run("update", func(t *testing.T) {
 			for i := 0; i < count; i++ {
 				idx.Add(ctx, &mockEntry{newDetMockEntry(i).key, 10000})
 				size := idx.Size()
@@ -286,13 +311,12 @@ func TestSize(t *testing.T) {
 				}
 			}
 		})
-		t.Run(fmt.Sprintf("delete"), func(t *testing.T) {
+		t.Run("delete", func(t *testing.T) {
 			for i := 0; i < count; i++ {
-				s := idx.String()
 				idx.Delete(ctx, newDetMockEntry(i).key)
 				size := idx.Size()
 				if size != count-i-1 {
-					t.Fatalf("incorrect number of items. want %d, got %d:\nWAS: %v\nIS: %v", count-i-1, size, s, idx)
+					t.Fatalf("incorrect number of items. want %d, got %d", count-i-1, size)
 				}
 			}
 		})
