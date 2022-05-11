@@ -60,9 +60,9 @@ func NewAt(at int, n Node) CNode {
 
 // Next returns a CNode, that is the view of the same Node from a po following the At of the receiver CNode
 func (c CNode) Next() CNode {
-	return NewAt(c.At+1, c.Node)
-	// 	n := c.Node.Fork(c.At)
-	// return CNode{c.At + 1, c.Node, c.Size() - n.Size()}
+	// return NewAt(c.At+1, c.Node)
+	n := c.Node.Fork(c.At)
+	return CNode{c.At + 1, c.Node, c.Size() - n.Size()}
 }
 
 // Size returns the number of entries (=Nodes) subsumed under the node
@@ -103,7 +103,7 @@ func Append(b, n Node, from, to int) {
 
 // Find finds the entry of a key
 func Find(n Node, k []byte, mode Mode) (Entry, error) {
-	return find(NewAt(-1, n), k, mode)
+	return find(NewAt(0, n), k, mode)
 }
 
 func find(n CNode, k []byte, mode Mode) (Entry, error) {
@@ -117,31 +117,33 @@ func find(n CNode, k []byte, mode Mode) (Entry, error) {
 	return find(m, k, mode)
 }
 
-// ForAll is an iterator that walks all the entries subsumed under the given CNode
+// Iterate is an iterator that walks all the entries subsumed under the given CNode
 // in ascending order of distance from a given key
-func ForAll(n CNode, p, k []byte, mode Mode, f func(Entry) (bool, error)) error {
+func Iterate(n CNode, p, k []byte, mode Mode, f func(Entry) (bool, error)) error {
 	m, _ := findNode(n, p, mode)
 	if Empty(m.Node) {
 		return nil
 	}
-	fmt.Printf("\n\nnon-empty: %v\n", m)
-	_, err := forAll(m, k, mode, f)
+	_, err := iterate(m, k, m.At, mode, f)
 	return err
 }
 
-func forAll(n CNode, k []byte, mode Mode, f func(Entry) (bool, error)) (stop bool, err error) {
+func iterate(n CNode, k []byte, at int, mode Mode, f func(Entry) (bool, error)) (stop bool, err error) {
 	if Empty(n.Node) {
 		return false, nil
 	}
 	if n.Size() == 1 {
-		fmt.Printf("apply f to : %v\n", n.Node.Entry())
 		return f(n.Node.Entry())
 	}
-	fmt.Printf("forAll: %v\n", n)
-	cn, _ := FindNext(n, k, mode)
+	var cn CNode
+	po := Compare(n.Node, k, n.At+1)
+	cn = n.Node.Fork(po)
+	if err := mode.Unpack(cn.Node); err != nil {
+		panic(err.Error())
+	}
 	forks := append(Slice(n.Node, n.At+1, cn.At), NewAt(cn.At, n.Node), cn)
 	for i := len(forks) - 1; !stop && err == nil && i >= 0; i-- {
-		stop, err = forAll(forks[i], k, mode, f)
+		stop, err = iterate(forks[i], k, at, mode, f)
 	}
 	return stop, err
 }
@@ -161,16 +163,10 @@ func findNode(n CNode, k []byte, mode Mode) (CNode, error) {
 	if Empty(n.Node) {
 		return CNode{}, ErrNotFound
 	}
-	if len(k) == n.At {
-		fmt.Printf("len(k) = n.At:  %v\n", n)
-		return n, nil
-	}
 	m, ok := FindNext(n, k, mode)
 	if ok {
-		fmt.Printf("MATCH: %v\n", n)
 		return NewAt(8*len(k), n.Node), nil
 	}
-	fmt.Printf("returned %v\n", m)
 	return findNode(m, k, mode)
 }
 
@@ -223,13 +219,9 @@ func PO(one, other []byte, pos int) int {
 		}
 		for j := start; j < 8; j++ {
 			if (oxo>>uint8(7-j))&0x01 != 0 {
-				po := i*8 + j
-				// fmt.Printf("%08b ^ %08b from %d -> PO %d\n", one[:4], other[:4], pos, po)
-				return po
+				return i*8 + j
 			}
 		}
 	}
-	po := len(other) * 8
-	// fmt.Printf("%08b ^ %08b -> PO %d\n", one[:4], other[:4], po)
-	return po
+	return len(other) * 8
 }

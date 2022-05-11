@@ -64,32 +64,33 @@ var features = []potter.Feature{
 	},
 }
 
-func TestPottery(t *testing.T) {
+var faces = []potter.Facet{
+	{
+		Name: "score.by.name.time",
+		Key:  []string{"name", "time"},
+		Val:  []string{"score"},
+	},
+	{
+		Name: "by.score.name.time",
+		Key:  []string{"score", "name", "time"},
+		Val:  []string{},
+	},
+	{
+		Name: "by.time",
+		Key:  []string{"time"},
+		Val:  []string{"score", "name"},
+	},
+}
+
+func TestPotteryFind(t *testing.T) {
 	dir := t.TempDir()
 	schema := potter.NewSchema(features)
-	faces := []potter.Facet{
-		{
-			Name: "score.by.name.time",
-			Key:  []string{"name", "time"},
-			Val:  []string{"score"},
-		},
-		{
-			Name: "by.score.name.time",
-			Key:  []string{"score", "name", "time"},
-			Val:  []string{},
-		},
-		{
-			Name: "by.time",
-			Key:  []string{"time"},
-			Val:  []string{"score", "name"},
-		},
-	}
 	p, err := potter.NewPottery(dir, schema, faces, testLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.TODO()
-	r := potter.NewRecord(&game{time.Now().Unix(), "shrek", 1000})
+	r := potter.NewRecord(&game{time.Now().Unix(), "shrek", 1000}, "time", "name", "score")
 	t.Run("not found in empty pottery", func(t *testing.T) {
 		if err = p.Find(ctx, "score.by.name.time", r); !errors.Is(err, pot.ErrNotFound) {
 			t.Fatalf("expected pot.ErrNotFound, got %v", err)
@@ -98,7 +99,7 @@ func TestPottery(t *testing.T) {
 	if err = p.Add(ctx, r); err != nil {
 		t.Fatal(err)
 	}
-	r = potter.NewRecord(&game{time.Now().Unix(), "shrek", 1000})
+	r = potter.NewRecord(&game{time.Now().Unix(), "shrek", 1000}, "time", "name", "score")
 	if err = p.Add(ctx, r); err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +108,12 @@ func TestPottery(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("fill in unspecified field", func(t *testing.T) {
+		if score := r.Model.(*game).score; score != 1000 {
+			t.Fatalf("expected score to be '%v', got '%v'.", 1000, score)
+		}
+	})
+
 	t.Run("found in index by.time", func(t *testing.T) {
 		if err = p.Find(ctx, "by.time", r); err != nil {
 			t.Fatal(err)
@@ -126,7 +133,7 @@ func TestPottery(t *testing.T) {
 			t.Fatalf("expected name to be '%s', got '%s'.", "shrek", name)
 		}
 		if score := k.Model.(*game).score; score != 0 {
-			t.Fatalf("expected name to be '%v', got '%v'.", 0, score)
+			t.Fatalf("expected score to be '%v', got '%v'.", 0, score)
 		}
 	})
 
@@ -139,10 +146,45 @@ func TestPottery(t *testing.T) {
 			t.Fatalf("expected name to be '%v', got '%v'.", 1000, score)
 		}
 	})
+}
 
-	// k = potter.NewRecord(&game{name: "shrek", score: 1000})
-	// if err = p.Find(ctx, "by.score.name.time", k); err != nil {
-	// 	t.Fatal(err)
-	// }
+func TestPotteryFindAll(t *testing.T) {
+	dir := t.TempDir()
+	schema := potter.NewSchema(features)
+	p, err := potter.NewPottery(dir, schema, faces, testLogger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.TODO()
+	now := time.Now().Unix()
+	count := 3
+	for i := 0; i < count; i++ {
+		r := potter.NewRecord(&game{now + int64(i), "shrek", 1000}, "time", "name", "score")
+		if err = p.Add(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	k := potter.NewRecord(&game{name: "shrek", score: 1000}, "name", "score")
+	n := 0
+	create := func() *potter.Record { return potter.NewRecord(&game{}) }
+	if err = p.Iterate(ctx, "by.score.name.time", k, create(), create, func(r *potter.Record) (bool, error) {
+		if score := r.Model.(*game).score; score != 1000 {
+			t.Fatalf("expected score to be '%v', got '%v'.", 1000, score)
+		}
+		if name := r.Model.(*game).name; name != "shrek" {
+			t.Fatalf("expected name to be '%v', got '%v'.", "shrek", name)
+		}
+		expTime := now + int64(n)
+		if gotTime := r.Model.(*game).time; gotTime != expTime {
+			t.Fatalf("expected time to be '%v', got '%v'.", expTime, gotTime)
+		}
+		n++
+		return false, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n != int(count) {
+		t.Fatalf("incorrect number of items. want %d, got %d", int(count), n)
+	}
 
 }

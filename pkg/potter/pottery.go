@@ -36,7 +36,7 @@ func NewPottery(dir string, schema *Schema, facets []Facet, log logging.Logger) 
 		if err != nil {
 			return nil, err
 		}
-		mode := pot.NewPersistedPot(dir, pot.NewSingleOrder(key.Size()), ls, func() pot.Entry { return &Entry{} })
+		mode := pot.NewPersistedPot(dir, pot.NewSingleOrder(8*key.Size()), ls, func() pot.Entry { return &Entry{} })
 		idx, err := New(mode, log)
 		if err != nil {
 			return nil, err
@@ -59,6 +59,15 @@ func (p *Pottery) Find(ctx context.Context, name string, r *Record) error {
 		return ErrFaceNotFound
 	}
 	return f.Find(ctx, r)
+}
+
+// Find in a particular facet
+func (p *Pottery) Iterate(ctx context.Context, name string, filterBy, startFrom *Record, create func() *Record, g func(*Record) (stop bool, err error)) error {
+	f, ok := p.forms[name]
+	if !ok {
+		return ErrFaceNotFound
+	}
+	return f.Iterate(ctx, filterBy, startFrom, create, g)
 }
 
 // Add inserts an entry to the mutable pot

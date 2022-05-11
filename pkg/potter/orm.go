@@ -103,7 +103,6 @@ var _ pot.Entry = (*Entry)(nil)
 type Entry struct {
 	key []byte
 	val []byte
-	// rec Record
 }
 
 func (e *Entry) Key() []byte {
@@ -111,7 +110,7 @@ func (e *Entry) Key() []byte {
 }
 
 func (e *Entry) String() string {
-	return fmt.Sprintf("key: %x; val; %v", e.key, e.val)
+	return fmt.Sprintf("key: %x; val: %v", e.key, e.val)
 }
 
 func (e *Entry) Equal(v pot.Entry) bool {
@@ -147,6 +146,26 @@ func (f *FORM) NewEntry(r *Record) (*Entry, error) {
 	}, nil
 }
 
+// NewPrefix on a FORM returns an Entry key of which is used to select a node
+func (f *FORM) NewPrefix(r *Record) (key []byte, err error) {
+OUTER:
+	for _, fe := range f.key.Features {
+		for _, f := range r.features {
+			if fe.Name == f {
+				// record has got the feature specified already
+				buf := make([]byte, fe.Size)
+				if err := fe.Encode(r.Model, buf); err != nil {
+					return nil, err
+				}
+				key = append(key, buf...)
+				continue OUTER
+			}
+		}
+		break
+	}
+	return key, nil
+}
+
 // Find constructs an entry from the specified fields of the record
 // and retrieves the unique entry matching the key from the form pot or returns NotFound
 func (f *FORM) Find(ctx context.Context, r *Record) error {
@@ -159,6 +178,44 @@ func (f *FORM) Find(ctx context.Context, r *Record) error {
 		return err
 	}
 	return f.val.Decode(r, result.(*Entry).val)
+}
+
+// Iterate iterates over those records in the index for which the constraint in r holds
+// The constraint needs to be expressed as a value prefix on the form facet's serialisation
+// and a single offset length range given the bigendian numerical ordering on the rest of the key after the prefix'
+// the iterator calls the argument function on each record decoded
+func (f *FORM) Iterate(ctx context.Context, filterBy, startFrom *Record, newRecord func() *Record, g func(*Record) (bool, error)) error {
+	h := func(e pot.Entry) (stop bool, err error) {
+		r := newRecord()
+		if err := f.key.Decode(r, e.Key()); err != nil {
+			return false, err
+		}
+		if err := f.val.Decode(r, e.(*Entry).val); err != nil {
+			return false, err
+		}
+
+		stop, err = g(r)
+		if stop || err != nil {
+			return stop, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		default:
+		}
+		return false, nil
+	}
+
+	prefix, err := f.NewPrefix(filterBy)
+	if err != nil {
+		return err
+	}
+	s, err := f.NewEntry(startFrom)
+	if err != nil {
+		return err
+	}
+	return f.pot.Iterate(prefix, s.key, h)
 }
 
 // Add constructs an entry from the specified fields of the record
@@ -186,8 +243,14 @@ func (f *Schema) Encode(r *Record, b []byte) error {
 	var from, to int
 	for _, fe := range f.Features {
 		to = from + fe.Size
-		if err := fe.Encode(r.Model, b[from:to]); err != nil {
-			return err
+		for _, f := range r.features {
+			if fe.Name == f {
+				// record has got the feature specified already
+				if err := fe.Encode(r.Model, b[from:to]); err != nil {
+					return err
+				}
+				break
+			}
 		}
 		from = to
 	}
