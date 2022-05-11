@@ -227,12 +227,12 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
 		mockPostContract.WithCreateBatchFunc(
-			func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+			func(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
 				id := postagetesting.MustNewID()
 				batch := &postage.Batch{
 					ID:        id,
 					Owner:     overlayEthAddress.Bytes(),
-					Value:     big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth))),
+					Value:     big.NewInt(0).Mul(amount, big.NewInt(int64(1<<depth))),
 					Depth:     depth,
 					Immutable: immutable,
 				}
@@ -242,7 +242,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 					return nil, err
 				}
 
-				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, batch.Value, batch.Depth, 0, 0, immutable)
+				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, amount, batch.Depth, 0, 0, immutable)
 				_ = post.Add(stampIssuer)
 
 				return id, nil
