@@ -112,9 +112,15 @@ func (sh *shard) process() {
 			select {
 			case sh.errc <- sh.read(op):
 			case <-op.ctx.Done():
+				// since the goroutine in the Read method can quit
+				// on shutdown, we need to make sure that we can actually
+				// write to the channel, since a shutdown is possible in
+				// theory between after the point that the context is cancelled
 				select {
 				case sh.errc <- op.ctx.Err():
 				case <-sh.quit:
+					// since the Read method respects the quit channel
+					// we can safely quit here without writing to the channel
 					return
 				}
 			case <-sh.quit:
