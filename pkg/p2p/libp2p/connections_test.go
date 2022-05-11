@@ -164,7 +164,10 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 			{
 				Name: testStreamName,
 				Handler: func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
-					return nil
+					defer s.Close()
+					// block the stream by expecting something to read
+					_, err := s.Read(make([]byte, 1))
+					return err
 				},
 			},
 		},
