@@ -134,6 +134,7 @@ func TestDirs(t *testing.T) {
 		},
 		{
 			name:              "nested files with extension",
+			doMultipart:       true,
 			expectedReference: swarm.MustParseHexAddress("4c9c76d63856102e54092c38a7cd227d769752d768b7adc8c3542e3dd9fcf295"),
 			files: []f{
 				{
@@ -496,11 +497,14 @@ func multipartFiles(t *testing.T, files []f) (*bytes.Buffer, string) {
 	mw := multipart.NewWriter(&buf)
 
 	for _, file := range files {
-		hdr := make(textproto.MIMEHeader)
-		if file.name != "" {
-			hdr.Set("Content-Disposition", fmt.Sprintf("form-data; name=%q", file.name))
-
+		filePath := path.Join(file.dir, file.name)
+		if file.filePath != "" {
+			filePath = file.filePath
 		}
+
+		hdr := make(textproto.MIMEHeader)
+		hdr.Set("Content-Disposition", fmt.Sprintf("form-data; name=%q", filePath))
+
 		contentType := file.header.Get("Content-Type")
 		if contentType != "" {
 			hdr.Set("Content-Type", contentType)
