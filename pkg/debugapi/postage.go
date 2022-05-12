@@ -405,14 +405,9 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 		return -1, nil
 	}
 
-	var (
-		normalizedBalance = batch.Value
-		cumulativePayout  = state.TotalAmount
-		pricePerBlock     = state.CurrentPrice
-	)
-	ttl := new(big.Int).Sub(normalizedBalance, cumulativePayout)
+	ttl := new(big.Int).Sub(batch.Value, state.TotalAmount)
 	ttl = ttl.Mul(ttl, s.blockTime)
-	ttl = ttl.Div(ttl, pricePerBlock)
+	ttl = ttl.Div(ttl, state.CurrentPrice)
 
 	return ttl.Int64(), nil
 }
