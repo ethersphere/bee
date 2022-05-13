@@ -36,7 +36,7 @@ func (sl *slots) load() (err error) {
 		return err
 	}
 	sl.size = uint32(len(sl.data) * 8)
-	sl.head = sl.next(0)
+	sl.head = sl.next()
 	return err
 }
 
@@ -64,8 +64,8 @@ func (sl *slots) extend(n int) {
 }
 
 // next returns the lowest free slot after start.
-func (sl *slots) next(start uint32) uint32 {
-	for i := start; i < sl.size; i++ {
+func (sl *slots) next() uint32 {
+	for i := uint32(0); i < sl.size; i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 {
 			return i
 		}
@@ -88,7 +88,7 @@ func (sl *slots) pop() uint32 {
 		sl.extend(1)
 	}
 	sl.data[head/8] &= ^(1 << (head % 8))
-	sl.head = sl.next(head + 1)
+	sl.head = sl.next()
 	return head
 }
 
