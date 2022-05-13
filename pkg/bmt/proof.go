@@ -40,7 +40,7 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 		return nil, err
 	}
 	n = n.parent
-	
+
 	for _, sister := range proof.Sisters {
 		if isLeft {
 			root, err = doHash(n.hasher, root, sister)
