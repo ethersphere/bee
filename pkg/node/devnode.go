@@ -413,7 +413,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	return b, nil
 }
 
-func (b *DevBee) Shutdown(ctx context.Context) error {
+func (b *DevBee) Shutdown() error {
 	var mErr error
 
 	tryClose := func(c io.Closer, errMsg string) {
@@ -426,6 +426,9 @@ func (b *DevBee) Shutdown(ctx context.Context) error {
 	}
 
 	tryClose(b.apiCloser, "api")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	var eg errgroup.Group
 	if b.apiServer != nil {

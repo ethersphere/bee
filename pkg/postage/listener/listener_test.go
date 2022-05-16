@@ -451,7 +451,7 @@ func (c *countShutdowner) NoOfCalls() int {
 	return c.shutdownCalls
 }
 
-func (c *countShutdowner) Shutdown(_ context.Context) error {
+func (c *countShutdowner) Shutdown() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 

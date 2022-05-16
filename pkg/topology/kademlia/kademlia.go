@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"runtime/pprof"
 	"sync"
 	"syscall"
 	"time"
@@ -454,7 +456,12 @@ func (k *Kad) manage() {
 	go func() {
 		<-k.quit
 		if !timer.Stop() {
-			<-timer.C
+			select {
+			case <-timer.C:
+			case <-time.After(1 * time.Second):
+				k.logger.Debug("kademlia timer not drained after 1 second")
+				_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 2)
+			}
 		}
 		cancel()
 	}()
@@ -602,6 +609,14 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 	var wg sync.WaitGroup
 
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		select {
+		case <-ctx.Done():
+			return false, false, nil
+		case <-k.halt:
+			cancel()
+			return false, false, nil
+		default:
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -975,6 +990,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	var addrs []swarm.Address
 
+outer:
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 
 		connectedPeers, err := randomSubset(k.binReachablePeers(bin), broadcastBinSize)
@@ -999,6 +1015,8 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 			case <-k.bgBroadcastCtx.Done():
 				// we will not interfere with the announce operation by returning here
 				continue
+			case <-k.halt:
+				break outer
 			default:
 			}
 			go func(connectedPeer swarm.Address) {
@@ -1016,6 +1034,12 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 
 	if len(addrs) == 0 {
 		return nil
+	}
+
+	select {
+	case <-k.halt:
+		return nil
+	default:
 	}
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
@@ -1550,8 +1574,7 @@ func (k *Kad) Close() error {
 		select {
 		case <-cc:
 		case <-time.After(peerConnectionAttemptTimeout):
-			k.logger.Warning("kademlia shutting down with announce goroutines")
-			return errTimeout
+			return fmt.Errorf("kademlia shutting down with running goroutines: %w", errTimeout)
 		}
 		return nil
 	})
@@ -1560,8 +1583,7 @@ func (k *Kad) Close() error {
 		select {
 		case <-k.done:
 		case <-time.After(time.Second * 5):
-			k.logger.Warning("kademlia manage loop did not shut down properly")
-			return errTimeout
+			return fmt.Errorf("kademlia manage loop did not shut down properly: %w", errTimeout)
 		}
 		return nil
 	})
