@@ -451,6 +451,37 @@ func TestDirs(t *testing.T) {
 	}
 }
 
+func TestEmtpyDir(t *testing.T) {
+	var (
+		dirUploadResource = "/bzz"
+		storer            = mock.NewStorer()
+		mockStatestore    = statestore.NewStateStore()
+		logger            = logging.New(io.Discard, 0)
+		client, _, _, _   = newTestServer(t, testServerOptions{
+			Storer:          storer,
+			Tags:            tags.NewTags(mockStatestore, logger),
+			Logger:          logger,
+			PreventRedirect: true,
+			Post:            mockpost.New(mockpost.WithAcceptAll()),
+		})
+	)
+
+	tarReader := tarEmptyDir(t)
+
+	// submit valid tar, but with wrong content-type
+	jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource,
+		http.StatusBadRequest,
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(tarReader),
+		jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
+		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: api.EmptyDir.Error(),
+			Code:    http.StatusBadRequest,
+		}),
+	)
+}
+
 // tarFiles receives an array of test case files and creates a new tar with those files as a collection
 // it returns a bytes.Buffer which can be used to read the created tar
 func tarFiles(t *testing.T, files []f) *bytes.Buffer {
@@ -479,6 +510,29 @@ func tarFiles(t *testing.T, files []f) *bytes.Buffer {
 		if _, err := tw.Write(file.data); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// finally close the tar writer
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	return &buf
+}
+
+func tarEmptyDir(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	hdr := &tar.Header{
+		Name: "empty/",
+		Mode: 0600,
+	}
+
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
 	}
 
 	// finally close the tar writer
