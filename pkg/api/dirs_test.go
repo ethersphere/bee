@@ -468,7 +468,6 @@ func TestEmtpyDir(t *testing.T) {
 
 	tarReader := tarEmptyDir(t)
 
-	// submit valid tar, but with wrong content-type
 	jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource,
 		http.StatusBadRequest,
 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
