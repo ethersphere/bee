@@ -91,9 +91,7 @@ func bootstrapNode(
 	}
 
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown(ctx)).ErrorOrNil()
+		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown()).ErrorOrNil()
 	}()
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{

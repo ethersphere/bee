@@ -835,6 +835,12 @@ func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
 		return nil, p2p.ErrPeerNotFound
