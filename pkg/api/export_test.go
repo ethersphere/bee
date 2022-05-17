@@ -26,6 +26,7 @@ var (
 	InvalidContentType  = errInvalidContentType
 	InvalidRequest      = errInvalidRequest
 	DirectoryStoreError = errDirectoryStore
+	EmptyDir            = errEmptyDir
 )
 
 var (
