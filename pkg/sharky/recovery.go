@@ -5,29 +5,22 @@
 package sharky
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 
 	"github.com/hashicorp/go-multierror"
 )
 
-// Recovery allows disaster recovery.
+// Recovery allows disaster recovery
 type Recovery struct {
 	shards []*slots
 }
 
-var ErrShardNotFound = errors.New("shard not found")
-
-func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
+func NewRecovery(dir string, shardCnt int, shardSize uint32, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
-		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
-		}
+		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -43,14 +36,14 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		if err != nil {
 			return nil, err
 		}
-		sl := newSlots(ffile, nil)
+		sl := newSlots(ffile, shardSize, nil)
 		sl.data = make([]byte, size/8)
 		shards[i] = sl
 	}
 	return &Recovery{shards}, nil
 }
 
-// Add marks a location as used (not free).
+// Add marks a location as used (not free)
 func (r *Recovery) Add(loc Location) error {
 	sh := r.shards[loc.Shard]
 	l := len(sh.data)
@@ -64,23 +57,21 @@ func (r *Recovery) Add(loc Location) error {
 	return nil
 }
 
-// Save saves all free slots files of the recovery (without closing).
-func (r *Recovery) Save() error {
-	err := new(multierror.Error)
+// Save saves all free slots files of the recovery (without closing)
+func (r *Recovery) Save() (err error) {
 	for _, sh := range r.shards {
 		for i := range sh.data {
 			sh.data[i] ^= 0xff
 		}
 		err = multierror.Append(err, sh.save())
 	}
-	return err.ErrorOrNil()
+	return err.(*multierror.Error).ErrorOrNil()
 }
 
-// Close closes data and free slots files of the recovery (without saving).
-func (r *Recovery) Close() error {
-	err := new(multierror.Error)
+// Close closes data and free slots files of the recovery (without saving)
+func (r *Recovery) Close() (err error) {
 	for _, sh := range r.shards {
 		err = multierror.Append(err, sh.file.Close())
 	}
-	return err.ErrorOrNil()
+	return err.(*multierror.Error).ErrorOrNil()
 }

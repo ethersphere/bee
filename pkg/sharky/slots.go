@@ -6,26 +6,28 @@ package sharky
 
 import (
 	"io"
+	"os"
 	"sync"
 )
 
 type slots struct {
-	data    []byte          // byteslice serving as bitvector: i-t bit set <>
-	size    uint32          // number of slots
-	head    uint32          // the first free slot
-	file    sharkyFile      // file to persist free slots across sessions
-	in      chan uint32     // incoming channel for free slots,
-	out     chan uint32     // outgoing channel for free slots
-	wg      *sync.WaitGroup // count started write operations
-	limboWG sync.WaitGroup  // wait for the limbo writes to in chan after the quit is closed
+	data  []byte          // byteslice serving as bitvector: i-t bit set <>
+	size  uint32          // number of slots
+	limit uint32          // max number of items in the shard
+	head  uint32          // the first free slot
+	file  *os.File        // file to persist free slots across sessions
+	in    chan uint32     // incoming channel for free slots,
+	out   chan uint32     // outgoing channel for free slots
+	wg    *sync.WaitGroup // count started write operations
 }
 
-func newSlots(file sharkyFile, wg *sync.WaitGroup) *slots {
+func newSlots(file *os.File, limit uint32, wg *sync.WaitGroup) *slots {
 	return &slots{
-		file: file,
-		in:   make(chan uint32),
-		out:  make(chan uint32),
-		wg:   wg,
+		file:  file,
+		limit: limit,
+		in:    make(chan uint32),
+		out:   make(chan uint32),
+		wg:    wg,
 	}
 }
 
@@ -36,7 +38,10 @@ func (sl *slots) load() (err error) {
 		return err
 	}
 	sl.size = uint32(len(sl.data) * 8)
-	sl.head = sl.next()
+	if sl.size > sl.limit {
+		sl.size = sl.limit
+	}
+	sl.head = sl.next(0)
 	return err
 }
 
@@ -58,14 +63,17 @@ func (sl *slots) save() error {
 // extensions are bytewise: can only be multiples of 8 bits
 func (sl *slots) extend(n int) {
 	sl.size += uint32(n) * 8
+	if sl.size > sl.limit {
+		sl.size = sl.limit
+	}
 	for i := 0; i < n; i++ {
 		sl.data = append(sl.data, 0xff)
 	}
 }
 
 // next returns the lowest free slot after start.
-func (sl *slots) next() uint32 {
-	for i := uint32(0); i < sl.size; i++ {
+func (sl *slots) next(start uint32) uint32 {
+	for i := start; i < sl.size; i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 {
 			return i
 		}
@@ -82,26 +90,31 @@ func (sl *slots) push(i uint32) {
 }
 
 // pop returns the lowest available free slot.
-func (sl *slots) pop() uint32 {
+func (sl *slots) pop() (uint32, bool) {
 	head := sl.head
-	if head == sl.size {
+	if head == sl.limit {
+		return head, true
+	}
+	if head == sl.size && sl.size < sl.limit {
 		sl.extend(1)
 	}
 	sl.data[head/8] &= ^(1 << (head % 8))
-	sl.head = sl.next()
-	return head
+	sl.head = sl.next(head + 1)
+	return head, head == sl.limit
 }
 
 // forever loop processing.
 func (sl *slots) process(quit chan struct{}) {
 	var head uint32     // the currently pending next free slots
 	var out chan uint32 // nullable output channel, need to pop a free slot when nil
+	var full bool       // set to true if uable to pop a free slot, i.e., head (zero value) is not a slot index
 	for {
 		// if out is nil, need to pop a new head unless quitting
 		if out == nil && quit != nil {
 			// if read a free slot to head, switch on case 0 by assigning out channel
-			head = sl.pop()
-			out = sl.out
+			if head, full = sl.pop(); !full {
+				out = sl.out
+			}
 		}
 
 		select {
@@ -111,6 +124,7 @@ func (sl *slots) process(quit chan struct{}) {
 				return
 			}
 			sl.push(slot)
+			sl.wg.Done()
 
 			// let out channel capture the free slot and set out to nil to pop a new free slot
 		case out <- head:
@@ -123,10 +137,9 @@ func (sl *slots) process(quit chan struct{}) {
 				out = nil
 			}
 			quit = nil
-			sl.wg.Add(1)
+			sl.wg.Done()
 			go func() {
-				defer sl.wg.Done()
-				sl.limboWG.Wait()
+				sl.wg.Wait()
 				close(sl.in)
 			}()
 		}

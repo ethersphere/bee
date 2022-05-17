@@ -6,57 +6,14 @@ package sharky
 
 import (
 	"context"
-	"encoding/binary"
-	"io"
+	"os"
 )
-
-// LocationSize is the size of the byte representation of Location
-const LocationSize int = 7
 
 // Location models the location <shard, slot, length> of a chunk
 type Location struct {
 	Shard  uint8
 	Slot   uint32
 	Length uint16
-}
-
-// MarshalBinary returns byte representation of location
-func (l *Location) MarshalBinary() ([]byte, error) {
-	b := make([]byte, LocationSize)
-	b[0] = l.Shard
-	binary.LittleEndian.PutUint32(b[1:5], l.Slot)
-	binary.LittleEndian.PutUint16(b[5:], l.Length)
-	return b, nil
-}
-
-// UnmarshalBinary constructs the location from byte representation
-func (l *Location) UnmarshalBinary(buf []byte) error {
-	l.Shard = buf[0]
-	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
-	l.Length = binary.LittleEndian.Uint16(buf[5:])
-	return nil
-}
-
-// LocationFromBinary is a helper to construct a Location object from byte representation
-func LocationFromBinary(buf []byte) (Location, error) {
-	l := new(Location)
-	err := l.UnmarshalBinary(buf)
-	if err != nil {
-		return Location{}, err
-	}
-	return *l, nil
-}
-
-// sharkyFile defines the minimal interface that is required for a file type for it to
-// be usable in sharky. This allows us to have different implementations of file types
-// that can continue using the sharky logic
-type sharkyFile interface {
-	io.ReadWriteCloser
-	io.ReaderAt
-	io.Seeker
-	io.WriterAt
-	Truncate(int64) error
-	Sync() error
 }
 
 // write models the input to a write operation
@@ -73,58 +30,42 @@ type entry struct {
 
 // read models the input to read operation (the output is an error)
 type read struct {
-	ctx  context.Context
 	buf  []byte // variable size read buffer
 	slot uint32 // slot to read from
+	at   int    // within-chunk offset for partial reads
 }
 
-// shard models a shard writing to a file with periodic offsets due to fixed maxDataSize
+// shard models a shard writing to a file with periodic offsets due to fixed datasize
 type shard struct {
-	reads       chan read     // channel for reads
-	errc        chan error    // result for reads
-	writes      chan write    // channel for writes
-	index       uint8         // index of the shard
-	maxDataSize int           // max size of blobs
-	file        sharkyFile    // the file handle the shard is writing data to
-	slots       *slots        // component keeping track of freed slots
-	quit        chan struct{} // channel to signal quitting
+	reads    chan read     // channel for reads
+	errc     chan error    // result for reads
+	writes   chan write    // channel for writes
+	index    uint8         // index of the shard
+	datasize int           // max size of blobs
+	file     *os.File      // the file handle the shard is writing data to
+	slots    *slots        // component keeping track of freed slots
+	quit     chan struct{} // channel to signal quitting
 }
 
 // forever loop processing
 func (sh *shard) process() {
 	var writes chan write
 	var slot uint32
-	defer func() {
-		// this condition checks if an slot is in limbo (popped but not used for write op)
-		if writes != nil {
-			sh.slots.limboWG.Add(1)
-			go func() {
-				defer sh.slots.limboWG.Done()
-				sh.slots.in <- slot
-			}()
-		}
-	}()
 	free := sh.slots.out
-
+LOOP:
 	for {
 		select {
 		case op := <-sh.reads:
-			select {
-			case sh.errc <- sh.read(op):
-			case <-op.ctx.Done():
-				// since the goroutine in the Read method can quit
-				// on shutdown, we need to make sure that we can actually
-				// write to the channel, since a shutdown is possible in
-				// theory between after the point that the context is cancelled
+			// prioritise read ops i.e., continue processing read ops (only) as long as any
+			// this will block any writes on this shard effectively making store-wide
+			// write op to use a differenct shard while this one is busy
+			for {
+				sh.errc <- sh.read(op)
 				select {
-				case sh.errc <- op.ctx.Err():
-				case <-sh.quit:
-					// since the Read method respects the quit channel
-					// we can safely quit here without writing to the channel
-					return
+				case op = <-sh.reads:
+				default:
+					continue LOOP
 				}
-			case <-sh.quit:
-				return
 			}
 
 			// only enabled if there is a free slot previously popped
@@ -141,6 +82,13 @@ func (sh *shard) process() {
 			free = nil         // disabling getting a new slot until a write is actually done
 
 		case <-sh.quit:
+			// this condition checks if an slot is in limbo (popped but not used for write op)
+			if writes != nil {
+				sh.slots.wg.Add(1) // Done after the slots process pops from slots.in
+				go func() {
+					sh.slots.in <- slot
+				}()
+			}
 			return
 		}
 	}
@@ -162,12 +110,12 @@ func (sh *shard) close() error {
 // offset calculates the offset from the slot
 // this is possible since all blobs are of fixed size
 func (sh *shard) offset(slot uint32) int64 {
-	return int64(slot) * int64(sh.maxDataSize)
+	return int64(slot) * int64(sh.datasize)
 }
 
 // read reads loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) read(r read) error {
-	_, err := sh.file.ReadAt(r.buf, sh.offset(r.slot))
+	_, err := sh.file.ReadAt(r.buf, sh.offset(r.slot)+int64(r.at))
 	return err
 }
 
@@ -190,6 +138,7 @@ func (sh *shard) release(ctx context.Context, slot uint32) error {
 	case sh.slots.in <- slot:
 		return nil
 	case <-ctx.Done():
+		sh.slots.wg.Done()
 		return ctx.Err()
 	}
 }
