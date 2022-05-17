@@ -275,7 +275,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
 	// Reserve to see whether we can request the chunk
-	creditAction, err := s.accounting.PrepareCredit(peer, chunkPrice, originated)
+	creditAction, err := s.accounting.PrepareCredit(ctx, peer, chunkPrice, originated)
 	if err != nil {
 		sp.AddOverdraft(peer)
 		return nil, peer, false, err
@@ -431,7 +431,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
-	debit, err := s.accounting.PrepareDebit(p.Address, chunkPrice)
+	debit, err := s.accounting.PrepareDebit(ctx, p.Address, chunkPrice)
 	if err != nil {
 		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 	}

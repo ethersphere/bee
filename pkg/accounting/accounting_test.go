@@ -83,7 +83,7 @@ func TestAccountingAddBalance(t *testing.T) {
 
 	for i, booking := range bookings {
 		if booking.price < 0 {
-			creditAction, err := acc.PrepareCredit(booking.peer, uint64(-booking.price), true)
+			creditAction, err := acc.PrepareCredit(context.Background(), booking.peer, uint64(-booking.price), true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,7 +93,7 @@ func TestAccountingAddBalance(t *testing.T) {
 			}
 			creditAction.Cleanup()
 		} else {
-			debitAction, err := acc.PrepareDebit(booking.peer, uint64(booking.price))
+			debitAction, err := acc.PrepareDebit(context.Background(), booking.peer, uint64(booking.price))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +165,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 
 		pay := func(ctx context.Context, peer swarm.Address, amount *big.Int) {
 			if booking.overpay != 0 {
-				debitAction, err := acc.PrepareDebit(peer, booking.overpay)
+				debitAction, err := acc.PrepareDebit(context.Background(), peer, booking.overpay)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -179,7 +179,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 		acc.SetPayFunc(pay)
 
 		if booking.price < 0 {
-			creditAction, err := acc.PrepareCredit(booking.peer, uint64(-booking.price), booking.originatedCredit)
+			creditAction, err := acc.PrepareCredit(context.Background(), booking.peer, uint64(-booking.price), booking.originatedCredit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -198,7 +198,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 			}
 			creditAction.Cleanup()
 		} else {
-			debitAction, err := acc.PrepareDebit(booking.peer, uint64(booking.price))
+			debitAction, err := acc.PrepareDebit(context.Background(), booking.peer, uint64(booking.price))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -257,7 +257,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	acc.Connect(peer2Addr)
 
 	peer1DebitAmount := testPrice
-	debitAction, err := acc.PrepareDebit(peer1Addr, peer1DebitAmount)
+	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, peer1DebitAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	debitAction.Cleanup()
 
 	peer2CreditAmount := 2 * testPrice
-	creditAction, err := acc.PrepareCredit(peer2Addr, peer2CreditAmount, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer2Addr, peer2CreditAmount, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestAccountingReserve(t *testing.T) {
 
 	acc.Connect(peer1Addr)
 
-	_, err = acc.PrepareCredit(peer1Addr, testPaymentThreshold.Uint64()+1, true)
+	_, err = acc.PrepareCredit(context.Background(), peer1Addr, testPaymentThreshold.Uint64()+1, true)
 	if err == nil {
 		t.Fatal("expected error from reserve")
 	}
@@ -350,7 +350,7 @@ func TestAccountingDisconnect(t *testing.T) {
 	acc.Connect(peer1Addr)
 
 	// put the peer 1 unit away from disconnect
-	debitAction, err := acc.PrepareDebit(peer1Addr, (testPaymentThreshold.Uint64()*(100+uint64(testPaymentTolerance))/100)-1)
+	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, (testPaymentThreshold.Uint64()*(100+uint64(testPaymentTolerance))/100)-1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestAccountingDisconnect(t *testing.T) {
 	debitAction.Cleanup()
 
 	// put the peer over thee threshold
-	debitAction, err = acc.PrepareDebit(peer1Addr, 1)
+	debitAction, err = acc.PrepareDebit(context.Background(), peer1Addr, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 
 	requestPrice := testPaymentThreshold.Uint64() - 1000
 
-	creditAction, err := acc.PrepareCredit(peer1Addr, requestPrice, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +425,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	creditAction.Cleanup()
 
 	// try another request
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,14 +457,14 @@ func TestAccountingCallSettlement(t *testing.T) {
 	}
 
 	// Assume 100 is reserved by some other request
-	creditActionLong, err := acc.PrepareCredit(peer1Addr, 100, true)
+	creditActionLong, err := acc.PrepareCredit(context.Background(), peer1Addr, 100, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Credit until the expected debt exceeds payment threshold
 	expectedAmount := testPaymentThreshold.Uint64() - 101
-	creditAction, err = acc.PrepareCredit(peer1Addr, expectedAmount, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, expectedAmount, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 	creditAction.Cleanup()
 
 	// try another request to trigger settlement
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 
 	requestPrice := testPaymentThreshold.Uint64() - 1000
 
-	creditAction, err := acc.PrepareCredit(peer1Addr, requestPrice, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +550,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	creditAction.Cleanup()
 
 	// try another request
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +597,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	// Credit until the expected debt exceeds payment threshold
 	expectedAmount := testPaymentThreshold.Uint64()
 
-	_, err = acc.PrepareCredit(peer1Addr, expectedAmount, true)
+	_, err = acc.PrepareCredit(context.Background(), peer1Addr, expectedAmount, true)
 	if !errors.Is(err, accounting.ErrOverdraft) {
 		t.Fatalf("expected overdraft, got %v", err)
 	}
@@ -655,7 +655,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 
 	requestPrice := testPaymentThreshold.Uint64() - 1000
 
-	creditAction, err := acc.PrepareCredit(peer1Addr, requestPrice, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,7 +669,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	creditAction.Cleanup()
 
 	// try another request
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +698,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 
 	acc.SetTime(ts)
 
-	creditAction, err = acc.PrepareCredit(peer1Addr, requestPrice, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -712,7 +712,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	creditAction.Cleanup()
 
 	// try another request
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -741,7 +741,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	acc.SetTime(ts + 1)
 
 	// try another request
-	_, err = acc.PrepareCredit(peer1Addr, 1, true)
+	_, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +790,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 
 	acc.Connect(peer1Addr)
 
-	creditAction, err := acc.PrepareCredit(peer1Addr, debt, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer1Addr, debt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -800,7 +800,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 	creditAction.Cleanup()
 
 	payment := testPaymentThreshold.Uint64() * (100 - uint64(earlyPayment)) / 100
-	creditAction, err = acc.PrepareCredit(peer1Addr, payment, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, payment, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -845,7 +845,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	acc.Connect(peer1Addr)
 
 	// Try Debiting a large amount to peer so balance is large positive
-	debitAction, err := acc.PrepareDebit(peer1Addr, testPaymentThreshold.Uint64()-1)
+	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, testPaymentThreshold.Uint64()-1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -897,7 +897,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 		t.Fatal("Not expected balance, expected 0")
 	}
 	// Debit for same peer, so balance stays 0 with surplusbalance decreasing to 2
-	debitAction, err = acc.PrepareDebit(peer1Addr, testPaymentThreshold.Uint64())
+	debitAction, err = acc.PrepareDebit(context.Background(), peer1Addr, testPaymentThreshold.Uint64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -923,7 +923,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 		t.Fatal("Not expected balance, expected 0")
 	}
 	// Debit for same peer, so balance goes to 9998 (testpaymentthreshold - 2) with surplusbalance decreasing to 0
-	debitAction, err = acc.PrepareDebit(peer1Addr, testPaymentThreshold.Uint64())
+	debitAction, err = acc.PrepareDebit(context.Background(), peer1Addr, testPaymentThreshold.Uint64())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -970,7 +970,7 @@ func TestAccountingNotifyPaymentReceived(t *testing.T) {
 	acc.Connect(peer1Addr)
 
 	debtAmount := uint64(100)
-	debitAction, err := acc.PrepareDebit(peer1Addr, debtAmount)
+	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, debtAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -985,7 +985,7 @@ func TestAccountingNotifyPaymentReceived(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	debitAction, err = acc.PrepareDebit(peer1Addr, debtAmount)
+	debitAction, err = acc.PrepareDebit(context.Background(), peer1Addr, debtAmount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1087,7 +1087,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	creditAction, err := acc.PrepareCredit(peer1Addr, debt, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer1Addr, debt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1096,7 +1096,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 	}
 	creditAction.Cleanup()
 
-	_, err = acc.PrepareCredit(peer1Addr, lowerThreshold, true)
+	_, err = acc.PrepareCredit(context.Background(), peer1Addr, lowerThreshold, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1131,7 +1131,7 @@ func TestAccountingPeerDebt(t *testing.T) {
 	acc.Connect(peer1Addr)
 
 	debt := uint64(1000)
-	debitAction, err := acc.PrepareDebit(peer1Addr, debt)
+	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, debt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1150,7 +1150,7 @@ func TestAccountingPeerDebt(t *testing.T) {
 
 	peer2Addr := swarm.MustParseHexAddress("11112233")
 	acc.Connect(peer2Addr)
-	creditAction, err := acc.PrepareCredit(peer2Addr, 500, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer2Addr, 500, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1211,7 +1211,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	requestPrice := testPaymentThreshold.Uint64() - 100
 
 	// Credit until near payment threshold
-	creditAction, err := acc.PrepareCredit(peer1Addr, requestPrice, true)
+	creditAction, err := acc.PrepareCredit(context.Background(), peer1Addr, requestPrice, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1220,7 +1220,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	}
 	creditAction.Cleanup()
 
-	creditAction, err = acc.PrepareCredit(peer1Addr, 2, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 2, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1248,7 +1248,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		ts++
 		acc.SetTime(ts)
-		creditAction, err = acc.PrepareCredit(peer1Addr, 2, true)
+		creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 2, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1270,7 +1270,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	acc.SetTime(ts)
 
 	// try another request
-	creditAction, err = acc.PrepareCredit(peer1Addr, 1, true)
+	creditAction, err = acc.PrepareCredit(context.Background(), peer1Addr, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1327,7 +1327,7 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 
 	requestPrice := testPaymentThreshold.Uint64()
 
-	debitActionNormal, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionNormal, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1338,14 +1338,14 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 	debitActionNormal.Cleanup()
 
 	// debit ghost balance
-	debitActionGhost, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionGhost, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
 	debitActionGhost.Cleanup()
 
 	// increase shadow reserve
-	debitActionShadow, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionShadow, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1356,7 +1356,7 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 	}
 
 	// ghost overdraft triggering blocklist
-	debitAction4, err := acc.PrepareDebit(peer, requestPrice)
+	debitAction4, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1401,7 +1401,7 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 
 	requestPrice := testPaymentThreshold.Uint64()
 
-	debitActionNormal, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionNormal, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1412,14 +1412,14 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 	debitActionNormal.Cleanup()
 
 	// debit ghost balance
-	debitActionGhost, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionGhost, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
 	debitActionGhost.Cleanup()
 
 	// increase shadow reserve
-	debitActionShadow, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionShadow, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1471,7 +1471,7 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 
 	requestPrice := testPaymentThreshold.Uint64()
 
-	debitActionNormal, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionNormal, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1482,14 +1482,14 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 	debitActionNormal.Cleanup()
 
 	// debit ghost balance
-	debitActionGhost, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionGhost, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
 	debitActionGhost.Cleanup()
 
 	// increase shadow reserve
-	debitActionShadow, err := acc.PrepareDebit(peer, requestPrice)
+	debitActionShadow, err := acc.PrepareDebit(context.Background(), peer, requestPrice)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -217,7 +217,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("chunk store: %w", err)
 			}
 
-			debit, err := ps.accounting.PrepareDebit(p.Address, price)
+			debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 			if err != nil {
 				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 			}
@@ -277,7 +277,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 
 			// return back receipt
-			debit, err := ps.accounting.PrepareDebit(p.Address, price)
+			debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 			if err != nil {
 				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 			}
@@ -298,7 +298,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	ps.metrics.Forwarder.Inc()
 
-	debit, err := ps.accounting.PrepareDebit(p.Address, price)
+	debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 	if err != nil {
 		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 	}
@@ -484,7 +484,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
 	// Reserve to see whether we can make the request
-	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, origin)
+	creditAction, err := ps.accounting.PrepareCredit(ctx, peer, receiptPrice, origin)
 	if err != nil {
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 		return
@@ -603,7 +603,7 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 		}
 	}()
 
-	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, origin)
+	creditAction, err := ps.accounting.PrepareCredit(ctx, peer, receiptPrice, origin)
 	if err != nil {
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
 		return

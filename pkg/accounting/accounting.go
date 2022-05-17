@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -37,9 +38,9 @@ var (
 // Interface is the Accounting interface.
 type Interface interface {
 	// Credit action to prevent overspending in case of concurrent requests.
-	PrepareCredit(peer swarm.Address, price uint64, originated bool) (Action, error)
+	PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error)
 	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing a possibly credited part of reserve on the other side.
-	PrepareDebit(peer swarm.Address, price uint64) (Action, error)
+	PrepareDebit(ctx context.Context, peer swarm.Address, price uint64) (Action, error)
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (*big.Int, error)
 	// SurplusBalance returns the current surplus balance for the given peer.
@@ -85,13 +86,37 @@ type PayFunc func(context.Context, swarm.Address, *big.Int)
 // RefreshFunc is the function used for sync time-based settlement
 type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int) (*big.Int, int64, error)
 
+// AtomicMutex is a drop in replacement for the sync.Mutex
+type AtomicMutex struct {
+	// unlocked = 0 (default)
+	// locked = 1
+	locked uint32
+}
+
+func (m *AtomicMutex) Locked() bool {
+	return atomic.LoadUint32(&(m.locked)) != 0
+}
+
+func (m *AtomicMutex) Lock() (out chan struct{}) {
+	if atomic.CompareAndSwapUint32(&m.locked, 0, 1) {
+		out = make(chan struct{}, 1)
+		out <- struct{}{}
+	}
+
+	return
+}
+
+func (m *AtomicMutex) Unlock() {
+	atomic.StoreUint32(&m.locked, 0)
+}
+
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock                           sync.Mutex // lock to be held during any accounting action for this peer
-	reservedBalance                *big.Int   // amount currently reserved for active peer interaction
-	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
-	ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
-	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
+	lock                           AtomicMutex // lock to be held during any accounting action for this peer
+	reservedBalance                *big.Int    // amount currently reserved for active peer interaction
+	shadowReservedBalance          *big.Int    // amount potentially to be debited for active peer interaction
+	ghostBalance                   *big.Int    // amount potentially could have been debited for but was not
+	paymentThreshold               *big.Int    // the threshold at which the peer expects us to pay
 	earlyPayment                   *big.Int
 	refreshTimestamp               int64 // last time we attempted time-based settlement
 	paymentOngoing                 bool  // indicate if we are currently settling with the peer
@@ -195,11 +220,16 @@ func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer
 	return new(big.Int).Add(expectedDebt, additionalDebt), currentBalance, nil
 }
 
-func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated bool) (Action, error) {
+func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
-	defer accountingPeer.lock.Unlock()
+	select {
+	case <-accountingPeer.lock.Lock():
+		defer accountingPeer.lock.Unlock()
+		// continue
+	case <-ctx.Done():
+		return &creditAction{}, ctx.Err()
+	}
 
 	if !accountingPeer.connected {
 		return nil, errors.New("connection not initialized yet")
@@ -524,6 +554,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
+			lock:                  AtomicMutex{},
 			reservedBalance:       big.NewInt(0),
 			shadowReservedBalance: big.NewInt(0),
 			ghostBalance:          big.NewInt(0),
@@ -902,7 +933,7 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 }
 
 // PrepareDebit prepares a debit operation by increasing the shadowReservedBalance
-func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) (Action, error) {
+func (a *Accounting) PrepareDebit(ctx context.Context, peer swarm.Address, price uint64) (Action, error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
