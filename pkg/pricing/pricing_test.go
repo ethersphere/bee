@@ -27,7 +27,7 @@ type testThresholdObserver struct {
 	paymentThreshold *big.Int
 }
 
-func (t *testThresholdObserver) NotifyPaymentThreshold(peerAddr swarm.Address, paymentThreshold *big.Int) error {
+func (t *testThresholdObserver) NotifyPaymentThreshold(_ context.Context, peerAddr swarm.Address, paymentThreshold *big.Int) error {
 	t.called = true
 	t.peer = peerAddr
 	t.paymentThreshold = paymentThreshold

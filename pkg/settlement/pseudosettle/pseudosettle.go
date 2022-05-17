@@ -109,7 +109,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 		s.peers[p.Address.String()] = peerData
 	}
 
-	go s.accounting.Connect(p.Address)
+	go s.accounting.Connect(ctx, p.Address)
 	return nil
 }
 
@@ -119,7 +119,7 @@ func (s *Service) terminate(p p2p.Peer) error {
 
 	delete(s.peers, p.Address.String())
 
-	go s.accounting.Disconnect(p.Address)
+	go s.accounting.Disconnect(context.Background(), p.Address)
 	return nil
 }
 
@@ -164,7 +164,7 @@ func (s *Service) peerAllowance(peer swarm.Address, fullNode bool) (limit *big.I
 
 	maxAllowance := new(big.Int).Mul(big.NewInt(currentTime-lastTime.Timestamp), refreshRateUsed)
 
-	peerDebt, err := s.accounting.PeerDebt(peer)
+	peerDebt, err := s.accounting.PeerDebt(context.Background(), peer)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -249,7 +249,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
 	s.metrics.ReceivedPseudoSettlements.Inc()
-	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount)
+	return s.accounting.NotifyRefreshmentReceived(ctx, p.Address, paymentAmount)
 }
 
 // Pay initiates a payment to the given peer

@@ -275,12 +275,12 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
 	// Reserve to see whether we can request the chunk
-	creditAction, err := s.accounting.PrepareCredit(peer, chunkPrice, originated)
+	creditAction, err := s.accounting.PrepareCredit(ctx, peer, chunkPrice, originated)
 	if err != nil {
 		sp.AddOverdraft(peer)
 		return nil, peer, false, err
 	}
-	defer creditAction.Cleanup()
+	defer creditAction.Cleanup(context.Background())
 
 	sp.Add(peer)
 
@@ -330,7 +330,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}
 
 	// credit the peer after successful delivery
-	err = creditAction.Apply()
+	err = creditAction.Apply(context.Background())
 	if err != nil {
 		return nil, peer, true, err
 	}
@@ -431,11 +431,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
-	debit, err := s.accounting.PrepareDebit(p.Address, chunkPrice)
+	debit, err := s.accounting.PrepareDebit(ctx, p.Address, chunkPrice)
 	if err != nil {
 		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 	}
-	defer debit.Cleanup()
+	defer debit.Cleanup(context.Background())
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data:  chunk.Data(),
@@ -447,7 +447,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	s.logger.Tracef("retrieval protocol debiting peer %s", p.Address.String())
 
 	// debit price from p's balance
-	if err := debit.Apply(); err != nil {
+	if err := debit.Apply(context.Background()); err != nil {
 		return fmt.Errorf("apply debit: %w", err)
 	}
 

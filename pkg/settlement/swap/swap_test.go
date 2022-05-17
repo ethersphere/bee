@@ -58,11 +58,11 @@ func newTestObserver() *testObserver {
 	}
 }
 
-func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
+func (t *testObserver) PeerDebt(_ context.Context, peer swarm.Address) (*big.Int, error) {
 	return nil, nil
 }
 
-func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
+func (t *testObserver) NotifyPaymentReceived(_ context.Context, peer swarm.Address, amount *big.Int) error {
 	t.receivedCalled <- notifyPaymentReceivedCall{
 		peer:   peer,
 		amount: amount,
@@ -70,11 +70,11 @@ func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int
 	return nil
 }
 
-func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+func (t *testObserver) NotifyRefreshmentReceived(_ context.Context, peer swarm.Address, amount *big.Int) error {
 	return nil
 }
 
-func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, err error) {
+func (t *testObserver) NotifyPaymentSent(_ context.Context, peer swarm.Address, amount *big.Int, err error) {
 	t.sentCalled <- notifyPaymentSentCall{
 		peer:   peer,
 		amount: amount,
@@ -82,11 +82,11 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 	}
 }
 
-func (t *testObserver) Connect(peer swarm.Address) {
+func (t *testObserver) Connect(_ context.Context, peer swarm.Address) {
 
 }
 
-func (t *testObserver) Disconnect(peer swarm.Address) {
+func (t *testObserver) Disconnect(_ context.Context, peer swarm.Address) {
 
 }
 

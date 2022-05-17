@@ -38,7 +38,7 @@ type Interface interface {
 
 // PaymentThresholdObserver is used for being notified of payment threshold updates
 type PaymentThresholdObserver interface {
-	NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error
+	NotifyPaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error
 }
 
 type Service struct {
@@ -100,7 +100,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if paymentThreshold.Cmp(big.NewInt(0)) == 0 {
 		return err
 	}
-	return s.paymentThresholdObserver.NotifyPaymentThreshold(p.Address, paymentThreshold)
+	return s.paymentThresholdObserver.NotifyPaymentThreshold(ctx, p.Address, paymentThreshold)
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {

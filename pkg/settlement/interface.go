@@ -5,6 +5,7 @@
 package settlement
 
 import (
+	"context"
 	"errors"
 	"math/big"
 
@@ -28,10 +29,10 @@ type Interface interface {
 }
 
 type Accounting interface {
-	PeerDebt(peer swarm.Address) (*big.Int, error)
-	NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error
-	NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error)
-	NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error
-	Connect(peer swarm.Address)
-	Disconnect(peer swarm.Address)
+	PeerDebt(ctx context.Context, peer swarm.Address) (*big.Int, error)
+	NotifyPaymentReceived(ctx context.Context, peer swarm.Address, amount *big.Int) error
+	NotifyPaymentSent(ctx context.Context, peer swarm.Address, amount *big.Int, receivedError error)
+	NotifyRefreshmentReceived(ctx context.Context, peer swarm.Address, amount *big.Int) error
+	Connect(ctx context.Context, peer swarm.Address)
+	Disconnect(ctx context.Context, peer swarm.Address)
 }

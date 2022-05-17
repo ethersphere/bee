@@ -36,10 +36,10 @@ var (
 
 // Interface is the Accounting interface.
 type Interface interface {
-	// Credit action to prevent overspending in case of concurrent requests.
-	PrepareCredit(peer swarm.Address, price uint64, originated bool) (Action, error)
+	// PrepareCredit action to prevent overspending in case of concurrent requests.
+	PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error)
 	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing a possibly credited part of reserve on the other side.
-	PrepareDebit(peer swarm.Address, price uint64) (Action, error)
+	PrepareDebit(ctx context.Context, peer swarm.Address, price uint64) (Action, error)
 	// Balance returns the current balance for the given peer.
 	Balance(peer swarm.Address) (*big.Int, error)
 	// SurplusBalance returns the current surplus balance for the given peer.
@@ -55,9 +55,9 @@ type Interface interface {
 // Action represents an accounting action that can be applied
 type Action interface {
 	// Cleanup cleans up an action. Must be called whether it was applied or not.
-	Cleanup()
+	Cleanup(context.Context)
 	// Apply applies an action
-	Apply() error
+	Apply(context.Context) error
 }
 
 // debitAction represents a future debit
@@ -85,9 +85,43 @@ type PayFunc func(context.Context, swarm.Address, *big.Int)
 // RefreshFunc is the function used for sync time-based settlement
 type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int) (*big.Int, int64, error)
 
+// ChanMutex is a drop in replacement for the sync.Mutex
+// it will not lock if the context is expired
+type ChanMutex struct {
+	c chan struct{}
+}
+
+func NewMutex() *ChanMutex {
+	c := make(chan struct{}, 1)
+	c <- struct{}{} // unlocked by default
+	return &ChanMutex{
+		c: c,
+	}
+}
+
+func (m *ChanMutex) Lock(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	<-m.c
+
+	return nil
+}
+
+func (m *ChanMutex) Unlock() {
+	select {
+	case m.c <- struct{}{}:
+	default:
+		panic("already unlocked")
+	}
+}
+
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock                           sync.Mutex // lock to be held during any accounting action for this peer
+	lock                           *ChanMutex // lock to be held during any accounting action for this peer
 	reservedBalance                *big.Int   // amount currently reserved for active peer interaction
 	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
 	ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
@@ -195,10 +229,12 @@ func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer
 	return new(big.Int).Add(expectedDebt, additionalDebt), currentBalance, nil
 }
 
-func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated bool) (Action, error) {
+func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		return nil, err
+	}
 	defer accountingPeer.lock.Unlock()
 
 	if !accountingPeer.connected {
@@ -224,7 +260,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	// we pay early to avoid needlessly blocking request later when concurrent requests occur and we are already close to the payment threshold.
 
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
-		err = a.settle(peer, accountingPeer)
+		err = a.settle(ctx, peer, accountingPeer)
 
 		switch {
 		case errors.Is(err, pseudosettle.ErrRefreshmentBelowExpected):
@@ -267,8 +303,10 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	}, nil
 }
 
-func (c *creditAction) Apply() error {
-	c.accountingPeer.lock.Lock()
+func (c *creditAction) Apply(ctx context.Context) error {
+	if err := c.accountingPeer.lock.Lock(ctx); err != nil {
+		return err
+	}
 	defer c.accountingPeer.lock.Unlock()
 
 	currentBalance, err := c.accounting.Balance(c.peer)
@@ -336,12 +374,14 @@ func (c *creditAction) Apply() error {
 	return nil
 }
 
-func (c *creditAction) Cleanup() {
+func (c *creditAction) Cleanup(ctx context.Context) {
 	if c.applied {
 		return
 	}
 
-	c.accountingPeer.lock.Lock()
+	if err := c.accountingPeer.lock.Lock(ctx); err != nil {
+		return
+	}
 	defer c.accountingPeer.lock.Unlock()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
@@ -354,7 +394,7 @@ func (c *creditAction) Cleanup() {
 
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
 // called.
-func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
+func (a *Accounting) settle(ctx context.Context, peer swarm.Address, balance *accountingPeer) error {
 	now := a.timeNow().Unix()
 	timeElapsed := now - balance.refreshTimestamp
 
@@ -544,6 +584,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
+			lock:                  NewMutex(),
 			reservedBalance:       big.NewInt(0),
 			shadowReservedBalance: big.NewInt(0),
 			ghostBalance:          big.NewInt(0),
@@ -671,10 +712,13 @@ func surplusBalanceKeyPeer(key []byte) (swarm.Address, error) {
 }
 
 // PeerDebt returns the positive part of the sum of the outstanding balance and the shadow reserve
-func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
-
+func (a *Accounting) PeerDebt(ctx context.Context, peer swarm.Address) (*big.Int, error) {
 	accountingPeer := a.getAccountingPeer(peer)
-	accountingPeer.lock.Lock()
+
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		return nil, err
+	}
+
 	defer accountingPeer.lock.Unlock()
 
 	balance := new(big.Int)
@@ -765,11 +809,14 @@ func (a *Accounting) shadowBalance(peer swarm.Address) (shadowBalance *big.Int, 
 }
 
 // NotifyPaymentSent is triggered by async monetary settlement to update our balance and remove it's price from the shadow reserve
-func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, receivedError error) {
+func (a *Accounting) NotifyPaymentSent(ctx context.Context, peer swarm.Address, amount *big.Int, receivedError error) {
 	defer a.wg.Done()
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		a.logger.Debug("could not acquire accounting peer lock", err)
+		return
+	}
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentOngoing = false
@@ -810,10 +857,12 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 }
 
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
-func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold *big.Int) error {
+func (a *Accounting) NotifyPaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		return err
+	}
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.paymentThreshold.Set(paymentThreshold)
@@ -822,10 +871,13 @@ func (a *Accounting) NotifyPaymentThreshold(peer swarm.Address, paymentThreshold
 }
 
 // NotifyPayment is called by Settlement when we receive a payment.
-func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) error {
+func (a *Accounting) NotifyPaymentReceived(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		return err
+	}
+
 	defer accountingPeer.lock.Unlock()
 
 	currentBalance, err := a.Balance(peer)
@@ -895,10 +947,13 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 }
 
 // NotifyRefreshmentReceived is called by pseudosettle when we receive a time based settlement.
-func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+func (a *Accounting) NotifyRefreshmentReceived(ctx context.Context, peer swarm.Address, amount *big.Int) error {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		return err
+	}
+
 	defer accountingPeer.lock.Unlock()
 
 	currentBalance, err := a.Balance(peer)
@@ -923,10 +978,13 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 }
 
 // PrepareDebit prepares a debit operation by increasing the shadowReservedBalance
-func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) (Action, error) {
+func (a *Accounting) PrepareDebit(ctx context.Context, peer swarm.Address, price uint64) (Action, error) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		return nil, err
+	}
+
 	defer accountingPeer.lock.Unlock()
 
 	if !accountingPeer.connected {
@@ -1016,8 +1074,11 @@ func (a *Accounting) increaseBalance(peer swarm.Address, accountingPeer *account
 }
 
 // Apply applies the debit operation and decreases the shadowReservedBalance
-func (d *debitAction) Apply() error {
-	d.accountingPeer.lock.Lock()
+func (d *debitAction) Apply(ctx context.Context) error {
+	if err := d.accountingPeer.lock.Lock(ctx); err != nil {
+		return err
+	}
+
 	defer d.accountingPeer.lock.Unlock()
 
 	a := d.accounting
@@ -1053,13 +1114,16 @@ func (d *debitAction) Apply() error {
 }
 
 // Cleanup reduces shadow reserve if and only if debitaction have not been applied
-func (d *debitAction) Cleanup() {
+func (d *debitAction) Cleanup(ctx context.Context) {
 	if d.applied {
 		return
 	}
 
-	d.accountingPeer.lock.Lock()
+	if err := d.accountingPeer.lock.Lock(ctx); err != nil {
+		return
+	}
 	defer d.accountingPeer.lock.Unlock()
+
 	a := d.accounting
 	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 	d.accountingPeer.ghostBalance = new(big.Int).Add(d.accountingPeer.ghostBalance, d.price)
@@ -1101,11 +1165,14 @@ func (a *Accounting) blocklist(peer swarm.Address, multiplier int64, reason stri
 	return a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, reason)
 }
 
-func (a *Accounting) Connect(peer swarm.Address) {
+func (a *Accounting) Connect(ctx context.Context, peer swarm.Address) {
 	accountingPeer := a.getAccountingPeer(peer)
 	zero := big.NewInt(0)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		a.logger.Debug("could not acquire accounting peer lock", err)
+		return
+	}
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.connected = true
@@ -1172,10 +1239,13 @@ func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big
 	return nil
 }
 
-func (a *Accounting) Disconnect(peer swarm.Address) {
+func (a *Accounting) Disconnect(ctx context.Context, peer swarm.Address) {
 	accountingPeer := a.getAccountingPeer(peer)
 
-	accountingPeer.lock.Lock()
+	if err := accountingPeer.lock.Lock(ctx); err != nil {
+		a.logger.Debug("could not acquire accounting peer lock", err)
+		return
+	}
 	defer accountingPeer.lock.Unlock()
 
 	if accountingPeer.connected {

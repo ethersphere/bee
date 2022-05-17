@@ -116,7 +116,7 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 	s.metrics.TotalReceived.Add(tot)
 	s.metrics.ChequesReceived.Inc()
 
-	return s.accounting.NotifyPaymentReceived(peer, amount)
+	return s.accounting.NotifyPaymentReceived(ctx, peer, amount)
 }
 
 // Pay initiates a payment to the given peer
@@ -124,7 +124,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	var err error
 	defer func() {
 		if err != nil {
-			s.accounting.NotifyPaymentSent(peer, amount, err)
+			s.accounting.NotifyPaymentSent(ctx, peer, amount, err)
 		}
 	}()
 	if s.chequebook == nil {
@@ -148,7 +148,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 
 	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
 	s.metrics.AvailableBalance.Set(bal)
-	s.accounting.NotifyPaymentSent(peer, amount, nil)
+	s.accounting.NotifyPaymentSent(ctx, peer, amount, nil)
 	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
 	s.metrics.TotalSent.Add(amountFloat)
 	s.metrics.ChequesSent.Inc()
