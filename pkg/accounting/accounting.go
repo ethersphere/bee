@@ -37,7 +37,7 @@ var (
 
 // Interface is the Accounting interface.
 type Interface interface {
-	// Credit action to prevent overspending in case of concurrent requests.
+	// PrepareCredit action to prevent overspending in case of concurrent requests.
 	PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error)
 	// PrepareDebit returns an accounting Action for the later debit to be executed on and to implement shadowing a possibly credited part of reserve on the other side.
 	PrepareDebit(ctx context.Context, peer swarm.Address, price uint64) (Action, error)
@@ -91,10 +91,6 @@ type AtomicMutex struct {
 	// unlocked = 0 (default)
 	// locked = 1
 	locked uint32
-}
-
-func (m *AtomicMutex) Locked() bool {
-	return atomic.LoadUint32(&(m.locked)) != 0
 }
 
 func (m *AtomicMutex) Lock() (out chan struct{}) {
