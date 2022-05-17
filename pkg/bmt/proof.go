@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package bmt
 
 // Prover wraps the Hasher to allow Merkle proof functionality
@@ -14,6 +18,9 @@ type Proof struct {
 
 // Proof returns the inclusion proof of the i-th data segment
 func (p Prover) Proof(i int) Proof {
+	if i < 0 || i > 127 {
+		panic("segment index can only lie between 0-127")
+	}
 	i = i / 2
 	n := p.bmt.leaves[i]
 	isLeft := n.isLeft
@@ -57,8 +64,15 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 }
 
 func (n *node) getSister(isLeft bool) []byte {
+	var src []byte
+
 	if isLeft {
-		return n.right
+		src = n.right
+	} else {
+		src = n.left
 	}
-	return n.left
+
+	buf := make([]byte, len(src))
+	copy(buf, src)
+	return buf
 }
