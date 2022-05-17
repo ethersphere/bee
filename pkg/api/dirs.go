@@ -31,6 +31,8 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
+var errEmptyDir = errors.New("no files in root directory")
+
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
@@ -90,6 +92,8 @@ func (s *server) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
+		case errors.Is(err, errEmptyDir):
+			jsonhttp.BadRequest(w, errEmptyDir)
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
 		}
@@ -196,7 +200,7 @@ func storeDir(
 
 	// check if files were uploaded through the manifest
 	if filesAdded == 0 {
-		return swarm.ZeroAddress, errors.New("no files in tar")
+		return swarm.ZeroAddress, errEmptyDir
 	}
 
 	// store website information
