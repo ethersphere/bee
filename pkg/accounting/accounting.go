@@ -226,6 +226,7 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
+			a.metrics.SettleErrorCount.Inc()
 			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
 		}
 
@@ -365,6 +366,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			return err
 		}
 
+		a.metrics.AccountingRefreshAttemptCount.Inc()
+
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
 			// if we get settlement too soon it comes from a peer timestamp being ahead of ours, blocking refreshment
@@ -423,6 +426,9 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 				// add settled amount to shadow reserve before sending it
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
 				a.wg.Add(1)
+
+				a.metrics.PaymentAttemptCount.Inc()
+
 				go a.payFunction(context.Background(), peer, paymentAmount)
 			}
 		}
@@ -758,6 +764,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 	if receivedError != nil {
 		accountingPeer.lastSettlementFailureTimestamp = a.timeNow().Unix()
+		a.metrics.PaymentErrorCount.Inc()
 		a.logger.Warningf("accounting: payment failure %v", receivedError)
 		return
 	}
