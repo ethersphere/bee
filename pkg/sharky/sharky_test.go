@@ -10,8 +10,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -20,10 +22,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type dirFS struct {
+	basedir string
+}
+
+func (d *dirFS) Open(path string) (fs.File, error) {
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+}
+
 func TestSingleRetrieval(t *testing.T) {
 	datasize := 4
 	dir := t.TempDir()
-	s, err := sharky.New(dir, 2, 2, datasize)
+	s, err := sharky.New(&dirFS{basedir: dir}, 2, 2, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +66,6 @@ func TestSingleRetrieval(t *testing.T) {
 				"exact size data 3",
 				[]byte{1, 1, 1, 1},
 				nil,
-			}, {
-				"capacity reached",
-				[]byte{0x1},
-				context.DeadlineExceeded,
 			},
 		} {
 			buf := make([]byte, datasize)
@@ -89,10 +95,10 @@ func TestSingleRetrieval(t *testing.T) {
 // TestPersistence tests behaviour across several process sessions
 // and checks if items and pregenerated free slots are persisted correctly
 func TestPersistence(t *testing.T) {
-	datasize := 4
+	maxDatasize := 4
 	shards := 2
-	shardSize := uint32(16)
-	items := shards * int(shardSize)
+	shardSize := 16
+	items := shards * shardSize
 
 	dir := t.TempDir()
 	buf := make([]byte, 4)
@@ -100,11 +106,10 @@ func TestPersistence(t *testing.T) {
 	i := 0
 	j := 0
 	ctx := context.Background()
-	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	// simulate several subsequent sessions filling up the store
 	for ; i < items; j++ {
-		s, err := sharky.New(dir, shards, shardSize, datasize)
+		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,6 +124,7 @@ func TestPersistence(t *testing.T) {
 			}
 			locs[i] = &loc
 		}
+		cancel()
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -126,11 +132,12 @@ func TestPersistence(t *testing.T) {
 	t.Logf("got full in %d sessions\n", j)
 
 	// check location and data consisency
-	s, err := sharky.New(dir, shards, shardSize, datasize)
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	buf = make([]byte, datasize)
+	buf = make([]byte, maxDatasize)
 	j = 0
 	for want, loc := range locs {
 		j++
@@ -144,28 +151,19 @@ func TestPersistence(t *testing.T) {
 		}
 	}
 	cancel()
-	// the store has no more capacity, write expected to time out on waiting for free slots
-	cctx, cancel = context.WithTimeout(ctx, 800*time.Millisecond)
-	defer cancel()
-	_, err = s.Write(cctx, []byte{0})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected error DeadlineExceeded, got %v", err)
-	}
-
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestConcurrency(t *testing.T) {
-	datasize := 4
-	test := func(t *testing.T, workers, shards int, shardSize uint32) {
-		limit := shards * int(shardSize)
+	maxDatasize := 4
+	test := func(t *testing.T, workers, shards, shardSize int) {
+		limit := shards * shardSize
 
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
-		s, err := sharky.New(dir, shards, shardSize, datasize)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +201,7 @@ func TestConcurrency(t *testing.T) {
 		for k := 0; k < workers-1; k++ {
 			eg.Go(func() error {
 				<-start
-				buf := make([]byte, datasize)
+				buf := make([]byte, maxDatasize)
 				for i := 0; i < limit; i++ {
 					select {
 					case <-ectx.Done():
@@ -238,11 +236,12 @@ func TestConcurrency(t *testing.T) {
 			}
 			extraSlots += cnt - 1
 		}
-		buf := make([]byte, datasize)
+		buf := make([]byte, maxDatasize)
 		for loc := range c {
 			err := s.Read(ctx, loc, buf)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			i := binary.BigEndian.Uint32(buf)
 
@@ -255,7 +254,6 @@ func TestConcurrency(t *testing.T) {
 		// the store has extra slots capacity
 		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 		for i := 0; i < extraSlots; i++ {
-			t.Logf("checking extra slot %d\n", i)
 			_, err = s.Write(cctx, []byte{0})
 			if err != nil {
 				t.Fatal(err)
@@ -263,22 +261,11 @@ func TestConcurrency(t *testing.T) {
 		}
 		cancel()
 
-		// the store has no more capacity, write expected to time out on waiting for free slots
-		cctx, cancel = context.WithTimeout(ctx, 800*time.Millisecond)
-		defer cancel()
-		t.Logf("checking if full\n")
-		_, err = s.Write(cctx, []byte{0})
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("after extra slots expected error DeadlineExceeded, got %v", err)
-		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, c := range []struct {
-		workers, shards int
-		shardSize       uint32
-	}{
+	for _, c := range []struct{ workers, shards, shardSize int }{
 		{3, 2, 2},
 		{2, 64, 2},
 		{32, 8, 32},

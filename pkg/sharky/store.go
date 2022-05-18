@@ -2,40 +2,38 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// # lockless sharding
-
-// * shard choice responding to backpressure by running operation
-// * read prioritisation over writing
-// * free slots allow write
-
 package sharky
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path"
+	"io/fs"
+	"strconv"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
 )
 
 var (
-	// Error returned by Write if the blob length exceeds the max blobsize
+	// ErrTooLong returned by Write if the blob length exceeds the max blobsize.
 	ErrTooLong = errors.New("data too long")
-	// Error returned by Write when the store is Closed before the write completes
+	// ErrQuitting returned by Write when the store is Closed before the write completes.
 	ErrQuitting = errors.New("quitting")
 )
 
 // Store models the sharded fix-length blobstore
+// Design provides lockless sharding:
+// - shard choice responding to backpressure by running operation
+// - read prioritisation over writing
+// - free slots allow write
 type Store struct {
-	datasize int             // max length of blobs
-	pool     *sync.Pool      // pool to save on allocating channels
-	writes   chan write      // shared write operations channel
-	shards   []*shard        // shards
-	wg       *sync.WaitGroup // count started operations
-	quit     chan struct{}   // quit channel
+	maxDataSize int             // max length of blobs
+	writes      chan write      // shared write operations channel
+	shards      []*shard        // shards
+	wg          *sync.WaitGroup // count started operations
+	quit        chan struct{}   // quit channel
+	metrics     metrics
 }
 
 // New constructs a sharded blobstore
@@ -43,70 +41,76 @@ type Store struct {
 // - base directory string
 // - shard count - positive integer < 256 - cannot be zero or expect panic
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
-// - datasize - positive integer representing the maximum blob size to be stored
-func New(basedir string, shardCnt int, limit uint32, datasize int) (*Store, error) {
-	pool := &sync.Pool{New: func() interface{} {
-		return make(chan entry)
-	}}
-	sh := &Store{
-		datasize: datasize,
-		pool:     pool,
-		writes:   make(chan write),
-		shards:   make([]*shard, shardCnt),
-		wg:       &sync.WaitGroup{},
-		quit:     make(chan struct{}),
+// - maxDataSize - positive integer representing the maximum blob size to be stored
+func New(basedir fs.FS, shardCnt, shardSize, maxDataSize int) (*Store, error) {
+	store := &Store{
+		maxDataSize: maxDataSize,
+		writes:      make(chan write),
+		shards:      make([]*shard, shardCnt),
+		wg:          &sync.WaitGroup{},
+		quit:        make(chan struct{}),
+		metrics:     newMetrics(),
 	}
-	for i := range sh.shards {
-		s, err := sh.create(uint8(i), limit, datasize, basedir)
+	for i := range store.shards {
+		s, err := store.create(uint8(i), shardSize, maxDataSize, basedir)
 		if err != nil {
 			return nil, err
 		}
-		sh.shards[i] = s
+		store.shards[i] = s
 	}
-	return sh, nil
+	store.metrics.ShardCount.Set(float64(len(store.shards)))
+
+	return store, nil
 }
 
 // Close closes each shard and return incidental errors from each shard
-func (s *Store) Close() (err error) {
+func (s *Store) Close() error {
 	close(s.quit)
+	err := new(multierror.Error)
 	for _, sh := range s.shards {
 		err = multierror.Append(err, sh.close())
 	}
-	return err.(*multierror.Error).ErrorOrNil()
+
+	return err.ErrorOrNil()
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) (*shard, error) {
-	file, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("shard_%03d", index)), os.O_RDWR|os.O_CREATE, 0666)
+func (s *Store) create(index uint8, shardSize, maxDataSize int, basedir fs.FS) (*shard, error) {
+	file, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
 	}
-	ffile, err := os.OpenFile(path.Join(basedir, fmt.Sprintf("free_%03d", index)), os.O_RDWR|os.O_CREATE, 0666)
+	ffile, err := basedir.Open(fmt.Sprintf("free_%03d", index))
 	if err != nil {
 		return nil, err
 	}
-	sl := newSlots(ffile, limit, s.wg)
+	sl := newSlots(ffile.(sharkyFile), shardSize, s.wg)
 	err = sl.load()
 	if err != nil {
 		return nil, err
 	}
 	sh := &shard{
-		reads:    make(chan read),
-		errc:     make(chan error),
-		writes:   s.writes,
-		index:    index,
-		datasize: datasize,
-		file:     file,
-		slots:    sl,
-		quit:     s.quit,
+		reads:       make(chan read),
+		errc:        make(chan error),
+		writes:      s.writes,
+		index:       index,
+		maxDataSize: maxDataSize,
+		file:        file.(sharkyFile),
+		slots:       sl,
+		quit:        s.quit,
 	}
 	terminated := make(chan struct{})
 	sh.slots.wg.Add(1)
 	go func() {
+		defer sh.slots.wg.Done()
 		sh.process()
 		close(terminated)
 	}()
-	go sl.process(terminated)
+	sh.slots.wg.Add(1)
+	go func() {
+		defer sh.slots.wg.Done()
+		sl.process(terminated)
+	}()
 	return sh, nil
 }
 
@@ -115,35 +119,45 @@ func (s *Store) create(index uint8, limit uint32, datasize int, basedir string) 
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
-	case sh.reads <- read{buf[:loc.Length], loc.Slot, 0}:
+	case sh.reads <- read{ctx: ctx, buf: buf[:loc.Length], slot: loc.Slot}:
+		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-sh.quit:
+		return ErrQuitting
 	}
 
+	// it is important that this select would NEVER respect the context
+	// cancellation. this would result in a deadlock on the shard, since
+	// the result of the operation must be drained from errc, allowing the
+	// shard to be able to handle new operations (#2932).
 	select {
 	case err = <-sh.errc:
+		if err != nil {
+			s.metrics.TotalReadCallsErr.Inc()
+		}
 		return err
 	case <-s.quit:
+		// we need to make sure that the forever loop in shard.go can
+		// always return due to shutdown in case this goroutine goes away.
 		return ErrQuitting
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 
 // Write stores a new blob and returns its location to be used as a reference
 // It can be given to a Read call to return the stored blob.
 func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error) {
-	if len(data) > s.datasize {
+	if len(data) > s.maxDataSize {
 		return loc, ErrTooLong
 	}
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	c := s.pool.Get().(chan entry)
-	defer s.pool.Put(c)
+	c := make(chan entry, 1) // buffer the channel to avoid blocking in shard.process on quit or context done
 
 	select {
 	case s.writes <- write{data, c}:
+		s.metrics.TotalWriteCalls.Inc()
 	case <-s.quit:
 		return loc, ErrQuitting
 	case <-ctx.Done():
@@ -152,6 +166,13 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 
 	select {
 	case e := <-c:
+		if e.err == nil {
+			shard := strconv.Itoa(int(e.loc.Shard))
+			s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
+			s.metrics.ShardFragmentation.WithLabelValues(shard).Add(float64(s.maxDataSize - int(e.loc.Length)))
+		} else {
+			s.metrics.TotalWriteCallsErr.Inc()
+		}
 		return e.loc, e.err
 	case <-s.quit:
 		return loc, ErrQuitting
@@ -168,7 +189,14 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // rest of the old blob bytes untouched
 func (s *Store) Release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
-	// we add the current routine and will be Done in slots.process
-	sh.slots.wg.Add(1)
-	return sh.release(ctx, loc.Slot)
+	err := sh.release(ctx, loc.Slot)
+	s.metrics.TotalReleaseCalls.Inc()
+	if err == nil {
+		shard := strconv.Itoa(int(sh.index))
+		s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()
+		s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
+	} else {
+		s.metrics.TotalReleaseCallsErr.Inc()
+	}
+	return err
 }

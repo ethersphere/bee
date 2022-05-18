@@ -126,8 +126,10 @@ func newShard(t *testing.T) *shard {
 	}
 
 	var wg sync.WaitGroup
+	maxDataSize := 1
+	shardSize := 8
 
-	slots := newSlots(ffile.(sharkyFile), &wg)
+	slots := newSlots(ffile.(sharkyFile), shardSize, &wg)
 	err = slots.load()
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +141,7 @@ func newShard(t *testing.T) *shard {
 		errc:        make(chan error),
 		writes:      make(chan write),
 		index:       uint8(index),
-		maxDataSize: 1,
+		maxDataSize: maxDataSize,
 		file:        file.(sharkyFile),
 		slots:       slots,
 		quit:        quit,

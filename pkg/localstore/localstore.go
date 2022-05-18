@@ -264,12 +264,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 		return err
 	}
 
-	err = recoverySharky.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return recoverySharky.Close()
 }
 
 // New returns a new DB.  All fields and indexes are initialized
