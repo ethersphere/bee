@@ -309,13 +309,15 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 		return nil, err
 	}
 
-	fileName := part.FileName()
-	if fileName == "" {
-		fileName = part.FormName()
+	filePath := part.FileName()
+	if filePath == "" {
+		filePath = part.FormName()
 	}
-	if fileName == "" {
-		return nil, errors.New("filename missing")
+	if filePath == "" {
+		return nil, errors.New("filepath missing")
 	}
+
+	fileName := filepath.Base(filePath)
 
 	contentType := part.Header.Get(contentTypeHeader)
 	if contentType == "" {
@@ -331,12 +333,8 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 		return nil, errors.New("invalid file size")
 	}
 
-	if filepath.Dir(fileName) != "." {
-		return nil, errors.New("multipart upload supports only single directory")
-	}
-
 	return &FileInfo{
-		Path:        fileName,
+		Path:        filePath,
 		Name:        fileName,
 		ContentType: contentType,
 		Size:        fileSize,
