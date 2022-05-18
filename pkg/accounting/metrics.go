@@ -18,6 +18,7 @@ type metrics struct {
 	DebitEventsCount                         prometheus.Counter
 	CreditEventsCount                        prometheus.Counter
 	AccountingDisconnectsEnforceRefreshCount prometheus.Counter
+	AccountingRefreshAttemptCount            prometheus.Counter
 	AccountingNonFatalRefreshFailCount       prometheus.Counter
 	AccountingDisconnectsOverdrawCount       prometheus.Counter
 	AccountingDisconnectsGhostOverdrawCount  prometheus.Counter
@@ -26,6 +27,9 @@ type metrics struct {
 	AccountingReserveCount                   prometheus.Counter
 	TotalOriginatedCreditedAmount            prometheus.Counter
 	OriginatedCreditEventsCount              prometheus.Counter
+	SettleErrorCount                         prometheus.Counter
+	PaymentAttemptCount                      prometheus.Counter
+	PaymentErrorCount                        prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -61,6 +65,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "disconnects_enforce_refresh_count",
 			Help:      "Number of occurrences of peers disconnected based on failed refreshment attempts",
+		}),
+		AccountingRefreshAttemptCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "refresh_attempt_count",
+			Help:      "Number of attempts of refresh op",
 		}),
 		AccountingNonFatalRefreshFailCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -110,6 +120,24 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "originated_credit_events_count",
 			Help:      "Number of occurrences of BZZ credit events as originator towards peers",
+		}),
+		SettleErrorCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "settle_error_count",
+			Help:      "Number of errors occurring in settle method",
+		}),
+		PaymentErrorCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "payment_error_count",
+			Help:      "Number of errors occurring during payment op",
+		}),
+		PaymentAttemptCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "payment_attempt_count",
+			Help:      "Number of attempts of payment op",
 		}),
 	}
 }
