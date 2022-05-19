@@ -164,7 +164,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
-	nameOrHex := mux.Vars(r)["addr"]
+	nameOrHex := mux.Vars(r)["address"]
 	ctx := r.Context()
 
 	address, err := s.resolveNameOrAddress(nameOrHex)

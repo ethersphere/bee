@@ -30,14 +30,16 @@ func TestStewardship(t *testing.T) {
 		addr           = swarm.NewAddress([]byte{31: 128})
 	)
 	client, _, _, _ := newTestServer(t, testServerOptions{
-		Storer:  storer,
-		Tags:    tags.NewTags(statestoreMock, logger),
-		Logger:  logger,
-		Steward: stewardMock,
+		Restricted: true,
+		Storer:     storer,
+		Tags:       tags.NewTags(statestoreMock, logger),
+		Logger:     logger,
+		Steward:    stewardMock,
 	})
 
 	t.Run("re-upload", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+addr.String(), http.StatusOK,
+			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
@@ -50,9 +52,11 @@ func TestStewardship(t *testing.T) {
 
 	t.Run("is-retrievable", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, "/v1/stewardship/"+addr.String(), http.StatusOK,
+			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.IsRetrievableResponse{IsRetrievable: true}),
 		)
 		jsonhttptest.Request(t, client, http.MethodGet, "/v1/stewardship/"+hex.EncodeToString([]byte{}), http.StatusNotFound,
+			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
 				Message: http.StatusText(http.StatusNotFound),

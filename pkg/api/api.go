@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,6 +24,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -29,20 +33,35 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/logging/httpaccess"
+	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/settlement"
+	"github.com/ethersphere/bee/pkg/settlement/swap"
+	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
+	"resenje.org/web"
 )
 
 const (
@@ -111,12 +130,58 @@ type Service struct {
 	post            postage.Service
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
+	metricsRegistry *prometheus.Registry
 	Options
+
 	http.Handler
+	handlerMu sync.RWMutex
+
 	metrics metrics
 
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
+
+	// from debug API
+	overlay           *swarm.Address
+	publicKey         ecdsa.PublicKey
+	pssPublicKey      ecdsa.PublicKey
+	ethereumAddress   common.Address
+	chequebookEnabled bool
+	swapEnabled       bool
+
+	topologyDriver topology.Driver
+	p2p            p2p.DebugService
+	accounting     accounting.Interface
+	chequebook     chequebook.Service
+	pseudosettle   settlement.Interface
+	pingpong       pingpong.Interface
+	batchStore     postage.Storer
+
+	swap        swap.Interface
+	transaction transaction.Service
+	lightNodes  *lightnode.Container
+	blockTime   *big.Int
+
+	postageSem       *semaphore.Weighted
+	cashOutChequeSem *semaphore.Weighted
+	beeMode          BeeNodeMode
+	gatewayMode      bool
+
+	chainBackend transaction.Backend
+	erc20Service erc20.Service
+	chainID      int64
+}
+
+func (s *Service) SetP2P(p2p p2p.DebugService) {
+	if s != nil {
+		s.p2p = p2p
+	}
+}
+
+func (s *Service) SetSwarmAddress(addr *swarm.Address) {
+	if s != nil {
+		s.overlay = addr
+	}
 }
 
 type Options struct {
@@ -126,37 +191,135 @@ type Options struct {
 	Restricted         bool
 }
 
+type ExtraOptions struct {
+	Pingpong         pingpong.Interface
+	TopologyDriver   topology.Driver
+	LightNodes       *lightnode.Container
+	Accounting       accounting.Interface
+	Pseudosettle     settlement.Interface
+	Swap             swap.Interface
+	Chequebook       chequebook.Service
+	BatchStore       postage.Storer
+	BlockTime        *big.Int
+	Tags             *tags.Tags
+	Storer           storage.Storer
+	Resolver         resolver.Interface
+	Pss              pss.Interface
+	TraversalService traversal.Traverser
+	Pinning          pinning.Interface
+	FeedFactory      feeds.Factory
+	Post             postage.Service
+	PostageContract  postagecontract.Interface
+	Steward          steward.Interface
+}
+
 const (
 	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-// New will create a and initialize a new API service.
-func New(tags *tags.Tags, storer storage.Storer, resolver resolver.Interface, pss pss.Interface, traversalService traversal.Traverser, pinning pinning.Interface, feedFactory feeds.Factory, post postage.Service, postageContract postagecontract.Interface, steward steward.Interface, signer crypto.Signer, auth authenticator, logger logging.Logger, tracer *tracing.Tracer, o Options) (*Service, <-chan *pusher.Op) {
-	s := &Service{
-		auth:            auth,
-		tags:            tags,
-		storer:          storer,
-		resolver:        resolver,
-		pss:             pss,
-		traversal:       traversalService,
-		pinning:         pinning,
-		feedFactory:     feedFactory,
-		post:            post,
-		postageContract: postageContract,
-		steward:         steward,
-		chunkPushC:      make(chan *pusher.Op),
-		signer:          signer,
-		Options:         o,
-		logger:          logger,
-		tracer:          tracer,
-		metrics:         newMetrics(),
-		quit:            make(chan struct{}),
-	}
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
+	s := new(Service)
 
-	s.setupRouting()
+	s.beeMode = beeMode
+	s.gatewayMode = gatewayMode
+	s.logger = logger
+	s.chequebookEnabled = chequebookEnabled
+	s.swapEnabled = swapEnabled
+	s.publicKey = publicKey
+	s.pssPublicKey = pssPublicKey
+	s.ethereumAddress = ethereumAddress
+	s.transaction = transaction
+	s.metricsRegistry = newDebugMetrics()
 
-	return s, s.chunkPushC
+	return s
+}
+
+// Configure will create a and initialize a new API service.
+func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) <-chan *pusher.Op {
+	s.auth = auth
+	s.chunkPushC = make(chan *pusher.Op)
+	s.signer = signer
+	s.Options = o
+	s.tracer = tracer
+	s.metrics = newMetrics()
+
+	s.quit = make(chan struct{})
+
+	s.tags = e.Tags
+	s.storer = e.Storer
+	s.resolver = e.Resolver
+	s.pss = e.Pss
+	s.traversal = e.TraversalService
+	s.pinning = e.Pinning
+	s.feedFactory = e.FeedFactory
+	s.post = e.Post
+	s.postageContract = e.PostageContract
+	s.steward = e.Steward
+
+	s.pingpong = e.Pingpong
+	s.topologyDriver = e.TopologyDriver
+	s.accounting = e.Accounting
+	s.chequebook = e.Chequebook
+	s.swap = e.Swap
+	s.lightNodes = e.LightNodes
+	s.batchStore = e.BatchStore
+	s.pseudosettle = e.Pseudosettle
+	s.blockTime = e.BlockTime
+
+	s.postageSem = semaphore.NewWeighted(1)
+	s.cashOutChequeSem = semaphore.NewWeighted(1)
+
+	s.chainID = chainID
+	s.erc20Service = erc20
+	s.chainBackend = chainBackend
+
+	return s.chunkPushC
+}
+
+func (s *Service) MountTechnicalDebug(router *mux.Router) {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	s.mountTechnicalDebug(router)
+	s.Handler = router
+}
+
+func (s *Service) MountDebug(router *mux.Router) {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	s.mountBusinessDebug(router)
+	s.Handler = router
+}
+
+func (s *Service) MountAPI(router *mux.Router) {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	s.mountAPI(router)
+
+	s.Handler = web.ChainHandlers(
+		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
+		handlers.CompressHandler,
+		// todo: add recovery handler
+		s.responseCodeMetricsHandler,
+		s.pageviewMetricsHandler,
+		func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Allow-Origin", o)
+					w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Gas-Price")
+					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+					w.Header().Set("Access-Control-Max-Age", "3600")
+				}
+				h.ServeHTTP(w, r)
+			})
+		},
+		s.gatewayModeForbidHeadersHandler,
+		web.FinalHandler(router),
+	)
 }
 
 // Close hangs up running websockets on shutdown.
