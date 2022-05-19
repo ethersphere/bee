@@ -58,11 +58,11 @@ func TestSubdomains(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var (
-				dirUploadResource   = "/bzz"
-				storer              = mock.NewStorer()
-				mockStatestore      = statestore.NewStateStore()
-				logger              = logging.New(os.Stdout, 6)
-				client, _, laddr, _ = newTestServer(t, testServerOptions{
+				dirUploadResource = "/bzz"
+				storer            = mock.NewStorer()
+				mockStatestore    = statestore.NewStateStore()
+				logger            = logging.New(os.Stdout, 6)
+				client, _, _, _   = newTestServer(t, testServerOptions{
 					Storer:          storer,
 					Tags:            tags.NewTags(mockStatestore, logger),
 					Logger:          logger,
@@ -101,13 +101,10 @@ func TestSubdomains(t *testing.T) {
 				t.Fatalf("got unexpected reference exp %s got %s", tc.expectedReference.String(), resp.Reference.String())
 			}
 
-			var port int
-			fmt.Sscanf(laddr, "127.0.0.1:%d", &port)
-
 			for _, f := range tc.files {
 				jsonhttptest.Request(
-					t, http.DefaultClient, http.MethodGet,
-					fmt.Sprintf("http://test.eth.localhost:%d/%s", port, path.Join(f.dir, f.name)),
+					t, client, http.MethodGet,
+					fmt.Sprintf("http://test.eth.localhost/%s", path.Join(f.dir, f.name)),
 					http.StatusOK,
 					jsonhttptest.WithExpectedResponse(f.data),
 				)

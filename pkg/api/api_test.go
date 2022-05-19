@@ -13,9 +13,11 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,12 +122,21 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	var (
 		httpClient = &http.Client{
 			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-				u, err := url.Parse(ts.URL + r.URL.String())
+				requestURL := r.URL.String()
+				if !strings.HasPrefix(requestURL, "http://") {
+					requestURL = ts.URL + r.URL.String()
+				}
+				u, err := url.Parse(requestURL)
 				if err != nil {
 					return nil, err
 				}
 				r.URL = u
-				return ts.Client().Transport.RoundTrip(r)
+				transport := ts.Client().Transport
+				// always dial to the server address, regardless of the url host and port
+				transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return net.Dial(network, ts.Listener.Addr().String())
+				}
+				return transport.RoundTrip(r)
 			}),
 		}
 		conn *websocket.Conn

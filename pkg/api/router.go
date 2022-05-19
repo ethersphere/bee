@@ -38,6 +38,15 @@ func (s *server) setupRouting() {
 
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
+	subdomainRouter := router.Host("{subdomain:.*}.localhost").Subrouter()
+
+	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.gatewayModeForbidEndpointHandler,
+			web.FinalHandlerFunc(s.subdomainHandler),
+		),
+	})
+
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Ethereum Swarm Bee")
 	})
@@ -193,15 +202,6 @@ func (s *server) setupRouting() {
 		"PUT": web.ChainHandlers(
 			s.gatewayModeForbidEndpointHandler,
 			web.FinalHandlerFunc(s.stewardshipPutHandler),
-		),
-	})
-
-	subdomainRouter := router.Host("{subdomain}.localhost").Subrouter()
-
-	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			s.gatewayModeForbidEndpointHandler,
-			web.FinalHandlerFunc(s.subdomainHandler),
 		),
 	})
 
