@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -12,8 +11,6 @@ import (
 
 func (s *server) subdomainHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-
-	fmt.Println("SUBDOMAIN HANDLING")
 
 	nameOrHex := mux.Vars(r)["subdomain"]
 	pathVar := mux.Vars(r)["path"]
