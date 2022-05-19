@@ -103,6 +103,12 @@ func WithForceDefault() Option {
 	}
 }
 
+func WithDefaultStaticResolver(staticResolver resolver.Interface) Option {
+	return func(mr *MultiResolver) {
+		mr.PushResolver("", staticResolver)
+	}
+}
+
 // PushResolver will push a new Resolver to the name resolution chain for the
 // given TLD. An empty TLD will push to the default resolver chain.
 func (mr *MultiResolver) PushResolver(tld string, r resolver.Interface) {
