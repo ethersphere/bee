@@ -26,7 +26,7 @@ The node's output was:
         echo "
 Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: 0x$ETH_ADDRESS.
 
-Learn how to fund your node by visiting our docs at at https://docs.ethswarm.org/docs/installation/fund-your-node
+Learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node
 
 Once your node's wallet has received the funds it will begin joining the Swarm network.
 
