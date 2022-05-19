@@ -422,6 +422,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 				balance.refreshOngoing = true
 				// add settled amount to shadow reserve before sending it
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+				balance.reservedBalance = new(big.Int).Sub(balance.reservedBalance, paymentAmount)
 				a.wg.Add(1)
 				go a.refreshFunction(context.Background(), peer, paymentAmount)
 			}
