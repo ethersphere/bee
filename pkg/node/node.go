@@ -841,7 +841,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-			APIAddr:            o.APIAddr,
 		})
 		pusherService.AddFeed(chunkC)
 		apiListener, err := net.Listen("tcp", o.APIAddr)
