@@ -196,9 +196,9 @@ func (s *server) setupRouting() {
 		),
 	})
 
-	subdomainRouter := router.Host(fmt.Sprintf("{subdomain}.localhost:%d", 1633)).Subrouter()
+	subdomainRouter := router.Host("{subdomain}.localhost").Subrouter()
 
-	subdomainRouter.Handle("/{path}", jsonhttp.MethodHandler{
+	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.gatewayModeForbidEndpointHandler,
 			web.FinalHandlerFunc(s.subdomainHandler),

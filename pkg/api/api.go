@@ -43,7 +43,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/gorilla/mux"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -235,28 +234,6 @@ func (s *server) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidNameOrAddress, err)
-}
-
-func (s *server) subdomainHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-
-	nameOrHex := mux.Vars(r)["subdomain"]
-	pathVar := mux.Vars(r)["path"]
-	if strings.HasSuffix(pathVar, "/") {
-		pathVar = strings.TrimRight(pathVar, "/")
-		// NOTE: leave one slash if there was some
-		pathVar += "/"
-	}
-
-	address, err := s.resolveNameOrAddress(nameOrHex)
-	if err != nil {
-		logger.Debugf("bzz download: parse address %s: %v", nameOrHex, err)
-		logger.Error("bzz download: parse address")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	s.serveReference(address, pathVar, w, r)
 }
 
 // requestModePut returns the desired storage.ModePut for this request based on the request headers.
