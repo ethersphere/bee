@@ -301,6 +301,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 	}
 	s.logger.Tracef("pusher: pushed chunk %s to node %s, receipt depth %d", addr, peer, po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+	s.attempts.delete(addr)
 	return nil
 }
 
