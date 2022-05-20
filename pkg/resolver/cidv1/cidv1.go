@@ -11,8 +11,8 @@ import (
 // https://github.com/multiformats/multicodec/blob/master/table.csv
 const (
 	SwarmNsCodec       uint64 = 0xe4
-	SwarmManifestCodec        = 0xfa
-	SwarmFeedCodec            = 0xfb
+	SwarmManifestCodec uint64 = 0xfa
+	SwarmFeedCodec     uint64 = 0xfb
 )
 
 type Resolver struct{}
