@@ -930,6 +930,10 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 	k.metrics.TotalOutboundConnectionAttempts.Inc()
 
+	if blocklisted, _ := k.p2p.Blocklisted(peer); blocklisted {
+		return p2p.ErrPeerBlocklisted
+	}
+
 	switch i, err := k.p2p.Connect(ctx, ma); {
 	case errors.Is(err, p2p.ErrNetworkUnavailable):
 		return err
