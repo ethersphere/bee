@@ -261,9 +261,9 @@ scoop:
     - "(Get-Content -path $persist_dir\\bee.yaml -Raw) -replace './password',\"$persist_dir\\password\" | Set-Content -Path $persist_dir\\bee.yaml"
     - "if(!(Test-Path $persist_dir\\password)){[System.Web.Security.Membership]::GeneratePassword(32,5) | Set-Content -Path $persist_dir\\password}"
     - "if(sc.exe query SwarmBeeSvc | Select-String FAILED){sc.exe create SwarmBeeSvc binPath= \"$dir\\bee.exe start --config=$persist_dir\\bee.yaml\" type= share start= auto displayName= \"Bee\"; sc.exe description SwarmBeeSvc \"Swarm client implemented in Go.\"}"
-    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is sufficient xDAI (for Gas) and BZZ available on $ETH_ADDRESS address.\nLearn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node\""
-    - "Write-Host \"Obtain a free Infura account and set: swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx inside $persist_dir\\bee.yaml\""
-    - "Write-Host \"After the initial fund deploy Bee chequebook with [sudo] $dir\\bee.exe deploy --config=$persist_dir\\bee.yaml\""
+    - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((bee.exe init --config=$persist_dir\\bee.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: 0x$ETH_ADDRESS.\nLearn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node\""
+    - "Write-Host \"Bee requires a Gnosis Chain RPC endpoint to function. By default this is expected to be found at ws://localhost:8546.\nPlease see https://docs.ethswarm.org/docs/installation/install for more details on how to configure your node.\nConfig: $persist_dir\\bee.yaml\""
+    - "Write-Host \"Once your node's wallet has received the funds deploy Bee chequebook with [sudo] $dir\\bee.exe deploy --config=$persist_dir\\bee.yaml\""
     - "Write-Host 'Start Bee service with [sudo] sc.exe start SwarmBeeSvc'"
 
 brews:
@@ -284,15 +284,11 @@ brews:
         Logs:   #{var}/log/swarm-bee/bee.log
         Config: #{etc}/swarm-bee/bee.yaml
 
-        Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
-        If needed obtain a free Infura account and set:
-        swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-        It is recommended to use external signer with bee.
-        Check documentation for more info:
-        - SWAP https://docs.ethswarm.org/docs/installation/manual#swap-bandwidth-incentives
-        - External signer https://docs.ethswarm.org/docs/installation/bee-clef
+        Bee requires a Gnosis Chain RPC endpoint to function. By default this is expected to be found at ws://localhost:8546.
 
-        After you finish configuration run 'bee-get-addr'.
+        Please see https://docs.ethswarm.org/docs/installation/install for more details on how to configure your node.
+
+        After you finish configuration run 'sudo bee-get-addr' and fund your node with XDAI, and also XBZZ if so desired.
     test: |
       system "#{bin}/bee version"
     install: |

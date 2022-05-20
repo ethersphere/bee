@@ -11,14 +11,11 @@ if [ "$1" = "configure" ]; then
 Logs:   journalctl -f -u bee.service
 Config: /etc/bee/bee.yaml
 
-Bee requires an Ethereum endpoint to function. By default is using ws://localhost:8546 ethereum endpoint.
-If needed obtain a free Infura account and set:
-swap-endpoint: wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-It is recommended to use external signer with bee.
-Check documentation for more info:
-- External signer https://docs.ethswarm.org/docs/installation/bee-clef
+Bee requires a Gnosis Chain RPC endpoint to function. By default this is expected to be found at ws://localhost:8546.
 
-After you finish configuration run 'sudo bee-get-addr'.
+Please see https://docs.ethswarm.org/docs/installation/install for more details on how to configure your node.
+
+After you finish configuration run 'sudo bee-get-addr' and fund your node with XDAI, and also XBZZ if so desired.
         "
     fi
 

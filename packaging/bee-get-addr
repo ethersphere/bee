@@ -13,7 +13,7 @@ case "$RESP" in
         echo "
 The bee node has returned an error, probably because the bee-clef external signer is enabled, but the node couldn't connect to it.
 
-Check https://docs.ethswarm.org/ for more info.
+Check https://docs.ethswarm.org/docs/ for more info.
 
 Fix the configuration and try again.
 
@@ -24,13 +24,13 @@ The node's output was:
     *)
         ETH_ADDRESS=$(echo "$RESP" | grep ethereum | cut -d' ' -f6 | tr -d '"')
         echo "
-Please make sure there is sufficient native tokens and BZZ available on the node's Ethereum address at the APPROPRIATE BLOCKCHAIN: 0x$ETH_ADDRESS.
+Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: 0x$ETH_ADDRESS.
 
-Learn how to fund your node by visiting our docs at at https://docs.ethswarm.org/docs/installation/fund-your-node
+Learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node
 
-Once the node's wallet has received the funds it will begin joining the Swarm network.
+Once your node's wallet has received the funds it will begin joining the Swarm network.
 
-See the docs for more at https://docs.ethswarm.org/docs/.
+See the docs for more information at https://docs.ethswarm.org/docs/.
         "
         ;;
 esac
