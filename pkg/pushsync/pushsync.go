@@ -319,7 +319,9 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	ps.metrics.TotalOutgoing.Inc()
 	r, err := ps.pushToClosest(ctx, ch, true, swarm.ZeroAddress)
 	if err != nil {
-		ps.metrics.TotalOutgoingErrors.Inc()
+		if !errors.Is(err, topology.ErrWantSelf) {
+			ps.metrics.TotalOutgoingErrors.Inc()
+		}
 		return nil, err
 	}
 	return &Receipt{
@@ -400,8 +402,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				return nil, err
 			}
 
-			ps.metrics.TotalSendAttempts.Inc()
-
 			skipPeers = append(skipPeers, peer)
 
 			go func() {
@@ -422,18 +422,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
+			if result.err == nil {
+				return result.receipt, nil
+			}
+
+			logger.Debugf("pushsync: could not push to peer: %v", result.err)
+
 			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
 			}
-
-			if result.err == nil {
-				return result.receipt, nil
-			}
-
-			ps.metrics.TotalFailedSendAttempts.Inc()
-			logger.Debugf("pushsync: could not push to peer: %v", result.err)
 
 			// pushPeer returned early, do not count as an attempt
 			if !result.pushed {
@@ -473,10 +472,16 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	)
 
 	defer func() {
+		ps.metrics.TotalSendAttempts.Inc()
+		if err != nil {
+			ps.metrics.TotalFailedSendAttempts.Inc()
+		}
+
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, pushed: pushed, receipt: &receipt}:
 		case <-doneChan:
-			ps.metrics.DuplicateReceipt.Inc()
+			ps.metrics.LeftoverPushes.Inc()
+			return
 		}
 	}()
 

@@ -31,7 +31,7 @@ type metrics struct {
 	OriginPushTime                  prometheus.Histogram
 	TotalReplicationFromDistantPeer prometheus.Counter
 	TotalReplicationFromClosestPeer prometheus.Counter
-	DuplicateReceipt                prometheus.Counter
+	LeftoverPushes                  prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -172,11 +172,11 @@ func newMetrics() metrics {
 			Name:      "total_closest_replications",
 			Help:      "Total no of replication requests received from closest peer to chunk",
 		}),
-		DuplicateReceipt: prometheus.NewCounter(prometheus.CounterOpts{
+		LeftoverPushes: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "duplicate_receipts",
-			Help:      "Number of receipts received after first successful receipt.",
+			Name:      "leftover_pushes",
+			Help:      "Number of leftover push attempts that complete after the request is already over.",
 		}),
 	}
 }
