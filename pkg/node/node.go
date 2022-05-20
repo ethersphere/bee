@@ -215,14 +215,14 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		tracerCloser:   tracerCloser,
 	}
 
-	defer func() {
+	defer func(b *Bee) {
 		if err != nil {
 			logger.Errorf("got error %v, shutting down...", err)
 			if err2 := b.Shutdown(); err2 != nil {
 				logger.Errorf("got error while shutting down: %v", err2)
 			}
 		}
-	}()
+	}(b)
 
 	stateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
