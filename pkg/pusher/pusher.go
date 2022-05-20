@@ -256,7 +256,7 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-		return fmt.Errorf("pusher: set sync: %w", err)
+		return fmt.Errorf("set sync: %w", err)
 	}
 	if ch.TagID() > 0 {
 		// for individual chunks uploaded using the
@@ -285,21 +285,21 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 	addr := receipt.Address
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
 	if err != nil {
-		return fmt.Errorf("pusher: receipt recover: %w", err)
+		return fmt.Errorf("receipt recover: %w", err)
 	}
 
 	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.BlockHash)
 	if err != nil {
-		return fmt.Errorf("pusher: receipt storer address: %w", err)
+		return fmt.Errorf("receipt storer address: %w", err)
 	}
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 	d := s.depther.NeighborhoodDepth()
 	if po < d && s.attempts.try(addr) {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)
+		return fmt.Errorf("shallow receipt depth %d, want at least %d", po, d)
 	}
-	s.logger.Tracef("pusher: pushed chunk %s to node %s, receipt depth %d", addr, peer, po)
+	s.logger.Tracef("pushed chunk %s to node %s, receipt depth %d", addr, peer, po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 	return nil
 }
