@@ -38,6 +38,7 @@ import (
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/mux"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -562,6 +563,9 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				// count unexpected requests
 				if errors.Is(err, p2p.ErrUnexpected) {
 					s.metrics.UnexpectedProtocolReqCount.Inc()
+				}
+				if errors.Is(err, mux.ErrReset) {
+					s.metrics.StreamHandlerErrResetCount.Inc()
 				}
 				logger.Debugf("could not handle protocol %s/%s: stream %s: peer %s: error: %v", p.Name, p.Version, ss.Name, overlay, err)
 				return
