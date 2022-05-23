@@ -60,6 +60,9 @@ jobs:
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Fail on purpose
+        run: |
+          exit 1
       - name: Set local cluster
         run: |
           timeout ${TIMEOUT} make beelocal ACTION=add-hosts
