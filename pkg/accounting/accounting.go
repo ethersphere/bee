@@ -225,6 +225,20 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
+
+		switch {
+		case errors.Is(err, pseudosettle.ErrRefreshmentBelowExpected):
+			a.metrics.ErrRefreshmentBelowExpected.Inc()
+		case errors.Is(err, pseudosettle.ErrRefreshmentAboveExpected):
+			a.metrics.ErrRefreshmentAboveExpected.Inc()
+		case errors.Is(err, pseudosettle.ErrTimeOutOfSyncAlleged):
+			a.metrics.ErrTimeOutOfSyncAlleged.Inc()
+		case errors.Is(err, pseudosettle.ErrTimeOutOfSyncRecent):
+			a.metrics.ErrTimeOutOfSyncRecent.Inc()
+		case errors.Is(err, pseudosettle.ErrTimeOutOfSyncInterval):
+			a.metrics.ErrTimeOutOfSyncInterval.Inc()
+		}
+
 		if err != nil {
 			a.metrics.SettleErrorCount.Inc()
 			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
@@ -375,7 +389,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			// except for these cases, blocklist peer in case of a failed refreshment
 			if !errors.Is(err, pseudosettle.ErrSettlementTooSoon) && !errors.Is(err, p2p.ErrPeerNotFound) {
 				a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
-				_ = a.blocklist(peer, 1, "failed to refresh")
+				_ = a.blocklist(peer, 1, "failed to refresh: "+err.Error())
 				return fmt.Errorf("refresh failure: %w", err)
 			} else {
 				// if we get settlement too soon from the peer timestamp being ahead of ours, block payment by returning early
