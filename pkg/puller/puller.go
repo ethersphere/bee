@@ -375,7 +375,14 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			if ruid == 0 {
 				p.metrics.HistWorkerErrCounter.Inc()
 			}
-			if err := p.syncer.CancelRuid(ctx, peer, ruid); err != nil && logMore {
+
+			// since we use bin context cancellation to cancel interval
+			// sync operations, the context can be expired here, causing us
+			// to try to send a message with an expired context, which is
+			// bound to fail.
+			ctxC, cancelC := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelC()
+			if err := p.syncer.CancelRuid(ctxC, peer, ruid); err != nil && logMore {
 				p.logger.Debugf("histSyncWorker cancel ruid: %v", err)
 			}
 			return
@@ -421,7 +428,14 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			if ruid == 0 {
 				p.metrics.LiveWorkerErrCounter.Inc()
 			}
-			if err := p.syncer.CancelRuid(ctx, peer, ruid); err != nil && logMore {
+
+			// since we use bin context cancellation to cancel interval
+			// sync operations, the context can be expired here, causing us
+			// to try to send a message with an expired context, which is
+			// bound to fail.
+			ctxC, cancelC := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelC()
+			if err := p.syncer.CancelRuid(ctxC, peer, ruid); err != nil && logMore {
 				p.logger.Debugf("histSyncWorker cancel ruid: %v", err)
 			}
 			return
