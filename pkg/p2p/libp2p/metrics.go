@@ -23,6 +23,7 @@ type metrics struct {
 	ConnectBreakerCount        prometheus.Counter
 	UnexpectedProtocolReqCount prometheus.Counter
 	KickedOutPeersCount        prometheus.Counter
+	StreamHandlerErrResetCount prometheus.Counter
 	HeadersExchangeDuration    prometheus.Histogram
 }
 
@@ -89,6 +90,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "kickedout_peers_count",
 			Help:      "Number of total kicked-out peers.",
+		}),
+		StreamHandlerErrResetCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "stream_handler_error_reset_count",
+			Help:      "Number of total stream handler error resets.",
 		}),
 		HeadersExchangeDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
