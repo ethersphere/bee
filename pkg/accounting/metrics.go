@@ -30,6 +30,11 @@ type metrics struct {
 	SettleErrorCount                         prometheus.Counter
 	PaymentAttemptCount                      prometheus.Counter
 	PaymentErrorCount                        prometheus.Counter
+	ErrTimeOutOfSyncAlleged                  prometheus.Counter
+	ErrTimeOutOfSyncRecent                   prometheus.Counter
+	ErrTimeOutOfSyncInterval                 prometheus.Counter
+	ErrRefreshmentBelowExpected              prometheus.Counter
+	ErrRefreshmentAboveExpected              prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -138,6 +143,36 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "payment_attempt_count",
 			Help:      "Number of attempts of payment op",
+		}),
+		ErrRefreshmentBelowExpected: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "refreshment_below_expected",
+			Help:      "Number of times the peer received a refreshment that is below expected",
+		}),
+		ErrRefreshmentAboveExpected: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "refreshment_above_expected",
+			Help:      "Number of times the peer received a refreshment that is above expected",
+		}),
+		ErrTimeOutOfSyncAlleged: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "time_out_of_sync_alleged",
+			Help:      "Number of times the timestamps from peer were decreasing",
+		}),
+		ErrTimeOutOfSyncRecent: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "time_out_of_sync_recent",
+			Help:      "Number of times the timestamps from peer differed from our measurement by more than 2 seconds",
+		}),
+		ErrTimeOutOfSyncInterval: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "time_out_of_sync_interval",
+			Help:      "Number of times the time interval from peer differed from local interval by more than 3 seconds",
 		}),
 	}
 }
