@@ -1185,6 +1185,7 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 		}
 		accountingPeer.connected = false
 		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "disconnected")
+		a.metrics.AccountingDisconnectsReconnectCount.Inc()
 	}
 }
 
