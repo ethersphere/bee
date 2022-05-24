@@ -261,7 +261,11 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 				continue
 			}
 
-			if blocklisted, _ := k.p2p.Blocklisted(closestKnownPeer); blocklisted {
+			blocklisted, err := k.p2p.Blocklisted(closestKnownPeer)
+			if err != nil {
+				k.logger.Warningf("kademlia: peer blocklist check: %v", err)
+			}
+			if blocklisted {
 				continue
 			}
 
@@ -309,7 +313,11 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return false, false, nil
 		}
 
-		if blocklisted, _ := k.p2p.Blocklisted(addr); blocklisted {
+		blocklisted, err := k.p2p.Blocklisted(addr)
+		if err != nil {
+			k.logger.Warningf("kademlia: peer blocklist check: %v", err)
+		}
+		if blocklisted {
 			return false, false, nil
 		}
 
