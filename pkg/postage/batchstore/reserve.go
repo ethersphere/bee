@@ -148,6 +148,8 @@ func (s *store) computeRadius() error {
 		return err
 	}
 
+	s.metrics.Commitment.Set(float64(totalCommitment))
+
 	oldRadius := s.rs.Radius
 
 	// edge case where the sum of all batches is below the node capacity.
