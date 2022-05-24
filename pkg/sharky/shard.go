@@ -94,16 +94,16 @@ type shard struct {
 func (sh *shard) process() {
 	var writes chan write
 	var slot uint32
-	defer func() {
-		// this condition checks if an slot is in limbo (popped but not used for write op)
-		if writes != nil {
-			sh.slots.limboWG.Add(1)
-			go func() {
-				defer sh.slots.limboWG.Done()
-				sh.slots.in <- slot
-			}()
-		}
-	}()
+	// defer func() {
+	// 	// this condition checks if an slot is in limbo (popped but not used for write op)
+	// 	if writes != nil {
+	// 		sh.slots.limboWG.Add(1)
+	// 		go func() {
+	// 			defer sh.slots.limboWG.Done()
+	// 			sh.slots.in <- slot
+	// 		}()
+	// 	}
+	// }()
 	free := sh.slots.out
 
 	for {
@@ -149,7 +149,7 @@ func (sh *shard) process() {
 // close closes the shard:
 // wait for pending operations to finish then saves free slots and blobs on disk
 func (sh *shard) close() error {
-	sh.slots.wg.Wait()
+	// sh.slots.wg.Wait()
 	if err := sh.slots.save(); err != nil {
 		return err
 	}
@@ -174,6 +174,9 @@ func (sh *shard) read(r read) error {
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) write(buf []byte, slot uint32) entry {
 	n, err := sh.file.WriteAt(buf, sh.offset(slot))
+	c := make(chan struct{})
+	sh.slots.filled <- c
+	<-c
 	return entry{
 		loc: Location{
 			Shard:  sh.index,

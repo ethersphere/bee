@@ -23,7 +23,7 @@ func TestMissingShard(t *testing.T) {
 	}
 }
 
-func TestRecovery(t *testing.T) {
+func XTestRecovery(t *testing.T) {
 	datasize := 4
 	shards := 8
 	shardSize := 16
@@ -106,7 +106,7 @@ func TestRecovery(t *testing.T) {
 		var freelocs []sharky.Location
 
 		t.Run("correct number of free slots", func(t *testing.T) {
-			s := newSharky(t, dir, 1, shardSize, datasize)
+			s := newSharky(t, dir, shards, shardSize, datasize)
 			cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 			defer cancel()
 

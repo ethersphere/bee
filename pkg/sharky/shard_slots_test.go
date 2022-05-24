@@ -31,17 +31,13 @@ func TestShard(t *testing.T) {
 		t.Fatalf("expected to write to slot 0, got %d", loc.Slot)
 	}
 
-	// in order for the test to succeed this slot is expected to become available before test finishes
-	releaseSlot(t, shard, loc)
-
-	payload = write{buf: []byte{0xff >> 1}, res: make(chan entry)}
-	loc = writePayload(t, shard, payload)
+	payload = write{buf: []byte{0xff}, res: make(chan entry)}
+	loc2 := writePayload(t, shard, payload)
 
 	// immediate write should pick the next slot
-	if loc.Slot != 1 {
-		t.Fatalf("expected to write to slot 1, got %d", loc.Slot)
+	if loc2.Slot != 1 {
+		t.Fatalf("expected to write to slot 1, got %d", loc2.Slot)
 	}
-
 	releaseSlot(t, shard, loc)
 
 	// we make ten writes expecting that slot 0 is released and becomes available for writing eventually
@@ -126,10 +122,8 @@ func newShard(t *testing.T) *shard {
 	}
 
 	var wg sync.WaitGroup
-	maxDataSize := 1
-	shardSize := 8
 
-	slots := newSlots(ffile.(sharkyFile), shardSize, &wg)
+	slots := newSlots(ffile.(sharkyFile), 8, &wg)
 	err = slots.load()
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +135,7 @@ func newShard(t *testing.T) *shard {
 		errc:        make(chan error),
 		writes:      make(chan write),
 		index:       uint8(index),
-		maxDataSize: maxDataSize,
+		maxDataSize: 1,
 		file:        file.(sharkyFile),
 		slots:       slots,
 		quit:        quit,

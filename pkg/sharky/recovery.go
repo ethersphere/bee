@@ -55,7 +55,7 @@ func (r *Recovery) Add(loc Location) error {
 	sh := r.shards[loc.Shard]
 	l := len(sh.data)
 	if diff := int(loc.Slot/8) - l; diff >= 0 {
-		sh.extend(diff + 1)
+		// sh.pop()
 		for i := 0; i <= diff; i++ {
 			sh.data[l+i] = 0x0
 		}

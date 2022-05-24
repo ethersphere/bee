@@ -66,6 +66,10 @@ func TestSingleRetrieval(t *testing.T) {
 				"exact size data 3",
 				[]byte{1, 1, 1, 1},
 				nil,
+			}, {
+				"capacity reached",
+				[]byte{1, 1, 1, 1},
+				context.DeadlineExceeded,
 			},
 		} {
 			buf := make([]byte, datasize)
@@ -108,7 +112,7 @@ func TestPersistence(t *testing.T) {
 	ctx := context.Background()
 	// simulate several subsequent sessions filling up the store
 	for ; i < items; j++ {
-		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +135,7 @@ func TestPersistence(t *testing.T) {
 	}
 	t.Logf("got full in %d sessions\n", j)
 
-	// check location and data consisency
+	// check location and data consistency
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 	if err != nil {
@@ -171,7 +175,7 @@ func TestConcurrency(t *testing.T) {
 		start := make(chan struct{})
 		deleted := make(map[uint32]int)
 		entered := make(map[uint32]struct{})
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		eg, ectx := errgroup.WithContext(ctx)
 		// a number of workers write sequential numbers to sharky
 		for k := 0; k < workers; k++ {
@@ -250,6 +254,7 @@ func TestConcurrency(t *testing.T) {
 				t.Fatal("item at unreleased location incorrect")
 			}
 		}
+		cancel()
 
 		// the store has extra slots capacity
 		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
@@ -266,10 +271,12 @@ func TestConcurrency(t *testing.T) {
 		}
 	}
 	for _, c := range []struct{ workers, shards, shardSize int }{
-		{3, 2, 2},
-		{2, 64, 2},
-		{32, 8, 32},
-		{64, 32, 64},
+		{1, 1, 32},
+		{4, 4, 32},
+		{8, 64, 64},
+		{8, 8, 32},
+		{64, 32, 32},
+		{13, 37, 42},
 	} {
 		t.Run(fmt.Sprintf("workers:%d,shards:%d,size:%d", c.workers, c.shards, c.shardSize), func(t *testing.T) {
 			test(t, c.workers, c.shards, c.shardSize)

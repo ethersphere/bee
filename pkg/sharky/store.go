@@ -40,7 +40,7 @@ type Store struct {
 // arguments:
 // - base directory string
 // - shard count - positive integer < 256 - cannot be zero or expect panic
-// - shard size - positive integer multiple of 8 - for others expect undefined behaviour
+// - shard size - positive integer (practically multiple of 8 on disk) chunk per shard
 // - maxDataSize - positive integer representing the maximum blob size to be stored
 func New(basedir fs.FS, shardCnt, shardSize, maxDataSize int) (*Store, error) {
 	store := &Store{
