@@ -52,3 +52,36 @@ func New(w io.Writer, level logrus.Level) Logger {
 func (l *logger) NewEntry() *logrus.Entry {
 	return logrus.NewEntry(l.Logger)
 }
+
+func NewNoopLogger() Logger {
+	return &noopLogger{}
+}
+
+type noopLogger struct{}
+
+func (noopLogger) Tracef(format string, args ...interface{})   {}
+func (noopLogger) Trace(args ...interface{})                   {}
+func (noopLogger) Debugf(format string, args ...interface{})   {}
+func (noopLogger) Debug(args ...interface{})                   {}
+func (noopLogger) Infof(format string, args ...interface{})    {}
+func (noopLogger) Info(args ...interface{})                    {}
+func (noopLogger) Warningf(format string, args ...interface{}) {}
+func (noopLogger) Warning(args ...interface{})                 {}
+func (noopLogger) Errorf(format string, args ...interface{})   {}
+func (noopLogger) Error(args ...interface{})                   {}
+
+func (noopLogger) WithField(key string, value interface{}) *logrus.Entry {
+	panic("not implemented")
+}
+
+func (noopLogger) WithFields(fields logrus.Fields) *logrus.Entry {
+	panic("not implemented")
+}
+
+func (noopLogger) WriterLevel(_ logrus.Level) *io.PipeWriter {
+	panic("not implemented")
+}
+
+func (noopLogger) NewEntry() *logrus.Entry {
+	panic("not implemented")
+}

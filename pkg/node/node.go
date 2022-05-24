@@ -497,7 +497,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			stateStore,
 			signer,
 			networkID,
-			logger,
+			logging.NewNoopLogger(),
 			libp2pPrivateKey,
 			o,
 		)
