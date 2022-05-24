@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -445,6 +446,11 @@ func TestManage(t *testing.T) {
 		})
 	)
 
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -555,6 +561,11 @@ func TestBinSaturation(t *testing.T) {
 		*kademlia.QuickSaturationPeers = p
 	}(*kademlia.QuickSaturationPeers)
 	*kademlia.QuickSaturationPeers = 2
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 2
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
@@ -1379,7 +1390,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	defer func(p int) {
 		*kademlia.OverSaturationPeers = p
 	}(*kademlia.OverSaturationPeers)
-	*kademlia.OverSaturationPeers = 8
+	*kademlia.OverSaturationPeers = 16
 
 	var (
 		conns, failedConns int32 // how many connect calls were made to the p2p mock
@@ -1770,8 +1781,8 @@ func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) 
 	}
 
 	if isBalanced {
-		prefixes := kademlia.GenerateCommonBinPrefixes(base, 3)
-		for i := 0; i < 8; i++ {
+		prefixes := kademlia.GenerateCommonBinPrefixes(base, kademlia.BitSuffixLength)
+		for i := 0; i < int(math.Pow(2, float64(kademlia.BitSuffixLength))); i++ {
 			rndAddrs[i] = prefixes[bin][i]
 		}
 	} else {
