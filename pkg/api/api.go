@@ -54,6 +54,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -128,6 +129,8 @@ type Service struct {
 	metricsRegistry *prometheus.Registry
 	Options
 
+	DebugRouter *mux.Router
+
 	http.Handler
 	handlerMu sync.RWMutex
 
@@ -179,30 +182,12 @@ func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 	}
 }
 
-func NewDebugService(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
-	s := new(Service)
-
-	s.beeMode = beeMode
-	s.gatewayMode = gatewayMode
-	s.logger = logger
-	s.chequebookEnabled = chequebookEnabled
-	s.swapEnabled = swapEnabled
-	s.publicKey = publicKey
-	s.pssPublicKey = pssPublicKey
-	s.ethereumAddress = ethereumAddress
-	s.transaction = transaction
-	s.metricsRegistry = newDebugMetrics()
-
-	s.Handler = s.newDebugRouter(true)
-
-	return s
-}
-
 type Options struct {
 	CORSAllowedOrigins []string
 	GatewayMode        bool
 	WsPingPeriod       time.Duration
 	Restricted         bool
+	DebugEnabled       bool
 }
 
 type ExtraOptions struct {
@@ -231,6 +216,25 @@ const (
 	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
+
+func NewDebugService(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
+	s := new(Service)
+
+	s.beeMode = beeMode
+	s.gatewayMode = gatewayMode
+	s.logger = logger
+	s.chequebookEnabled = chequebookEnabled
+	s.swapEnabled = swapEnabled
+	s.publicKey = publicKey
+	s.pssPublicKey = pssPublicKey
+	s.ethereumAddress = ethereumAddress
+	s.transaction = transaction
+	s.metricsRegistry = newDebugMetrics()
+
+	s.DebugRouter = s.newDebugRouter()
+
+	return s
+}
 
 // Configure will create a and initialize a new API service.
 func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) <-chan *pusher.Op {
@@ -277,6 +281,18 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.setupRouting()
 
 	return s.chunkPushC
+}
+
+func (s *Service) MountDebugBusiness() {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	// handle is a helper closure which simplifies the router setup.
+	handle := func(path string, handler http.Handler) {
+		s.DebugRouter.Handle(path, handler)
+	}
+
+	s.mountDebugBusiness(handle)
 }
 
 // Close hangs up running websockets on shutdown.

@@ -284,11 +284,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		logger.Info("starting with restricted APIs")
 	}
 
-	apiListener, err := net.Listen("tcp", o.APIAddr)
-	if err != nil {
-		return nil, fmt.Errorf("api listener: %w", err)
-	}
-
 	// set up basic debug api endpoints for debugging and /health endpoint
 	beeNodeMode := api.LightMode
 	if o.FullNodeMode {
@@ -317,7 +312,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService,
+			Handler:           apiService.DebugRouter,
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
 
@@ -332,26 +327,34 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		}()
 
 		b.debugAPIServer = debugAPIServer
-	} else {
-		debugAPIServer := &http.Server{
+	}
+
+	apiListener, err := net.Listen("tcp", o.APIAddr)
+	if err != nil {
+		return nil, fmt.Errorf("api listener: %w", err)
+	}
+
+	if o.Restricted {
+		// mount technical debug endpoints on 1633
+		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService,
+			Handler:           apiService.DebugRouter,
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
 
 		wg.Add(1)
 		go func() {
-			logger.Infof("new debug api address: %s", apiListener.Addr())
+			logger.Infof("debug api address: %s", apiListener.Addr())
 			wg.Done()
-			if err := debugAPIServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
 				logger.Debugf("debug api server: %v", err)
 				logger.Error("unable to serve debug api")
 			}
 		}()
 
-		b.apiServer = debugAPIServer
-		b.apiCloser = apiService
+		b.apiServer = apiServer
+		b.apiCloser = apiServer
 	}
 
 	wg.Wait()
@@ -893,29 +896,25 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
+			DebugEnabled:       o.DebugAPIAddr != "",
 		}, extraOpts, chainID, chainBackend, erc20Service)
 
 		pusherService.AddFeed(chunkC)
 
-		if o.DebugAPIAddr != "" {
+		if !o.Restricted {
 			apiServer := &http.Server{
 				IdleTimeout:       30 * time.Second,
 				ReadHeaderTimeout: 3 * time.Second,
 				Handler:           apiService,
 				ErrorLog:          log.New(b.errorLogWriter, "", 0),
 			}
-
-			var wg sync.WaitGroup
-			wg.Add(1)
 			go func() {
-				logger.Infof("new debug api address: %s", apiListener.Addr())
-				wg.Done()
+				logger.Infof("api address: %s", apiListener.Addr())
 				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-					logger.Debugf("debug api server: %v", err)
-					logger.Error("unable to serve debug api")
+					logger.Debugf("api server: %v", err)
+					logger.Error("unable to serve api")
 				}
 			}()
-			wg.Wait()
 
 			b.apiServer = apiServer
 			b.apiCloser = apiService
@@ -923,6 +922,8 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	}
 
 	if o.DebugAPIAddr != "" {
+		apiService.MountDebugBusiness()
+
 		// register metrics from components
 		apiService.MustRegisterMetrics(p2ps.Metrics()...)
 		apiService.MustRegisterMetrics(pingPong.Metrics()...)
