@@ -54,8 +54,8 @@ const (
 var (
 	nnLowWatermark              = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	quickSaturationPeers        = 4
-	saturationPeers             = 8
-	overSaturationPeers         = 20
+	saturationPeers             = 16
+	overSaturationPeers         = 32
 	bootNodeOverSaturationPeers = 20
 	shortRetry                  = 30 * time.Second
 	timeToRetry                 = 2 * shortRetry
@@ -281,23 +281,22 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 	}
 }
 
-// connectNeighbours attempts to connect to the neighbours
+// connectUntilSaturation attempts to connect to the neighbours
 // which were not considered by the connectBalanced method.
-func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
+func (k *Kad) connectUntilSaturation(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
 
 	sent := 0
 	var currentPo uint8 = 0
 
-	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		depth := k.NeighborhoodDepth()
+	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, bin uint8) (bool, bool, error) {
 
-		// out of depth, skip bin
-		if po < depth {
+		// if the bin is already saturated AND the bin is out of the depth, skip bin
+		if bin < k.NeighborhoodDepth() && k.connectedPeers.BinSize(bin) >= saturationPeers {
 			return false, true, nil
 		}
 
-		if po != currentPo {
-			currentPo = po
+		if bin != currentPo {
+			currentPo = bin
 			sent = 0
 		}
 
@@ -318,7 +317,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 
 			select {
 			case peerConnChan <- &peerConnInfo{
-				po:   po,
+				po:   bin,
 				addr: addr,
 			}:
 			default:
@@ -550,7 +549,7 @@ func (k *Kad) manage() {
 
 			oldDepth := k.NeighborhoodDepth()
 			k.connectBalanced(&wg, balanceChan)
-			k.connectNeighbours(&wg, neighbourhoodChan)
+			k.connectUntilSaturation(&wg, neighbourhoodChan)
 			wg.Wait()
 
 			k.depthMu.Lock()

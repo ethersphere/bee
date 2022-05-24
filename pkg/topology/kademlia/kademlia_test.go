@@ -445,6 +445,11 @@ func TestManage(t *testing.T) {
 		})
 	)
 
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -555,6 +560,11 @@ func TestBinSaturation(t *testing.T) {
 		*kademlia.QuickSaturationPeers = p
 	}(*kademlia.QuickSaturationPeers)
 	*kademlia.QuickSaturationPeers = 2
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 2
 
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
