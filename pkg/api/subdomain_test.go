@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package api_test
 
 import (
@@ -21,9 +25,13 @@ import (
 func TestSubdomains(t *testing.T) {
 
 	for _, tc := range []struct {
-		name              string
-		files             []f
-		expectedReference swarm.Address
+		name                string
+		files               []f
+		expectedReference   swarm.Address
+		wantIndexFilename   string
+		wantErrorFilename   string
+		indexFilenameOption jsonhttptest.Option
+		errorFilenameOption jsonhttptest.Option
 	}{
 		{
 			name:              "nested files with extension",
@@ -55,6 +63,32 @@ func TestSubdomains(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:                "explicit index and error filename",
+			expectedReference:   swarm.MustParseHexAddress("2cd9a6ac11eefbb71b372fb97c3ef64109c409955964a294fdc183c1014b3844"),
+			wantIndexFilename:   "index.html",
+			wantErrorFilename:   "error.html",
+			indexFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
+			errorFilenameOption: jsonhttptest.WithRequestHeader(api.SwarmErrorDocumentHeader, "error.html"),
+			files: []f{
+				{
+					data: []byte("<h1>Swarm"),
+					name: "index.html",
+					dir:  "",
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+				{
+					data: []byte("<h2>404"),
+					name: "error.html",
+					dir:  "",
+					header: http.Header{
+						"Content-Type": {"text/html; charset=utf-8"},
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var (
@@ -78,6 +112,22 @@ func TestSubdomains(t *testing.T) {
 				})
 			)
 
+			validateAltPath := func(t *testing.T, fromPath, toPath string) {
+				t.Helper()
+
+				var respBytes []byte
+
+				jsonhttptest.Request(t, client, http.MethodGet,
+					fmt.Sprintf("http://test.eth.swarm.localhost/%s", toPath), http.StatusOK,
+					jsonhttptest.WithPutResponseBody(&respBytes),
+				)
+
+				jsonhttptest.Request(t, client, http.MethodGet,
+					fmt.Sprintf("http://test.eth.swarm.localhost/%s", fromPath), http.StatusOK,
+					jsonhttptest.WithExpectedResponse(respBytes),
+				)
+			}
+
 			tarReader := tarFiles(t, tc.files)
 
 			var resp api.BzzUploadResponse
@@ -89,6 +139,12 @@ func TestSubdomains(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 				jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
+			}
+			if tc.indexFilenameOption != nil {
+				options = append(options, tc.indexFilenameOption)
+			}
+			if tc.errorFilenameOption != nil {
+				options = append(options, tc.errorFilenameOption)
 			}
 
 			jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusCreated, options...)
@@ -104,10 +160,17 @@ func TestSubdomains(t *testing.T) {
 			for _, f := range tc.files {
 				jsonhttptest.Request(
 					t, client, http.MethodGet,
-					fmt.Sprintf("http://test.eth.localhost/%s", path.Join(f.dir, f.name)),
+					fmt.Sprintf("http://test.eth.swarm.localhost/%s", path.Join(f.dir, f.name)),
 					http.StatusOK,
 					jsonhttptest.WithExpectedResponse(f.data),
 				)
+			}
+
+			if tc.wantIndexFilename != "" {
+				validateAltPath(t, "", tc.wantIndexFilename)
+			}
+			if tc.wantErrorFilename != "" {
+				validateAltPath(t, "_non_existent_file_path_", tc.wantErrorFilename)
 			}
 		})
 	}

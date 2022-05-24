@@ -38,7 +38,7 @@ func (s *server) setupRouting() {
 
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
-	subdomainRouter := router.Host("{subdomain:.*}.localhost").Subrouter()
+	subdomainRouter := router.Host("{subdomain:.*}.swarm.localhost").Subrouter()
 
 	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
