@@ -295,6 +295,8 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 	d := s.depther.NeighborhoodDepth()
+
+	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
 	if po < d && s.attempts.try(addr) {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)

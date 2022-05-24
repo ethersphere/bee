@@ -53,7 +53,7 @@ func (a *attempts) try(ch swarm.Address) bool {
 	defer a.mtx.Unlock()
 	key := ch.ByteString()
 	a.attempts[key]++
-	return a.attempts[key] != retryCount
+	return a.attempts[key] < retryCount
 }
 
 func (a *attempts) delete(ch swarm.Address) {
