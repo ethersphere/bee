@@ -63,6 +63,7 @@ type Service interface {
 	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
 	Disconnecter
 	Peers() []Peer
+	Blocklisted(swarm.Address) (bool, error)
 	BlocklistedPeers() ([]Peer, error)
 	Addresses() ([]ma.Multiaddr, error)
 	SetPickyNotifier(PickyNotifier)

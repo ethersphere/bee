@@ -834,6 +834,10 @@ func (s *Service) Peers() []p2p.Peer {
 	return s.peers.peers()
 }
 
+func (s *Service) Blocklisted(overlay swarm.Address) (bool, error) {
+	return s.blocklist.Exists(overlay)
+}
+
 func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
 	return s.blocklist.Peers()
 }
