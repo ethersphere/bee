@@ -408,14 +408,10 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	now := a.timeNow().UnixMilli()
 	timeElapsed := now - balance.refreshTimestamp
 
-	// compute the debt including debt created by incoming payments
-	compensatedBalance, err := a.CompensatedBalance(peer)
+	paymentAmount, err := a.shadowBalance(peer, balance)
 	if err != nil {
 		return err
 	}
-
-	debt := new(big.Int).Neg(compensatedBalance)
-	paymentAmount := new(big.Int).Sub(debt, balance.shadowReservedBalance)
 
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
@@ -894,11 +890,11 @@ func (a *Accounting) shadowBalance(peer swarm.Address, accountingPeer *accountin
 
 	debt := new(big.Int).Add(negativeBalance, surplusBalance)
 
-	if debt.Cmp(accountingPeer.refreshReservedBalance) < 0 {
+	if debt.Cmp(accountingPeer.shadowReservedBalance) < 0 {
 		return zero, nil
 	}
 
-	shadowBalance = new(big.Int).Sub(negativeBalance, accountingPeer.refreshReservedBalance)
+	shadowBalance = new(big.Int).Sub(negativeBalance, accountingPeer.shadowReservedBalance)
 
 	return shadowBalance, nil
 }
@@ -1049,11 +1045,11 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.refreshOngoing = false
+	accountingPeer.reservedBalance = new(big.Int).Add(accountingPeer.reservedBalance, attemptedAmount)
 
 	accountingPeer.refreshTimestamp = timestamp
 
 	if receivedError != nil {
-
 		switch {
 		case errors.Is(receivedError, pseudosettle.ErrRefreshmentAboveExpected):
 			a.metrics.ErrRefreshmentAboveExpected.Inc()
