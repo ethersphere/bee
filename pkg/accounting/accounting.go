@@ -893,7 +893,7 @@ func (a *Accounting) shadowBalance(peer swarm.Address, accountingPeer *accountin
 
 	debt := new(big.Int).Add(negativeBalance, surplusBalance)
 
-	if debt.Cmp(accountingPeer.shadowReservedBalance) < 0 {
+	if debt.Cmp(accountingPeer.refreshReservedBalance) < 0 {
 		return zero, nil
 	}
 
@@ -1048,7 +1048,6 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.refreshOngoing = false
-	accountingPeer.refreshReservedBalance.Set(big.NewInt(0))
 
 	accountingPeer.refreshTimestamp = timestamp
 
@@ -1074,13 +1073,9 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	}
 
 	// enforce allowance
-	// B) impossible
+	checkAllowance := new(big.Int).Sub(attemptedAmount, accountingPeer.refreshReservedBalance)
 
-	checkAllowance, err := a.shadowBalance(peer, accountingPeer)
-	if err != nil {
-		_ = a.blocklist(peer, 1, "failed to enforce allowance")
-		return
-	}
+	accountingPeer.refreshReservedBalance.Set(big.NewInt(0))
 
 	if checkAllowance.Cmp(attemptedAmount) > 0 {
 		checkAllowance.Set(attemptedAmount)
