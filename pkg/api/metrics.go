@@ -76,11 +76,11 @@ func toFileSizeBucket(bytes int64) int64 {
 	return fileSizeBucketsKBytes[len(fileSizeBucketsKBytes)-1] * bytesInKB
 }
 
-func (s *server) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
-func (s *server) pageviewMetricsHandler(h http.Handler) http.Handler {
+func (s *Service) pageviewMetricsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		s.metrics.RequestCount.Inc()
@@ -89,7 +89,7 @@ func (s *server) pageviewMetricsHandler(h http.Handler) http.Handler {
 	})
 }
 
-func (s *server) responseCodeMetricsHandler(h http.Handler) http.Handler {
+func (s *Service) responseCodeMetricsHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrapper := newResponseWriter(w)
 		h.ServeHTTP(wrapper, r)

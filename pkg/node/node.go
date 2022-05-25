@@ -830,7 +830,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 		b.chainSyncerCloser = chainSyncer
 	}
-	var apiService api.Service
+	var apiService *api.Service
 	if o.APIAddr != "" {
 		// API server
 		var chunkC <-chan *pusher.Op
