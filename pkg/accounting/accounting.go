@@ -418,7 +418,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		if timeElapsed > 999 {
 			if !balance.refreshOngoing {
 				balance.refreshOngoing = true
-				a.wg.Add(1)
 				go a.refreshFunction(context.Background(), peer, paymentAmount)
 			}
 		}
@@ -1036,7 +1035,6 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 // NotifyPayment is called by Settlement when we receive a payment.
 func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, amount *big.Int, timestamp int64, allegedInterval int64, receivedError error) {
 
-	defer a.wg.Done()
 	accountingPeer := a.getAccountingPeer(peer)
 
 	accountingPeer.lock.Lock()
