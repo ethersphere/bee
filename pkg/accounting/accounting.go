@@ -225,7 +225,22 @@ func (a *Accounting) PrepareCredit(peer swarm.Address, price uint64, originated 
 
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
+
+		switch {
+		case errors.Is(err, pseudosettle.ErrRefreshmentBelowExpected):
+			a.metrics.ErrRefreshmentBelowExpected.Inc()
+		case errors.Is(err, pseudosettle.ErrRefreshmentAboveExpected):
+			a.metrics.ErrRefreshmentAboveExpected.Inc()
+		case errors.Is(err, pseudosettle.ErrTimeOutOfSyncAlleged):
+			a.metrics.ErrTimeOutOfSyncAlleged.Inc()
+		case errors.Is(err, pseudosettle.ErrTimeOutOfSyncRecent):
+			a.metrics.ErrTimeOutOfSyncRecent.Inc()
+		case errors.Is(err, pseudosettle.ErrTimeOutOfSyncInterval):
+			a.metrics.ErrTimeOutOfSyncInterval.Inc()
+		}
+
 		if err != nil {
+			a.metrics.SettleErrorCount.Inc()
 			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
 		}
 
@@ -365,6 +380,8 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			return err
 		}
 
+		a.metrics.AccountingRefreshAttemptCount.Inc()
+
 		acceptedAmount, timestamp, err := a.refreshFunction(context.Background(), peer, paymentAmount, shadowBalance)
 		if err != nil {
 			// if we get settlement too soon it comes from a peer timestamp being ahead of ours, blocking refreshment
@@ -372,7 +389,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 			// except for these cases, blocklist peer in case of a failed refreshment
 			if !errors.Is(err, pseudosettle.ErrSettlementTooSoon) && !errors.Is(err, p2p.ErrPeerNotFound) {
 				a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
-				_ = a.blocklist(peer, 1, "failed to refresh")
+				_ = a.blocklist(peer, 1, "failed to refresh: "+err.Error())
 				return fmt.Errorf("refresh failure: %w", err)
 			} else {
 				// if we get settlement too soon from the peer timestamp being ahead of ours, block payment by returning early
@@ -423,6 +440,9 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 				// add settled amount to shadow reserve before sending it
 				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
 				a.wg.Add(1)
+
+				a.metrics.PaymentAttemptCount.Inc()
+
 				go a.payFunction(context.Background(), peer, paymentAmount)
 			}
 		}
@@ -758,6 +778,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 	if receivedError != nil {
 		accountingPeer.lastSettlementFailureTimestamp = a.timeNow().Unix()
+		a.metrics.PaymentErrorCount.Inc()
 		a.logger.Warningf("accounting: payment failure %v", receivedError)
 		return
 	}
@@ -1164,6 +1185,7 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 		}
 		accountingPeer.connected = false
 		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "disconnected")
+		a.metrics.AccountingDisconnectsReconnectCount.Inc()
 	}
 }
 
