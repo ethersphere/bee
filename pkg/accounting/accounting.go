@@ -97,6 +97,7 @@ type accountingPeer struct {
 	lock                           sync.Mutex // lock to be held during any accounting action for this peer
 	reservedBalance                *big.Int   // amount currently reserved for active peer interaction
 	shadowReservedBalance          *big.Int   // amount potentially to be debited for active peer interaction
+	refreshReservedBalance         *big.Int   // amount debt have decreased during an ongoing refreshment
 	ghostBalance                   *big.Int   // amount potentially could have been debited for but was not
 	paymentThreshold               *big.Int   // the threshold at which the peer expects us to pay
 	earlyPayment                   *big.Int   // individual early payment threshold calculated from from payment threshold and early payment percentage
@@ -413,15 +414,15 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		return err
 	}
 
-	paymentAmount := new(big.Int).Neg(compensatedBalance)
+	debt := new(big.Int).Neg(compensatedBalance)
+	paymentAmount := new(big.Int).Sub(debt, balance.shadowReservedBalance)
+
 	// Don't do anything if there is no actual debt or no time passed since last refreshment attempt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
 		if timeElapsed > 999 {
 			if !balance.refreshOngoing {
 				balance.refreshOngoing = true
-				// add settled amount to shadow reserve before sending it
-				balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
 				balance.reservedBalance = new(big.Int).Sub(balance.reservedBalance, paymentAmount)
 				a.wg.Add(1)
 				go a.refreshFunction(context.Background(), peer, paymentAmount)
@@ -448,6 +449,9 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 					balance.paymentOngoing = true
 					// add settled amount to shadow reserve before sending it
 					balance.shadowReservedBalance.Add(balance.shadowReservedBalance, paymentAmount)
+					if balance.refreshOngoing {
+						balance.refreshReservedBalance = new(big.Int).Add(balance.refreshReservedBalance, paymentAmount)
+					}
 					a.wg.Add(1)
 					go a.payFunction(context.Background(), peer, paymentAmount)
 				}
@@ -893,7 +897,7 @@ func (a *Accounting) shadowBalance(peer swarm.Address, accountingPeer *accountin
 		return zero, nil
 	}
 
-	shadowBalance = new(big.Int).Sub(negativeBalance, accountingPeer.shadowReservedBalance)
+	shadowBalance = new(big.Int).Sub(negativeBalance, accountingPeer.refreshReservedBalance)
 
 	return shadowBalance, nil
 }
@@ -1044,9 +1048,9 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	defer accountingPeer.lock.Unlock()
 
 	accountingPeer.refreshOngoing = false
-	accountingPeer.refreshTimestamp = timestamp
+	accountingPeer.refreshReservedBalance.Set(big.NewInt(0))
 
-	accountingPeer.shadowReservedBalance.Sub(accountingPeer.shadowReservedBalance, attemptedAmount)
+	accountingPeer.refreshTimestamp = timestamp
 
 	if receivedError != nil {
 
@@ -1169,6 +1173,9 @@ func (a *Accounting) PrepareDebit(peer swarm.Address, price uint64) (Action, err
 	bigPrice := new(big.Int).SetUint64(price)
 
 	accountingPeer.shadowReservedBalance = new(big.Int).Add(accountingPeer.shadowReservedBalance, bigPrice)
+	if accountingPeer.refreshOngoing {
+		accountingPeer.refreshReservedBalance = new(big.Int).Add(accountingPeer.refreshReservedBalance, bigPrice)
+	}
 
 	return &debitAction{
 		accounting:     a,
