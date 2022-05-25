@@ -151,6 +151,7 @@ type Accounting struct {
 	lightDisconnectLimit     *big.Int
 	lightThresholdGrowStep   *big.Int
 	lightThresholdGrowChange *big.Int
+	fullNode                 bool
 }
 
 var (
@@ -175,7 +176,7 @@ func NewAccounting(
 	refreshRate *big.Int,
 	lightFactor int64,
 	p2pService p2p.Service,
-
+	fullNode bool,
 ) (*Accounting, error) {
 
 	lightPaymentThreshold := new(big.Int).Div(PaymentThreshold, big.NewInt(lightFactor))
@@ -201,6 +202,7 @@ func NewAccounting(
 		lightDisconnectLimit:     percentOf(100+PaymentTolerance, lightPaymentThreshold),
 		lightThresholdGrowChange: new(big.Int).Mul(lightRefreshRate, big.NewInt(linearCheckpointNumber)),
 		lightThresholdGrowStep:   new(big.Int).Mul(lightRefreshRate, big.NewInt(linearCheckpointStep)),
+		fullNode:                 fullNode,
 	}, nil
 }
 
@@ -1078,7 +1080,12 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 		checkAllowance.Set(attemptedAmount)
 	}
 
-	expectedAllowance := new(big.Int).Mul(big.NewInt(allegedInterval), a.refreshRate)
+	refreshRate := new(big.Int).Set(a.refreshRate)
+	if !a.fullNode {
+		refreshRate.Set(a.lightRefreshRate)
+	}
+
+	expectedAllowance := new(big.Int).Mul(big.NewInt(allegedInterval), refreshRate)
 	if expectedAllowance.Cmp(checkAllowance) > 0 {
 		expectedAllowance = new(big.Int).Set(checkAllowance)
 	}

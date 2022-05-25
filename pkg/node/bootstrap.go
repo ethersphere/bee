@@ -153,6 +153,7 @@ func bootstrapNode(
 		big.NewInt(refreshRate),
 		lightFactor,
 		p2ps,
+		false,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)

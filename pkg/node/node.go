@@ -730,6 +730,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		new(big.Int).Set(enforcedRefreshRate),
 		lightFactor,
 		p2ps,
+		o.FullNodeMode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("accounting: %w", err)
