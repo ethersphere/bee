@@ -11,10 +11,10 @@ import (
 	"net/http/pprof"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging/httpaccess"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
@@ -24,18 +24,18 @@ const (
 	rootPath   = "/" + apiVersion
 )
 
-func (s *Service) mountTechnicalDebug(router *mux.Router) {
-	router.Handle("/node", jsonhttp.MethodHandler{
+func (s *Service) mountTechnicalDebug() {
+	s.router.Handle("/node", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.nodeGetHandler),
 	})
 
-	router.Handle("/addresses", jsonhttp.MethodHandler{
+	s.router.Handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
 	if s.transaction != nil {
 		var handle = func(path string, handler http.Handler) {
-			router.Handle(path, handler)
+			s.router.Handle(path, handler)
 		}
 
 		handle("/transactions", jsonhttp.MethodHandler{
@@ -48,7 +48,7 @@ func (s *Service) mountTechnicalDebug(router *mux.Router) {
 		})
 	}
 
-	router.Path("/metrics").Handler(web.ChainHandlers(
+	s.router.Path("/metrics").Handler(web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
@@ -56,43 +56,43 @@ func (s *Service) mountTechnicalDebug(router *mux.Router) {
 		)),
 	))
 
-	router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL
 		u.Path += "/"
 		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
 	}))
-	router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
+	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 
-	router.Handle("/debug/vars", expvar.Handler())
+	s.router.Handle("/debug/vars", expvar.Handler())
 
-	router.Handle("/health", web.ChainHandlers(
+	s.router.Handle("/health", web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(statusHandler),
 	))
 }
 
-func (s *Service) mountAPI(router *mux.Router) {
-	router.Handle("/readiness", web.ChainHandlers(
+func (s *Service) mountAPI() {
+	s.router.Handle("/readiness", web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(statusHandler),
 	))
 
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	s.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Ethereum Swarm Bee")
 	})
 
-	router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+	s.router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
 	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
-		router.Handle(path, handler)
-		router.Handle(rootPath+path, handler)
+		s.router.Handle(path, handler)
+		s.router.Handle(rootPath+path, handler)
 	}
 
 	handle("/bytes", jsonhttp.MethodHandler{
@@ -253,40 +253,48 @@ func (s *Service) mountAPI(router *mux.Router) {
 	}
 }
 
-func (s *Service) mountBusinessDebug(router *mux.Router) {
-	router.Handle("/peers", jsonhttp.MethodHandler{
+func (s *Service) mountBusinessDebug() {
+	handle := func(path string, handler http.Handler) {
+		if s.Restricted {
+			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
+		}
+		s.router.Handle(path, handler)
+		s.router.Handle(rootPath+path, handler)
+	}
+
+	handle("/peers", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
 
-	router.Handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
-	router.Handle("/reservestate", jsonhttp.MethodHandler{
+	handle("/reservestate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.reserveStateHandler),
 	})
 
-	router.Handle("/chainstate", jsonhttp.MethodHandler{
+	handle("/chainstate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
-	router.Handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
+	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.peerConnectHandler),
 	})
 
-	router.Handle("/blocklist", jsonhttp.MethodHandler{
+	handle("/blocklist", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
 	})
 
-	router.Handle("/peers/{address}", jsonhttp.MethodHandler{
+	handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
 
-	router.Handle("/topology", jsonhttp.MethodHandler{
+	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
 
-	router.Handle("/welcome-message", jsonhttp.MethodHandler{
+	handle("/welcome-message", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
@@ -294,113 +302,113 @@ func (s *Service) mountBusinessDebug(router *mux.Router) {
 		),
 	})
 
-	router.Handle("/balances", jsonhttp.MethodHandler{
+	handle("/balances", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
 	})
 
-	router.Handle("/balances/{peer}", jsonhttp.MethodHandler{
+	handle("/balances/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
 	})
 
-	router.Handle("/consumed", jsonhttp.MethodHandler{
+	handle("/consumed", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.balancesHandler),
 	})
 
-	router.Handle("/consumed/{peer}", jsonhttp.MethodHandler{
+	handle("/consumed/{peer}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peerBalanceHandler),
 	})
 
-	router.Handle("/timesettlements", jsonhttp.MethodHandler{
+	handle("/timesettlements", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
 	if s.swapEnabled {
-		router.Handle("/settlements", jsonhttp.MethodHandler{
+		handle("/settlements", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.settlementsHandler),
 		})
 
-		router.Handle("/settlements/{peer}", jsonhttp.MethodHandler{
+		handle("/settlements/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.peerSettlementsHandler),
 		})
 
-		router.Handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
+		handle("/chequebook/cheque/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
 		})
 
-		router.Handle("/chequebook/cheque", jsonhttp.MethodHandler{
+		handle("/chequebook/cheque", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
 		})
 
-		router.Handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
+		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
 			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
 			"POST": http.HandlerFunc(s.swapCashoutHandler),
 		})
 	}
 
 	if s.chequebookEnabled {
-		router.Handle("/chequebook/balance", jsonhttp.MethodHandler{
+		handle("/chequebook/balance", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
 		})
 
-		router.Handle("/chequebook/address", jsonhttp.MethodHandler{
+		handle("/chequebook/address", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.chequebookAddressHandler),
 		})
 
-		router.Handle("/chequebook/deposit", jsonhttp.MethodHandler{
+		handle("/chequebook/deposit", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookDepositHandler),
 		})
 
-		router.Handle("/chequebook/withdraw", jsonhttp.MethodHandler{
+		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
 	}
 
-	router.Handle("/stamps", web.ChainHandlers(
+	handle("/stamps", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
-	router.Handle("/stamps/{id}", web.ChainHandlers(
+	handle("/stamps/{id}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
-	router.Handle("/stamps/{id}/buckets", web.ChainHandlers(
+	handle("/stamps/{id}/buckets", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
 		})),
 	)
 
-	router.Handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
 	)
 
-	router.Handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
+	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
 	)
 
-	router.Handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
+	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
 	)
 
-	router.Handle("/batches", web.ChainHandlers(
+	handle("/batches", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
 		})),
 	)
 
-	router.Handle("/wallet", jsonhttp.MethodHandler{
+	handle("/wallet", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.walletHandler),
 	})
 }

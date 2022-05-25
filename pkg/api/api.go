@@ -135,6 +135,7 @@ type Service struct {
 
 	http.Handler
 	handlerMu sync.RWMutex
+	router    *mux.Router
 
 	metrics metrics
 
@@ -277,27 +278,37 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	return s.chunkPushC
 }
 
-func (s *Service) MountTechnicalDebug(router *mux.Router) {
+func (s *Service) MountTechnicalDebug() {
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()
 
-	s.mountTechnicalDebug(router)
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+	s.router = router
+
+	s.mountTechnicalDebug()
+
 	s.Handler = router
 }
 
-func (s *Service) MountDebug(router *mux.Router) {
+func (s *Service) MountDebug() {
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()
 
-	s.mountBusinessDebug(router)
-	s.Handler = router
+	s.mountBusinessDebug()
+	s.Handler = s.router
 }
 
-func (s *Service) MountAPI(router *mux.Router) {
+func (s *Service) MountAPI() {
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()
 
-	s.mountAPI(router)
+	if s.router == nil {
+		s.router = mux.NewRouter()
+		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+	}
+
+	s.mountAPI()
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
@@ -318,7 +329,7 @@ func (s *Service) MountAPI(router *mux.Router) {
 			})
 		},
 		s.gatewayModeForbidHeadersHandler,
-		web.FinalHandler(router),
+		web.FinalHandler(s.router),
 	)
 }
 

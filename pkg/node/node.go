@@ -36,7 +36,6 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
@@ -76,7 +75,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/sirupsen/logrus"
@@ -296,9 +294,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	var debugService *api.Service
 
-	debugRouter := mux.NewRouter()
-	debugRouter.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
 	if o.DebugAPIAddr != "" {
 		if o.MutexProfile {
 			_ = runtime.SetMutexProfileFraction(1)
@@ -314,7 +309,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		}
 
 		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable)
-		debugService.MountTechnicalDebug(debugRouter)
+		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
@@ -342,14 +337,10 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	var apiService *api.Service
 
-	apiRouter := mux.NewRouter()
-	apiRouter.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
 	if o.Restricted {
 		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable)
+		apiService.MountTechnicalDebug()
 
-		apiService.MountTechnicalDebug(apiRouter)
-		// mount technical debug endpoints on 1633
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -913,7 +904,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 		pusherService.AddFeed(chunkC)
 
-		apiService.MountAPI(apiRouter)
+		apiService.MountAPI()
 
 		if !o.Restricted {
 			apiServer := &http.Server{
@@ -934,7 +925,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			b.apiCloser = apiService
 		} else {
 			// in Restricted mode we mount debug endpoints
-			apiService.MountDebug(apiRouter)
+			apiService.MountDebug()
 		}
 	}
 
@@ -998,7 +989,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
-		debugService.MountDebug(debugRouter)
+		debugService.MountDebug()
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {
