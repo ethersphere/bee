@@ -37,7 +37,7 @@ type feedReferenceResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
 	if err != nil {
 		s.logger.Debugf("feed get: decode owner: %v", err)
@@ -124,7 +124,7 @@ func (s *server) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, feedReferenceResponse{Reference: ref})
 }
 
-func (s *server) feedPostHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	owner, err := hex.DecodeString(mux.Vars(r)["owner"])
 	if err != nil {
 		s.logger.Debugf("feed put: decode owner: %v", err)
