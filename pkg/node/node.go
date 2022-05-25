@@ -298,6 +298,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	}
 
 	apiService := api.NewDebugService(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable)
+	var wg sync.WaitGroup
 
 	if o.DebugAPIAddr != "" {
 		if o.MutexProfile {
@@ -320,9 +321,10 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
 
+		wg.Add(1)
 		go func() {
 			logger.Infof("debug api address: %s", debugAPIListener.Addr())
-
+			wg.Done()
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
 				logger.Debugf("debug api server: %v", err)
 				logger.Error("unable to serve debug api")
@@ -338,7 +340,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
 
-		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			logger.Infof("new debug api address: %s", apiListener.Addr())
@@ -348,11 +349,12 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 				logger.Error("unable to serve debug api")
 			}
 		}()
-		wg.Wait()
 
 		b.apiServer = debugAPIServer
 		b.apiCloser = apiService
 	}
+
+	wg.Wait()
 
 	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
