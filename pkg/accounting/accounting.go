@@ -555,6 +555,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	if !ok {
 		peerData = &accountingPeer{
 			reservedBalance:         big.NewInt(0),
+			refreshReservedBalance:  big.NewInt(0),
 			shadowReservedBalance:   big.NewInt(0),
 			ghostBalance:            big.NewInt(0),
 			totalDebtRepay:          big.NewInt(0),
@@ -1372,6 +1373,7 @@ func (a *Accounting) Connect(peer swarm.Address, fullNode bool) {
 	accountingPeer.shadowReservedBalance.Set(zero)
 	accountingPeer.ghostBalance.Set(zero)
 	accountingPeer.reservedBalance.Set(zero)
+	accountingPeer.refreshReservedBalance.Set(zero)
 	accountingPeer.paymentThresholdForPeer.Set(paymentThreshold)
 	accountingPeer.thresholdGrowAt.Set(thresholdGrowStep)
 	accountingPeer.disconnectLimit.Set(disconnectLimit)
