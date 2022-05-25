@@ -53,7 +53,7 @@ jobs:
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare local cluster
         run: |
-          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -174,7 +174,7 @@ jobs:
           patch pkg/postage/service.go .github/patches/postageservice.patch
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
-          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -260,7 +260,7 @@ jobs:
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
       - name: Prepare testing cluster (storage incentives setup)
         run: |
-          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
@@ -331,7 +331,7 @@ jobs:
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
       - name: Build image
         run: |
-          printf ${{ secrets.CR_PAT }} | docker login ghcr.io -u bee-worker --password-stdin
+          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           timeout ${TIMEOUT} make beelocal ACTION=build OPTS='ci skip-vet skip-push'
       - name: Retag Docker image and push for cache
         if: success()
