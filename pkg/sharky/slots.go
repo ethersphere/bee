@@ -6,28 +6,27 @@ package sharky
 
 import (
 	"io"
-	"sync"
 )
 
+const releaseBufSize = 32
+
 type slots struct {
-	data   []byte             // byteslice serving as bitvector: i-t bit set <>
-	limit  uint32             // max number of items in the shard
-	head   uint32             // the first free slot
-	file   sharkyFile         // file to persist free slots across sessions
-	in     chan uint32        // incoming channel for free slots,
-	out    chan uint32        // outgoing channel for free slots
-	filled chan chan struct{} //
-	wg     *sync.WaitGroup    // count started write operations
+	data   []byte        // byteslice serving as bitvector: i-t bit set <>
+	limit  uint32        // max number of items in the shard
+	head   uint32        // the first free slot
+	file   sharkyFile    // file to persist free slots across sessions
+	in     chan uint32   // incoming channel for free slots,
+	out    chan uint32   // outgoing channel for free slots
+	closed chan struct{} // indicate clean termination of process loop
 }
 
-func newSlots(file sharkyFile, shardSize int, wg *sync.WaitGroup) *slots {
+func newSlots(file sharkyFile, shardSize int) *slots {
 	return &slots{
 		limit:  uint32(shardSize),
 		file:   file,
-		in:     make(chan uint32),
+		in:     make(chan uint32, releaseBufSize),
 		out:    make(chan uint32),
-		filled: make(chan chan struct{}),
-		wg:     wg,
+		closed: make(chan struct{}),
 	}
 }
 
@@ -39,6 +38,7 @@ func (sl *slots) load() (err error) {
 
 // save persists the free slot bitvector on disk (without closing)
 func (sl *slots) save() error {
+	<-sl.closed
 	if err := sl.file.Truncate(0); err != nil {
 		return err
 	}
@@ -53,10 +53,10 @@ func (sl *slots) save() error {
 
 // push inserts a free slot.
 func (sl *slots) push(i uint32) {
+	sl.data[i/8] |= 1 << (i % 8)
 	if sl.head > i {
 		sl.head = i
 	}
-	sl.data[i/8] |= 1 << (i % 8)
 }
 
 // pop returns the lowest free slot.
@@ -105,40 +105,39 @@ func (sl *slots) process(quit chan struct{}) {
 	var out chan uint32 // nullable output channel, need to pop a free slot when nil
 	need := true        //
 	var full, quitting bool
+	defer close(sl.closed)
+
 	for {
-		if need && !quitting {
+		if need && !full && !quitting {
 			// if read a free slot to head, switch to another case  by assigning out channel
 			slot, full = sl.pop()
 			if !full {
-				need = false
 				out = sl.out
+				need = false
 			}
 		}
 		select {
-		case c := <-sl.filled:
-			// if out is nil, need to pop a new head unless quitting
-			sl.data[slot/8] &= ^(1 << (slot % 8))
-			c <- struct{}{}
-			need = true
 
-			// listen to released slots and append one to the slots
+		// listen to released slots and append one to the slots
 		case free, more := <-sl.in:
 			if !more {
 				return
 			}
 			sl.push(free)
-			need = full
+			full = false
 
 			// let the out channel capture the free slot and set out to nil to pop a new free slot
 		case out <- slot:
+			sl.data[slot/8] &= ^(1 << (slot % 8))
 			out = nil
 			quit = nil
+			need = true
 
 			// quit is effective only after all initiated releases are received
 		case <-quit:
 			quitting = true
 			quit = nil
-			close(sl.in)
+			need = false
 		}
 	}
 }

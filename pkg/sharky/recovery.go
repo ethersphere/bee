@@ -43,7 +43,7 @@ func NewRecovery(dir string, shardCnt, shardSize, datasize int) (*Recovery, erro
 		if err != nil {
 			return nil, err
 		}
-		sl := newSlots(ffile, shardSize, nil)
+		sl := newSlots(ffile, shardSize)
 		sl.data = make([]byte, size/8)
 		shards[i] = sl
 	}

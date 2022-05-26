@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io/fs"
 	"strconv"
-	"sync"
 
 	"github.com/hashicorp/go-multierror"
 )
@@ -28,11 +27,10 @@ var (
 // - read prioritisation over writing
 // - free slots allow write
 type Store struct {
-	maxDataSize int             // max length of blobs
-	writes      chan write      // shared write operations channel
-	shards      []*shard        // shards
-	wg          *sync.WaitGroup // count started operations
-	quit        chan struct{}   // quit channel
+	maxDataSize int           // max length of blobs
+	writes      chan write    // shared write operations channel
+	shards      []*shard      // shards
+	quit        chan struct{} // quit channel
 	metrics     metrics
 }
 
@@ -47,7 +45,6 @@ func New(basedir fs.FS, shardCnt, shardSize, maxDataSize int) (*Store, error) {
 		maxDataSize: maxDataSize,
 		writes:      make(chan write),
 		shards:      make([]*shard, shardCnt),
-		wg:          &sync.WaitGroup{},
 		quit:        make(chan struct{}),
 		metrics:     newMetrics(),
 	}
@@ -84,14 +81,14 @@ func (s *Store) create(index uint8, shardSize, maxDataSize int, basedir fs.FS) (
 	if err != nil {
 		return nil, err
 	}
-	sl := newSlots(ffile.(sharkyFile), shardSize, s.wg)
+	sl := newSlots(ffile.(sharkyFile), shardSize)
 	err = sl.load()
 	if err != nil {
 		return nil, err
 	}
 	sh := &shard{
 		reads:       make(chan read),
-		errc:        make(chan error),
+		errc:        make(chan error, 1),
 		writes:      s.writes,
 		index:       index,
 		maxDataSize: maxDataSize,
@@ -99,18 +96,8 @@ func (s *Store) create(index uint8, shardSize, maxDataSize int, basedir fs.FS) (
 		slots:       sl,
 		quit:        s.quit,
 	}
-	terminated := make(chan struct{})
-	sh.slots.wg.Add(1)
-	go func() {
-		defer sh.slots.wg.Done()
-		sh.process()
-		close(terminated)
-	}()
-	sh.slots.wg.Add(1)
-	go func() {
-		defer sh.slots.wg.Done()
-		sl.process(terminated)
-	}()
+	go sh.process()
+	go sl.process(s.quit)
 	return sh, nil
 }
 
@@ -119,7 +106,7 @@ func (s *Store) create(index uint8, shardSize, maxDataSize int, basedir fs.FS) (
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
-	case sh.reads <- read{ctx: ctx, buf: buf[:loc.Length], slot: loc.Slot}:
+	case sh.reads <- read{buf: buf[:loc.Length], slot: loc.Slot}:
 		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
@@ -127,9 +114,8 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 		return ErrQuitting
 	}
 
-	// it is important that this select would NEVER respect the context
-	// cancellation. this would result in a deadlock on the shard, since
-	// the result of the operation must be drained from errc, allowing the
+	// if one select case is context cancellation, then in order to avoid deadlock
+	// the result of the operation must be drained from rerrc, allowing the
 	// shard to be able to handle new operations (#2932).
 	select {
 	case err = <-sh.errc:
@@ -137,6 +123,9 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 			s.metrics.TotalReadCallsErr.Inc()
 		}
 		return err
+	case <-ctx.Done():
+		<-sh.errc
+		return ctx.Err()
 	case <-s.quit:
 		// we need to make sure that the forever loop in shard.go can
 		// always return due to shutdown in case this goroutine goes away.
@@ -150,13 +139,9 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	if len(data) > s.maxDataSize {
 		return loc, ErrTooLong
 	}
-	s.wg.Add(1)
-	defer s.wg.Done()
-
-	c := make(chan entry, 1) // buffer the channel to avoid blocking in shard.process on quit or context done
-
+	op := write{data, &loc, make(chan error)}
 	select {
-	case s.writes <- write{data, c}:
+	case s.writes <- op:
 		s.metrics.TotalWriteCalls.Inc()
 	case <-s.quit:
 		return loc, ErrQuitting
@@ -164,21 +149,23 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 		return loc, ctx.Err()
 	}
 
-	select {
-	case e := <-c:
-		if e.err == nil {
-			shard := strconv.Itoa(int(e.loc.Shard))
-			s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
-			s.metrics.ShardFragmentation.WithLabelValues(shard).Add(float64(s.maxDataSize - int(e.loc.Length)))
-		} else {
-			s.metrics.TotalWriteCallsErr.Inc()
-		}
-		return e.loc, e.err
-	case <-s.quit:
-		return loc, ErrQuitting
-	case <-ctx.Done():
-		return loc, ctx.Err()
+	// select {
+	// case err := <-op.errc:
+	err = <-op.errc
+	if err == nil {
+		loc = *(op.loc)
+		shard := strconv.Itoa(int(loc.Shard))
+		s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
+		s.metrics.ShardFragmentation.WithLabelValues(shard).Add(float64(s.maxDataSize - int(loc.Length)))
+	} else {
+		s.metrics.TotalWriteCallsErr.Inc()
 	}
+	return loc, err
+	// case <-s.quit:
+	// 	return loc, ErrQuitting
+	// case <-ctx.Done():
+	// 	return loc, ctx.Err()
+	// }
 }
 
 // Release gives back the slot to the shard

@@ -47,12 +47,12 @@ func TestSingleRetrieval(t *testing.T) {
 			err  error
 		}{
 			{
-				"short data",
-				[]byte{0x1},
-				nil,
-			}, {
 				"exact size data",
 				[]byte{1, 1, 1, 1},
+				nil,
+			}, {
+				"short data",
+				[]byte{0x1},
 				nil,
 			}, {
 				"exact size data 2",
@@ -100,8 +100,8 @@ func TestSingleRetrieval(t *testing.T) {
 // and checks if items and pregenerated free slots are persisted correctly
 func TestPersistence(t *testing.T) {
 	maxDatasize := 4
-	shards := 2
-	shardSize := 16
+	shards := 8
+	shardSize := 64
 	items := shards * shardSize
 
 	dir := t.TempDir()
@@ -126,17 +126,21 @@ func TestPersistence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			fmt.Printf("i=%d, slot=%d\n", i, loc.Slot)
 			locs[i] = &loc
 		}
-		cancel()
+		fmt.Printf("closing...")
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}
+		fmt.Printf("closed\n")
+		cancel()
 	}
 	t.Logf("got full in %d sessions\n", j)
 
 	// check location and data consistency
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +158,6 @@ func TestPersistence(t *testing.T) {
 			t.Fatalf("data mismatch. want %d, got %d", want, got)
 		}
 	}
-	cancel()
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -162,11 +165,9 @@ func TestPersistence(t *testing.T) {
 
 func TestConcurrency(t *testing.T) {
 	maxDatasize := 4
-	test := func(t *testing.T, workers, shards, shardSize int) {
+	test := func(t *testing.T, dir string, workers, shards, shardSize int) {
 		limit := shards * shardSize
 
-		dir := t.TempDir()
-		defer os.RemoveAll(dir)
 		s, err := sharky.New(&dirFS{basedir: dir}, shards, shardSize, maxDatasize)
 		if err != nil {
 			t.Fatal(err)
@@ -176,6 +177,7 @@ func TestConcurrency(t *testing.T) {
 		deleted := make(map[uint32]int)
 		entered := make(map[uint32]struct{})
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
 		eg, ectx := errgroup.WithContext(ctx)
 		// a number of workers write sequential numbers to sharky
 		for k := 0; k < workers; k++ {
@@ -254,17 +256,12 @@ func TestConcurrency(t *testing.T) {
 				t.Fatal("item at unreleased location incorrect")
 			}
 		}
-		cancel()
-
-		// the store has extra slots capacity
-		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
-		for i := 0; i < extraSlots; i++ {
-			_, err = s.Write(cctx, []byte{0})
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		cancel()
+		// for i := 0; i < extraSlots; i++ {
+		// 	_, err = s.Write(ctx, []byte{0})
+		// 	if err != nil {
+		// 		t.Fatal(err)
+		// 	}
+		// }
 
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -279,7 +276,10 @@ func TestConcurrency(t *testing.T) {
 		{13, 37, 42},
 	} {
 		t.Run(fmt.Sprintf("workers:%d,shards:%d,size:%d", c.workers, c.shards, c.shardSize), func(t *testing.T) {
-			test(t, c.workers, c.shards, c.shardSize)
+			dir := t.TempDir()
+			defer os.RemoveAll(dir)
+			// t.Cleanup()
+			test(t, dir, c.workers, c.shards, c.shardSize)
 		})
 	}
 }

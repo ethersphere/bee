@@ -7,6 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -61,19 +62,13 @@ type sharkyFile interface {
 
 // write models the input to a write operation
 type write struct {
-	buf []byte     // variable size read buffer
-	res chan entry // to put the result through
-}
-
-// entry models the output result of a write operation
-type entry struct {
-	loc Location // shard, slot, length combo
-	err error    // signal for end of operation
+	buf  []byte // variable size read buffer
+	loc  *Location
+	errc chan error
 }
 
 // read models the input to read operation (the output is an error)
 type read struct {
-	ctx  context.Context
 	buf  []byte // variable size read buffer
 	slot uint32 // slot to read from
 }
@@ -81,8 +76,9 @@ type read struct {
 // shard models a shard writing to a file with periodic offsets due to fixed maxDataSize
 type shard struct {
 	reads       chan read     // channel for reads
-	errc        chan error    // result for reads
 	writes      chan write    // channel for writes
+	released    chan uint32   // release ops
+	errc        chan error    // result for reads
 	index       uint8         // index of the shard
 	maxDataSize int           // max size of blobs
 	file        sharkyFile    // the file handle the shard is writing data to
@@ -94,44 +90,27 @@ type shard struct {
 func (sh *shard) process() {
 	var writes chan write
 	var slot uint32
-	// defer func() {
-	// 	// this condition checks if an slot is in limbo (popped but not used for write op)
-	// 	if writes != nil {
-	// 		sh.slots.limboWG.Add(1)
-	// 		go func() {
-	// 			defer sh.slots.limboWG.Done()
-	// 			sh.slots.in <- slot
-	// 		}()
-	// 	}
-	// }()
 	free := sh.slots.out
+	released := sh.released
 
 	for {
 		select {
 		case op := <-sh.reads:
-			select {
-			case sh.errc <- sh.read(op):
-			case <-op.ctx.Done():
-				// since the goroutine in the Read method can quit
-				// on shutdown, we need to make sure that we can actually
-				// write to the channel, since a shutdown is possible in
-				// theory between after the point that the context is cancelled
-				select {
-				case sh.errc <- op.ctx.Err():
-				case <-sh.quit:
-					// since the Read method respects the quit channel
-					// we can safely quit here without writing to the channel
-					return
-				}
-			case <-sh.quit:
-				return
-			}
+			sh.errc <- sh.read(op)
 
 			// only enabled if there is a free slot previously popped
 		case op := <-writes:
-			op.res <- sh.write(op.buf, slot)
+			err := sh.write(op, slot)
+			if err != nil {
+				fmt.Printf("release %d\n", slot)
+				sh.slots.in <- slot
+			}
+			op.errc <- err
 			free = sh.slots.out // reenable popping a free slot next time we can write
 			writes = nil        // disable popping a write operation until there is a free slot
+
+		case loc := <-released:
+			sh.slots.in <- loc
 
 			// pop a free slot
 		case slot = <-free:
@@ -141,6 +120,14 @@ func (sh *shard) process() {
 			free = nil         // disabling getting a new slot until a write is actually done
 
 		case <-sh.quit:
+			if writes != nil {
+				fmt.Printf("quitting...release slot %d\n", slot)
+				sh.slots.in <- slot
+			}
+			released = nil
+			writes = nil
+			free = nil
+			close(sh.slots.in)
 			return
 		}
 	}
@@ -149,7 +136,6 @@ func (sh *shard) process() {
 // close closes the shard:
 // wait for pending operations to finish then saves free slots and blobs on disk
 func (sh *shard) close() error {
-	// sh.slots.wg.Wait()
 	if err := sh.slots.save(); err != nil {
 		return err
 	}
@@ -172,19 +158,14 @@ func (sh *shard) read(r read) error {
 }
 
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot
-func (sh *shard) write(buf []byte, slot uint32) entry {
-	n, err := sh.file.WriteAt(buf, sh.offset(slot))
-	c := make(chan struct{})
-	sh.slots.filled <- c
-	<-c
-	return entry{
-		loc: Location{
-			Shard:  sh.index,
-			Slot:   slot,
-			Length: uint16(n),
-		},
-		err: err,
+func (sh *shard) write(op write, slot uint32) error {
+	n, err := sh.file.WriteAt(op.buf, sh.offset(slot))
+	*(op.loc) = Location{
+		Shard:  sh.index,
+		Slot:   slot,
+		Length: uint16(n),
 	}
+	return err
 }
 
 // release frees the slot allowing new entry to overwrite
