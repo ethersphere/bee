@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -123,7 +122,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		httpClient = &http.Client{
 			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 				requestURL := r.URL.String()
-				if !strings.HasPrefix(requestURL, "http://") {
+				if r.URL.Scheme != "http" {
 					requestURL = ts.URL + r.URL.String()
 				}
 				u, err := url.Parse(requestURL)

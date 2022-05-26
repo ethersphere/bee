@@ -6,8 +6,8 @@ package api_test
 
 import (
 	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"path"
 	"testing"
 
@@ -95,7 +95,7 @@ func TestSubdomains(t *testing.T) {
 				dirUploadResource = "/bzz"
 				storer            = mock.NewStorer()
 				mockStatestore    = statestore.NewStateStore()
-				logger            = logging.New(os.Stdout, 6)
+				logger            = logging.New(io.Discard, 0)
 				client, _, _, _   = newTestServer(t, testServerOptions{
 					Storer:          storer,
 					Tags:            tags.NewTags(mockStatestore, logger),
