@@ -49,7 +49,7 @@ func TestConnect(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			if addr.String() == errorUnderlay {
 				return nil, testErr
@@ -60,7 +60,6 @@ func TestConnect(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+underlay, http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.PeerConnectResponse{
 				Address: overlay.String(),
 			}),
@@ -69,7 +68,6 @@ func TestConnect(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: testErr.Error(),
@@ -79,7 +77,6 @@ func TestConnect(t *testing.T) {
 
 	t.Run("get method not allowed", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/connect"+underlay, http.StatusMethodNotAllowed,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
 				Message: http.StatusText(http.StatusMethodNotAllowed),
@@ -89,7 +86,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("error - add peer", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 				if addr.String() == errorUnderlay {
 					return nil, testErr
@@ -99,7 +96,6 @@ func TestConnect(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: testErr.Error(),
@@ -115,7 +111,7 @@ func TestDisconnect(t *testing.T) {
 	testErr := errors.New("test error")
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address, reason string) error {
 			if reason != "user requested disconnect" {
 				return testErr
@@ -135,7 +131,6 @@ func TestDisconnect(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+address.String(), http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusOK,
 				Message: http.StatusText(http.StatusOK),
@@ -145,7 +140,6 @@ func TestDisconnect(t *testing.T) {
 
 	t.Run("unknown", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+unknownAddress.String(), http.StatusBadRequest,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "peer not found",
@@ -155,7 +149,6 @@ func TestDisconnect(t *testing.T) {
 
 	t.Run("invalid peer address", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/invalid-address", http.StatusBadRequest,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid peer address",
@@ -165,7 +158,6 @@ func TestDisconnect(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+errorAddress.String(), http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: testErr.Error(),
@@ -177,7 +169,7 @@ func TestDisconnect(t *testing.T) {
 func TestPeer(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithPeersFunc(func() []p2p.Peer {
 			return []p2p.Peer{{Address: overlay}}
 		})),
@@ -185,7 +177,6 @@ func TestPeer(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/peers", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
 				Peers: []api.Peer{{Address: overlay}},
 			}),
@@ -194,7 +185,6 @@ func TestPeer(t *testing.T) {
 
 	t.Run("get method not allowed", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/peers", http.StatusMethodNotAllowed,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
 				Message: http.StatusText(http.StatusMethodNotAllowed),
@@ -206,14 +196,13 @@ func TestPeer(t *testing.T) {
 func TestBlocklistedPeers(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
 			return []p2p.Peer{{Address: overlay}}, nil
 		})),
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/blocklist", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
 			Peers: []api.Peer{{Address: overlay}},
 		}),
@@ -223,14 +212,13 @@ func TestBlocklistedPeers(t *testing.T) {
 func TestBlocklistedPeersErr(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
 			return []p2p.Peer{{Address: overlay}}, errors.New("some error")
 		})),
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/blocklist", http.StatusInternalServerError,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(
 			jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,

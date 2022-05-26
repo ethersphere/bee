@@ -21,13 +21,12 @@ func TestGetWelcomeMessage(t *testing.T) {
 	const DefaultTestWelcomeMessage = "Hello World!"
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithGetWelcomeMessageFunc(func() string {
 			return DefaultTestWelcomeMessage
 		}))})
 
 	jsonhttptest.Request(t, srv, http.MethodGet, "/welcome-message", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(api.WelcomeMessageResponse{
 			WelcomeMesssage: DefaultTestWelcomeMessage,
 		}),
@@ -71,8 +70,8 @@ func TestSetWelcomeMessage(t *testing.T) {
 	mockP2P := mock.New()
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
-		P2P:        mockP2P,
+		DebugAPI: true,
+		P2P:      mockP2P,
 	})
 
 	for _, tC := range testCases {
@@ -89,7 +88,6 @@ func TestSetWelcomeMessage(t *testing.T) {
 				Code:    tC.wantStatus,
 			}
 			jsonhttptest.Request(t, srv, http.MethodPost, testURL, tC.wantStatus,
-				mockAuthorizationHeader,
 				jsonhttptest.WithRequestBody(body),
 				jsonhttptest.WithExpectedJSONResponse(wantResponse),
 			)
@@ -109,7 +107,7 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 	testURL := "/welcome-message"
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithSetWelcomeMessageFunc(func(string) error {
 			return testError
 		})),
@@ -126,7 +124,6 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 			Code:    wantCode,
 		}
 		jsonhttptest.Request(t, srv, http.MethodPost, testURL, wantCode,
-			mockAuthorizationHeader,
 			jsonhttptest.WithRequestBody(body),
 			jsonhttptest.WithExpectedJSONResponse(wantResp),
 		)

@@ -37,13 +37,12 @@ func TestPingpong(t *testing.T) {
 	})
 
 	ts, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
-		Pingpong:   pingpongService,
+		DebugAPI: true,
+		Pingpong: pingpongService,
 	})
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+peerID.String(), http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.PingpongResponse{
 				RTT: rtt.String(),
 			}),
@@ -52,7 +51,6 @@ func TestPingpong(t *testing.T) {
 
 	t.Run("peer not found", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+unknownPeerID.String(), http.StatusNotFound,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
 				Message: "peer not found",
@@ -62,7 +60,6 @@ func TestPingpong(t *testing.T) {
 
 	t.Run("invalid peer address", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid peer address",
@@ -72,7 +69,6 @@ func TestPingpong(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
@@ -82,7 +78,6 @@ func TestPingpong(t *testing.T) {
 
 	t.Run("get method not allowed", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
 				Message: http.StatusText(http.StatusMethodNotAllowed),

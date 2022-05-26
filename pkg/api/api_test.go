@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
@@ -58,7 +57,6 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"resenje.org/web"
 )
@@ -95,6 +93,7 @@ type testServerOptions struct {
 	Steward            steward.Interface
 	WsHeaders          http.Header
 	Authenticator      *mockauth.Auth
+	DebugAPI           bool
 	Restricted         bool
 	DirectUpload       bool
 
@@ -184,11 +183,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
 
-	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
-	s.MountTechnicalDebug()
-
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})
@@ -202,10 +196,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Restricted:         o.Restricted,
 	}, extraOpts, 1, backend, erc20)
 
-	s.MountAPI()
-
-	if o.Restricted {
+	if o.DebugAPI {
+		s.MountTechnicalDebug()
 		s.MountDebug()
+	} else {
+		s.MountAPI()
 	}
 
 	if o.DirectUpload {

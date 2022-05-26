@@ -38,7 +38,7 @@ func TestAddresses(t *testing.T) {
 	ethereumAddress := common.HexToAddress("abcd")
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted:      true,
+		DebugAPI:        true,
 		PublicKey:       privateKey.PublicKey,
 		PSSPublicKey:    pssPrivateKey.PublicKey,
 		Overlay:         overlay,
@@ -50,7 +50,6 @@ func TestAddresses(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/addresses", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.AddressesResponse{
 				Overlay:      &overlay,
 				Underlay:     addresses,
@@ -63,7 +62,6 @@ func TestAddresses(t *testing.T) {
 
 	t.Run("post method not allowed", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/addresses", http.StatusMethodNotAllowed,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
 				Message: http.StatusText(http.StatusMethodNotAllowed),
@@ -72,7 +70,6 @@ func TestAddresses(t *testing.T) {
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/node", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(api.NodeResponse{
 			BeeMode:           api.FullMode.String(),
 			GatewayMode:       false,
@@ -86,14 +83,13 @@ func TestAddresses_error(t *testing.T) {
 	testErr := errors.New("test error")
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		P2P: mock.New(mock.WithAddressesFunc(func() ([]multiaddr.Multiaddr, error) {
 			return nil, testErr
 		})),
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/addresses", http.StatusInternalServerError,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Code:    http.StatusInternalServerError,
 			Message: testErr.Error(),

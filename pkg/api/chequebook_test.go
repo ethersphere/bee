@@ -38,7 +38,7 @@ func TestChequebookBalance(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -52,7 +52,6 @@ func TestChequebookBalance(t *testing.T) {
 
 	var got *api.ChequebookBalanceResponse
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/balance", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -68,12 +67,11 @@ func TestChequebookBalanceError(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted:     true,
+		DebugAPI:       true,
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrChequebookBalance,
 			Code:    http.StatusInternalServerError,
@@ -91,7 +89,7 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -99,7 +97,6 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/balance", http.StatusInternalServerError,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrChequebookBalance,
 			Code:    http.StatusInternalServerError,
@@ -113,7 +110,7 @@ func TestChequebookAddress(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted:     true,
+		DebugAPI:       true,
 		ChequebookOpts: []mock.Option{mock.WithChequebookAddressFunc(chequebookAddressFunc)},
 	})
 
@@ -125,7 +122,6 @@ func TestChequebookAddress(t *testing.T) {
 
 	var got *api.ChequebookAddressResponse
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/address", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -147,7 +143,7 @@ func TestChequebookWithdraw(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted:     true,
+			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -155,7 +151,6 @@ func TestChequebookWithdraw(t *testing.T) {
 
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -176,7 +171,7 @@ func TestChequebookWithdraw(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted:     true,
+			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -184,7 +179,6 @@ func TestChequebookWithdraw(t *testing.T) {
 
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
@@ -208,7 +202,7 @@ func TestChequebookDeposit(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted:     true,
+			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -216,7 +210,6 @@ func TestChequebookDeposit(t *testing.T) {
 
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -238,7 +231,7 @@ func TestChequebookDeposit(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted:     true,
+			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -246,7 +239,6 @@ func TestChequebookDeposit(t *testing.T) {
 
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
@@ -346,8 +338,8 @@ func TestChequebookLastCheques(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
-		SwapOpts:   []swapmock.Option{swapmock.WithLastReceivedChequesFunc(lastReceivedChequesFunc), swapmock.WithLastSentChequesFunc(lastSentChequesFunc)},
+		DebugAPI: true,
+		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequesFunc(lastReceivedChequesFunc), swapmock.WithLastSentChequesFunc(lastSentChequesFunc)},
 	})
 
 	lastchequesexpected := []api.ChequebookLastChequesPeerResponse{
@@ -409,7 +401,6 @@ func TestChequebookLastCheques(t *testing.T) {
 	// We expect a list of items unordered by peer:
 	var got *api.ChequebookLastChequesResponse
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cheque", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -460,8 +451,8 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
-		SwapOpts:   []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
+		DebugAPI: true,
+		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
 	})
 
 	expected := &api.ChequebookLastChequesPeerResponse{
@@ -480,7 +471,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 
 	var got *api.ChequebookLastChequesPeerResponse
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cheque/"+addr.String(), http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -500,15 +490,14 @@ func TestChequebookCashout(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
-		SwapOpts:   []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
+		DebugAPI: true,
+		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
 	expected := &api.SwapCashoutResponse{TransactionHash: deployCashingHash.String()}
 
 	var got *api.SwapCashoutResponse
 	jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
@@ -531,15 +520,14 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
-		SwapOpts:   []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
+		DebugAPI: true,
+		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
 	expected := &api.SwapCashoutResponse{TransactionHash: deployCashingHash.String()}
 
 	var got *api.SwapCashoutResponse
 	jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
 		jsonhttptest.WithRequestHeader("Gas-Limit", "12221"),
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
@@ -605,8 +593,8 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
-			SwapOpts:   []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+			DebugAPI: true,
+			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
 		expected := &api.SwapCashoutStatusResponse{
@@ -627,7 +615,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 
 		var got *api.SwapCashoutStatusResponse
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-			mockAuthorizationHeader,
+
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -651,8 +639,8 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
-			SwapOpts:   []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+			DebugAPI: true,
+			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
 		expected := &api.SwapCashoutStatusResponse{
@@ -669,7 +657,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 
 		var got *api.SwapCashoutStatusResponse
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-			mockAuthorizationHeader,
+
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -688,8 +676,8 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
-			SwapOpts:   []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
+			DebugAPI: true,
+			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
 		expected := &api.SwapCashoutStatusResponse{
@@ -702,7 +690,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 
 		var got *api.SwapCashoutStatusResponse
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-			mockAuthorizationHeader,
+
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 

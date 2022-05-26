@@ -17,8 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 )
 
-var mockAuthorizationHeader = jsonhttptest.WithRequestHeader("Authorization", "Bearer test")
-
 func TestAuth(t *testing.T) {
 	var (
 		resource      = "/auth"

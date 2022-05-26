@@ -24,7 +24,7 @@ func TestWallet(t *testing.T) {
 	t.Run("Okay", func(t *testing.T) {
 
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 					return big.NewInt(10000000000000000), nil
@@ -39,7 +39,6 @@ func TestWallet(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.WalletResponse{
 				BZZ:     bigint.Wrap(big.NewInt(10000000000000000)),
 				XDai:    bigint.Wrap(big.NewInt(2000000000000000000)),
@@ -50,7 +49,7 @@ func TestWallet(t *testing.T) {
 
 	t.Run("500 - erc20 error", func(t *testing.T) {
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 					return new(big.Int), nil
@@ -59,7 +58,6 @@ func TestWallet(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "unable to acquire erc20 balance",
 				Code:    500,
@@ -68,7 +66,7 @@ func TestWallet(t *testing.T) {
 
 	t.Run("500 - chain backend error", func(t *testing.T) {
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 					return new(big.Int), nil
@@ -77,7 +75,6 @@ func TestWallet(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "unable to acquire balance from the chain backend",
 				Code:    500,

@@ -37,7 +37,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 
 	t.Run("found", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
 					return &transaction.StoredTransaction{
@@ -55,7 +55,6 @@ func TestTransactionStoredTransaction(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.TransactionInfo{
 				TransactionHash: txHash,
 				Created:         time.Unix(created, 0),
@@ -72,7 +71,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
 					return nil, transaction.ErrUnknownTransaction
@@ -81,7 +80,6 @@ func TestTransactionStoredTransaction(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusNotFound,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: api.ErrUnknownTransaction,
 				Code:    http.StatusNotFound,
@@ -90,7 +88,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 
 	t.Run("other errors", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
 					return nil, errors.New("err")
@@ -99,7 +97,6 @@ func TestTransactionStoredTransaction(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: api.ErrCantGetTransaction,
 				Code:    http.StatusInternalServerError,
@@ -135,7 +132,7 @@ func TestTransactionList(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		Restricted: true,
+		DebugAPI: true,
 		TransactionOpts: []mock.Option{
 			mock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 				return []common.Hash{txHash1, txHash2}, nil
@@ -147,7 +144,6 @@ func TestTransactionList(t *testing.T) {
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions", http.StatusOK,
-		mockAuthorizationHeader,
 		jsonhttptest.WithExpectedJSONResponse(api.TransactionPendingList{
 			PendingTransactions: []api.TransactionInfo{
 				{
@@ -181,7 +177,7 @@ func TestTransactionListError(t *testing.T) {
 	txHash1 := common.HexToHash("abcd")
 	t.Run("pending transactions error", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 					return nil, errors.New("err")
@@ -193,7 +189,6 @@ func TestTransactionListError(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions", http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: api.ErrCantGetTransaction,
@@ -203,7 +198,7 @@ func TestTransactionListError(t *testing.T) {
 
 	t.Run("pending transactions error", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 					return []common.Hash{txHash1}, nil
@@ -215,7 +210,6 @@ func TestTransactionListError(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions", http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: api.ErrCantGetTransaction,
@@ -228,7 +222,7 @@ func TestTransactionResend(t *testing.T) {
 	txHash := common.HexToHash("abcd")
 	t.Run("ok", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return nil
@@ -237,7 +231,6 @@ func TestTransactionResend(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(api.TransactionHashResponse{
 				TransactionHash: txHash,
 			}),
@@ -246,7 +239,7 @@ func TestTransactionResend(t *testing.T) {
 
 	t.Run("unknown transaction", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return transaction.ErrUnknownTransaction
@@ -255,7 +248,6 @@ func TestTransactionResend(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusNotFound,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
 				Message: api.ErrUnknownTransaction,
@@ -265,7 +257,7 @@ func TestTransactionResend(t *testing.T) {
 
 	t.Run("already imported", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return transaction.ErrAlreadyImported
@@ -274,7 +266,6 @@ func TestTransactionResend(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusBadRequest,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: api.ErrAlreadyImported,
@@ -284,7 +275,7 @@ func TestTransactionResend(t *testing.T) {
 
 	t.Run("other error", func(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			Restricted: true,
+			DebugAPI: true,
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return errors.New("err")
@@ -293,7 +284,6 @@ func TestTransactionResend(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusInternalServerError,
-			mockAuthorizationHeader,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
 				Message: api.ErrCantResendTransaction,
