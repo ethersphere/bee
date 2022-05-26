@@ -925,7 +925,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			b.apiCloser = apiService
 		} else {
 			// in Restricted mode we mount debug endpoints
-			apiService.MountDebug()
+			apiService.MountDebug(o.Restricted)
 		}
 	}
 
@@ -989,7 +989,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
-		debugService.MountDebug()
+		debugService.MountDebug(false)
 	}
 
 	if err := kad.Start(p2pCtx); err != nil {

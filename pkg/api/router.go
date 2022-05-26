@@ -253,9 +253,9 @@ func (s *Service) mountAPI() {
 	}
 }
 
-func (s *Service) mountBusinessDebug() {
+func (s *Service) mountBusinessDebug(restricted bool) {
 	handle := func(path string, handler http.Handler) {
-		if s.Restricted {
+		if restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		s.router.Handle(path, handler)

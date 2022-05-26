@@ -291,11 +291,11 @@ func (s *Service) MountTechnicalDebug() {
 	s.Handler = router
 }
 
-func (s *Service) MountDebug() {
+func (s *Service) MountDebug(restricted bool) {
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()
 
-	s.mountBusinessDebug()
+	s.mountBusinessDebug(restricted)
 	s.Handler = s.router
 }
 

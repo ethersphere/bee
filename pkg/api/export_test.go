@@ -6,8 +6,6 @@ package api
 
 import "github.com/ethersphere/bee/pkg/swarm"
 
-type ServerExport = Service
-
 type (
 	BytesPostResponse     = bytesPostResponse
 	ChunkAddressResponse  = chunkAddressResponse

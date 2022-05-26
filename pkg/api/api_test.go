@@ -198,7 +198,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	if o.DebugAPI {
 		s.MountTechnicalDebug()
-		s.MountDebug()
+		s.MountDebug(false)
 	} else {
 		s.MountAPI()
 	}

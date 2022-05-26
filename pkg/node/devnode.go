@@ -127,10 +127,37 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		logger.Info("starting with restricted APIs")
 	}
 
-	var (
-		apiService   *api.Service
-		chainBackend transaction.Backend
+	var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
+		return []common.Hash{common.HexToHash("abcd")}, nil
+	}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
+		return nil
+	}), transactionmock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
+		recipient := common.HexToAddress("dfff")
+		return &transaction.StoredTransaction{
+			To:          &recipient,
+			Created:     1,
+			Data:        []byte{1, 2, 3, 4},
+			GasPrice:    big.NewInt(12),
+			GasLimit:    5345,
+			Value:       big.NewInt(4),
+			Nonce:       3,
+			Description: "test",
+		}, nil
+	}), transactionmock.WithCancelTransactionFunc(func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+		return common.Hash{}, nil
+	}),
 	)
+
+	chainBackend := backendmock.New(
+		backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
+			return 1, nil
+		}),
+		backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+			return big.NewInt(0), nil
+		}),
+	)
+
+	var debugApiService *api.Service
 
 	if o.DebugAPIAddr != "" {
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
@@ -138,43 +165,15 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
-			return []common.Hash{common.HexToHash("abcd")}, nil
-		}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
-			return nil
-		}), transactionmock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
-			recipient := common.HexToAddress("dfff")
-			return &transaction.StoredTransaction{
-				To:          &recipient,
-				Created:     1,
-				Data:        []byte{1, 2, 3, 4},
-				GasPrice:    big.NewInt(12),
-				GasLimit:    5345,
-				Value:       big.NewInt(4),
-				Nonce:       3,
-				Description: "test",
-			}, nil
-		}), transactionmock.WithCancelTransactionFunc(func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
-			return common.Hash{}, nil
-		}),
-		)
-
-		chainBackend = backendmock.New(
-			backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
-				return 1, nil
-			}),
-			backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
-				return big.NewInt(0), nil
-			}),
-		)
-
-		apiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, false, api.DevMode, true, true)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, false, api.DevMode, true, true)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService.Handler,
+			Handler:           debugApiService,
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
 		}
+
+		debugApiService.MountTechnicalDebug()
 
 		go func() {
 			logger.Infof("debug api address: %s", debugAPIListener.Addr())
@@ -402,11 +401,25 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, false, api.DevMode, true, true)
+
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, chainBackend, erc20)
+
+	apiService.MountAPI()
+
+	if o.Restricted {
+		apiService.SetP2P(p2ps)
+		apiService.SetSwarmAddress(&swarmAddress)
+		apiService.MountDebug(true)
+	}
+
+	debugApiService.SetP2P(p2ps)
+	debugApiService.SetSwarmAddress(&swarmAddress)
+	debugApiService.MountDebug(false)
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
@@ -416,7 +429,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	apiServer := &http.Server{
 		IdleTimeout:       30 * time.Second,
 		ReadHeaderTimeout: 3 * time.Second,
-		Handler:           apiService.Handler,
+		Handler:           apiService,
 		ErrorLog:          log.New(b.errorLogWriter, "", 0),
 	}
 
