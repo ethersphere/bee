@@ -187,7 +187,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
-	s.MountTechnicalDebug(router)
+	s.MountTechnicalDebug()
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
@@ -202,10 +202,10 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Restricted:         o.Restricted,
 	}, extraOpts, 1, backend, erc20)
 
-	s.MountAPI(router)
+	s.MountAPI()
 
 	if o.Restricted {
-		s.MountDebug(router)
+		s.MountDebug()
 	}
 
 	if o.DirectUpload {
@@ -333,13 +333,8 @@ func TestParseName(t *testing.T) {
 		signer := crypto.NewDefaultSigner(pk)
 
 		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, false, 1, false, false)
-
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
-
-		router := mux.NewRouter()
-		router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
-		s.MountAPI(router)
+		s.MountAPI()
 
 		t.Run(tC.desc, func(t *testing.T) {
 			got, err := s.ResolveNameOrAddress(tC.name)

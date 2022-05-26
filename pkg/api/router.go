@@ -290,6 +290,11 @@ func (s *Service) mountBusinessDebug() {
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
 
+	handle("/chunks/{address}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.hasChunkHandler),
+		"DELETE": http.HandlerFunc(s.removeChunk),
+	})
+
 	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
@@ -361,6 +366,10 @@ func (s *Service) mountBusinessDebug() {
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
+
+		handle("/wallet", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.walletHandler),
+		})
 	}
 
 	handle("/stamps", web.ChainHandlers(
@@ -407,10 +416,6 @@ func (s *Service) mountBusinessDebug() {
 			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
 		})),
 	)
-
-	handle("/wallet", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.walletHandler),
-	})
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
