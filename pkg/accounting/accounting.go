@@ -404,6 +404,7 @@ func (c *creditAction) Cleanup() {
 // Settle all debt with a peer. The lock on the accountingPeer must be held when
 // called.
 func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
+
 	now := a.timeNow().UnixMilli()
 	timeElapsed := now - balance.refreshTimestamp
 
@@ -416,16 +417,17 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	if paymentAmount.Cmp(new(big.Int).Mul(a.refreshRate, big.NewInt(2))) >= 0 {
 		if timeElapsed > 999 {
+
 			if !balance.refreshOngoing {
 				balance.refreshOngoing = true
 				go a.refreshFunction(context.Background(), peer, paymentAmount)
 			}
 		}
 
-		if a.payFunction != nil && !balance.paymentOngoing {
+		if a.payFunction != nil && !balance.paymentOngoing && !balance.refreshOngoing {
 
 			difference := now/1000 - balance.lastSettlementFailureTimestamp
-			if difference > failedSettlementInterval {
+			if difference > failedSettlementInterval || balance.lastSettlementFailureTimestamp == 0 {
 
 				// if there is no monetary settlement happening, check if there is something to settle
 				// compute debt excluding debt created by incoming payments
@@ -1332,7 +1334,6 @@ func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64
 }
 
 func (a *Accounting) blocklist(peer swarm.Address, multiplier int64, reason string) error {
-
 	disconnectFor, err := a.blocklistUntil(peer, multiplier)
 	if err != nil {
 		return a.p2p.Blocklist(peer, 1*time.Minute, reason)
