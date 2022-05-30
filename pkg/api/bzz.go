@@ -239,10 +239,6 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-	ls := loadsave.NewReadonly(s.storer)
-	feedDereferenced := false
-
-	ctx := r.Context()
 
 	nameOrHex := mux.Vars(r)["address"]
 	pathVar := mux.Vars(r)["path"]
@@ -259,6 +255,16 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	}
+
+	s.serveReference(address, pathVar, w, r)
+}
+
+func (s *server) serveReference(address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	ls := loadsave.NewReadonly(s.storer)
+	feedDereferenced := false
+
+	ctx := r.Context()
 
 FETCH:
 	// read manifest entry
