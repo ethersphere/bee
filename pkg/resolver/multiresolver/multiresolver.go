@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/cidv1"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
 )
@@ -100,6 +101,12 @@ func WithLogger(logger logging.Logger) Option {
 func WithForceDefault() Option {
 	return func(mr *MultiResolver) {
 		mr.ForceDefault = true
+	}
+}
+
+func WithDefaultCIDResolver() Option {
+	return func(mr *MultiResolver) {
+		mr.PushResolver("", cidv1.Resolver{})
 	}
 }
 

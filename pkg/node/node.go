@@ -811,6 +811,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
 		multiresolver.WithLogger(o.Logger),
+		multiresolver.WithDefaultCIDResolver(),
 	)
 	b.resolverCloser = multiResolver
 	var chainSyncer *chainsyncer.ChainSyncer
