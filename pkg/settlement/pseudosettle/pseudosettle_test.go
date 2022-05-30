@@ -133,6 +133,8 @@ func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, payerObser
 		if !errors.Is(sent.err, expectedError) {
 			t.Fatalf("expected error %v, got %v", expectedError, sent.err)
 		}
+	case <-time.After(1 * time.Second):
+		t.Fatalf("expected refresh sent called")
 	}
 
 	records, err := recorder.Records(peerID, "pseudosettle", "1.0.0", "pseudosettle")
