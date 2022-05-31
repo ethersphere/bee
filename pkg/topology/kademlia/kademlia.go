@@ -867,7 +867,7 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 	var (
 		shallowestUnsaturated = uint8(0)
 		binCount              = 0
-		depth                 = uint8(0)
+		depth                 uint8
 	)
 	_ = peers.EachBinRev(func(addr swarm.Address, bin uint8) (bool, bool, error) {
 		if filter(addr) {
