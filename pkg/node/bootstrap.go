@@ -149,7 +149,7 @@ func bootstrapNode(
 		logger,
 		stateStore,
 		pricing,
-		big.NewInt(refreshRate),
+		big.NewInt(lightRefreshRate),
 		p2ps,
 	)
 	if err != nil {
