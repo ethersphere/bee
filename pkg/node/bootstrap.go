@@ -214,6 +214,7 @@ func bootstrapNode(
 	for i := 0; i < getSnapshotRetries; i++ {
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err == nil {
+			logger.Errorf("bootstrap: fetching snapshot: %s", err)
 			break
 		}
 	}
@@ -224,6 +225,7 @@ func bootstrapNode(
 	for i := 0; i < getSnapshotRetries; i++ {
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
+			logger.Errorf("bootstrap: fetching snapshot: %s", err)
 			continue
 		}
 		eventsJSON, err = ioutil.ReadAll(reader)
