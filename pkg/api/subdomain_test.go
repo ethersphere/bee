@@ -5,9 +5,13 @@
 package api_test
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path"
 	"testing"
 
@@ -109,6 +113,7 @@ func TestSubdomains(t *testing.T) {
 							},
 						),
 					),
+					RoundTripperFunc: rtf,
 				})
 			)
 
@@ -173,5 +178,25 @@ func TestSubdomains(t *testing.T) {
 				validateAltPath(t, "_non_existent_file_path_", tc.wantErrorFilename)
 			}
 		})
+	}
+}
+
+func rtf(ts *httptest.Server) func(r *http.Request) (*http.Response, error) {
+	return func(r *http.Request) (*http.Response, error) {
+		requestURL := r.URL.String()
+		if r.URL.Scheme != "http" {
+			requestURL = ts.URL + r.URL.String()
+		}
+		u, err := url.Parse(requestURL)
+		if err != nil {
+			return nil, err
+		}
+		r.URL = u
+		transport := ts.Client().Transport
+		// always dial to the server address, regardless of the url host and port
+		transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return net.Dial(network, ts.Listener.Addr().String())
+		}
+		return transport.RoundTrip(r)
 	}
 }

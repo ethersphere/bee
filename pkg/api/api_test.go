@@ -14,7 +14,6 @@ import (
 	"errors"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -98,20 +97,21 @@ type testServerOptions struct {
 	Restricted         bool
 	DirectUpload       bool
 
-	Overlay         swarm.Address
-	PublicKey       ecdsa.PublicKey
-	PSSPublicKey    ecdsa.PublicKey
-	EthereumAddress common.Address
-	BlockTime       *big.Int
-	P2P             *p2pmock.Service
-	Pingpong        pingpong.Interface
-	TopologyOpts    []topologymock.Option
-	AccountingOpts  []accountingmock.Option
-	ChequebookOpts  []chequebookmock.Option
-	SwapOpts        []swapmock.Option
-	BatchStore      postage.Storer
-	TransactionOpts []transactionmock.Option
-	Traverser       traversal.Traverser
+	Overlay          swarm.Address
+	PublicKey        ecdsa.PublicKey
+	PSSPublicKey     ecdsa.PublicKey
+	EthereumAddress  common.Address
+	BlockTime        *big.Int
+	P2P              *p2pmock.Service
+	Pingpong         pingpong.Interface
+	TopologyOpts     []topologymock.Option
+	AccountingOpts   []accountingmock.Option
+	ChequebookOpts   []chequebookmock.Option
+	SwapOpts         []swapmock.Option
+	BatchStore       postage.Storer
+	TransactionOpts  []transactionmock.Option
+	Traverser        traversal.Traverser
+	RoundTripperFunc func(*httptest.Server) func(r *http.Request) (*http.Response, error)
 
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
@@ -215,26 +215,23 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	var (
 		httpClient = &http.Client{
 			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-				requestURL := r.URL.String()
-				if r.URL.Scheme != "http" {
-					requestURL = ts.URL + r.URL.String()
-				}
-				u, err := url.Parse(requestURL)
+				u, err := url.Parse(ts.URL + r.URL.String())
 				if err != nil {
 					return nil, err
 				}
 				r.URL = u
-				transport := ts.Client().Transport
-				// always dial to the server address, regardless of the url host and port
-				transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return net.Dial(network, ts.Listener.Addr().String())
-				}
-				return transport.RoundTrip(r)
+				return ts.Client().Transport.RoundTrip(r)
 			}),
 		}
 		conn *websocket.Conn
 		err  error
 	)
+
+	if o.RoundTripperFunc != nil {
+		httpClient = &http.Client{
+			Transport: web.RoundTripperFunc(o.RoundTripperFunc(ts)),
+		}
+	}
 
 	if o.WsPath != "" {
 		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
