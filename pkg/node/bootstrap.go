@@ -247,10 +247,6 @@ func bootstrapNode(
 		return nil, err
 	}
 
-	if len(eventsJSON) != int(l) {
-		return nil, err
-	}
-
 	events := postage.ChainSnapshot{}
 	err = json.Unmarshal(eventsJSON, &events)
 	if err != nil {
