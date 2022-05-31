@@ -231,6 +231,8 @@ func bootstrapNode(
 		eventsJSON, err = ioutil.ReadAll(reader)
 		if err == nil {
 			break
+		} else {
+			logger.Errorf("bootstrap: fetching snapshot: %s", err)
 		}
 	}
 	if err != nil {
