@@ -37,7 +37,7 @@ import (
 const (
 	maxConnAttempts        = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootNodeAttempts    = 3 // how many attempts to dial to boot-nodes before giving up
-	defaultBitSuffixLength = 3 // the number of bits used to create pseudo addresses for balancing
+	defaultBitSuffixLength = 4 // the number of bits used to create pseudo addresses for balancing
 
 	addPeerBatchSize = 500
 
