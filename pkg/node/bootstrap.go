@@ -213,8 +213,9 @@ func bootstrapNode(
 
 	for i := 0; i < getSnapshotRetries; i++ {
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
-		if err == nil {
+		if err != nil {
 			logger.Errorf("bootstrap: fetching snapshot: %v", err)
+		} else {
 			break
 		}
 	}
@@ -228,11 +229,18 @@ func bootstrapNode(
 			logger.Errorf("bootstrap: fetching snapshot: %v", err)
 			continue
 		}
+
 		eventsJSON, err = ioutil.ReadAll(reader)
-		if err == nil {
-			break
-		} else {
+		if err != nil {
 			logger.Errorf("bootstrap: fetching snapshot: %v", err)
+			continue
+		}
+
+		if len(eventsJSON) != int(l) {
+			logger.Errorf("bootstrap: fetching snapshot: data length mismatch")
+			continue
+		} else {
+			break
 		}
 	}
 	if err != nil {
