@@ -30,7 +30,6 @@ import (
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
-
 	var (
 		chunksEndpoint  = "/chunks"
 		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
@@ -66,8 +65,17 @@ func TestChunkUploadDownload(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
 
+		has, err := storerMock.Has(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("storer check root chunk reference: have none; want one")
+		}
+
 		// try to fetch the same chunk
-		resp := request(t, client, http.MethodGet, chunksResource(chunk.Address()), nil, http.StatusOK)
+		endpoint := chunksResource(chunk.Address())
+		resp := request(t, client, http.MethodGet, endpoint, nil, http.StatusOK)
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -132,6 +140,69 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 		if have, want := refs[0], reference; !have.Equal(want) {
 			t.Fatalf("root pin reference mismatch: have %q; want %q", have, want)
+		}
+	})
+}
+
+func TestHasChunkHandler(t *testing.T) {
+	mockStorer := mock.NewStorer()
+	testServer, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockStorer,
+	})
+
+	key := swarm.MustParseHexAddress("aabbcc")
+	value := []byte("data data data")
+
+	_, err := mockStorer.Put(context.Background(), storage.ModePutUpload, swarm.NewChunk(key, value))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/"+key.String(), http.StatusOK,
+			jsonhttptest.WithNoResponseBody())
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abbbbb", http.StatusNotFound,
+			jsonhttptest.WithNoResponseBody())
+	})
+
+	t.Run("bad address", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abcd1100zz", http.StatusBadRequest,
+			jsonhttptest.WithNoResponseBody())
+	})
+
+	t.Run("remove-chunk", func(t *testing.T) {
+		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+		yes, err := mockStorer.Has(context.Background(), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if yes {
+			t.Fatalf("The chunk %s is not deleted", key.String())
+		}
+	})
+
+	t.Run("remove-not-present-chunk", func(t *testing.T) {
+		notPresentChunkAddress := "deadbeef"
+		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: http.StatusText(http.StatusOK),
+				Code:    http.StatusOK,
+			}),
+		)
+		yes, err := mockStorer.Has(context.Background(), swarm.NewAddress([]byte(notPresentChunkAddress)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if yes {
+			t.Fatalf("The chunk %s is not deleted", notPresentChunkAddress)
 		}
 	})
 }

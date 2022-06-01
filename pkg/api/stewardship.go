@@ -13,7 +13,7 @@ import (
 
 //  stewardshipPutHandler re-uploads root hash and all of its underlying
 // associated chunks to the network.
-func (s *server) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
@@ -37,7 +37,7 @@ type isRetrievableResponse struct {
 }
 
 // stewardshipGetHandler checks whether the content on the given address is retrievable.
-func (s *server) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {

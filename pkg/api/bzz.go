@@ -34,7 +34,7 @@ import (
 	"github.com/ethersphere/langos"
 )
 
-func (s *server) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	contentType := r.Header.Get(contentTypeHeader)
@@ -76,7 +76,7 @@ type bzzUploadResponse struct {
 
 // fileUploadHandler uploads the file and its metadata supplied in the file body and
 // the headers
-func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
+func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
 		reader   io.Reader
@@ -237,7 +237,7 @@ func (s *server) fileUploadHandler(w http.ResponseWriter, r *http.Request, store
 	})
 }
 
-func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	nameOrHex := mux.Vars(r)["address"]
@@ -259,7 +259,7 @@ func (s *server) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	s.serveReference(address, pathVar, w, r)
 }
 
-func (s *server) serveReference(address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
+func (s *Service) serveReference(address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	ls := loadsave.NewReadonly(s.storer)
 	feedDereferenced := false
@@ -407,7 +407,7 @@ FETCH:
 	s.serveManifestEntry(w, r, address, me, !feedDereferenced)
 }
 
-func (s *server) serveManifestEntry(
+func (s *Service) serveManifestEntry(
 	w http.ResponseWriter,
 	r *http.Request,
 	address swarm.Address,
@@ -429,7 +429,7 @@ func (s *server) serveManifestEntry(
 }
 
 // downloadHandler contains common logic for dowloading Swarm file from API
-func (s *server) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
+func (s *Service) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	reader, l, err := joiner.New(r.Context(), s.storer, reference)
@@ -480,7 +480,7 @@ func manifestMetadataLoad(
 	return "", false
 }
 
-func (s *server) manifestFeed(
+func (s *Service) manifestFeed(
 	ctx context.Context,
 	m manifest.Interface,
 ) (feeds.Lookup, error) {
@@ -519,7 +519,7 @@ func (s *server) manifestFeed(
 }
 
 // bzzPatchHandler endpoint has been deprecated; use stewardship endpoint instead.
-func (s *server) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {

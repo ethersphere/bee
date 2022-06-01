@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
 	mockauth "github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -28,6 +31,8 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/logging"
+	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -36,6 +41,10 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
+	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
+	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
+	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -43,6 +52,11 @@ import (
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/websocket"
 	"resenje.org/web"
@@ -80,8 +94,28 @@ type testServerOptions struct {
 	Steward            steward.Interface
 	WsHeaders          http.Header
 	Authenticator      *mockauth.Auth
+	DebugAPI           bool
 	Restricted         bool
 	DirectUpload       bool
+
+	Overlay         swarm.Address
+	PublicKey       ecdsa.PublicKey
+	PSSPublicKey    ecdsa.PublicKey
+	EthereumAddress common.Address
+	BlockTime       *big.Int
+	P2P             *p2pmock.Service
+	Pingpong        pingpong.Interface
+	TopologyOpts    []topologymock.Option
+	AccountingOpts  []accountingmock.Option
+	ChequebookOpts  []chequebookmock.Option
+	SwapOpts        []swapmock.Option
+	BatchStore      postage.Storer
+	TransactionOpts []transactionmock.Option
+	Traverser       traversal.Traverser
+
+	BackendOpts []backendmock.Option
+	Erc20Opts   []erc20mock.Option
+	ChainID     int64
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -102,23 +136,98 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.Post = mockpost.New()
 	}
 	if o.Authenticator == nil {
-		o.Authenticator = &mockauth.Auth{}
+		o.Authenticator = &mockauth.Auth{
+			EnforceFunc: func(_, _, _ string) (bool, error) {
+				return true, nil
+			},
+		}
 	}
 	var chanStore *chanStorer
-	s, chC := api.New(o.Tags, o.Storer, o.Resolver, o.Pss, o.Traversal, o.Pinning, o.Feeds, o.Post, o.PostageContract, o.Steward, signer, o.Authenticator, o.Logger, nil, api.Options{
+
+	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
+	acc := accountingmock.NewAccounting(o.AccountingOpts...)
+	settlement := swapmock.New(o.SwapOpts...)
+	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
+	ln := lightnode.NewContainer(o.Overlay)
+	transaction := transactionmock.New(o.TransactionOpts...)
+
+	storeRecipient := statestore.NewStateStore()
+	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P)
+
+	erc20 := erc20mock.New(o.Erc20Opts...)
+	backend := backendmock.New(o.BackendOpts...)
+
+	var extraOpts = api.ExtraOptions{
+		TopologyDriver:   topologyDriver,
+		Accounting:       acc,
+		Pseudosettle:     recipient,
+		LightNodes:       ln,
+		Swap:             settlement,
+		Chequebook:       chequebook,
+		Pingpong:         o.Pingpong,
+		BatchStore:       o.BatchStore,
+		BlockTime:        o.BlockTime,
+		Tags:             o.Tags,
+		Storer:           o.Storer,
+		Resolver:         o.Resolver,
+		Pss:              o.Pss,
+		TraversalService: o.Traversal,
+		Pinning:          o.Pinning,
+		FeedFactory:      o.Feeds,
+		Post:             o.Post,
+		PostageContract:  o.PostageContract,
+		Steward:          o.Steward,
+	}
+
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.GatewayMode, api.FullMode, true, true)
+
+	s.SetP2P(o.P2P)
+	s.SetSwarmAddress(&o.Overlay)
+
+	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
+		Enabled: false,
+	})
+
+	t.Cleanup(func() { _ = tracerCloser.Close() })
+
+	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
-	})
+	}, extraOpts, 1, backend, erc20)
+
+	if o.DebugAPI {
+		s.MountTechnicalDebug()
+		s.MountDebug(false)
+	} else {
+		s.MountAPI()
+	}
+
 	if o.DirectUpload {
 		chanStore = newChanStore(chC)
 		t.Cleanup(chanStore.stop)
 	}
+
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 
 	var (
+		httpClient = &http.Client{
+			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				u, err := url.Parse(ts.URL + r.URL.String())
+				if err != nil {
+					return nil, err
+				}
+				r.URL = u
+				return ts.Client().Transport.RoundTrip(r)
+			}),
+		}
+		conn *websocket.Conn
+		err  error
+	)
+
+	if !o.DebugAPI {
 		httpClient = &http.Client{
 			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 				requestURL := r.URL.String()
@@ -138,9 +247,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 				return transport.RoundTrip(r)
 			}),
 		}
-		conn *websocket.Conn
-		err  error
-	)
+	}
 
 	if o.WsPath != "" {
 		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
@@ -242,19 +349,19 @@ func TestParseName(t *testing.T) {
 
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
-		mockPostage := mockpost.New()
 
-		s, _ := api.New(nil, nil, tC.res, nil, nil, nil, nil, mockPostage, nil, nil, signer, nil, log, nil, api.Options{})
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, false, 1, false, false)
+		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
+		s.MountAPI()
 
 		t.Run(tC.desc, func(t *testing.T) {
-			got, err := s.(*api.Server).ResolveNameOrAddress(tC.name)
+			got, err := s.ResolveNameOrAddress(tC.name)
 			if err != nil && !errors.Is(err, tC.wantErr) {
 				t.Fatalf("bad error: %v", err)
 			}
 			if !got.Equal(tC.wantAdr) {
 				t.Errorf("got %s, want %s", got, tC.wantAdr)
 			}
-
 		})
 	}
 }

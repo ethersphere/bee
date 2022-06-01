@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func (s *server) subdomainHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	nameOrHex := mux.Vars(r)["subdomain"]

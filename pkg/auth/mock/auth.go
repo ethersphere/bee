@@ -7,6 +7,7 @@ package mock
 type Auth struct {
 	AuthorizeFunc   func(string) bool
 	GenerateKeyFunc func(string) (string, error)
+	EnforceFunc     func(string, string, string) (bool, error)
 }
 
 func (ma *Auth) Authorize(u string) bool {
@@ -27,6 +28,6 @@ func (ma *Auth) RefreshKey(k string, _ int) (string, error) {
 	}
 	return ma.GenerateKeyFunc(k)
 }
-func (*Auth) Enforce(string, string, string) (bool, error) {
-	return false, nil
+func (ma *Auth) Enforce(a1 string, a2 string, a3 string) (bool, error) {
+	return ma.EnforceFunc(a1, a2, a3)
 }
