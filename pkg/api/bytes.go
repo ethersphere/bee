@@ -24,7 +24,7 @@ type bytesPostResponse struct {
 }
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
-func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	putter, wait, err := s.newStamperPutter(r)
@@ -105,7 +105,7 @@ func (s *server) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
-func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger).Logger
 	nameOrHex := mux.Vars(r)["address"]
 
