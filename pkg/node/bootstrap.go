@@ -217,7 +217,7 @@ func bootstrapNode(
 	for i := 0; i < getSnapshotRetries; i++ {
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err != nil {
-			logger.Errorf("bootstrap: fetching snapshot: %v", err)
+			logger.Warningf("bootstrap: fetching snapshot: %v", err)
 		} else {
 			break
 		}
@@ -229,19 +229,19 @@ func bootstrapNode(
 	for i := 0; i < getSnapshotRetries; i++ {
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
-			logger.Errorf("bootstrap: file joiner: %v", err)
+			logger.Warningf("bootstrap: file joiner: %v", err)
 			continue
 		}
 
 		eventsJSON, err = io.ReadAll(reader)
 		if err != nil {
-			logger.Errorf("bootstrap: reading: %v", err)
+			logger.Warningf("bootstrap: reading: %v", err)
 			continue
 		}
 
 		if len(eventsJSON) != int(l) {
 			err = errDataMismatch
-			logger.Errorf("bootstrap: %v", err)
+			logger.Warningf("bootstrap: %v", err)
 			continue
 		} else {
 			break
