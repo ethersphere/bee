@@ -608,16 +608,6 @@ func TestBinSaturation(t *testing.T) {
 
 func TestOversaturation(t *testing.T) {
 
-	// defer func(p int) {
-	// 	*kademlia.OverSaturationPeers = p
-	// }(*kademlia.OverSaturationPeers)
-	// *kademlia.OverSaturationPeers = 8
-
-	// defer func(p int) {
-	// 	*kademlia.SaturationPeers = p
-	// }(*kademlia.SaturationPeers)
-	// *kademlia.SaturationPeers = 4
-
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
@@ -630,9 +620,6 @@ func TestOversaturation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer kad.Close()
-
-	// var po uint8
-	// var count = 0
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
@@ -648,20 +635,6 @@ func TestOversaturation(t *testing.T) {
 	// see depth is 5
 	kDepth(t, kad, 5)
 
-	// po = 0
-	// count = 0
-	// time.Sleep(time.Second)
-	// kad.EachPeerRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
-	// 	if po != u {
-	// 		fmt.Println(po, count)
-	// 		count = 0
-	// 		po = u
-	// 	}
-	// 	count++
-	// 	return false, false, nil
-	// }, topology.Filter{})
-	// fmt.Println(po, count)
-
 	for k := 0; k < 5; k++ {
 		// no further connections can be made
 		for l := 0; l < 3; l++ {
@@ -673,29 +646,6 @@ func TestOversaturation(t *testing.T) {
 				t.Fatal("should not pick the peer")
 			}
 		}
-		// see depth is still as expected
-		kDepth(t, kad, 5)
-	}
-
-	// po = 0
-	// count = 0
-	// time.Sleep(time.Second)
-	// kad.EachPeerRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
-	// 	if po != u {
-	// 		fmt.Println(po, count)
-	// 		count = 0
-	// 		po = u
-	// 	}
-	// 	count++
-	// 	return false, false, nil
-	// }, topology.Filter{})
-	// fmt.Println(po, count)
-
-	// see we can still add / not limiting more peers in neighborhood depth
-	for m := 0; m < 12; m++ {
-		addr := test.RandomAddressAt(base, 5)
-		// if error is not nil as specified, connectOne goes fatal
-		connectOne(t, signer, kad, ab, addr, nil)
 		// see depth is still as expected
 		kDepth(t, kad, 5)
 	}
