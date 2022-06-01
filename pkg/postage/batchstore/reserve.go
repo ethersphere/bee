@@ -107,18 +107,15 @@ func (s *store) cleanup() error {
 
 		err := s.evictFn(b.ID)
 		if err != nil {
-			s.logger.Errorf("batchstore: cleaning up batch %x: %v", b.ID, err)
-			return err
+			return fmt.Errorf("evict batch %x: %w", b.ID, err)
 		}
 		err = s.store.Delete(valueKey(b.Value, b.ID))
 		if err != nil {
-			s.logger.Errorf("batchstore: cleaning up batch %x: %v", b.ID, err)
-			return err
+			return fmt.Errorf("delete value key for batch %x: %w", b.ID, err)
 		}
 		err = s.store.Delete(batchKey(b.ID))
 		if err != nil {
-			s.logger.Errorf("batchstore: cleaning up batch %x: %v", b.ID, err)
-			return err
+			return fmt.Errorf("delete batch %x: %w", b.ID, err)
 		}
 	}
 

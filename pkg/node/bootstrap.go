@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"time"
 
@@ -226,18 +226,18 @@ func bootstrapNode(
 	for i := 0; i < getSnapshotRetries; i++ {
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
-			logger.Errorf("bootstrap: fetching snapshot: %v", err)
+			logger.Errorf("bootstrap: file joiner: %v", err)
 			continue
 		}
 
-		eventsJSON, err = ioutil.ReadAll(reader)
+		eventsJSON, err = io.ReadAll(reader)
 		if err != nil {
-			logger.Errorf("bootstrap: fetching snapshot: %v", err)
+			logger.Errorf("bootstrap: reading: %v", err)
 			continue
 		}
 
 		if len(eventsJSON) != int(l) {
-			logger.Errorf("bootstrap: fetching snapshot: data length mismatch")
+			logger.Errorf("bootstrap: data length mismatch")
 			continue
 		} else {
 			break
