@@ -50,7 +50,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var snapshotFeed = swarm.MustParseHexAddress("b181b084df07a550c9fc0007110bff67000fa92a090af6c5212fe8e19f888a28")
+var (
+	snapshotFeed    = swarm.MustParseHexAddress("b181b084df07a550c9fc0007110bff67000fa92a090af6c5212fe8e19f888a28")
+	errDataMismatch = errors.New("data length mismatch")
+)
 
 const (
 	getSnapshotRetries = 3
@@ -237,7 +240,8 @@ func bootstrapNode(
 		}
 
 		if len(eventsJSON) != int(l) {
-			logger.Errorf("bootstrap: data length mismatch")
+			err = errDataMismatch
+			logger.Errorf("bootstrap: %v", err)
 			continue
 		} else {
 			break
