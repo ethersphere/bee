@@ -912,6 +912,7 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 		}
 		return false, false, nil
 	})
+
 	if depth > candidate {
 		depth = candidate
 	}
