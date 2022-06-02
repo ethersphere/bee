@@ -412,7 +412,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 	if err != nil {
 		return err
 	}
-
 	// Don't do anything if there is not enough actual debt
 	// This might be the case if the peer owes us and the total reserve for a peer exceeds the payment threshold.
 	// Minimum amount to trigger settlement for is 1 * refresh rate to avoid ineffective use of refreshments
@@ -429,7 +428,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 		if a.payFunction != nil && !balance.paymentOngoing && !balance.refreshOngoing {
 
 			differenceInSeconds := now.Unix() - balance.lastSettlementFailureTimestamp
-			if differenceInSeconds > failedSettlementInterval {
+			if differenceInSeconds > failedSettlementInterval || balance.lastSettlementFailureTimestamp == 0 {
 				// if there is no monetary settlement happening, check if there is something to settle
 				// compute debt excluding debt created by incoming payments
 				originatedBalance, err := a.OriginatedBalance(peer)

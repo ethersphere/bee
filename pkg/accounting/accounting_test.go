@@ -199,7 +199,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 				select {
 				case <-paychan:
 				case <-time.After(1 * time.Second):
-					t.Fatal("expected payment sent")
+					t.Fatal("expected payment sent", booking)
 				}
 			}
 
