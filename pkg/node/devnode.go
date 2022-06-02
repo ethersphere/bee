@@ -417,9 +417,17 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		apiService.MountDebug(true)
 	}
 
-	debugApiService.SetP2P(p2ps)
-	debugApiService.SetSwarmAddress(&swarmAddress)
-	debugApiService.MountDebug(false)
+	if o.DebugAPIAddr != "" {
+		debugApiService.SetP2P(p2ps)
+		debugApiService.SetSwarmAddress(&swarmAddress)
+		debugApiService.MountDebug(false)
+
+		debugApiService.Configure(signer, authenticator, tracer, api.Options{
+			CORSAllowedOrigins: o.CORSAllowedOrigins,
+			WsPingPeriod:       60 * time.Second,
+			Restricted:         o.Restricted,
+		}, debugOpts, 1, chainBackend, erc20)
+	}
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
