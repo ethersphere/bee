@@ -218,9 +218,9 @@ func bootstrapNode(
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err != nil {
 			logger.Warningf("bootstrap: fetching snapshot: %v", err)
-		} else {
-			break
+			continue
 		}
+		break
 	}
 	if err != nil {
 		return nil, err
@@ -243,9 +243,8 @@ func bootstrapNode(
 			err = errDataMismatch
 			logger.Warningf("bootstrap: %v", err)
 			continue
-		} else {
-			break
 		}
+		break
 	}
 	if err != nil {
 		return nil, err
