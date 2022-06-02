@@ -1072,7 +1072,7 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	}
 
 	// enforce allowance
-	// calculate expectation decreased by any potential debt decreases occured during the refreshment
+	// calculate expectation decreased by any potential debt decreases occurred during the refreshment
 	checkAllowance := new(big.Int).Sub(attemptedAmount, accountingPeer.refreshReservedBalance)
 
 	// reset cumulative potential debt decrease during an ongoing refreshment as refreshment just completed
