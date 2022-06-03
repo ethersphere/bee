@@ -1924,7 +1924,7 @@ func removeOne(k *kademlia.Kad, peer swarm.Address) {
 const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
-	// t.Helper()
+	t.Helper()
 	multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
 	if err != nil {
 		t.Fatal(err)
