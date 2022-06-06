@@ -57,27 +57,22 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 	}
 
 	ls := loadsave.NewReadonly(s.store)
-	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
-	case errors.Is(err, manifest.ErrInvalidManifestType):
-		break
-	case err != nil:
-		return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
+	mf, _ := manifest.NewDefaultManifestReference(addr, ls)
+
+	err := mf.IterateAddresses(ctx, processBytes)
+	switch {
+	case errors.Is(err, mantaray.ErrTooShort), errors.Is(err, mantaray.ErrInvalidVersionHash):
+		// try to do non-manifest processing
+		return processBytes(addr)
+	case errors.Is(err, joiner.ErrInvalidRootChunk):
+		// if chunk is not a valid chunk, it could be an SOC, either way try traversal
+		// will be short-circuited to just the single chunk
+		return iterFn(addr)
 	default:
-		err := mf.IterateAddresses(ctx, processBytes)
-		if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
-			// Based on the returned errors we conclude that it might
-			// not be a manifest, so we try non-manifest processing.
-			break
-		}
 		if err != nil {
 			return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
 		}
-		return nil
 	}
 
-	// Non-manifest processing.
-	if err := processBytes(addr); err != nil {
-		return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
-	}
 	return nil
 }

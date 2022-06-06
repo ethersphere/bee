@@ -16,10 +16,13 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
+
+var ErrInvalidRootChunk = errors.New("root chunk is not content addressed chunk")
 
 type joiner struct {
 	addr      swarm.Address
@@ -39,6 +42,12 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 	rootChunk, err := getter.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		return nil, 0, err
+	}
+
+	// in case of SOC, if a valid span header is found, we could potentially try to
+	// read incorrect swarm.Addresses from the storage
+	if soc.Valid(rootChunk) {
+		return nil, 0, ErrInvalidRootChunk
 	}
 
 	var chunkData = rootChunk.Data()

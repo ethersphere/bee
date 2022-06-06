@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
+	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -925,5 +926,25 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 		if len(v) != 64 {
 			t.Fatalf("got wrong ref size %d, %s", len(v), v)
 		}
+	}
+}
+
+func TestJoinerInvalidRootChunk(t *testing.T) {
+	store := mock.NewStorer()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	s := testingsoc.GenerateMockSOC(t, []byte{0})
+	sch := s.Chunk()
+
+	_, err := store.Put(ctx, storage.ModePutUploadPin, sch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = joiner.New(ctx, store, sch.Address())
+	if !errors.Is(err, joiner.ErrInvalidRootChunk) {
+		t.Fatal("expected invalid root chunk error")
 	}
 }
