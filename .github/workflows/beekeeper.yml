@@ -348,6 +348,13 @@ jobs:
           docker push ethersphere/bee:latest
           docker push quay.io/ethersphere/bee:latest
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
+      - name: Trigger Bee Factory latest build
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.GHA_PAT_BASIC }}
+          repository: ethersphere/bee-factory
+          event-type: build-images
+          client-payload: '{"tag": "latest"}'
       - name: Set IMAGE_DIGEST variable
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
