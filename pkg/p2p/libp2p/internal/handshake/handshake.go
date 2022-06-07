@@ -209,7 +209,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	s.logger.Tracef("handshake finished for peer (outbound) %s", remoteBzzAddress.Overlay.String())
 	if len(resp.Ack.WelcomeMessage) > 0 {
-		s.logger.Infof("greeting \"%s\" from peer: %s", resp.Ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
+		s.logger.Debugf("greeting %q from peer: %s", resp.Ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
 	}
 
 	return &Info{
@@ -315,7 +315,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
 	if len(ack.WelcomeMessage) > 0 {
-		s.logger.Infof("greeting \"%s\" from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
+		s.logger.Debugf("greeting %q from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
 	}
 
 	return &Info{

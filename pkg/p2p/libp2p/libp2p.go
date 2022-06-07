@@ -480,8 +480,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 
-	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
-	s.logger.Infof("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.Overlay, i.LightString(), peerUserAgent)
+	s.logger.Tracef("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
+	s.logger.Debugf("stream handler: successfully connected to peer %s%s%s (inbound)", i.BzzAddress.Overlay, i.LightString(), peerUserAgent)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -752,8 +752,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
-	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
-	s.logger.Infof("successfully connected to peer %s%s%s (outbound)", overlay, i.LightString(), peerUserAgent)
+	s.logger.Tracef("successfully connected to peer %s%s%s (outbound)", i.BzzAddress.ShortString(), i.LightString(), peerUserAgent)
+	s.logger.Debugf("successfully connected to peer %s%s%s (outbound)", overlay, i.LightString(), peerUserAgent)
 	return i.BzzAddress, nil
 }
 
