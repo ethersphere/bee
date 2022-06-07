@@ -406,7 +406,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 		k.depthMu.Unlock()
 
-		k.logger.Debugf("kademlia: connected to peer: %s in bin: %d", peer.addr, peer.po)
+		k.logger.Infof("kademlia: connected to peer: %s in bin: %d", peer.addr, peer.po)
 		k.notifyManageLoop()
 		k.notifyPeerSig()
 	}
@@ -939,7 +939,7 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
-	k.logger.Infof("attempting to connect to peer %s", peer)
+	k.logger.Debugf("attempting to connect to peer %s", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
@@ -1184,7 +1184,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(peer p2p.Peer) {
-	k.logger.Debugf("kademlia: disconnected peer %s", peer.Address)
+	k.logger.Infof("kademlia: disconnected peer %s", peer.Address)
 
 	k.connectedPeers.Remove(peer.Address)
 
