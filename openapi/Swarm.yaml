@@ -853,9 +853,7 @@ paths:
   "/addresses":
     get:
       summary: Get overlay and underlay addresses of the node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
-      security:
-        - bearerAuth: []
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
       tags:
         - Connectivity
       responses:
@@ -867,6 +865,22 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/Addresses"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/health":
+    get:
+      summary: Get health of node
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Health State of node
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
         default:
           description: Default response
 
@@ -1170,9 +1184,7 @@ paths:
   "/node":
     get:
       summary: Get information about the node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
-      security:
-        - bearerAuth: []
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
       tags:
         - Status
       responses:
@@ -1567,9 +1579,7 @@ paths:
   "/transactions":
     get:
       summary: Get list of pending transactions
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
-      security:
-        - bearerAuth: []
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
       tags:
         - Transaction
       responses:
@@ -1587,9 +1597,7 @@ paths:
   "/transactions/{txHash}":
     get:
       summary: Get information about a sent transaction
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
-      security:
-        - bearerAuth: []
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
       parameters:
         - in: path
           name: txHash
@@ -1614,9 +1622,7 @@ paths:
           description: Default response
     post:
       summary: Rebroadcast existing transaction
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
-      security:
-        - bearerAuth: []
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
       parameters:
         - in: path
           name: txHash
@@ -1641,9 +1647,7 @@ paths:
           description: Default response
     delete:
       summary: Cancel existing transaction
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
-      security:
-        - bearerAuth: []
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
       parameters:
         - in: path
           name: txHash
