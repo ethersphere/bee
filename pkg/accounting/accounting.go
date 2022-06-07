@@ -99,15 +99,8 @@ func NewMutex() *ChanMutex {
 	}
 }
 
-func (m *ChanMutex) Lock(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-
+func (m *ChanMutex) Lock(_ context.Context) error {
 	<-m.c
-
 	return nil
 }
 
