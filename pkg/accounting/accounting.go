@@ -100,14 +100,16 @@ func NewMutex() ChanMutex {
 }
 
 func (m *ChanMutex) Lock(ctx context.Context) error {
-	select {
-	case <-m.c:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-		// case <-time.After(1 * time.Second):	// settlements fail
-		// return errors.New("timeout locking")
-	}
+	<-m.c
+	return nil
+	// select {
+	// case <-m.c:
+	// return nil
+	// case <-ctx.Done(): // one settlement fails
+	// return ctx.Err()
+	// case <-time.After(1 * time.Second):	// settlements fail
+	// return errors.New("timeout locking")
+	// }
 }
 
 func (m *ChanMutex) Unlock() {
