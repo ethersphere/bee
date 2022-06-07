@@ -100,7 +100,12 @@ func NewMutex() ChanMutex {
 }
 
 func (m *ChanMutex) Lock(_ context.Context) error {
-	<-m.c
+	select {
+	case <-m.c:
+	case <-time.After(1 * time.Second):
+		return errors.New("timeout locking")
+	}
+
 	return nil
 }
 
