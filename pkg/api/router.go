@@ -25,6 +25,11 @@ const (
 )
 
 func (s *Service) mountTechnicalDebug() {
+	s.router.Handle("/readiness", web.ChainHandlers(
+		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		web.FinalHandlerFunc(statusHandler),
+	))
+
 	s.router.Handle("/node", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.nodeGetHandler),
 	})
@@ -76,11 +81,6 @@ func (s *Service) mountTechnicalDebug() {
 }
 
 func (s *Service) mountAPI() {
-	s.router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
-		web.FinalHandlerFunc(statusHandler),
-	))
-
 	subdomainRouter := s.router.Host("{subdomain:.*}.swarm.localhost").Subrouter()
 
 	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
