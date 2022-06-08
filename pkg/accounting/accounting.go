@@ -99,16 +99,16 @@ func NewMutex() ChanMutex {
 	}
 }
 
+var ErrFailToLock = errors.New("failed to lock")
+
 func (m *ChanMutex) Lock(ctx context.Context) error {
 	// <-m.c
 	// return nil
 	select {
 	case <-m.c:
 		return nil
-	// case <-ctx.Done(): // one settlement fails
-	// return ctx.Err()
-	case <-time.After(2 * time.Second): // settlements fail
-		return errors.New("timeout locking")
+	case <-ctx.Done(): // one settlement fails
+		return fmt.Errorf("%v: %w", ctx.Err(), ErrFailToLock)
 	}
 }
 
@@ -234,6 +234,7 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
+		a.logger.Errorf("failed to aqcuire lock: %v", err)
 		return nil, err
 	}
 	defer accountingPeer.Unlock()

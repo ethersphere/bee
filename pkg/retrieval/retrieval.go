@@ -274,8 +274,11 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	// compute the peer's price for this chunk for price header
 	chunkPrice := s.pricer.PeerPrice(peer, addr)
 
+	creditCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	// Reserve to see whether we can request the chunk
-	creditAction, err := s.accounting.PrepareCredit(ctx, peer, chunkPrice, originated)
+	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, chunkPrice, originated)
 	if err != nil {
 		sp.AddOverdraft(peer)
 		return nil, peer, false, err
