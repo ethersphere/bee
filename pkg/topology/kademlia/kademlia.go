@@ -53,7 +53,6 @@ const (
 
 var (
 	nnLowWatermark              = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
-	quickSaturationPeers        = 4
 	saturationPeers             = 8
 	overSaturationPeers         = 20
 	bootNodeOverSaturationPeers = 20
@@ -71,7 +70,7 @@ var (
 )
 
 type (
-	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) (saturated bool, oversaturated bool)
+	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool
 	sanctionedPeerFunc func(peer swarm.Address) bool
 	pruneFunc          func(depth uint8)
 	staticPeerFunc     func(peer swarm.Address) bool
@@ -832,30 +831,16 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
 func binSaturated(oversaturationAmount int, staticNode staticPeerFunc, k *Kad) binSaturationFunc {
-	return func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) (bool, bool) {
-		potentialDepth := k.recalcDepth(peers, swarm.MaxPO, filter)
-
-		// short circuit for bins which are >= depth
-		if bin >= potentialDepth {
-			return false, false
-		}
-
-		// lets assume for now that the minimum number of peers in a bin
-		// would be 2, under which we would always want to connect to new peers
-		// obviously this should be replaced with a better optimization
-		// the iterator is used here since when we check if a bin is saturated,
-		// the plain number of size of bin might not suffice (for example for squared
-		// gaps measurement)
-
+	return func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool {
 		size := 0
 		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-			if !filter(addr) && po == bin && !staticNode(addr) {
+			if po == bin && !filter(addr) && !staticNode(addr) {
 				size++
 			}
 			return false, false, nil
 		})
 
-		return size >= saturationPeers, size >= oversaturationAmount
+		return size >= oversaturationAmount
 	}
 }
 
@@ -878,14 +863,12 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 	if peers.Length() <= nnLowWatermark {
 		return 0
 	}
-	var (
-		peersCtr                     = uint(0)
-		candidate                    = uint8(0)
-		shallowestEmpty, noEmptyBins = peers.ShallowestEmpty()
-	)
 
-	shallowestUnsaturated := uint8(0)
-	binCount := 0
+	var (
+		shallowestUnsaturated = uint8(0)
+		binCount              = 0
+		depth                 uint8
+	)
 	_ = peers.EachBinRev(func(addr swarm.Address, bin uint8) (bool, bool, error) {
 		if filter(addr) {
 			return false, false, nil
@@ -894,7 +877,7 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 			binCount++
 			return false, false, nil
 		}
-		if bin > shallowestUnsaturated && binCount < quickSaturationPeers {
+		if bin > shallowestUnsaturated && binCount < saturationPeers {
 			// this means we have less than quickSaturationPeers in the previous bin
 			// therefore we can return assuming that bin is the unsaturated one.
 			return true, false, nil
@@ -904,14 +887,20 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 
 		return false, false, nil
 	})
+	depth = shallowestUnsaturated
 
+	shallowestEmpty, noEmptyBins := peers.ShallowestEmpty()
 	// if there are some empty bins and the shallowestEmpty is
 	// smaller than the shallowestUnsaturated then set shallowest
 	// unsaturated to the empty bin.
-	if !noEmptyBins && shallowestEmpty < shallowestUnsaturated {
-		shallowestUnsaturated = shallowestEmpty
+	if !noEmptyBins && shallowestEmpty < depth {
+		depth = shallowestEmpty
 	}
 
+	var (
+		peersCtr  = uint(0)
+		candidate = uint8(0)
+	)
 	_ = peers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if filter(addr) {
 			return false, false, nil
@@ -923,17 +912,16 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 		}
 		return false, false, nil
 	})
-	if shallowestUnsaturated > candidate {
-		if radius < candidate && !k.ignoreRadius {
-			return radius
-		}
-		return candidate
+
+	if depth > candidate {
+		depth = candidate
 	}
 
-	if radius < shallowestUnsaturated && !k.ignoreRadius {
+	if radius < depth && !k.ignoreRadius {
 		return radius
 	}
-	return shallowestUnsaturated
+
+	return depth
 }
 
 // connect connects to a peer and gossips its address to our connected peers,
@@ -1092,7 +1080,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 		return true
 	}
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	_, oversaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter)
+	oversaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter)
 	// pick the peer if we are not oversaturated
 	if !oversaturated {
 		return true
@@ -1146,7 +1134,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
-	if _, overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter); overSaturated {
+	if overSaturated := k.saturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
 			if err != nil {
