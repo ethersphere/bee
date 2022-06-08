@@ -102,12 +102,10 @@ func NewMutex() ChanMutex {
 var ErrFailToLock = errors.New("failed to lock")
 
 func (m *ChanMutex) Lock(ctx context.Context) error {
-	// <-m.c
-	// return nil
 	select {
 	case <-m.c:
 		return nil
-	case <-ctx.Done(): // one settlement fails
+	case <-ctx.Done():
 		return fmt.Errorf("%v: %w", ctx.Err(), ErrFailToLock)
 	}
 }
@@ -234,7 +232,7 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
-		a.logger.Errorf("failed to aqcuire lock: %v", err)
+		a.logger.Errorf("prepare credit: failed to acquire lock: %v", err)
 		return nil, err
 	}
 	defer accountingPeer.Unlock()
@@ -816,7 +814,7 @@ func (a *Accounting) NotifyPaymentSent(ctx context.Context, peer swarm.Address, 
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
-		a.logger.Debug("could not acquire accounting peer lock", err)
+		a.logger.Errorf("notify payment sent: failed to acquire lock: %v", err)
 		return
 	}
 	defer accountingPeer.Unlock()
@@ -863,6 +861,7 @@ func (a *Accounting) NotifyPaymentThreshold(ctx context.Context, peer swarm.Addr
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
+		a.logger.Errorf("notify payment threashold: failed to acquire lock: %v", err)
 		return err
 	}
 	defer accountingPeer.Unlock()
@@ -877,6 +876,7 @@ func (a *Accounting) NotifyPaymentReceived(ctx context.Context, peer swarm.Addre
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
+		a.logger.Errorf("notify payment received: failed to acquire lock: %v", err)
 		return err
 	}
 
@@ -953,6 +953,7 @@ func (a *Accounting) NotifyRefreshmentReceived(ctx context.Context, peer swarm.A
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
+		a.logger.Errorf("notify refreshment received: failed to acquire lock: %v", err)
 		return err
 	}
 
@@ -984,6 +985,7 @@ func (a *Accounting) PrepareDebit(ctx context.Context, peer swarm.Address, price
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
+		a.logger.Errorf("prepare debit: failed to acquire lock: %v", err)
 		return nil, err
 	}
 
@@ -1172,7 +1174,7 @@ func (a *Accounting) Connect(ctx context.Context, peer swarm.Address) {
 	zero := big.NewInt(0)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
-		a.logger.Debug("could not acquire accounting peer lock", err)
+		a.logger.Errorf("connect: failed to acquire lock: %v", err)
 		return
 	}
 	defer accountingPeer.Unlock()
@@ -1245,7 +1247,7 @@ func (a *Accounting) Disconnect(ctx context.Context, peer swarm.Address) {
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.Lock(ctx); err != nil {
-		a.logger.Debug("could not acquire accounting peer lock", err)
+		a.logger.Errorf("disconnect: failed to acquire lock: %v", err)
 		return
 	}
 	defer accountingPeer.Unlock()
