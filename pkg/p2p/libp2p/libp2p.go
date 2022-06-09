@@ -911,8 +911,10 @@ func (s *Service) Close() error {
 	if err := s.pingDialer.Close(); err != nil {
 		return err
 	}
-	if err := s.reacher.Close(); err != nil {
-		return err
+	if s.reacher != nil {
+		if err := s.reacher.Close(); err != nil {
+			return err
+		}
 	}
 
 	return s.host.Close()
