@@ -486,7 +486,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
-	s.reacher = reacher.New(s, n, nil)
+	s.reacher = reacher.New(s.ctx, s, n, nil)
 	s.notifier = n
 }
 
@@ -909,6 +909,9 @@ func (s *Service) Close() error {
 		return err
 	}
 	if err := s.pingDialer.Close(); err != nil {
+		return err
+	}
+	if err := s.reacher.Close(); err != nil {
 		return err
 	}
 

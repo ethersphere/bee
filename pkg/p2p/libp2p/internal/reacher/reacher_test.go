@@ -63,7 +63,7 @@ func TestPingSuccess(t *testing.T) {
 
 			mock := newMock(tc.pingFunc, tc.reachableFunc)
 
-			r := reacher.New(mock, mock, &defaultOptions)
+			r := reacher.New(context.Background(), mock, mock, &defaultOptions)
 			defer r.Close()
 
 			overlay := test.RandomAddress()
@@ -108,7 +108,7 @@ func TestDisconnected(t *testing.T) {
 
 	mock := newMock(pingFunc, reachableFunc)
 
-	r := reacher.New(mock, mock, &defaultOptions)
+	r := reacher.New(context.Background(), mock, mock, &defaultOptions)
 	defer r.Close()
 
 	r.Connected(test.RandomAddress(), nil)
