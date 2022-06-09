@@ -991,3 +991,62 @@ paths:
 
         default:
           description: Default response
+
+  "/loggers":
+    get:
+      summary: Get all available loggers.
+      tags:
+        - Logging
+      responses:
+        "200":
+          description: Returns an array of all available loggers, also represented in short form in a tree.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/LoggerResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+            description: Default response
+
+  "/loggers/{exp}":
+    get:
+      summary: Get all available loggers that match the specified expression.
+      parameters:
+        - in: path
+          name: exp
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/LoggerExp"
+          required: true
+          description: Regular expression or a subsystem that matches the logger(s).
+      tags:
+        - Logging
+      responses:
+        "200":
+          description: Returns an array of all available loggers that matches given expression, also represented in short form in a tree.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/LoggerResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
+    put:
+      summary: Set logger(s) verbosity level.
+      parameters:
+        - in: path
+          name: exp
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/LoggerExp"
+          required: true
+          description: Regular expression or a subsystem that matches the logger(s).
+      tags:
+        - Logging
+      responses:
+        "200":
+          description: The verbosity was changed successfully.
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
