@@ -312,12 +312,17 @@ func deleteKeys(s *Store, keys []string) error {
 
 // Nuke the store so that only the bare essential entries are
 // left. Careful!
-func (s *Store) Nuke() error {
+func (s *Store) Nuke(forgetStamps bool) error {
 	var (
 		keys     []string
 		prefixes = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay"}
 		err      error
 	)
+
+	if forgetStamps {
+		prefixes = append(prefixes, "postage")
+	}
+
 	keys, err = collectKeysExcept(s, prefixes)
 	if err != nil {
 		return fmt.Errorf("collect keys except: %w", err)

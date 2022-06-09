@@ -18,7 +18,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const optionNameForgetOverlay = "forget-overlay"
+const (
+	optionNameForgetOverlay = "forget-overlay"
+	optionNameForgetStamps  = "forget-stamps"
+)
 
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
@@ -256,6 +259,11 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return fmt.Errorf("get forget overlay: %w", err)
 			}
 
+			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
+			if err != nil {
+				return fmt.Errorf("get forget stamps: %w", err)
+			}
+
 			if forgetOverlay {
 				err = removeContent(statestorePath)
 				if err != nil {
@@ -272,7 +280,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 
 			logger.Warningf("Proceeding with statestore nuke...")
 
-			if err = stateStore.Nuke(); err != nil {
+			if err = stateStore.Nuke(forgetStamps); err != nil {
 				return fmt.Errorf("statestore nuke: %w", err)
 			}
 			return nil
@@ -280,6 +288,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
 	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
+	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
