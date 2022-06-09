@@ -266,11 +266,11 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 	return migrations, nil
 }
 
-func collectKeysExcept(s *Store, prefix []string) (keys []string, err error) {
+func collectKeysExcept(s *Store, prefixesToPreserve []string) (keys []string, err error) {
 	if err := s.Iterate("", func(k, v []byte) (bool, error) {
 		stk := string(k)
 		has := false
-		for _, v := range prefix {
+		for _, v := range prefixesToPreserve {
 			if strings.HasPrefix(stk, v) {
 				has = true
 				break
@@ -312,13 +312,18 @@ func deleteKeys(s *Store, keys []string) error {
 
 // Nuke the store so that only the bare essential entries are
 // left. Careful!
-func (s *Store) Nuke() error {
+func (s *Store) Nuke(forgetStamps bool) error {
 	var (
-		keys     []string
-		prefixes = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay"}
-		err      error
+		keys               []string
+		prefixesToPreserve = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay"}
+		err                error
 	)
-	keys, err = collectKeysExcept(s, prefixes)
+
+	if !forgetStamps {
+		prefixesToPreserve = append(prefixesToPreserve, "postage")
+	}
+
+	keys, err = collectKeysExcept(s, prefixesToPreserve)
 	if err != nil {
 		return fmt.Errorf("collect keys except: %w", err)
 	}
