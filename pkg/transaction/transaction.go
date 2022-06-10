@@ -271,13 +271,15 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		gasPrice = request.GasPrice
 	}
 
-	return types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       request.To,
-		Value:    request.Value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-		Data:     request.Data,
+	return types.NewTx(&types.DynamicFeeTx{
+		ChainID:   t.chainID,
+		Nonce:     nonce,
+		To:        request.To,
+		Value:     request.Value,
+		Gas:       gasLimit,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
+		Data:      request.Data,
 	}), nil
 }
 
@@ -372,13 +374,15 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	tx := types.NewTx(&types.LegacyTx{
-		Nonce:    storedTransaction.Nonce,
-		To:       storedTransaction.To,
-		Value:    storedTransaction.Value,
-		Gas:      storedTransaction.GasLimit,
-		GasPrice: storedTransaction.GasPrice,
-		Data:     storedTransaction.Data,
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   t.chainID,
+		Nonce:     storedTransaction.Nonce,
+		To:        storedTransaction.To,
+		Value:     storedTransaction.Value,
+		Gas:       storedTransaction.GasLimit,
+		GasTipCap: storedTransaction.GasPrice,
+		GasFeeCap: storedTransaction.GasPrice,
+		Data:      storedTransaction.Data,
 	})
 
 	signedTx, err := t.signer.SignTx(tx, t.chainID)
@@ -412,13 +416,15 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, ErrGasPriceTooLow
 	}
 
-	signedTx, err := t.signer.SignTx(types.NewTx(&types.LegacyTx{
-		Nonce:    storedTransaction.Nonce,
-		To:       &t.sender,
-		Value:    big.NewInt(0),
-		Gas:      21000,
-		GasPrice: gasPrice,
-		Data:     []byte{},
+	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
+		ChainID:   t.chainID,
+		Nonce:     storedTransaction.Nonce,
+		To:        &t.sender,
+		Value:     big.NewInt(0),
+		Gas:       21000,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
+		Data:      []byte{},
 	}), t.chainID)
 	if err != nil {
 		return common.Hash{}, err
