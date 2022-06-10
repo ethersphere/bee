@@ -412,7 +412,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, ErrGasPriceTooLow
 	}
 
-	signedTx, err := t.signer.SignTx(types.NewTx(&types.AccessListTx{
+	signedTx, err := t.signer.SignTx(types.NewTx(&types.LegacyTx{
 		Nonce:    storedTransaction.Nonce,
 		To:       &t.sender,
 		Value:    big.NewInt(0),
