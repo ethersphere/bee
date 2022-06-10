@@ -289,13 +289,13 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	}
 
 	return types.NewTx(&types.DynamicFeeTx{
-		Nonce:     nonce,
 		ChainID:   t.chainID,
+		Nonce:     nonce,
 		To:        request.To,
 		Value:     request.Value,
 		Gas:       gasLimit,
-		GasFeeCap: gasFeeCap,
-		GasTipCap: gasTipCap,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
 		Data:      request.Data,
 	}), nil
 }
@@ -415,19 +415,14 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
-	if err != nil {
-		return err
-	}
-
 	tx := types.NewTx(&types.DynamicFeeTx{
-		Nonce:     storedTransaction.Nonce,
 		ChainID:   t.chainID,
+		Nonce:     storedTransaction.Nonce,
 		To:        storedTransaction.To,
 		Value:     storedTransaction.Value,
 		Gas:       storedTransaction.GasLimit,
-		GasTipCap: gasTipCap,
-		GasFeeCap: gasFeeCap,
+		GasTipCap: storedTransaction.GasPrice,
+		GasFeeCap: storedTransaction.GasPrice,
 		Data:      storedTransaction.Data,
 	})
 
@@ -455,19 +450,21 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
-	if err != nil {
-		return common.Hash{}, err
+	gasPrice := sctx.GetGasPrice(ctx)
+	if gasPrice == nil {
+		gasPrice = new(big.Int).Add(storedTransaction.GasPrice, big.NewInt(1))
+	} else if gasPrice.Cmp(storedTransaction.GasPrice) <= 0 {
+		return common.Hash{}, ErrGasPriceTooLow
 	}
 
 	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
-		Nonce:     storedTransaction.Nonce,
 		ChainID:   t.chainID,
+		Nonce:     storedTransaction.Nonce,
 		To:        &t.sender,
 		Value:     big.NewInt(0),
 		Gas:       21000,
-		GasTipCap: gasTipCap,
-		GasFeeCap: gasFeeCap,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
 		Data:      []byte{},
 	}), t.chainID)
 	if err != nil {
