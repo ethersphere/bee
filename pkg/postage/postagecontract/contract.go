@@ -92,7 +92,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    65000,
+		GasLimit:    120000,
 		Value:       big.NewInt(0),
 		Description: approveDescription,
 	})
@@ -117,7 +117,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    160000,
+		GasLimit:    250000,
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
