@@ -76,6 +76,11 @@ func (s *server) setupRouting() {
 			s.newTracingHandler("bytes-download"),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
+		"HEAD": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bytes-download"),
+			web.FinalHandlerFunc(s.bytesHeadHandler),
+		),
 	})
 
 	handle("/chunks", jsonhttp.MethodHandler{

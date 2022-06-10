@@ -5,6 +5,7 @@
 package api
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -122,4 +124,32 @@ func (s *server) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.downloadHandler(w, r, address, additionalHeaders, true)
+}
+
+func (s *server) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger).Logger
+	nameOrHex := mux.Vars(r)["address"]
+
+	address, err := s.resolveNameOrAddress(nameOrHex)
+	if err != nil {
+		logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
+		logger.Error("bytes: parse address error")
+		w.WriteHeader(400)
+		//jsonhttp.NotFound(w, nil)
+		return
+	}
+
+	ch, err := s.storer.Get(r.Context(), storage.ModeGetRequest, address)
+	if err != nil {
+		logger.Debugf("bytes: get root chunk %s: %v", nameOrHex, err)
+		logger.Error("bytes: get rook chunk error")
+		w.WriteHeader(404)
+		//jsonhttp.NotFound(w, nil)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/octet-stream")
+	span := int64(binary.LittleEndian.Uint64(ch.Data()[:swarm.SpanSize]))
+	w.Header().Add("Content-Length", fmt.Sprintf("%d", span))
+	w.WriteHeader(200)
 }
