@@ -213,10 +213,13 @@ func (c *command) initStartCmd() (err error) {
 
 			p := &program{
 				start: func() {
-					// Block main goroutine until it is interrupted
-					sig := <-interruptChannel
+					// Block main goroutine until it is interrupted or stopped
+					select {
+					case sig := <-interruptChannel:
+						logger.Debugf("received signal: %v", sig)
+					case <-b.Running():
+					}
 
-					logger.Debugf("received signal: %v", sig)
 					logger.Info("shutting down")
 				},
 				stop: func() {

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"sync"
 	"testing"
 	"time"
 
@@ -59,7 +58,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 
-		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		l.Listen(0, ev, nil)
 
 		select {
@@ -90,7 +89,7 @@ func TestListener(t *testing.T) {
 				topup.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		l.Listen(0, ev, nil)
 
 		select {
@@ -121,7 +120,7 @@ func TestListener(t *testing.T) {
 				depthIncrease.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		l.Listen(0, ev, nil)
 
 		select {
@@ -150,7 +149,7 @@ func TestListener(t *testing.T) {
 				priceUpdate.toLog(496),
 			),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		l.Listen(0, ev, nil)
 		select {
 		case e := <-evC:
@@ -202,7 +201,7 @@ func TestListener(t *testing.T) {
 			),
 			WithBlockNumber(blockNumber),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		l.Listen(0, ev, nil)
 
 		select {
@@ -266,13 +265,12 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("do not shutdown on error event", func(t *testing.T) {
-		shutdowner := &countShutdowner{}
 		blockNumber := uint64(500)
 		ev, evC := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithBlockNumberErrorOnce(errors.New("dummy error"), blockNumber),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner, stallingTimeout, 0*time.Second)
+		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, 0*time.Second)
 		l.Listen(0, ev, nil)
 
 		select {
@@ -284,34 +282,30 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("shutdown on stalling", func(t *testing.T) {
-		shutdowner := &countShutdowner{}
 		ev, _ := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithBlockNumberError(errors.New("dummy error")),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner, 50*time.Millisecond, 0*time.Second)
+		c := make(chan struct{})
+		l := listener.New(c, logger, mf, postageStampAddress, 1, 50*time.Millisecond, 0*time.Second)
 		l.Listen(0, ev, nil)
 
-		start := time.Now()
-		for {
-			time.Sleep(time.Millisecond * 100)
-			if shutdowner.NoOfCalls() == 1 {
-				break
-			}
-			if time.Since(start) > time.Second*5 {
-				t.Fatal("expected shutdown call by now")
-			}
+		time.Sleep(time.Millisecond * 100)
+		select {
+		case <-c:
+		case <-time.After(5 * time.Second):
+			t.Fatal("expected shutdown call by now")
 		}
 	})
 
 	t.Run("shutdown on processing error", func(t *testing.T) {
-		shutdowner := &countShutdowner{}
 		blockNumber := uint64(500)
 		ev, evC := newEventUpdaterMockWithBlockNumberUpdateError(errors.New("err"))
 		mf := newMockFilterer(
 			WithBlockNumber(blockNumber),
 		)
-		l := listener.New(logger, mf, postageStampAddress, 1, shutdowner, stallingTimeout, backoffTime)
+		c := make(chan struct{})
+		l := listener.New(c, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		l.Listen(0, ev, nil)
 
 		select {
@@ -321,15 +315,11 @@ func TestListener(t *testing.T) {
 			t.Fatal("timed out waiting for block number update")
 		}
 
-		start := time.Now()
-		for {
-			time.Sleep(time.Millisecond * 100)
-			if shutdowner.NoOfCalls() == 1 {
-				break
-			}
-			if time.Since(start) > time.Second*5 {
-				t.Fatal("expected shutdown call by now")
-			}
+		time.Sleep(time.Millisecond * 100)
+		select {
+		case <-c:
+		case <-time.After(time.Second * 5):
+			t.Fatal("expected shutdown call by now")
 		}
 	})
 }
@@ -422,7 +412,7 @@ func TestListenerBatchState(t *testing.T) {
 		}
 	}()
 
-	l := listener.New(logger, mf, postageStampAddress, 1, nil, stallingTimeout, backoffTime)
+	l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 	l.Listen(snapshot.LastBlockNumber+1, ev, snapshot)
 
 	defer close(stop)
@@ -437,26 +427,6 @@ func TestListenerBatchState(t *testing.T) {
 			t.Fatal("invalid count of events on completion", noOfEvents)
 		}
 	}
-}
-
-type countShutdowner struct {
-	mtx           sync.Mutex
-	shutdownCalls int
-}
-
-func (c *countShutdowner) NoOfCalls() int {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	return c.shutdownCalls
-}
-
-func (c *countShutdowner) Shutdown() error {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	c.shutdownCalls++
-	return nil
 }
 
 func newEventUpdaterMock() (*updater, chan interface{}) {
@@ -518,9 +488,9 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(_ uint64, _ *postage.ChainSnapshot) (<-chan struct{}, error) { return nil, nil }
-func (u *updater) TransactionStart() error                                           { return nil }
-func (u *updater) TransactionEnd() error                                             { return nil }
+func (u *updater) Start(_ uint64, _ *postage.ChainSnapshot) (<-chan error, error) { return nil, nil }
+func (u *updater) TransactionStart() error                                        { return nil }
+func (u *updater) TransactionEnd() error                                          { return nil }
 
 type mockFilterer struct {
 	filterLogEvents      []types.Log
