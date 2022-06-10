@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/manifest/mantaray"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -54,6 +55,15 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 			return fmt.Errorf("traversal: iterate chunk address error for %q: %w", ref, err)
 		}
 		return nil
+	}
+
+	ch, err := s.store.Get(ctx, storage.ModeGetRequest, addr)
+	if err != nil {
+		return fmt.Errorf("traversal: failed to get root chunk %s: %w", addr.String(), err)
+	}
+	if soc.Valid(ch) {
+		// if this is a SOC, the traversal will be just be the single chunk
+		return iterFn(addr)
 	}
 
 	ls := loadsave.NewReadonly(s.store)

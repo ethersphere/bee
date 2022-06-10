@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/manifest"
+	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -455,6 +456,35 @@ func TestTraversalManifest(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTraversalSOC(t *testing.T) {
+	store := mock.NewStorer()
+	iter := newAddressIterator(false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	s := testingsoc.GenerateMockSOC(t, generateSample(swarm.ChunkSize))
+	sch := s.Chunk()
+
+	_, err := store.Put(ctx, storage.ModePutUploadPin, sch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = traversal.New(store).Traverse(ctx, sch.Address(), iter.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(iter.seen) != 1 {
+		t.Fatal("incorrect hashes seen")
+	}
+
+	if !iter.seen[sch.Address().String()] {
+		t.Fatal("expected hash not seen")
 	}
 }
 
