@@ -35,7 +35,7 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	router.HandleFunc("/{protocol}/{rest:.*}", s.engine)
+	//router.HandleFunc("/@/{protocol}/{rest:.*}", s.handleProtocol)
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
