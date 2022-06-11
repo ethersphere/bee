@@ -26,10 +26,24 @@ type BatchStore struct {
 	updateErr         error
 	updateErrDelayCnt int
 	resetCallCount    int
+	unreserveFn       func(postage.UnreserveIteratorFn) error
+	radiusSetterFn    func(postage.RadiusSetter)
 }
 
 // Option is an option passed to New.
 type Option func(*BatchStore)
+
+func NoOp() (b *BatchStore) {
+	b = new(BatchStore)
+	b.unreserveFn = func(postage.UnreserveIteratorFn) error { return nil }
+	b.radiusSetterFn = func(postage.RadiusSetter) {}
+	b.cs = &postage.ChainState{
+		TotalAmount:  new(big.Int),
+		CurrentPrice: new(big.Int),
+	}
+
+	return
+}
 
 // New creates a new mock BatchStore
 func New(opts ...Option) *BatchStore {
@@ -37,6 +51,12 @@ func New(opts ...Option) *BatchStore {
 	bs.cs = &postage.ChainState{}
 	for _, o := range opts {
 		o(bs)
+	}
+	bs.unreserveFn = func(postage.UnreserveIteratorFn) error {
+		panic("not implemented")
+	}
+	bs.radiusSetterFn = func(postage.RadiusSetter) {
+		panic("not implemented")
 	}
 	return bs
 }
@@ -163,11 +183,11 @@ func (bs *BatchStore) GetReserveState() *postage.ReserveState {
 	}
 	return rs
 }
-func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {
-	panic("not implemented")
+func (bs *BatchStore) Unreserve(ifn postage.UnreserveIteratorFn) error {
+	return bs.unreserveFn(ifn)
 }
 func (bs *BatchStore) SetRadiusSetter(r postage.RadiusSetter) {
-	panic("not implemented")
+	bs.radiusSetterFn(r)
 }
 
 // Exists reports whether batch referenced by the give id exists.
