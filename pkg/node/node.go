@@ -47,6 +47,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	bsm "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pricer"
@@ -236,17 +237,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, err
 	}
 
-	var unreserveFn func([]byte, uint8) (uint64, error)
-	var evictFn = func(b []byte) error {
-		_, err := unreserveFn(b, swarm.MaxPO+1)
-		return err
-	}
-
-	batchStore, err := batchstore.New(stateStore, evictFn, logger)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
-
 	addressbook := addressbook.New(stateStore)
 
 	var (
@@ -264,6 +254,20 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	)
 
 	chainEnabled := isChainEnabled(o, logger)
+
+	var batchStore postage.Storer = bsm.NoOp()
+	var unreserveFn func([]byte, uint8) (uint64, error)
+
+	if chainEnabled {
+		var evictFn = func(b []byte) error {
+			_, err := unreserveFn(b, swarm.MaxPO+1)
+			return err
+		}
+		batchStore, err = batchstore.New(stateStore, evictFn, logger)
+		if err != nil {
+			return nil, fmt.Errorf("batchstore: %w", err)
+		}
+	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 		p2pCtx,
