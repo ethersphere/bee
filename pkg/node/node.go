@@ -112,7 +112,7 @@ type Bee struct {
 	chainSyncerCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncing                  chan struct{}
+	syncingStopped           chan struct{}
 }
 
 type Options struct {
@@ -212,7 +212,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
-		syncing:        make(chan struct{}),
+		syncingStopped: make(chan struct{}),
 	}
 
 	defer func(b *Bee) {
@@ -624,7 +624,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		postageSyncStart = startBlock
 	}
 
-	eventListener = listener.New(b.syncing, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
@@ -1010,8 +1010,8 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	return b, nil
 }
 
-func (b *Bee) Syncing() chan struct{} {
-	return b.syncing
+func (b *Bee) SyncingStopped() chan struct{} {
+	return b.syncingStopped
 }
 
 func (b *Bee) Shutdown() error {

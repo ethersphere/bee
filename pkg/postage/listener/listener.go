@@ -67,11 +67,11 @@ type listener struct {
 	metrics             metrics
 	stallingTimeout     time.Duration
 	backoffTime         time.Duration
-	syncing             chan struct{}
+	syncingStopped      chan struct{}
 }
 
 func New(
-	syncing chan struct{},
+	syncingStopped chan struct{},
 	logger logging.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
@@ -80,7 +80,7 @@ func New(
 	backoffTime time.Duration,
 ) postage.Listener {
 	return &listener{
-		syncing:             syncing,
+		syncingStopped:      syncingStopped,
 		logger:              logger,
 		ev:                  ev,
 		blockTime:           blockTime,
@@ -330,7 +330,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
 		}
 		closeOnce.Do(func() { synced <- err })
-		close(l.syncing) // trigger shutdown in start.go
+		close(l.syncingStopped) // trigger shutdown in start.go
 	}()
 
 	return synced
