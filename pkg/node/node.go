@@ -112,7 +112,7 @@ type Bee struct {
 	chainSyncerCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	running                  chan struct{}
+	syncing                  chan struct{}
 }
 
 type Options struct {
@@ -212,7 +212,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
-		running:        make(chan struct{}),
+		syncing:        make(chan struct{}),
 	}
 
 	defer func(b *Bee) {
@@ -624,7 +624,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		postageSyncStart = startBlock
 	}
 
-	eventListener = listener.New(b.running, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	eventListener = listener.New(b.syncing, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
@@ -709,7 +709,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		// would be needed on the cmd level to support context cancellation at
 		// this stage
 		select {
-		case err := <-syncedChan:
+		case err = <-syncedChan:
 			if err != nil {
 				return nil, err
 			}
@@ -1010,8 +1010,8 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	return b, nil
 }
 
-func (b *Bee) Running() chan struct{} {
-	return b.running
+func (b *Bee) Syncing() chan struct{} {
+	return b.syncing
 }
 
 func (b *Bee) Shutdown() error {
@@ -1142,10 +1142,6 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")
-
-	go func() {
-		close(b.running)
-	}()
 
 	return mErr
 }

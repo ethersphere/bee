@@ -59,7 +59,7 @@ func TestListener(t *testing.T) {
 		)
 
 		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -90,7 +90,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -121,7 +121,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -150,7 +150,7 @@ func TestListener(t *testing.T) {
 			),
 		)
 		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 		select {
 		case e := <-evC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
@@ -202,7 +202,7 @@ func TestListener(t *testing.T) {
 			WithBlockNumber(blockNumber),
 		)
 		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -271,7 +271,7 @@ func TestListener(t *testing.T) {
 			WithBlockNumberErrorOnce(errors.New("dummy error"), blockNumber),
 		)
 		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, 0*time.Second)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -288,7 +288,7 @@ func TestListener(t *testing.T) {
 		)
 		c := make(chan struct{})
 		l := listener.New(c, logger, mf, postageStampAddress, 1, 50*time.Millisecond, 0*time.Second)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		time.Sleep(time.Millisecond * 100)
 		select {
@@ -306,7 +306,7 @@ func TestListener(t *testing.T) {
 		)
 		c := make(chan struct{})
 		l := listener.New(c, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		l.Listen(0, ev, nil)
+		<-l.Listen(0, ev, nil)
 
 		select {
 		case e := <-evC:
