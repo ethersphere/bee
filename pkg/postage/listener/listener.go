@@ -67,11 +67,11 @@ type listener struct {
 	metrics             metrics
 	stallingTimeout     time.Duration
 	backoffTime         time.Duration
-	running             chan struct{}
+	syncing             chan struct{}
 }
 
 func New(
-	running chan struct{},
+	syncing chan struct{},
 	logger logging.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
@@ -80,6 +80,7 @@ func New(
 	backoffTime time.Duration,
 ) postage.Listener {
 	return &listener{
+		syncing:             syncing,
 		logger:              logger,
 		ev:                  ev,
 		blockTime:           blockTime,
@@ -88,7 +89,6 @@ func New(
 		metrics:             newMetrics(),
 		stallingTimeout:     stallingTimeout,
 		backoffTime:         backoffTime,
-		running:             running,
 	}
 }
 
@@ -296,7 +296,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				paged <- struct{}{}
 				to = from + blockPage - 1
 			} else {
-				closeOnce.Do(func() { close(synced) })
+				closeOnce.Do(func() { synced <- nil })
 			}
 			l.metrics.BackendCalls.Inc()
 
@@ -321,17 +321,6 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 
 	go func() {
 		err := listenf()
-		defer func() {
-			select {
-			case _, ok := <-synced:
-				if ok {
-					synced <- err
-				}
-			default:
-				synced <- err
-			}
-			closeOnce.Do(func() { close(synced) })
-		}()
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				// context cancelled is returned on shutdown,
@@ -339,8 +328,9 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				return
 			}
 			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
-			close(l.running) // trigger shutdown in start.go
 		}
+		closeOnce.Do(func() { synced <- err })
+		close(l.syncing) // trigger shutdown in start.go
 	}()
 
 	return synced
