@@ -217,7 +217,7 @@ func (c *command) initStartCmd() (err error) {
 					select {
 					case sig := <-interruptChannel:
 						logger.Debugf("received signal: %v", sig)
-					case <-b.Syncing():
+					case <-b.SyncingStopped():
 					}
 
 					logger.Info("shutting down")
