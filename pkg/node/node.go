@@ -1146,13 +1146,6 @@ func (b *Bee) Shutdown() error {
 	return mErr
 }
 
-// pidKiller is used to issue a forced shut down of the node from sub modules. The issue with using the
-// node's Shutdown method is that it only shuts down the node and does not exit the start process
-// which is waiting on the os.Signals. This is not desirable, but currently bee node cannot handle
-// rate-limiting blockchain API calls properly. We will shut down the node in this case to allow the
-// user to rectify the API issues (by adjusting limits or using a different one). There is no platform
-// agnostic way to trigger os.Signals in go unfortunately. Which is why we will use the process.Kill
-// approach which works on windows as well.
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
 func isChainEnabled(o *Options, logger logging.Logger) bool {
