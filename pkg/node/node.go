@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -113,6 +112,7 @@ type Bee struct {
 	chainSyncerCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
+	syncingStopped           chan struct{}
 }
 
 type Options struct {
@@ -212,6 +212,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		p2pCancel:      p2pCancel,
 		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
 		tracerCloser:   tracerCloser,
+		syncingStopped: make(chan struct{}),
 	}
 
 	defer func(b *Bee) {
@@ -623,7 +624,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		postageSyncStart = startBlock
 	}
 
-	eventListener = listener.New(logger, chainBackend, postageContractAddress, o.BlockTime, &pidKiller{node: b}, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
@@ -708,7 +709,10 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		// would be needed on the cmd level to support context cancellation at
 		// this stage
 		select {
-		case <-syncedChan:
+		case err = <-syncedChan:
+			if err != nil {
+				return nil, err
+			}
 		case <-interrupt:
 			return nil, ErrInterruped
 		}
@@ -1006,6 +1010,10 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	return b, nil
 }
 
+func (b *Bee) SyncingStopped() chan struct{} {
+	return b.syncingStopped
+}
+
 func (b *Bee) Shutdown() error {
 	var mErr error
 
@@ -1138,30 +1146,7 @@ func (b *Bee) Shutdown() error {
 	return mErr
 }
 
-// pidKiller is used to issue a forced shut down of the node from sub modules. The issue with using the
-// node's Shutdown method is that it only shuts down the node and does not exit the start process
-// which is waiting on the os.Signals. This is not desirable, but currently bee node cannot handle
-// rate-limiting blockchain API calls properly. We will shut down the node in this case to allow the
-// user to rectify the API issues (by adjusting limits or using a different one). There is no platform
-// agnostic way to trigger os.Signals in go unfortunately. Which is why we will use the process.Kill
-// approach which works on windows as well.
-type pidKiller struct {
-	node *Bee
-}
-
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
-
-func (p *pidKiller) Shutdown() error {
-	err := p.node.Shutdown()
-	if err != nil {
-		return err
-	}
-	ps, err := os.FindProcess(syscall.Getpid())
-	if err != nil {
-		return err
-	}
-	return ps.Kill()
-}
 
 func isChainEnabled(o *Options, logger logging.Logger) bool {
 	chainDisabled := !o.ChainEnable
