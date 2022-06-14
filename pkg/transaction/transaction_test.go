@@ -33,6 +33,9 @@ func nonceKey(sender common.Address) string {
 func signerMockForTransaction(signedTx *types.Transaction, sender common.Address, signerChainID *big.Int, t *testing.T) crypto.Signer {
 	return signermock.New(
 		signermock.WithSignTxFunc(func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+			if transaction.Type() != 0 {
+				t.Fatalf("wrong transaction type. wanted 0, got %d", transaction.Type())
+			}
 			if signedTx.To() == nil {
 				if transaction.To() != nil {
 					t.Fatalf("signing transaction with recipient. wanted nil, got %x", transaction.To())
