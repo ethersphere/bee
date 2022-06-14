@@ -165,7 +165,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Swap:             settlement,
 		Chequebook:       chequebook,
 		Pingpong:         o.Pingpong,
-		BatchStore:       o.BatchStore,
 		BlockTime:        o.BlockTime,
 		Tags:             o.Tags,
 		Storer:           o.Storer,
@@ -179,7 +178,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Steward:          o.Steward,
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.GatewayMode, api.FullMode, true, true)
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
@@ -350,7 +349,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, false, 1, false, false)
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, false, 1, false, false)
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
 		s.MountAPI()
 
