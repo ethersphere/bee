@@ -200,7 +200,6 @@ type ExtraOptions struct {
 	Pseudosettle     settlement.Interface
 	Swap             swap.Interface
 	Chequebook       chequebook.Service
-	BatchStore       postage.Storer
 	BlockTime        *big.Int
 	Tags             *tags.Tags
 	Storer           storage.Storer
@@ -219,7 +218,7 @@ const (
 	TargetsRecoveryHeader = "swarm-recovery-targets"
 )
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
 	s := new(Service)
 
 	s.beeMode = beeMode
@@ -231,6 +230,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.pssPublicKey = pssPublicKey
 	s.ethereumAddress = ethereumAddress
 	s.transaction = transaction
+	s.batchStore = batchStore
 	s.metricsRegistry = newDebugMetrics()
 
 	return s
@@ -264,7 +264,6 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.chequebook = e.Chequebook
 	s.swap = e.Swap
 	s.lightNodes = e.LightNodes
-	s.batchStore = e.BatchStore
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
 

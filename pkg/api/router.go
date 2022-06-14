@@ -38,6 +38,10 @@ func (s *Service) mountTechnicalDebug() {
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
+	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
+	})
+
 	if s.transaction != nil {
 		var handle = func(path string, handler http.Handler) {
 			s.router.Handle(path, handler)
@@ -281,10 +285,6 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/reservestate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.reserveStateHandler),
-	})
-
-	handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
 	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
