@@ -217,7 +217,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("chunk store: %w", err)
 			}
 
-			debit, err := ps.accounting.PrepareDebit(p.Address, price)
+			debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 			if err != nil {
 				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 			}
@@ -277,7 +277,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			}
 
 			// return back receipt
-			debit, err := ps.accounting.PrepareDebit(p.Address, price)
+			debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 			if err != nil {
 				return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 			}
@@ -298,7 +298,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	ps.metrics.Forwarder.Inc()
 
-	debit, err := ps.accounting.PrepareDebit(p.Address, price)
+	debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 	if err != nil {
 		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 	}
@@ -422,7 +422,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
-			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) {
+			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) && !errors.Is(result.err, accounting.ErrFailToLock) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
@@ -483,8 +483,11 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
+	creditCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	// Reserve to see whether we can make the request
-	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, origin)
+	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 		return
@@ -603,7 +606,10 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 		}
 	}()
 
-	creditAction, err := ps.accounting.PrepareCredit(peer, receiptPrice, origin)
+	creditCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer.String(), err)
 		return
