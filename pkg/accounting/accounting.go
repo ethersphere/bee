@@ -85,35 +85,40 @@ type PayFunc func(context.Context, swarm.Address, *big.Int)
 // RefreshFunc is the function used for sync time-based settlement
 type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int) (*big.Int, int64, error)
 
-// Mutex is a drop in replacement for the sync.Mutex
+// mutex is a drop in replacement for the sync.mutex
 // it will not lock if the context is expired
-type Mutex struct {
-	mu sync.Mutex
+type mutex struct {
+	mu chan struct{}
+}
+
+func newMutex() *mutex {
+	return &mutex{
+		mu: make(chan struct{}, 1), // unlocked by default
+	}
 }
 
 var ErrFailToLock = errors.New("failed to lock")
 
-func (m *Mutex) TryLock(ctx context.Context) error {
+func (m *mutex) TryLock(ctx context.Context) error {
 	select {
+	case m.mu <- struct{}{}:
+		return nil // locked
 	case <-ctx.Done():
 		return fmt.Errorf("%v: %w", ctx.Err(), ErrFailToLock)
-	default:
-		m.mu.Lock()
-		return nil
 	}
 }
 
-func (m *Mutex) Lock() {
-	m.mu.Lock()
+func (m *mutex) Lock() {
+	m.mu <- struct{}{}
 }
 
-func (m *Mutex) Unlock() {
-	m.mu.Unlock()
+func (m *mutex) Unlock() {
+	<-m.mu
 }
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock                           Mutex    // lock to be held during any accounting action for this peer
+	lock                           *mutex   // lock to be held during any accounting action for this peer
 	reservedBalance                *big.Int // amount currently reserved for active peer interaction
 	shadowReservedBalance          *big.Int // amount potentially to be debited for active peer interaction
 	ghostBalance                   *big.Int // amount potentially could have been debited for but was not
@@ -573,7 +578,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			lock:                  Mutex{},
+			lock:                  newMutex(),
 			reservedBalance:       big.NewInt(0),
 			shadowReservedBalance: big.NewInt(0),
 			ghostBalance:          big.NewInt(0),
