@@ -122,6 +122,11 @@ func (s *Service) mountAPI() {
 			s.newTracingHandler("bytes-download"),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
+		"HEAD": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bytes-head"),
+			web.FinalHandlerFunc(s.bytesHeadHandler),
+		),
 	})
 
 	handle("/chunks", jsonhttp.MethodHandler{
