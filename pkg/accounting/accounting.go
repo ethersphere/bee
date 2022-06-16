@@ -85,21 +85,21 @@ type PayFunc func(context.Context, swarm.Address, *big.Int)
 // RefreshFunc is the function used for sync time-based settlement
 type RefreshFunc func(context.Context, swarm.Address, *big.Int, *big.Int) (*big.Int, int64, error)
 
-// mutex is a drop in replacement for the sync.mutex
+// Mutex is a drop in replacement for the sync.Mutex
 // it will not lock if the context is expired
-type mutex struct {
+type Mutex struct {
 	mu chan struct{}
 }
 
-func newMutex() *mutex {
-	return &mutex{
+func NewMutex() *Mutex {
+	return &Mutex{
 		mu: make(chan struct{}, 1), // unlocked by default
 	}
 }
 
 var ErrFailToLock = errors.New("failed to lock")
 
-func (m *mutex) TryLock(ctx context.Context) error {
+func (m *Mutex) TryLock(ctx context.Context) error {
 	select {
 	case m.mu <- struct{}{}:
 		return nil // locked
@@ -108,17 +108,17 @@ func (m *mutex) TryLock(ctx context.Context) error {
 	}
 }
 
-func (m *mutex) Lock() {
+func (m *Mutex) Lock() {
 	m.mu <- struct{}{}
 }
 
-func (m *mutex) Unlock() {
+func (m *Mutex) Unlock() {
 	<-m.mu
 }
 
 // accountingPeer holds all in-memory accounting information for one peer.
 type accountingPeer struct {
-	lock                           *mutex   // lock to be held during any accounting action for this peer
+	lock                           *Mutex   // lock to be held during any accounting action for this peer
 	reservedBalance                *big.Int // amount currently reserved for active peer interaction
 	shadowReservedBalance          *big.Int // amount potentially to be debited for active peer interaction
 	ghostBalance                   *big.Int // amount potentially could have been debited for but was not
@@ -578,7 +578,7 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 	peerData, ok := a.accountingPeers[peer.String()]
 	if !ok {
 		peerData = &accountingPeer{
-			lock:                  newMutex(),
+			lock:                  NewMutex(),
 			reservedBalance:       big.NewInt(0),
 			shadowReservedBalance: big.NewInt(0),
 			ghostBalance:          big.NewInt(0),

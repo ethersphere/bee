@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,6 +47,57 @@ type booking struct {
 	originatedCredit  bool
 	notifyPaymentSent bool
 	overpay           uint64
+}
+
+func TestMutex(t *testing.T) {
+	t.Run("locked mutex can not be locked again", func(t *testing.T) {
+		m := accounting.NewMutex()
+		m.Lock()
+
+		var (
+			c  chan struct{}
+			wg sync.WaitGroup
+		)
+
+		wg.Add(1)
+		go func() {
+			wg.Done()
+			m.Lock()
+			c <- struct{}{}
+		}()
+
+		wg.Wait()
+
+		select {
+		case <-c:
+			t.Error("not expected to acquire the lock")
+		case <-time.After(time.Millisecond):
+		}
+	})
+
+	t.Run("can lock after release", func(t *testing.T) {
+		m := accounting.NewMutex()
+		m.Lock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+
+		m.Unlock()
+		if err := m.TryLock(ctx); err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("locked mutex takes context into account", func(t *testing.T) {
+		m := accounting.NewMutex()
+		m.Lock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+		if err := m.TryLock(ctx); !errors.Is(err, accounting.ErrFailToLock) {
+			t.Errorf("expected %v, got %v", accounting.ErrFailToLock, err)
+		}
+	})
 }
 
 // TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
