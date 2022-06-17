@@ -66,6 +66,10 @@ type fmtOptions struct {
 const (
 	null    = "null"       // null is a placeholder for nil values.
 	noValue = "<no-value>" // noValue is a placeholder for missing values.
+
+	// maxLogDepthExceeded is printed as the last value in
+	// the recursive chain when the depth limit is exceeded.
+	maxLogDepthExceeded = `"<max-log-depth-exceeded>"`
 )
 
 // caller represents the original call site for a log line. The File and
@@ -159,7 +163,7 @@ func (f *formatter) prettyWithFlags(value interface{}, flags uint32, depth int) 
 	const flagRawStruct = 0x1 // Do not print braces on structs.
 
 	if depth > f.opts.maxLogDepth {
-		return `"<max-log-depth-exceeded>"`
+		return maxLogDepthExceeded
 	}
 
 	// Handle types that take full control of logging.
