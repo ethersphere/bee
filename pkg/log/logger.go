@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ type logger struct {
 func (l *logger) Debug(msg string, keysAndValues ...interface{}) {
 	if int(l.verbosity.get()) >= int(l.v) {
 		if err := l.log(VerbosityDebug, CategoryDebug, nil, msg, keysAndValues...); err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}
 }
@@ -98,7 +99,7 @@ func (l *logger) Debug(msg string, keysAndValues ...interface{}) {
 func (l *logger) Info(msg string, keysAndValues ...interface{}) {
 	if l.verbosity.get() >= VerbosityInfo {
 		if err := l.log(VerbosityInfo, CategoryInfo, nil, msg, keysAndValues...); err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}
 }
@@ -107,7 +108,7 @@ func (l *logger) Info(msg string, keysAndValues ...interface{}) {
 func (l *logger) Warning(msg string, keysAndValues ...interface{}) {
 	if l.verbosity.get() >= VerbosityWarning {
 		if err := l.log(VerbosityWarning, CategoryWarning, nil, msg, keysAndValues...); err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}
 }
@@ -116,7 +117,7 @@ func (l *logger) Warning(msg string, keysAndValues ...interface{}) {
 func (l *logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	if l.verbosity.get() >= VerbosityError {
 		if err := l.log(VerbosityError, CategoryError, err, msg, keysAndValues...); err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}
 }
