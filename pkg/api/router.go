@@ -6,6 +6,8 @@ package api
 
 import (
 	"fmt"
+	"github.com/ethersphere/bee/pkg/auth"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"net/http"
 	"strings"
 
@@ -25,6 +27,15 @@ func (s *server) setupRouting() {
 
 	router := mux.NewRouter()
 
+	// handle is a helper closure which simplifies the router setup.
+	handle := func(path string, handler http.Handler) {
+		if s.Restricted {
+			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
+		}
+		router.Handle(path, handler)
+		router.Handle(rootPath+path, handler)
+	}
+
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +46,157 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	//router.HandleFunc("/@/{protocol}/{rest:.*}", s.handleProtocol)
+	router.HandleFunc("/@/{protocol}/{rest:.*}", s.handleProtocol)
+
+	if s.Restricted {
+		router.Handle("/auth", jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				s.newTracingHandler("auth"),
+				jsonhttp.NewMaxBodyBytesHandler(512),
+				web.FinalHandlerFunc(s.authHandler),
+			),
+		})
+		router.Handle("/refresh", jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				s.newTracingHandler("auth"),
+				jsonhttp.NewMaxBodyBytesHandler(512),
+				web.FinalHandlerFunc(s.refreshHandler),
+			),
+		})
+	}
+
+	handle("/bytes", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bytes-upload"),
+			web.FinalHandlerFunc(s.bytesUploadHandler),
+		),
+	})
+	handle("/bytes/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bytes-download"),
+			web.FinalHandlerFunc(s.bytesGetHandler),
+		),
+	})
+
+	handle("/chunks", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			web.FinalHandlerFunc(s.chunkUploadHandler),
+		),
+	})
+
+	handle("/chunks/stream", web.ChainHandlers(
+		s.newTracingHandler("chunks-stream-upload"),
+		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
+	))
+
+	handle("/chunks/{addr}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chunkGetHandler),
+	})
+
+	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			web.FinalHandlerFunc(s.socUploadHandler),
+		),
+	})
+
+	handle("/feeds/{owner}/{topic}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.feedGetHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			web.FinalHandlerFunc(s.feedPostHandler),
+		),
+	})
+
+	handle("/bzz", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bzz-upload"),
+			web.FinalHandlerFunc(s.bzzUploadHandler),
+		),
+	})
+	handle("/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
+	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bzz-download"),
+			web.FinalHandlerFunc(s.bzzDownloadHandler),
+		),
+		"PATCH": web.ChainHandlers(
+			s.newTracingHandler("bzz-patch"),
+			web.FinalHandlerFunc(s.bzzPatchHandler),
+		),
+	})
+
+	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
+				web.FinalHandlerFunc(s.pssPostHandler),
+			),
+		})),
+	)
+
+	handle("/pss/subscribe/{topic}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandlerFunc(s.pssWsHandler),
+	))
+
+	handle("/tags", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.listTagsHandler),
+			"POST": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.createTagHandler),
+			),
+		})),
+	)
+	handle("/tags/{id}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.getTagHandler),
+			"DELETE": http.HandlerFunc(s.deleteTagHandler),
+			"PATCH": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.doneSplitHandler),
+			),
+		})),
+	)
+
+	handle("/pins", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.listPinnedRootHashes),
+		})),
+	)
+	handle("/pins/{reference}", web.ChainHandlers(
+		s.gatewayModeForbidEndpointHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.getPinnedRootHash),
+			"POST":   http.HandlerFunc(s.pinRootHash),
+			"DELETE": http.HandlerFunc(s.unpinRootHash),
+		})),
+	)
+
+	handle("/stewardship/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.gatewayModeForbidEndpointHandler,
+			web.FinalHandlerFunc(s.stewardshipGetHandler),
+		),
+		"PUT": web.ChainHandlers(
+			s.gatewayModeForbidEndpointHandler,
+			web.FinalHandlerFunc(s.stewardshipPutHandler),
+		),
+	})
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),

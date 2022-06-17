@@ -2,17 +2,16 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"io"
 )
 
-const MAX_PROTOCOL_SIZE = 1_000_000
+const MAX_PROTOCOL_SIZE = 1_000_000_000
 
-var PROTOCOLS = map[string]swarm.Address {
-	"bzz": swarm.MustParseHexAddress(""), // TODO: Define this
+var PROTOCOLS = map[string]swarm.Address{
+	"bzz":    swarm.MustParseHexAddress(""), // TODO: Define this
 	"chunks": swarm.MustParseHexAddress(""), // TODO: Define this
 }
 
@@ -26,7 +25,7 @@ func (s *server) resolveProtocol(str string) (swarm.Address, error) {
 	// Try and parse the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
 	if err == nil {
-		log.Tracef("name resolve: valid bzz address %q", str)
+		log.Tracef("resolveProtocol: valid bzz address %q", str)
 		return addr, nil
 	}
 
@@ -36,10 +35,10 @@ func (s *server) resolveProtocol(str string) (swarm.Address, error) {
 	}
 
 	// Try and resolve the name using the provided resolver.
-	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
+	log.Debugf("resolveProtocol: attempting to resolve %s to bzz address", str)
 	addr, err = s.resolver.Resolve(str)
 	if err == nil {
-		log.Tracef("name resolve: resolved name %s to %s", str, addr)
+		log.Tracef("resolveProtocol: resolved name %s to %s", str, addr)
 		return addr, nil
 	}
 
@@ -47,19 +46,24 @@ func (s *server) resolveProtocol(str string) (swarm.Address, error) {
 }
 
 func (s *server) retrieveProtocol(ctx context.Context, reference swarm.Address) ([]byte, error) {
+	log := s.logger
+
 	reader, l, err := joiner.New(ctx, s.storer, reference)
 	if err != nil {
 		return nil, err
 	}
 
-	if l > MAX_PROTOCOL_SIZE {
-		return nil, errors.New("protocol binary too big")
-	}
+	// TODO: Enable this
+	//if l > MAX_PROTOCOL_SIZE {
+	//	return nil, errors.New("protocol binary too big")
+	//}
 
 	protocolBytes, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
+
+	log.Tracef("retrieveProtocol: downloaded protocol of size %d", l)
 
 	return protocolBytes, nil
 }
