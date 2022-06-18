@@ -7,6 +7,9 @@ package epochs
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -143,14 +146,16 @@ func (f *asyncFinder) get(ctx context.Context, at int64, e *epoch) (swarm.Chunk,
 }
 
 // at attempts to retrieve all epoch chunks on the path for `at` concurrently
-func (f *asyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c chan<- *result) {
+func (f *asyncFinder) at(wg *sync.WaitGroup, ctx context.Context, at int64, p *path, e *epoch, c chan<- *result) {
 	for ; ; e = e.childAt(uint64(at)) {
 		select {
 		case <-p.cancel:
 			return
 		default:
 		}
+		wg.Add(1)
 		go func(e *epoch) {
+			defer wg.Done()
 			uch, err := f.get(ctx, at, e)
 			if err != nil {
 				return
@@ -175,48 +180,64 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, fee
 // after is a unix time hint of the latest known update
 func (f *asyncFinder) asyncAt(ctx context.Context, at, after int64) (swarm.Chunk, error) {
 	c := make(chan *result)
-	go f.at(ctx, at, newPath(at), &epoch{0, maxLevel}, c)
+	wg := sync.WaitGroup{}
+	go f.at(&wg, ctx, at, newPath(at), &epoch{0, maxLevel}, c)
 LOOP:
-	for r := range c {
-		p := r.path
-		// ignore result from paths already  cancelled
+	for {
 		select {
-		case <-p.cancel:
-			continue LOOP
-		default:
-		}
-		if r.chunk != nil { // update chunk for epoch found
-			if r.level == 0 { // return if deepest level epoch
-				return r.chunk, nil
+		case <-ctx.Done():
+			wgDone := make(chan struct{})
+			go func() {
+				defer close(wgDone)
+				wg.Wait()
+			}()
+			select {
+			case <-time.After(3 * time.Second):
+				return nil, fmt.Errorf("failed to stop async gets %w", ctx.Err())
+			case <-wgDone:
+				return nil, ctx.Err()
 			}
-			// ignore if higher level than the deepest epoch found
-			if p.top != nil && p.top.level < r.level {
+		case r := <-c:
+			p := r.path
+			// ignore result from paths already  cancelled
+			select {
+			case <-p.cancel:
 				continue LOOP
+			default:
 			}
-			p.top = r
-		} else { // update chunk for epoch not found
-			// if top level than return with no update found
-			if r.level == 32 {
-				close(p.cancel)
-				return nil, nil
+			if r.chunk != nil { // update chunk for epoch found
+				if r.level == 0 { // return if deepest level epoch
+					return r.chunk, nil
+				}
+				// ignore if higher level than the deepest epoch found
+				if p.top != nil && p.top.level < r.level {
+					continue LOOP
+				}
+				p.top = r
+			} else { // update chunk for epoch not found
+				// if top level than return with no update found
+				if r.level == 32 {
+					close(p.cancel)
+					return nil, nil
+				}
+				// if topmost epoch not found, then set bottom
+				if p.bottom == nil || p.bottom.level < r.level {
+					p.bottom = r
+				}
 			}
-			// if topmost epoch not found, then set bottom
-			if p.bottom == nil || p.bottom.level < r.level {
-				p.bottom = r
-			}
-		}
 
-		// found - not found for two consecutive epochs
-		if p.top != nil && p.bottom != nil && p.top.level == p.bottom.level+1 {
-			// cancel path
-			close(p.cancel)
-			if p.bottom.isLeft() {
-				return p.top.chunk, nil
+			// found - not found for two consecutive epochs
+			if p.top != nil && p.bottom != nil && p.top.level == p.bottom.level+1 {
+				// cancel path
+				close(p.cancel)
+				if p.bottom.isLeft() {
+					return p.top.chunk, nil
+				}
+				// recursive call on new path through left sister
+				np := newPath(at)
+				np.top = &result{np, p.top.chunk, p.top.epoch}
+				go f.at(&wg, ctx, int64(p.bottom.start-1), np, p.bottom.left(), c)
 			}
-			// recursive call on new path through left sister
-			np := newPath(at)
-			np.top = &result{np, p.top.chunk, p.top.epoch}
-			go f.at(ctx, int64(p.bottom.start-1), np, p.bottom.left(), c)
 		}
 	}
 	return nil, nil
