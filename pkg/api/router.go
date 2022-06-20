@@ -425,6 +425,10 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
 		})),
 	)
+
+	handle("/tags/{id}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.getTagHandler),
+	})
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
