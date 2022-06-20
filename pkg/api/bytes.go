@@ -134,20 +134,20 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
 		logger.Error("bytes: parse address error")
-		w.WriteHeader(400) // HEAD requests do not write a body
+		w.WriteHeader(http.StatusBadRequest) // HEAD requests do not write a body
 		return
 	}
-
 	ch, err := s.storer.Get(r.Context(), storage.ModeGetRequest, address)
 	if err != nil {
 		logger.Debugf("bytes: get root chunk %s: %v", nameOrHex, err)
 		logger.Error("bytes: get rook chunk error")
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	w.Header().Add("Access-Control-Expose-Headers", "Accept-Ranges, Content-Encoding")
 	w.Header().Add("Content-Type", "application/octet-stream")
 	span := int64(binary.LittleEndian.Uint64(ch.Data()[:swarm.SpanSize]))
+
 	w.Header().Add("Content-Length", fmt.Sprintf("%d", span))
-	w.WriteHeader(200) // HEAD requests do not write a body
+	w.WriteHeader(http.StatusOK) // HEAD requests do not write a body
 }

@@ -213,11 +213,6 @@ type ExtraOptions struct {
 	Steward          steward.Interface
 }
 
-const (
-	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
-	TargetsRecoveryHeader = "swarm-recovery-targets"
-)
-
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
 	s := new(Service)
 
@@ -309,9 +304,21 @@ func (s *Service) MountAPI() {
 
 	s.mountAPI()
 
+	skipHeadHandler := func(fn func(http.Handler) http.Handler) func(h http.Handler) http.Handler {
+		return func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					h.ServeHTTP(w, r)
+				} else {
+					fn(h).ServeHTTP(w, r)
+				}
+			})
+		}
+	}
+
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
-		handlers.CompressHandler,
+		skipHeadHandler(handlers.CompressHandler),
 		// todo: add recovery handler
 		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
