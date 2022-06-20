@@ -28,11 +28,10 @@ import (
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/mux"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	rcmgr "github.com/libp2p/go-libp2p-resource-manager"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	goyamux "github.com/libp2p/go-libp2p-yamux"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -165,7 +164,10 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 			{
 				Name: testStreamName,
 				Handler: func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
-					return nil
+					defer s.Close()
+					// block the stream by expecting something to read
+					_, err := s.Read(make([]byte, 1))
+					return err
 				},
 			},
 		},
@@ -201,7 +203,15 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	maxIncomingStreams := goyamux.DefaultTransport.MaxIncomingStreams
+	var limits rcmgr.Limit
+	if err := s2.Host().Network().ResourceManager().ViewTransient(func(scope network.ResourceScope) error {
+		limits = scope.(rcmgr.ResourceScopeLimiter).Limit()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	maxIncomingStreams := uint32(limits.GetStreamLimit(network.DirInbound))
 
 	overflowStreamCount := maxIncomingStreams / 4
 
@@ -214,8 +224,8 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 				t.Errorf("test protocol client %v: %v", i, err)
 			}
 		} else {
-			if !errors.Is(err, mux.ErrReset) {
-				t.Errorf("test protocol client %v error %v, want %v", i, err, mux.ErrReset)
+			if !errors.Is(err, network.ErrReset) {
+				t.Errorf("test protocol client %v error %v, want %v", i, err, network.ErrReset)
 			}
 		}
 	}
@@ -251,8 +261,8 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 				t.Errorf("test protocol client %v: %v", i, err)
 			}
 		} else {
-			if !errors.Is(err, mux.ErrReset) {
-				t.Errorf("test protocol client %v error %v, want %v", i, err, mux.ErrReset)
+			if !errors.Is(err, network.ErrReset) {
+				t.Errorf("test protocol client %v error %v, want %v", i, err, network.ErrReset)
 			}
 		}
 	}
@@ -1110,7 +1120,7 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 
 	// due to the fact that disconnect method is asynchronous
 	// stream reset error should occur either on creation or on first read attempt
-	if err != nil && !errors.Is(err, mux.ErrReset) {
+	if err != nil && !errors.Is(err, network.ErrReset) {
 		t.Fatalf("expected stream reset error, got %v", err)
 	}
 
@@ -1126,7 +1136,7 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 		case <-time.After(60 * time.Second):
 			t.Error("expected stream reset error, got timeout reading")
 		case err := <-readErr:
-			if !errors.Is(err, mux.ErrReset) {
+			if !errors.Is(err, network.ErrReset) {
 				t.Errorf("expected stream reset error, got %v", err)
 			}
 		}

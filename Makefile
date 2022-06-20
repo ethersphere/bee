@@ -1,7 +1,7 @@
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.43.0
+GOLANGCI_LINT_VERSION ?= v1.46.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -12,8 +12,8 @@ BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 
-GO_MIN_VERSION ?= "1.17"
-GO_BUILD_VERSION ?= "1.17.2"
+GO_MIN_VERSION ?= "1.18"
+GO_BUILD_VERSION ?= "1.18.3"
 GO_MOD_ENABLED_VERSION ?= "1.12"
 GO_MOD_VERSION ?= "$(shell go mod edit -print | awk '/^go[ \t]+[0-9]+\.[0-9]+(\.[0-9]+)?[ \t]*$$/{print $$2}')"
 GO_SYSTEM_VERSION ?= "$(shell go version | awk '{ gsub(/go/, "", $$3); print $$3 }')"
