@@ -15,7 +15,10 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging/httpaccess"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
@@ -23,6 +26,72 @@ const (
 	apiVersion = "v1" // Only one api version exists, this should be configurable with more.
 	rootPath   = "/" + apiVersion
 )
+
+func (s *Service) MountTechnicalDebug() {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+	s.router = router
+
+	s.mountTechnicalDebug()
+
+	s.Handler = router
+}
+
+func (s *Service) MountDebug(restricted bool) {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	s.mountBusinessDebug(restricted)
+	s.Handler = s.router
+}
+
+func (s *Service) MountAPI() {
+	s.handlerMu.Lock()
+	defer s.handlerMu.Unlock()
+
+	if s.router == nil {
+		s.router = mux.NewRouter()
+		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+	}
+
+	s.mountAPI()
+
+	skipHeadHandler := func(fn func(http.Handler) http.Handler) func(h http.Handler) http.Handler {
+		return func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					h.ServeHTTP(w, r)
+				} else {
+					fn(h).ServeHTTP(w, r)
+				}
+			})
+		}
+	}
+
+	s.Handler = web.ChainHandlers(
+		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
+		skipHeadHandler(handlers.CompressHandler),
+		s.responseCodeMetricsHandler,
+		s.pageviewMetricsHandler,
+		func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Allow-Origin", o)
+					w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Gas-Price, Range, Accept-Ranges, Content-Encoding")
+					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+					w.Header().Set("Access-Control-Max-Age", "3600")
+				}
+				h.ServeHTTP(w, r)
+			})
+		},
+		s.gatewayModeForbidHeadersHandler,
+		web.FinalHandler(s.router),
+	)
+}
 
 func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/readiness", web.ChainHandlers(
@@ -121,6 +190,10 @@ func (s *Service) mountAPI() {
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bytes-download"),
 			web.FinalHandlerFunc(s.bytesGetHandler),
+		),
+		"HEAD": web.ChainHandlers(
+			s.newTracingHandler("bytes-head"),
+			web.FinalHandlerFunc(s.bytesHeadHandler),
 		),
 	})
 
