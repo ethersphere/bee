@@ -197,7 +197,10 @@ LOOP:
 			case <-wgDone:
 				return nil, ctx.Err()
 			}
-		case r := <-c:
+		case r, more := <-c:
+			if !more {
+				return nil, nil
+			}
 			p := r.path
 			// ignore result from paths already  cancelled
 			select {
@@ -240,5 +243,4 @@ LOOP:
 			}
 		}
 	}
-	return nil, nil
 }
