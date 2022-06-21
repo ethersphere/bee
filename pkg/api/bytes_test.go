@@ -9,6 +9,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -119,6 +120,25 @@ func TestBytes(t *testing.T) {
 
 		if !bytes.Equal(data, content) {
 			t.Fatalf("data mismatch. got %s, want %s", string(data), string(content))
+		}
+	})
+
+	t.Run("head", func(t *testing.T) {
+		resp := request(t, client, http.MethodHead, resource+"/"+expHash, nil, http.StatusOK)
+		if int(resp.ContentLength) != len(content) {
+			t.Fatalf("length %d want %d", resp.ContentLength, len(content))
+		}
+	})
+	t.Run("head with compression", func(t *testing.T) {
+		resp := jsonhttptest.Request(t, client, http.MethodHead, resource+"/"+expHash, http.StatusOK,
+			jsonhttptest.WithRequestHeader("Accept-Encoding", "gzip"),
+		)
+		val, err := strconv.Atoi(resp.Get("Content-Length"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if val != len(content) {
+			t.Fatalf("length %d want %d", val, len(content))
 		}
 	})
 

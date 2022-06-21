@@ -33,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/logging/httpaccess"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -55,13 +54,10 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
-	"resenje.org/web"
 )
 
 const (
@@ -213,11 +209,6 @@ type ExtraOptions struct {
 	Steward          steward.Interface
 }
 
-const (
-	// TargetsRecoveryHeader defines the Header for Recovery targets in Global Pinning
-	TargetsRecoveryHeader = "swarm-recovery-targets"
-)
-
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
 	s := new(Service)
 
@@ -275,61 +266,6 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.chainBackend = chainBackend
 
 	return s.chunkPushC
-}
-
-func (s *Service) MountTechnicalDebug() {
-	s.handlerMu.Lock()
-	defer s.handlerMu.Unlock()
-
-	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-	s.router = router
-
-	s.mountTechnicalDebug()
-
-	s.Handler = router
-}
-
-func (s *Service) MountDebug(restricted bool) {
-	s.handlerMu.Lock()
-	defer s.handlerMu.Unlock()
-
-	s.mountBusinessDebug(restricted)
-	s.Handler = s.router
-}
-
-func (s *Service) MountAPI() {
-	s.handlerMu.Lock()
-	defer s.handlerMu.Unlock()
-
-	if s.router == nil {
-		s.router = mux.NewRouter()
-		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-	}
-
-	s.mountAPI()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
-		handlers.CompressHandler,
-		// todo: add recovery handler
-		s.responseCodeMetricsHandler,
-		s.pageviewMetricsHandler,
-		func(h http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
-					w.Header().Set("Access-Control-Allow-Credentials", "true")
-					w.Header().Set("Access-Control-Allow-Origin", o)
-					w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Gas-Price")
-					w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
-					w.Header().Set("Access-Control-Max-Age", "3600")
-				}
-				h.ServeHTTP(w, r)
-			})
-		},
-		s.gatewayModeForbidHeadersHandler,
-		web.FinalHandler(s.router),
-	)
 }
 
 // Close hangs up running websockets on shutdown.
