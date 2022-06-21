@@ -367,3 +367,4 @@ jobs:
           repository: ethersphere/bee-argo
           event-type: trigger-argo
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
+
