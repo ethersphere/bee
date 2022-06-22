@@ -1,7 +1,7 @@
 package patricia_test
 
 import (
-	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -34,22 +34,47 @@ func TestPat(t *testing.T) {
 
 func TestMarshal(t *testing.T) {
 	vs := patricia.NewNode(nil)
-	vr := patricia.NewNode([]byte{1, 5, 7})
-	vt := patricia.NewNode([]byte{1, 5, 9})
-	vz := patricia.NewNode([]byte{1, 6, 7})
+	vr := patricia.NewNode([]byte{1, 5, 7, 8})
+	vt := patricia.NewNode([]byte{1, 5, 9, 8})
+	vz := patricia.NewNode([]byte{1, 6, 7, 7})
 
-	vs.Insert(vr)
-	vs.Insert(vt)
-	vs.Insert(vz)
+	if !vs.Insert(vr) {
+		t.Fatal("expected to insert a node but didnt")
+	}
+	if !vs.Insert(vt) {
+		t.Fatal("expected to insert a node but didnt")
+	}
 
-	bd, err := json.Marshal(vs)
+	if !vs.Insert(vz) {
+		t.Fatal("expected to insert a node but didnt")
+	}
+
+	mm, err := vs.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
+	spew.Dump(vs)
+	fmt.Println(mm)
+	//bd, err := json.Marshal(vs)
+	//if err != nil {
+	//t.Fatal(err)
+	//}
 
-	bdd := patricia.Node{}
-	if err := json.Unmarshal(bd, &bdd); err != nil {
-		t.Fatal(err)
-	}
-	spew.Dump(bdd)
+	//bdd := patricia.Node{}
+	//if err := json.Unmarshal(bd, &bdd); err != nil {
+	//t.Fatal(err)
+	//}
+	//fmt.Println(string(bd))
+
+	//if bdd.Insert(vr) {
+	//t.Fatal("expected not to insert a node but did")
+	//}
+
+	//if bdd.Insert(vt) {
+	//t.Fatal("expected not to insert a node but did")
+	//}
+
+	//if bdd.Insert(vz) {
+	//t.Fatal("expected not to insert a node but did")
+	//}
 }
