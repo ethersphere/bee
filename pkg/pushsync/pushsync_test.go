@@ -701,12 +701,28 @@ func TestPeerSkipList(t *testing.T) {
 		t.Fatal("peer should be skipped")
 	}
 
+	want := 3
+	skipList.SetSaturated(addr1, want)
+	have := skipList.Saturated(addr1)
+	if want != have {
+		t.Errorf("set/get saturated: want: %d; have: %d", want, have)
+	}
+
 	time.Sleep(time.Millisecond * 11)
 
 	skipList.PruneExpired()
-
 	if len(skipList.ChunkSkipPeers(addr1)) != 0 {
 		t.Fatal("entry should be pruned")
+	}
+
+	skipList.Add(addr1, addr2, time.Minute)
+	skipList.FlushExpirations(addr1)
+	skipList.SetSaturated(addr1, 3)
+	if len(skipList.ChunkSkipPeers(addr1)) != 0 {
+		t.Errorf("entry should be pruned")
+	}
+	if have, want := skipList.Saturated(addr1), 3; have != want {
+		t.Errorf("set/get saturated: want: %d; have: %d", want, have)
 	}
 }
 

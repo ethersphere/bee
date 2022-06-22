@@ -51,6 +51,11 @@ const (
 	maxPeers          = 16
 )
 
+const (
+	saturatedSkipPeersRetries         = 128
+	saturatedSkipPeersRetryWaitPeriod = 1 * time.Second
+)
+
 var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
@@ -357,9 +362,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer timer.Stop()
 
 	nextPeer := func() (swarm.Address, error) {
-
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
-
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
@@ -396,7 +399,20 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			allowedPushes--
 
 			peer, err := nextPeer()
-			if err != nil {
+			switch {
+			case errors.Is(err, topology.ErrNotFound):
+				saturated := ps.skipList.Saturated(ch.Address())
+				saturated++
+				if saturated > saturatedSkipPeersRetries {
+					ps.skipList.SetSaturated(ch.Address(), 0)
+					return nil, err
+				}
+				ps.skipList.SetSaturated(ch.Address(), saturated)
+				ps.skipList.FlushExpirations(ch.Address())
+				time.Sleep(saturatedSkipPeersRetryWaitPeriod)
+				timer.Reset(0)
+				continue
+			case err != nil:
 				return nil, err
 			}
 
@@ -415,7 +431,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				continue
 			}
 
-			// retry
 			timer.Reset(p90TTL)
 
 		case result := <-resultChan:
@@ -680,16 +695,22 @@ func (ps *PushSync) warmedUp() bool {
 	return time.Now().After(ps.warmupPeriod)
 }
 
-type peerSkipList struct {
-	sync.Mutex
+type (
+	entry struct {
+		saturatedCnt int                  // The number of time the expirations contained all peers.
+		expirations  map[string]time.Time // Key is peer address.
+	}
 
-	// key is chunk address, value is map of peer address to expiration
-	skip map[string]map[string]time.Time
-}
+	peerSkipList struct {
+		sync.Mutex
+
+		skip map[string]*entry // Key is chunk address.
+	}
+)
 
 func newPeerSkipList() *peerSkipList {
 	return &peerSkipList{
-		skip: make(map[string]map[string]time.Time),
+		skip: make(map[string]*entry),
 	}
 }
 
@@ -697,18 +718,39 @@ func (l *peerSkipList) Add(chunk, peer swarm.Address, expire time.Duration) {
 	l.Lock()
 	defer l.Unlock()
 
-	if _, ok := l.skip[chunk.ByteString()]; !ok {
-		l.skip[chunk.ByteString()] = make(map[string]time.Time)
+	if l.skip[chunk.ByteString()] == nil {
+		l.skip[chunk.ByteString()] = &entry{expirations: make(map[string]time.Time)}
 	}
-	l.skip[chunk.ByteString()][peer.ByteString()] = time.Now().Add(expire)
+	l.skip[chunk.ByteString()].expirations[peer.ByteString()] = time.Now().Add(expire)
+}
+
+func (l *peerSkipList) FlushExpirations(chunk swarm.Address) {
+	l.Lock()
+	defer l.Unlock()
+
+	l.skip[chunk.ByteString()].expirations = make(map[string]time.Time)
+}
+
+func (l *peerSkipList) SetSaturated(chunk swarm.Address, v int) {
+	l.Lock()
+	defer l.Unlock()
+
+	l.skip[chunk.ByteString()].saturatedCnt = v
+}
+
+func (l *peerSkipList) Saturated(chunk swarm.Address) int {
+	l.Lock()
+	defer l.Unlock()
+
+	return l.skip[chunk.ByteString()].saturatedCnt
 }
 
 func (l *peerSkipList) ChunkSkipPeers(ch swarm.Address) (peers []swarm.Address) {
 	l.Lock()
 	defer l.Unlock()
 
-	if p, ok := l.skip[ch.ByteString()]; ok {
-		for peer, exp := range p {
+	if v, ok := l.skip[ch.ByteString()]; ok {
+		for peer, exp := range v.expirations {
 			if time.Now().Before(exp) {
 				peers = append(peers, swarm.NewAddress([]byte(peer)))
 			}
@@ -722,18 +764,15 @@ func (l *peerSkipList) PruneExpired() {
 	defer l.Unlock()
 
 	now := time.Now()
-
 	for k, v := range l.skip {
-		kc := len(v)
-		for kk, vv := range v {
+		for kk, vv := range v.expirations {
 			if vv.Before(now) {
-				delete(v, kk)
-				kc--
+				delete(v.expirations, kk)
+				v.saturatedCnt = 0
 			}
 		}
-		if kc == 0 {
-			// prune the chunk too
-			delete(l.skip, k)
+		if len(v.expirations) == 0 {
+			delete(l.skip, k) // Prune the chunk too.
 		}
 	}
 }

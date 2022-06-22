@@ -610,26 +610,28 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 		p, err := newStoringStamperPutter(s.storer, s.post, s.signer, batch)
 		return p, noopWaitFn, err
 	}
-	p, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
+	p, err := newPushStamperPutter(s.storer, s.logger, s.post, s.signer, batch, s.chunkPushC)
 	return p, p.eg.Wait, err
 }
 
 type pushStamperPutter struct {
 	storage.Storer
+
+	logger  logging.Logger
 	stamper postage.Stamper
 	eg      errgroup.Group
 	c       chan *pusher.Op
 	sem     chan struct{}
 }
 
-func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
+func newPushStamperPutter(s storage.Storer, logger logging.Logger, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
 	i, err := post.GetStampIssuer(batch)
 	if err != nil {
 		return nil, fmt.Errorf("stamp issuer: %w", err)
 	}
 
 	stamper := postage.NewStamper(i, signer)
-	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
+	return &pushStamperPutter{Storer: s, logger: logger, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
 }
 
 func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
@@ -653,28 +655,34 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 		func(ch swarm.Chunk) {
 			p.sem <- struct{}{}
 			p.eg.Go(func() error {
-				defer func() {
-					<-p.sem
-				}()
-				errc := make(chan error, 1)
+				defer func() { <-p.sem }()
 				// note: shutdown might be tricky, we need to pass the quit channel
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
+				op := &pusher.Op{
+					Chunk:  ch,
+					Err:    make(chan error, 1),
+					Direct: true,
+				}
 			PUSH:
-				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
+				p.c <- op
 				select {
-				case err := <-errc:
-					// if we're the closest one we will store the chunk and return no error
-					if errors.Is(err, topology.ErrWantSelf) {
-						if _, err := p.Storer.Put(ctx, storage.ModePutSync, ch); err != nil {
-							return err
-						}
+				case err := <-op.Err:
+					switch {
+					case err == nil:
 						return nil
+					case errors.Is(err, topology.ErrWantSelf):
+						// If we're the closest one we will
+						// store the chunk and return no error.
+						_, err := p.Storer.Put(ctx, storage.ModePutSync, ch)
+						return err
+					case errors.Is(err, topology.ErrNotFound):
+						// We have run out of peers.
+						return err
+					default:
+						p.logger.Tracef("api.pushStamperPutter: unable to push chunk %s; error: %v", ch.Address(), err)
+						goto PUSH
 					}
-					if err == nil {
-						return nil
-					}
-					goto PUSH
 				case <-ctx.Done():
 					return ctx.Err()
 				}
