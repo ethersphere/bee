@@ -5,11 +5,13 @@
 package api
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -62,7 +64,14 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 	p := requestPipelineFn(putter, r)
-	address, err := p(ctx, r.Body)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	pr := NewProgressReader(ctx, r.Body, time.Minute, func(n uint64) {
+		logger.Error("bytes upload: idle read timeout exceeded")
+		logger.Debugf("bytes upload: idle read timeout exceeded: read %d", n)
+		cancel()
+	})
+	address, err := p(ctx, pr)
 	if err != nil {
 		logger.Debugf("bytes upload: split write all: %v", err)
 		logger.Error("bytes upload: split write all")
