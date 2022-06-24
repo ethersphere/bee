@@ -159,4 +159,13 @@ func TestBytes(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("upload multipart error", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+	})
 }
