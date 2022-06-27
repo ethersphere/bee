@@ -502,7 +502,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	)
 
 	handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getTagHandler),
+		"GET": http.HandlerFunc(s.getDebugTagHandler),
 	})
 }
 

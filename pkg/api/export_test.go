@@ -13,6 +13,7 @@ type (
 	FeedReferenceResponse = feedReferenceResponse
 	BzzUploadResponse     = bzzUploadResponse
 	TagResponse           = tagResponse
+	DebugTagResponse      = debugTagResponse
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
 	IsRetrievableResponse = isRetrievableResponse
