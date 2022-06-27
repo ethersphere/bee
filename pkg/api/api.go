@@ -209,9 +209,10 @@ type ExtraOptions struct {
 	Steward          steward.Interface
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
 	s := new(Service)
 
+	s.CORSAllowedOrigins = cors
 	s.beeMode = beeMode
 	s.gatewayMode = gatewayMode
 	s.logger = logger
@@ -545,6 +546,20 @@ func lookaheadBufferSize(size int64) int {
 		return smallFileBufferSize
 	}
 	return largeFileBufferSize
+}
+
+// corsHandler sets CORS headers to HTTP response if allowed origins are configured.
+func (s *Service) corsHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Origin", o)
+			w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Gas-Price, Range, Accept-Ranges, Content-Encoding")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.

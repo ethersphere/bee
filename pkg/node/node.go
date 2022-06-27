@@ -323,7 +323,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable)
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -353,7 +353,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable)
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -899,7 +899,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
