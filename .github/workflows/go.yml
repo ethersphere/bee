@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         go: [1.18]
-        os: [ubuntu-latest, macos-latest, windows-2019]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
     - name: Setup Go
       uses: actions/setup-go@v2
@@ -41,6 +41,12 @@ jobs:
           ${{ runner.OS }}-build-${{ env.cache-name }}-
           ${{ runner.OS }}-build-
           ${{ runner.OS }}-
+    - name: Setup MinGW-w64
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco uninstall mingw
+        choco install mingw --version 8.1.0
+        choco list -lo
     - name: Build
       run: make build
     - name: Lint
