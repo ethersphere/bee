@@ -112,6 +112,7 @@ func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Reque
 		s.logger.Debugf("loggers set verbosity: parse verbosity level failed: %v", err)
 		s.logger.Error("loggers set verbosity: parse verbosity level failed")
 		jsonhttp.BadRequest(w, err)
+		return
 	}
 
 	exp, err := base64.URLEncoding.DecodeString(mux.Vars(r)["exp"])
@@ -119,6 +120,7 @@ func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Reque
 		s.logger.Debugf("loggers set verbosity: query parameter decoding failed: %v", err)
 		s.logger.Error("loggers set verbosity: query parameter decoding failed")
 		jsonhttp.BadRequest(w, err)
+		return
 	}
 
 	if err := logSetVerbosityByExp(string(exp), verbosity); err != nil {
