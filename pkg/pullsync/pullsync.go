@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
+	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -38,7 +40,12 @@ const (
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
+
+	rateWindowSize = 5 * time.Minute // rate tracker window size
 )
+
+const logMore = false // enable this for more logging
+const MaxCursor = math.MaxUint64
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
@@ -76,6 +83,7 @@ type Syncer struct {
 	wg         sync.WaitGroup
 	unwrap     func(swarm.Chunk)
 	validStamp postage.ValidStampFn
+	rate       *rate.Rate
 
 	ruidMtx sync.Mutex
 	ruidCtx map[string]map[uint32]func()
@@ -95,6 +103,7 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		ruidCtx:    make(map[string]map[uint32]func()),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
+		rate:       rate.New(rateWindowSize),
 	}
 }
 
@@ -124,6 +133,7 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+	isLiveSync := to == MaxCursor
 	loggerV2 := s.logger.V(2).Register()
 
 	var ru pb.Ruid
@@ -254,6 +264,9 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		chunksToPut = append(chunksToPut, chunk)
 	}
 	if len(chunksToPut) > 0 {
+		if !isLiveSync {
+			s.rate.Add(len(chunksToPut))
+		}
 		s.metrics.DbOps.Inc()
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()
@@ -542,6 +555,10 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		}
 	}
 	return nil
+}
+
+func (s *Syncer) Rate() float64 {
+	return s.rate.Rate()
 }
 
 func (s *Syncer) Close() error {

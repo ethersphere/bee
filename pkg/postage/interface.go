@@ -39,9 +39,16 @@ type ChainSnapshot struct {
 // UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
 type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
 
+type ReserveStateGetter interface {
+	// GetReserveState returns a copy of stored reserve state.
+	GetReserveState() *ReserveState
+}
+
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
+	ReserveStateGetter
+
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
 
@@ -67,12 +74,12 @@ type Storer interface {
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
 
-	// GetReserveState returns a copy of stored reserve state.
-	GetReserveState() *ReserveState
+	// SetStorageRadius updates the value of the storage radius atomically.
+	SetStorageRadius(func(uint8) uint8) error
 
-	// SetRadiusSetter sets the RadiusSetter to the given value.
+	// SetStorageRadiusSetter sets the RadiusSetter to the given value.
 	// The given RadiusSetter will be called when radius changes.
-	SetRadiusSetter(RadiusSetter)
+	SetStorageRadiusSetter(StorageRadiusSetter)
 
 	// Unreserve evict batches from the unreserve queue of the storage.
 	// During the eviction process, the given UnreserveIteratorFn is called.
@@ -84,9 +91,9 @@ type Storer interface {
 	SetBatchExpiryHandler(BatchExpiryHandler)
 }
 
-// RadiusSetter is used as a callback when the radius of a node changes.
-type RadiusSetter interface {
-	SetRadius(uint8)
+// StorageRadiusSetter is used as a callback when the radius of a node changes.
+type StorageRadiusSetter interface {
+	SetStorageRadius(uint8)
 }
 
 // Listener provides a blockchain event iterator.
