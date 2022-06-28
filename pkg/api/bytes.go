@@ -38,6 +38,12 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(strings.ToLower(r.Header.Get(contentTypeHeader)), "multipart/form-data") {
+		logger.Error("bytes upload: multipart uploads are not supported on this endpoint")
+		jsonhttp.BadRequest(w, nil)
+		return
+	}
+
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
 		logger.Debugf("bytes upload: get or create tag: %v", err)
