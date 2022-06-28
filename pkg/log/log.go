@@ -263,6 +263,5 @@ func WithLevelHooks(l Level, hooks ...Hook) Option {
 		default:
 			opts.levelHooks[l] = append(opts.levelHooks[l], hooks...)
 		}
-
 	}
 }
