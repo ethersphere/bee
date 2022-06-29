@@ -41,7 +41,7 @@ type store struct {
 	metrics metrics       // metrics
 	logger  logging.Logger
 
-	radiusSetter postage.RadiusSetter // setter for radius notifications
+	storageRadiusSetter postage.StorageRadiusSetter // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
@@ -190,8 +190,8 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		if s.radiusSetter != nil {
-			s.radiusSetter.SetRadius(s.rs.Radius)
+		if s.storageRadiusSetter != nil {
+			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 		}
 		return nil
 	case err == nil:
@@ -241,8 +241,8 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return err
 	}
 
-	if s.radiusSetter != nil {
-		s.radiusSetter.SetRadius(s.rs.Radius)
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
 
 	return nil
@@ -272,16 +272,16 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 
 	// this needs to be improved, since we can miss some calls on
 	// startup. the same goes for the other call to radiusSetter
-	if s.radiusSetter != nil {
-		s.radiusSetter.SetRadius(s.rs.Radius)
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
 
 	return s.store.Put(chainStateKey, cs)
 }
 
 // SetRadiusSetter is implementation of postage.Storer interface SetRadiusSetter method.
-func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
-	s.radiusSetter = r
+func (s *store) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
+	s.storageRadiusSetter = r
 }
 
 // Reset is implementation of postage.Storer interface Reset method.

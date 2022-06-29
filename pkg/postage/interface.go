@@ -70,9 +70,9 @@ type Storer interface {
 	// GetReserveState returns a copy of stored reserve state.
 	GetReserveState() *ReserveState
 
-	// SetRadiusSetter sets the RadiusSetter to the given value.
+	// SetStorageRadiusSetter sets the RadiusSetter to the given value.
 	// The given RadiusSetter will be called when radius changes.
-	SetRadiusSetter(RadiusSetter)
+	SetStorageRadiusSetter(StorageRadiusSetter)
 
 	// Unreserve evict batches from the unreserve queue of the storage.
 	// During the eviction process, the given UnreserveIteratorFn is called.
@@ -82,9 +82,9 @@ type Storer interface {
 	Reset() error
 }
 
-// RadiusSetter is used as a callback when the radius of a node changes.
-type RadiusSetter interface {
-	SetRadius(uint8)
+// StorageRadiusSetter is used as a callback when the radius of a node changes.
+type StorageRadiusSetter interface {
+	SetStorageRadius(uint8)
 }
 
 // Listener provides a blockchain event iterator.
