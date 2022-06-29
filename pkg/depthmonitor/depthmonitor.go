@@ -35,23 +35,27 @@ type SyncReporter interface {
 // of the node.
 type Topology interface {
 	// Get the connection depth from topology.
-	ConnectionDepth() int
+	ConnectionDepth() uint8
 	// Set the radius of responsibility. This can be used by the node to define
 	// neighbourhoods.
-	SetRadius(int)
+	SetRadius(uint8)
 }
 
+// Service implements the depthmonitor service
 type Service struct {
-	topo         Topology
-	syncer       SyncReporter
-	reserve      ReserveReporter
-	st           storage.StateStorer
-	logger       logging.Logger
-	depthLock    sync.Mutex
-	storageDepth int
-	quit         chan struct{}
+	topo          Topology
+	syncer        SyncReporter
+	reserve       ReserveReporter
+	st            storage.StateStorer
+	logger        logging.Logger
+	depthLock     sync.Mutex
+	storageDepth  uint8
+	storageRadius uint8
+	quit          chan struct{}
+	wg            sync.WaitGroup
 }
 
+// New constructs a new depthmonitor service
 func New(
 	t Topology,
 	syncer SyncReporter,
@@ -80,7 +84,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 	}
 
 	// check if we have already saved a depth value before shutting down previously.
-	initialDepth := 0
+	var initialDepth uint8
 	err := s.st.Get(depthKey, &initialDepth)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		s.logger.Errorf("depthmonitor: failed reading stored depth: %s", err.Error())
@@ -96,6 +100,17 @@ func (s *Service) manage(warmupTime time.Duration) {
 	s.depthLock.Lock()
 	s.storageDepth = initialDepth
 	s.depthLock.Unlock()
+
+	defer func() {
+		s.depthLock.Lock()
+		defer s.depthLock.Unlock()
+
+		// update the storage depth to statestore before shutting down
+		err := s.st.Put(depthKey, s.storageDepth)
+		if err != nil {
+			s.logger.Errorf("depthmonitor: failed updating storage depth on shutdown: %s", err.Error())
+		}
+	}()
 
 	isNotHalfFull := func(x, y float64) bool {
 		return x/y < 0.5
@@ -113,7 +128,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		case <-time.After(manageWait):
 		}
 
-		// if
+		// if we have crossed the adaptation, reset it
 		if time.Now().Sub(adaptationStart).Seconds() > adaptationWindow {
 			adaptationPeriod = false
 		}
@@ -122,17 +137,25 @@ func (s *Service) manage(warmupTime time.Duration) {
 		capacity := float64(s.reserve.Capacity())
 		reserveNotHalfFull := isNotHalfFull(currentSize, capacity)
 
+		// if we dont have 50% utilization of the reserve, enter into an adaptation period
+		// to see if we need to modify the depth to improve utilization
 		if reserveNotHalfFull && !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
 		}
 
+		// if we have crossed 50% utilization, dont do anything
 		if !reserveNotHalfFull {
 			adaptationPeriod = false
 		}
 
+		// based on the sync rate, determine the expected size of reserve at the end of the
+		// adaptation window
 		expectedSize := s.syncer.Rate()*(adaptationWindow-time.Now().Sub(adaptationStart).Seconds()) + currentSize
 
+		// if we are in the adaptation window and we are not expecting to have enough utilization
+		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
+		// their neighbourhoods
 		if adaptationPeriod && isNotHalfFull(expectedSize, capacity) {
 			s.depthLock.Lock()
 			s.storageDepth--
@@ -144,4 +167,33 @@ func (s *Service) manage(warmupTime time.Duration) {
 	}
 }
 
-func (s *Service) SetRadius() {}
+// SetRadius implements the postage.RadiusSetter interface to receive updates from batchstore
+// about the storageRadius based on on-chain events
+func (s *Service) SetRadius(storageRadius uint8) {
+	s.depthLock.Lock()
+	defer s.depthLock.Unlock()
+
+	if s.storageRadius >= s.storageDepth && storageRadius < s.storageDepth {
+		s.storageDepth = storageRadius
+	} else if storageRadius > s.storageDepth {
+		s.storageDepth = storageRadius
+	}
+	s.storageRadius = storageRadius
+	s.topo.SetRadius(s.storageDepth)
+}
+
+func (s *Service) Close() error {
+	close(s.quit)
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(5 * time.Second):
+		return errors.New("stopping depthmonitor with ongoing goroutines")
+	}
+}
