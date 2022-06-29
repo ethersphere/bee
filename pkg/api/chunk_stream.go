@@ -14,17 +14,20 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/websocket"
 )
 
+const streamReadTimeout = 15 * time.Minute
+
 var successWsMsg = []byte{}
 
 func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 
-	ctx, tag, putter, wait, err := s.processUploadRequest(r)
+	_, tag, putter, wait, err := s.processUploadRequest(r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -44,9 +47,14 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	cctx := context.Background()
+	if tag != nil {
+		cctx = sctx.SetTag(cctx, tag)
+	}
+
 	s.wsWg.Add(1)
 	go s.handleUploadStream(
-		ctx,
+		cctx,
 		c,
 		tag,
 		putter,
@@ -120,7 +128,7 @@ func (s *Service) handleUploadStream(
 			// if there is no indication to stop, go ahead and read the next message
 		}
 
-		err = conn.SetReadDeadline(time.Now().Add(readDeadline))
+		err = conn.SetReadDeadline(time.Now().Add(streamReadTimeout))
 		if err != nil {
 			s.logger.Debugf("chunk stream handler: set read deadline: %v", err)
 			s.logger.Error("chunk stream handler: set read deadline")
