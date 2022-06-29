@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/pkg/skippeers"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -120,7 +121,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 			maxPeers = maxSelects
 		}
 
-		sp := newSkipPeers()
+		sp := new(skippeers.List)
 
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
 		defer ticker.Stop()
@@ -179,7 +180,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				// break
 			case res := <-resultC:
 				if errors.Is(res.err, topology.ErrNotFound) {
-					if sp.Saturated() {
+					if sp.OverdraftListEmpty() {
 						// if no peer is available, and none skipped temporarily
 						s.logger.Tracef("retrieval: failed to get chunk %s", addr)
 						return nil, storage.ErrNotFound
@@ -223,7 +224,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				if timeNow > lastTime {
 					lastTime = timeNow
 					peerAttempt = 0
-					sp.Reset()
+					sp.ResetOverdraft()
 				} else {
 					select {
 					case <-time.After(600 * time.Millisecond):
@@ -247,7 +248,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skipPeers, originated bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skippeers.List, originated bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
 	startTimer := time.Now()
 	v := ctx.Value(requestSourceContextKey{})
 	// allow upstream requests if this node is the source of the request

@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
+	"github.com/ethersphere/bee/pkg/skippeers"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -346,7 +347,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	var (
 		includeSelf = ps.isFullNode
-		skipPeers   []swarm.Address
+		skipPeers   = new(skippeers.List)
+		errContinue = errors.New("continue")
 	)
 
 	resultChan := make(chan receiptResult)
@@ -358,7 +360,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	nextPeer := func() (swarm.Address, error) {
 
-		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers...)
+		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers.All()...)
 
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
@@ -375,8 +377,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					return swarm.ZeroAddress, ErrOutOfDepthStoring
 				}
 
-				ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
-				return swarm.ZeroAddress, err
+				if skipPeers.OverdraftListEmpty() {
+					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
+					return swarm.ZeroAddress, err
+				}
+
+				ps.logger.Debug("pushsync: continue iteration and reset overdraft skiplist")
+
+				skipPeers.ResetOverdraft()
+				return swarm.ZeroAddress, errContinue
 			}
 
 			return swarm.ZeroAddress, fmt.Errorf("closest peer: %w", err)
@@ -397,12 +406,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			peer, err := nextPeer()
 			if err != nil {
+				if err == errContinue {
+					goto CONT
+				}
 				return nil, err
 			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 
-			skipPeers = append(skipPeers, peer)
+			skipPeers.Add(peer)
 
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
@@ -410,6 +422,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
 			}()
 
+		CONT:
 			// reached the limit, do not set timer to retry
 			if allowedRetries <= 0 || allowedPushes <= 0 {
 				continue
@@ -422,7 +435,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
-			if ps.warmedUp() && !errors.Is(result.err, accounting.ErrOverdraft) && !errors.Is(result.err, accounting.ErrFailToLock) {
+			if errors.Is(result.err, ErrNotAttempted) {
+				logger.Debugf("pushsync: not attempted: adding overdraft peer to skiplist %s", result.peer.String())
+				skipPeers.AddOverdraft(result.peer)
+			}
+
+			if ps.warmedUp() && !errors.Is(result.err, ErrNotAttempted) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
@@ -463,6 +481,8 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 	ps.metrics.PushToPeerTime.WithLabelValues(status).Observe(time.Since(t).Seconds())
 }
 
+var ErrNotAttempted = errors.New("peer not attempted")
+
 func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResult, doneChan <-chan struct{}, peer swarm.Address, ch swarm.Chunk, origin bool) {
 
 	var (
@@ -489,6 +509,10 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	// Reserve to see whether we can make the request
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
+		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
+			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, ErrNotAttempted)
+			return
+		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
 		return
 	}
