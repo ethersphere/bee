@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
+	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -35,6 +36,8 @@ const (
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
+
+	rateWindowSize = time.Minute
 )
 
 const logMore = false // enable this for more logging
@@ -75,6 +78,7 @@ type Syncer struct {
 	wg         sync.WaitGroup
 	unwrap     func(swarm.Chunk)
 	validStamp postage.ValidStampFn
+	rate       *rate.Rate
 
 	ruidMtx sync.Mutex
 	ruidCtx map[string]map[uint32]func()
@@ -94,6 +98,7 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		ruidCtx:    make(map[string]map[uint32]func()),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
+		rate:       rate.New(rateWindowSize),
 	}
 }
 
@@ -255,6 +260,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		chunksToPut = append(chunksToPut, chunk)
 	}
 	if len(chunksToPut) > 0 {
+		s.rate.Add(len(chunksToPut))
 		s.metrics.DbOps.Inc()
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()
@@ -550,6 +556,10 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		}
 	}
 	return nil
+}
+
+func (s *Syncer) Rate() float64 {
+	return s.rate.Rate()
 }
 
 func (s *Syncer) Close() error {
