@@ -11,9 +11,9 @@ import (
 )
 
 type List struct {
+	mu                 sync.Mutex
 	overdraftAddresses []swarm.Address
 	addresses          []swarm.Address
-	mu                 sync.Mutex
 }
 
 func (s *List) All() []swarm.Address {
@@ -67,5 +67,5 @@ func (s *List) AddOverdraft(address swarm.Address) {
 func (s *List) OverdraftListEmpty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.overdraftAddresses) <= 0
+	return len(s.overdraftAddresses) == 0
 }
