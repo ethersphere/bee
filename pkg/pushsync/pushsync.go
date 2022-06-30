@@ -377,14 +377,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					return swarm.ZeroAddress, ErrOutOfDepthStoring
 				}
 
-				if skipPeers.OverdraftListEmpty() {
+				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
 					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
 					return swarm.ZeroAddress, err
 				}
 
 				ps.logger.Debug("pushsync: continue iteration and reset overdraft skiplist")
 
-				skipPeers.ResetOverdraft()
+				skipPeers.ResetOverdraft() // reset the overdraft list and retry (in case the closest peer was there)
 				return swarm.ZeroAddress, errContinue
 			}
 
