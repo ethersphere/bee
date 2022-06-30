@@ -111,6 +111,7 @@ type Bee struct {
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
+	depthMonitorCloser       io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           chan struct{}
@@ -849,8 +850,9 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	depthMonitor := depthmonitor.New(kad, pullSyncProtocol, nil, stateStore, logger, warmupTime)
+	depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, stateStore, logger, warmupTime)
 	batchStore.SetStorageRadiusSetter(depthMonitor)
+	b.depthMonitorCloser = depthMonitor
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
@@ -1144,6 +1146,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.errorLogWriter, "error log writer")
+	tryClose(b.depthMonitorCloser, "depthmonitor service")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr

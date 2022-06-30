@@ -184,6 +184,7 @@ func New(
 		staticPeer:         isStaticPeer(o.StaticNodes),
 		peerFilter:         o.ReachabilityFunc,
 		ignoreStorageDepth: o.IgnoreRadius,
+		storageDepth:       swarm.MaxPO,
 	}
 
 	blocklistCallback := func(a swarm.Address) {
