@@ -12,9 +12,9 @@ import (
 
 const (
 	depthKey                  string  = "storage_depth"
-	adaptationWindowSeconds   float64 = 2 * 60 * 60
+	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the reserve
 	adaptationRollbackMinutes         = 5
-	manageWait                        = time.Minute
+	manageWait                        = 5 * time.Minute
 )
 
 // ReserveReporter interface defines the functionality required from the local storage
@@ -148,7 +148,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 			rate := adaptationWindowSeconds / halfCapacity
 			emptySize := halfCapacity - currentSize
 			adaptationWindow = rate * emptySize
-			s.logger.Infof("depthmonitor: starting adaptation period with window time %v", time.Duration(adaptationWindow))
+			s.logger.Infof("depthmonitor: starting adaptation period with window time %v", time.Second*time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
