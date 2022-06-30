@@ -104,16 +104,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 	s.storageDepth = initialDepth
 	s.depthLock.Unlock()
 
-	defer func() {
-		s.depthLock.Lock()
-		defer s.depthLock.Unlock()
-
-		// update the storage depth to statestore before shutting down
-		err := s.st.Put(depthKey, s.storageDepth)
-		if err != nil {
-			s.logger.Errorf("depthmonitor: failed updating storage depth on shutdown: %s", err.Error())
-		}
-	}()
+	defer s.putStorageDeth()
 
 	capacity := float64(s.reserve.Capacity())
 
@@ -178,6 +169,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 				s.storageDepth--
 				s.topology.SetStorageDepth(s.storageDepth)
 				s.logger.Infof("depthmonitor: reducing storage depth to %d", s.storageDepth)
+				s.putStorageDeth()
 			}
 			s.depthLock.Unlock()
 		}
@@ -200,7 +192,15 @@ func (s *Service) SetStorageRadius(storageRadius uint8) {
 		s.storageDepth = storageRadius
 		s.topology.SetStorageDepth(s.storageDepth)
 		s.logger.Infof("depthmonitor: setting storage depth to %d", s.storageDepth)
+		s.putStorageDeth()
 	}
 
 	s.oldStorageRadius = storageRadius
+}
+
+func (s *Service) putStorageDeth() {
+	err := s.st.Put(depthKey, s.storageDepth)
+	if err != nil {
+		s.logger.Errorf("depthmonitor: failed updating storage depth on shutdown: %s", err.Error())
+	}
 }
