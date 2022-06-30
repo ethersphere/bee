@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/depthmonitor"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/localstore"
@@ -693,7 +694,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
-	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil && chainEnabled {
 		syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
@@ -847,6 +847,9 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
+
+	depthMonitor := depthmonitor.New(kad, nil, nil, stateStore, logger, warmupTime)
+	batchStore.SetStorageRadiusSetter(depthMonitor)
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),

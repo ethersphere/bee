@@ -92,7 +92,7 @@ type peer struct {
 
 func (p *Puller) manage(warmupTime time.Duration) {
 	defer p.wg.Done()
-	c, unsubscribe := p.topology.SubscribePeersChange()
+	c, unsubscribe := p.topology.SubscribeTopologyChange()
 	defer unsubscribe()
 
 	ctx, cancel := context.WithCancel(context.Background())

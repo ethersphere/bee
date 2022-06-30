@@ -93,40 +93,40 @@ type Options struct {
 
 // Kad is the Swarm forwarding kademlia implementation.
 type Kad struct {
-	base              swarm.Address         // this node's overlay address
-	discovery         discovery.Driver      // the discovery driver
-	addressBook       addressbook.Interface // address book to get underlays
-	p2p               p2p.Service           // p2p service to connect to nodes with
-	saturationFunc    binSaturationFunc     // pluggable saturation function
-	bitSuffixLength   int                   // additional depth of common prefix for bin
-	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
-	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
-	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
-	bootnodes         []ma.Multiaddr
-	depth             uint8         // current neighborhood depth
-	radius            uint8         // storage area of responsibility
-	depthMu           sync.RWMutex  // protect depth changes
-	manageC           chan struct{} // trigger the manage forever loop to connect to new peers
-	peerSig           []chan struct{}
-	peerSigMtx        sync.Mutex
-	logger            logging.Logger // logger
-	bootnode          bool           // indicates whether the node is working in bootnode mode
-	collector         *im.Collector
-	quit              chan struct{} // quit channel
-	halt              chan struct{} // halt channel
-	done              chan struct{} // signal that `manage` has quit
-	wg                sync.WaitGroup
-	waitNext          *waitnext.WaitNext
-	metrics           metrics
-	pruneFunc         pruneFunc // pluggable prune function
-	pinger            pingpong.Interface
-	staticPeer        staticPeerFunc
-	bgBroadcastCtx    context.Context
-	bgBroadcastCancel context.CancelFunc
-	blocker           *blocker.Blocker
-	reachability      p2p.ReachabilityStatus
-	peerFilter        peerFilterFunc
-	ignoreRadius      bool
+	base               swarm.Address         // this node's overlay address
+	discovery          discovery.Driver      // the discovery driver
+	addressBook        addressbook.Interface // address book to get underlays
+	p2p                p2p.Service           // p2p service to connect to nodes with
+	saturationFunc     binSaturationFunc     // pluggable saturation function
+	bitSuffixLength    int                   // additional depth of common prefix for bin
+	commonBinPrefixes  [][]swarm.Address     // list of address prefixes for each bin
+	connectedPeers     *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
+	knownPeers         *pslice.PSlice        // both are po aware slice of addresses
+	bootnodes          []ma.Multiaddr
+	depth              uint8         // current neighborhood depth
+	storageDepth       uint8         // storage area of responsibility
+	depthMu            sync.RWMutex  // protect depth changes
+	manageC            chan struct{} // trigger the manage forever loop to connect to new peers
+	peerSig            []chan struct{}
+	peerSigMtx         sync.Mutex
+	logger             logging.Logger // logger
+	bootnode           bool           // indicates whether the node is working in bootnode mode
+	collector          *im.Collector
+	quit               chan struct{} // quit channel
+	halt               chan struct{} // halt channel
+	done               chan struct{} // signal that `manage` has quit
+	wg                 sync.WaitGroup
+	waitNext           *waitnext.WaitNext
+	metrics            metrics
+	pruneFunc          pruneFunc // pluggable prune function
+	pinger             pingpong.Interface
+	staticPeer         staticPeerFunc
+	bgBroadcastCtx     context.Context
+	bgBroadcastCancel  context.CancelFunc
+	blocker            *blocker.Blocker
+	reachability       p2p.ReachabilityStatus
+	peerFilter         peerFilterFunc
+	ignoreStorageDepth bool
 }
 
 // New returns a new Kademlia.
@@ -160,30 +160,30 @@ func New(
 	logger.Debugf("kademlia: NewCollector(...) took %v", time.Since(start))
 
 	k = &Kad{
-		base:              base,
-		discovery:         discovery,
-		addressBook:       addressbook,
-		p2p:               p2pSvc,
-		saturationFunc:    o.SaturationFunc,
-		bitSuffixLength:   o.BitSuffixLength,
-		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
-		connectedPeers:    pslice.New(int(swarm.MaxBins), base),
-		knownPeers:        pslice.New(int(swarm.MaxBins), base),
-		bootnodes:         o.Bootnodes,
-		manageC:           make(chan struct{}, 1),
-		waitNext:          waitnext.New(),
-		logger:            logger,
-		bootnode:          o.BootnodeMode,
-		collector:         imc,
-		quit:              make(chan struct{}),
-		halt:              make(chan struct{}),
-		done:              make(chan struct{}),
-		metrics:           newMetrics(),
-		pruneFunc:         o.PruneFunc,
-		pinger:            pinger,
-		staticPeer:        isStaticPeer(o.StaticNodes),
-		peerFilter:        o.ReachabilityFunc,
-		ignoreRadius:      o.IgnoreRadius,
+		base:               base,
+		discovery:          discovery,
+		addressBook:        addressbook,
+		p2p:                p2pSvc,
+		saturationFunc:     o.SaturationFunc,
+		bitSuffixLength:    o.BitSuffixLength,
+		commonBinPrefixes:  make([][]swarm.Address, int(swarm.MaxBins)),
+		connectedPeers:     pslice.New(int(swarm.MaxBins), base),
+		knownPeers:         pslice.New(int(swarm.MaxBins), base),
+		bootnodes:          o.Bootnodes,
+		manageC:            make(chan struct{}, 1),
+		waitNext:           waitnext.New(),
+		logger:             logger,
+		bootnode:           o.BootnodeMode,
+		collector:          imc,
+		quit:               make(chan struct{}),
+		halt:               make(chan struct{}),
+		done:               make(chan struct{}),
+		metrics:            newMetrics(),
+		pruneFunc:          o.PruneFunc,
+		pinger:             pinger,
+		staticPeer:         isStaticPeer(o.StaticNodes),
+		peerFilter:         o.ReachabilityFunc,
+		ignoreStorageDepth: o.IgnoreRadius,
 	}
 
 	blocklistCallback := func(a swarm.Address) {
@@ -402,7 +402,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 
 		k.depthMu.Lock()
-		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+		k.recalcDepth()
 		k.depthMu.Unlock()
 
 		k.logger.Infof("kademlia: connected to peer: %s in bin: %d", peer.addr, peer.po)
@@ -552,7 +552,7 @@ func (k *Kad) manage() {
 			if k.bootnode {
 				k.depthMu.Lock()
 				depth := k.depth
-				radius := k.radius
+				radius := k.storageDepth
 				k.depthMu.Unlock()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
@@ -570,7 +570,7 @@ func (k *Kad) manage() {
 
 			k.depthMu.Lock()
 			depth := k.depth
-			radius := k.radius
+			radius := k.storageDepth
 			k.depthMu.Unlock()
 
 			k.pruneFunc(depth)
@@ -844,18 +844,23 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc, k *Kad) b
 	}
 }
 
-// recalcDepth calculates and returns the kademlia depth.
-func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterFunc) uint8 {
-	// handle edge case separately
-	if peers.Length() <= nnLowWatermark {
-		return 0
-	}
+// recalcDepth calculates, assigns the new depth, and returns if depth has changed
+func (k *Kad) recalcDepth() {
 
 	var (
-		shallowestUnsaturated = uint8(0)
+		peers                 = k.connectedPeers
+		filter                = k.peerFilter
 		binCount              = 0
+		shallowestUnsaturated = uint8(0)
 		depth                 uint8
 	)
+
+	// handle edge case separately
+	if peers.Length() <= nnLowWatermark {
+		k.depth = 0
+		return
+	}
+
 	_ = peers.EachBinRev(func(addr swarm.Address, bin uint8) (bool, bool, error) {
 		if filter(addr) {
 			return false, false, nil
@@ -904,11 +909,11 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 		depth = candidate
 	}
 
-	if radius < depth && !k.ignoreRadius {
-		return radius
+	if k.storageDepth < depth && !k.ignoreStorageDepth {
+		depth = k.storageDepth
 	}
 
-	return depth
+	k.depth = depth
 }
 
 // connect connects to a peer and gossips its address to our connected peers,
@@ -1149,11 +1154,12 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 	k.waitNext.Remove(addr)
 
 	k.depthMu.Lock()
-	k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+	k.recalcDepth()
 	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
 	k.notifyPeerSig()
+
 	return nil
 }
 
@@ -1169,7 +1175,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
 
 	k.depthMu.Lock()
-	k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+	k.recalcDepth()
 	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
@@ -1343,9 +1349,11 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
 	k.logger.Tracef("kademlia: reachability of peer %s is %s", addr.String(), status.String())
 	if status == p2p.ReachabilityStatusPublic {
+
 		k.depthMu.Lock()
-		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
+		k.recalcDepth()
 		k.depthMu.Unlock()
+
 		k.notifyManageLoop()
 	}
 }
@@ -1362,9 +1370,9 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
 
-// SubscribePeersChange returns the channel that signals when the connected peers
-// set changes. Returned function is safe to be called multiple times.
-func (k *Kad) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+// SubscribeTopologyChange returns the channel that signals when the connected peers
+// set and depth changes. Returned function is safe to be called multiple times.
+func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) {
 	channel := make(chan struct{}, 1)
 	var closeOnce sync.Once
 
@@ -1424,17 +1432,23 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	return true
 }
 
-func (k *Kad) SetRadius(r uint8) {
+func (k *Kad) SetStorageDepth(d uint8) {
+
 	k.depthMu.Lock()
 	defer k.depthMu.Unlock()
-	if k.radius == r {
+
+	if k.storageDepth == d {
 		return
 	}
-	k.radius = r
-	oldD := k.depth
-	k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
-	if k.depth != oldD {
+
+	k.storageDepth = d
+
+	oldDepth := k.depth
+	k.recalcDepth()
+
+	if oldDepth != k.depth {
 		k.notifyManageLoop()
+		k.notifyPeerSig()
 	}
 }
 

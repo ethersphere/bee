@@ -28,7 +28,7 @@ type Driver interface {
 	EachPeerer
 	EachNeighbor
 	NeighborhoodDepther
-	SubscribePeersChange() (c <-chan struct{}, unsubscribe func())
+	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
 	Halter
 	Snapshot() *KadParams
@@ -151,4 +151,8 @@ type Halter interface {
 
 type NeighborhoodDepther interface {
 	NeighborhoodDepth() uint8
+}
+
+type SetStorageDepther interface {
+	SetStorageDepth(uint8)
 }
