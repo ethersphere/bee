@@ -848,7 +848,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	depthMonitor := depthmonitor.New(kad, nil, nil, stateStore, logger, warmupTime)
+	depthMonitor := depthmonitor.New(kad, pullSyncProtocol, nil, stateStore, logger, warmupTime)
 	batchStore.SetStorageRadiusSetter(depthMonitor)
 
 	multiResolver := multiresolver.NewMultiResolver(
