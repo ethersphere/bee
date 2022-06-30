@@ -12,8 +12,8 @@ import (
 
 const (
 	depthKey                  string  = "storage_depth"
-	adaptationWindowSeconds   float64 = 60 * 60
-	adaptationRollbackSeconds         = 5
+	adaptationWindowSeconds   float64 = 2 * 60 * 60
+	adaptationRollbackMinutes         = 5
 	manageWait                        = 5 * time.Minute
 )
 
@@ -150,9 +150,9 @@ func (s *Service) manage(warmupTime time.Duration) {
 			adaptationStart = time.Now()
 		}
 
-		// if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
+		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
 		if time.Since(adaptationStart).Seconds() > adaptationWindowSeconds {
-			adaptationStart = time.Now().Add(-time.Second * adaptationRollbackSeconds)
+			adaptationStart = time.Now().Add(-time.Minute * adaptationRollbackMinutes)
 		}
 
 		// based on the sync rate, determine the expected size of reserve at the end of the
@@ -164,10 +164,12 @@ func (s *Service) manage(warmupTime time.Duration) {
 		// their neighbourhoods
 		if isNotHalfFull(expectedSize) {
 			s.depthLock.Lock()
-			s.storageDepth--
-			s.topology.SetStorageDepth(s.storageDepth)
+			if s.storageDepth > 0 {
+				s.storageDepth--
+				s.topology.SetStorageDepth(s.storageDepth)
+				s.logger.Infof("depthmonitor: reducing storage depth to depth %d", s.storageDepth)
+			}
 			s.depthLock.Unlock()
-			s.logger.Infof("depthmonitor: reducing storage depth to better utilize reserve, new depth: %d", s.storageDepth)
 		}
 	}
 }
