@@ -205,6 +205,6 @@ func (s *Service) SetStorageRadius(storageRadius uint8) {
 func (s *Service) putStorageDeth() {
 	err := s.st.Put(depthKey, s.storageDepth)
 	if err != nil {
-		s.logger.Errorf("depthmonitor: failed updating storage depth on shutdown: %s", err.Error())
+		s.logger.Errorf("depthmonitor: failed updating storage depth: %v", err)
 	}
 }
