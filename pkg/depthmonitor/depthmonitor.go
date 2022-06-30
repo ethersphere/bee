@@ -167,7 +167,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		timeleft := adaptationWindowSeconds - time.Since(adaptationStart).Seconds()
 		expectedSize := s.syncer.Rate()*timeleft + currentSize
 
-		s.logger.Infof("depthmonitor: expected size %v with current size %v and pullsync rate %v, time left %v", expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft))
+		s.logger.Infof("depthmonitor: expected size %.3f with current size %.3f and pullsync rate %.2f ch/s, time left %v", expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft))
 
 		// if we are in the adaptation window and we are not expecting to have enough utilization
 		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
