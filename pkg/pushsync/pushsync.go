@@ -346,9 +346,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	var (
-		includeSelf = ps.isFullNode
-		skipPeers   = new(skippeers.List)
-		errContinue = errors.New("continue")
+		includeSelf          = ps.isFullNode
+		skipPeers            = new(skippeers.List)
+		errOverdraftNotEmpty = errors.New("continue")
 	)
 
 	resultChan := make(chan receiptResult)
@@ -385,7 +385,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				ps.logger.Debug("pushsync: continue iteration and reset overdraft skiplist")
 
 				skipPeers.ResetOverdraft() // reset the overdraft list and retry (in case the closest peer was there)
-				return swarm.ZeroAddress, errContinue
+				return swarm.ZeroAddress, errOverdraftNotEmpty
 			}
 
 			return swarm.ZeroAddress, fmt.Errorf("closest peer: %w", err)
@@ -402,12 +402,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			allowedRetries--
 			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
-			allowedPushes--
 
 			peer, err := nextPeer()
 			if err != nil {
-				if err == errContinue {
-					goto CONT
+				if err == errOverdraftNotEmpty {
+					if allowedRetries <= 0 {
+						return nil, ErrNoPush
+					}
+					timer.Reset(500 * time.Millisecond)
+					continue
 				}
 				return nil, err
 			}
@@ -416,13 +419,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			skipPeers.Add(peer)
 
+			allowedPushes--
+
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
 				defer cancel()
 				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
 			}()
 
-		CONT:
 			// reached the limit, do not set timer to retry
 			if allowedRetries <= 0 || allowedPushes <= 0 {
 				continue
