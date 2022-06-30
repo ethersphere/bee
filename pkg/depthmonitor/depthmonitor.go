@@ -12,7 +12,7 @@ import (
 
 const (
 	depthKey                  string  = "storage_depth"
-	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the reserve
+	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the empty reserve
 	adaptationRollbackMinutes         = 5
 	manageWait                        = 5 * time.Minute
 )
@@ -116,6 +116,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 	adaptationPeriod := false
 	// will store the start of the adaptation window
 	var adaptationStart time.Time
+	// will store the allow time in seconds to fill half the reserve
 	var adaptationWindow float64
 
 	for {
@@ -145,6 +146,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		if !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
+			// using a rate of window_size / half_reserve, compute max adaption window time allowed to fill the reserve
 			rate := adaptationWindowSeconds / halfCapacity
 			emptySize := halfCapacity - currentSize
 			adaptationWindow = rate * emptySize
