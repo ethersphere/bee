@@ -108,16 +108,15 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 	halfCapacity := float64(s.reserve.Capacity()) / 2
 
-	isNotHalfFull := func(x float64) bool {
-		return x < halfCapacity
+	isHalfFull := func(s float64) bool {
+		return s > halfCapacity
 	}
 
-	// will signal that we are in an adaptation period
-	adaptationPeriod := false
-	// will store the start of the adaptation window
-	var adaptationStart time.Time
-	// will store the allow time in seconds to fill half the reserve
-	var adaptationWindow float64
+	var (
+		adaptationPeriod bool
+		adaptationStart  time.Time // start of the adaptation window
+		adaptationWindow float64   // allowed time in seconds to fill upto half of the reserve
+	)
 
 	for {
 		select {
@@ -133,20 +132,19 @@ func (s *Service) manage(warmupTime time.Duration) {
 		}
 
 		currentSize := float64(size)
-		reserveNotHalfFull := isNotHalfFull(currentSize)
 
 		// if we have crossed 50% utilization, dont do anything
-		if !reserveNotHalfFull {
+		if isHalfFull(currentSize) {
 			adaptationPeriod = false
 			continue
 		}
 
 		// if we dont have 50% utilization of the reserve, enter into an adaptation period
 		// to see if we need to modify the depth to improve utilization
+		// using a rate of window_size / half_reserve, compute max adaption window time allowed to fill the reserve
 		if !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
-			// using a rate of window_size / half_reserve, compute max adaption window time allowed to fill the reserve
 			rate := adaptationWindowSeconds / halfCapacity
 			emptySize := halfCapacity - currentSize
 			adaptationWindow = rate * emptySize
@@ -169,7 +167,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		// if we are in the adaptation window and we are not expecting to have enough utilization
 		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
 		// their neighbourhoods
-		if isNotHalfFull(expectedSize) {
+		if !isHalfFull(expectedSize) {
 			s.depthLock.Lock()
 			if s.storageDepth > 0 {
 				s.storageDepth--
