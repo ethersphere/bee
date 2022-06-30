@@ -56,6 +56,7 @@ var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
+	errNotAttempted      = errors.New("peer not attempted")
 )
 
 type PushSyncer interface {
@@ -346,9 +347,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	var (
-		includeSelf          = ps.isFullNode
-		skipPeers            = new(skippeers.List)
-		errOverdraftNotEmpty = errors.New("continue")
+		includeSelf = ps.isFullNode
+		skipPeers   = new(skippeers.List)
 	)
 
 	resultChan := make(chan receiptResult)
@@ -358,7 +358,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
-	nextPeer := func() (swarm.Address, error) {
+	nextPeer := func() (swarm.Address, bool, error) {
 
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers.All()...)
 
@@ -370,28 +370,28 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrWantSelf) {
 
 				if !ps.warmedUp() {
-					return swarm.ZeroAddress, ErrWarmup
+					return swarm.ZeroAddress, false, ErrWarmup
 				}
 
 				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					return swarm.ZeroAddress, ErrOutOfDepthStoring
+					return swarm.ZeroAddress, false, ErrOutOfDepthStoring
 				}
 
 				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
 					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
-					return swarm.ZeroAddress, err
+					return swarm.ZeroAddress, false, err
 				}
 
 				ps.logger.Debug("pushsync: continue iteration and reset overdraft skiplist")
 
 				skipPeers.ResetOverdraft() // reset the overdraft list and retry (in case the closest peer was there)
-				return swarm.ZeroAddress, errOverdraftNotEmpty
+				return swarm.ZeroAddress, true, nil
 			}
 
-			return swarm.ZeroAddress, fmt.Errorf("closest peer: %w", err)
+			return swarm.ZeroAddress, false, fmt.Errorf("closest peer: %w", err)
 		}
 
-		return peer, nil
+		return peer, false, nil
 	}
 
 	for {
@@ -403,16 +403,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			allowedRetries--
 			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
 
-			peer, err := nextPeer()
+			peer, retry, err := nextPeer()
 			if err != nil {
-				if err == errOverdraftNotEmpty {
-					if allowedRetries <= 0 {
-						return nil, ErrNoPush
-					}
-					timer.Reset(500 * time.Millisecond)
-					continue
-				}
 				return nil, err
+			}
+
+			if retry {
+				if allowedRetries <= 0 {
+					return nil, ErrNoPush
+				}
+				timer.Reset(500 * time.Millisecond)
+				continue
 			}
 
 			ps.metrics.TotalSendAttempts.Inc()
@@ -439,12 +440,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
-			if errors.Is(result.err, ErrNotAttempted) {
+			if errors.Is(result.err, errNotAttempted) {
 				logger.Debugf("pushsync: not attempted: adding overdraft peer to skiplist %s", result.peer.String())
 				skipPeers.AddOverdraft(result.peer)
 			}
 
-			if ps.warmedUp() && !errors.Is(result.err, ErrNotAttempted) {
+			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
 				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
@@ -485,8 +486,6 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 	ps.metrics.PushToPeerTime.WithLabelValues(status).Observe(time.Since(t).Seconds())
 }
 
-var ErrNotAttempted = errors.New("peer not attempted")
-
 func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResult, doneChan <-chan struct{}, peer swarm.Address, ch swarm.Chunk, origin bool) {
 
 	var (
@@ -514,7 +513,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
-			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, ErrNotAttempted)
+			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, errNotAttempted)
 			return
 		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
