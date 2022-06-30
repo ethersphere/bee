@@ -37,7 +37,7 @@ const (
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
 
-	rateWindowSize = time.Minute
+	rateWindowSize = 5 * time.Minute // rate tracker window size
 )
 
 const logMore = false // enable this for more logging

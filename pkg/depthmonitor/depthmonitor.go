@@ -12,7 +12,7 @@ import (
 
 const (
 	depthKey                  string  = "storage_depth"
-	adaptationWindowSeconds   float64 = 2 * 60 * 60
+	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the empty reserve
 	adaptationRollbackMinutes         = 5
 	manageWait                        = 5 * time.Minute
 )
@@ -22,9 +22,9 @@ const (
 // pledged by the node to the network.
 type ReserveReporter interface {
 	// Current size of the reserve.
-	Size() int64
+	Size() (uint64, error)
 	// Capacity of the reserve that is configured.
-	Capacity() int64
+	Capacity() uint64
 }
 
 // SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
@@ -42,16 +42,14 @@ type Topology interface {
 
 // Service implements the depthmonitor service
 type Service struct {
-	topo             Topology
+	depthLock        sync.Mutex
+	topology         Topology
 	syncer           SyncReporter
 	reserve          ReserveReporter
 	st               storage.StateStorer
 	logger           logging.Logger
-	depthLock        sync.Mutex
-	storageDepth     uint8
 	quit             chan struct{}
-	wg               sync.WaitGroup
-	topology         Topology
+	storageDepth     uint8
 	oldStorageRadius uint8
 }
 
@@ -66,11 +64,12 @@ func New(
 ) *Service {
 
 	s := &Service{
-		topo:    t,
-		syncer:  syncer,
-		reserve: reserve,
-		st:      st,
-		logger:  logger,
+		topology: t,
+		syncer:   syncer,
+		reserve:  reserve,
+		st:       st,
+		logger:   logger,
+		quit:     make(chan struct{}),
 	}
 
 	go s.manage(warmupTime)
@@ -105,27 +104,19 @@ func (s *Service) manage(warmupTime time.Duration) {
 	s.storageDepth = initialDepth
 	s.depthLock.Unlock()
 
-	defer func() {
-		s.depthLock.Lock()
-		defer s.depthLock.Unlock()
+	defer s.putStorageDeth()
 
-		// update the storage depth to statestore before shutting down
-		err := s.st.Put(depthKey, s.storageDepth)
-		if err != nil {
-			s.logger.Errorf("depthmonitor: failed updating storage depth on shutdown: %s", err.Error())
-		}
-	}()
+	halfCapacity := float64(s.reserve.Capacity()) / 2
 
-	capacity := float64(s.reserve.Capacity())
-
-	isNotHalfFull := func(x float64) bool {
-		return x/capacity < 0.5
+	isHalfFull := func(s float64) bool {
+		return s > halfCapacity
 	}
 
-	// will signal that we are in an adaptation period
-	adaptationPeriod := false
-	// will store the start of the adaptation window
-	var adaptationStart time.Time
+	var (
+		adaptationPeriod bool
+		adaptationStart  time.Time // start of the adaptation window
+		adaptationWindow float64   // allowed time in seconds to fill upto half of the reserve
+	)
 
 	for {
 		select {
@@ -134,40 +125,55 @@ func (s *Service) manage(warmupTime time.Duration) {
 		case <-time.After(manageWait):
 		}
 
-		currentSize := float64(s.reserve.Size())
-		reserveNotHalfFull := isNotHalfFull(currentSize)
+		size, err := s.reserve.Size()
+		if err != nil {
+			s.logger.Errorf("depthmonitor: reserve size %v", err)
+			continue
+		}
+
+		currentSize := float64(size)
 
 		// if we have crossed 50% utilization, dont do anything
-		if !reserveNotHalfFull {
+		if isHalfFull(currentSize) {
 			adaptationPeriod = false
 			continue
 		}
 
 		// if we dont have 50% utilization of the reserve, enter into an adaptation period
 		// to see if we need to modify the depth to improve utilization
+		// using a rate of window_size / half_reserve, compute max adaption window time allowed to fill the reserve
 		if !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
+			rate := adaptationWindowSeconds / halfCapacity
+			emptySize := halfCapacity - currentSize
+			adaptationWindow = rate * emptySize
+			s.logger.Infof("depthmonitor: starting adaptation period with window time %v", time.Second*time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
-		if time.Since(adaptationStart).Seconds() > adaptationWindowSeconds {
+		if time.Since(adaptationStart).Seconds() > adaptationWindow {
 			adaptationStart = time.Now().Add(-time.Minute * adaptationRollbackMinutes)
+			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
 		// based on the sync rate, determine the expected size of reserve at the end of the
 		// adaptation window
-		expectedSize := s.syncer.Rate()*(adaptationWindowSeconds-time.Since(adaptationStart).Seconds()) + currentSize
+		timeleft := adaptationWindow - time.Since(adaptationStart).Seconds()
+		expectedSize := s.syncer.Rate()*timeleft + currentSize
+
+		s.logger.Infof("depthmonitor: expected size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %v", expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft))
 
 		// if we are in the adaptation window and we are not expecting to have enough utilization
 		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
 		// their neighbourhoods
-		if isNotHalfFull(expectedSize) {
+		if !isHalfFull(expectedSize) {
 			s.depthLock.Lock()
 			if s.storageDepth > 0 {
 				s.storageDepth--
 				s.topology.SetStorageDepth(s.storageDepth)
-				s.logger.Infof("depthmonitor: reducing storage depth to depth %d", s.storageDepth)
+				s.logger.Infof("depthmonitor: reducing storage depth to %d", s.storageDepth)
+				s.putStorageDeth()
 			}
 			s.depthLock.Unlock()
 		}
@@ -176,18 +182,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 func (s *Service) Close() error {
 	close(s.quit)
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		s.wg.Wait()
-	}()
-
-	select {
-	case <-stopped:
-		return nil
-	case <-time.After(5 * time.Second):
-		return errors.New("stopping depthmonitor with ongoing goroutines")
-	}
+	return nil
 }
 
 // SetStorageRadius implements the postage.RadiusSetter interface to receive updates from batchstore
@@ -200,7 +195,16 @@ func (s *Service) SetStorageRadius(storageRadius uint8) {
 	if (storageRadius > s.storageDepth) || (s.oldStorageRadius == s.storageDepth && storageRadius < s.oldStorageRadius) {
 		s.storageDepth = storageRadius
 		s.topology.SetStorageDepth(s.storageDepth)
+		s.logger.Infof("depthmonitor: setting storage depth to %d", s.storageDepth)
+		s.putStorageDeth()
 	}
 
 	s.oldStorageRadius = storageRadius
+}
+
+func (s *Service) putStorageDeth() {
+	err := s.st.Put(depthKey, s.storageDepth)
+	if err != nil {
+		s.logger.Errorf("depthmonitor: failed updating storage depth: %v", err)
+	}
 }
