@@ -14,7 +14,7 @@ const (
 	depthKey                  string  = "storage_depth"
 	adaptationWindowSeconds   float64 = 2 * 60 * 60
 	adaptationRollbackMinutes         = 5
-	manageWait                        = 5 * time.Minute
+	manageWait                        = time.Minute
 )
 
 // ReserveReporter interface defines the functionality required from the local storage
@@ -106,16 +106,17 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 	defer s.putStorageDeth()
 
-	capacity := float64(s.reserve.Capacity())
+	halfCapacity := float64(s.reserve.Capacity()) / 2
 
 	isNotHalfFull := func(x float64) bool {
-		return x/capacity < 0.5
+		return x < halfCapacity
 	}
 
 	// will signal that we are in an adaptation period
 	adaptationPeriod := false
 	// will store the start of the adaptation window
 	var adaptationStart time.Time
+	var adaptationWindow float64
 
 	for {
 		select {
@@ -144,21 +145,24 @@ func (s *Service) manage(warmupTime time.Duration) {
 		if !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
-			s.logger.Infof("depthmonitor: starting adaptation period")
+			rate := adaptationWindowSeconds / halfCapacity
+			emptySize := halfCapacity - currentSize
+			adaptationWindow = rate * emptySize
+			s.logger.Infof("depthmonitor: starting adaptation period with window time %v", time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
-		if time.Since(adaptationStart).Seconds() > adaptationWindowSeconds {
+		if time.Since(adaptationStart).Seconds() > adaptationWindow {
 			adaptationStart = time.Now().Add(-time.Minute * adaptationRollbackMinutes)
 			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
 		// based on the sync rate, determine the expected size of reserve at the end of the
 		// adaptation window
-		timeleft := adaptationWindowSeconds - time.Since(adaptationStart).Seconds()
+		timeleft := adaptationWindow - time.Since(adaptationStart).Seconds()
 		expectedSize := s.syncer.Rate()*timeleft + currentSize
 
-		s.logger.Infof("depthmonitor: expected size %.3f with current size %.3f and pullsync rate %.2f ch/s, time left %v", expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft))
+		s.logger.Infof("depthmonitor: expected size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %v", expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft))
 
 		// if we are in the adaptation window and we are not expecting to have enough utilization
 		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
