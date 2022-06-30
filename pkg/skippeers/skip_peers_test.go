@@ -20,25 +20,21 @@ func TestAddOverdraft(t *testing.T) {
 	sp := new(skippeers.List)
 	sp.Add(p1)
 
-	t.Run("duplicate entries are ignored", func(t *testing.T) {
-		sp.Add(p1)
-		if len(sp.All()) != 1 {
-			t.Errorf("expected len: %d, got %d", 1, len(sp.All()))
-		}
-	})
+	// duplicate entries are ignored
+	sp.Add(p1)
+	if len(sp.All()) != 1 {
+		t.Errorf("expected len: %d, got %d", 1, len(sp.All()))
+	}
 
-	t.Run("add peer", func(t *testing.T) {
-		sp.Add(p2)
-		if len(sp.All()) != 2 {
-			t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
-		}
-	})
+	// add peer
+	sp.Add(p2)
+	if len(sp.All()) != 2 {
+		t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
+	}
 
-	t.Run("add overdraft removes from addresses", func(t *testing.T) {
-		sp.AddOverdraft(p2)
-
-		if len(sp.All()) != 2 {
-			t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
-		}
-	})
+	// add overdraft removes from addresses
+	sp.AddOverdraft(p2)
+	if len(sp.All()) != 2 {
+		t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
+	}
 }
