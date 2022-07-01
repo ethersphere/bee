@@ -15,7 +15,7 @@ import (
 const milliInSeconds = 1000
 
 type Rate struct {
-	buckets    map[int64]int
+	windows    map[int64]int
 	mtx        sync.Mutex
 	windowSize int64        // window size in milliseconds
 	now        func() int64 // func that returns the current time in milliseconds
@@ -24,26 +24,26 @@ type Rate struct {
 // New returns a new rate tracker with a defined window size that must be greater than one millisecond.
 func New(windowsSize time.Duration) *Rate {
 	return &Rate{
-		buckets:    make(map[int64]int),
+		windows:    make(map[int64]int),
 		windowSize: int64(windowsSize / time.Millisecond),
 		now:        func() int64 { return time.Now().UnixMilli() },
 	}
 }
 
-// add uses the current time and rounds it down to window-sized buckets
-// and increments the bucket's value.
+// add uses the current time and rounds it down to a window
+// and increments the window's value.
 func (r *Rate) Add(count int) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	defer r.cleanup()
 
-	bucket := r.now() / r.windowSize
-	r.buckets[bucket] += count
+	window := r.now() / r.windowSize
+	r.windows[window] += count
 }
 
-// rate uses the current bucket and previous buckets' counter to compute a moving-window rate in seconds.
-// the rate is computed by first calculating how far along the current time is in the current bucket
-// as a ratio between 0 and 1.0. Then, the sum of currentBucketCount + (1 - ratio) * previousBucketCounter
+// rate uses the current window and previous windows' counter to compute a moving-window rate in seconds.
+// the rate is computed by first calculating how far along the current time is in the current window
+// as a ratio between 0 and 1.0. Then, the sum of currentWindowCount + (1 - ratio) * previousWindowCounter
 // is returned as the interpolated counter between the two windows.
 func (r *Rate) Rate() float64 {
 	r.mtx.Lock()
@@ -51,21 +51,21 @@ func (r *Rate) Rate() float64 {
 	defer r.cleanup()
 
 	now := r.now()
-	bucket := now / r.windowSize
+	window := now / r.windowSize
 
-	interpolate := 1 - float64(now-(bucket*r.windowSize))/float64(r.windowSize)
+	interpolate := 1 - float64(now-(window*r.windowSize))/float64(r.windowSize)
 
-	return milliInSeconds * ((float64(r.buckets[bucket])) + ((interpolate) * float64(r.buckets[bucket-1]))) / float64(r.windowSize)
+	return milliInSeconds * ((float64(r.windows[window])) + ((interpolate) * float64(r.windows[window-1]))) / float64(r.windowSize)
 }
 
-// cleanup removes buckets older than the most recent two buckets
+// cleanup removes windows older than the most recent two windows
 func (r *Rate) cleanup() {
 
-	bucket := r.now() / r.windowSize
+	window := r.now() / r.windowSize
 
-	for k := range r.buckets {
-		if k <= bucket-2 {
-			delete(r.buckets, k)
+	for k := range r.windows {
+		if k <= window-2 {
+			delete(r.windows, k)
 		}
 	}
 }
