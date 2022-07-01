@@ -107,6 +107,19 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.stateStoreCloser = stateStore
 
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
+	err = batchStore.PutChainState(&postage.ChainState{
+		CurrentPrice: big.NewInt(1),
+		TotalAmount:  big.NewInt(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: %w", err)
+	}
+
 	mockKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		return nil, err
@@ -165,7 +178,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, nil, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -218,19 +231,6 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}))
 
 	traversalService := traversal.New(storer)
-
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
-
-	err = batchStore.PutChainState(&postage.ChainState{
-		CurrentPrice: big.NewInt(1),
-		TotalAmount:  big.NewInt(1),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: %w", err)
-	}
 
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
