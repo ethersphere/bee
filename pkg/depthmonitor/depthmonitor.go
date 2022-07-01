@@ -11,41 +11,17 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/topology"
 )
 
 const (
-	depthKey                  string  = "storage_depth"
-	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the empty reserve
-	adaptationRollbackMinutes         = 5
+	depthKey             string  = "storage_depth"
+	adaptationFullWindow float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
+	adaptationRollback           = 5           // minutes to slightly roll back the adaption window in case half capacity is not reached
 )
 
 var (
 	manageWait = 5 * time.Minute
 )
-
-// ReserveReporter interface defines the functionality required from the local storage
-// of the node to report information about the reserve. The reserve storage is the storage
-// pledged by the node to the network.
-type ReserveReporter interface {
-	// Current size of the reserve.
-	Size() (uint64, error)
-	// Capacity of the reserve that is configured.
-	Capacity() uint64
-}
-
-// SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
-type SyncReporter interface {
-	// Rate of syncing in terms of chunks/sec.
-	Rate() float64
-}
-
-// Topology interface encapsulates the functionality required by the topology component
-// of the node.
-type Topology interface {
-	topology.NeighborhoodDepther
-	topology.SetStorageDepther
-}
 
 // Service implements the depthmonitor service
 type Service struct {
@@ -118,8 +94,9 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 	var (
 		adaptationPeriod bool
-		adaptationStart  time.Time // start of the adaptation window
-		adaptationWindow float64   // allowed time in seconds to fill upto half of the reserve
+		adaptationStart  time.Time                                       // start of the adaptation window
+		adaptationWindow float64                                         // allowed time in seconds to fill upto half of the reserve
+		adaptationRate   float64   = adaptationFullWindow / halfCapacity // minimum rate of seconds per chunks to fill the reserve
 	)
 
 	for {
@@ -149,15 +126,13 @@ func (s *Service) manage(warmupTime time.Duration) {
 		if !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
-			rate := adaptationWindowSeconds / halfCapacity
-			emptySize := halfCapacity - currentSize
-			adaptationWindow = rate * emptySize
+			adaptationWindow = adaptationRate * (halfCapacity - currentSize)
 			s.logger.Infof("depthmonitor: starting adaptation period with window time %s", time.Second*time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
 		if time.Since(adaptationStart).Seconds() > adaptationWindow {
-			adaptationStart = time.Now().Add(-time.Minute * adaptationRollbackMinutes)
+			adaptationStart = time.Now().Add(-time.Minute * adaptationRollback)
 			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
