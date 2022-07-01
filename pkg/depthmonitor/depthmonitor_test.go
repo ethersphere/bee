@@ -258,20 +258,11 @@ func (m *mockTopology) getStorageDepth() uint8 {
 }
 
 type mockSyncReporter struct {
-	sync.Mutex
 	rate float64
 }
 
 func (m *mockSyncReporter) Rate() float64 {
-	m.Lock()
-	defer m.Unlock()
 	return m.rate
-}
-
-func (m *mockSyncReporter) setRate(r float64) {
-	m.Lock()
-	defer m.Unlock()
-	m.rate = r
 }
 
 type mockReserveReporter struct {
