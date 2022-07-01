@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package depthmonitor
 
 import (
@@ -14,7 +18,10 @@ const (
 	depthKey                  string  = "storage_depth"
 	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the empty reserve
 	adaptationRollbackMinutes         = 5
-	manageWait                        = 5 * time.Minute
+)
+
+var (
+	manageWait = 5 * time.Minute
 )
 
 // ReserveReporter interface defines the functionality required from the local storage
@@ -49,6 +56,7 @@ type Service struct {
 	st               storage.StateStorer
 	logger           logging.Logger
 	quit             chan struct{}
+	wg               sync.WaitGroup
 	storageDepth     uint8
 	oldStorageRadius uint8
 }
@@ -72,12 +80,14 @@ func New(
 		quit:     make(chan struct{}),
 	}
 
+	s.wg.Add(1)
 	go s.manage(warmupTime)
 
 	return s
 }
 
 func (s *Service) manage(warmupTime time.Duration) {
+	defer s.wg.Done()
 
 	// wait for warmup
 	select {
@@ -93,7 +103,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		s.logger.Errorf("depthmonitor: failed reading stored depth: %s", err.Error())
 	}
 
-	// if we are starting from scratch, we can use the initial ConnectionDepth as a starting point.
+	// if we are starting from scratch, we can use the initial NeighborhoodDepth as a starting point.
 	if initialDepth == 0 {
 		initialDepth = s.topology.NeighborhoodDepth()
 	}
@@ -104,13 +114,16 @@ func (s *Service) manage(warmupTime time.Duration) {
 	s.storageDepth = initialDepth
 	s.depthLock.Unlock()
 
-	defer s.putStorageDeth()
+	defer func() {
+		s.depthLock.Lock()
+		defer s.depthLock.Unlock()
+		err := s.st.Put(depthKey, s.storageDepth)
+		if err != nil {
+			s.logger.Errorf("depthmonitor: failed updating storage depth: %v", err)
+		}
+	}()
 
 	halfCapacity := float64(s.reserve.Capacity()) / 2
-
-	isHalfFull := func(s float64) bool {
-		return s > halfCapacity
-	}
 
 	var (
 		adaptationPeriod bool
@@ -127,14 +140,14 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 		size, err := s.reserve.Size()
 		if err != nil {
-			s.logger.Errorf("depthmonitor: reserve size %v", err)
+			s.logger.Errorf("depthmonitor: failed reading reserve size %v", err)
 			continue
 		}
 
 		currentSize := float64(size)
 
 		// if we have crossed 50% utilization, dont do anything
-		if isHalfFull(currentSize) {
+		if currentSize > halfCapacity {
 			adaptationPeriod = false
 			continue
 		}
@@ -148,7 +161,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 			rate := adaptationWindowSeconds / halfCapacity
 			emptySize := halfCapacity - currentSize
 			adaptationWindow = rate * emptySize
-			s.logger.Infof("depthmonitor: starting adaptation period with window time %v", time.Second*time.Duration(adaptationWindow))
+			s.logger.Infof("depthmonitor: starting adaptation period with window time %s", time.Second*time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
@@ -162,18 +175,20 @@ func (s *Service) manage(warmupTime time.Duration) {
 		timeleft := adaptationWindow - time.Since(adaptationStart).Seconds()
 		expectedSize := s.syncer.Rate()*timeleft + currentSize
 
-		s.logger.Infof("depthmonitor: expected size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %v", expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft))
+		s.logger.Infof(
+			"depthmonitor: expected size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %s",
+			expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft),
+		)
 
 		// if we are in the adaptation window and we are not expecting to have enough utilization
 		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
 		// their neighbourhoods
-		if !isHalfFull(expectedSize) {
+		if expectedSize < halfCapacity {
 			s.depthLock.Lock()
 			if s.storageDepth > 0 {
 				s.storageDepth--
 				s.topology.SetStorageDepth(s.storageDepth)
 				s.logger.Infof("depthmonitor: reducing storage depth to %d", s.storageDepth)
-				s.putStorageDeth()
 			}
 			s.depthLock.Unlock()
 		}
@@ -182,13 +197,23 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 func (s *Service) Close() error {
 	close(s.quit)
-	return nil
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-stopped:
+		return nil
+	case <-time.After(5 * time.Second):
+		return errors.New("stopping depthmonitor with ongoing goroutines")
+	}
 }
 
 // SetStorageRadius implements the postage.RadiusSetter interface to receive updates from batchstore
 // about the storageRadius based on on-chain events
 func (s *Service) SetStorageRadius(storageRadius uint8) {
-
 	s.depthLock.Lock()
 	defer s.depthLock.Unlock()
 
@@ -196,15 +221,7 @@ func (s *Service) SetStorageRadius(storageRadius uint8) {
 		s.storageDepth = storageRadius
 		s.topology.SetStorageDepth(s.storageDepth)
 		s.logger.Infof("depthmonitor: setting storage depth to %d", s.storageDepth)
-		s.putStorageDeth()
 	}
 
 	s.oldStorageRadius = storageRadius
-}
-
-func (s *Service) putStorageDeth() {
-	err := s.st.Put(depthKey, s.storageDepth)
-	if err != nil {
-		s.logger.Errorf("depthmonitor: failed updating storage depth: %v", err)
-	}
 }
