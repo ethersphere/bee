@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	depthKey                  string  = "storage_depth"
-	adaptationWindowSeconds   float64 = 2 * 60 * 60 // 2 hours to fill half the empty reserve
-	adaptationRollbackMinutes         = 5
+	depthKey             string  = "storage_depth"
+	adaptationFullWindow float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
+	adaptationRollback           = 5 * 60      // seconds to slightly roll back the adaption window in case half capacity is not reached
 )
 
 var (
@@ -118,8 +118,9 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 	var (
 		adaptationPeriod bool
-		adaptationStart  time.Time // start of the adaptation window
-		adaptationWindow float64   // allowed time in seconds to fill upto half of the reserve
+		adaptationStart  time.Time                                       // start of the adaptation window
+		adaptationWindow float64                                         // allowed time in seconds to fill upto half of the reserve
+		adaptationRate   float64   = adaptationFullWindow / halfCapacity // minimum rate of seconds per chunks to fill the reserve
 	)
 
 	for {
@@ -149,15 +150,13 @@ func (s *Service) manage(warmupTime time.Duration) {
 		if !adaptationPeriod {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
-			rate := adaptationWindowSeconds / halfCapacity
-			emptySize := halfCapacity - currentSize
-			adaptationWindow = rate * emptySize
+			adaptationWindow = adaptationRate * (halfCapacity - currentSize)
 			s.logger.Infof("depthmonitor: starting adaptation period with window time %s", time.Second*time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
 		if time.Since(adaptationStart).Seconds() > adaptationWindow {
-			adaptationStart = time.Now().Add(-time.Minute * adaptationRollbackMinutes)
+			adaptationStart = time.Now().Add(-time.Second * time.Duration(adaptationFullWindow-adaptationRollback))
 			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
