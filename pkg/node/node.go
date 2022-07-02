@@ -93,6 +93,7 @@ type Bee struct {
 	tracerCloser             io.Closer
 	tagsCloser               io.Closer
 	stateStoreCloser         io.Closer
+	newStateStoreCloser      io.Closer
 	localstoreCloser         io.Closer
 	nsCloser                 io.Closer
 	topologyCloser           io.Closer
@@ -224,11 +225,14 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		}
 	}(b)
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
+	oldStateStore, err := InitStateStore(logger, o.DataDir)
 	if err != nil {
 		return nil, err
 	}
-	b.stateStoreCloser = stateStore
+	b.stateStoreCloser = oldStateStore
+
+	stateStore, err := InitNewStateStore(logger, o.DataDir, oldStateStore)
+	b.newStateStoreCloser = stateStore
 
 	// Check if the the batchstore exists. If not, we can assume it's missing
 	// due to a migration or it's a fresh install.
@@ -680,7 +684,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	var swapService *swap.Service
 
-	metricsDB, err := shed.NewDBWrap(stateStore.DB())
+	metricsDB, err := shed.NewDBWrap(oldStateStore.DB())
 	if err != nil {
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
@@ -1139,6 +1143,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.nsCloser, "netstore")
 	tryClose(b.stateStoreCloser, "statestore")
+	tryClose(b.newStateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")

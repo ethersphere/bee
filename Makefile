@@ -36,7 +36,7 @@ LDFLAGS ?= -s -w \
 all: build lint vet test-race binary
 
 .PHONY: binary
-binary: CGO_ENABLED=0
+binary: CGO_ENABLED=1
 binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee

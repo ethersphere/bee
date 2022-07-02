@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/statestore/sqlite"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -24,6 +25,24 @@ func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, er
 		return leveldb.NewInMemoryStateStore(log)
 	}
 	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), log)
+}
+
+func InitNewStateStore(log logging.Logger, dataDir string, old storage.StateStorer) (storage.StateStorer, error) {
+	if dataDir == "" {
+		log.Warning("using in-mem state store, no node state will be persisted")
+		return leveldb.NewInMemoryStateStore(log)
+	}
+
+	s, err := sqlite.NewStateStore(log, dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.Migrate(old); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
 const secureOverlayKey = "non-mineable-overlay"

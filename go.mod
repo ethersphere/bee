@@ -66,7 +66,12 @@ require (
 	resenje.org/web v0.4.3
 )
 
-require github.com/libp2p/go-libp2p-yamux v0.9.1 // indirect
+require (
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/libp2p/go-libp2p-yamux v0.9.1 // indirect
+	github.com/mattn/go-sqlite3 v1.14.12 // indirect
+)
 
 require (
 	github.com/ipfs/go-cid v0.2.0
@@ -179,5 +184,7 @@ require (
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gorm.io/driver/sqlite v1.3.5
+	gorm.io/gorm v1.23.7
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
