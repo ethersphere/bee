@@ -33,10 +33,10 @@ func NewStateStore(logger logging.Logger, dataDir string) (*statestore, error) {
 	newLogger := gormLogger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		gormLogger.Config{
-			SlowThreshold:             time.Second,     // Slow SQL threshold
-			LogLevel:                  gormLogger.Warn, // Log level
-			IgnoreRecordNotFoundError: true,            // Ignore ErrRecordNotFound error for logger
-			Colorful:                  false,           // Disable color
+			SlowThreshold:             time.Millisecond * 500, // Slow SQL threshold
+			LogLevel:                  gormLogger.Warn,        // Log level
+			IgnoreRecordNotFoundError: true,                   // Ignore ErrRecordNotFound error for logger
+			Colorful:                  false,                  // Disable color
 		},
 	)
 
@@ -89,7 +89,12 @@ func (s *statestore) Put(key string, i interface{}) (err error) {
 
 	// s.logger.Infof("putting %s %T %s", key, i, string(value))
 
-	return s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&keyValue{Key: key, Value: value}).Error
+	err = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&keyValue{Key: key, Value: value}).Error
+	if err != nil {
+		s.logger.Errorf("DB ERROR", err)
+	}
+
+	return nil
 }
 
 func (s *statestore) Get(key string, i interface{}) error {
@@ -123,11 +128,13 @@ func (s *statestore) Delete(key string) error {
 
 func (s *statestore) Iterate(prefix string, iter storage.StateIterFunc) error {
 
-	rows, err := s.db.Model(&keyValue{}).Where("key MATCH ?", prefix+"*").Rows()
+	rows, err := s.db.Model(&keyValue{}).Where("key LIKE ?", prefix+"%").Rows()
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
+
+	s.logger.Infof("iterating on prefix %s", prefix)
 
 	for rows.Next() {
 		var kv keyValue
@@ -136,6 +143,7 @@ func (s *statestore) Iterate(prefix string, iter storage.StateIterFunc) error {
 		if err != nil {
 			return err
 		}
+		// s.logger.Infof("iterating on prefix, key %s", string(kv.Key))
 
 		if stop, err := iter([]byte(kv.Key), kv.Value); stop || err != nil {
 			return err
