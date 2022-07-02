@@ -24,6 +24,9 @@ var (
 	manageWait = 5 * time.Minute
 )
 
+// ReserveReporter interface defines the functionality required from the local storage
+// of the node to report information about the reserve. The reserve storage is the storage
+// pledged by the node to the network.
 type ReserveReporter interface {
 	// Current size of the reserve.
 	Size() (uint64, error)
