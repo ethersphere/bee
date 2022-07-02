@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/topology"
 )
 
 const (
@@ -22,6 +23,26 @@ const (
 var (
 	manageWait = 5 * time.Minute
 )
+
+type ReserveReporter interface {
+	// Current size of the reserve.
+	Size() (uint64, error)
+	// Capacity of the reserve that is configured.
+	Capacity() uint64
+}
+
+// SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
+type SyncReporter interface {
+	// Rate of syncing in terms of chunks/sec.
+	Rate() float64
+}
+
+// Topology interface encapsulates the functionality required by the topology component
+// of the node.
+type Topology interface {
+	topology.NeighborhoodDepther
+	topology.SetStorageDepther
+}
 
 // Service implements the depthmonitor service
 type Service struct {
