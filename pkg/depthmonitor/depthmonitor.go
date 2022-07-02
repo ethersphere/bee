@@ -17,7 +17,7 @@ import (
 const (
 	depthKey             string  = "storage_depth"
 	adaptationFullWindow float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
-	adaptationRollback           = 5           // minutes to slightly roll back the adaption window in case half capacity is not reached
+	adaptationRollback           = 5 * 60      // seconds to slightly roll back the adaption window in case half capacity is not reached
 )
 
 var (
@@ -156,7 +156,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
 		if time.Since(adaptationStart).Seconds() > adaptationWindow {
-			adaptationStart = time.Now().Add(-time.Minute * adaptationRollback)
+			adaptationStart = time.Now().Add(-time.Second * time.Duration(adaptationFullWindow-adaptationRollback))
 			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
