@@ -1148,10 +1148,10 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.nsCloser, "netstore")
+	tryClose(b.depthMonitorCloser, "depthmonitor service")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.errorLogWriter, "error log writer")
-	tryClose(b.depthMonitorCloser, "depthmonitor service")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr
