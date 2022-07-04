@@ -77,7 +77,6 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("start with neighborhood depth", func(t *testing.T) {
 		topo := &mockTopology{connDepth: 3}
 		svc := newTestSvc(topo, nil, nil, nil, 100*time.Millisecond)
-		time.Sleep(200 * time.Millisecond)
 		waitForDepth(t, svc, 3, time.Second)
 		err := svc.Close()
 		if err != nil {
@@ -213,10 +212,7 @@ func TestDepthMonitorService(t *testing.T) {
 
 		svc := newTestSvc(topo, nil, reserve, st, 100*time.Millisecond)
 
-		time.Sleep(200 * time.Millisecond)
-		if svc.StorageDepth() != 3 {
-			t.Fatal("incorrect initial depth")
-		}
+		waitForDepth(t, svc, 3, time.Second)
 
 		svc.SetStorageRadius(5)
 		if svc.StorageDepth() != 5 {
