@@ -51,6 +51,21 @@ func newTestSvc(
 
 func TestDepthMonitorService(t *testing.T) {
 
+	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8, timeout time.Duration) {
+		t.Helper()
+		start := time.Now()
+		for {
+			if time.Since(start) >= timeout {
+				t.Fatalf("timed out waiting for depth expected %d found %d", depth, svc.StorageDepth())
+			}
+			if svc.StorageDepth() != depth {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			break
+		}
+	}
+
 	t.Run("stop service within warmup time", func(t *testing.T) {
 		svc := newTestSvc(nil, nil, nil, nil, time.Second)
 		err := svc.Close()
@@ -63,9 +78,7 @@ func TestDepthMonitorService(t *testing.T) {
 		topo := &mockTopology{connDepth: 3}
 		svc := newTestSvc(topo, nil, nil, nil, 100*time.Millisecond)
 		time.Sleep(200 * time.Millisecond)
-		if svc.StorageDepth() != 3 {
-			t.Fatalf("incorrect initial depth expected 3 found %d", svc.StorageDepth())
-		}
+		waitForDepth(t, svc, 3, time.Second)
 		err := svc.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -82,10 +95,7 @@ func TestDepthMonitorService(t *testing.T) {
 		}
 
 		svc := newTestSvc(topo, nil, nil, st, 100*time.Millisecond)
-		time.Sleep(200 * time.Millisecond)
-		if svc.StorageDepth() != 5 {
-			t.Fatalf("incorrect initial depth expected 5 found %d", svc.StorageDepth())
-		}
+		waitForDepth(t, svc, 5, time.Second)
 		err = svc.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -109,25 +119,13 @@ func TestDepthMonitorService(t *testing.T) {
 
 		svc := newTestSvc(topo, syncer, reserve, st, 100*time.Millisecond)
 
-		time.Sleep(200 * time.Millisecond)
-		if svc.StorageDepth() != 3 {
-			t.Fatal("incorrect initial depth")
-		}
+		waitForDepth(t, svc, 3, time.Second)
 		// simulate huge eviction to trigger manage worker
 		reserve.setSize(1000)
 
-		started := time.Now()
-		for {
-			if time.Since(started) > time.Second {
-				t.Fatalf("waited 1s for depth to drop to 1 current %d", svc.StorageDepth())
-			}
-			// as the utilization in the test doesnt change, the depth should eventually
-			// drop to 1 and stay there
-			if topo.getStorageDepth() != 1 || svc.StorageDepth() != 1 {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-			break
+		waitForDepth(t, svc, 1, time.Second)
+		if topo.getStorageDepth() != 1 {
+			t.Fatal("topology depth not updated")
 		}
 		err := svc.Close()
 		if err != nil {
