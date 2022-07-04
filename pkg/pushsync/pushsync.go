@@ -43,7 +43,7 @@ const (
 	p90TTL         = 5 * time.Second  // P90 request time to live
 	sanctionWait   = 5 * time.Minute
 	replicationTTL = 5 * time.Second // time to live for neighborhood replication
-
+	waitRefresh    = 600 * time.Millisecond
 )
 
 const (
@@ -373,11 +373,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					return swarm.ZeroAddress, false, ErrWarmup
 				}
 
-				if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
-					return swarm.ZeroAddress, false, ErrOutOfDepthStoring
-				}
-
 				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
+					// we don't act on ErrWantSelf unless there are no overdraft peers
+					if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+						return swarm.ZeroAddress, false, ErrOutOfDepthStoring
+					}
 					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
 					return swarm.ZeroAddress, false, err
 				}
@@ -412,7 +412,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if allowedRetries <= 0 {
 					return nil, ErrNoPush
 				}
-				timer.Reset(500 * time.Millisecond)
+				timer.Reset(waitRefresh)
 				continue
 			}
 
