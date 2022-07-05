@@ -28,9 +28,6 @@ const (
 )
 
 func (s *Service) MountTechnicalDebug() {
-	s.handlerMu.Lock()
-	defer s.handlerMu.Unlock()
-
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 	s.router = router
@@ -47,9 +44,6 @@ func (s *Service) MountTechnicalDebug() {
 }
 
 func (s *Service) MountDebug(restricted bool) {
-	s.handlerMu.Lock()
-	defer s.handlerMu.Unlock()
-
 	s.mountBusinessDebug(restricted)
 
 	s.Handler = web.ChainHandlers(
@@ -62,9 +56,6 @@ func (s *Service) MountDebug(restricted bool) {
 }
 
 func (s *Service) MountAPI() {
-	s.handlerMu.Lock()
-	defer s.handlerMu.Unlock()
-
 	if s.router == nil {
 		s.router = mux.NewRouter()
 		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
