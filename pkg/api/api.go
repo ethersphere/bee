@@ -130,8 +130,7 @@ type Service struct {
 	Options
 
 	http.Handler
-	handlerMu sync.RWMutex
-	router    *mux.Router
+	router *mux.Router
 
 	metrics metrics
 
