@@ -20,7 +20,7 @@ func (s *List) All() []swarm.Address {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return append(append(s.addresses[:0:0], s.addresses...), s.overdraftAddresses...)
+	return append(s.addresses, s.overdraftAddresses...)
 }
 
 func (s *List) ResetOverdraft() {

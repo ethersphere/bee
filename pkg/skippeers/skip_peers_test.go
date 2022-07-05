@@ -37,4 +37,10 @@ func TestAddOverdraft(t *testing.T) {
 	if len(sp.All()) != 2 {
 		t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
 	}
+
+	sp.ResetOverdraft()
+
+	if !sp.OverdraftListEmpty() {
+		t.Errorf("expected empty list, got %s", sp.All())
+	}
 }
