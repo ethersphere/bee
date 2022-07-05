@@ -106,6 +106,9 @@ func (s *Service) manage(warmupTime time.Duration) {
 	// if we are starting from scratch, we can use the initial NeighborhoodDepth as a starting point.
 	if initialDepth == 0 {
 		initialDepth = s.topology.NeighborhoodDepth()
+	} else {
+		// use the stored depth for topology
+		s.topology.SetStorageDepth(initialDepth)
 	}
 
 	s.logger.Infof("depthmonitor: warmup period complete, starting worker with initial depth %d", initialDepth)
