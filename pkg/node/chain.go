@@ -386,7 +386,7 @@ func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]b
 	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0), nil
 }
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
-	panic("chain no op: CallContract")
+	return nil, errors.New("disabled chain backend")
 }
 func (m noOpChainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
 	h := new(types.Header)
