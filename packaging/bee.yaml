@@ -60,8 +60,6 @@ password-file: /var/lib/bee/password
 # postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # resolver-options: []
-## use a blockchain backend (default true)
-# chain-enable: true
 ## enable swap (default true)
 # swap-enable: true
 ## swap ethereum blockchain endpoint (default "ws://localhost:8546")
