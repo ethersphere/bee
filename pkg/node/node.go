@@ -344,11 +344,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		b.debugAPIServer = debugAPIServer
 	}
 
-	apiListener, err := net.Listen("tcp", o.APIAddr)
-	if err != nil {
-		return nil, fmt.Errorf("api listener: %w", err)
-	}
-
 	var apiService *api.Service
 
 	if o.Restricted {
@@ -360,6 +355,11 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
 			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		}
+
+		apiListener, err := net.Listen("tcp", o.APIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("api listener: %w", err)
 		}
 
 		go func() {
@@ -919,6 +919,12 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 				Handler:           apiService,
 				ErrorLog:          log.New(b.errorLogWriter, "", 0),
 			}
+
+			apiListener, err := net.Listen("tcp", o.APIAddr)
+			if err != nil {
+				return nil, fmt.Errorf("api listener: %w", err)
+			}
+
 			go func() {
 				logger.Infof("api address: %s", apiListener.Addr())
 				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
