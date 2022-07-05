@@ -358,11 +358,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
-	nextPeer := func() (swarm.Address, bool, error) {
+	// nextPeer attempts to lookup the next peer to push the chunk to, if there are overdrafted peers the boolean would signal a re-attempt
+	nextPeer := func() (peer swarm.Address, retry bool, err error) {
 
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers.All()...)
 
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
+		peer, err = ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
