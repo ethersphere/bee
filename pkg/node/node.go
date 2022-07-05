@@ -849,9 +849,15 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, stateStore, logger, warmupTime)
-	batchStore.SetStorageRadiusSetter(depthMonitor)
-	b.depthMonitorCloser = depthMonitor
+	if o.FullNodeMode {
+		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, stateStore, logger, warmupTime)
+		batchStore.SetStorageRadiusSetter(depthMonitor)
+		b.depthMonitorCloser = depthMonitor
+	} else {
+		// if we don't use depthmonitor, we should use the default behaviour where we determine
+		// the storage depth in the topology based on only eviction events
+		batchStore.SetStorageRadiusSetter(&kademliaRadiusSetter{kad})
+	}
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
@@ -1170,4 +1176,12 @@ func isChainEnabled(o *Options, swapEndpoint string, logger logging.Logger) bool
 
 	logger.Info("starting with an enabled chain backend")
 	return true // all other modes operate require chain enabled
+}
+
+type kademliaRadiusSetter struct {
+	topology.SetStorageDepther
+}
+
+func (k *kademliaRadiusSetter) SetStorageRadius(storageRadius uint8) {
+	k.SetStorageDepth(storageRadius)
 }
