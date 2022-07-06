@@ -144,9 +144,6 @@ func (c *command) initStartDevCmd() (err error) {
 		},
 	}
 
-	// bcrypt-ed 'hello', or 'OmhlbGxv' in base64
-	const defaultDevPassword = "E6Gr5TfcJQHSya4OG2Cf0Z6RVtH0E2tQVNAP3+majDBYuJcyhPB4MvD6vbYV96Bk95KaUmLdhD7kbEWMGk48BIkfucGSWU9+xGFMUu3feOUBzcFlg5iDUQ=="
-
 	cmd.Flags().Bool(optionNameDebugAPIEnable, true, "enable debug HTTP API")
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
@@ -159,7 +156,7 @@ func (c *command) initStartDevCmd() (err error) {
 	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
 	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
 	cmd.Flags().String(optionNameTokenEncryptionKey, "", "security token encryption hash")
-	cmd.Flags().String(optionNameAdminPasswordHash, defaultDevPassword, "bcrypt hash of the admin password to get the security token")
+	cmd.Flags().String(optionNameAdminPasswordHash, "$2a$10$Maw2HUQjcUINtqdnasOs1ee5MtQl7jxnkv2GqCGfbytAiCElzcbYC", "bcrypt hash of the admin password to get the security token")
 
 	c.root.AddCommand(cmd)
 	return nil
