@@ -79,7 +79,7 @@ func TestTransactionSend(t *testing.T) {
 	recipient := common.HexToAddress("0xabcd")
 	txData := common.Hex2Bytes("0xabcdee")
 	value := big.NewInt(1)
-	suggestedGasPrice := big.NewInt(2)
+	suggestedGasPrice := big.NewInt(1000)
 	estimatedGasLimit := uint64(3)
 	nonce := uint64(2)
 	chainID := big.NewInt(5)
@@ -94,9 +94,10 @@ func TestTransactionSend(t *testing.T) {
 			Data:     txData,
 		})
 		request := &transaction.TxRequest{
-			To:    &recipient,
-			Data:  txData,
-			Value: value,
+			To:       &recipient,
+			Data:     txData,
+			GasPrice: suggestedGasPrice,
+			Value:    value,
 		}
 		store := storemock.NewStateStore()
 		err := store.Put(nonceKey(sender), nonce)
