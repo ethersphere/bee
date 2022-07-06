@@ -101,6 +101,7 @@ var (
 	errDirectoryStore       = errors.New("could not store directory")
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
+	errBatchUnusable        = errors.New("batch not usable")
 )
 
 type authenticator interface {
@@ -618,6 +619,20 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 	deferred, err := requestDeferred(r)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
+	}
+
+	exists, err := s.batchStore.Exists(batch)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)
+	}
+
+	issuer, err := s.post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	if usable := exists && s.post.IssuerUsable(issuer); !usable {
+		return nil, noopWaitFn, errBatchUnusable
 	}
 
 	if deferred {
