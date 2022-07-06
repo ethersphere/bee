@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package retrieval
+package skippeers
 
 import (
 	"sync"
@@ -10,30 +10,30 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type skipPeers struct {
+type List struct {
+	mu                 sync.Mutex
 	overdraftAddresses []swarm.Address
 	addresses          []swarm.Address
-	mu                 sync.Mutex
 }
 
-func newSkipPeers() *skipPeers {
-	return &skipPeers{}
-}
-
-func (s *skipPeers) All() []swarm.Address {
+func (s *List) All() []swarm.Address {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return append(append(s.addresses[:0:0], s.addresses...), s.overdraftAddresses...)
+	all := make([]swarm.Address, 0, len(s.addresses)+len(s.overdraftAddresses))
+	all = append(all, s.addresses...)
+	all = append(all, s.overdraftAddresses...)
+
+	return all
 }
 
-func (s *skipPeers) Reset() {
+func (s *List) ResetOverdraft() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.overdraftAddresses = []swarm.Address{}
+	s.overdraftAddresses = nil
 }
 
-func (s *skipPeers) Add(address swarm.Address) {
+func (s *List) Add(address swarm.Address) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -46,7 +46,7 @@ func (s *skipPeers) Add(address swarm.Address) {
 	s.addresses = append(s.addresses, address)
 }
 
-func (s *skipPeers) AddOverdraft(address swarm.Address) {
+func (s *List) AddOverdraft(address swarm.Address) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -56,13 +56,20 @@ func (s *skipPeers) AddOverdraft(address swarm.Address) {
 		}
 	}
 
+	for i, a := range s.addresses {
+		if a.Equal(address) {
+			s.addresses = append(s.addresses[:i], s.addresses[i+1:]...)
+			break
+		}
+	}
+
 	s.overdraftAddresses = append(s.overdraftAddresses, address)
 }
 
-// Saturated function returns whether all skipped entries a permanently skipped for this skiplist
+// OverdraftListEmpty function returns whether all skipped entries a permanently skipped for this skiplist
 // Temporary entries are stored in the overdraftAddresses slice of the skiplist, so if that is empty, the function returns true
-func (s *skipPeers) Saturated() bool {
+func (s *List) OverdraftListEmpty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.overdraftAddresses) <= 0
+	return len(s.overdraftAddresses) == 0
 }
