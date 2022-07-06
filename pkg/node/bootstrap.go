@@ -56,7 +56,8 @@ var (
 )
 
 const (
-	getSnapshotRetries = 3
+	getSnapshotRetries = 5
+	retryWait          = time.Second * 5
 )
 
 func bootstrapNode(
@@ -215,6 +216,9 @@ func bootstrapNode(
 	)
 
 	for i := 0; i < getSnapshotRetries; i++ {
+		if err != nil {
+			time.Sleep(retryWait)
+		}
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err != nil {
 			logger.Warningf("bootstrap: fetching snapshot: %v", err)
@@ -227,6 +231,9 @@ func bootstrapNode(
 	}
 
 	for i := 0; i < getSnapshotRetries; i++ {
+		if err != nil {
+			time.Sleep(retryWait)
+		}
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
 			logger.Warningf("bootstrap: file joiner: %v", err)
@@ -261,13 +268,13 @@ func bootstrapNode(
 
 // wait till some peers are connected. returns true if all is ok
 func waitPeers(kad *kademlia.Kad) bool {
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 5*60; i++ { // max 5 minutes
 		items := 0
 		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			items++
 			return false, false, nil
 		}, topology.Filter{})
-		if items >= 25 {
+		if items >= 50 {
 			return true
 		}
 		time.Sleep(time.Second)
