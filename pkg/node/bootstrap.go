@@ -57,7 +57,8 @@ var (
 
 const (
 	getSnapshotRetries = 5
-	retryWait          = time.Second * 5
+	retryWait          = time.Second * 10
+	timeout            = time.Minute * 5
 )
 
 func bootstrapNode(
@@ -203,7 +204,7 @@ func bootstrapNode(
 		return nil, errors.New("timed out waiting for kademlia peers")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	logger.Info("bootstrap: trying to fetch stamps snapshot")
