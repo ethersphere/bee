@@ -887,7 +887,7 @@ func TestLoggerVerbosity(t *testing.T) {
 
 		logger.Build().Error(nil, "msg")
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = `"level"="error" "logger"="root" "msg"="msg" "error"=null`
+		want = `"level"="error" "logger"="root" "msg"="msg"`
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -934,7 +934,7 @@ func TestLoggerVerbosity(t *testing.T) {
 
 		logger.Build().Error(nil, "msg")
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = `"level"="error" "logger"="root" "msg"="msg" "error"=null`
+		want = `"level"="error" "logger"="root" "msg"="msg"`
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -973,7 +973,7 @@ func TestLoggerVerbosity(t *testing.T) {
 
 		logger.Build().Error(nil, "msg")
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = `"level"="error" "logger"="root" "msg"="msg" "error"=null`
+		want = `"level"="error" "logger"="root" "msg"="msg"`
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -1004,7 +1004,7 @@ func TestLoggerVerbosity(t *testing.T) {
 
 		logger.Build().Error(nil, "msg")
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = `"level"="error" "logger"="root" "msg"="msg" "error"=null`
+		want = `"level"="error" "logger"="root" "msg"="msg"`
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -1027,7 +1027,7 @@ func TestLoggerVerbosity(t *testing.T) {
 
 		logger.Build().Error(nil, "msg")
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = `"level"="error" "logger"="root" "msg"="msg" "error"=null`
+		want = `"level"="error" "logger"="root" "msg"="msg"`
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
