@@ -15,8 +15,8 @@ import (
 const milliInSeconds = 1000
 
 type Rate struct {
-	windows    map[int64]int
 	mtx        sync.Mutex
+	windows    map[int64]int
 	windowSize int64        // window size in milliseconds
 	now        func() int64 // func that returns the current time in milliseconds
 }
@@ -68,10 +68,4 @@ func (r *Rate) cleanup() {
 			delete(r.windows, k)
 		}
 	}
-}
-
-func (r *Rate) SetTimeFunc(f func() int64) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	r.now = f
 }

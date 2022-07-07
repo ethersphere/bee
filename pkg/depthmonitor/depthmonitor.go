@@ -49,14 +49,14 @@ type Topology interface {
 
 // Service implements the depthmonitor service
 type Service struct {
-	depthLock        sync.Mutex
 	topology         Topology
 	syncer           SyncReporter
 	reserve          ReserveReporter
 	st               storage.StateStorer
 	logger           logging.Logger
-	quit             chan struct{}
-	wg               sync.WaitGroup
+	quit             chan struct{} // to request service to stop
+	stopped          chan struct{} // to signal stopping of bg worker
+	depthLock        sync.Mutex
 	storageDepth     uint8
 	oldStorageRadius uint8
 }
@@ -80,14 +80,13 @@ func New(
 		quit:     make(chan struct{}),
 	}
 
-	s.wg.Add(1)
 	go s.manage(warmupTime)
 
 	return s
 }
 
 func (s *Service) manage(warmupTime time.Duration) {
-	defer s.wg.Done()
+	defer close(s.stopped)
 
 	// wait for warmup
 	select {
@@ -191,17 +190,12 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 func (s *Service) Close() error {
 	close(s.quit)
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		s.wg.Wait()
-	}()
 
 	select {
-	case <-stopped:
+	case <-s.stopped:
 		return nil
 	case <-time.After(5 * time.Second):
-		return errors.New("stopping depthmonitor with ongoing goroutines")
+		return errors.New("stopping depthmonitor with ongoing worker goroutine")
 	}
 }
 
