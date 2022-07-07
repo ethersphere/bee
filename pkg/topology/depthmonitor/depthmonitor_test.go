@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/depthmonitor"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
 func newTestSvc(
