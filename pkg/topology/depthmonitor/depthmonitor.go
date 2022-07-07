@@ -78,6 +78,7 @@ func New(
 		st:       st,
 		logger:   logger,
 		quit:     make(chan struct{}),
+		stopped:  make(chan struct{}),
 	}
 
 	go s.manage(warmupTime)
