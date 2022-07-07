@@ -231,11 +231,9 @@ func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAn
 	}
 	base = append(base, "msg", msg)
 	if vl == VerbosityError {
-		var loggableErr interface{}
 		if err != nil {
-			loggableErr = err.Error()
+			base = append(base, "error", err.Error())
 		}
-		base = append(base, "error", loggableErr)
 	}
 	if len(l.values) > 0 {
 		base = append(base, l.values...)
