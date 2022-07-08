@@ -4,7 +4,9 @@
 
 package rate
 
-func (r *Rate) SetTimeFunc(f func() int64) {
+import "time"
+
+func (r *Rate) SetTimeFunc(f func() time.Time) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.now = f
