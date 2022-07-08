@@ -58,7 +58,7 @@ var (
 const (
 	getSnapshotRetries = 5
 	retryWait          = time.Second * 10
-	timeout            = time.Minute * 5
+	timeout            = time.Minute * 2
 )
 
 func bootstrapNode(
@@ -269,13 +269,13 @@ func bootstrapNode(
 
 // wait till some peers are connected. returns true if all is ok
 func waitPeers(kad *kademlia.Kad) bool {
-	for i := 0; i < 5*60; i++ { // max 5 minutes
+	for i := 0; i < 2*60; i++ { // max 2 minutes
 		items := 0
 		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			items++
 			return false, false, nil
 		}, topology.Filter{})
-		if items >= 50 {
+		if items >= 25 {
 			return true
 		}
 		time.Sleep(time.Second)
