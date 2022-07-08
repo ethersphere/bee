@@ -186,7 +186,7 @@ func (l *logger) Build() Logger {
 	switch i, ok := loggers.Load(key); {
 	case ok: // Nothing to build, the instance exists.
 		return i.(*logger)
-	case l.id == "": // Build a root instance.
+	case l.id == "": // A new root instance.
 		val = l
 		val.id = key
 		val.v = v
@@ -194,7 +194,7 @@ func (l *logger) Build() Logger {
 		val.namesLen = len(val.names)
 		val.valuesStr = valuesStr
 		val.valuesLen = len(val.values)
-	default: // Build a new child instance.
+	default: // A new child instance.
 		c := *l
 		val = &c
 		val.id = key
@@ -206,6 +206,13 @@ func (l *logger) Build() Logger {
 		val.valuesLen = len(val.values)
 		val.values = append(make([]interface{}, 0, val.valuesLen), val.values...)
 	}
+	return val
+}
+
+// Register implements the Builder interface Register method.
+func (l *logger) Register() Logger {
+	val := l.Build()
+	key := hash(l.namesStr, l.v, l.valuesStr, l.sink)
 	res, _ := loggers.LoadOrStore(key, val)
 	return res.(*logger)
 }

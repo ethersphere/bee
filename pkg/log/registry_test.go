@@ -77,7 +77,7 @@ func TestNewLogger(t *testing.T) {
 		cnt int
 		val interface{}
 	)
-	NewLogger("root").Build()
+	NewLogger("root").Register()
 	loggers.Range(func(k, v interface{}) bool {
 		cnt++
 		val = v
@@ -87,7 +87,7 @@ func TestNewLogger(t *testing.T) {
 		t.Fatalf("NewLogger(...) instance(s) count mismatch: want: 1; have: %d", cnt)
 	}
 	want := val.(*logger)
-	have := NewLogger("root").Build()
+	have := NewLogger("root").Register()
 
 	diff := cmp.Diff(have, want, cmp.AllowUnexported(
 		logger{},
@@ -113,9 +113,9 @@ func TestSetVerbosity(t *testing.T) {
 	defaults.options = new(Options)
 	ModifyDefaults(opts...)
 
-	NewLogger("root").Build()
-	NewLogger("root").WithName("child1").Build()
-	NewLogger("root").WithName("child1").WithValues("abc", 123).Build()
+	NewLogger("root").Register()
+	NewLogger("root").WithName("child1").Register()
+	NewLogger("root").WithName("child1").WithValues("abc", 123).Register()
 
 	registered := make(map[string]*logger)
 	loggers.Range(func(k, v interface{}) bool {
@@ -179,9 +179,9 @@ func TestRegistryRange(t *testing.T) {
 	defaults.options = new(Options)
 	ModifyDefaults(opts...)
 
-	NewLogger("root").Build()
-	NewLogger("root").WithName("child1").Build()
-	NewLogger("root").WithName("child1").WithValues("abc", 123).Build()
+	NewLogger("root").Register()
+	NewLogger("root").WithName("child1").Register()
+	NewLogger("root").WithName("child1").WithValues("abc", 123).Register()
 
 	registered := make(map[string]*logger)
 	loggers.Range(func(k, v interface{}) bool {
