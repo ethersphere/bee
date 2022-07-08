@@ -7,7 +7,6 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -33,7 +32,7 @@ func TestChunkUploadStream(t *testing.T) {
 
 	var (
 		statestoreMock  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = logging.Noop()
 		tag             = tags.NewTags(statestoreMock, logger)
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()

@@ -7,7 +7,6 @@ package multiresolver
 import (
 	"errors"
 	"fmt"
-	"io"
 	"path"
 	"strings"
 
@@ -63,7 +62,7 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 
 	// Discard log output by default.
 	if mr.logger == nil {
-		mr.logger = logging.New(io.Discard, 0)
+		mr.logger = logging.Noop()
 	}
 	log := mr.logger
 

@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"io"
 	"reflect"
 	"runtime/pprof"
 	"strings"
@@ -561,7 +560,7 @@ func newTestDB(t testing.TB, o *localstore.Options) (baseKey []byte, db *localst
 		t.Fatal(err)
 	}
 
-	logger := logging.New(io.Discard, 0)
+	logger := logging.Noop()
 	db, err := localstore.New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)

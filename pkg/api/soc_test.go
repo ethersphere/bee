@@ -31,7 +31,7 @@ func TestSOC(t *testing.T) {
 		testData        = []byte("foo")
 		socResource     = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = logging.Noop()
 		tag             = tags.NewTags(mockStatestore, logger)
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		mockStorer      = mock.NewStorer()

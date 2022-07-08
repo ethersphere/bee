@@ -5,9 +5,9 @@
 package logging
 
 import (
+	"github.com/ethersphere/bee/pkg/log"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 )
 
 type metrics struct {
@@ -58,32 +58,22 @@ func newMetrics() metrics {
 	}
 }
 
-func (l *logger) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(l.metrics)
-}
-
-func (m metrics) Levels() []logrus.Level {
-	return []logrus.Level{
-		logrus.ErrorLevel,
-		logrus.WarnLevel,
-		logrus.InfoLevel,
-		logrus.DebugLevel,
-		logrus.TraceLevel,
-	}
-}
-
-func (m metrics) Fire(e *logrus.Entry) error {
-	switch e.Level {
-	case logrus.ErrorLevel:
+func (m metrics) Fire(v log.Level) error {
+	switch v {
+	case log.VerbosityError:
 		m.ErrorCount.Inc()
-	case logrus.WarnLevel:
+	case log.VerbosityWarning:
 		m.WarnCount.Inc()
-	case logrus.InfoLevel:
+	case log.VerbosityInfo:
 		m.InfoCount.Inc()
-	case logrus.DebugLevel:
+	case log.VerbosityDebug:
 		m.DebugCount.Inc()
-	case logrus.TraceLevel:
-		m.TraceCount.Inc()
+	case log.VerbosityAll:
+		m.TraceCount.Inc() // Irrelevant, will be removed.
 	}
 	return nil
+}
+
+func (w *wrapper) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(w.metrics)
 }

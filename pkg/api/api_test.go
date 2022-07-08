@@ -125,7 +125,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		o.Logger = logging.New(io.Discard, 0)
+		o.Logger = logging.Noop()
 	}
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
@@ -294,7 +294,7 @@ func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func(
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
-	log := logging.New(io.Discard, 0)
+	log := logging.Noop()
 
 	testCases := []struct {
 		desc       string

@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"io"
 	"net/http"
 	"testing"
 
@@ -22,7 +21,7 @@ import (
 )
 
 func TestGatewayMode(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := logging.Noop()
 	chunk := testingc.GenerateTestRandomChunk()
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:      mock.NewStorer(),

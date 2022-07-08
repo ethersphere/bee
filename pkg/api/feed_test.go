@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"testing"
@@ -45,7 +44,7 @@ func TestFeed_Get(t *testing.T) {
 			return fmt.Sprintf("/feeds/%s/%s", owner, topic)
 		}
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = logging.Noop()
 		tag             = tags.NewTags(mockStatestore, logger)
 		mockStorer      = mock.NewStorer()
 		client, _, _, _ = newTestServer(t, testServerOptions{
@@ -151,7 +150,7 @@ func TestFeed_Post(t *testing.T) {
 	// manifest entry and make sure all metadata correct
 	var (
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = logging.Noop()
 		tag             = tags.NewTags(mockStatestore, logger)
 		topic           = "aabbcc"
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))

@@ -5,7 +5,6 @@
 package batchstore_test
 
 import (
-	"io"
 	"math/big"
 	"testing"
 
@@ -386,7 +385,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
 
-	logger := logging.New(io.Discard, 0)
+	logger := logging.Noop()
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)

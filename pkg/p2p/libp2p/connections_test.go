@@ -963,22 +963,21 @@ func TestWithBlocklistStreams(t *testing.T) {
 }
 
 func TestUserAgentLogging(t *testing.T) {
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// use concurrent-safe buffers as handlers are logging concurrently
-	s1Logs := new(buffer)
-	s2Logs := new(buffer)
+	// use concurrent-safe buffer as handlers are logging concurrently
+	logSink := new(buffer)
+	logger := logging.New(logSink, 5)
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
 		},
-		Logger: logging.New(s1Logs, 5),
+		Logger: logger,
 	})
 	s2, _ := newService(t, 1, libp2pServiceOpts{
-		Logger: logging.New(s2Logs, 5),
+		Logger: logger,
 	})
 
 	addr := serviceUnderlayAddress(t, s1)
@@ -990,13 +989,13 @@ func TestUserAgentLogging(t *testing.T) {
 
 	// wait for logs to be written to buffers
 	for t := time.Now().Add(10 * time.Second); time.Now().Before(t); time.Sleep(50 * time.Microsecond) {
-		if s1Logs.Len() > 0 && s2Logs.Len() > 0 {
+		if logSink.Len() > 0 {
 			break
 		}
 	}
 
-	testUserAgentLogLine(t, s1Logs, "(inbound)")
-	testUserAgentLogLine(t, s2Logs, "(outbound)")
+	testUserAgentLogLine(t, logSink, "(inbound)")
+	testUserAgentLogLine(t, logSink, "(outbound)")
 }
 
 func TestReachabilityUpdate(t *testing.T) {
@@ -1059,7 +1058,7 @@ func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 	logLineMarker := "successfully connected to peer"
 	var foundLogLine bool
 	var lines []string
-	for {
+	for !foundLogLine {
 		line, err := logs.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {

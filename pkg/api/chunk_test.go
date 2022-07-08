@@ -35,7 +35,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
 		chunk           = testingc.GenerateTestRandomChunk()
 		statestoreMock  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = logging.Noop()
 		tag             = tags.NewTags(statestoreMock, logger)
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()

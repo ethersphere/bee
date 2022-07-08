@@ -5,7 +5,9 @@
 package tracing_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"testing"
@@ -15,6 +17,11 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/uber/jaeger-client-go"
 )
+
+// TODO: remove this shared logSink when fully migrated to the new logger.
+// This variable exists since the sink is pinned when the logger is created
+// for the first time and so the next calls with different sink(s) are ignored.
+var logSink bytes.Buffer
 
 func TestSpanFromHeaders(t *testing.T) {
 	tracer, closer := newTracer(t)
@@ -126,15 +133,23 @@ func TestWithContext(t *testing.T) {
 }
 
 func TestStartSpanFromContext_logger(t *testing.T) {
+	t.Cleanup(func() { logSink.Reset() })
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
-	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", logging.New(io.Discard, 0))
+	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", logging.New(&logSink, 0))
 	defer span.Finish()
 
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
-	v, ok := logger.Data[tracing.LogField]
+	logSink.Reset()
+	logger.Info(nil)
+	data := make(map[string]interface{})
+	if err := json.Unmarshal(logSink.Bytes(), &data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	v, ok := data[tracing.LogField]
 	if !ok {
 		t.Fatalf("log field %q not found", tracing.LogField)
 	}
@@ -162,17 +177,25 @@ func TestStartSpanFromContext_nilLogger(t *testing.T) {
 }
 
 func TestNewLoggerWithTraceID(t *testing.T) {
+	t.Cleanup(func() { logSink.Reset() })
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
 
-	logger := tracing.NewLoggerWithTraceID(ctx, logging.New(io.Discard, 0))
+	logger := tracing.NewLoggerWithTraceID(ctx, logging.New(&logSink, 0))
 
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
-	v, ok := logger.Data[tracing.LogField]
+	logSink.Reset()
+	logger.Info(nil)
+	data := make(map[string]interface{})
+	if err := json.Unmarshal(logSink.Bytes(), &data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	v, ok := data[tracing.LogField]
 	if !ok {
 		t.Fatalf("log field %q not found", tracing.LogField)
 	}
