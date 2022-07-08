@@ -108,9 +108,17 @@ type Builder interface {
 	// to be logged with each log line.
 	WithValues(keysAndValues ...interface{}) Builder
 
-	// Build returns new or existing Logger
+	// Build returns a new or existing Logger
 	// instance, if such instance already exists.
+	// The new instance is not registered in the
+	// logger registry.
 	Build() Logger
+
+	// Register returns new or existing Logger
+	// instance, if such instance already exists.
+	// If a new instance is created, it is also
+	// registered in the logger registry.
+	Register() Logger
 }
 
 // Logger provides a set of methods that define the behavior of the logger.
