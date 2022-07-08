@@ -92,6 +92,9 @@ func bootstrapNode(
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
+	passedInLogger := logger
+	logger = logging.New(io.Discard, 0)
+
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 
 	b := &Bee{
@@ -215,6 +218,8 @@ func bootstrapNode(
 		l                 int64
 		eventsJSON        []byte
 	)
+
+	logger = passedInLogger
 
 	for i := 0; i < getSnapshotRetries; i++ {
 		if err != nil {
