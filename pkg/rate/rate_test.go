@@ -57,13 +57,13 @@ func TestRate(t *testing.T) {
 	// eg: the ratio is x, so (1 - 1/x) will be applied to the previous bucket
 	for _, tc := range []struct {
 		ratio int
-		want  float64
+		rate  float64
 	}{
-		{ratio: 2, want: 150},
-		{ratio: 4, want: 175},
-		{ratio: 5, want: 180},
-		{ratio: 10, want: 190},
-		{ratio: 100, want: 199},
+		{ratio: 2, rate: 150},
+		{ratio: 4, rate: 175},
+		{ratio: 5, rate: 180},
+		{ratio: 10, rate: 190},
+		{ratio: 100, rate: 199},
 	} {
 
 		rate := rate.New(windowSize)
@@ -75,8 +75,8 @@ func TestRate(t *testing.T) {
 		rate.Add(r)
 
 		got := rate.Rate()
-		if got != float64(tc.want) {
-			t.Fatalf("ratio %d, got %v, want %v", tc.ratio, got, tc.want)
+		if got != tc.rate {
+			t.Fatalf("ratio %v, got %v, want %v", tc.ratio, got, tc.rate)
 		}
 	}
 }
