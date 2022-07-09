@@ -51,7 +51,7 @@ func TestRate(t *testing.T) {
 
 	// windowSizeMs := 1000
 	windowSize := 1000 * time.Millisecond
-	var r = 100
+	const r = 100
 
 	// tc represents the different ratios that will applied to the previous bucket in the Rate calculation
 	// eg: the ratio is x, so (1 - 1/x) will be applied to the previous bucket
