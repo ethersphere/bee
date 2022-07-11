@@ -1167,11 +1167,3 @@ func isChainEnabled(o *Options, swapEndpoint string, logger logging.Logger) bool
 	logger.Info("starting with an enabled chain backend")
 	return true // all other modes operate require chain enabled
 }
-
-type kademliaRadiusSetter struct {
-	topology.SetStorageDepther
-}
-
-func (k *kademliaRadiusSetter) SetStorageRadius(storageRadius uint8) {
-	k.SetStorageDepth(storageRadius)
-}
