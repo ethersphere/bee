@@ -56,8 +56,8 @@ var (
 )
 
 const (
-	getSnapshotRetries = 5
-	retryWait          = time.Second * 10
+	getSnapshotRetries = 3
+	retryWait          = time.Second * 5
 	timeout            = time.Minute
 )
 
@@ -204,76 +204,67 @@ func bootstrapNode(
 		return nil, errors.New("timed out waiting for kademlia peers")
 	}
 
-	fetch := func() (*postage.ChainSnapshot, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-		logger.Info("bootstrap: trying to fetch stamps snapshot")
+	logger.Info("bootstrap: trying to fetch stamps snapshot")
 
-		var (
-			snapshotReference swarm.Address
-			reader            file.Joiner
-			l                 int64
-			eventsJSON        []byte
-		)
+	var (
+		snapshotReference swarm.Address
+		reader            file.Joiner
+		l                 int64
+		eventsJSON        []byte
+	)
 
-		for i := 0; i < getSnapshotRetries; i++ {
-			if err != nil {
-				time.Sleep(retryWait)
-			}
-			snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
-			if err != nil {
-				logger.Warningf("bootstrap: fetching snapshot: %v", err)
-				continue
-			}
-			break
-		}
+	for i := 0; i < getSnapshotRetries; i++ {
 		if err != nil {
-			return nil, err
+			time.Sleep(retryWait)
 		}
-
-		for i := 0; i < getSnapshotRetries; i++ {
-			if err != nil {
-				time.Sleep(retryWait)
-			}
-			reader, l, err = joiner.New(ctx, ns, snapshotReference)
-			if err != nil {
-				logger.Warningf("bootstrap: file joiner: %v", err)
-				continue
-			}
-
-			eventsJSON, err = io.ReadAll(reader)
-			if err != nil {
-				logger.Warningf("bootstrap: reading: %v", err)
-				continue
-			}
-
-			if len(eventsJSON) != int(l) {
-				err = errDataMismatch
-				logger.Warningf("bootstrap: %v", err)
-				continue
-			}
-			break
-		}
+		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err != nil {
-			return nil, err
+			logger.Warningf("bootstrap: fetching snapshot: %v", err)
+			continue
 		}
-
-		events := postage.ChainSnapshot{}
-		err = json.Unmarshal(eventsJSON, &events)
-		if err != nil {
-			return nil, err
-		}
-
-		return &events, nil
+		break
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	for i := 0; i < 25; i++ {
-		logger.Debugf("bootstrapper: fetching iteration %v", i+1)
-		snapshot, retErr = fetch()
+	for i := 0; i < getSnapshotRetries; i++ {
+		if err != nil {
+			time.Sleep(retryWait)
+		}
+		reader, l, err = joiner.New(ctx, ns, snapshotReference)
+		if err != nil {
+			logger.Warningf("bootstrap: file joiner: %v", err)
+			continue
+		}
+
+		eventsJSON, err = io.ReadAll(reader)
+		if err != nil {
+			logger.Warningf("bootstrap: reading: %v", err)
+			continue
+		}
+
+		if len(eventsJSON) != int(l) {
+			err = errDataMismatch
+			logger.Warningf("bootstrap: %v", err)
+			continue
+		}
+		break
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return
+	events := postage.ChainSnapshot{}
+	err = json.Unmarshal(eventsJSON, &events)
+	if err != nil {
+		return nil, err
+	}
+
+	return &events, nil
 }
 
 // wait till some peers are connected. returns true if all is ok
