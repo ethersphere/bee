@@ -17,17 +17,18 @@ const milliInSeconds = 1000
 type Rate struct {
 	mtx        sync.Mutex
 	windows    map[int64]int
-	windowSize int64        // window size in milliseconds
-	now        func() int64 // func that returns the current time in milliseconds
+	windowSize int64 // window size in milliseconds
+	now        func() time.Time
 }
 
 // New returns a new rate tracker with a defined window size that must be greater than one millisecond.
 func New(windowsSize time.Duration) *Rate {
 	return &Rate{
 		windows:    make(map[int64]int),
-		windowSize: int64(windowsSize / time.Millisecond),
-		now:        func() int64 { return time.Now().UnixMilli() },
+		windowSize: windowsSize.Milliseconds(),
+		now:        func() time.Time { return time.Now() },
 	}
+
 }
 
 // add uses the current time and rounds it down to a window
@@ -37,7 +38,7 @@ func (r *Rate) Add(count int) {
 	defer r.mtx.Unlock()
 	defer r.cleanup()
 
-	window := r.now() / r.windowSize
+	window := r.now().UnixMilli() / r.windowSize
 	r.windows[window] += count
 }
 
@@ -50,7 +51,7 @@ func (r *Rate) Rate() float64 {
 	defer r.mtx.Unlock()
 	defer r.cleanup()
 
-	now := r.now()
+	now := r.now().UnixMilli()
 	window := now / r.windowSize
 
 	interpolate := 1 - float64(now-(window*r.windowSize))/float64(r.windowSize)
@@ -58,11 +59,11 @@ func (r *Rate) Rate() float64 {
 	return milliInSeconds * ((float64(r.windows[window])) + ((interpolate) * float64(r.windows[window-1]))) / float64(r.windowSize)
 }
 
-// cleanup removes windows older than the most recent two windows
+// cleanup removes windows older than the most recent two windows.
+// Must be called under lock.
 func (r *Rate) cleanup() {
 
-	window := r.now() / r.windowSize
-
+	window := r.now().UnixMilli() / r.windowSize
 	for k := range r.windows {
 		if k <= window-2 {
 			delete(r.windows, k)
