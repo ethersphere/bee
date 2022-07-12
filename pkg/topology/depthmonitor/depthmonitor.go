@@ -30,7 +30,7 @@ var (
 type ReserveReporter interface {
 	// Current size of the reserve.
 	ReserveSize() (uint64, error)
-	// ReserveCapacity of the reserve that is configured.
+	// Capacity of the reserve that is configured.
 	ReserveCapacity() uint64
 }
 
