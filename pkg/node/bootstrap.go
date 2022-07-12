@@ -269,7 +269,7 @@ func bootstrapNode(
 
 // wait till some peers are connected. returns true if all is ok
 func waitPeers(kad *kademlia.Kad) bool {
-	for i := 0; i < 60; i++ { // max 2 minutes
+	for i := 0; i < 60; i++ {
 		items := 0
 		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			items++
