@@ -17,8 +17,8 @@ const milliInSeconds = 1000
 type Rate struct {
 	mtx        sync.Mutex
 	windows    map[int64]int
-	windowSize int64            // window size in milliseconds
-	now        func() time.Time // func that returns the current time in milliseconds
+	windowSize int64 // window size in milliseconds
+	now        func() time.Time
 }
 
 // New returns a new rate tracker with a defined window size that must be greater than one millisecond.
