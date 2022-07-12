@@ -29,9 +29,9 @@ var (
 // pledged by the node to the network.
 type ReserveReporter interface {
 	// Current size of the reserve.
-	Size() (uint64, error)
+	ReserveSize() (uint64, error)
 	// Capacity of the reserve that is configured.
-	Capacity() uint64
+	ReserveCapacity() uint64
 }
 
 // SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
@@ -117,7 +117,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 	s.storageDepth = initialDepth
 	s.depthLock.Unlock()
 
-	halfCapacity := float64(s.reserve.Capacity()) / 2
+	halfCapacity := float64(s.reserve.ReserveCapacity()) / 2
 
 	var (
 		adaptationPeriod bool
@@ -133,7 +133,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		case <-time.After(manageWait):
 		}
 
-		size, err := s.reserve.Size()
+		size, err := s.reserve.ReserveSize()
 		if err != nil {
 			s.logger.Errorf("depthmonitor: failed reading reserve size %v", err)
 			continue
