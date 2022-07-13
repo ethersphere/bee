@@ -343,7 +343,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		// limits "attempted" requests, see pushPeer when a request becomes attempted
 		allowedPushes = 1
 		// limits total requests, irregardless of "attempted"
-		allowedRetries = maxPeers
+		allowedRetries    = maxPeers
+		ongoingAttempts   = 0
+		completedAttempts = 0
 	)
 
 	if origin {
@@ -410,7 +412,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			peer, retry, err := nextPeer()
 			if err != nil {
-				return nil, err
+				if ongoingAttempts <= completedAttempts {
+					return nil, err
+				} else {
+					continue
+				}
 			}
 
 			if retry {
@@ -427,6 +433,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			allowedPushes--
 
+			ongoingAttempts++
+
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
 				defer cancel()
@@ -442,7 +450,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			timer.Reset(p90TTL)
 
 		case result := <-resultChan:
-
+			completedAttempts++
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
 			if errors.Is(result.err, errNotAttempted) {
