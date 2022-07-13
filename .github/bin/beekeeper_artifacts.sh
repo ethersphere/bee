@@ -1,17 +1,42 @@
 #!/bin/bash
 
-nodes="bootnode-0 bee-0 bee-1 light-0 light-1"
+cluster_name=$1
+if [[ -z $cluster_name ]]; then
+    echo "Cluster name has to be specified!"
+    exit 1
+fi
 
-for i in $nodes
+nodes=$(beekeeper print nodes --cluster-name $cluster_name)
+
+zip_files="debug/pprof/goroutine?debug=0"
+debug_text="debug/pprof/goroutine?debug=1 debug/pprof/goroutine?debug=2 metrics"
+debug_json="health node addresses chainstate transactions"
+business_json="peers reservestate blocklist topology balances consumed timesettlements settlements chequebook/cheque chequebook/balance wallet stamps batches"
+api_json="tags pins"
+
+for n in $nodes
 do
-  mkdir -p dump/"$i"
-  curl -s -o dump/"$i"/addresses.json "$i"-debug.localhost/addresses
-  curl -s -o dump/"$i"/metrics "$i"-debug.localhost/metrics
-  curl -s -o dump/"$i"/topology.json "$i"-debug.localhost/topology
-  curl -s -o dump/"$i"/settlements.json "$i"-debug.localhost/settlements
-  curl -s -o dump/"$i"/balances.json "$i"-debug.localhost/balances
-  curl -s -o dump/"$i"/timesettlements.json "$i"-debug.localhost/timesettlements
-  curl -s -o dump/"$i"/stamps.json "$i"-debug.localhost/stamps
+  mkdir -p dump/"$n"/{zip_files,debug_text,debug_json,business_json,api_json}
+  for e in $zip_files
+  do
+    curl -s -o dump/"$n"/zip_files/${e//\//_}.gzip "$n"-debug.localhost/$e
+  done
+  for e in $debug_text
+  do
+    curl -s -o dump/"$n"/debug_text/${e//\//_} "$n"-debug.localhost/$e
+  done
+  for e in $debug_json
+  do
+    curl -s -o dump/"$n"/debug_json/${e//\//_}.json "$n"-debug.localhost/$e
+  done
+  for e in $business_json
+  do
+    curl -s -o dump/"$n"/business_json/${e//\//_}.json "$n"-debug.localhost/$e
+  done
+  for e in $api_json
+  do
+    curl -s -o dump/"$n"/api_json/${e//\//_}.json "$n".localhost/$e
+  done
 done
 kubectl -n local get pods > dump/kubectl_get_pods
 kubectl -n local logs -l app.kubernetes.io/part-of=bee --tail -1 --prefix -c bee > dump/kubectl_logs
