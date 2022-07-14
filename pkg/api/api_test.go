@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -125,7 +126,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		o.Logger = logging.New(io.Discard, 0)
+		o.Logger = logging.New(os.Stdout, 5)
 	}
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
