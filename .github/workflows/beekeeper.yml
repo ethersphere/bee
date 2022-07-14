@@ -287,9 +287,6 @@ jobs:
       - name: Test gc
         id: gc-chunk
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-gc --checks=ci-gc
-      - name: FAIL
-        run: |
-          exit 1
       - name: Debug workflow if failed
         if: failure()
         run: |
