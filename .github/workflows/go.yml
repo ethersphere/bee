@@ -41,11 +41,11 @@ jobs:
           ${{ runner.OS }}-build-${{ env.cache-name }}-
           ${{ runner.OS }}-build-
           ${{ runner.OS }}-
-    - name: Setup MinGW-w64
-      if: matrix.os == 'windows-latest'
-      run: |
-        choco uninstall mingw
-        choco install mingw --version 8.1.0
+    # - name: Setup MinGW-w64
+    #   if: matrix.os == 'windows-latest'
+    #   run: |
+    #     choco uninstall mingw
+    #     choco install mingw --version 8.1.0
     - name: Build
       run: make build
     - name: Lint
