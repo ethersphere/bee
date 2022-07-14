@@ -19,23 +19,23 @@ do
   mkdir -p dump/"$n"/{zip_files,debug_text,debug_json,business_json,api_json}
   for e in $zip_files
   do
-    curl -s -o dump/"$n"/zip_files/${e//\//_}.gzip "$n"-debug.localhost/$e
+    curl -s -o dump/"$n"/zip_files/${e//[\/\"\:\<\>\|\?\*]/_}.gzip "$n"-debug.localhost/$e
   done
   for e in $debug_text
   do
-    curl -s -o dump/"$n"/debug_text/${e//\//_} "$n"-debug.localhost/$e
+    curl -s -o dump/"$n"/debug_text/${e//[\/\"\:\<\>\|\?\*]/_} "$n"-debug.localhost/$e
   done
   for e in $debug_json
   do
-    curl -s -o dump/"$n"/debug_json/${e//\//_}.json "$n"-debug.localhost/$e
+    curl -s -o dump/"$n"/debug_json/${e//[\/\"\:\<\>\|\?\*]/_}.json "$n"-debug.localhost/$e
   done
   for e in $business_json
   do
-    curl -s -o dump/"$n"/business_json/${e//\//_}.json "$n"-debug.localhost/$e
+    curl -s -o dump/"$n"/business_json/${e//[\/\"\:\<\>\|\?\*]/_}.json "$n"-debug.localhost/$e
   done
   for e in $api_json
   do
-    curl -s -o dump/"$n"/api_json/${e//\//_}.json "$n".localhost/$e
+    curl -s -o dump/"$n"/api_json/${e//[\/\"\:\<\>\|\?\*]/_}.json "$n".localhost/$e
   done
 done
 kubectl -n local get pods > dump/kubectl_get_pods
