@@ -6,7 +6,7 @@ if [[ -z $cluster_name ]]; then
     exit 1
 fi
 
-nodes=$(beekeeper print nodes --cluster-name $cluster_name)
+nodes=$(beekeeper print nodes --cluster-name $cluster_name  --log-verbosity '')
 
 zip_files="debug/pprof/goroutine?debug=0"
 debug_text="debug/pprof/goroutine?debug=1 debug/pprof/goroutine?debug=2 metrics"
