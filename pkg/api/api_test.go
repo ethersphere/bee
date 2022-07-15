@@ -458,6 +458,27 @@ func TestPostageHeaderError(t *testing.T) {
 	}
 }
 
+// TestOptions check
+func TestOptions(t *testing.T) {
+	var (
+		client, _, _, _ = newTestServer(t, testServerOptions{})
+
+		endpoints = []string{
+			"tags",
+		}
+	)
+	for _, endpoint := range endpoints {
+		t.Run(endpoint+" options", func(t *testing.T) {
+			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+endpoint, http.StatusNoContent) //jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+
+			allRes := resultHeader.Get("Allow")
+			if allRes != "POST" {
+				t.Fatalf("expects %s and got %s", "POST", allRes)
+			}
+		})
+	}
+}
+
 // TestPostageDirectAndDeferred tests that incorrect postage batch ids
 // provided to the api correct the appropriate error code.
 func TestPostageDirectAndDeferred(t *testing.T) {

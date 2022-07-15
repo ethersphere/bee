@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -105,4 +106,73 @@ func TestCORSHeaders(t *testing.T) {
 		})
 	}
 
+}
+
+// TestCors tests HTTP methods
+func TestCors(t *testing.T) {
+
+	for _, tc := range []struct {
+		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
+		endpoints       string
+	}{
+		{
+			expectedMethods: "GET, POST",
+			endpoints:       "tags",
+		},
+		{
+			expectedMethods: "POST",
+			endpoints:       "bzz",
+		}, {
+			expectedMethods: "GET, PATCH",
+			endpoints:       "bzz/0101011",
+		},
+		{
+			expectedMethods: "POST",
+			endpoints:       "chunks",
+		},
+		{
+			expectedMethods: "DELETE, GET, HEAD",
+			endpoints:       "chunks/123213",
+		},
+		{
+			expectedMethods: "POST",
+			endpoints:       "bytes",
+		},
+		{
+			expectedMethods: "GET, HEAD",
+			endpoints:       "bytes/0121012",
+		},
+	} {
+		t.Run(tc.endpoints, func(t *testing.T) {
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				CORSAllowedOrigins: []string{"example.com"},
+			})
+
+			req, err := http.NewRequest(http.MethodOptions, "/"+tc.endpoints, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Origin", "example.com")
+
+			r, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got := r.Header.Get("Access-Control-Allow-Origin")
+
+			if got != "example.com" {
+				t.Errorf("got Access-Control-Allow-Origin %q, want %q", got, "example.com")
+			}
+			allRes := r.Header.Get("Access-Control-Allow-Methods")
+
+			fmt.Println(r.Header.Get("Access-Control-Allow-Methods"))
+			if allRes != tc.expectedMethods {
+				t.Fatalf("expects %s and got %s", tc.expectedMethods, allRes)
+			}
+		})
+	}
 }
