@@ -458,22 +458,49 @@ func TestPostageHeaderError(t *testing.T) {
 	}
 }
 
-// TestOptions check
+// TestOptions check whether endpoints compatible with option method
 func TestOptions(t *testing.T) {
 	var (
 		client, _, _, _ = newTestServer(t, testServerOptions{})
-
-		endpoints = []string{
-			"tags",
-		}
 	)
-	for _, endpoint := range endpoints {
-		t.Run(endpoint+" options", func(t *testing.T) {
-			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+endpoint, http.StatusNoContent) //jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+	for _, tc := range []struct {
+		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
+		endpoints       string
+	}{
+		{
+			expectedMethods: "GET, POST",
+			endpoints:       "tags",
+		},
+		{
+			expectedMethods: "POST",
+			endpoints:       "bzz",
+		}, {
+			expectedMethods: "GET, PATCH",
+			endpoints:       "bzz/0101011",
+		},
+		{
+			expectedMethods: "POST",
+			endpoints:       "chunks",
+		},
+		{
+			expectedMethods: "DELETE, GET, HEAD",
+			endpoints:       "chunks/123213",
+		},
+		{
+			expectedMethods: "POST",
+			endpoints:       "bytes",
+		},
+		{
+			expectedMethods: "GET, HEAD",
+			endpoints:       "bytes/0121012",
+		},
+	} {
+		t.Run(tc.endpoints+" options test", func(t *testing.T) {
+			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoints, http.StatusNoContent)
 
-			allRes := resultHeader.Get("Allow")
-			if allRes != "POST" {
-				t.Fatalf("expects %s and got %s", "POST", allRes)
+			allowedMethods := resultHeader.Get("Allow")
+			if allowedMethods != tc.expectedMethods {
+				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
 			}
 		})
 	}

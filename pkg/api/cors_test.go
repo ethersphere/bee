@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 )
@@ -108,7 +107,7 @@ func TestCORSHeaders(t *testing.T) {
 
 }
 
-// TestCors tests HTTP methods
+// TestCors tests OPTIONS method
 func TestCors(t *testing.T) {
 
 	for _, tc := range []struct {
@@ -167,11 +166,10 @@ func TestCors(t *testing.T) {
 			if got != "example.com" {
 				t.Errorf("got Access-Control-Allow-Origin %q, want %q", got, "example.com")
 			}
-			allRes := r.Header.Get("Access-Control-Allow-Methods")
+			allowedMethods := r.Header.Get("Access-Control-Allow-Methods")
 
-			fmt.Println(r.Header.Get("Access-Control-Allow-Methods"))
-			if allRes != tc.expectedMethods {
-				t.Fatalf("expects %s and got %s", tc.expectedMethods, allRes)
+			if allowedMethods != tc.expectedMethods {
+				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
 			}
 		})
 	}
