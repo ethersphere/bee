@@ -91,8 +91,11 @@ func (s Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uin
 		chs, _, stop := store.IteratePull(ctx, bin, 0, 0)
 
 		for ch := range chs {
+			iterated++
+
 			chunk, err := s.storage.Get(ctx, storage.ModeGetSync, ch.Address)
 			if err != nil {
+				errored++
 				s.logger.Error("reserve sampler: skipping missing chunk")
 				continue
 			}
@@ -100,7 +103,6 @@ func (s Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uin
 			taddr := hmacr.Sum(nil)
 			hmacr.Reset()
 
-			iterated++
 			for i, item := range buffer {
 				distance, err := swarm.DistanceCmp(zerobytes, taddr, item.TransformedChunkAddress.Bytes())
 				if err != nil {
