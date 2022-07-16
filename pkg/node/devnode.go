@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/bzz"
+	"github.com/ethersphere/bee/pkg/commitment"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
@@ -188,13 +189,33 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	var debugApiService *api.Service
 
+	lo := &localstore.Options{
+		Capacity:               1000000,
+		ReserveCapacity:        o.ReserveCapacity,
+		OpenFilesLimit:         o.DBOpenFilesLimit,
+		BlockCacheCapacity:     o.DBBlockCacheCapacity,
+		WriteBufferSize:        o.DBWriteBufferSize,
+		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		UnreserveFunc: func(postage.UnreserveIteratorFn) error {
+			return nil
+		},
+	}
+
+	var swarmAddress swarm.Address
+	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = storer
+
 	if o.DebugAPIAddr != "" {
 		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
+		commitmentHasher := commitment.New(storer, logger)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, commitmentHasher)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -216,25 +237,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 		b.debugAPIServer = debugAPIServer
 	}
-
-	lo := &localstore.Options{
-		Capacity:               1000000,
-		ReserveCapacity:        o.ReserveCapacity,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-		UnreserveFunc: func(postage.UnreserveIteratorFn) error {
-			return nil
-		},
-	}
-
-	var swarmAddress swarm.Address
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
 
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
@@ -394,7 +396,8 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
+	commitmentHasher := commitment.New(storer, logger)
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, commitmentHasher)
 
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,

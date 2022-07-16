@@ -536,6 +536,11 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+	handle("/rchash/{depth}/{anchor}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.rchasher),
+		})),
+	)
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {

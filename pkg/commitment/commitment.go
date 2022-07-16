@@ -24,9 +24,9 @@ import (
 	// "github.com/ethersphere/bee/pkg/postage"
 	// "github.com/ethersphere/bee/pkg/pullsync/pb"
 	// "github.com/ethersphere/bee/pkg/pullsync/pullstorage"
-	// "github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
 const ()
@@ -49,8 +49,8 @@ type Sampler struct {
 	io.Closer
 }
 
-func New(storage storage.Storer, logger logging.Logger) *Sampler {
-	return &Sampler{
+func New(storage storage.Storer, logger logging.Logger) Sampler {
+	return Sampler{
 		storage: storage,
 		// metrics:    newMetrics(),
 		// unwrap:     unwrap,
@@ -63,28 +63,35 @@ func New(storage storage.Storer, logger logging.Logger) *Sampler {
 }
 
 type SampleItem struct {
-	ChunkAddress            swarm.Address
-	TransformedChunkAddress swarm.Address
+	ChunkAddress            swarm.Address `json:"chunkAddress"`
+	TransformedChunkAddress swarm.Address `json:"TransformedChunkAddress"`
 }
 
 type ReserveCommitment struct {
-	Items []SampleItem
-	Hash  swarm.Address
+	Items []SampleItem  `json:"sampleItems"`
+	Hash  swarm.Address `json:"rchash"`
 }
 
-// makeOffer tries to assemble an offer for a given requested interval.
-func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uint8) (ReserveCommitment, error) {
+// MakeSample tries to assemble a reserve commitment sample from the given depth.
+func (s Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uint8) (ReserveCommitment, uint64, uint64, uint64, uint64, error) {
+
+	iterated := uint64(0)
+	errored := uint64(0)
+	doubled := uint64(0)
 
 	hmacr := hmac.New(swarm.NewHasher, anchor)
 
 	zerobytes := make([]byte, 32)
-	buffer := make([]SampleItem, 0, 128)
+	buffer := make([]SampleItem, 0)
+
+	store := s.storage.(storage.IteratePuller)
+	reserveSizeOracle := s.storage.(depthmonitor.ReserveReporter)
 
 	for bin := storageDepth; bin <= swarm.MaxPO; bin++ {
-		chs, _, stop := s.storage.SubscribePull(ctx, bin, 0, 0)
+		chs, _, stop := store.IteratePull(ctx, bin, 0, 0)
 
 		for ch := range chs {
-			chunk, err := s.storage.Get(ctx, storage.ModeGetRequest, ch.Address)
+			chunk, err := s.storage.Get(ctx, storage.ModeGetSync, ch.Address)
 			if err != nil {
 				s.logger.Error("reserve sampler: skipping missing chunk")
 				continue
@@ -93,9 +100,11 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 			taddr := hmacr.Sum(nil)
 			hmacr.Reset()
 
+			iterated++
 			for i, item := range buffer {
 				distance, err := swarm.DistanceCmp(zerobytes, taddr, item.TransformedChunkAddress.Bytes())
 				if err != nil {
+					errored++
 					break
 				}
 				if distance > 0 {
@@ -104,6 +113,7 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 					break
 				}
 				if distance == 0 {
+					doubled++
 					break
 				}
 			}
@@ -113,7 +123,7 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 			}
 
 			if len(buffer) < 16 {
-				buffer[len(buffer)] = SampleItem{ChunkAddress: ch.Address, TransformedChunkAddress: swarm.NewAddress(taddr)}
+				buffer = append(buffer, SampleItem{ChunkAddress: ch.Address, TransformedChunkAddress: swarm.NewAddress(taddr)})
 			}
 
 		}
@@ -122,8 +132,10 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 
 	}
 
+	reserveSize, _ := reserveSizeOracle.ReserveSize()
+
 	if len(buffer) < 16 {
-		return ReserveCommitment{}, errors.New("not enough items")
+		return ReserveCommitment{}, iterated, doubled, errored, reserveSize, errors.New("not enough items")
 	}
 	hasher := swarm.NewHasher()
 
@@ -132,7 +144,7 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 	}
 	hash := hasher.Sum(nil)
 
-	return ReserveCommitment{Hash: swarm.NewAddress(hash), Items: buffer}, nil
+	return ReserveCommitment{Hash: swarm.NewAddress(hash), Items: buffer}, iterated, doubled, errored, reserveSize, nil
 
 }
 
