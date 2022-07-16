@@ -53,7 +53,7 @@ func (s *server) retrieveProtocol(ctx context.Context, reference swarm.Address) 
 		return nil, err
 	}
 
-	// TODO: Enable this
+	// TODO: Enable this check
 	//if l > MAX_PROTOCOL_SIZE {
 	//	return nil, errors.New("protocol binary too big")
 	//}
@@ -63,7 +63,7 @@ func (s *server) retrieveProtocol(ctx context.Context, reference swarm.Address) 
 		return nil, err
 	}
 
-	log.Tracef("retrieveProtocol: downloaded protocol of size %d", l)
+	log.Tracef("retrieveProtocol: downloaded protocol of size %d (%d)", l, len(protocolBytes))
 
 	return protocolBytes, nil
 }

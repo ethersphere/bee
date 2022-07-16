@@ -3,8 +3,11 @@ package api
 import (
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 	"github.com/vmihailenco/msgpack/v5"
@@ -15,7 +18,97 @@ import (
 	"net/http"
 )
 
-func bootstrapEngine(ctx context.Context, protocolBinary []byte) (wapc.Module, wapc.Instance) {
+func handleStoreChunk(server *server, request *http.Request, ctx context.Context, payload []byte) ([]byte, error) {
+	var args StoreChunkArgs
+	err := msgpack.Unmarshal(payload, &args)
+	data := args.Data
+
+	if len(data) < swarm.SpanSize {
+		server.logger.Debug("chunk upload: not enough data")
+		server.logger.Error("chunk upload: data length")
+		return nil, errors.New("not enough data")
+	}
+
+	putter, wait, err := server.newStamperPutter(request)
+	if err != nil {
+		server.logger.Debugf("chunk upload: putter: %v", err)
+		server.logger.Error("chunk upload: putter")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			return nil, errors.New("batch not found")
+		case errors.Is(err, postage.ErrNotUsable):
+			return nil, errors.New("batch not usable")
+		}
+		return nil, err
+	}
+
+	chunk, err := cac.NewWithDataSpan(data)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = putter.Put(ctx, storage.ModePutUpload, chunk)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = wait(); err != nil {
+		server.logger.Debugf("chunk upload: sync chunk: %v", err)
+		server.logger.Error("chunk upload: sync chunk")
+		return nil, err
+	}
+
+	chunkRef := chunk.Address().String()
+
+	return msgpack.Marshal(chunkRef)
+}
+
+func handleGetChunk(server *server, ctx context.Context, payload []byte) ([]byte, error) {
+	var inputArgs GetChunkArgs
+	err := msgpack.Unmarshal(payload, &inputArgs)
+	if err != nil {
+		return nil, err
+	}
+	nameOrHex := inputArgs.Reference
+
+	address, err := server.resolveNameOrAddress(nameOrHex)
+	if err != nil {
+		server.logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
+		server.logger.Error("chunk: parse chunk address error")
+		return nil, err
+	}
+
+	chunk, err := server.storer.Get(ctx, storage.ModeGetRequest, address)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			server.logger.Tracef("chunk: chunk not found. addr %s", address)
+			return nil, err
+
+		}
+		server.logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
+		server.logger.Error("chunk: chunk read error")
+		return nil, err
+	}
+
+	chunkData := chunk.Data()
+
+	return msgpack.Marshal(&chunkData)
+}
+
+func bootstrapEngine(server *server, request *http.Request, ctx context.Context, protocolBinary []byte) (wapc.Module, wapc.Instance) {
+	hostCall := func(ctx context.Context, binding, namespace, operation string, payload []byte) ([]byte, error) {
+		switch namespace {
+		case "swarm":
+			switch operation {
+			case "storeChunk":
+				return handleStoreChunk(server, request, ctx, payload)
+			case "getChunk":
+				return handleGetChunk(server, ctx, payload)
+			}
+		}
+		return []byte(""), nil
+	}
+
 	engine := wazero.Engine()
 	module, err := engine.New(ctx, protocolBinary, hostCall)
 	if err != nil {
@@ -76,7 +169,7 @@ func (s *server) handleProtocol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	module, instance := bootstrapEngine(ctx, protocolBinary)
+	module, instance := bootstrapEngine(s, r, ctx, protocolBinary)
 	defer module.Close(ctx)
 	defer instance.Close(ctx)
 
@@ -94,26 +187,10 @@ func (s *server) handleProtocol(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(header.Name, header.Value)
 	}
 
-	fmt.Fprint(w, result.Body)
-}
-
-
-func hostCall(ctx context.Context, binding, namespace, operation string, payload []byte) ([]byte, error) {
-	// Route the payload to any custom functionality accordingly.
-	// You can even route to other waPC modules!!!
-	switch namespace {
-	// TODO: Add handling for getChunk & storeChunk
-	case "swarm":
-		switch operation {
-		case "storeChunk":
-			name := string(payload)
-			fmt.Println(name)
-			return nil, nil
-		}
+	if result.Body != nil {
+		fmt.Fprint(w, *result.Body)
 	}
-	return []byte(""), nil
 }
-
 
 type Host struct {
 	instance wapc.Instance
@@ -123,48 +200,6 @@ func NewHost(instance wapc.Instance) *Host {
 	return &Host{
 		instance: instance,
 	}
-}
-
-func (m *Host) GetChunk(ctx context.Context, reference string) ([]byte, error) {
-	var ret []byte
-	inputArgs := GetChunkArgs{
-		Reference: reference,
-	}
-	inputPayload, err := msgpack.Marshal(&inputArgs)
-	if err != nil {
-		return ret, err
-	}
-	payload, err := m.instance.Invoke(
-		ctx,
-		"getChunk",
-		inputPayload,
-	)
-	if err != nil {
-		return ret, err
-	}
-	err = msgpack.Unmarshal(payload, &ret)
-	return ret, err
-}
-
-func (m *Host) StoreChunk(ctx context.Context, data []byte) (string, error) {
-	var ret string
-	inputArgs := StoreChunkArgs{
-		Data: data,
-	}
-	inputPayload, err := msgpack.Marshal(&inputArgs)
-	if err != nil {
-		return ret, err
-	}
-	payload, err := m.instance.Invoke(
-		ctx,
-		"storeChunk",
-		inputPayload,
-	)
-	if err != nil {
-		return ret, err
-	}
-	err = msgpack.Unmarshal(payload, &ret)
-	return ret, err
 }
 
 func (m *Host) HandleRequest(ctx context.Context, request HttpRequest) (HttpResponse, error) {

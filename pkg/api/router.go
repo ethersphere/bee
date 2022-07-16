@@ -46,6 +46,7 @@ func (s *server) setupRouting() {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
+	router.HandleFunc("/@/{protocol}", s.handleProtocol)
 	router.HandleFunc("/@/{protocol}/{rest:.*}", s.handleProtocol)
 
 	if s.Restricted {
