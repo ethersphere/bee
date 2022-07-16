@@ -186,6 +186,79 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 	return chunkDescriptors, db.close, stop
 }
 
+func (db *DB) IteratePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan storage.Descriptor, closed <-chan struct{}, stop func()) {
+	db.metrics.SubscribePull.Inc()
+
+	chunkDescriptors := make(chan storage.Descriptor)
+
+	stopChan := make(chan struct{})
+	var stopChanOnce sync.Once
+
+	// used to provide information from the iterator to
+	// stop subscription when until chunk descriptor is reached
+	var errStopSubscription = errors.New("stop subscription")
+
+	go func() {
+		defer db.metrics.SubscribePullStop.Inc()
+		// close the returned store.Descriptor channel at the end to
+		// signal that the subscription is done
+		defer close(chunkDescriptors)
+
+		err := db.pullIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+			// until chunk descriptor is sent
+			// break the iteration
+			if until > 0 && item.BinID > until {
+				return true, errStopSubscription
+			}
+			select {
+			case chunkDescriptors <- storage.Descriptor{
+				Address: swarm.NewAddress(item.Address),
+				BinID:   item.BinID,
+			}:
+				if until > 0 && item.BinID == until {
+					return true, errStopSubscription
+				}
+				return false, nil
+			case <-stopChan:
+				// gracefully stop the iteration
+				// on stop
+				return true, nil
+			case <-db.close:
+				// gracefully stop the iteration
+				// on database close
+				return true, nil
+			case <-ctx.Done():
+				return true, ctx.Err()
+			}
+		}, &shed.IterateOptions{
+			Prefix: []byte{bin},
+		})
+
+		totalTimeMetric(db.metrics.TotalTimeSubscribePullIteration, time.Now())
+
+		if err != nil {
+			if err == errStopSubscription {
+				// stop subscription without any errors
+				// if until is reached
+				return
+			}
+			db.metrics.SubscribePullIterationFailure.Inc()
+			if logMore {
+				db.logger.Debugf("localstore pull subscription iteration: bin: %d, since: %d, until: %d: %v", bin, since, until, err)
+			}
+			return
+		}
+	}()
+
+	stop = func() {
+		stopChanOnce.Do(func() {
+			close(stopChan)
+		})
+	}
+
+	return chunkDescriptors, db.close, stop
+}
+
 // LastPullSubscriptionBinID returns chunk bin id of the latest Chunk
 // in pull syncing index for a provided bin. If there are no chunks in
 // that bin, 0 value is returned.

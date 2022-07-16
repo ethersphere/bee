@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/chainsync"
 	"github.com/ethersphere/bee/pkg/chainsyncer"
+	"github.com/ethersphere/bee/pkg/commitment"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -310,6 +311,59 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	var debugService *api.Service
 
+	// localstore depends on batchstore
+	var path string
+
+	if o.DataDir != "" {
+		logger.Infof("using datadir in: '%s'", o.DataDir)
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+
+	var (
+		blockHash []byte
+		txHash    []byte
+	)
+
+	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
+	if err != nil {
+		return nil, fmt.Errorf("invalid transaction hash: %w", err)
+	}
+
+	blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid block hash: %w", err)
+	}
+
+	pubKey, _ := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+	if err != nil {
+		return nil, fmt.Errorf("compute overlay address: %w", err)
+	}
+	logger.Infof("using overlay address %s", swarmAddress)
+
+	lo := &localstore.Options{
+		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        uint64(batchstore.Capacity),
+		UnreserveFunc:          batchStore.Unreserve,
+		OpenFilesLimit:         o.DBOpenFilesLimit,
+		BlockCacheCapacity:     o.DBBlockCacheCapacity,
+		WriteBufferSize:        o.DBWriteBufferSize,
+		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+	}
+
+	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = storer
+	unreserveFn = storer.UnreserveBatch
+
+	commitmentHasher := commitment.New(storer, logger)
+
 	if o.DebugAPIAddr != "" {
 		if o.MutexProfile {
 			_ = runtime.SetMutexProfileFraction(1)
@@ -324,7 +378,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins, commitmentHasher)
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -354,7 +408,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins, commitmentHasher)
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -444,32 +498,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			transactionService,
 		)
 	}
-
-	pubKey, _ := signer.PublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	var (
-		blockHash []byte
-		txHash    []byte
-	)
-
-	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction hash: %w", err)
-	}
-
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
-	if err != nil {
-		return nil, fmt.Errorf("invalid block hash: %w", err)
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
-	logger.Infof("using overlay address %s", swarmAddress)
 
 	apiService.SetSwarmAddress(&swarmAddress)
 
@@ -571,30 +599,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
-
-	// localstore depends on batchstore
-	var path string
-
-	if o.DataDir != "" {
-		logger.Infof("using datadir in: '%s'", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-	lo := &localstore.Options{
-		Capacity:               o.CacheCapacity,
-		ReserveCapacity:        uint64(batchstore.Capacity),
-		UnreserveFunc:          batchStore.Unreserve,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-	}
-
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
-	unreserveFn = storer.UnreserveBatch
 
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
@@ -905,7 +909,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins, commitmentHasher)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{

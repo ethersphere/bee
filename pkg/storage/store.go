@@ -167,6 +167,10 @@ type PullSubscriber interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
 }
 
+type IteratePuller interface {
+	IteratePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
+}
+
 // StateStorer defines methods required to get, set, delete values for different keys
 // and close the underlying resources.
 type StateStorer interface {

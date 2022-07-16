@@ -504,6 +504,12 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/tags/{id}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.getDebugTagHandler),
 	})
+
+	handle("/rchash/{depth}/{anchor}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.rchasher),
+		})),
+	)
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
