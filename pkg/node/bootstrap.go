@@ -272,9 +272,10 @@ func bootstrapNode(
 	}
 
 	for i := 0; i < 25; i++ {
+		start := time.Now()
 		logger.Infof("bootstrap: fetch iteration %v", i)
 		snapshot, retErr = fetch()
-		logger.Infof("bootstrap: fetch iteration %v, err %v", i, retErr)
+		logger.Infof("bootstrap: fetch iteration %v, err %v, %v", i, retErr, time.Since(start))
 	}
 
 	return
