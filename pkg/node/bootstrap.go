@@ -58,7 +58,7 @@ var (
 const (
 	getSnapshotRetries = 3
 	retryWait          = time.Second * 5
-	timeout            = time.Minute
+	timeout            = time.Minute * 5
 )
 
 func bootstrapNode(
