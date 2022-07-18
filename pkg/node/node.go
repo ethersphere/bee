@@ -542,7 +542,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			stateStore,
 			signer,
 			networkID,
-			logging.New(io.Discard, 0),
+			logger,
 			libp2pPrivateKey,
 			o,
 		)

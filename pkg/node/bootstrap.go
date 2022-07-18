@@ -216,55 +216,67 @@ func bootstrapNode(
 		eventsJSON        []byte
 	)
 
-	for i := 0; i < getSnapshotRetries; i++ {
-		if err != nil {
-			time.Sleep(retryWait)
-		}
-		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
-		if err != nil {
-			logger.Warningf("bootstrap: fetching snapshot: %v", err)
-			continue
-		}
-		break
-	}
-	if err != nil {
-		return nil, err
-	}
+	fetch := func() (*postage.ChainSnapshot, error) {
 
-	for i := 0; i < getSnapshotRetries; i++ {
-		if err != nil {
-			time.Sleep(retryWait)
+		storer.Dump()
+
+		for i := 0; i < getSnapshotRetries; i++ {
+			if err != nil {
+				time.Sleep(retryWait)
+			}
+			snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
+			if err != nil {
+				logger.Warningf("bootstrap: fetching snapshot: %v", err)
+				continue
+			}
+			break
 		}
-		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
-			logger.Warningf("bootstrap: file joiner: %v", err)
-			continue
+			return nil, err
 		}
 
-		eventsJSON, err = io.ReadAll(reader)
+		for i := 0; i < getSnapshotRetries; i++ {
+			if err != nil {
+				time.Sleep(retryWait)
+			}
+			reader, l, err = joiner.New(ctx, ns, snapshotReference)
+			if err != nil {
+				logger.Warningf("bootstrap: file joiner: %v", err)
+				continue
+			}
+
+			eventsJSON, err = io.ReadAll(reader)
+			if err != nil {
+				logger.Warningf("bootstrap: reading: %v", err)
+				continue
+			}
+
+			if len(eventsJSON) != int(l) {
+				err = errDataMismatch
+				logger.Warningf("bootstrap: %v", err)
+				continue
+			}
+			break
+		}
 		if err != nil {
-			logger.Warningf("bootstrap: reading: %v", err)
-			continue
+			return nil, err
 		}
 
-		if len(eventsJSON) != int(l) {
-			err = errDataMismatch
-			logger.Warningf("bootstrap: %v", err)
-			continue
+		events := postage.ChainSnapshot{}
+		err = json.Unmarshal(eventsJSON, &events)
+		if err != nil {
+			return nil, err
 		}
-		break
-	}
-	if err != nil {
-		return nil, err
+
+		return &events, nil
 	}
 
-	events := postage.ChainSnapshot{}
-	err = json.Unmarshal(eventsJSON, &events)
-	if err != nil {
-		return nil, err
+	for i := 0; i < 25; i++ {
+		logger.Infof("bootstrap: fetch iteration %v", i)
+		snapshot, retErr = fetch()
 	}
 
-	return &events, nil
+	return
 }
 
 // wait till some peers are connected. returns true if all is ok

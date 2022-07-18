@@ -50,6 +50,12 @@ func (s *Store) Put(_ context.Context, _ storage.ModePut, chs ...swarm.Chunk) (e
 	return exist, err
 }
 
+func (s *Store) Dump() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.store = make(map[string]swarm.Chunk)
+}
+
 func (s *Store) GetMulti(_ context.Context, _ storage.ModeGet, _ ...swarm.Address) (ch []swarm.Chunk, err error) {
 	panic("not implemented")
 }
