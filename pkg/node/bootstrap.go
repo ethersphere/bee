@@ -204,21 +204,21 @@ func bootstrapNode(
 		return nil, errors.New("timed out waiting for kademlia peers")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	logger.Info("bootstrap: trying to fetch stamps snapshot")
-
-	var (
-		snapshotReference swarm.Address
-		reader            file.Joiner
-		l                 int64
-		eventsJSON        []byte
-	)
 
 	fetch := func() (*postage.ChainSnapshot, error) {
 
 		storer.Dump()
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		var (
+			snapshotReference swarm.Address
+			reader            file.Joiner
+			l                 int64
+			eventsJSON        []byte
+		)
 
 		for i := 0; i < getSnapshotRetries; i++ {
 			if err != nil {
@@ -274,6 +274,7 @@ func bootstrapNode(
 	for i := 0; i < 25; i++ {
 		logger.Infof("bootstrap: fetch iteration %v", i)
 		snapshot, retErr = fetch()
+		logger.Infof("bootstrap: fetch iteration %v, err %v", i, retErr)
 	}
 
 	return
