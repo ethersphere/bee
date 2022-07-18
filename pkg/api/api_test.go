@@ -458,45 +458,46 @@ func TestPostageHeaderError(t *testing.T) {
 	}
 }
 
-// TestOptions check whether endpoints compatible with option method
+// TestOptions check whether endpoint compatible with option method
 func TestOptions(t *testing.T) {
 	var (
 		client, _, _, _ = newTestServer(t, testServerOptions{})
 	)
 	for _, tc := range []struct {
+		endpoint        string
 		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
-		endpoints       string
 	}{
 		{
+			endpoint:        "tags",
 			expectedMethods: "GET, POST",
-			endpoints:       "tags",
 		},
 		{
+			endpoint:        "bzz",
 			expectedMethods: "POST",
-			endpoints:       "bzz",
-		}, {
+		},
+		{
+			endpoint:        "bzz/0101011",
 			expectedMethods: "GET, PATCH",
-			endpoints:       "bzz/0101011",
 		},
 		{
+			endpoint:        "chunks",
 			expectedMethods: "POST",
-			endpoints:       "chunks",
 		},
 		{
+			endpoint:        "chunks/123213",
 			expectedMethods: "DELETE, GET, HEAD",
-			endpoints:       "chunks/123213",
 		},
 		{
+			endpoint:        "bytes",
 			expectedMethods: "POST",
-			endpoints:       "bytes",
 		},
 		{
+			endpoint:        "bytes/0121012",
 			expectedMethods: "GET, HEAD",
-			endpoints:       "bytes/0121012",
 		},
 	} {
-		t.Run(tc.endpoints+" options test", func(t *testing.T) {
-			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoints, http.StatusNoContent)
+		t.Run(tc.endpoint+" options test", func(t *testing.T) {
+			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
 
 			allowedMethods := resultHeader.Get("Allow")
 			if allowedMethods != tc.expectedMethods {
