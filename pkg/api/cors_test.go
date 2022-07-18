@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"net/http"
 	"testing"
 )
@@ -147,26 +148,9 @@ func TestCors(t *testing.T) {
 				CORSAllowedOrigins: []string{"example.com"},
 			})
 
-			req, err := http.NewRequest(http.MethodOptions, "/"+tc.endpoints, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Origin", "example.com")
+			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoints, http.StatusNoContent)
 
-			r, err := client.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			got := r.Header.Get("Access-Control-Allow-Origin")
-
-			if got != "example.com" {
-				t.Errorf("got Access-Control-Allow-Origin %q, want %q", got, "example.com")
-			}
-			allowedMethods := r.Header.Get("Access-Control-Allow-Methods")
+			allowedMethods := r.Get("Allow")
 
 			if allowedMethods != tc.expectedMethods {
 				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
