@@ -287,11 +287,33 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 	return snapshot
 }
 
+var ErrReachabilityStatusUnknown = errors.New("could not figure out reachability status")
+
+// Inspect allows inspecting current snapshot for the given
+// peer address by executing the inspection function.
+func (c *Collector) IsUnreachable(addr swarm.Address) bool {
+	val, ok := c.counters.Load(addr.ByteString())
+	if !ok {
+		return true
+	}
+	cs := val.(*Counters)
+
+	cs.Lock()
+	defer cs.Unlock()
+
+	return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
+}
+
 // Inspect allows inspecting current snapshot for the given
 // peer address by executing the inspection function.
 func (c *Collector) Inspect(addr swarm.Address) *Snapshot {
-	snapshots := c.Snapshot(time.Now(), addr)
-	return snapshots[addr.ByteString()]
+	val, ok := c.counters.Load(addr.ByteString())
+	if !ok {
+		return nil
+	}
+	cs := val.(*Counters)
+
+	return cs.snapshot(time.Now())
 }
 
 // Flush sync the dirty in memory counters for all peers by flushing their
