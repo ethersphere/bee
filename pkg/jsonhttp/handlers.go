@@ -23,24 +23,27 @@ func (h MethodHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func HandleMethods(methods map[string]http.Handler, body string, contentType string, w http.ResponseWriter, r *http.Request) {
 	if handler, ok := methods[r.Method]; ok {
 		handler.ServeHTTP(w, r)
-	} else {
-		allow := []string{}
-		for k := range methods {
-			allow = append(allow, k)
-		}
-		sort.Strings(allow)
-		w.Header().Set("Allow", strings.Join(allow, ", ")) // TODO :Is it needed while in CORS ? If it is not needed refactor
-		if r.Method == "OPTIONS" {
-			if w.Header().Get("Access-Control-Allow-Methods") != "" {
-				w.Header().Set("Access-Control-Allow-Methods", strings.Join(allow, ", "))
-			}
-			w.WriteHeader(http.StatusNoContent)
-		} else {
-			w.Header().Set("Content-Type", contentType)
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			fmt.Fprintln(w, body)
-		}
+		return
 	}
+
+	allow := make([]string, 0, len(methods))
+	for k := range methods {
+		allow = append(allow, k)
+	}
+	sort.Strings(allow)
+	w.Header().Set("Allow", strings.Join(allow, ", ")) // This header must be sent if the server responds with a 405 Method Not Allowed status code to indicate which request methods can be used. Ref https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Allow
+
+	if r.Method == http.MethodOptions {
+		if len(w.Header().Get("Access-Control-Allow-Methods")) == 0 {
+			w.Header().Set("Access-Control-Allow-Methods", strings.Join(allow, ", "))
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	fmt.Fprintln(w, body)
+
 }
 
 func NotFoundHandler(w http.ResponseWriter, _ *http.Request) {
