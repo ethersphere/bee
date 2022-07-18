@@ -108,47 +108,45 @@ func TestCORSHeaders(t *testing.T) {
 
 }
 
-// TestCors tests OPTIONS method
+// TestCors tests whether CORs work correctly with OPTIONS method
 func TestCors(t *testing.T) {
 
 	for _, tc := range []struct {
 		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
-		endpoints       string
+		endpoint        string
 	}{
 		{
+			endpoint:        "tags",
 			expectedMethods: "GET, POST",
-			endpoints:       "tags",
 		},
 		{
+			endpoint:        "bzz",
 			expectedMethods: "POST",
-			endpoints:       "bzz",
 		}, {
+			endpoint:        "bzz/0101011",
 			expectedMethods: "GET, PATCH",
-			endpoints:       "bzz/0101011",
 		},
 		{
+			endpoint:        "chunks",
 			expectedMethods: "POST",
-			endpoints:       "chunks",
 		},
 		{
+			endpoint:        "chunks/123213",
 			expectedMethods: "DELETE, GET, HEAD",
-			endpoints:       "chunks/123213",
 		},
 		{
+			endpoint:        "bytes",
 			expectedMethods: "POST",
-			endpoints:       "bytes",
 		},
 		{
+			endpoint:        "bytes/0121012",
 			expectedMethods: "GET, HEAD",
-			endpoints:       "bytes/0121012",
 		},
 	} {
-		t.Run(tc.endpoints, func(t *testing.T) {
-			client, _, _, _ := newTestServer(t, testServerOptions{
-				CORSAllowedOrigins: []string{"example.com"},
-			})
+		t.Run(tc.endpoint, func(t *testing.T) {
+			client, _, _, _ := newTestServer(t, testServerOptions{})
 
-			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoints, http.StatusNoContent)
+			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
 
 			allowedMethods := r.Get("Allow")
 
