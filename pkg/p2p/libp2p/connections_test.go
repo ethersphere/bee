@@ -418,7 +418,8 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		notifier: mockNotifier(noopCf, noopDf, true),
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
-		}})
+		},
+	})
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
@@ -870,7 +871,6 @@ func TestTopologyOverSaturated(t *testing.T) {
 }
 
 func TestWithDisconnectStreams(t *testing.T) {
-
 	defer func(t time.Duration) {
 		*libp2p.SendHeadersTimeout = t
 	}(*libp2p.SendHeadersTimeout)
@@ -973,7 +973,6 @@ func TestWithBlocklistStreams(t *testing.T) {
 }
 
 func TestUserAgentLogging(t *testing.T) {
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1271,9 +1270,11 @@ type (
 	reachableFunc    func(swarm.Address, p2p.ReachabilityStatus)
 )
 
-var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
-var noopDf = func(p2p.Peer) {}
-var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
-var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
-var noopReachability = func(p2p.ReachabilityStatus) {}
-var noopReachable = func(swarm.Address, p2p.ReachabilityStatus) {}
+var (
+	noopCf           = func(context.Context, p2p.Peer, bool) error { return nil }
+	noopDf           = func(p2p.Peer) {}
+	noopAnnounce     = func(context.Context, swarm.Address, bool) error { return nil }
+	noopAnnounceTo   = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
+	noopReachability = func(p2p.ReachabilityStatus) {}
+	noopReachable    = func(swarm.Address, p2p.ReachabilityStatus) {}
+)

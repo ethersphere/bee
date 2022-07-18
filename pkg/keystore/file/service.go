@@ -59,10 +59,10 @@ func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool
 			return nil, false, err
 		}
 
-		if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filename), 0o700); err != nil {
 			return nil, false, err
 		}
-		if err := os.WriteFile(filename, d, 0600); err != nil {
+		if err := os.WriteFile(filename, d, 0o600); err != nil {
 			return nil, false, err
 		}
 		return pk, true, nil

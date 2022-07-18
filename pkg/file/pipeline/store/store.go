@@ -66,7 +66,6 @@ func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	}
 
 	return w.next.ChainWrite(p)
-
 }
 
 func (w *storeWriter) Sum() ([]byte, error) {

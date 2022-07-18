@@ -30,7 +30,6 @@ const secureOverlayKey = "non-mineable-overlay"
 
 // CheckOverlayWithStore checks the overlay is the same as stored in the statestore
 func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
-
 	var storedOverlay swarm.Address
 	err := storer.Get(secureOverlayKey, &storedOverlay)
 	if err != nil {

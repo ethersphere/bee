@@ -37,7 +37,6 @@ func (s *Service) Exists(name string) (bool, error) {
 	defer s.mu.Unlock()
 	_, ok := s.m[name]
 	return ok, nil
-
 }
 
 func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool, err error) {

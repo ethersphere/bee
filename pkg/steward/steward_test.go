@@ -26,7 +26,7 @@ func TestSteward(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
-		data           = make([]byte, chunks*4096) //1k chunks
+		data           = make([]byte, chunks*4096) // 1k chunks
 		store          = mock.NewStorer()
 		traverser      = traversal.New(store)
 		loggingStorer  = &loggingStore{Storer: store}

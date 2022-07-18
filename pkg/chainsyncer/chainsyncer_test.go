@@ -107,6 +107,7 @@ type m struct {
 func (m *m) Disconnect(_ swarm.Address, _ string) error {
 	panic("not implemented")
 }
+
 func (m *m) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	m.f(overlay, duration)
 	return nil

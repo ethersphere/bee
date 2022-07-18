@@ -112,7 +112,6 @@ func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf fu
 }
 
 func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
-
 	storer := &Timeout{mock.NewStorer()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))

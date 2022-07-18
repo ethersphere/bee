@@ -25,7 +25,6 @@ import (
 
 // Has returns true if the chunk is stored in database.
 func (db *DB) Has(ctx context.Context, addr swarm.Address) (bool, error) {
-
 	db.metrics.ModeHas.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeHas, time.Now())
 
@@ -39,7 +38,6 @@ func (db *DB) Has(ctx context.Context, addr swarm.Address) (bool, error) {
 // HasMulti returns a slice of booleans which represent if the provided chunks
 // are stored in database.
 func (db *DB) HasMulti(ctx context.Context, addrs ...swarm.Address) ([]bool, error) {
-
 	db.metrics.ModeHasMulti.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimeHasMulti, time.Now())
 

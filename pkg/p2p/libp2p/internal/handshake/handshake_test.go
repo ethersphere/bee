@@ -181,7 +181,6 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handshake - picker error", func(t *testing.T) {
-
 		handshakeService, err := handshake.New(signer1, aaddresser, senderMatcher, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
@@ -426,13 +425,11 @@ func TestHandshake(t *testing.T) {
 		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
 		if err != testError {
 			t.Fatalf("expected error %v got %v", testError, err)
-
 		}
 
 		if res != nil {
 			t.Fatal("expected nil res")
 		}
-
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {
@@ -757,7 +754,6 @@ type MockSenderMatcher struct {
 }
 
 func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
-
 	if m.v {
 		return m.blockHash, nil
 	}

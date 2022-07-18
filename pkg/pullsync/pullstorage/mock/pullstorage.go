@@ -123,7 +123,7 @@ func (s *PullStorage) SetCalls() int {
 func (s *PullStorage) Get(_ context.Context, _ storage.ModeGet, addrs ...swarm.Address) (chs []swarm.Chunk, err error) {
 	for _, a := range addrs {
 		if s.evilAddr.Equal(a) {
-			//inject the malicious chunk instead
+			// inject the malicious chunk instead
 			chs = append(chs, s.evilChunk)
 			continue
 		}

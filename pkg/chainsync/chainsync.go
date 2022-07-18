@@ -33,9 +33,7 @@ const (
 	blocksToRemember = 1000
 )
 
-var (
-	errRateLimitExceeded = errors.New("rate limit exceeded")
-)
+var errRateLimitExceeded = errors.New("rate limit exceeded")
 
 func (s *ChainSync) Protocol() p2p.ProtocolSpec {
 	return p2p.ProtocolSpec{
@@ -97,7 +95,7 @@ func (s *ChainSync) Prove(ctx context.Context, peer swarm.Address, blockheight u
 	intBuffer := make([]byte, 8)
 	n := binary.PutUvarint(intBuffer, blockheight)
 
-	var desc = pb.Describe{BlockHeight: intBuffer[:n]}
+	desc := pb.Describe{BlockHeight: intBuffer[:n]}
 	if err := w.WriteMsgWithContext(ctx, &desc); err != nil {
 		return nil, fmt.Errorf("write describe message: %w", err)
 	}
@@ -143,7 +141,7 @@ func (s *ChainSync) syncHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		_ = s.lru.Add(height, blockHash)
 	}
 
-	var proof = pb.Proof{BlockHash: blockHash}
+	proof := pb.Proof{BlockHash: blockHash}
 	if err = w.WriteMsgWithContext(ctx, &proof); err != nil {
 		return fmt.Errorf("write proof: %w", err)
 	}

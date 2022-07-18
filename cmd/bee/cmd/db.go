@@ -284,7 +284,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return fmt.Errorf("statestore nuke: %w", err)
 			}
 			return nil
-		}}
+		},
+	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
 	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")

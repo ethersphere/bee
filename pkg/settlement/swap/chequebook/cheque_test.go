@@ -6,7 +6,6 @@ package chequebook_test
 
 import (
 	"bytes"
-
 	"encoding/hex"
 	"math/big"
 	"testing"
@@ -32,7 +31,6 @@ func TestSignCheque(t *testing.T) {
 
 	signer := signermock.New(
 		signermock.WithSignTypedDataFunc(func(data *eip712.TypedData) ([]byte, error) {
-
 			if data.Message["beneficiary"].(string) != beneficiaryAddress.Hex() {
 				t.Fatal("signing cheque with wrong beneficiary")
 			}

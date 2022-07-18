@@ -22,9 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-var (
-	logMore = false // enable this to get more logging
-)
+var logMore = false // enable this to get more logging
 
 const (
 	cursorPruneTimeout = 24 * time.Hour
@@ -55,9 +53,7 @@ type Puller struct {
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
-	var (
-		bins uint8 = swarm.MaxBins
-	)
+	var bins uint8 = swarm.MaxBins
 	if o.Bins != 0 {
 		bins = o.Bins
 	}
@@ -270,7 +266,6 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 }
 
 func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
-
 	p.syncPeersMtx.Lock()
 	syncCtx := p.syncPeers[po][peer.ByteString()]
 	p.syncPeersMtx.Unlock()
@@ -476,7 +471,6 @@ func (p *Puller) Close() error {
 }
 
 func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint64) (err error) {
-
 	peerStreamKey := peerIntervalKey(peer, bin)
 	i, err := p.getOrCreateInterval(peer, bin)
 	if err != nil {
@@ -489,7 +483,6 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
-
 	i, err := p.getOrCreateInterval(peer, bin)
 	if err != nil {
 		return 0, 0, false, err

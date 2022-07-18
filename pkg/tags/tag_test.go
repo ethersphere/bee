@@ -28,9 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	allStates = []State{StateSplit, StateStored, StateSeen, StateSent, StateSynced}
-)
+var allStates = []State{StateSplit, StateStored, StateSeen, StateSent, StateSynced}
 
 // TestTagSingleIncrements tests if Inc increments the tag state value
 func TestTagSingleIncrements(t *testing.T) {
@@ -210,7 +208,6 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 			}
 		}
 		return true
-
 	})
 	if i != 10 {
 		t.Fatal("not enough tagz")

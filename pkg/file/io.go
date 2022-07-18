@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"

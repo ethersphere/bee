@@ -221,9 +221,11 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	svc.logger.Debugf("batch service: updated block height to %d", blockNumber)
 	return nil
 }
+
 func (svc *batchService) TransactionStart() error {
 	return svc.stateStore.Put(dirtyDBKey, true)
 }
+
 func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }

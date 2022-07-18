@@ -15,7 +15,6 @@ import (
 )
 
 func TestSet(t *testing.T) {
-
 	waitNext := waitnext.New()
 
 	addr := test.RandomAddress()

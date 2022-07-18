@@ -17,7 +17,6 @@ import (
 )
 
 func (c *command) initStartDevCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "dev",
 		Short: "Start a Swarm node in development mode",

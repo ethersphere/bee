@@ -15,9 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-var (
-	_ transaction.Backend = (*wrappedBackend)(nil)
-)
+var _ transaction.Backend = (*wrappedBackend)(nil)
 
 type wrappedBackend struct {
 	backend transaction.Backend

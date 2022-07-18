@@ -140,7 +140,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		logger.Info("starting with restricted APIs")
 	}
 
-	var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
+	mockTransaction := transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 		return []common.Hash{common.HexToHash("abcd")}, nil
 	}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 		return nil
@@ -391,7 +391,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		Steward:          mockSteward,
 	}
 
-	var erc20 = erc20mock.New(
+	erc20 := erc20mock.New(
 		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 			return big.NewInt(0), nil
 		}),

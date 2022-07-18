@@ -74,7 +74,6 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 
 	// Attempt to conect to each resolver using the connection string.
 	for _, c := range mr.cfgs {
-
 		// NOTE: if we want to create a specific client based on the TLD
 		// we can do it here.
 		mr.connectENSClient(c.TLD, c.Address, c.Endpoint)

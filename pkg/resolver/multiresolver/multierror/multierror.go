@@ -117,5 +117,4 @@ func format(errs []error) string {
 
 	return fmt.Sprintf("%d errors occurred: %s",
 		len(errs), strings.Join(msgs, ", "))
-
 }

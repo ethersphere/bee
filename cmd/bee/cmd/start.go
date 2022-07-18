@@ -42,7 +42,6 @@ const (
 var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a Swarm node",
@@ -445,7 +444,7 @@ type networkConfig struct {
 }
 
 func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
-	var config = networkConfig{
+	config := networkConfig{
 		blockTime: defaultBlockTime,
 	}
 	switch networkID {
@@ -453,11 +452,11 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkCon
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5
 		config.chainID = 100
-	case 5: //staging
+	case 5: // staging
 		config.chainID = 5
-	case 10: //test
+	case 10: // test
 		config.chainID = 5
-	default: //will use the value provided by the chain
+	default: // will use the value provided by the chain
 		config.chainID = -1
 	}
 

@@ -38,7 +38,6 @@ type fileUploadResponse struct {
 func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 
 func TestTags(t *testing.T) {
-
 	var (
 		bzzResource              = "/bzz"
 		bytesResource            = "/bytes"

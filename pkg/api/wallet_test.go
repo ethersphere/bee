@@ -20,9 +20,7 @@ import (
 )
 
 func TestWallet(t *testing.T) {
-
 	t.Run("Okay", func(t *testing.T) {
-
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			Erc20Opts: []erc20mock.Option{

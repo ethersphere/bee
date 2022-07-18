@@ -11,12 +11,10 @@ import (
 )
 
 func (c *command) initConfigurateOptionsCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "printconfig",
 		Short: "Print default or provided configuration in yaml format",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-
 			if len(args) > 0 {
 				return cmd.Help()
 			}
@@ -28,7 +26,6 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 			}
 			cmd.Println(string(ym))
 			return nil
-
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())
@@ -40,5 +37,4 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 	c.root.AddCommand(cmd)
 
 	return nil
-
 }

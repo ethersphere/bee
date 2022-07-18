@@ -55,7 +55,6 @@ func TestDB_collectGarbageWorker_multipleBatches(t *testing.T) {
 // testDBCollectGarbageWorker is a helper test function to test
 // garbage collection runs by uploading and syncing a number of chunks.
 func testDBCollectGarbageWorker(t *testing.T) {
-
 	chunkCount := 150
 
 	var closed chan struct{}
@@ -275,7 +274,6 @@ func TestPinGC(t *testing.T) {
 // Upload chunks, pin those chunks, add to GC after it is pinned
 // check if the pinned files are still around
 func TestGCAfterPin(t *testing.T) {
-
 	chunkCount := 50
 
 	db := newTestDB(t, &Options{
@@ -669,7 +667,6 @@ func TestPinAfterMultiGC(t *testing.T) {
 			t.Fatal("Pinned chunk is not equal to got chunk")
 		}
 	}
-
 }
 
 func generateAndPinAChunk(t *testing.T, db *DB) swarm.Chunk {
@@ -767,7 +764,6 @@ func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 			t.Fatal("Pinned chunk data is not equal to got chunk")
 		}
 	}
-
 }
 
 func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
@@ -1159,5 +1155,4 @@ func TestReserveEvictionWorker(t *testing.T) {
 			t.Errorf("got %d chunks, want 9", has)
 		}
 	})
-
 }

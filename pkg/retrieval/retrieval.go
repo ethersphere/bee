@@ -151,7 +151,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 				peerAttempt++
 				s.metrics.PeerRequestCounter.Inc()
 				go func() {
-
 					// cancel the goroutine just with the timeout
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
@@ -165,7 +164,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					}:
 					case <-ctx.Done():
 					}
-
 				}()
 			} else {
 				select {
@@ -239,7 +237,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 
 		// if we have not managed to get results after 5 (maxRequestRounds) rounds of peer selections, give up
 		return nil, storage.ErrNotFound
-
 	})
 	if err != nil {
 		return nil, err

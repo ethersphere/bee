@@ -83,11 +83,9 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 }
 
 func (t *testObserver) Connect(peer swarm.Address) {
-
 }
 
 func (t *testObserver) Disconnect(peer swarm.Address) {
-
 }
 
 type addressbookMock struct {
@@ -107,33 +105,43 @@ type addressbookMock struct {
 func (m *addressbookMock) MigratePeer(oldPeer, newPeer swarm.Address) error {
 	return m.migratePeer(oldPeer, newPeer)
 }
+
 func (m *addressbookMock) Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error) {
 	return m.beneficiary(peer)
 }
+
 func (m *addressbookMock) Chequebook(peer swarm.Address) (chequebookAddress common.Address, known bool, err error) {
 	return m.chequebook(peer)
 }
+
 func (m *addressbookMock) BeneficiaryPeer(beneficiary common.Address) (peer swarm.Address, known bool, err error) {
 	return m.beneficiaryPeer(beneficiary)
 }
+
 func (m *addressbookMock) ChequebookPeer(chequebook common.Address) (peer swarm.Address, known bool, err error) {
 	return m.chequebookPeer(chequebook)
 }
+
 func (m *addressbookMock) PutBeneficiary(peer swarm.Address, beneficiary common.Address) error {
 	return m.putBeneficiary(peer, beneficiary)
 }
+
 func (m *addressbookMock) PutChequebook(peer swarm.Address, chequebook common.Address) error {
 	return m.putChequebook(peer, chequebook)
 }
+
 func (m *addressbookMock) AddDeductionFor(peer swarm.Address) error {
 	return m.addDeductionFor(peer)
 }
+
 func (m *addressbookMock) AddDeductionBy(peer swarm.Address) error {
 	return m.addDeductionBy(peer)
 }
+
 func (m *addressbookMock) GetDeductionFor(peer swarm.Address) (bool, error) {
 	return m.getDeductionFor(peer)
 }
+
 func (m *addressbookMock) GetDeductionBy(peer swarm.Address) (bool, error) {
 	return m.getDeductionBy(peer)
 }
@@ -146,6 +154,7 @@ type cashoutMock struct {
 func (m *cashoutMock) CashCheque(ctx context.Context, chequebook, recipient common.Address) (common.Hash, error) {
 	return m.cashCheque(ctx, chequebook, recipient)
 }
+
 func (m *cashoutMock) CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*chequebook.CashoutStatus, error) {
 	return m.cashoutStatus(ctx, chequebookAddress)
 }
@@ -251,7 +260,6 @@ func TestReceiveCheque(t *testing.T) {
 	if !peerDeductionFor {
 		t.Fatal("add deduction for peer not called")
 	}
-
 }
 
 func TestReceiveChequeReject(t *testing.T) {
@@ -272,7 +280,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		Signature: []byte{},
 	}
 
-	var errReject = errors.New("reject")
+	errReject := errors.New("reject")
 
 	chequeStore := mockchequestore.NewChequeStore(
 		mockchequestore.WithReceiveChequeFunc(func(ctx context.Context, c *chequebook.SignedCheque, e *big.Int, d *big.Int) (*big.Int, error) {
@@ -314,7 +322,6 @@ func TestReceiveChequeReject(t *testing.T) {
 		t.Fatalf("observer called by error.")
 	default:
 	}
-
 }
 
 func TestReceiveChequeWrongChequebook(t *testing.T) {
@@ -370,7 +377,6 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		t.Fatalf("observer called by error.")
 	default:
 	}
-
 }
 
 func TestPay(t *testing.T) {
@@ -481,7 +487,6 @@ func TestPayIssueError(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("expected observer to be called")
 	}
-
 }
 
 func TestPayUnknownBeneficiary(t *testing.T) {

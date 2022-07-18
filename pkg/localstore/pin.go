@@ -15,7 +15,6 @@ func (db *DB) pinCounter(address swarm.Address) (uint64, error) {
 	out, err := db.pinIndex.Get(shed.Item{
 		Address: address.Bytes(),
 	})
-
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
 			return 0, storage.ErrNotFound

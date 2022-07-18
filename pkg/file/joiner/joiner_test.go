@@ -210,7 +210,7 @@ func TestJoinerMalformed(t *testing.T) {
 }
 
 func TestEncryptDecrypt(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		chunkLength int
 	}{
 		{10},

@@ -181,7 +181,6 @@ const (
 var ErrInterruped = errors.New("interrupted")
 
 func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
-
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -258,7 +257,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	var unreserveFn func([]byte, uint8) (uint64, error)
 
 	if chainEnabled {
-		var evictFn = func(b []byte) error {
+		evictFn := func(b []byte) error {
 			_, err := unreserveFn(b, swarm.MaxPO+1)
 			return err
 		}

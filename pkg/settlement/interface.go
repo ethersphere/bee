@@ -11,9 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	ErrPeerNoSettlements = errors.New("no settlements for peer")
-)
+var ErrPeerNoSettlements = errors.New("no settlements for peer")
 
 // Interface is the interface used by Accounting to trigger settlement
 type Interface interface {

@@ -106,7 +106,7 @@ func releaseSlot(t *testing.T, shard *shard, loc Location) {
 type dirFS string
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(string(*d), path), os.O_RDWR|os.O_CREATE, 0644)
+	return os.OpenFile(filepath.Join(string(*d), path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func newShard(t *testing.T) *shard {

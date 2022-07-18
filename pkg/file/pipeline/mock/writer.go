@@ -26,6 +26,7 @@ func (c *MockChainWriter) ChainWrite(_ *pipeline.PipeWriteArgs) error {
 	c.chainWriteCalls++
 	return nil
 }
+
 func (c *MockChainWriter) Sum() ([]byte, error) {
 	c.Lock()
 	defer c.Unlock()

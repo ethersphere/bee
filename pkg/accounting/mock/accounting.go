@@ -219,11 +219,9 @@ func (s *Service) CompensatedBalances() (map[string]*big.Int, error) {
 }
 
 func (s *Service) Connect(peer swarm.Address) {
-
 }
 
 func (s *Service) Disconnect(peer swarm.Address) {
-
 }
 
 //

@@ -49,7 +49,6 @@ func parseConnectionString(cs string) (ConnectionConfig, error) {
 			tld = endpoint[:i]
 			if len(tld) > maxTLDLength {
 				return ConnectionConfig{}, fmt.Errorf("tld %s: %w", tld, ErrTLDTooLong)
-
 			}
 			endpoint = endpoint[i+1:]
 		}

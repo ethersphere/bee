@@ -911,7 +911,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unexpected overflow from doable NotifyPayment")
 	}
-	//sanity check surplus balance
+	// sanity check surplus balance
 	val, err := acc.SurplusBalance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
@@ -919,7 +919,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != 2 {
 		t.Fatal("Not expected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -932,7 +932,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unexpected error from NotifyPayment")
 	}
-	//sanity check surplus balance
+	// sanity check surplus balance
 	val, err = acc.SurplusBalance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
@@ -940,7 +940,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != testPaymentThreshold.Int64()+2 {
 		t.Fatal("Unexpected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -966,7 +966,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != 2 {
 		t.Fatal("Unexpected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -992,7 +992,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != 0 {
 		t.Fatal("Unexpected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -1486,7 +1486,6 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 	if blocklistTime != int64(4*paymentThresholdInRefreshmentSeconds) {
 		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
 	}
-
 }
 
 func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
@@ -1576,5 +1575,4 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 	if surplusBalance.Int64() != 0 {
 		t.Fatalf("surplus balance for peer %v not as expected got %d, wanted 0", peer.String(), balance)
 	}
-
 }

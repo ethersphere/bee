@@ -33,13 +33,9 @@ const (
 	SocMaxChunkSize         = SocMinChunkSize + ChunkSize
 )
 
-var (
-	NewHasher = sha3.NewLegacyKeccak256
-)
+var NewHasher = sha3.NewLegacyKeccak256
 
-var (
-	ErrInvalidChunk = errors.New("invalid chunk")
-)
+var ErrInvalidChunk = errors.New("invalid chunk")
 
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.

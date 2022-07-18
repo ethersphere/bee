@@ -80,7 +80,6 @@ func bootstrapNode(
 	libp2pPrivateKey *ecdsa.PrivateKey,
 	o *Options,
 ) (snapshot *postage.ChainSnapshot, retErr error) {
-
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -349,7 +348,6 @@ func getLatestSnapshot(
 }
 
 func batchStoreExists(s storage.StateStorer) (bool, error) {
-
 	hasOne := false
 	err := s.Iterate("batchstore_", func(key, value []byte) (stop bool, err error) {
 		hasOne = true

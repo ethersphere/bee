@@ -71,7 +71,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 	stateStorePut(t, stateStore, key1, testBatch1)
 	stateStorePut(t, stateStore, key2, testBatch2)
 
-	var iterations = 0
+	iterations := 0
 	err := batchStore.Iterate(func(b *postage.Batch) (bool, error) {
 		iterations++
 		return false, nil
@@ -109,7 +109,6 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
-
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -126,7 +125,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 		t.Fatalf("storer.Unreserve(...): unexpected error: %v", err)
 	}
 
-	//get test batch after save call
+	// get test batch after save call
 	stateStoreGet(t, stateStore, key, testBatch)
 
 	var have postage.Batch

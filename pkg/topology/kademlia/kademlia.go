@@ -291,7 +291,6 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 // connectNeighbours attempts to connect to the neighbours
 // which were not considered by the connectBalanced method.
 func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
-
 	sent := 0
 	var currentPo uint8 = 0
 
@@ -656,7 +655,6 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 // pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
 // while maintaining the balance of the bin and favoring peers with longers connections
 func (k *Kad) pruneOversaturatedBins(depth uint8) {
-
 	for i := range k.commonBinPrefixes {
 
 		if i >= int(depth) {
@@ -704,7 +702,6 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 }
 
 func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address, po int) []swarm.Address {
-
 	var ret []swarm.Address
 
 	for _, peer := range peers {
@@ -760,7 +757,6 @@ func (k *Kad) Start(_ context.Context) error {
 }
 
 func (k *Kad) previouslyConnected() []swarm.Address {
-
 	now := time.Now()
 	ss := k.collector.Snapshot(now)
 	k.logger.Tracef("kademlia: getting metrics snapshot took %s", time.Since(now))
@@ -1024,7 +1020,6 @@ outer:
 			default:
 			}
 			go func(connectedPeer swarm.Address) {
-
 				// Create a new deadline ctx to prevent goroutine pile up
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
 				defer cCancel()
@@ -1090,9 +1085,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 }
 
 func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
-
 	_ = k.EachPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
-
 		if po == bin {
 			peers = append(peers, p)
 			return false, false, nil
@@ -1103,7 +1096,6 @@ func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 		}
 
 		return false, true, nil
-
 	}, topology.Filter{Reachable: true})
 
 	return
@@ -1117,7 +1109,6 @@ func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool 
 			}
 		}
 		return false
-
 	}
 }
 
@@ -1268,7 +1259,6 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	err := k.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
 		for _, a := range skipPeers {
 			if a.Equal(peer) {
 				return false, false, nil
@@ -1285,7 +1275,6 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 		}
 		return false, false, nil
 	}, filter)
-
 	if err != nil {
 		return swarm.Address{}, err
 	}

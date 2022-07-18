@@ -58,7 +58,6 @@ func someDescriptors(i ...int) (d []storage.Descriptor) {
 // - to the To argument of the function (in case the number of chunks in interval <= N)
 // - to BinID of the last chunk in the returned collection in case number of chunks in interval > N
 func TestIntervalChunks(t *testing.T) {
-
 	// we need to check four cases of the subscribe pull iterator:
 	// - no chunks in interval
 	// - less chunks reported than what is in the interval (but interval still intact, probably old chunks GCd)
@@ -253,7 +252,6 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			base, db := newTestDB(t, nil)
 			ps := pullstorage.New(db)
 
@@ -274,7 +272,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			//always bin 1
+			// always bin 1
 			chs, topmost, err := ps.IntervalChunks(ctx, 1, tc.f, tc.t, tc.limit)
 			if err != nil {
 				t.Fatal(err)
@@ -298,7 +296,6 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 			if l := len(chs); l != tc.expect {
 				t.Fatalf("expected %d chunks but got %d", tc.expect, l)
 			}
-
 		})
 	}
 }
@@ -332,7 +329,6 @@ func TestIntervalChunks_IteratorShare(t *testing.T) {
 			t.Errorf("internal goroutine: %v", err)
 		}
 		c <- result{addrs, topmost}
-
 	}()
 	<-sched // wait for goroutine to get scheduled
 
@@ -373,7 +369,6 @@ func TestIntervalChunks_IteratorShare(t *testing.T) {
 // call are canceled, the call will be exited. During this time if a new goroutines comes,
 // a fresh subscription call should be made and results should be shared
 func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
-
 	type result struct {
 		addrs []swarm.Address
 		top   uint64
@@ -454,7 +449,6 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		if c := db.SubscribePullCalls(); c != 1 {
 			t.Fatalf("wanted 1 subscribe pull calls, got %d", c)
 		}
-
 	})
 	t.Run("cancel all callers", func(t *testing.T) {
 		ps, db := newPullStorage(t, mock.WithPartialInterval(true))

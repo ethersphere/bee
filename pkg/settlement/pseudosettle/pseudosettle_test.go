@@ -62,11 +62,9 @@ func (t *testObserver) PeerDebt(peer swarm.Address) (*big.Int, error) {
 }
 
 func (t *testObserver) Connect(peer swarm.Address) {
-
 }
 
 func (t *testObserver) Disconnect(peer swarm.Address) {
-
 }
 
 func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
@@ -96,11 +94,12 @@ func (t *testObserver) Reserve(ctx context.Context, peer swarm.Address, amount u
 func (t *testObserver) Release(peer swarm.Address, amount uint64) {
 }
 
-var testRefreshRate = int64(10000)
-var testRefreshRateLight = int64(1000)
+var (
+	testRefreshRate      = int64(10000)
+	testRefreshRateLight = int64(1000)
+)
 
 func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, observer *testObserver, payer, recipient *pseudosettle.Service, peerID swarm.Address, payerTime, recipientTime int64, recordsLength int, debtAmount, amount *big.Int, expectedError error) {
-
 	payer.SetTime(payerTime)
 	recipient.SetTime(recipientTime)
 	observer.setPeerDebt(peerID, debtAmount)
@@ -129,7 +128,6 @@ func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, observer *
 }
 
 func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, observer *testObserver, payer, recipient *pseudosettle.Service, peerID swarm.Address, payerTime, recipientTime int64, recordsLength, msgLength, recMsgLength int, debtAmount, amount, accepted, totalAmount *big.Int) {
-
 	payer.SetTime(payerTime)
 	recipient.SetTime(recipientTime)
 

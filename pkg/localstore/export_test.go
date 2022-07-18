@@ -31,7 +31,7 @@ import (
 func TestExportImport(t *testing.T) {
 	db1 := newTestDB(t, nil)
 
-	var chunkCount = 100
+	chunkCount := 100
 
 	chunks := make(map[string][]byte, chunkCount)
 	for i := 0; i < chunkCount; i++ {

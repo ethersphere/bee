@@ -125,7 +125,6 @@ func TestDB_schemaIndexPrefix(t *testing.T) {
 
 // TestDB_RenameIndex checks if index name is correctly changed.
 func TestDB_RenameIndex(t *testing.T) {
-
 	t.Run("empty names", func(t *testing.T) {
 		db := newTestDB(t)
 

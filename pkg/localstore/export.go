@@ -48,7 +48,7 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 
 	if err := tw.WriteHeader(&tar.Header{
 		Name: exportVersionFilename,
-		Mode: 0644,
+		Mode: 0o644,
 		Size: int64(len(currentExportVersion)),
 	}); err != nil {
 		return 0, err
@@ -58,7 +58,6 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 	}
 
 	err = db.retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-
 		loc, err := sharky.LocationFromBinary(item.Location)
 		if err != nil {
 			return false, err
@@ -72,7 +71,7 @@ func (db *DB) Export(w io.Writer) (count int64, err error) {
 
 		hdr := &tar.Header{
 			Name: hex.EncodeToString(item.Address),
-			Mode: 0644,
+			Mode: 0o644,
 			Size: int64(postage.StampSize + len(data)),
 		}
 

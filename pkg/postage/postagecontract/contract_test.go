@@ -36,7 +36,6 @@ func TestCreateBatch(t *testing.T) {
 	initialBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
-
 		depth := uint8(10)
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
@@ -215,7 +214,6 @@ func TestTopUpBatch(t *testing.T) {
 	topupBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
-
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
 		txHashTopup := common.HexToHash("c3a7")
@@ -371,7 +369,6 @@ func TestDiluteBatch(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("ok", func(t *testing.T) {
-
 		txHashDilute := common.HexToHash("c3a7")
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
 		batch.Depth = uint8(10)

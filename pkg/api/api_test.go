@@ -161,7 +161,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	erc20 := erc20mock.New(o.Erc20Opts...)
 	backend := backendmock.New(o.BackendOpts...)
 
-	var extraOpts = api.ExtraOptions{
+	extraOpts := api.ExtraOptions{
 		TopologyDriver:   topologyDriver,
 		Accounting:       acc,
 		Pseudosettle:     recipient,
@@ -556,6 +556,7 @@ func (c *chanStorer) drain(cc <-chan *pusher.Op) {
 		}
 	}
 }
+
 func (c *chanStorer) stop() {
 	close(c.quit)
 }

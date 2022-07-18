@@ -150,7 +150,7 @@ func (s *Service) HasPin(ref swarm.Address) (bool, error) {
 
 // Pins implements Interface.Pins method.
 func (s *Service) Pins() ([]swarm.Address, error) {
-	var refs = make([]swarm.Address, 0)
+	refs := make([]swarm.Address, 0)
 	err := s.rhStorage.Iterate(storePrefix, func(key, val []byte) (stop bool, err error) {
 		var ref swarm.Address
 		if err := json.Unmarshal(val, &ref); err != nil {

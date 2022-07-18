@@ -32,7 +32,6 @@ func New(r time.Duration, burst int) *Limiter {
 
 // Allow checks if the limiter that belongs to 'key' has not exceeded the limit.
 func (l *Limiter) Allow(key string, count int) bool {
-
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
@@ -47,7 +46,6 @@ func (l *Limiter) Allow(key string, count int) bool {
 
 // Clear deletes the limiter that belongs to 'key'
 func (l *Limiter) Clear(key string) {
-
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 

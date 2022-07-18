@@ -19,19 +19,17 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	dataWrites = [][]int{
-		{swarm.ChunkSize - 2},                         // short
-		{swarm.ChunkSize - 2, 4},                      // short, over
-		{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 6}, // short, over, short
-		{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 4}, // short, over, onononon
-		{swarm.ChunkSize, 2, swarm.ChunkSize - 4},     // on, short, short
-		{swarm.ChunkSize, 2, swarm.ChunkSize - 2},     // on, short, on
-		{swarm.ChunkSize, 2, swarm.ChunkSize},         // on, short, over
-		{swarm.ChunkSize, 2, swarm.ChunkSize - 2, 4},  // on, short, on, short
-		{swarm.ChunkSize, swarm.ChunkSize},            // on, on
-	}
-)
+var dataWrites = [][]int{
+	{swarm.ChunkSize - 2},                         // short
+	{swarm.ChunkSize - 2, 4},                      // short, over
+	{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 6}, // short, over, short
+	{swarm.ChunkSize - 2, 4, swarm.ChunkSize - 4}, // short, over, onononon
+	{swarm.ChunkSize, 2, swarm.ChunkSize - 4},     // on, short, short
+	{swarm.ChunkSize, 2, swarm.ChunkSize - 2},     // on, short, on
+	{swarm.ChunkSize, 2, swarm.ChunkSize},         // on, short, over
+	{swarm.ChunkSize, 2, swarm.ChunkSize - 2, 4},  // on, short, on, short
+	{swarm.ChunkSize, swarm.ChunkSize},            // on, on
+}
 
 // TestChunkPipe verifies that the reads are correctly buffered for
 // various write length combinations.
@@ -229,7 +227,7 @@ func TestCopyBuffer(t *testing.T) {
 }
 
 func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byte) {
-	var buf = make([]byte, bufferSize)
+	buf := make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)
 		if err == io.EOF {

@@ -51,7 +51,7 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 	d := make([]byte, f.size+span)
 	sp := 0 // span of current write
 
-	//copy from existing buffer to this one
+	// copy from existing buffer to this one
 	sp = copy(d[span:], f.buffer[:f.bufferIdx])
 
 	// don't account what was already in the buffer when returning

@@ -379,7 +379,6 @@ func TestConnectDisconnectEvents(t *testing.T) {
 	expectCounter(t, &coutCount, 0, &countMU)
 	expectCounter(t, &dinCount, 1, &countMU)
 	expectCounter(t, &doutCount, 1, &countMU)
-
 }
 
 func TestPing(t *testing.T) {

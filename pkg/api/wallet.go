@@ -20,7 +20,6 @@ type walletResponse struct {
 }
 
 func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
-
 	xdai, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
 	if err != nil {
 		s.logger.Debugf("wallet: unable to acquire balance from the chain backend: %v", err)

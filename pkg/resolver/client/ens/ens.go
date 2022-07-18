@@ -134,7 +134,6 @@ func (c *Client) Resolve(name string) (Address, error) {
 func (c *Client) Close() error {
 	if c.ethCl != nil {
 		c.ethCl.Close()
-
 	}
 	c.ethCl = nil
 

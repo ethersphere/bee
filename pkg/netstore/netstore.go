@@ -40,9 +40,7 @@ type store struct {
 	metrics    metrics
 }
 
-var (
-	errInvalidLocalChunk = errors.New("invalid chunk found locally")
-)
+var errInvalidLocalChunk = errors.New("invalid chunk found locally")
 
 // New returns a new NetStore that wraps a given Storer.
 func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interface, logger logging.Logger) storage.Storer {

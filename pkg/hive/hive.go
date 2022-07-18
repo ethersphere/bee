@@ -259,7 +259,6 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 }
 
 func (s *Service) disconnect(peer p2p.Peer) error {
-
 	s.clearMtx.Lock()
 	defer s.clearMtx.Unlock()
 
@@ -299,7 +298,6 @@ func (s *Service) startCheckPeersHandler() {
 }
 
 func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
-
 	var peersToAdd []swarm.Address
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
@@ -327,7 +325,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 		wg.Add(1)
 		go func(newPeer *pb.BzzAddress, cacheOverlay string) {
-
 			s.metrics.PeerConnectAttempts.Inc()
 
 			defer func() {

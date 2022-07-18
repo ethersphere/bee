@@ -94,7 +94,6 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 	)
 
 	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,10 +424,12 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	return pss, &privkey.PublicKey, cl, listener
 }
 
-type pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error
-type mpss struct {
-	f pssSendFn
-}
+type (
+	pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error
+	mpss      struct {
+		f pssSendFn
+	}
+)
 
 func newMockPss(f pssSendFn) *mpss {
 	return &mpss{f}

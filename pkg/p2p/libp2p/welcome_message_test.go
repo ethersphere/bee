@@ -44,6 +44,5 @@ func TestDynamicWelcomeMessage(t *testing.T) {
 				t.Fatalf("wrong error: want %v, got %v", want, got)
 			}
 		})
-
 	})
 }

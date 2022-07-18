@@ -330,7 +330,6 @@ func TestBzzFiles(t *testing.T) {
 		if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
 			t.Fatal("Invalid content type detected")
 		}
-
 	})
 
 	t.Run("upload-then-download-with-targets", func(t *testing.T) {
@@ -350,7 +349,6 @@ func TestBzzFiles(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
 	})
-
 }
 
 // TestRangeRequests validates that all endpoints are serving content with

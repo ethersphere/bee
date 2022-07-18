@@ -241,7 +241,6 @@ func InitSwap(
 	chainID int64,
 	transactionService transaction.Service,
 ) (*swap.Service, priceoracle.Service, error) {
-
 	var currentPriceOracleAddress common.Address
 	if priceOracleAddress == "" {
 		chainCfg, found := config.GetChainConfig(chainID)
@@ -287,7 +286,6 @@ func InitSwap(
 }
 
 func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString string) ([]byte, error) {
-
 	if trxString != "" {
 		txHashTrimmed := strings.TrimPrefix(trxString, "0x")
 		if len(txHashTrimmed) != 64 {
@@ -315,7 +313,6 @@ func GetTxHash(stateStore storage.StateStorer, logger logging.Logger, trxString 
 }
 
 func GetTxNextBlock(ctx context.Context, logger logging.Logger, backend transaction.Backend, monitor transaction.Monitor, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
-
 	if blockHash != "" {
 		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
 		if len(blockHashTrimmed) != 64 {
@@ -348,27 +345,35 @@ type noOpChequebookService struct{}
 func (m *noOpChequebookService) Deposit(context.Context, *big.Int) (hash common.Hash, err error) {
 	return hash, postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) Withdraw(context.Context, *big.Int) (hash common.Hash, err error) {
 	return hash, postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) WaitForDeposit(context.Context, common.Hash) error {
 	return postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) Balance(context.Context) (*big.Int, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) AvailableBalance(context.Context) (*big.Int, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) Address() common.Address {
 	return common.Address{}
 }
+
 func (m *noOpChequebookService) Issue(context.Context, common.Address, *big.Int, chequebook.SendChequeFunc) (*big.Int, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
+
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
@@ -385,46 +390,59 @@ func (m noOpChainBackend) Metrics() []prometheus.Collector {
 func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
 	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0), nil
 }
+
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
 	return nil, errors.New("disabled chain backend")
 }
+
 func (m noOpChainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
 	h := new(types.Header)
 	h.Time = uint64(time.Now().Unix())
 	return h, nil
 }
+
 func (m noOpChainBackend) PendingNonceAt(context.Context, common.Address) (uint64, error) {
 	panic("chain no op: PendingNonceAt")
 }
+
 func (m noOpChainBackend) SuggestGasPrice(context.Context) (*big.Int, error) {
 	panic("chain no op: SuggestGasPrice")
 }
+
 func (m noOpChainBackend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
 	panic("chain no op: EstimateGas")
 }
+
 func (m noOpChainBackend) SendTransaction(context.Context, *types.Transaction) error {
 	panic("chain no op: SendTransaction")
 }
+
 func (m noOpChainBackend) TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error) {
 	r := new(types.Receipt)
 	r.BlockNumber = big.NewInt(1)
 	return r, nil
 }
+
 func (m noOpChainBackend) TransactionByHash(context.Context, common.Hash) (tx *types.Transaction, isPending bool, err error) {
 	panic("chain no op: TransactionByHash")
 }
+
 func (m noOpChainBackend) BlockNumber(context.Context) (uint64, error) {
 	return 4, nil
 }
+
 func (m noOpChainBackend) BalanceAt(context.Context, common.Address, *big.Int) (*big.Int, error) {
 	panic("chain no op: BalanceAt")
 }
+
 func (m noOpChainBackend) NonceAt(context.Context, common.Address, *big.Int) (uint64, error) {
 	panic("chain no op: NonceAt")
 }
+
 func (m noOpChainBackend) FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error) {
 	panic("chain no op: FilterLogs")
 }
+
 func (m noOpChainBackend) ChainID(context.Context) (*big.Int, error) {
 	return big.NewInt(m.chainID), nil
 }

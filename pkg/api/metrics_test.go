@@ -11,7 +11,6 @@ import (
 )
 
 func TestToFileSizeBucket(t *testing.T) {
-
 	var want int64 = 300000
 	bucket := api.ToFileSizeBucket(want)
 	if bucket < want {

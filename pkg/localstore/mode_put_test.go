@@ -577,7 +577,6 @@ func TestModePut_sameChunk(t *testing.T) {
 // and validates that all relevant indexes have only one item
 // in them.
 func TestModePut_SameStamp(t *testing.T) {
-
 	ctx := context.Background()
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
@@ -602,7 +601,6 @@ func TestModePut_SameStamp(t *testing.T) {
 				},
 			} {
 				t.Run(modeTc1.String()+modeTc2.String(), func(t *testing.T) {
-
 					db := newTestDB(t, nil)
 					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
 
@@ -638,7 +636,6 @@ func TestModePut_SameStamp(t *testing.T) {
 }
 
 func TestModePut_ImmutableStamp(t *testing.T) {
-
 	ctx := context.Background()
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
@@ -668,7 +665,6 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 			} {
 				testName := fmt.Sprintf("%s %s %s", modeTc1.String(), modeTc2.String(), tc.name)
 				t.Run(testName, func(t *testing.T) {
-
 					db := newTestDB(t, nil)
 					unreserveChunkBatch(t, db, 0, tc.persistChunk, tc.discardChunk)
 

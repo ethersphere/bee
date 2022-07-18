@@ -24,8 +24,10 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-var errMissingCurrentSchema = errors.New("could not find current db schema")
-var errMissingTargetSchema = errors.New("could not find target db schema")
+var (
+	errMissingCurrentSchema = errors.New("could not find current db schema")
+	errMissingTargetSchema  = errors.New("could not find target db schema")
+)
 
 type migration struct {
 	schemaName string

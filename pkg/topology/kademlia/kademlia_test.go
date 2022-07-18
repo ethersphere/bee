@@ -201,7 +201,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	if !kad.IsWithinDepth(addrs[0]) {
 		t.Fatal("expected address to be within depth")
 	}
-
 }
 
 // Run the same test with reachability filter and setting the peers are reachable
@@ -365,7 +364,6 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	if !kad.IsWithinDepth(addrs[0]) {
 		t.Fatal("expected address to be within depth")
 	}
-
 }
 
 func TestEachNeighbor(t *testing.T) {
@@ -393,7 +391,6 @@ func TestEachNeighbor(t *testing.T) {
 	var depth uint8 = 15
 
 	err := kad.EachNeighbor(func(adr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-
 		if po < depth {
 			depth = po
 		}
@@ -409,7 +406,6 @@ func TestEachNeighbor(t *testing.T) {
 
 	depth = 15
 	err = kad.EachNeighborRev(func(adr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-
 		if po < depth {
 			depth = po
 		}
@@ -603,11 +599,9 @@ func TestBinSaturation(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 
 	waitCounter(t, &conns, 1)
-
 }
 
 func TestOversaturation(t *testing.T) {
-
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
@@ -1267,7 +1261,7 @@ func TestKademlia_SubscribePeersChange(t *testing.T) {
 }
 
 func TestSnapshot(t *testing.T) {
-	var conns = new(int32)
+	conns := new(int32)
 	sa, kad, ab, _, signer := newTestKademlia(t, conns, nil, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1358,7 +1352,6 @@ func TestStart(t *testing.T) {
 }
 
 func TestOutofDepthPrune(t *testing.T) {
-
 	defer func(p int) {
 		*kademlia.SaturationPeers = p
 	}(*kademlia.SaturationPeers)
@@ -1744,8 +1737,7 @@ func (b *boolgen) Bool() bool {
 }
 
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
-
-	var rndAddrs = make([]swarm.Address, count)
+	rndAddrs := make([]swarm.Address, count)
 
 	if count < 8 && isBalanced {
 		t.Fatal("peersCount must be greater than 8 for balanced bins")
@@ -1772,7 +1764,6 @@ func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) 
 }
 
 func setBits(data []byte, startBit, bitCount int, b int) {
-
 	index := startBit / 8
 	bitPos := startBit % 8
 

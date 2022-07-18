@@ -354,7 +354,6 @@ func TestCashoutStatusPending(t *testing.T) {
 		},
 		UncashedAmount: big.NewInt(0),
 	})
-
 }
 
 func verifyStatus(t *testing.T, status *chequebook.CashoutStatus, expected chequebook.CashoutStatus) {

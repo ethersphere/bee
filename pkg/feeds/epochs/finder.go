@@ -13,8 +13,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ feeds.Lookup = (*finder)(nil)
-var _ feeds.Lookup = (*asyncFinder)(nil)
+var (
+	_ feeds.Lookup = (*finder)(nil)
+	_ feeds.Lookup = (*asyncFinder)(nil)
+)
 
 // finder encapsulates a chunk store getter and a feed and provides
 //  non-concurrent lookup methods
@@ -165,6 +167,7 @@ func (f *asyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 		}
 	}
 }
+
 func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
 	// TODO: current and next index return values need to be implemented
 	ch, err := f.asyncAt(ctx, at, after)

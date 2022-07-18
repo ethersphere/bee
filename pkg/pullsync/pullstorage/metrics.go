@@ -50,7 +50,8 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "subscribe_pulls_failures",
 			Help:      "Total subscribe pulls failures.",
-		})}
+		}),
+	}
 }
 
 func (s *PullStorer) Metrics() []prometheus.Collector {

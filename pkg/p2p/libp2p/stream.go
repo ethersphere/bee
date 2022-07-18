@@ -32,6 +32,7 @@ func NewStream(s network.Stream) p2p.Stream {
 func newStream(s network.Stream) *stream {
 	return &stream{Stream: s}
 }
+
 func (s *stream) Headers() p2p.Headers {
 	return s.headers
 }

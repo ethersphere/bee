@@ -28,7 +28,6 @@ func (i *inflight) delete(ch swarm.Chunk) {
 }
 
 func (i *inflight) set(addr []byte) bool {
-
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 

@@ -44,7 +44,6 @@ func TestModeSetRemove(t *testing.T) {
 			}
 
 			t.Run("retrieve indexes", func(t *testing.T) {
-
 				t.Run("retrieve data index count", newItemsCountTest(db.retrievalDataIndex, 0))
 				t.Run("retrieve access index count", newItemsCountTest(db.retrievalAccessIndex, 0))
 			})
@@ -93,7 +92,6 @@ func TestModeSetRemove_WithSync(t *testing.T) {
 			}
 
 			t.Run("retrieve indexes", func(t *testing.T) {
-
 				t.Run("retrieve data index count", newItemsCountTest(db.retrievalDataIndex, 0))
 				t.Run("retrieve access index count", newItemsCountTest(db.retrievalAccessIndex, 0))
 			})

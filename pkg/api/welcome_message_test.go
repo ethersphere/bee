@@ -24,7 +24,8 @@ func TestGetWelcomeMessage(t *testing.T) {
 		DebugAPI: true,
 		P2P: mock.New(mock.WithGetWelcomeMessageFunc(func() string {
 			return DefaultTestWelcomeMessage
-		}))})
+		})),
+	})
 
 	jsonhttptest.Request(t, srv, http.MethodGet, "/welcome-message", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.WelcomeMessageResponse{

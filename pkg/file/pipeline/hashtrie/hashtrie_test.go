@@ -115,7 +115,7 @@ func TestLevels(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			//check the span. since write spans are 1 value 1, then expected span == tc.writes
+			// check the span. since write spans are 1 value 1, then expected span == tc.writes
 			sp := binary.LittleEndian.Uint64(rootch.Data()[:swarm.SpanSize])
 			if sp != uint64(tc.writes) {
 				t.Fatalf("want span %d got %d", tc.writes, sp)

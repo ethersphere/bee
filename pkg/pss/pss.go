@@ -70,7 +70,7 @@ func (ps *pss) Close() error {
 	ps.handlersMu.Lock()
 	defer ps.handlersMu.Unlock()
 
-	ps.handlers = make(map[Topic][]*Handler) //unset handlers on shutdown
+	ps.handlers = make(map[Topic][]*Handler) // unset handlers on shutdown
 
 	return nil
 }

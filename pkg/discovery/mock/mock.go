@@ -13,7 +13,7 @@ import (
 
 type Discovery struct {
 	mtx           sync.Mutex
-	ctr           int //how many ops
+	ctr           int // how many ops
 	records       map[string][]swarm.Address
 	broadcastFunc func(context.Context, swarm.Address, ...swarm.Address) error
 }

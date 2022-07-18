@@ -327,7 +327,8 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	return &Receipt{
 		Address:   swarm.NewAddress(r.Address),
 		Signature: r.Signature,
-		BlockHash: r.BlockHash}, nil
+		BlockHash: r.BlockHash,
+	}, nil
 }
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool, originAddr swarm.Address) (*pb.Receipt, error) {
@@ -360,7 +361,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	// nextPeer attempts to lookup the next peer to push the chunk to, if there are overdrafted peers the boolean would signal a re-attempt
 	nextPeer := func() (peer swarm.Address, retry bool, err error) {
-
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers.All()...)
 
 		peer, err = ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
@@ -488,7 +488,6 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 }
 
 func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResult, doneChan <-chan struct{}, peer swarm.Address, ch swarm.Chunk, origin bool) {
-
 	var (
 		err     error
 		receipt pb.Receipt
@@ -689,7 +688,6 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 
 func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStampFn {
 	return func(c swarm.Chunk, s []byte) (swarm.Chunk, error) {
-
 		t := time.Now()
 
 		chunk, err := f(c, s)

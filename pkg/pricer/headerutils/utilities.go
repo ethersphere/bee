@@ -7,6 +7,7 @@ package headerutils
 import (
 	"encoding/binary"
 	"errors"
+
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -31,7 +32,6 @@ var (
 // Headers, utility functions
 
 func MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, error) {
-
 	chunkPriceInBytes := make([]byte, 8)
 
 	binary.BigEndian.PutUint64(chunkPriceInBytes, chunkPrice)
@@ -45,7 +45,6 @@ func MakePricingHeaders(chunkPrice uint64, addr swarm.Address) (p2p.Headers, err
 }
 
 func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uint8) (p2p.Headers, error) {
-
 	chunkPriceInBytes := make([]byte, 8)
 	chunkIndexInBytes := make([]byte, 1)
 
@@ -64,7 +63,6 @@ func MakePricingResponseHeaders(chunkPrice uint64, addr swarm.Address, index uin
 // ParsePricingHeaders used by responder to read address and price from stream headers
 // Returns an error if no target field attached or the contents of it are not readable
 func ParsePricingHeaders(receivedHeaders p2p.Headers) (swarm.Address, uint64, error) {
-
 	target, err := ParseTargetHeader(receivedHeaders)
 	if err != nil {
 		return swarm.ZeroAddress, 0, err

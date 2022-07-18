@@ -97,7 +97,6 @@ func TestAddress_MemberOf(t *testing.T) {
 	if a1.MemberOf(set2) {
 		t.Fatal("expected addr not member")
 	}
-
 }
 
 func TestCloser(t *testing.T) {

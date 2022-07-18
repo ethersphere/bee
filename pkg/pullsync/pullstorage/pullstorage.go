@@ -59,7 +59,6 @@ func New(storer storage.Storer) *PullStorer {
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
-
 	type result struct {
 		chs     []swarm.Address
 		topmost uint64
@@ -137,7 +136,6 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 
 		return &result{chs: chs, topmost: topmost}, nil
 	})
-
 	if err != nil {
 		s.metrics.SubscribePullsFailures.Inc()
 		return nil, 0, err

@@ -4,6 +4,4 @@
 
 package clef
 
-var (
-	ClefRecoveryMessage = clefRecoveryMessage
-)
+var ClefRecoveryMessage = clefRecoveryMessage

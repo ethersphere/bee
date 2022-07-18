@@ -105,7 +105,7 @@ func (s *Service) mountTechnicalDebug() {
 	})
 
 	if s.transaction != nil {
-		var handle = func(path string, handler http.Handler) {
+		handle := func(path string, handler http.Handler) {
 			s.router.Handle(path, handler)
 		}
 

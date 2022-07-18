@@ -19,10 +19,8 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-var (
-	// ErrNoCashout is the error if there has not been any cashout action for the chequebook
-	ErrNoCashout = errors.New("no prior cashout")
-)
+// ErrNoCashout is the error if there has not been any cashout action for the chequebook
+var ErrNoCashout = errors.New("no prior cashout")
 
 // CashoutService is the service responsible for managing cashout actions
 type CashoutService interface {

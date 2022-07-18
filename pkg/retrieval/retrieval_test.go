@@ -149,7 +149,6 @@ func TestDelivery(t *testing.T) {
 }
 
 func TestRetrieveChunk(t *testing.T) {
-
 	var (
 		logger = logging.New(io.Discard, 0)
 		pricer = pricermock.NewMockService(defaultPrice, defaultPrice)
@@ -529,7 +528,6 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		if !has {
 			t.Fatalf("forwarder node does not have chunk")
 		}
-
 	})
 }
 
@@ -540,6 +538,7 @@ type mockPeerSuggester struct {
 func (s mockPeerSuggester) EachPeer(_ topology.EachPeerFunc, _ topology.Filter) error {
 	return errors.New("not implemented")
 }
+
 func (s mockPeerSuggester) EachPeerRev(f topology.EachPeerFunc, _ topology.Filter) error {
 	return s.eachPeerRevFunc(f)
 }

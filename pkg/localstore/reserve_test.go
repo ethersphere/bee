@@ -397,7 +397,6 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 // TestDB_ReserveGC_EvictMaxPO tests that when unreserving a batch at
 // swarm.MaxPO+1 results in the correct behaviour.
 func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
-
 	var (
 		mtx        sync.Mutex
 		batchIDs   [][]byte
@@ -590,9 +589,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 }
 
 func TestReserveSize(t *testing.T) {
-	var (
-		chunkCount = 10
-	)
+	chunkCount := 10
 
 	t.Run("variadic put sync", func(t *testing.T) {
 		var (
@@ -641,12 +638,10 @@ func TestReserveSize(t *testing.T) {
 	})
 
 	t.Run("sequencial put sync", func(t *testing.T) {
-		var (
-			db = newTestDB(t, &Options{
-				Capacity:        100,
-				ReserveCapacity: 100,
-			})
-		)
+		db := newTestDB(t, &Options{
+			Capacity:        100,
+			ReserveCapacity: 100,
+		})
 		for i := 0; i < chunkCount; i++ {
 			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
 			_, err := db.Put(context.Background(), storage.ModePutSync, ch)

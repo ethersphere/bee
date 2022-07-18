@@ -4,6 +4,4 @@
 
 package pss
 
-var (
-	Contains = contains
-)
+var Contains = contains

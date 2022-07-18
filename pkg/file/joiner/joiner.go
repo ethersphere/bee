@@ -41,7 +41,7 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 		return nil, 0, err
 	}
 
-	var chunkData = rootChunk.Data()
+	chunkData := rootChunk.Data()
 
 	span := int64(binary.LittleEndian.Uint64(chunkData[:swarm.SpanSize]))
 
@@ -192,8 +192,10 @@ func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 
 	return branchSize
 }
 
-var errWhence = errors.New("seek: invalid whence")
-var errOffset = errors.New("seek: invalid offset")
+var (
+	errWhence = errors.New("seek: invalid whence")
+	errOffset = errors.New("seek: invalid offset")
+)
 
 func (j *joiner) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
@@ -219,7 +221,6 @@ func (j *joiner) Seek(offset int64, whence int) (int64, error) {
 	}
 	j.off = offset
 	return offset, nil
-
 }
 
 func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {

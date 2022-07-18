@@ -59,7 +59,6 @@ type reserveState struct {
 // expired batches, and computing a new radius.
 // Must be called under lock.
 func (s *store) saveBatch(b *postage.Batch) error {
-
 	if err := s.store.Put(valueKey(b.Value, b.ID), nil); err != nil {
 		return fmt.Errorf("batchstore: allocate batch %x: %w", b.ID, err)
 	}
@@ -80,11 +79,9 @@ func (s *store) saveBatch(b *postage.Batch) error {
 // cleanup evicts and removes expired batch.
 // Must be called under lock.
 func (s *store) cleanup() error {
-
 	var evictions []*postage.Batch
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
-
 		b, err := s.get(valueKeyToID(key))
 		if err != nil {
 			return false, err
@@ -128,11 +125,9 @@ func (s *store) cleanup() error {
 // batch storage radiuses are adjusted to the new radius.
 // Must be called under lock.
 func (s *store) computeRadius() error {
-
 	var totalCommitment int64
 
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err
@@ -193,7 +188,6 @@ func (s *store) computeRadius() error {
 
 // Unreserve is implementation of postage.Storer interface Unreserve method.
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
-
 	defer func(t time.Time) {
 		s.metrics.UnreserveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
 	}(time.Now())
@@ -211,7 +205,6 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	)
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
-
 		id := valueKeyToID(key)
 
 		b, err := s.get(id)
@@ -267,11 +260,9 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 // lowerBatchStorageRadius lowers the storage radius of batches to the current storage radius.
 // Must be called under lock.
 func (s *store) lowerBatchStorageRadius() error {
-
 	var updates []*postage.Batch
 
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
 		b := &postage.Batch{}
 		err := b.UnmarshalBinary(value)
 		if err != nil {

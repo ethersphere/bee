@@ -126,7 +126,6 @@ func TestPinIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 1, 0, 1)
-
 }
 
 func TestPinIndexesSync(t *testing.T) {

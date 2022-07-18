@@ -16,9 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto/eip712"
 )
 
-var (
-	ErrInvalidLength = errors.New("invalid signature length")
-)
+var ErrInvalidLength = errors.New("invalid signature length")
 
 type Signer interface {
 	// Sign signs data with ethereum prefix (eip191 type 0x45).

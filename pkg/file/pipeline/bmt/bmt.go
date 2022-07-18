@@ -12,9 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	errInvalidData = errors.New("bmt: invalid data")
-)
+var errInvalidData = errors.New("bmt: invalid data")
 
 type bmtWriter struct {
 	next pipeline.ChainWriter

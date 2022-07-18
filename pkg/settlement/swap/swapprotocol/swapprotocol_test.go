@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"math/big"
-
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -29,7 +28,6 @@ import (
 )
 
 func TestEmitCheques(t *testing.T) {
-
 	// Test negotiating / sending cheques
 
 	logger := logging.New(io.Discard, 0)
@@ -210,7 +208,6 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 }
 
 func TestCantEmitChequeDeductionMismatch(t *testing.T) {
-
 	logger := logging.New(io.Discard, 0)
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")

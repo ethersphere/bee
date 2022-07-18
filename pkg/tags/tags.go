@@ -55,7 +55,6 @@ type Tags struct {
 
 // NewTags creates a tags object
 func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
-
 	return &Tags{
 		tags:       &sync.Map{},
 		stateStore: stateStore,
@@ -72,7 +71,6 @@ func (ts *Tags) TagUidFunc() uint32 {
 
 // Create creates a new tag, stores it by a not yet in use UID and returns it
 func (ts *Tags) Create(total int64) (*Tag, error) {
-
 	exists := true
 
 	var uid uint32

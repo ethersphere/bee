@@ -141,7 +141,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	}
 
 	balance, err := s.proto.EmitCheque(ctx, peer, beneficiary, amount, s.chequebook.Issue)
-
 	if err != nil {
 		return
 	}
@@ -271,9 +270,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 
 // LastSentCheque returns the last sent cheque for the peer
 func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
-
 	common, known, err := s.addressbook.Beneficiary(peer)
-
 	if err != nil {
 		return nil, err
 	}
@@ -291,9 +288,7 @@ func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, 
 
 // LastReceivedCheque returns the last received cheque for the peer
 func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheque, error) {
-
 	common, known, err := s.addressbook.Chequebook(peer)
-
 	if err != nil {
 		return nil, err
 	}
@@ -382,8 +377,7 @@ func (s *Service) AddDeductionByPeer(peer swarm.Address) error {
 	return s.addressbook.AddDeductionBy(peer)
 }
 
-type NoOpSwap struct {
-}
+type NoOpSwap struct{}
 
 func (*NoOpSwap) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) {
 	return nil, postagecontract.ErrChainDisabled

@@ -23,7 +23,6 @@ import (
 )
 
 func TestSubdomains(t *testing.T) {
-
 	for _, tc := range []struct {
 		name                string
 		files               []f

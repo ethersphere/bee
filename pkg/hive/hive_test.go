@@ -38,7 +38,6 @@ var (
 )
 
 func TestHandlerRateLimit(t *testing.T) {
-
 	logger := logging.New(io.Discard, 0)
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
@@ -378,7 +377,6 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 			return new(pb.Peers)
 		},
 	)
-
 	if err != nil {
 		return nil, err
 	}

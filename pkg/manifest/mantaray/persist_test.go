@@ -60,11 +60,13 @@ func TestPersistIdempotence(t *testing.T) {
 	}
 }
 
-type addr [32]byte
-type mockLoadSaver struct {
-	mtx   sync.Mutex
-	store map[addr][]byte
-}
+type (
+	addr          [32]byte
+	mockLoadSaver struct {
+		mtx   sync.Mutex
+		store map[addr][]byte
+	}
+)
 
 func newMockLoadSaver() *mockLoadSaver {
 	return &mockLoadSaver{

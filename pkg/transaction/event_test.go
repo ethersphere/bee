@@ -15,9 +15,7 @@ import (
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
-var (
-	erc20ABI = transaction.ParseABIUnchecked(sw3abi.ERC20ABIv0_3_1)
-)
+var erc20ABI = transaction.ParseABIUnchecked(sw3abi.ERC20ABIv0_3_1)
 
 type transferEvent struct {
 	From  common.Address

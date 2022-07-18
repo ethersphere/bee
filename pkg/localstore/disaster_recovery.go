@@ -62,7 +62,6 @@ func recovery(db *DB) (chan locOrErr, error) {
 			return e, nil
 		},
 	})
-
 	if err != nil {
 		return nil, err
 	}

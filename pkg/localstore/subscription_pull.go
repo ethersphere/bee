@@ -61,7 +61,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 
 	// used to provide information from the iterator to
 	// stop subscription when until chunk descriptor is reached
-	var errStopSubscription = errors.New("stop subscription")
+	errStopSubscription := errors.New("stop subscription")
 
 	db.subscriptionsWG.Add(1)
 	go func() {

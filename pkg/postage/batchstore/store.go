@@ -84,7 +84,6 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 }
 
 func (s *store) GetReserveState() *postage.ReserveState {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -100,7 +99,6 @@ func (s *store) GetChainState() *postage.ChainState {
 
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
-
 	defer func(t time.Time) {
 		s.metrics.GetDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
 	}(time.Now())
@@ -128,7 +126,6 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
-
 	defer func(t time.Time) {
 		s.metrics.ExistsDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
 	}(time.Now())
@@ -152,7 +149,6 @@ func (s *store) Exists(id []byte) (bool, error) {
 
 // Iterate is implementation of postage.Storer interface Iterate method.
 func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -208,7 +204,6 @@ func (s *store) Save(batch *postage.Batch) error {
 // Update is implementation of postage.Storer interface Update method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -252,7 +247,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -286,7 +280,6 @@ func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
 
 // Reset is implementation of postage.Storer interface Reset method.
 func (s *store) Reset() error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 

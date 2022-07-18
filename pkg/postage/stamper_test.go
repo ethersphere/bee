@@ -119,5 +119,4 @@ func TestStamperStamping(t *testing.T) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})
-
 }

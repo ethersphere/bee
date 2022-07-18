@@ -67,7 +67,8 @@ func NewChequeStore(
 	chainID int64,
 	beneficiary common.Address,
 	transactionService transaction.Service,
-	recoverChequeFunc RecoverChequeFunc) ChequeStore {
+	recoverChequeFunc RecoverChequeFunc,
+) ChequeStore {
 	return &chequeStore{
 		store:              store,
 		factory:            factory,

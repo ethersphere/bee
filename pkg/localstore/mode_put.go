@@ -30,16 +30,13 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-var (
-	ErrOverwrite = errors.New("index already exists - double issuance on immutable batch")
-)
+var ErrOverwrite = errors.New("index already exists - double issuance on immutable batch")
 
 // Put stores Chunks to database and depending
 // on the Putter mode, it updates required indexes.
 // Put is required to implement storage.Store
 // interface.
 func (db *DB) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-
 	db.metrics.ModePut.Inc()
 	defer totalTimeMetric(db.metrics.TotalTimePut, time.Now())
 
@@ -275,7 +272,6 @@ func (db *DB) putRequest(
 	item shed.Item,
 	forcePin, forceCache bool,
 ) (exists bool, gcSizeChange, reserveSizeChange int64, err error) {
-
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
@@ -368,7 +364,6 @@ func (db *DB) putUpload(
 	binIDs map[uint8]uint64,
 	item shed.Item,
 ) (exists bool, gcSizeChange int64, err error) {
-
 	previous, err := db.postageIndexIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {

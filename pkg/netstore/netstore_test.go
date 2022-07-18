@@ -23,8 +23,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var testChunk = chunktesting.GenerateTestRandomChunk()
-var chunkStamp = postagetesting.MustNewStamp()
+var (
+	testChunk  = chunktesting.GenerateTestRandomChunk()
+	chunkStamp = postagetesting.MustNewStamp()
+)
 
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
@@ -64,7 +66,6 @@ func TestNetstoreRetrieval(t *testing.T) {
 	if !bytes.Equal(d.Data(), testChunk.Data()) {
 		t.Fatal("chunk data not equal to expected data")
 	}
-
 }
 
 // TestNetstoreNoRetrieval verifies that a chunk is not requested from the network

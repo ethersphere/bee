@@ -241,5 +241,4 @@ func benchmarkSplitter(b *testing.B, count int) {
 	if err != nil {
 		b.Fatal(err)
 	}
-
 }

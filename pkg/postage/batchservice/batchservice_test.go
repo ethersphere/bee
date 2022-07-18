@@ -28,8 +28,7 @@ var (
 	testTxHash = make([]byte, 32)
 )
 
-type mockListener struct {
-}
+type mockListener struct{}
 
 func (*mockListener) Listen(from uint64, updater postage.EventUpdater, _ *postage.ChainSnapshot) <-chan error {
 	return nil
@@ -222,7 +221,6 @@ func TestBatchServiceCreate(t *testing.T) {
 
 		validateNoBatch(t, testBatch, batchStore)
 	})
-
 }
 
 func TestBatchServiceTopUp(t *testing.T) {
@@ -464,6 +462,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 		}
 	})
 }
+
 func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 	testChainState := &postage.ChainState{
 		Block:        1,

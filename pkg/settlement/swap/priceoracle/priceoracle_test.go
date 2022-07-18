@@ -18,9 +18,7 @@ import (
 	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
 
-var (
-	priceOracleABI = transaction.ParseABIUnchecked(priceoracleabi.PriceOracleABIv0_1_0)
-)
+var priceOracleABI = transaction.ParseABIUnchecked(priceoracleabi.PriceOracleABIv0_1_0)
 
 func TestExchangeGetPrice(t *testing.T) {
 	priceOracleAddress := common.HexToAddress("0xabcd")

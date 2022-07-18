@@ -45,11 +45,9 @@ import (
 
 var _ storage.Storer = &DB{}
 
-var (
-	// ErrInvalidMode is retuned when an unknown Mode
-	// is provided to the function.
-	ErrInvalidMode = errors.New("invalid mode")
-)
+// ErrInvalidMode is retuned when an unknown Mode
+// is provided to the function.
+var ErrInvalidMode = errors.New("invalid mode")
 
 var (
 	// Default value for Capacity DB option.
@@ -220,7 +218,7 @@ type memFS struct {
 }
 
 func (m *memFS) Open(path string) (fs.File, error) {
-	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 type dirFS struct {
@@ -228,7 +226,7 @@ type dirFS struct {
 }
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func safeInit(rootPath, sharkyBasePath string, db *DB) error {
@@ -236,7 +234,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 	path := filepath.Join(rootPath, sharkyDirtyFileName)
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		// missing lock file implies a clean exit then create the file and return
-		return os.WriteFile(path, []byte{}, 0644)
+		return os.WriteFile(path, []byte{}, 0o644)
 	}
 	locOrErr, err := recovery(db)
 	if err != nil {
@@ -347,7 +345,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	} else {
 		sharkyBasePath := filepath.Join(path, "sharky")
 		if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-			err := os.Mkdir(sharkyBasePath, 0775)
+			err := os.Mkdir(sharkyBasePath, 0o775)
 			if err != nil {
 				return nil, err
 			}

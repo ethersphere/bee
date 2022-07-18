@@ -154,7 +154,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	}
 
 	if s.libp2pID != observedUnderlayAddrInfo.ID {
-		//NOTE eventually we will return error here, but for now we want to gather some statistics
+		// NOTE eventually we will return error here, but for now we want to gather some statistics
 		s.logger.Warningf("received peer ID %s does not match ours: %s", observedUnderlayAddrInfo.ID, s.libp2pID)
 	}
 

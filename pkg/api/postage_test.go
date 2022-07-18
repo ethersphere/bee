@@ -10,11 +10,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	"math/big"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/bigint"
@@ -175,7 +176,6 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 
 	t.Run("immutable header", func(t *testing.T) {
-
 		var immutable bool
 		contract := contractMock.New(
 			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string) ([]byte, error) {
@@ -382,6 +382,7 @@ func TestReserveState(t *testing.T) {
 		)
 	})
 }
+
 func TestChainState(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		cs := &postage.ChainState{
@@ -665,7 +666,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 // Tests the postageAccessHandler middleware for any set of operations that are guarded
 // by the postage semaphore
 func TestPostageAccessHandler(t *testing.T) {
-
 	type operation struct {
 		name     string
 		method   string
@@ -739,7 +739,6 @@ func TestPostageAccessHandler(t *testing.T) {
 
 	for _, op1 := range success {
 		for _, op2 := range failure {
-
 			t.Run(op1.name+"-"+op2.name, func(t *testing.T) {
 				wait, done := make(chan struct{}), make(chan struct{})
 				contract := contractMock.New(

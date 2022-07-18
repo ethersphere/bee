@@ -129,7 +129,6 @@ func TestDeliver(t *testing.T) {
 
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
-
 	privkey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)

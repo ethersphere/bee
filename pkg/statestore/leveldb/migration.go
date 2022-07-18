@@ -44,9 +44,7 @@ const (
 	dBSchemaBatchStore      = "batchstore"
 )
 
-var (
-	dbSchemaCurrent = dBSchemaBatchStore
-)
+var dbSchemaCurrent = dBSchemaBatchStore
 
 type migration struct {
 	name string               // name of the schema

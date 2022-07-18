@@ -28,7 +28,6 @@ const (
 
 // NewOverlayAddress constructs a Swarm Address from ECDSA public key.
 func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64, blockHash []byte) (swarm.Address, error) {
-
 	ethAddr, err := NewEthereumAddress(p)
 	if err != nil {
 		return swarm.ZeroAddress, err

@@ -15,9 +15,7 @@ const (
 	PathSeparator = '/' // path separator
 )
 
-var (
-	ZeroObfuscationKey []byte
-)
+var ZeroObfuscationKey []byte
 
 func init() {
 	ZeroObfuscationKey = make([]byte, 32)

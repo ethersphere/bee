@@ -131,7 +131,6 @@ func TestChequebookAddress(t *testing.T) {
 }
 
 func TestChequebookWithdraw(t *testing.T) {
-
 	txHash := common.HexToHash("0xfffff")
 
 	t.Run("ok", func(t *testing.T) {
@@ -190,7 +189,6 @@ func TestChequebookWithdraw(t *testing.T) {
 }
 
 func TestChequebookDeposit(t *testing.T) {
-
 	txHash := common.HexToHash("0xfffff")
 
 	t.Run("ok", func(t *testing.T) {
@@ -407,11 +405,9 @@ func TestChequebookLastCheques(t *testing.T) {
 	if !LastChequesEqual(got, expected) {
 		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
 	}
-
 }
 
 func TestChequebookLastChequesPeer(t *testing.T) {
-
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	beneficiary0 := common.HexToAddress("0xfff5")
 	beneficiary1 := common.HexToAddress("0xfff0")
@@ -421,7 +417,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	sig := make([]byte, 65)
 
 	lastSentChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
-
 		sig := make([]byte, 65)
 
 		lastSentCheque := &chequebook.SignedCheque{
@@ -437,7 +432,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	}
 
 	lastReceivedChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
-
 		lastReceivedCheque := &chequebook.SignedCheque{
 			Cheque: chequebook.Cheque{
 				Beneficiary:      beneficiary0,
@@ -477,11 +471,9 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
 	}
-
 }
 
 func TestChequebookCashout(t *testing.T) {
-
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	deployCashingHash := common.HexToHash("0xffff")
 
@@ -507,7 +499,6 @@ func TestChequebookCashout(t *testing.T) {
 }
 
 func TestChequebookCashout_CustomGas(t *testing.T) {
-
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	deployCashingHash := common.HexToHash("0xffff")
 
@@ -547,7 +538,6 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 }
 
 func TestChequebookCashoutStatus(t *testing.T) {
-
 	actionTxHash := common.HexToHash("0xacfe")
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	beneficiary := common.HexToAddress("0xfff0")
@@ -701,7 +691,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 }
 
 func LastChequesEqual(a, b *api.ChequebookLastChequesResponse) bool {
-
 	var state bool
 
 	for akeys := range a.LastCheques {

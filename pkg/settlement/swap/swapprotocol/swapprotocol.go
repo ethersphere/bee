@@ -139,7 +139,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
-
 	exchangeRate, deduction, err := s.priceOracle.CurrentRates()
 	if err != nil {
 		return p2p.Headers{}
@@ -233,7 +232,6 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		return w.WriteMsgWithContext(ctx, &pb.EmitCheque{
 			Cheque: encodedCheque,
 		})
-
 	})
 	if err != nil {
 		return nil, err

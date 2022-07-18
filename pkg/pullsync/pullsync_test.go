@@ -67,8 +67,8 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
 	}
-
 }
+
 func TestIncoming_WantNone(t *testing.T) {
 	var (
 		mockTopmost        = uint64(5)

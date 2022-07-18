@@ -87,7 +87,7 @@ func TestShallowestEmpty(t *testing.T) {
 }
 
 func TestNoPanicOnEmptyRemove(t *testing.T) {
-	var ps = pslice.New(4, base)
+	ps := pslice.New(4, base)
 
 	addr1 := test.RandomAddressAt(base, 2)
 	addr2 := test.RandomAddressAt(base, 2)
@@ -209,7 +209,6 @@ func TestIteratorError(t *testing.T) {
 
 // TestIterators tests that the EachBin and EachBinRev iterators work as expected.
 func TestIterators(t *testing.T) {
-
 	base := test.RandomAddress()
 
 	ps := pslice.New(4, base)
@@ -248,7 +247,6 @@ func TestIterators(t *testing.T) {
 }
 
 func TestBinPeers(t *testing.T) {
-
 	for _, tc := range []struct {
 		peersCount []int
 		label      string
@@ -270,9 +268,7 @@ func TestBinPeers(t *testing.T) {
 			label:      "full-bins",
 		},
 	} {
-
 		t.Run(tc.label, func(t *testing.T) {
-
 			base := test.RandomAddress()
 
 			binPeers := make([][]swarm.Address, len(tc.peersCount))
@@ -307,7 +303,6 @@ func TestBinPeers(t *testing.T) {
 }
 
 func isEqual(a, b []swarm.Address) bool {
-
 	if len(a) != len(b) {
 		return false
 	}
@@ -352,7 +347,6 @@ func TestIteratorsJumpStop(t *testing.T) {
 	// // check that the stop functionality works correctly
 	testIterator(t, ps, true, true, 1, []swarm.Address{peers[9]})
 	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[0]})
-
 }
 
 func testIteratorRev(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iterations int, peerseq []swarm.Address) {

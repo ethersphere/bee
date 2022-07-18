@@ -155,7 +155,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 		expLiveCalls []c      // expected live sync calls
 	}{
 		{
-			name: "1,1 - 1 call", cursors: []uint64{0, 1}, //the third cursor is to make sure we dont get a request for a bin we dont need
+			name: "1,1 - 1 call", cursors: []uint64{0, 1}, // the third cursor is to make sure we dont get a request for a bin we dont need
 			intervals:    "[[1 1]]",
 			expCalls:     []c{call(1, 1, 1)},
 			expLiveCalls: []c{call(1, 2, math.MaxUint64)},
@@ -328,7 +328,7 @@ func TestDepthChange(t *testing.T) {
 		depths         []uint8
 	}{
 		{
-			name:        "move peer around", //moves the peer from depth outside of depth then back into depth
+			name:        "move peer around", // moves the peer from depth outside of depth then back into depth
 			cursors:     []uint64{0, 0, 0, 0, 0},
 			binsSyncing: []uint8{3, 4}, binsNotSyncing: []uint8{1, 2},
 			syncReplies: []mockps.SyncReply{
@@ -601,6 +601,6 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 }
 
 type c struct {
-	b    uint8  //bin
-	f, t uint64 //from, to
+	b    uint8  // bin
+	f, t uint64 // from, to
 }

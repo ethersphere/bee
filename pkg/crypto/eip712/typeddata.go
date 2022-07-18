@@ -12,10 +12,13 @@ import (
 
 // type aliases to avoid importing "core" everywhere
 type TypedData = apitypes.TypedData
-type TypedDataDomain = apitypes.TypedDataDomain
-type Types = apitypes.Types
-type Type = apitypes.Type
-type TypedDataMessage = apitypes.TypedDataMessage
+
+type (
+	TypedDataDomain  = apitypes.TypedDataDomain
+	Types            = apitypes.Types
+	Type             = apitypes.Type
+	TypedDataMessage = apitypes.TypedDataMessage
+)
 
 // EncodeForSigning encodes the hash that will be signed for the given EIP712 data
 func EncodeForSigning(typedData *TypedData) ([]byte, error) {

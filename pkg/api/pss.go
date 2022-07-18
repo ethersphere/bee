@@ -118,7 +118,6 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) pssWsHandler(w http.ResponseWriter, r *http.Request) {
-
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  swarm.ChunkSize,
 		WriteBufferSize: swarm.ChunkSize,

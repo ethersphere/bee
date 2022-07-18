@@ -6,9 +6,7 @@ package transaction
 
 import "time"
 
-var (
-	StoredTransactionKey = storedTransactionKey
-)
+var StoredTransactionKey = storedTransactionKey
 
 func (s *Matcher) SetTimeNow(f func() time.Time) {
 	s.timeNow = f

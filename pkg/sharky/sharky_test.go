@@ -27,7 +27,7 @@ type dirFS struct {
 }
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func TestSingleRetrieval(t *testing.T) {

@@ -79,7 +79,6 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 
 // iterates over all peers from deepest bin to shallowest.
 func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
-
 	for i := s.maxBins - 1; i >= 0; i-- {
 
 		s.mu.RLock()
@@ -105,7 +104,6 @@ func (s *PSlice) EachBin(pf topology.EachPeerFunc) error {
 
 // EachBinRev iterates over all peers from shallowest bin to deepest.
 func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
-
 	for i := 0; i < s.maxBins; i++ {
 
 		s.mu.RLock()
@@ -130,7 +128,6 @@ func (s *PSlice) EachBinRev(pf topology.EachPeerFunc) error {
 }
 
 func (s *PSlice) BinSize(bin uint8) int {
-
 	if int(bin) >= s.maxBins {
 		return 0
 	}
@@ -142,7 +139,6 @@ func (s *PSlice) BinSize(bin uint8) int {
 }
 
 func (s *PSlice) BinPeers(bin uint8) []swarm.Address {
-
 	if int(bin) >= s.maxBins {
 		return nil
 	}
@@ -177,11 +173,9 @@ func (s *PSlice) ShallowestEmpty() (uint8, bool) {
 	defer s.mu.RUnlock()
 
 	for i, peers := range s.peers {
-
 		if len(peers) == 0 {
 			return uint8(i), false
 		}
-
 	}
 
 	return 0, true
@@ -241,7 +235,6 @@ func (s *PSlice) po(peer []byte) uint8 {
 
 // index returns if a peer exists and the index in the slice.
 func (s *PSlice) index(addr swarm.Address, po uint8) (bool, int) {
-
 	for i, peer := range s.peers[po] {
 		if peer.Equal(addr) {
 			return true, i

@@ -18,7 +18,6 @@ import (
 )
 
 func TestContainer(t *testing.T) {
-
 	base := test.RandomAddress()
 
 	t.Run("new container is empty container", func(t *testing.T) {

@@ -39,9 +39,7 @@ const (
 
 const logMore = false // enable this for more logging
 
-var (
-	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
-)
+var ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
 
 const (
 	storagePutTimeout = 5 * time.Second

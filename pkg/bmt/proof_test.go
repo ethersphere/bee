@@ -39,7 +39,6 @@ func TestProofCorrectness(t *testing.T) {
 				t.Fatal("incorrect segment in proof")
 			}
 		}
-
 	}
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, 128, 128))
@@ -163,7 +162,6 @@ func TestProofCorrectness(t *testing.T) {
 }
 
 func TestProof(t *testing.T) {
-
 	// BMT segment inclusion proofs
 	// Usage
 	buf := make([]byte, 4096)

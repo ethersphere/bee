@@ -32,10 +32,8 @@ const (
 	defaultBatchFactor = uint64(5) // // minimal number of blocks to sync at once
 )
 
-var (
-	// for testing, set externally
-	batchFactorOverridePublic = "5"
-)
+// for testing, set externally
+var batchFactorOverridePublic = "5"
 
 var (
 	postageStampABI = parseABI(postageabi.PostageStampABIv0_3_0)

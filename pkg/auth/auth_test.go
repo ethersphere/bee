@@ -90,7 +90,8 @@ func TestEnforce(t *testing.T) {
 			resource: "/pingpong/someone",
 			action:   "POST",
 			expected: true,
-		}, {
+		},
+		{
 			desc:     "success with query param",
 			role:     "creator",
 			resource: "/bzz?name=some-name",
@@ -120,13 +121,11 @@ func TestEnforce(t *testing.T) {
 	for _, tC := range tt {
 		t.Run(tC.desc, func(t *testing.T) {
 			apiKey, err := a.GenerateKey(tC.role, 1)
-
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
 			}
 
 			result, err := a.Enforce(apiKey, tC.resource, tC.action)
-
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
 			}

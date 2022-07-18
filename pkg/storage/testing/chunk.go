@@ -54,7 +54,6 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 
 	mockStamp = postagetesting.MustNewStamp()
-
 }
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.

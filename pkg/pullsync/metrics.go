@@ -14,7 +14,7 @@ type metrics struct {
 	Wanted        prometheus.Counter // number of chunks wanted
 	Delivered     prometheus.Counter // number of chunk deliveries
 	DbOps         prometheus.Counter // number of db ops
-	DuplicateRuid prometheus.Counter //number of duplicate RUID requests we got
+	DuplicateRuid prometheus.Counter // number of duplicate RUID requests we got
 }
 
 func newMetrics() metrics {

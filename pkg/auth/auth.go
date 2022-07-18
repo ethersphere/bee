@@ -50,7 +50,6 @@ func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authentica
 
 	[matchers]
 	m = (g(r.sub, p.sub) || r.sub == p.sub) && (keyMatch(r.obj, p.obj) || keyMatch(r.obj, '/v1'+p.obj)) && regexMatch(r.act, p.act)`)
-
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +291,6 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"creator", "/stewardship/*", "GET"},
 		{"consumer", "/stewardship/*", "PUT"},
 	})
-
 	if err != nil {
 		return err
 	}

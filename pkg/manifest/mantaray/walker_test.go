@@ -186,7 +186,6 @@ func TestWalk(t *testing.T) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
-
 			n := createTree(t, tc.toAdd)
 
 			walkedCount := 0
@@ -209,11 +208,9 @@ func TestWalk(t *testing.T) {
 			if len(tc.expected) != walkedCount {
 				t.Errorf("expected %d nodes, got %d", len(tc.expected), walkedCount)
 			}
-
 		})
 
 		t.Run(tc.name+"/with load save", func(t *testing.T) {
-
 			n := createTree(t, tc.toAdd)
 
 			ls := newMockLoadSaver()
@@ -245,7 +242,6 @@ func TestWalk(t *testing.T) {
 			if len(tc.expected) != walkedCount {
 				t.Errorf("expected %d nodes, got %d", len(tc.expected), walkedCount)
 			}
-
 		})
 	}
 }

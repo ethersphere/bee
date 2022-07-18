@@ -5,16 +5,16 @@
 package api
 
 import (
-	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/tracing"
 	"math"
 	"math/big"
 	"net/http"
 	"strconv"
+
+	"github.com/ethersphere/bee/pkg/tracing"
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -337,7 +337,7 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
-	ChainTip     uint64         `json:"chainTip"`     // ChainTip (block height)
+	ChainTip     uint64         `json:"chainTip"`     // ChainTip (block height).
 	Block        uint64         `json:"block"`        // The block number of the last postage event.
 	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
 	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
@@ -369,7 +369,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	state := s.batchStore.GetChainState()
-	chainTip, err := s.chainBackend.BlockNumber(context.Background())
+	chainTip, err := s.chainBackend.BlockNumber(r.Context())
 	if err != nil {
 		logger.Debugf("chainstate: block number: %v", err)
 		logger.Error("chainstate: block number unavailable")

@@ -184,7 +184,6 @@ func TestDB_gcIndex(t *testing.T) {
 	})
 
 	t.Run("random chunk request", func(t *testing.T) {
-
 		rand.Shuffle(len(chunks), func(i, j int) {
 			chunks[i], chunks[j] = chunks[j], chunks[i]
 		})

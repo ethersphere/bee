@@ -43,7 +43,6 @@ func TestTracing(t *testing.T) {
 	var handledTracingSpan string
 	handled := make(chan struct{})
 	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, _ p2p.Peer, _ p2p.Stream) error {
-
 		span, _, _ := tracer1.StartSpanFromContext(ctx, "test-p2p-handler", nil)
 		defer span.Finish()
 

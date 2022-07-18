@@ -28,7 +28,6 @@ func TestLoadSave(t *testing.T) {
 	store := mock.NewStorer()
 	ls := loadsave.New(store, pipelineFn(store))
 	ref, err := ls.Save(context.Background(), data)
-
 	if err != nil {
 		t.Fatal(err)
 	}

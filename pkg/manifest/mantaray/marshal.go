@@ -132,7 +132,7 @@ func (n *Node) MarshalBinary() (bytes []byte, err error) {
 
 	indexBytes := make([]byte, 32)
 
-	var index = &bitsForBytes{}
+	index := &bitsForBytes{}
 	for k := range n.forks {
 		index.set(k)
 	}

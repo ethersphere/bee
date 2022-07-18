@@ -87,7 +87,6 @@ func (ps *service) Add(st *StampIssuer) error {
 
 // add adds a stamp issuer to the active issuers and returns false if it is already present.
 func (ps *service) add(st *StampIssuer) bool {
-
 	for _, v := range ps.issuers {
 		if bytes.Equal(st.data.BatchID, v.data.BatchID) {
 			return false

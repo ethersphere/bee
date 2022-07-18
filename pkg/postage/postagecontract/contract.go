@@ -140,7 +140,6 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 }
 
 func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner common.Address, initialBalance *big.Int, depth uint8, nonce common.Hash, immutable bool) (*types.Receipt, error) {
-
 	callData, err := postageStampABI.Pack("createBatch", owner, initialBalance, depth, BucketDepth, nonce, immutable)
 	if err != nil {
 		return nil, err
@@ -155,7 +154,6 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 }
 
 func (c *postageContract) sendTopUpBatchTransaction(ctx context.Context, batchID []byte, topUpAmount *big.Int) (*types.Receipt, error) {
-
 	callData, err := postageStampABI.Pack("topUp", common.BytesToHash(batchID), topUpAmount)
 	if err != nil {
 		return nil, err
@@ -170,7 +168,6 @@ func (c *postageContract) sendTopUpBatchTransaction(ctx context.Context, batchID
 }
 
 func (c *postageContract) sendDiluteTransaction(ctx context.Context, batchID []byte, newDepth uint8) (*types.Receipt, error) {
-
 	callData, err := postageStampABI.Pack("increaseDepth", common.BytesToHash(batchID), newDepth)
 	if err != nil {
 		return nil, err
@@ -206,7 +203,6 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
-
 	if depth <= BucketDepth {
 		return nil, ErrInvalidDepth
 	}
@@ -270,7 +266,6 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 }
 
 func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpAmount *big.Int) error {
-
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
 		return err
@@ -306,7 +301,6 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 }
 
 func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error {
-
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
 		return err
@@ -379,9 +373,11 @@ type noOpPostageContract struct{}
 func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) ([]byte, error) {
 	return nil, ErrChainDisabled
 }
+
 func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) error {
 	return ErrChainDisabled
 }
+
 func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) error {
 	return ErrChainDisabled
 }

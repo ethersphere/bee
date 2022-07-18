@@ -196,6 +196,7 @@ func (m *MockStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swa
 	}
 	return nil
 }
+
 func (m *MockStorer) GetModePut(addr swarm.Address) (mode storage.ModePut) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -273,7 +274,6 @@ func (m *MockStorer) SubscribePull(ctx context.Context, bin uint8, since, until 
 				return
 			}
 		}
-
 	}()
 	return c, m.quit, stop
 }

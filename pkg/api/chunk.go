@@ -31,7 +31,6 @@ type chunkAddressResponse struct {
 func (s *Service) processUploadRequest(
 	r *http.Request,
 ) (ctx context.Context, tag *tags.Tag, putter storage.Putter, waitFn func() error, err error) {
-
 	if h := r.Header.Get(SwarmTagHeader); h != "" {
 		tag, err = s.getTag(h)
 		if err != nil {

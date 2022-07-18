@@ -35,7 +35,6 @@ type settlementsResponse struct {
 }
 
 func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
-
 	settlementsSent, err := s.swap.SettlementsSent()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debugf("sent settlements: %v", err)
@@ -159,7 +158,6 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Service) settlementsHandlerPseudosettle(w http.ResponseWriter, r *http.Request) {
-
 	settlementsSent, err := s.pseudosettle.SettlementsSent()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantSettlements)

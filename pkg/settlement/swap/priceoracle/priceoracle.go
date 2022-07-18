@@ -18,9 +18,7 @@ import (
 	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
 
-var (
-	errDecodeABI = errors.New("could not decode abi data")
-)
+var errDecodeABI = errors.New("could not decode abi data")
 
 type service struct {
 	logger             logging.Logger
@@ -42,9 +40,7 @@ type Service interface {
 	Start()
 }
 
-var (
-	priceOracleABI = transaction.ParseABIUnchecked(priceoracleabi.PriceOracleABIv0_1_0)
-)
+var priceOracleABI = transaction.ParseABIUnchecked(priceoracleabi.PriceOracleABIv0_1_0)
 
 func New(logger logging.Logger, priceOracleAddress common.Address, transactionService transaction.Service, timeDivisor int64) Service {
 	return &service{

@@ -24,10 +24,8 @@ const (
 	streamName      = "pricing"
 )
 
-var (
-	// ErrThresholdTooLow says that the proposed payment threshold is too low for even a single reserve.
-	ErrThresholdTooLow = errors.New("threshold too low")
-)
+// ErrThresholdTooLow says that the proposed payment threshold is too low for even a single reserve.
+var ErrThresholdTooLow = errors.New("threshold too low")
 
 var _ Interface = (*Service)(nil)
 

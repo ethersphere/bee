@@ -182,7 +182,6 @@ func NewAccounting(
 	Pricing pricing.Interface,
 	refreshRate *big.Int,
 	p2pService p2p.Service,
-
 ) (*Accounting, error) {
 	return &Accounting{
 		accountingPeers:  make(map[string]*accountingPeer),
@@ -615,7 +614,6 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 
 		return false, nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -643,7 +641,6 @@ func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
 
 		return false, nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -734,7 +731,6 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 
 // peerLatentDebt returns the sum of the positive part of the outstanding balance, shadow reserve and the ghost balance
 func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
-
 	accountingPeer := a.getAccountingPeer(peer)
 
 	balance := new(big.Int)
@@ -841,7 +837,6 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	if err != nil {
 		a.logger.Warningf("accounting: notifypaymentsent failed to decrease originated balance: %v", err)
 	}
-
 }
 
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
@@ -1110,7 +1105,6 @@ func (d *debitAction) Cleanup() {
 }
 
 func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64, error) {
-
 	debt, err := a.peerLatentDebt(peer)
 	if err != nil {
 		return 0, err
@@ -1132,7 +1126,6 @@ func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64
 }
 
 func (a *Accounting) blocklist(peer swarm.Address, multiplier int64, reason string) error {
-
 	disconnectFor, err := a.blocklistUntil(peer, multiplier)
 	if err != nil {
 		return a.p2p.Blocklist(peer, 1*time.Minute, reason)
@@ -1166,7 +1159,6 @@ func (a *Accounting) Connect(peer swarm.Address) {
 
 // decreaseOriginatedBalanceTo decreases the originated balance to provided limit or 0 if limit is positive
 func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.Int) error {
-
 	zero := big.NewInt(0)
 
 	toSet := new(big.Int).Set(limit)
@@ -1194,7 +1186,6 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 
 // decreaseOriginatedBalanceTo decreases the originated balance by provided amount even below 0
 func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big.Int) error {
-
 	originatedBalance, err := a.OriginatedBalance(peer)
 	if err != nil && !errors.Is(err, ErrPeerNoBalance) {
 		return fmt.Errorf("failed to load balance: %w", err)

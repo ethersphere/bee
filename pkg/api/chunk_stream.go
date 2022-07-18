@@ -26,7 +26,6 @@ const streamReadTimeout = 15 * time.Minute
 var successWsMsg = []byte{}
 
 func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
-
 	_, tag, putter, wait, err := s.processUploadRequest(r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())

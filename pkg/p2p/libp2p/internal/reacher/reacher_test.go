@@ -26,7 +26,6 @@ var defaultOptions = reacher.Options{
 }
 
 func TestPingSuccess(t *testing.T) {
-
 	done := make(chan struct{})
 
 	for _, tc := range []struct {
@@ -60,7 +59,6 @@ func TestPingSuccess(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			mock := newMock(tc.pingFunc, tc.reachableFunc)
 
 			r := reacher.New(mock, mock, &defaultOptions)
@@ -80,7 +78,6 @@ func TestPingSuccess(t *testing.T) {
 }
 
 func TestDisconnected(t *testing.T) {
-
 	var (
 		disconnectedOverlay = test.RandomAddress()
 		disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")

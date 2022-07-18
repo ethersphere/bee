@@ -113,7 +113,6 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	if ok {
 		t.Fatal("address should not be blocked")
 	}
-
 }
 
 func TestPruneBeforeBlock(t *testing.T) {
@@ -151,7 +150,6 @@ func TestPruneBeforeBlock(t *testing.T) {
 	if ok {
 		t.Fatal("address should not be blocked")
 	}
-
 }
 
 type blocklister struct {

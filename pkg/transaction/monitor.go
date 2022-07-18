@@ -18,8 +18,10 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 )
 
-var ErrTransactionCancelled = errors.New("transaction cancelled")
-var ErrMonitorClosed = errors.New("monitor closed")
+var (
+	ErrTransactionCancelled = errors.New("transaction cancelled")
+	ErrMonitorClosed        = errors.New("monitor closed")
+)
 
 // Monitor is a nonce-based watcher for transaction confirmations.
 // Instead of watching transactions individually, the senders nonce is monitored and transactions are checked based on this.

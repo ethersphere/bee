@@ -285,7 +285,7 @@ FETCH:
 	// go on normally.
 	if !feedDereferenced {
 		if l, err := s.manifestFeed(ctx, m); err == nil {
-			//we have a feed manifest here
+			// we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
 				logger.Debugf("bzz download: feed lookup: %v", err)
@@ -418,8 +418,7 @@ func (s *Service) serveManifestEntry(
 	mtdt := manifestEntry.Metadata()
 	if fname, ok := mtdt[manifest.EntryMetadataFilenameKey]; ok {
 		fname = filepath.Base(fname) // only keep the file name
-		additionalHeaders["Content-Disposition"] =
-			[]string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
+		additionalHeaders["Content-Disposition"] = []string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders["Content-Type"] = []string{mimeType}

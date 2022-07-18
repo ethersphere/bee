@@ -104,5 +104,4 @@ func TestCORSHeaders(t *testing.T) {
 			}
 		})
 	}
-
 }

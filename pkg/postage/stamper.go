@@ -13,10 +13,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	// ErrBucketFull is the error when a collision bucket is full.
-	ErrBucketFull = errors.New("bucket full")
-)
+// ErrBucketFull is the error when a collision bucket is full.
+var ErrBucketFull = errors.New("bucket full")
 
 // Stamper can issue stamps from the given address.
 type Stamper interface {

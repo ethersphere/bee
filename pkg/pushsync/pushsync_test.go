@@ -116,7 +116,6 @@ func TestPushClosest(t *testing.T) {
 // Also the storer node initiates a pushsync to N closest nodes of the chunk as it's sending back the receipt.
 // The second storer should only store it and not forward it. The balance of all nodes is tested.
 func TestReplicateBeforeReceipt(t *testing.T) {
-
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000") // base 0111
 
@@ -300,7 +299,6 @@ func TestPushChunkToClosest(t *testing.T) {
 }
 
 func TestPushChunkToNextClosest(t *testing.T) {
-
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
@@ -318,7 +316,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	psPeer2, storerPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
 	defer storerPeer2.Close()
 
-	var fail = true
+	fail := true
 	var lock sync.Mutex
 
 	recorder := streamtest.New(
@@ -427,7 +425,6 @@ func TestPushChunkToNextClosest(t *testing.T) {
 }
 
 func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
-
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
@@ -645,7 +642,6 @@ func TestHandler(t *testing.T) {
 }
 
 func TestSignsReceipt(t *testing.T) {
-
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
@@ -711,7 +707,6 @@ func TestPeerSkipList(t *testing.T) {
 }
 
 func TestPushChunkToClosestSkipError(t *testing.T) {
-
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 

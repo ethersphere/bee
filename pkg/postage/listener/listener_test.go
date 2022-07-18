@@ -22,8 +22,10 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/listener"
 )
 
-var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
-var addr common.Address = common.HexToAddress("abcdef")
+var (
+	hash common.Hash    = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
+	addr common.Address = common.HexToAddress("abcdef")
+)
 
 var postageStampAddress common.Address = common.HexToAddress("eeee")
 

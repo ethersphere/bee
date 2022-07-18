@@ -76,7 +76,6 @@ func TestMatchesSender(t *testing.T) {
 	})
 
 	t.Run("sender does not match", func(t *testing.T) {
-
 		block := common.HexToHash("0x1")
 		wrongParent := common.HexToHash("0x2")
 
@@ -110,7 +109,6 @@ func TestMatchesSender(t *testing.T) {
 	})
 
 	t.Run("sender matches signer type", func(t *testing.T) {
-
 		trxBlock := common.HexToHash("0x2")
 		nextBlockHeader := &types.Header{
 			ParentHash: trxBlock,
@@ -192,7 +190,6 @@ func TestMatchesSender(t *testing.T) {
 	})
 
 	t.Run("cached", func(t *testing.T) {
-
 		trxBlock := common.HexToHash("0x2")
 		nextBlockHeader := &types.Header{
 			ParentHash: trxBlock,

@@ -62,7 +62,6 @@ type Options struct {
 }
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reacher {
-
 	r := &reacher{
 		work:     make(chan struct{}, 1),
 		quit:     make(chan struct{}),
@@ -89,7 +88,6 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reach
 }
 
 func (r *reacher) manage() {
-
 	defer r.wg.Done()
 
 	c := make(chan *peer)
@@ -142,7 +140,6 @@ func (r *reacher) manage() {
 }
 
 func (r *reacher) ping(c chan *peer, ctx context.Context) {
-
 	defer r.wg.Done()
 
 	for p := range c {

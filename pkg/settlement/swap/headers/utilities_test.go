@@ -34,7 +34,6 @@ func TestParseSettlementResponseHeaders(t *testing.T) {
 }
 
 func TestMakeSettlementHeaders(t *testing.T) {
-
 	makeHeaders := swap.MakeSettlementHeaders(big.NewInt(906000), big.NewInt(5348))
 
 	expectedHeaders := p2p.Headers{
@@ -60,7 +59,6 @@ func TestParseExchangeHeader(t *testing.T) {
 	if parsedExchange.Cmp(big.NewInt(906000)) != 0 {
 		t.Fatalf("Allowance mismatch, got %v, want %v", parsedExchange, big.NewInt(906000))
 	}
-
 }
 
 func TestParseDeductionHeader(t *testing.T) {
@@ -76,5 +74,4 @@ func TestParseDeductionHeader(t *testing.T) {
 	if parsedDeduction.Cmp(big.NewInt(5348)) != 0 {
 		t.Fatalf("Allowance mismatch, got %v, want %v", parsedDeduction, big.NewInt(5348))
 	}
-
 }

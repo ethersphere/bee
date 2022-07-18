@@ -220,7 +220,6 @@ func TestFeed_Post(t *testing.T) {
 			)
 		})
 	})
-
 }
 
 type factoryMock struct {
