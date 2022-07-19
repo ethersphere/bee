@@ -336,7 +336,7 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
-	ChainTip     uint64         `json:"chainTip"`     // ChainTip (block height)
+	ChainTip     uint64         `json:"chainTip"`     // ChainTip (block height).
 	Block        uint64         `json:"block"`        // The block number of the last postage event.
 	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
 	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
