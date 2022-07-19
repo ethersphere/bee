@@ -198,7 +198,7 @@ func New(
 	}
 
 	if k.peerFilter == nil {
-		k.peerFilter = k.peerUnreachable
+		k.peerFilter = k.collector.IsUnreachable
 	}
 
 	if k.bitSuffixLength > 0 {
@@ -842,19 +842,6 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc, k *Kad) b
 
 		return size >= oversaturationAmount
 	}
-}
-
-// peerUnreachable returns true if the addr is not reachable.
-func (k *Kad) peerUnreachable(addr swarm.Address) bool {
-	ss := k.collector.Inspect(addr)
-	// if there is no entry yet, consider the peer as not reachable
-	if ss == nil {
-		return true
-	}
-	if ss.Reachability != p2p.ReachabilityStatusPublic {
-		return true
-	}
-	return false
 }
 
 // recalcDepth calculates and returns the kademlia depth.
