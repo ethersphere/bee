@@ -232,6 +232,48 @@ func TestPostageGetStamps(t *testing.T) {
 	})
 }
 
+func TestPostageGetNonExistingStamps(t *testing.T) {
+	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: nil, BatchStore: nil, BlockTime: nil})
+
+	t.Run("expired stamp", func(t *testing.T) {
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{Stamps: []api.PostageStampResponse{}}),
+		)
+	})
+}
+
+func TestPostageGetAllStamps(t *testing.T) {
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	si := postage.NewStampIssuer("", "", b.ID, big.NewInt(3), 11, 10, 1000, true)
+	mp := mockpost.New(mockpost.WithIssuer(si))
+	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
+	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
+	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
+
+	t.Run("single stamp", func(t *testing.T) {
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
+				Stamps: []api.PostageStampResponse{
+					{
+						BatchID:       b.ID,
+						Utilization:   si.Utilization(),
+						Usable:        true,
+						Label:         si.Label(),
+						Depth:         si.Depth(),
+						Amount:        bigint.Wrap(si.Amount()),
+						BucketDepth:   si.BucketDepth(),
+						BlockNumber:   si.BlockNumber(),
+						ImmutableFlag: si.ImmutableFlag(),
+						Exists:        true,
+						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+					},
+				},
+			}),
+		)
+	})
+}
+
 // TestGetAllBatches tests that the endpoint that returns all living
 // batches functions correctly.
 func TestGetAllBatches(t *testing.T) {
