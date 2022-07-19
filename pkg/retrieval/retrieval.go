@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
+	"github.com/ethersphere/bee/pkg/ratelimit"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/skippeers"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -40,7 +41,9 @@ const (
 	streamName      = "retrieval"
 )
 
-var _ Interface = (*Service)(nil)
+var (
+	errRateLimitExceeded = errors.New("rate limit exceeded")
+)
 
 type Interface interface {
 	RetrieveChunk(ctx context.Context, addr swarm.Address, origin bool) (chunk swarm.Chunk, err error)
@@ -66,6 +69,7 @@ type Service struct {
 	tracer        *tracing.Tracer
 	caching       bool
 	validStamp    postage.ValidStampFn
+	limiter       *ratelimit.Limiter
 }
 
 func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
@@ -81,6 +85,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		tracer:        tracer,
 		caching:       forwarderCaching,
 		validStamp:    validStamp,
+		limiter:       ratelimit.New(time.Minute, 60), // allow a burst of 60 chunks per minute, on average 1 chunk/s
 	}
 }
 
@@ -392,6 +397,11 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+
+	if !s.limiter.Allow(p.Address.ByteString(), 1) {
+		return fmt.Errorf("peer %s: %w", p.Address.String(), errRateLimitExceeded)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
