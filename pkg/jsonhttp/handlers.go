@@ -31,10 +31,13 @@ func HandleMethods(methods map[string]http.Handler, body string, contentType str
 		allow = append(allow, k)
 	}
 	sort.Strings(allow)
-	w.Header().Set("Allow", strings.Join(allow, ", ")) // This header must be sent if the server responds with a 405 Method Not Allowed status code to indicate which request methods can be used. Ref https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Allow
 
+	// true if not COR request
+	if len(w.Header().Get("Access-Control-Allow-Methods")) == 0 {
+		w.Header().Set("Allow", strings.Join(allow, ", "))
+	}
 	if r.Method == http.MethodOptions {
-		if len(w.Header().Get("Access-Control-Allow-Methods")) == 0 {
+		if len(w.Header().Get("Access-Control-Allow-Methods")) > 0 {
 			w.Header().Set("Access-Control-Allow-Methods", strings.Join(allow, ", "))
 		}
 		w.WriteHeader(http.StatusNoContent)

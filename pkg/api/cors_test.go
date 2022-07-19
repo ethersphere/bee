@@ -111,9 +111,10 @@ func TestCORSHeaders(t *testing.T) {
 // TestCors tests whether CORs work correctly with OPTIONS method
 func TestCors(t *testing.T) {
 
+	const origin = "example.com"
 	for _, tc := range []struct {
-		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
 		endpoint        string
+		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
 	}{
 		{
 			endpoint:        "tags",
@@ -144,9 +145,12 @@ func TestCors(t *testing.T) {
 		},
 	} {
 		t.Run(tc.endpoint, func(t *testing.T) {
-			client, _, _, _ := newTestServer(t, testServerOptions{})
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				CORSAllowedOrigins: []string{origin},
+			})
 
-			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
+			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent,
+				jsonhttptest.WithRequestHeader("Origin", origin))
 
 			allowedMethods := r.Get("Access-Control-Allow-Methods")
 
