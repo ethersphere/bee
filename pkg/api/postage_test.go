@@ -406,18 +406,6 @@ func TestChainState(t *testing.T) {
 		)
 	})
 
-	t.Run("empty", func(t *testing.T) {
-		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
-			BatchStore: mock.New(),
-			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
-				return 0, nil
-			})},
-		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{}),
-		)
-	})
 }
 
 func TestPostageTopUpStamp(t *testing.T) {
