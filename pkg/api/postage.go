@@ -5,7 +5,6 @@
 package api
 
 import (
-	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -369,7 +368,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	state := s.batchStore.GetChainState()
-	chainTip, err := s.chainBackend.BlockNumber(context.Background())
+	chainTip, err := s.chainBackend.BlockNumber(r.Context())
 	if err != nil {
 		logger.Debugf("chainstate: block number: %v", err)
 		logger.Error("chainstate: block number unavailable")
