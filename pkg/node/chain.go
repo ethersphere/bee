@@ -417,7 +417,7 @@ func (m noOpChainBackend) BlockNumber(context.Context) (uint64, error) {
 	return 4, nil
 }
 func (m noOpChainBackend) BalanceAt(context.Context, common.Address, *big.Int) (*big.Int, error) {
-	panic("chain no op: BalanceAt")
+	return nil, postagecontract.ErrChainDisabled
 }
 func (m noOpChainBackend) NonceAt(context.Context, common.Address, *big.Int) (uint64, error) {
 	panic("chain no op: NonceAt")
