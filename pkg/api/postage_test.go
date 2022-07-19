@@ -233,7 +233,10 @@ func TestPostageGetStamps(t *testing.T) {
 }
 
 func TestPostageGetNonExistingStamps(t *testing.T) {
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: nil, BatchStore: nil, BlockTime: nil})
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	mp := mockpost.New()
+	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: nil, BlockTime: big.NewInt(2)})
 
 	t.Run("expired stamp", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
