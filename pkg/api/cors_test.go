@@ -148,7 +148,7 @@ func TestCors(t *testing.T) {
 
 			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
 
-			allowedMethods := r.Get("Allow")
+			allowedMethods := r.Get("Access-Control-Allow-Methods")
 
 			if allowedMethods != tc.expectedMethods {
 				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
