@@ -35,11 +35,10 @@ func HandleMethods(methods map[string]http.Handler, body string, contentType str
 	// true if not COR request
 	if len(w.Header().Get("Access-Control-Allow-Methods")) == 0 {
 		w.Header().Set("Allow", strings.Join(allow, ", "))
+	} else {
+		w.Header().Set("Access-Control-Allow-Methods", strings.Join(allow, ", "))
 	}
 	if r.Method == http.MethodOptions {
-		if len(w.Header().Get("Access-Control-Allow-Methods")) > 0 {
-			w.Header().Set("Access-Control-Allow-Methods", strings.Join(allow, ", "))
-		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

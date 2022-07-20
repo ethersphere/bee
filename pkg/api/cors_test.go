@@ -160,3 +160,64 @@ func TestCors(t *testing.T) {
 		})
 	}
 }
+
+// TestCorsStatus tests whether CORs returns correct allowed method if wrong method is called
+func TestCorsStatus(t *testing.T) {
+
+	const origin = "example.com"
+	for _, tc := range []struct {
+		endpoint          string
+		notAllowedMethods string // notAllowedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are method which is not supported by endpoint
+		allowedMethods    string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
+	}{
+		{
+			endpoint:          "tags",
+			notAllowedMethods: http.MethodDelete,
+			allowedMethods:    "GET, POST",
+		},
+		{
+			endpoint:          "bzz",
+			notAllowedMethods: http.MethodDelete,
+			allowedMethods:    "POST",
+		},
+		{
+			endpoint:          "bzz/0101011",
+			notAllowedMethods: http.MethodDelete,
+			allowedMethods:    "GET, PATCH",
+		},
+		{
+			endpoint:          "chunks",
+			notAllowedMethods: http.MethodDelete,
+			allowedMethods:    "POST",
+		},
+		{
+			endpoint:          "chunks/0101011",
+			notAllowedMethods: http.MethodPost,
+			allowedMethods:    "DELETE, GET, HEAD",
+		},
+		{
+			endpoint:          "bytes",
+			notAllowedMethods: http.MethodDelete,
+			allowedMethods:    "POST",
+		},
+		{
+			endpoint:          "bytes/0121012",
+			notAllowedMethods: http.MethodDelete,
+			allowedMethods:    "GET, HEAD",
+		},
+	} {
+		t.Run(tc.endpoint, func(t *testing.T) {
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				CORSAllowedOrigins: []string{origin},
+			})
+
+			r := jsonhttptest.Request(t, client, tc.notAllowedMethods, "/"+tc.endpoint, http.StatusMethodNotAllowed,
+				jsonhttptest.WithRequestHeader("Origin", origin))
+
+			allowedMethods := r.Get("Access-Control-Allow-Methods")
+			if allowedMethods != tc.allowedMethods {
+				t.Fatalf("expects %s and got %s", tc.notAllowedMethods, allowedMethods)
+			}
+		})
+	}
+}
