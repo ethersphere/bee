@@ -113,6 +113,22 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		flightRoute = addr.String() + originSuffix
 	}
 
+	v := ctx.Value(requestSourceContextKey{})
+
+	// allow upstream requests if this node is the source of the request
+	// i.e. the request was not forwarded, to improve retrieval
+	// if this node is the closest to he chunk but still does not contain it
+	var (
+		sourcePeerAddr swarm.Address
+		allowUpstream  = true
+	)
+	if src, ok := v.(string); ok {
+		sourcePeerAddr, _ = swarm.ParseHexAddress(src)
+		// do not allow upstream requests if the request was forwarded to this node
+		// to avoid the request loops
+		allowUpstream = false
+	}
+
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
@@ -122,6 +138,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 		}
 
 		sp := new(skippeers.List)
+
+		if !sourcePeerAddr.IsZero() {
+			sp.Add(sourcePeerAddr)
+		}
 
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
 		defer ticker.Stop()
@@ -155,7 +175,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 					// cancel the goroutine just with the timeout
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
-					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
+					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin, allowUpstream)
 					select {
 					case resultC <- retrievalResult{
 						chunk:     chunk,
@@ -248,22 +268,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr swarm.Address, origin 
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skippeers.List, originated bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skippeers.List, originated, allowUpstream bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
 	startTimer := time.Now()
-	v := ctx.Value(requestSourceContextKey{})
-	// allow upstream requests if this node is the source of the request
-	// i.e. the request was not forwarded, to improve retrieval
-	// if this node is the closest to he chunk but still does not contain it
-	allowUpstream := true
-	if src, ok := v.(string); ok {
-		sourcePeerAddr, err := swarm.ParseHexAddress(src)
-		if err == nil {
-			sp.Add(sourcePeerAddr)
-		}
-		// do not allow upstream requests if the request was forwarded to this node
-		// to avoid the request loops
-		allowUpstream = false
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
