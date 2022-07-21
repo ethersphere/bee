@@ -523,7 +523,7 @@ func TestClosestPeer(t *testing.T) {
 		}
 	})
 
-	t.Run("skip closest", func(t *testing.T) {
+	t.Run("second closest", func(t *testing.T) {
 		addr, err := ret.ClosestPeer(addr1, []swarm.Address{addr1}, false)
 		if err != nil {
 			t.Fatal("closest peer", err)
@@ -533,7 +533,7 @@ func TestClosestPeer(t *testing.T) {
 		}
 	})
 
-	t.Run("not closest", func(t *testing.T) {
+	t.Run("closest is further than base addr", func(t *testing.T) {
 		_, err := ret.ClosestPeer(srvAd, nil, false)
 		if err != topology.ErrNotFound {
 			t.Fatal("closest peer", err)
