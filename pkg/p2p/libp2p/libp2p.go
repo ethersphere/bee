@@ -207,19 +207,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	opts = append(opts, transports...)
 
-	//resourceManager := func() network.ResourceManager {
-	//limiter := rcmgr.NewDefaultLimiter()
-	//libp2p.SetDefaultServiceLimits(limiter)
-
-	//mgr, err := rcmgr.NewResourceManager(limiter)
-	//if err != nil {
-	//panic(err)
-	//}
-	//return mgr
-	//}
-
-	//opts = append(opts, libp2p.ResourceManager(resourceManager()))
-
 	if o.hostFactory == nil {
 		// Use the default libp2p host creation
 		o.hostFactory = libp2p.New
