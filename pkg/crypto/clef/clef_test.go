@@ -196,10 +196,10 @@ func TestClefNoAccounts(t *testing.T) {
 }
 
 type mockRpc struct {
-	call func(result interface{}, method string, args ...interface{}) error
+	call func(result any, method string, args ...any) error
 }
 
-func (m *mockRpc) Call(result interface{}, method string, args ...interface{}) error {
+func (m *mockRpc) Call(result any, method string, args ...any) error {
 	return m.call(result, method, args...)
 }
 
@@ -225,7 +225,7 @@ func TestClefTypedData(t *testing.T) {
 		},
 		signature: make([]byte, 65),
 	}, &mockRpc{
-		call: func(result interface{}, method string, args ...interface{}) error {
+		call: func(result any, method string, args ...any) error {
 			if method != "account_signTypedData" {
 				t.Fatalf("called wrong method. was %s", method)
 			}

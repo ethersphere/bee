@@ -5,15 +5,47 @@
 package jsonhttp
 
 import (
+	"fmt"
 	"net/http"
-
-	"resenje.org/web"
+	"sort"
+	"strings"
 )
 
 type MethodHandler map[string]http.Handler
 
 func (h MethodHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	web.HandleMethods(h, `{"message":"Method Not Allowed","code":405}`, DefaultContentTypeHeader, w, r)
+	HandleMethods(h, `{"message":"Method Not Allowed","code":405}`, DefaultContentTypeHeader, w, r)
+}
+
+// HandleMethods uses a corresponding Handler based on HTTP request method.
+// If Handler is not found, a method not allowed HTTP response is returned
+// with specified body and Content-Type header.
+func HandleMethods(methods map[string]http.Handler, body string, contentType string, w http.ResponseWriter, r *http.Request) {
+	if handler, ok := methods[r.Method]; ok {
+		handler.ServeHTTP(w, r)
+		return
+	}
+
+	allow := make([]string, 0, len(methods))
+	for k := range methods {
+		allow = append(allow, k)
+	}
+	sort.Strings(allow)
+
+	// true if not COR request
+	if len(w.Header().Get("Access-Control-Allow-Methods")) == 0 {
+		w.Header().Set("Allow", strings.Join(allow, ", "))
+	} else {
+		w.Header().Set("Access-Control-Allow-Methods", strings.Join(allow, ", "))
+	}
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	fmt.Fprintln(w, body)
+
 }
 
 func NotFoundHandler(w http.ResponseWriter, _ *http.Request) {
