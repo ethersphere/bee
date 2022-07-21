@@ -41,7 +41,12 @@ const (
 var _ Interface = (*Service)(nil)
 
 type Interface interface {
-	RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error)
+	// RetrieveChunk retrieves a chunk from the network using the retrieval protocol.
+	// it takes as parameters a context, a chunk address to retrieve (content-addressed or single-owner) and
+	// a source peer address, for the case that we are requesting the chunk for another peer. In case the request
+	// originates at the current node (i.e. no forwarding involved), the caller should use swarm.ZeroAddress
+	// as the value for sourcePeerAddress.
+	RetrieveChunk(ctx context.Context, address, sourcePeerAddr swarm.Address) (chunk swarm.Chunk, err error)
 }
 
 type retrievalResult struct {
@@ -103,10 +108,10 @@ const (
 	originSuffix                  = "_origin"
 )
 
-func (s *Service) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (swarm.Chunk, error) {
+func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
 	s.metrics.RequestCounter.Inc()
 
-	origin := sourceAddr.IsZero()
+	origin := sourcePeerAddr.IsZero()
 
 	flightRoute := addr.String()
 	if origin {
@@ -123,8 +128,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Addr
 
 		sp := new(skippeers.List)
 
-		if !sourceAddr.IsZero() {
-			sp.Add(sourceAddr)
+		if !sourcePeerAddr.IsZero() {
+			sp.Add(sourcePeerAddr)
 		}
 
 		ticker := time.NewTicker(retrieveRetryIntervalDuration)
@@ -252,12 +257,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Addr
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skippeers.List, origin bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
+func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skippeers.List, isOrigin bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
 	startTimer := time.Now()
 	// allow upstream requests if this node is the source of the request
 	// i.e. the request was not forwarded, to improve retrieval
 	// if this node is the closest to he chunk but still does not contain it
-	allowUpstream := origin
+	allowUpstream := isOrigin
 
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
@@ -273,7 +278,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	defer cancel()
 
 	// Reserve to see whether we can request the chunk
-	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, chunkPrice, origin)
+	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, chunkPrice, isOrigin)
 	if err != nil {
 		sp.AddOverdraft(peer)
 		return nil, peer, false, err
