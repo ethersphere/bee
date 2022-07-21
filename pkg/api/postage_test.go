@@ -208,6 +208,8 @@ func TestPostageGetStamps(t *testing.T) {
 	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
 	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
+	bsForNonExistingStamp := mock.New(mock.WithChainState(cs))
+	tsForNonExistingStamp, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bsForNonExistingStamp, BlockTime: big.NewInt(2)})
 
 	t.Run("single stamp", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
@@ -230,31 +232,14 @@ func TestPostageGetStamps(t *testing.T) {
 			}),
 		)
 	})
-}
-
-func TestPostageGetNonExistingStamps(t *testing.T) {
-	b := postagetesting.MustNewBatch()
-	b.Value = big.NewInt(20)
-	mp := mockpost.New()
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: nil, BlockTime: big.NewInt(2)})
 
 	t.Run("expired stamp", func(t *testing.T) {
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
+		jsonhttptest.Request(t, tsForNonExistingStamp, http.MethodGet, "/stamps", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{Stamps: []api.PostageStampResponse{}}),
 		)
 	})
-}
 
-func TestPostageGetAllStamps(t *testing.T) {
-	b := postagetesting.MustNewBatch()
-	b.Value = big.NewInt(20)
-	si := postage.NewStampIssuer("", "", b.ID, big.NewInt(3), 11, 10, 1000, true)
-	mp := mockpost.New(mockpost.WithIssuer(si))
-	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
-	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
-
-	t.Run("single stamp", func(t *testing.T) {
+	t.Run("All stamps", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{

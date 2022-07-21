@@ -9,6 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"math"
+	"math/big"
+	"net/http"
+	"strconv"
+	"strings"
+
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -16,11 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/gorilla/mux"
-	"math"
-	"math/big"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
@@ -160,7 +162,7 @@ type bucketData struct {
 }
 
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
-	isDebug := strings.ToLower(r.URL.Query().Get("all")) == "true"
+	isAll := strings.ToLower(r.URL.Query().Get("all")) == "true"
 	resp := postageStampsResponse{}
 	resp.Stamps = make([]postageStampResponse, 0, len(s.post.StampIssuers()))
 	for _, v := range s.post.StampIssuers() {
@@ -171,14 +173,16 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			jsonhttp.InternalServerError(w, "unable to check batch")
 			return
 		}
+
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
 			s.logger.Debugf("get stamp issuer: estimate batch expiration: %v", err)
+			log.Println(err)
 			s.logger.Error("get stamp issuer: estimate batch expiration")
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
-		if isDebug || exists {
+		if isAll || exists {
 			resp.Stamps = append(resp.Stamps, postageStampResponse{
 				BatchID:       v.ID(),
 				Utilization:   v.Utilization(),
