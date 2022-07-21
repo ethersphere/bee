@@ -42,6 +42,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	rcmgr "github.com/libp2p/go-libp2p-resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
@@ -52,6 +53,21 @@ import (
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
 )
+
+func init() {
+	// override the libp2p defaults
+	rcmgr.DefaultLimits.SystemBaseLimit.StreamsInbound = 8096
+	rcmgr.DefaultLimits.SystemMemory.MemoryFraction = 0.3
+	rcmgr.DefaultLimits.TransientBaseLimit.StreamsInbound = 1024
+	rcmgr.DefaultLimits.TransientBaseLimit.StreamsOutbound = 2024
+	rcmgr.DefaultLimits.TransientBaseLimit.Streams = 2048
+	rcmgr.DefaultLimits.ServiceBaseLimit.StreamsInbound = 4096
+	rcmgr.DefaultLimits.ServicePeerBaseLimit.StreamsInbound = 1024
+	rcmgr.DefaultLimits.PeerBaseLimit.StreamsInbound = 1024
+	rcmgr.DefaultLimits.ProtocolBaseLimit.StreamsInbound = 2048
+	rcmgr.DefaultLimits.ProtocolBaseLimit.StreamsInbound = 4096
+
+}
 
 var (
 	_ p2p.Service      = (*Service)(nil)
@@ -190,6 +206,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	opts = append(opts, transports...)
+
+	//resourceManager := func() network.ResourceManager {
+	//limiter := rcmgr.NewDefaultLimiter()
+	//libp2p.SetDefaultServiceLimits(limiter)
+
+	//mgr, err := rcmgr.NewResourceManager(limiter)
+	//if err != nil {
+	//panic(err)
+	//}
+	//return mgr
+	//}
+
+	//opts = append(opts, libp2p.ResourceManager(resourceManager()))
 
 	if o.hostFactory == nil {
 		// Use the default libp2p host creation
