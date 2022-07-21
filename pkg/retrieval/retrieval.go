@@ -32,8 +32,6 @@ import (
 	"resenje.org/singleflight"
 )
 
-type requestSourceContextKey struct{}
-
 const (
 	protocolName    = "retrieval"
 	protocolVersion = "1.1.0"
@@ -407,8 +405,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
-	ctx = context.WithValue(ctx, requestSourceContextKey{}, p.Address.String())
-
 	addr := swarm.NewAddress(req.Addr)
 
 	forwarded := false
@@ -416,7 +412,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// forward the request
-			chunk, err = s.RetrieveChunk(ctx, addr, false)
+			chunk, err = s.RetrieveChunk(ctx, addr, p.Address)
 			if err != nil {
 				return fmt.Errorf("retrieve chunk: %w", err)
 			}
