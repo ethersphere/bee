@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	"math/big"
 	"net/http"
 	"testing"
@@ -27,6 +26,7 @@ import (
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {

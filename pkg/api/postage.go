@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/tracing"
 	"math"
 	"math/big"
 	"net/http"
@@ -21,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 
