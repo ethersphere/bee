@@ -54,7 +54,7 @@ type retrievalResult struct {
 type Service struct {
 	addr          swarm.Address
 	streamer      p2p.Streamer
-	peerSuggester topology.EachPeerer
+	peerSuggester topology.ClosestPeerer
 	storer        storage.Storer
 	singleflight  singleflight.Group
 	logger        logging.Logger
@@ -66,7 +66,7 @@ type Service struct {
 	validStamp    postage.ValidStampFn
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.EachPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -342,34 +342,12 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 // the chunk than this node is, could also be returned, allowing the upstream
 // retrieve request.
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
-	closest := swarm.Address{}
-	err := s.peerSuggester.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
-		}
-		if closest.IsZero() {
-			closest = peer
-			return false, false, nil
-		}
-		closer, err := peer.Closer(addr, closest)
-		if err != nil {
-			return false, false, fmt.Errorf("distance compare error. addr %s closest %s peer %s: %w", addr.String(), closest.String(), peer.String(), err)
-		}
-		if closer {
-			closest = peer
-		}
-		return false, false, nil
-	}, topology.Filter{Reachable: true})
+
+	closest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Filter{Reachable: true}, skipPeers...)
 	if err != nil {
 		return swarm.Address{}, err
 	}
 
-	// check if found
-	if closest.IsZero() {
-		return swarm.Address{}, topology.ErrNotFound
-	}
 	if allowUpstream {
 		return closest, nil
 	}
@@ -378,7 +356,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 	if err != nil {
 		return swarm.Address{}, fmt.Errorf("distance compare addr %s closest %s base address %s: %w", addr.String(), closest.String(), s.addr.String(), err)
 	}
-	if closer {
+	if !closer {
 		return swarm.Address{}, topology.ErrNotFound
 	}
 

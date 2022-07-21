@@ -8,8 +8,13 @@ import (
 	"context"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func (s *Service) Handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	return s.handler(ctx, p, stream)
+}
+
+func (s *Service) ClosestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
+	return s.closestPeer(addr, skipPeers, allowUpstream)
 }
