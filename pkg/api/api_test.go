@@ -458,6 +458,55 @@ func TestPostageHeaderError(t *testing.T) {
 	}
 }
 
+// TestOptions check whether endpoint compatible with option method
+func TestOptions(t *testing.T) {
+	var (
+		client, _, _, _ = newTestServer(t, testServerOptions{})
+	)
+	for _, tc := range []struct {
+		endpoint        string
+		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
+	}{
+		{
+			endpoint:        "tags",
+			expectedMethods: "GET, POST",
+		},
+		{
+			endpoint:        "bzz",
+			expectedMethods: "POST",
+		},
+		{
+			endpoint:        "bzz/0101011",
+			expectedMethods: "GET, PATCH",
+		},
+		{
+			endpoint:        "chunks",
+			expectedMethods: "POST",
+		},
+		{
+			endpoint:        "chunks/123213",
+			expectedMethods: "DELETE, GET, HEAD",
+		},
+		{
+			endpoint:        "bytes",
+			expectedMethods: "POST",
+		},
+		{
+			endpoint:        "bytes/0121012",
+			expectedMethods: "GET, HEAD",
+		},
+	} {
+		t.Run(tc.endpoint+" options test", func(t *testing.T) {
+			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
+
+			allowedMethods := resultHeader.Get("Allow")
+			if allowedMethods != tc.expectedMethods {
+				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
+			}
+		})
+	}
+}
+
 // TestPostageDirectAndDeferred tests that incorrect postage batch ids
 // provided to the api correct the appropriate error code.
 func TestPostageDirectAndDeferred(t *testing.T) {
