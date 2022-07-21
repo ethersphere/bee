@@ -124,6 +124,6 @@ func (ls *loggingStore) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 	return ls.Storer.Put(ctx, mode, chs...)
 }
 
-func (ls *loggingStore) RetrieveChunk(ctx context.Context, addr swarm.Address, _ bool) (chunk swarm.Chunk, err error) {
+func (ls *loggingStore) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
 	return ls.Get(ctx, storage.ModeGetRequest, addr)
 }

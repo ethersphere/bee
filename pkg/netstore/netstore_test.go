@@ -225,7 +225,7 @@ type retrievalMock struct {
 	addr      swarm.Address
 }
 
-func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr swarm.Address, orig bool) (chunk swarm.Chunk, err error) {
+func (r *retrievalMock) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
 	if r.failure {
 		return nil, errors.New("chunk not found")
 	}
