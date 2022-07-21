@@ -36,7 +36,7 @@ type ExternalSignerInterface interface {
 
 // Client is the interface for rpc.RpcClient.
 type Client interface {
-	Call(result interface{}, method string, args ...interface{}) error
+	Call(result any, method string, args ...any) error
 }
 
 type clefSigner struct {

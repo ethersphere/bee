@@ -67,7 +67,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 	s.metrics.TotalSubscribePullRequests.Inc()
 	defer s.metrics.TotalSubscribePullRequestsComplete.Inc()
 
-	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (interface{}, error) {
+	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (any, error) {
 		var (
 			chs     []swarm.Address
 			topmost uint64

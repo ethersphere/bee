@@ -663,7 +663,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		method   string
 		url      string
 		respCode int
-		resp     interface{}
+		resp     any
 	}
 
 	success := []operation{
