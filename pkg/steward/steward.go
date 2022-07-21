@@ -109,7 +109,7 @@ type netGetter struct {
 
 // Get implements the storage Getter.Get interface.
 func (ng *netGetter) Get(ctx context.Context, _ storage.ModeGet, addr swarm.Address) (swarm.Chunk, error) {
-	return ng.retrieval.RetrieveChunk(ctx, addr, true)
+	return ng.retrieval.RetrieveChunk(ctx, addr, swarm.ZeroAddress)
 }
 
 // Put implements the storage Putter.Put interface.
