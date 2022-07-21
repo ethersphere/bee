@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"math/big"
 	"net/http"
@@ -177,7 +176,6 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
 			s.logger.Debugf("get stamp issuer: estimate batch expiration: %v", err)
-			log.Println(err)
 			s.logger.Error("get stamp issuer: estimate batch expiration")
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
