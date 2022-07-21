@@ -34,7 +34,7 @@ import (
 
 const (
 	protocolName    = "retrieval"
-	protocolVersion = "1.1.0"
+	protocolVersion = "1.2.0"
 	streamName      = "retrieval"
 )
 
