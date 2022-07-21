@@ -196,7 +196,7 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 	}
 	wg.Wait()
 	i := 0
-	ts.Range(func(k, v interface{}) bool {
+	ts.Range(func(k, v any) bool {
 		i++
 		uid := k.(uint32)
 		for _, f := range allStates {
