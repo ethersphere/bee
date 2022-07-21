@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build windows
+// +build windows
 
 package cmd
 
@@ -41,47 +41,47 @@ type windowsEventLogger struct {
 	winlog debug.Log
 }
 
-func (l *windowsEventLogger) Tracef(format string, args ...any) {
+func (l *windowsEventLogger) Tracef(format string, args ...interface{}) {
 	// ignore
 }
 
-func (l *windowsEventLogger) Trace(args ...any) {
+func (l *windowsEventLogger) Trace(args ...interface{}) {
 	// ignore
 }
 
-func (l *windowsEventLogger) Debugf(format string, args ...any) {
+func (l *windowsEventLogger) Debugf(format string, args ...interface{}) {
 	// ignore
 }
 
-func (l *windowsEventLogger) Debug(args ...any) {
+func (l *windowsEventLogger) Debug(args ...interface{}) {
 	// ignore
 }
 
-func (l *windowsEventLogger) Infof(format string, args ...any) {
+func (l *windowsEventLogger) Infof(format string, args ...interface{}) {
 	_ = l.winlog.Info(1633, fmt.Sprintf(format, args...))
 }
 
-func (l *windowsEventLogger) Info(args ...any) {
+func (l *windowsEventLogger) Info(args ...interface{}) {
 	_ = l.winlog.Info(1633, fmt.Sprint(args...))
 }
 
-func (l *windowsEventLogger) Warningf(format string, args ...any) {
+func (l *windowsEventLogger) Warningf(format string, args ...interface{}) {
 	_ = l.winlog.Warning(1633, fmt.Sprintf(format, args...))
 }
 
-func (l *windowsEventLogger) Warning(args ...any) {
+func (l *windowsEventLogger) Warning(args ...interface{}) {
 	_ = l.winlog.Warning(1633, fmt.Sprint(args...))
 }
 
-func (l *windowsEventLogger) Errorf(format string, args ...any) {
+func (l *windowsEventLogger) Errorf(format string, args ...interface{}) {
 	_ = l.winlog.Error(1633, fmt.Sprintf(format, args...))
 }
 
-func (l *windowsEventLogger) Error(args ...any) {
+func (l *windowsEventLogger) Error(args ...interface{}) {
 	_ = l.winlog.Error(1633, fmt.Sprint(args...))
 }
 
-func (l *windowsEventLogger) WithField(key string, value any) *logrus.Entry {
+func (l *windowsEventLogger) WithField(key string, value interface{}) *logrus.Entry {
 	return l.logger.WithField(key, value)
 }
 

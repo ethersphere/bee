@@ -45,7 +45,7 @@ func (db *DB) NewStructField(name string) (f StructField, err error) {
 
 // Get unmarshals data from the database to a provided val.
 // If the data is not found leveldb.ErrNotFound is returned.
-func (f StructField) Get(val any) (err error) {
+func (f StructField) Get(val interface{}) (err error) {
 	b, err := f.db.Get(f.key)
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func (f StructField) Get(val any) (err error) {
 }
 
 // Put marshals provided val and saves it to the database.
-func (f StructField) Put(val any) (err error) {
+func (f StructField) Put(val interface{}) (err error) {
 	b, err := json.Marshal(val)
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (f StructField) Put(val any) (err error) {
 }
 
 // PutInBatch marshals provided val and puts it into the batch.
-func (f StructField) PutInBatch(batch *leveldb.Batch, val any) (err error) {
+func (f StructField) PutInBatch(batch *leveldb.Batch, val interface{}) (err error) {
 	b, err := json.Marshal(val)
 	if err != nil {
 		return err
