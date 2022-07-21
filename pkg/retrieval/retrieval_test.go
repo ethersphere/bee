@@ -81,7 +81,7 @@ func TestDelivery(t *testing.T) {
 	client := retrieval.New(clientAddr, clientMockStorer, recorder, ps, logger, clientMockAccounting, pricerMock, nil, false, noopStampValidator)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	v, err := client.RetrieveChunk(ctx, chunk.Address(), true)
+	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestRetrieveChunk(t *testing.T) {
 		}}
 		client := retrieval.New(clientAddress, nil, recorder, clientSuggester, logger, accountingmock.NewAccounting(), pricer, nil, false, noopStampValidator)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,7 +249,7 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatalf("forwarder node already has chunk")
 		}
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -354,7 +354,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -390,7 +390,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -454,7 +454,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		client := retrieval.New(clientAddress, nil, recorder, peerSuggesterFn(peers...), logger, clientMockAccounting, pricerMock, nil, false, noopStampValidator)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -510,7 +510,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			t.Fatalf("forwarder node already has chunk")
 		}
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), true)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
