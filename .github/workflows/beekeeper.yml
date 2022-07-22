@@ -24,7 +24,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.18'
+          go-version: '1.17'
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
@@ -150,7 +150,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.18'
+          go-version: '1.17'
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
@@ -240,7 +240,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.18'
+          go-version: '1.17'
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
@@ -321,7 +321,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.18'
+          go-version: '1.17'
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'

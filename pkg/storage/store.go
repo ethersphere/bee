@@ -170,8 +170,8 @@ type PullSubscriber interface {
 // StateStorer defines methods required to get, set, delete values for different keys
 // and close the underlying resources.
 type StateStorer interface {
-	Get(key string, i any) (err error)
-	Put(key string, i any) (err error)
+	Get(key string, i interface{}) (err error)
+	Put(key string, i interface{}) (err error)
 	Delete(key string) (err error)
 	Iterate(prefix string, iterFunc StateIterFunc) (err error)
 	// DB returns the underlying DB storage.

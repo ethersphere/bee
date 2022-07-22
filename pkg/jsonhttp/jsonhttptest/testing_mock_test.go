@@ -59,11 +59,11 @@ func (m *mock) Helper() {
 	m.isHelper = true
 }
 
-func (m *mock) Errorf(format string, args ...any) {
+func (m *mock) Errorf(format string, args ...interface{}) {
 	m.gotError = fmt.Sprintf(format, args...)
 }
 
-func (m *mock) Fatal(args ...any) {
+func (m *mock) Fatal(args ...interface{}) {
 	m.gotFatal = fmt.Sprint(args...)
 	panic(errFailed) // terminate the goroutine to detect it in the assert function
 }

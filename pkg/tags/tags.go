@@ -96,7 +96,7 @@ func (ts *Tags) Create(total int64) (*Tag, error) {
 // All returns all existing tags in Tags' sync.Map
 // Note that tags are returned in no particular order
 func (ts *Tags) All() (t []*Tag) {
-	ts.tags.Range(func(k, v any) bool {
+	ts.tags.Range(func(k, v interface{}) bool {
 		t = append(t, v.(*Tag))
 
 		return true
@@ -125,7 +125,7 @@ func (ts *Tags) Get(uid uint32) (*Tag, error) {
 func (ts *Tags) GetByAddress(address swarm.Address) (*Tag, error) {
 	var t *Tag
 	var lastTime time.Time
-	ts.tags.Range(func(key any, value any) bool {
+	ts.tags.Range(func(key interface{}, value interface{}) bool {
 		rcvdTag := value.(*Tag)
 		if rcvdTag.Address.Equal(address) && rcvdTag.StartedAt.After(lastTime) {
 			t = rcvdTag
@@ -141,11 +141,11 @@ func (ts *Tags) GetByAddress(address swarm.Address) (*Tag, error) {
 }
 
 // Range exposes sync.Map's iterator
-func (ts *Tags) Range(fn func(k, v any) bool) {
+func (ts *Tags) Range(fn func(k, v interface{}) bool) {
 	ts.tags.Range(fn)
 }
 
-func (ts *Tags) Delete(k any) {
+func (ts *Tags) Delete(k interface{}) {
 	ts.tags.Delete(k)
 
 	// k is a uint32, try to create the tag key and remove
@@ -158,7 +158,7 @@ func (ts *Tags) Delete(k any) {
 
 func (ts *Tags) MarshalJSON() (out []byte, err error) {
 	m := make(map[string]*Tag)
-	ts.Range(func(k, v any) bool {
+	ts.Range(func(k, v interface{}) bool {
 		key := fmt.Sprintf("%d", k)
 		val := v.(*Tag)
 

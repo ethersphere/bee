@@ -13,17 +13,17 @@ import (
 )
 
 type Logger interface {
-	Tracef(format string, args ...any)
-	Trace(args ...any)
-	Debugf(format string, args ...any)
-	Debug(args ...any)
-	Infof(format string, args ...any)
-	Info(args ...any)
-	Warningf(format string, args ...any)
-	Warning(args ...any)
-	Errorf(format string, args ...any)
-	Error(args ...any)
-	WithField(key string, value any) *logrus.Entry
+	Tracef(format string, args ...interface{})
+	Trace(args ...interface{})
+	Debugf(format string, args ...interface{})
+	Debug(args ...interface{})
+	Infof(format string, args ...interface{})
+	Info(args ...interface{})
+	Warningf(format string, args ...interface{})
+	Warning(args ...interface{})
+	Errorf(format string, args ...interface{})
+	Error(args ...interface{})
+	WithField(key string, value interface{}) *logrus.Entry
 	WithFields(fields logrus.Fields) *logrus.Entry
 	WriterLevel(logrus.Level) *io.PipeWriter
 	NewEntry() *logrus.Entry
