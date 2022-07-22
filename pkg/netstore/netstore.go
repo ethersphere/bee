@@ -80,7 +80,7 @@ func (s *store) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addres
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, errInvalidLocalChunk) {
 			// request from network
-			ch, err = s.retrieval.RetrieveChunk(ctx, addr, true)
+			ch, err = s.retrieval.RetrieveChunk(ctx, addr, swarm.ZeroAddress)
 			if err != nil {
 				return nil, err
 			}
