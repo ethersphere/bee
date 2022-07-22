@@ -57,6 +57,8 @@ var (
 
 const (
 	getSnapshotRetries = 3
+	retryWait          = time.Second * 5
+	timeout            = time.Minute * 2
 )
 
 func bootstrapNode(
@@ -202,9 +204,6 @@ func bootstrapNode(
 		return nil, errors.New("timed out waiting for kademlia peers")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	logger.Info("bootstrap: trying to fetch stamps snapshot")
 
 	var (
@@ -215,6 +214,13 @@ func bootstrapNode(
 	)
 
 	for i := 0; i < getSnapshotRetries; i++ {
+		if err != nil {
+			time.Sleep(retryWait)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err != nil {
 			logger.Warningf("bootstrap: fetching snapshot: %v", err)
@@ -227,6 +233,13 @@ func bootstrapNode(
 	}
 
 	for i := 0; i < getSnapshotRetries; i++ {
+		if err != nil {
+			time.Sleep(retryWait)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
 			logger.Warningf("bootstrap: file joiner: %v", err)
