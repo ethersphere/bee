@@ -233,7 +233,7 @@ func TestBatchStore_Reset(t *testing.T) {
 	}
 }
 
-func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v any) {
+func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v interface{}) {
 	t.Helper()
 
 	if err := st.Get(k, v); err != nil {
@@ -241,7 +241,7 @@ func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v any) {
 	}
 }
 
-func stateStorePut(t *testing.T, st storage.StateStorer, k string, v any) {
+func stateStorePut(t *testing.T, st storage.StateStorer, k string, v interface{}) {
 	t.Helper()
 
 	if err := st.Put(k, v); err != nil {

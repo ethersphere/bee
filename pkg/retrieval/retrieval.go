@@ -120,7 +120,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
-	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (any, error) {
+	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 		maxPeers := 1
 		if origin {
 			maxPeers = maxSelects
