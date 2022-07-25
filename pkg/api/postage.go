@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 
@@ -335,6 +336,7 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
+	ChainTip     uint64         `json:"chainTip"`     // ChainTip (block height).
 	Block        uint64         `json:"block"`        // The block number of the last postage event.
 	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
 	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
@@ -363,10 +365,18 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 // chainStateHandler returns the current chain state.
-func (s *Service) chainStateHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	state := s.batchStore.GetChainState()
-
+	chainTip, err := s.chainBackend.BlockNumber(r.Context())
+	if err != nil {
+		logger.Debugf("chainstate: block number: %v", err)
+		logger.Error("chainstate: block number unavailable")
+		jsonhttp.InternalServerError(w, nil)
+		return
+	}
 	jsonhttp.OK(w, chainStateResponse{
+		ChainTip:     chainTip,
 		Block:        state.Block,
 		TotalAmount:  bigint.Wrap(state.TotalAmount),
 		CurrentPrice: bigint.Wrap(state.CurrentPrice),
