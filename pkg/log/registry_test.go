@@ -90,6 +90,7 @@ func TestNewLogger(t *testing.T) {
 	have := NewLogger("root").Register()
 
 	diff := cmp.Diff(have, want, cmp.AllowUnexported(
+		builder{},
 		logger{},
 		caller{},
 		formatter{},
