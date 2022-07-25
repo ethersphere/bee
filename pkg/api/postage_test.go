@@ -26,6 +26,7 @@ import (
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {
@@ -391,9 +392,13 @@ func TestChainState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI:   true,
 			BatchStore: mock.New(mock.WithChainState(cs)),
+			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
+				return 1, nil
+			})},
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{
+				ChainTip:     1,
 				Block:        123456,
 				TotalAmount:  bigint.Wrap(big.NewInt(50)),
 				CurrentPrice: bigint.Wrap(big.NewInt(5)),
@@ -401,15 +406,6 @@ func TestChainState(t *testing.T) {
 		)
 	})
 
-	t.Run("empty", func(t *testing.T) {
-		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
-			BatchStore: mock.New(),
-		})
-		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{}),
-		)
-	})
 }
 
 func TestPostageTopUpStamp(t *testing.T) {
