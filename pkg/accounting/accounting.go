@@ -230,7 +230,7 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.lock.TryLock(ctx); err != nil {
-		a.logger.Errorf("prepare credit: failed to acquire lock: %v", err)
+		a.logger.Debugf("prepare credit: failed to acquire lock: %v", err)
 		return nil, err
 	}
 	defer accountingPeer.lock.Unlock()
@@ -962,7 +962,7 @@ func (a *Accounting) PrepareDebit(ctx context.Context, peer swarm.Address, price
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.lock.TryLock(ctx); err != nil {
-		a.logger.Errorf("prepare debit: failed to acquire lock: %v", err)
+		a.logger.Debugf("prepare debit: failed to acquire lock: %v", err)
 		return nil, err
 	}
 
