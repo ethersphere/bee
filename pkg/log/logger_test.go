@@ -46,16 +46,19 @@ func newLogger(modifications ...Option) (Builder, *bytes.Buffer) {
 		modify(&opts)
 	}
 
-	bb := new(bytes.Buffer)
-	return &logger{
-		names:      []string{name},
-		namesStr:   name,
-		namesLen:   1,
+	b := new(bytes.Buffer)
+	l := &logger{
 		formatter:  newFormatter(opts.fmtOptions),
 		verbosity:  opts.verbosity,
-		sink:       bb,
+		sink:       b,
 		levelHooks: opts.levelHooks,
-	}, bb
+	}
+	l.builder = &builder{
+		l:        l,
+		names:    []string{name},
+		namesStr: name,
+	}
+	return l, b
 }
 
 func TestLoggerOptionsLevelHooks(t *testing.T) {
@@ -321,7 +324,6 @@ func TestLogger(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			bb.Reset()
 			tc.logFn("msg", tc.args...)
-			t.Logf("%p:%#v", &logger, logger)
 			have := string(bytes.TrimRight(bb.Bytes(), "\n"))
 			if have != tc.want {
 				t.Errorf("\nwant %q\nhave %q", tc.want, have)

@@ -32,18 +32,14 @@ func (lh levelHooks) fire(level Level) error {
 	return nil
 }
 
-// logger implements the Logger interface.
-type logger struct {
-	// id is the unique identifier of a logger.
-	// It identifies the instance of a logger in the logger registry.
-	id string
+type builder struct {
+	l *logger
+
+	// clone indicates whether this builder was cloned.
+	cloned bool
 
 	// v level represents the granularity of debug calls.
 	v uint
-
-	// vc captures the original value of v before it is modified,
-	// which can happen during the build of the logger.
-	vc *uint
 
 	// names represents a path in the tree,
 	// element 0 is the root of the tree.
@@ -53,10 +49,6 @@ type logger struct {
 	// we don't have to render them on each Build call.
 	namesStr string
 
-	// namesLen captures the original length of the names slice before new
-	// elements are added, which can happen during the build of the logger.
-	namesLen int
-
 	// values holds additional key/value pairs
 	// that are included on every log call.
 	values []interface{}
@@ -64,10 +56,87 @@ type logger struct {
 	// valuesStr is a cache of render values slice, so
 	// we don't have to render them on each Build call.
 	valuesStr string
+}
 
-	// valuesLen captures the original length of the values slice before new
-	// elements are added, which can happen during the build of the logger.
-	valuesLen int
+// V implements the Builder interface V method.
+func (b *builder) V(level uint) Builder {
+	if level > 0 {
+		c := b.clone()
+		c.v += level
+		return c
+	}
+	return b
+}
+
+// WithName implements the Builder interface WithName method.
+func (b *builder) WithName(name string) Builder {
+	c := b.clone()
+	c.names = append(c.names, name)
+	return c
+}
+
+// WithValues implements the Builder interface WithValues method.
+func (b *builder) WithValues(keysAndValues ...interface{}) Builder {
+	c := b.clone()
+	c.values = append(c.values, keysAndValues...)
+	return c
+}
+
+// Build implements the Builder interface Build method.
+func (b *builder) Build() Logger {
+	if !b.cloned && b.l.id != "" {
+		return b.l
+	}
+
+	b.namesStr = strings.Join(b.names, "/")
+	// ~5 is the average length of an English word; 4 is the rune size.
+	len := nextPowOf2(uint64(5 * 4 * len(b.values)))
+	buf := bytes.NewBuffer(make([]byte, 0, len))
+	b.l.formatter.flatten(buf, b.values, false, false)
+	b.valuesStr = buf.String()
+
+	key := hash(b.namesStr, b.v, b.valuesStr, b.l.sink)
+	if i, ok := loggers.Load(key); ok {
+		// Nothing to build, the instance exists.
+		return i.(*logger)
+	}
+	// A new child instance.
+	c := *b.l
+	b.l = &c
+	c.builder = b
+	c.cloned = false
+	c.id = key
+
+	return &c
+}
+
+// Register implements the Builder interface Register method.
+func (b *builder) Register() Logger {
+	val := b.Build()
+	key := hash(b.l.namesStr, b.l.v, b.l.valuesStr, b.l.sink)
+	res, _ := loggers.LoadOrStore(key, val)
+	return res.(*logger)
+}
+
+func (b *builder) clone() *builder {
+	if b.cloned {
+		return b
+	}
+
+	c := *b
+	c.cloned = true
+	c.names = append(make([]string, 0, len(c.names)), c.names...)
+	c.values = append(make([]interface{}, 0, len(c.values)), c.values...)
+	return &c
+}
+
+// logger implements the Logger interface.
+type logger struct {
+	*builder
+
+	// id is the unique identifier of a logger.
+	// It identifies the instance of a logger in the logger registry.
+	id string
 
 	// formatter formats log messages before they are written to the sink.
 	formatter *formatter
@@ -122,100 +191,68 @@ func (l *logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	}
 }
 
-// V implements the Builder interface V method.
-func (l *logger) V(level uint) Builder {
-	if level > 0 {
-		if l.vc == nil {
-			v := l.v
-			l.vc = &v
-		}
-		*l.vc += level
-	}
-	return l
-}
-
-// WithName implements the Builder interface WithName method.
-func (l *logger) WithName(name string) Builder {
-	l.names = append(l.names, name)
-	return l
-}
-
-// WithValues implements the Builder interface WithValues method.
-func (l *logger) WithValues(keysAndValues ...interface{}) Builder {
-	l.values = append(l.values, keysAndValues...)
-	return l
-}
-
 // Build implements the Builder interface Build method.
-func (l *logger) Build() Logger {
-	if l.id != "" &&
-		l.vc == nil &&
-		l.namesLen == len(l.names) &&
-		l.valuesLen == len(l.values) {
-		return l // Ignore subsequent chained calls to the Build method.
-	}
-
-	v := l.v
-	if l.vc != nil {
-		v = *l.vc
-	}
-
-	namesStr := l.namesStr
-	if l.namesLen < len(l.names) {
-		namesStr = strings.Join(l.names, "/")
-	}
-
-	valuesStr := l.valuesStr
-	if l.valuesLen < len(l.values) {
-		// ~5 is the average length of an English word; 4 is the rune size.
-		len := nextPowOf2(uint64(5 * 4 * len(l.values)))
-		buf := bytes.NewBuffer(make([]byte, 0, len))
-		l.formatter.flatten(buf, l.values, false, false)
-		valuesStr = buf.String()
-	}
-
-	// Basic builder invariants must be restored to the root
-	// instance from which other instances are created.
-	defer func() {
-		l.vc = nil
-		l.names = l.names[:l.namesLen]
-		l.values = l.values[:l.valuesLen]
-	}()
-
-	key, val := hash(namesStr, v, valuesStr, l.sink), (*logger)(nil)
-	switch i, ok := loggers.Load(key); {
-	case ok: // Nothing to build, the instance exists.
-		return i.(*logger)
-	case l.id == "": // A new root instance.
-		val = l
-		val.id = key
-		val.v = v
-		val.namesStr = namesStr
-		val.namesLen = len(val.names)
-		val.valuesStr = valuesStr
-		val.valuesLen = len(val.values)
-	default: // A new child instance.
-		c := *l
-		val = &c
-		val.id = key
-		val.v = v
-		val.namesStr = namesStr
-		val.namesLen = len(val.names)
-		val.names = append(make([]string, 0, val.namesLen), val.names...)
-		val.valuesStr = valuesStr
-		val.valuesLen = len(val.values)
-		val.values = append(make([]interface{}, 0, val.valuesLen), val.values...)
-	}
-	return val
-}
-
-// Register implements the Builder interface Register method.
-func (l *logger) Register() Logger {
-	val := l.Build()
-	key := hash(l.namesStr, l.v, l.valuesStr, l.sink)
-	res, _ := loggers.LoadOrStore(key, val)
-	return res.(*logger)
-}
+//func (l *logger) Build() Logger {
+//	if l.id != "" &&
+//		l.vc == nil &&
+//		l.namesLen == len(l.names) &&
+//		l.valuesLen == len(l.values) {
+//		return l // Ignore subsequent chained calls to the Build method.
+//	}
+//
+//	v := l.v
+//	if l.vc != nil {
+//		v = *l.vc
+//	}
+//
+//	namesStr := l.namesStr
+//	if l.namesLen < len(l.names) {
+//		namesStr = strings.Join(l.names, "/")
+//	}
+//
+//	valuesStr := l.valuesStr
+//	if l.valuesLen < len(l.values) {
+//		// ~5 is the average length of an English word; 4 is the rune size.
+//		len := nextPowOf2(uint64(5 * 4 * len(l.values)))
+//		buf := bytes.NewBuffer(make([]byte, 0, len))
+//		l.formatter.flatten(buf, l.values, false, false)
+//		valuesStr = buf.String()
+//	}
+//
+//	// Basic builder invariants must be restored to the root
+//	// instance from which other instances are created.
+//	defer func() { // TODO: create a copy instead of restoring invariants!
+//		l.vc = nil
+//		l.names = l.names[:l.namesLen]
+//		l.values = l.values[:l.valuesLen]
+//	}()
+//
+//	key, val := hash(namesStr, v, valuesStr, l.sink), (*logger)(nil)
+//	switch i, ok := loggers.Load(key); {
+//	case ok: // Nothing to build, the instance exists.
+//		return i.(*logger)
+//	case l.id == "": // A new root instance.
+//		val = l
+//		val.id = key
+//		val.v = v
+//		val.namesStr = namesStr
+//		val.namesLen = len(val.names)
+//		val.valuesStr = valuesStr
+//		val.valuesLen = len(val.values)
+//	default: // A new child instance.
+//		c := *l
+//		val = &c
+//		val.id = key
+//		val.v = v
+//		val.namesStr = namesStr
+//		val.namesLen = len(val.names)
+//		val.names = append(make([]string, 0, val.namesLen), val.names...)
+//		val.valuesStr = valuesStr
+//		val.valuesLen = len(val.values)
+//		val.values = append(make([]interface{}, 0, val.valuesLen), val.values...)
+//	}
+//	return val
+//}
 
 // setVerbosity changes the verbosity level or the logger.
 func (l *logger) setVerbosity(v Level) {

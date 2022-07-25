@@ -60,15 +60,18 @@ func NewLogger(name string) Logger {
 		return val.(*logger)
 	}
 
-	return &logger{
-		names:      []string{name},
-		namesStr:   name,
-		namesLen:   1,
+	l := &logger{
 		formatter:  defaults.formatter,
 		verbosity:  defaults.options.verbosity,
 		sink:       defaults.options.sink,
 		levelHooks: defaults.options.levelHooks,
 	}
+	l.builder = &builder{
+		l:        l,
+		names:    []string{name},
+		namesStr: name,
+	}
+	return l
 }
 
 // SetVerbosity sets the level
