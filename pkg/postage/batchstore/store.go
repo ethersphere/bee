@@ -276,6 +276,9 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
 
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	s.metrics.Radius.Set(float64(s.rs.Radius))
+
 	return s.store.Put(chainStateKey, cs)
 }
 
