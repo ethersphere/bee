@@ -838,14 +838,16 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, pullSyncProtocolSpec)
 	}
 
-	if err = p2ps.AddProtocol(retrieveProtocolSpec); err != nil {
-		return nil, fmt.Errorf("retrieval service: %w", err)
-	}
-	if err = p2ps.AddProtocol(pushSyncProtocolSpec); err != nil {
-		return nil, fmt.Errorf("pushsync service: %w", err)
-	}
-	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
-		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	if !o.BootnodeMode {
+		if err = p2ps.AddProtocol(retrieveProtocolSpec); err != nil {
+			return nil, fmt.Errorf("retrieval service: %w", err)
+		}
+		if err = p2ps.AddProtocol(pushSyncProtocolSpec); err != nil {
+			return nil, fmt.Errorf("pushsync service: %w", err)
+		}
+		if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
+			return nil, fmt.Errorf("pullsync protocol: %w", err)
+		}
 	}
 
 	multiResolver := multiresolver.NewMultiResolver(
