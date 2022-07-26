@@ -50,21 +50,33 @@ var loggers = new(sync.Map)
 // NewLogger is a factory constructor which returns a new logger instance
 // based on the given name. If such an instance already exists in the
 // logger registry, then this existing instance is returned instead.
-func NewLogger(name string) Logger {
+// The given options take precedence over the default options set
+// by the ModifyDefaults function.
+func NewLogger(name string, opts ...Option) Logger {
 	// Pin the default settings if
 	// they are not already pinned.
 	ModifyDefaults()
 
-	val, ok := loggers.Load(hash(name, 0, "", defaults.options.sink))
+	options := *defaults.options
+	for _, modify := range opts {
+		modify(&options)
+	}
+
+	formatter := defaults.formatter
+	if options.fmtOptions != defaults.options.fmtOptions {
+		formatter = newFormatter(options.fmtOptions)
+	}
+
+	val, ok := loggers.Load(hash(name, 0, "", options.sink))
 	if ok {
 		return val.(*logger)
 	}
 
 	l := &logger{
-		formatter:  defaults.formatter,
-		verbosity:  defaults.options.verbosity,
-		sink:       defaults.options.sink,
-		levelHooks: defaults.options.levelHooks,
+		formatter:  formatter,
+		verbosity:  options.verbosity,
+		sink:       options.sink,
+		levelHooks: options.levelHooks,
 	}
 	l.builder = &builder{
 		l:        l,
