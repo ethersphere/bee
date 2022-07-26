@@ -701,24 +701,46 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	batchStore.SetRadiusSetter(kad)
 
 	if batchSvc != nil && chainEnabled {
-		syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
-		if err != nil {
-			return nil, fmt.Errorf("unable to start batch service: %w", err)
-		}
-		// wait for the postage contract listener to sync
-		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+		if o.FullNodeMode {
+			syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
 
-		// arguably this is not a very nice solution since we dont support
-		// interrupts at this stage of the application lifecycle. some changes
-		// would be needed on the cmd level to support context cancellation at
-		// this stage
-		select {
-		case err = <-syncedChan:
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("unable to start batch service: %w", err)
 			}
-		case <-interrupt:
-			return nil, ErrInterruped
+			// wait for the postage contract listener to sync
+			logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+
+			// arguably this is not a very nice solution since we dont support
+			// interrupts at this stage of the application lifecycle. some changes
+			// would be needed on the cmd level to support context cancellation at
+			// this stage
+			select {
+			case err = <-syncedChan:
+				batchSvc.Set(err)
+				if err != nil {
+					return nil, err
+				}
+			case <-interrupt:
+				return nil, ErrInterruped
+			}
+		} else {
+			go func() {
+				syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
+				if err != nil {
+					logger.Errorf("unable to start batch service: %v", err)
+				}
+				// wait for the postage contract listener to sync
+				logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+				select {
+				case err = <-syncedChan:
+					batchSvc.Set(err)
+					if err != nil {
+						logger.Errorf("unable to sync batches: %v", err)
+					}
+				case <-interrupt:
+					logger.Error("interrupted while syncing batches")
+				}
+			}()
 		}
 	}
 
@@ -899,6 +921,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		Post:             post,
 		PostageContract:  postageContractService,
 		Steward:          steward,
+		BatchSyncStatus:  batchSvc,
 	}
 
 	if o.APIAddr != "" {

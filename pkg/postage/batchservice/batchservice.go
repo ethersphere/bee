@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -35,6 +36,9 @@ type batchService struct {
 
 	checksum hash.Hash // checksum hasher
 	resync   bool
+
+	isSynced        atomic.Value
+	syncErrorStatus atomic.Value
 }
 
 type Interface interface {
@@ -90,7 +94,7 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync}, nil
+	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync, atomic.Value{}, atomic.Value{}}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -226,6 +230,16 @@ func (svc *batchService) TransactionStart() error {
 }
 func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
+}
+
+func (svc *batchService) Get() (bool, error) {
+	err := svc.syncErrorStatus.Load().(error)
+	isDone := svc.isSynced.Load() != nil
+	return isDone, err
+}
+func (svc *batchService) Set(err error) {
+	svc.isSynced.Store(true)
+	svc.syncErrorStatus.Store(err)
 }
 
 func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot) (<-chan error, error) {

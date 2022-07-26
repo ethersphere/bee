@@ -203,3 +203,13 @@ func (bs *BatchStore) Reset() error {
 func (bs *BatchStore) ResetCalls() int {
 	return bs.resetCallCount
 }
+
+type MockSyncStatus struct {
+	inProgress bool
+	err        error
+}
+
+func NotReady() *MockSyncStatus              { return &MockSyncStatus{inProgress: true} }
+func Failed() *MockSyncStatus                { return &MockSyncStatus{inProgress: false, err: errors.New("oops")} }
+func (s *MockSyncStatus) Get() (bool, error) { return !s.inProgress, s.err }
+func (s *MockSyncStatus) Set(err error)      { s.err = err }

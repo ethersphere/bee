@@ -93,6 +93,7 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
 	Steward            steward.Interface
+	BatchSyncStatus    postage.SyncStatus
 	WsHeaders          http.Header
 	Authenticator      *mockauth.Auth
 	DebugAPI           bool
@@ -139,6 +140,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
 	}
+	if o.BatchSyncStatus == nil {
+		o.BatchSyncStatus = new(mockbatchstore.MockSyncStatus)
+	}
 	if o.Authenticator == nil {
 		o.Authenticator = &mockauth.Auth{
 			EnforceFunc: func(_, _, _ string) (bool, error) {
@@ -180,6 +184,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Post:             o.Post,
 		PostageContract:  o.PostageContract,
 		Steward:          o.Steward,
+		BatchSyncStatus:  o.BatchSyncStatus,
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, o.CORSAllowedOrigins)
