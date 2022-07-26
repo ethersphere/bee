@@ -46,4 +46,4 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
         AWS_EC2_METADATA_DISABLED: true #needed when pushing to DigitalOcean Spaces
         AWS_ENDPOINT: fra1.digitaloceanspaces.com
-        BUCKET_NAME: openapi-specs
+        BUCKET_NAME: swarm-openapi-specs
