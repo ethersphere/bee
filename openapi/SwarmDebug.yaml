@@ -795,12 +795,31 @@ paths:
 
   "/stamps":
     get:
-      summary: Get all available stamps for this node
+      summary: Get all non-expired stamps for this node
       tags:
         - Postage Stamps
       responses:
         "200":
-          description: Returns an array of all available postage batches.
+          description: Returns an array of all non-expired postage batches.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatchesResponse"
+
+        default:
+          description: Default response
+
+  "/stamps?all=true":
+    get:
+      summary: Get all stamps for this node
+      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      security:
+        - bearerAuth: [ ]
+      tags:
+        - All Postage Stamps
+      responses:
+        "200":
+          description: Returns an array of all postage batches.
           content:
             application/json:
               schema:
