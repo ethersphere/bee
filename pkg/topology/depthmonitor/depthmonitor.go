@@ -206,12 +206,10 @@ func (s *Service) SetStorageRadius(storageRadius uint8) {
 	s.depthLock.Lock()
 	defer s.depthLock.Unlock()
 
-	s.logger.Infof("depthmonitor: received storage radius %d, old radius %d, storage depth %d", storageRadius, s.oldStorageRadius, s.storageDepth)
-
 	if (storageRadius > s.storageDepth) || (s.oldStorageRadius == s.storageDepth && storageRadius < s.oldStorageRadius) {
+		s.logger.Tracef("depthmonitor: setting storage depth, storage radius %d, old radius %d", storageRadius, s.oldStorageRadius)
 		s.storageDepth = storageRadius
 		s.topology.SetStorageDepth(s.storageDepth)
-		s.logger.Infof("depthmonitor: setting storage depth to %d", s.storageDepth)
 		s.putStorageDepth(s.storageDepth)
 	}
 
