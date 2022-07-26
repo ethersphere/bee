@@ -191,69 +191,6 @@ func (l *logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	}
 }
 
-// Build implements the Builder interface Build method.
-//func (l *logger) Build() Logger {
-//	if l.id != "" &&
-//		l.vc == nil &&
-//		l.namesLen == len(l.names) &&
-//		l.valuesLen == len(l.values) {
-//		return l // Ignore subsequent chained calls to the Build method.
-//	}
-//
-//	v := l.v
-//	if l.vc != nil {
-//		v = *l.vc
-//	}
-//
-//	namesStr := l.namesStr
-//	if l.namesLen < len(l.names) {
-//		namesStr = strings.Join(l.names, "/")
-//	}
-//
-//	valuesStr := l.valuesStr
-//	if l.valuesLen < len(l.values) {
-//		// ~5 is the average length of an English word; 4 is the rune size.
-//		len := nextPowOf2(uint64(5 * 4 * len(l.values)))
-//		buf := bytes.NewBuffer(make([]byte, 0, len))
-//		l.formatter.flatten(buf, l.values, false, false)
-//		valuesStr = buf.String()
-//	}
-//
-//	// Basic builder invariants must be restored to the root
-//	// instance from which other instances are created.
-//	defer func() { // TODO: create a copy instead of restoring invariants!
-//		l.vc = nil
-//		l.names = l.names[:l.namesLen]
-//		l.values = l.values[:l.valuesLen]
-//	}()
-//
-//	key, val := hash(namesStr, v, valuesStr, l.sink), (*logger)(nil)
-//	switch i, ok := loggers.Load(key); {
-//	case ok: // Nothing to build, the instance exists.
-//		return i.(*logger)
-//	case l.id == "": // A new root instance.
-//		val = l
-//		val.id = key
-//		val.v = v
-//		val.namesStr = namesStr
-//		val.namesLen = len(val.names)
-//		val.valuesStr = valuesStr
-//		val.valuesLen = len(val.values)
-//	default: // A new child instance.
-//		c := *l
-//		val = &c
-//		val.id = key
-//		val.v = v
-//		val.namesStr = namesStr
-//		val.namesLen = len(val.names)
-//		val.names = append(make([]string, 0, val.namesLen), val.names...)
-//		val.valuesStr = valuesStr
-//		val.valuesLen = len(val.values)
-//		val.values = append(make([]interface{}, 0, val.valuesLen), val.values...)
-//	}
-//	return val
-//}
-
 // setVerbosity changes the verbosity level or the logger.
 func (l *logger) setVerbosity(v Level) {
 	l.verbosity.set(v)

@@ -6,6 +6,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sync"
@@ -60,6 +61,10 @@ func NewLogger(name string, opts ...Option) Logger {
 	options := *defaults.options
 	for _, modify := range opts {
 		modify(&options)
+	}
+
+	if options.sink == io.Discard {
+		return noop
 	}
 
 	formatter := defaults.formatter
