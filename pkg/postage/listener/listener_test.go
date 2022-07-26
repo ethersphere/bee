@@ -461,6 +461,9 @@ func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, buc
 	return nil
 }
 
+func (u *updater) Set(error)          {}
+func (u *updater) Get() (bool, error) { return true, nil }
+
 func (u *updater) TopUp(id []byte, normalisedBalance *big.Int, _ []byte) error {
 	u.eventC <- topupArgs{
 		id:                id,

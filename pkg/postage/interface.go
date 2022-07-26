@@ -11,9 +11,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+// SyncStatus interface definitions reflect the status of the postage syncing progress.
+type SyncStatus interface {
+	Get() (bool, error)
+	Set(error)
+}
+
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
+	SyncStatus
 	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
 	TopUp(id []byte, normalisedBalance *big.Int, txHash []byte) error
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error

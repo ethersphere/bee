@@ -152,7 +152,9 @@ type Service struct {
 	chequebook     chequebook.Service
 	pseudosettle   settlement.Interface
 	pingpong       pingpong.Interface
-	batchStore     postage.Storer
+
+	batchStore      postage.Storer
+	batchSyncStatus postage.SyncStatus
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -207,6 +209,7 @@ type ExtraOptions struct {
 	Post             postage.Service
 	PostageContract  postagecontract.Interface
 	Steward          steward.Interface
+	BatchSyncStatus  postage.SyncStatus
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
@@ -265,6 +268,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.chainBackend = chainBackend
+	s.batchSyncStatus = e.BatchSyncStatus
 
 	return s.chunkPushC
 }
