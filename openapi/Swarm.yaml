@@ -163,7 +163,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
-        description: Chunk binary data that has to have at least 8 bytes.
+        description: Chunk binary data that has to have at least 8 bytes. Test
         content:
           application/octet-stream:
             schema:

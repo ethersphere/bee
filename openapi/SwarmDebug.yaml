@@ -8,7 +8,7 @@ security:
   - {}
 
 externalDocs:
-  description: Browse the documentation @ the Swarm Docs
+  description: Browse the documentation @ the Swarm Docs test
   url: "https://docs.ethswarm.org"
 
 servers:
