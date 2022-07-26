@@ -68,3 +68,14 @@ func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, canc
 
 	return pr
 }
+
+// The WriterFunc type is an adapter to allow the use of
+// ordinary functions as io.Writer Write method. If f is
+// a function with the appropriate signature, WriterFunc(f)
+// is an io.Writer that calls f.
+type WriterFunc func([]byte) (int, error)
+
+// WriterFunc calls f(p).
+func (f WriterFunc) Write(p []byte) (n int, err error) {
+	return f(p)
+}
