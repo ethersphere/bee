@@ -15,15 +15,18 @@ import (
 
 var keyPrefix = "blocklist-"
 
-// timeNow is used to deterministically mock time.Now() in tests.
-var timeNow = time.Now
+type CurrentTimeFn = func() time.Time
 
 type Blocklist struct {
-	store storage.StateStorer
+	store         storage.StateStorer
+	currentTimeFn CurrentTimeFn
 }
 
-func NewBlocklist(store storage.StateStorer) *Blocklist {
-	return &Blocklist{store: store}
+func NewBlocklist(store storage.StateStorer, currentTimeFn CurrentTimeFn) *Blocklist {
+	return &Blocklist{
+		store:         store,
+		currentTimeFn: currentTimeFn,
+	}
 }
 
 type entry struct {
@@ -42,8 +45,7 @@ func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 		return false, err
 	}
 
-	// using timeNow.Sub() so it can be mocked in unit tests
-	if timeNow().Sub(timestamp) > duration && duration != 0 {
+	if b.currentTimeFn().Sub(timestamp) > duration && duration != 0 {
 		_ = b.store.Delete(key)
 		return false, nil
 	}
@@ -66,7 +68,7 @@ func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err erro
 	}
 
 	return b.store.Put(key, &entry{
-		Timestamp: timeNow(),
+		Timestamp: b.currentTimeFn(),
 		Duration:  duration.String(),
 	})
 }
@@ -88,7 +90,7 @@ func (b *Blocklist) Peers() ([]p2p.Peer, error) {
 			return true, err
 		}
 
-		if timeNow().Sub(t) > d && d != 0 {
+		if b.currentTimeFn().Sub(t) > d && d != 0 {
 			// skip to the next item
 			return false, nil
 		}
