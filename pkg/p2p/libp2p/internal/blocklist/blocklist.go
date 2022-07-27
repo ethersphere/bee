@@ -23,13 +23,9 @@ type Blocklist struct {
 }
 
 func NewBlocklist(store storage.StateStorer) *Blocklist {
-	return NewBlocklistWithCurrentTimeFn(store, time.Now)
-}
-
-func NewBlocklistWithCurrentTimeFn(store storage.StateStorer, currentTimeFn currentTimeFn) *Blocklist {
 	return &Blocklist{
 		store:         store,
-		currentTimeFn: currentTimeFn,
+		currentTimeFn: time.Now,
 	}
 }
 
