@@ -17,8 +17,9 @@ import (
 func TestExist(t *testing.T) {
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{4, 5, 6, 7})
+	ctMock := &currentTimeMock{}
 
-	bl := blocklist.NewBlocklist(mock.NewStateStore())
+	bl := blocklist.NewBlocklistWithCurrentTimeFn(mock.NewStateStore(), ctMock.Time)
 
 	exists, err := bl.Exists(addr1)
 	if err != nil {
@@ -39,8 +40,7 @@ func TestExist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blocklist.SetTimeNow(func() time.Time { return time.Now().Add(100 * time.Millisecond) })
-	defer func() { blocklist.SetTimeNow(time.Now) }()
+	ctMock.SetTime(time.Now().Add(100 * time.Millisecond))
 
 	exists, err = bl.Exists(addr1)
 	if err != nil {
@@ -58,14 +58,14 @@ func TestExist(t *testing.T) {
 	if exists {
 		t.Fatal("got  exists, expected not exists")
 	}
-
 }
 
 func TestPeers(t *testing.T) {
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{4, 5, 6, 7})
+	ctMock := &currentTimeMock{}
 
-	bl := blocklist.NewBlocklist(mock.NewStateStore())
+	bl := blocklist.NewBlocklistWithCurrentTimeFn(mock.NewStateStore(), ctMock.Time)
 
 	// add forever
 	if err := bl.Add(addr1, 0); err != nil {
@@ -89,8 +89,7 @@ func TestPeers(t *testing.T) {
 		t.Fatalf("expected addr2 to exist in peers: %v", addr2)
 	}
 
-	blocklist.SetTimeNow(func() time.Time { return time.Now().Add(100 * time.Millisecond) })
-	defer func() { blocklist.SetTimeNow(time.Now) }()
+	ctMock.SetTime(time.Now().Add(100 * time.Millisecond))
 
 	// now expect just one
 	peers, err = bl.Peers()
@@ -113,4 +112,16 @@ func isIn(p swarm.Address, peers []p2p.Peer) bool {
 		}
 	}
 	return false
+}
+
+type currentTimeMock struct {
+	time time.Time
+}
+
+func (c *currentTimeMock) Time() time.Time {
+	return c.time
+}
+
+func (c *currentTimeMock) SetTime(t time.Time) {
+	c.time = t
 }

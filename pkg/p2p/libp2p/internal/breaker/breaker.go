@@ -21,9 +21,6 @@ const (
 var (
 	_ Interface = (*breaker)(nil)
 
-	// timeNow is used to deterministically mock time.Now() in tests.
-	timeNow = time.Now
-
 	// ErrClosed is the special error type that indicates that breaker is closed and that is not executing functions at the moment.
 	ErrClosed = errors.New("breaker closed")
 )
@@ -38,6 +35,8 @@ type Interface interface {
 	ClosedUntil() time.Time
 }
 
+type currentTimeFn = func() time.Time
+
 type breaker struct {
 	limit                int // breaker will not execute any more tasks after limit number of consecutive failures happen
 	consFailedCalls      int // current number of consecutive fails
@@ -46,6 +45,7 @@ type breaker struct {
 	backoff              time.Duration // initial backoff duration
 	maxBackoff           time.Duration
 	failInterval         time.Duration // consecutive failures are counted if they happen within this interval
+	currentTimeFn        currentTimeFn
 	mtx                  sync.Mutex
 }
 
@@ -57,11 +57,16 @@ type Options struct {
 }
 
 func NewBreaker(o Options) Interface {
+	return newBreakerWithCurrentTimeFn(o, time.Now)
+}
+
+func newBreakerWithCurrentTimeFn(o Options, currentTimeFn currentTimeFn) Interface {
 	breaker := &breaker{
-		limit:        o.Limit,
-		backoff:      o.StartBackoff,
-		maxBackoff:   o.MaxBackoff,
-		failInterval: o.FailInterval,
+		limit:         o.Limit,
+		backoff:       o.StartBackoff,
+		maxBackoff:    o.MaxBackoff,
+		failInterval:  o.FailInterval,
+		currentTimeFn: currentTimeFn,
 	}
 
 	if o.Limit == 0 {
@@ -99,16 +104,16 @@ func (b *breaker) ClosedUntil() time.Time {
 		return b.closedTimestamp.Add(b.backoff)
 	}
 
-	return timeNow()
+	return b.currentTimeFn()
 }
 
 func (b *breaker) beforef() error {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 
-	// use timeNow().Sub() instead of time.Since() so it can be deterministically mocked in tests
+	// use currentTimeFn().Sub() instead of time.Since() so it can be deterministically mocked in tests
 	if b.consFailedCalls >= b.limit {
-		if b.closedTimestamp.IsZero() || timeNow().Sub(b.closedTimestamp) < b.backoff {
+		if b.closedTimestamp.IsZero() || b.currentTimeFn().Sub(b.closedTimestamp) < b.backoff {
 			return ErrClosed
 		}
 
@@ -120,7 +125,7 @@ func (b *breaker) beforef() error {
 		}
 	}
 
-	if !b.firstFailedTimestamp.IsZero() && timeNow().Sub(b.firstFailedTimestamp) >= b.failInterval {
+	if !b.firstFailedTimestamp.IsZero() && b.currentTimeFn().Sub(b.firstFailedTimestamp) >= b.failInterval {
 		b.resetFailed()
 	}
 
@@ -132,12 +137,12 @@ func (b *breaker) afterf(err error) error {
 	defer b.mtx.Unlock()
 	if err != nil {
 		if b.consFailedCalls == 0 {
-			b.firstFailedTimestamp = timeNow()
+			b.firstFailedTimestamp = b.currentTimeFn()
 		}
 
 		b.consFailedCalls++
 		if b.consFailedCalls == b.limit {
-			b.closedTimestamp = timeNow()
+			b.closedTimestamp = b.currentTimeFn()
 		}
 
 		return err
