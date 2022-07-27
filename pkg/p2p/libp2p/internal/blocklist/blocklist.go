@@ -15,18 +15,18 @@ import (
 
 var keyPrefix = "blocklist-"
 
-type CurrentTimeFn = func() time.Time
+type currentTimeFn = func() time.Time
 
 type Blocklist struct {
 	store         storage.StateStorer
-	currentTimeFn CurrentTimeFn
+	currentTimeFn currentTimeFn
 }
 
 func NewBlocklist(store storage.StateStorer) *Blocklist {
 	return NewBlocklistWithCurrentTimeFn(store, time.Now)
 }
 
-func NewBlocklistWithCurrentTimeFn(store storage.StateStorer, currentTimeFn CurrentTimeFn) *Blocklist {
+func NewBlocklistWithCurrentTimeFn(store storage.StateStorer, currentTimeFn currentTimeFn) *Blocklist {
 	return &Blocklist{
 		store:         store,
 		currentTimeFn: currentTimeFn,
