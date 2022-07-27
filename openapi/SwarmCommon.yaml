@@ -530,6 +530,10 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
+    isAll:
+      type: string
+      required: false
+
     BatchID:
       type: string
       pattern: "^[A-Fa-f0-9]{64}$"
