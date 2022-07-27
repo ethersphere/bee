@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 var _ postage.Storer = (*BatchStore)(nil)
@@ -113,7 +114,7 @@ func (bs *BatchStore) Get(id []byte) (*postage.Batch, error) {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.New("no such id")
+		return nil, storage.ErrNotFound
 	}
 	return bs.batch, nil
 }
