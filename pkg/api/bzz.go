@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"io"
 	"mime"
 	"net/http"
@@ -45,7 +46,6 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
-
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
 		logger.Debugf("bzz upload: putter: %v", err)
@@ -332,6 +332,16 @@ FETCH:
 		if indexDocumentSuffixKey, ok := manifestMetadataLoad(ctx, m, manifest.RootPath, manifest.WebsiteIndexDocumentSuffixKey); ok {
 			pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
 			indexDocumentManifestEntry, err := m.Lookup(ctx, pathWithIndex)
+			fmt.Println("indexDocumentManifestEntry Reference", indexDocumentManifestEntry.Reference())
+			fmt.Println("indexDocumentManifestEntry Metadata", indexDocumentManifestEntry.Metadata())
+			man := mantaray.New()
+			_ = man.Add(ctx, []byte(pathWithIndex), indexDocumentManifestEntry.Reference().Bytes(), indexDocumentManifestEntry.Metadata(), ls)
+			lookup, err := man.LookupNode(ctx, []byte(pathWithIndex), ls)
+			if err != nil {
+				return
+			}
+			fmt.Println("node", lookup)
+
 			if err == nil {
 				// index document exists
 				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
@@ -343,6 +353,7 @@ FETCH:
 	}
 
 	me, err := m.Lookup(ctx, pathVar)
+	fmt.Printf(`Lookup %+v\n`, me)
 	if err != nil {
 		logger.Debugf("bzz download: invalid path %s/%s: %v", address, pathVar, err)
 		logger.Error("bzz download: invalid path")
