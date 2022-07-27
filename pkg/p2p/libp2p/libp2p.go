@@ -275,7 +275,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		networkID:         networkID,
 		peers:             peerRegistry,
 		addressbook:       ab,
-		blocklist:         blocklist.NewBlocklist(storer, time.Now),
+		blocklist:         blocklist.NewBlocklist(storer),
 		logger:            logger,
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options

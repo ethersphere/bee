@@ -22,7 +22,11 @@ type Blocklist struct {
 	currentTimeFn CurrentTimeFn
 }
 
-func NewBlocklist(store storage.StateStorer, currentTimeFn CurrentTimeFn) *Blocklist {
+func NewBlocklist(store storage.StateStorer) *Blocklist {
+	return NewBlocklistWithCurrentTimeFn(store, time.Now)
+}
+
+func NewBlocklistWithCurrentTimeFn(store storage.StateStorer, currentTimeFn CurrentTimeFn) *Blocklist {
 	return &Blocklist{
 		store:         store,
 		currentTimeFn: currentTimeFn,

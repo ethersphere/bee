@@ -19,7 +19,7 @@ func TestExist(t *testing.T) {
 	addr2 := swarm.NewAddress([]byte{4, 5, 6, 7})
 	ctMock := &currentTimeMock{}
 
-	bl := blocklist.NewBlocklist(mock.NewStateStore(), ctMock.Time)
+	bl := blocklist.NewBlocklistWithCurrentTimeFn(mock.NewStateStore(), ctMock.Time)
 
 	exists, err := bl.Exists(addr1)
 	if err != nil {
@@ -66,7 +66,7 @@ func TestPeers(t *testing.T) {
 	addr2 := swarm.NewAddress([]byte{4, 5, 6, 7})
 	ctMock := &currentTimeMock{}
 
-	bl := blocklist.NewBlocklist(mock.NewStateStore(), ctMock.Time)
+	bl := blocklist.NewBlocklistWithCurrentTimeFn(mock.NewStateStore(), ctMock.Time)
 
 	// add forever
 	if err := bl.Add(addr1, 0); err != nil {
