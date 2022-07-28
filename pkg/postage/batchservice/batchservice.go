@@ -231,15 +231,19 @@ func (svc *batchService) TransactionStart() error {
 func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
-
-func (svc *batchService) Get() (bool, error) {
-	err := svc.syncErrorStatus.Load().(error)
-	isDone := svc.isSynced.Load() != nil
+func (svc *batchService) Get() (isDone bool, err error) {
+	iErr := svc.syncErrorStatus.Load()
+	if iErr != nil {
+		err = iErr.(error)
+	}
+	isDone = svc.isSynced.Load() != nil
 	return isDone, err
 }
 func (svc *batchService) Set(err error) {
 	svc.isSynced.Store(true)
-	svc.syncErrorStatus.Store(err)
+	if err != nil {
+		svc.syncErrorStatus.Store(err)
+	}
 }
 
 func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot) (<-chan error, error) {
