@@ -700,6 +700,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
 
 			if err != nil {
+				batchSvc.Set(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
 			}
 			// wait for the postage contract listener to sync
@@ -720,8 +721,10 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			}
 		} else {
 			go func() {
+				logger.Info("started postage contract data sync in the background...")
 				syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
 				if err != nil {
+					batchSvc.Set(err)
 					logger.Errorf("unable to start batch service: %v", err)
 				}
 				// wait for the postage contract listener to sync
