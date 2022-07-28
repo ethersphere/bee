@@ -26,6 +26,7 @@ const (
 
 // ErrNotFound signals that the element was not found.
 var ErrNotFound = errors.New("batchstore: not found")
+var ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
 
 type evictFn func(batchID []byte) error
 
@@ -99,15 +100,21 @@ func (s *store) SetStorageRadius(f func(uint8) uint8) error {
 	defer s.mtx.Unlock()
 
 	oldRadius := s.rs.StorageRadius
-	s.rs.StorageRadius = f(s.rs.StorageRadius)
+	newRadius := f(oldRadius)
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
+	if newRadius > s.rs.Radius {
+		return ErrStorageRadiusExceeds
 	}
 
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	s.rs.StorageRadius = newRadius
 
-	if s.rs.StorageRadius < oldRadius {
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(newRadius)
+	}
+
+	s.metrics.StorageRadius.Set(float64(newRadius))
+
+	if newRadius < oldRadius {
 		if err := s.lowerBatchStorageRadius(); err != nil {
 			s.logger.Errorf("batchstore: lower batch storage radius: %v", err)
 		}

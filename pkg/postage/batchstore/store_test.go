@@ -185,25 +185,31 @@ func TestBatchStore_PutChainState(t *testing.T) {
 }
 
 func TestBatchStore_SetStorageRadius(t *testing.T) {
-	batchStore, _ := batchstore.New(mock.NewStateStore(), nil, logging.New(io.Discard, 0))
 
-	var oldRadius uint8 = 5
-	var newRadius uint8 = 3
+	var (
+		radius           uint8 = 5
+		oldStorageRadius uint8 = 5
+		newStorageRadius uint8 = 3
+	)
+
+	stateStore := mock.NewStateStore()
+	stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
+	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
 	_ = batchStore.SetStorageRadius(func(uint8) uint8 {
-		return oldRadius
+		return oldStorageRadius
 	})
 
 	_ = batchStore.SetStorageRadius(func(radius uint8) uint8 {
-		if radius != oldRadius {
-			t.Fatalf("got old radius %d, want %d", radius, oldRadius)
+		if radius != oldStorageRadius {
+			t.Fatalf("got old radius %d, want %d", radius, oldStorageRadius)
 		}
-		return newRadius
+		return newStorageRadius
 	})
 
 	got := batchStore.GetReserveState().StorageRadius
-	if got != newRadius {
-		t.Fatalf("got old radius %d, want %d", got, newRadius)
+	if got != newStorageRadius {
+		t.Fatalf("got old radius %d, want %d", got, newStorageRadius)
 	}
 }
 
