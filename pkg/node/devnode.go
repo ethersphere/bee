@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -271,8 +272,8 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 				if err != nil {
 					return err
 				}
-
-				post.HandleTopUp(batch.ID, newBalance)
+				_totalAmount := big.NewInt(newBalance.Int64() / int64(math.Pow(2, float64(batch.Depth))))
+				post.HandleTopUp(batch.ID, _totalAmount)
 				return nil
 			},
 		),
