@@ -131,6 +131,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		// if we have crossed 50% utilization, dont do anything
 		if currentSize > halfCapacity {
 			adaptationPeriod = false
+			s.logger.Trace("depthmonitor: current size is above half capacity, not entering adaptation period.")
 			continue
 		}
 
