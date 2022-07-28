@@ -1433,7 +1433,7 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	return true
 }
 
-func (k *Kad) SetStorageDepth(d uint8) {
+func (k *Kad) SetStorageRadius(d uint8) {
 
 	k.depthMu.Lock()
 	defer k.depthMu.Unlock()

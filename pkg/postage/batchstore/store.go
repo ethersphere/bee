@@ -94,6 +94,24 @@ func (s *store) GetReserveState() *postage.ReserveState {
 	}
 }
 
+func (s *store) SetStorageRadius(f func(uint8) uint8) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	oldRadius := s.rs.StorageRadius
+	s.rs.StorageRadius = f(s.rs.StorageRadius)
+
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
+	}
+
+	if s.rs.StorageRadius < oldRadius {
+		return s.lowerBatchStorageRadius()
+	}
+
+	return nil
+}
+
 func (s *store) GetChainState() *postage.ChainState {
 	return s.cs
 }
@@ -193,6 +211,7 @@ func (s *store) Save(batch *postage.Batch) error {
 		if s.storageRadiusSetter != nil {
 			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 		}
+
 		return nil
 	case err == nil:
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
@@ -270,8 +289,6 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
-	// this needs to be improved, since we can miss some calls on
-	// startup. the same goes for the other call to radiusSetter
 	if s.storageRadiusSetter != nil {
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}

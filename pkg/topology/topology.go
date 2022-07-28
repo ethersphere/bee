@@ -153,6 +153,6 @@ type NeighborhoodDepther interface {
 	NeighborhoodDepth() uint8
 }
 
-type SetStorageDepther interface {
-	SetStorageDepth(uint8)
+type SetStorageRadiuser interface {
+	SetStorageRadius(uint8)
 }
