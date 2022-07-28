@@ -183,7 +183,6 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	}(time.Now())
 
 	var (
-		stopped = false
 		updates []*postage.Batch
 	)
 
@@ -209,7 +208,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
 		s.logger.Debugf("batchstore: Unreserve callback batch %x storage radius %d", id, b.StorageRadius)
 
-		stopped, err = cb(id, b.StorageRadius)
+		stopped, err := cb(id, b.StorageRadius)
 		if err != nil {
 			return false, err
 		}
@@ -236,7 +235,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	}
 
 	// a full iteration has occurred AND all batches were skipped (meaning current storage radius is too low), increase global storage radius
-	if !stopped && batchesCount == skippedBatches && s.rs.StorageRadius < s.rs.Radius {
+	if batchesCount > 0 && batchesCount == skippedBatches && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		s.logger.Debugf("batchstore: new storage radius %d ", s.rs.StorageRadius)
