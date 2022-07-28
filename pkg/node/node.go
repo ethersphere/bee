@@ -851,7 +851,6 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	if o.FullNodeMode {
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime)
-		// batchStore.SetStorageRadiusSetter(depthMonitor)
 		b.depthMonitorCloser = depthMonitor
 	}
 

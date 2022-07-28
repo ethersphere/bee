@@ -4,8 +4,6 @@
 
 package depthmonitor
 
-// const DepthKey = depthKey
-
 var (
 	ManageWait = &manageWait
 )

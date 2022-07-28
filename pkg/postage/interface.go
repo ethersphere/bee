@@ -85,7 +85,7 @@ type Storer interface {
 	Reset() error
 }
 
-// StorageRadiusSetter is used as a callback when the radius of a node changes.// StorageRadiusSetter is used as a callback when the radius of a node changes.
+// StorageRadiusSetter is used as a callback when the radius of a node changes.
 type StorageRadiusSetter interface {
 	SetStorageRadius(uint8)
 }
