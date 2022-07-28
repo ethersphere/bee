@@ -70,6 +70,9 @@ type Storer interface {
 	// GetReserveState returns a copy of stored reserve state.
 	GetReserveState() *ReserveState
 
+	// SetStorageRadius updates the value of the storage radius.
+	SetStorageRadius(func(uint8) uint8) error
+
 	// SetStorageRadiusSetter sets the RadiusSetter to the given value.
 	// The given RadiusSetter will be called when radius changes.
 	SetStorageRadiusSetter(StorageRadiusSetter)
@@ -82,7 +85,7 @@ type Storer interface {
 	Reset() error
 }
 
-// StorageRadiusSetter is used as a callback when the radius of a node changes.
+// StorageRadiusSetter is used as a callback when the radius of a node changes.// StorageRadiusSetter is used as a callback when the radius of a node changes.
 type StorageRadiusSetter interface {
 	SetStorageRadius(uint8)
 }

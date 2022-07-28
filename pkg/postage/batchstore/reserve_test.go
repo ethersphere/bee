@@ -402,7 +402,6 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	}
 
 	bStore, _ := batchstore.New(stateStore, evictFn, logger)
-	bStore.SetStorageRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,

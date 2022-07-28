@@ -61,7 +61,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageDepth(swarm.MaxPO) // initial tests do not check for radius
+	kad.SetStorageRadius(swarm.MaxPO) // initial tests do not check for radius
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -125,11 +125,11 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 7)
 
 	// set the radius to be lower than unsaturated, expect radius as depth
-	kad.SetStorageDepth(6)
+	kad.SetStorageRadius(6)
 	kDepth(t, kad, 6)
 
 	// set the radius to MaxPO again so that intermediate checks can run
-	kad.SetStorageDepth(swarm.MaxPO)
+	kad.SetStorageRadius(swarm.MaxPO)
 
 	// expect shallow peers not in depth
 	for _, a := range shallowPeers {
@@ -161,11 +161,11 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 8)
 
 	// again set radius to lower value, expect that as depth
-	kad.SetStorageDepth(5)
+	kad.SetStorageRadius(5)
 	kDepth(t, kad, 5)
 
 	// reset radius to MaxPO for the rest of the checks
-	kad.SetStorageDepth(swarm.MaxPO)
+	kad.SetStorageRadius(swarm.MaxPO)
 
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
@@ -216,7 +216,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 	)
 
-	kad.SetStorageDepth(swarm.MaxPO) // initial tests do not check for radius
+	kad.SetStorageRadius(swarm.MaxPO) // initial tests do not check for radius
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -284,11 +284,11 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	kDepth(t, kad, 7)
 
 	// set the radius to be lower than unsaturated, expect radius as depth
-	kad.SetStorageDepth(6)
+	kad.SetStorageRadius(6)
 	kDepth(t, kad, 6)
 
 	// set the radius to MaxPO again so that intermediate checks can run
-	kad.SetStorageDepth(swarm.MaxPO)
+	kad.SetStorageRadius(swarm.MaxPO)
 
 	// expect shallow peers not in depth
 	for _, a := range shallowPeers {
@@ -323,11 +323,11 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	kDepth(t, kad, 8)
 
 	// again set radius to lower value, expect that as depth
-	kad.SetStorageDepth(5)
+	kad.SetStorageRadius(5)
 	kDepth(t, kad, 5)
 
 	// reset radius to MaxPO for the rest of the checks
-	kad.SetStorageDepth(swarm.MaxPO)
+	kad.SetStorageRadius(swarm.MaxPO)
 
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
@@ -451,7 +451,7 @@ func TestManage(t *testing.T) {
 	}
 	defer kad.Close()
 
-	kad.SetStorageDepth(6)
+	kad.SetStorageRadius(6)
 
 	// first, we add peers to bin 0
 	for i := 0; i < saturation; i++ {
@@ -500,7 +500,7 @@ func TestManageWithBalancing(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	// implement saturation function (while having access to Kademlia instance)
 	sfImpl := func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool {
@@ -570,7 +570,7 @@ func TestBinSaturation(t *testing.T) {
 	}
 	defer kad.Close()
 
-	kad.SetStorageDepth(6)
+	kad.SetStorageRadius(6)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
@@ -614,7 +614,7 @@ func TestOversaturation(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -669,7 +669,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -733,7 +733,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1387,7 +1387,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	// implement empty prune func
 	pruneMux.Lock()
@@ -1540,7 +1540,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
 		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
@@ -1669,7 +1669,7 @@ func TestIteratorOpts(t *testing.T) {
 		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
 	)
 
-	kad.SetStorageDepth(swarm.MaxPO) // don't use radius for checks
+	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 4; j++ {
 			addr := test.RandomAddressAt(base, i)

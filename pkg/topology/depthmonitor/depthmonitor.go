@@ -6,16 +6,14 @@ package depthmonitor
 
 import (
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
 const (
-	depthKey             string  = "storage_depth"
 	adaptationFullWindow float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
 	adaptationRollback           = 5 * 60      // seconds to slightly roll back the adaption window in case half capacity is not reached
 )
@@ -44,21 +42,17 @@ type SyncReporter interface {
 // of the node.
 type Topology interface {
 	topology.NeighborhoodDepther
-	topology.SetStorageDepther
+	topology.SetStorageRadiuser
 }
 
 // Service implements the depthmonitor service
 type Service struct {
-	topology         Topology
-	syncer           SyncReporter
-	reserve          ReserveReporter
-	st               storage.StateStorer
-	logger           logging.Logger
-	quit             chan struct{} // to request service to stop
-	stopped          chan struct{} // to signal stopping of bg worker
-	depthLock        sync.Mutex
-	storageDepth     uint8
-	oldStorageRadius uint8
+	syncer  SyncReporter
+	reserve ReserveReporter
+	logger  logging.Logger
+	bs      postage.Storer
+	quit    chan struct{} // to request service to stop
+	stopped chan struct{} // to signal stopping of bg worker
 }
 
 // New constructs a new depthmonitor service
@@ -66,27 +60,26 @@ func New(
 	t Topology,
 	syncer SyncReporter,
 	reserve ReserveReporter,
-	st storage.StateStorer,
+	bs postage.Storer,
 	logger logging.Logger,
 	warmupTime time.Duration,
 ) *Service {
 
 	s := &Service{
-		topology: t,
-		syncer:   syncer,
-		reserve:  reserve,
-		st:       st,
-		logger:   logger,
-		quit:     make(chan struct{}),
-		stopped:  make(chan struct{}),
+		syncer:  syncer,
+		reserve: reserve,
+		bs:      bs,
+		logger:  logger,
+		quit:    make(chan struct{}),
+		stopped: make(chan struct{}),
 	}
 
-	go s.manage(warmupTime)
+	go s.manage(t, warmupTime)
 
 	return s
 }
 
-func (s *Service) manage(warmupTime time.Duration) {
+func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 	defer close(s.stopped)
 
 	// wait for warmup
@@ -96,26 +89,20 @@ func (s *Service) manage(warmupTime time.Duration) {
 	case <-time.After(warmupTime):
 	}
 
-	// check if we have already saved a depth value before shutting down previously.
-	var initialDepth uint8
-	err := s.st.Get(depthKey, &initialDepth)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		s.logger.Errorf("depthmonitor: failed reading stored depth: %s", err.Error())
+	// wire up batchstore to start reporting storage radius to kademlia
+	s.bs.SetStorageRadiusSetter(topology)
+
+	err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
+		// if we are starting from scratch, we can use the initial NeighborhoodDepth as a starting point.
+		if radius == 0 {
+			radius = topology.NeighborhoodDepth()
+		}
+		s.logger.Infof("depthmonitor: warmup period complete, starting worker with initial depth %d", radius)
+		return radius
+	})
+	if err != nil {
+		s.logger.Errorf("depthmonitor: batchstore set storage radius: %w", err)
 	}
-
-	// if we are starting from scratch, we can use the initial NeighborhoodDepth as a starting point.
-	if initialDepth == 0 {
-		initialDepth = s.topology.NeighborhoodDepth()
-	} else {
-		// use the stored depth for topology
-		s.topology.SetStorageDepth(initialDepth)
-	}
-
-	s.logger.Infof("depthmonitor: warmup period complete, starting worker with initial depth %d", initialDepth)
-
-	s.depthLock.Lock()
-	s.storageDepth = initialDepth
-	s.depthLock.Unlock()
 
 	halfCapacity := float64(s.reserve.ReserveCapacity()) / 2
 
@@ -177,48 +164,26 @@ func (s *Service) manage(warmupTime time.Duration) {
 		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
 		// their neighbourhoods
 		if expectedSize < halfCapacity {
-			s.depthLock.Lock()
-			if s.storageDepth > 0 {
-				s.storageDepth--
-				s.topology.SetStorageDepth(s.storageDepth)
-				s.logger.Infof("depthmonitor: reducing storage depth to %d", s.storageDepth)
-				s.putStorageDepth(s.storageDepth)
+			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
+				if radius > 0 {
+					radius--
+					s.logger.Infof("depthmonitor: reducing storage depth to %d", radius)
+				}
+				return radius
+			})
+			if err != nil {
+				s.logger.Errorf("depthmonitor: batchstore set storage radius: %w", err)
 			}
-			s.depthLock.Unlock()
 		}
 	}
 }
 
 func (s *Service) Close() error {
 	close(s.quit)
-
 	select {
 	case <-s.stopped:
 		return nil
 	case <-time.After(5 * time.Second):
 		return errors.New("stopping depthmonitor with ongoing worker goroutine")
-	}
-}
-
-// SetStorageRadius implements the postage.RadiusSetter interface to receive updates from batchstore
-// about the storageRadius based on on-chain events
-func (s *Service) SetStorageRadius(storageRadius uint8) {
-	s.depthLock.Lock()
-	defer s.depthLock.Unlock()
-
-	if (storageRadius > s.storageDepth) || (s.oldStorageRadius == s.storageDepth && storageRadius < s.oldStorageRadius) {
-		s.logger.Tracef("depthmonitor: setting storage depth, storage radius %d, old radius %d", storageRadius, s.oldStorageRadius)
-		s.storageDepth = storageRadius
-		s.topology.SetStorageDepth(s.storageDepth)
-		s.putStorageDepth(s.storageDepth)
-	}
-
-	s.oldStorageRadius = storageRadius
-}
-
-func (s *Service) putStorageDepth(depth uint8) {
-	err := s.st.Put(depthKey, depth)
-	if err != nil {
-		s.logger.Errorf("depthmonitor: failed updating storage depth: %v", err)
 	}
 }
