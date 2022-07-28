@@ -157,8 +157,6 @@ func (s *store) computeRadius() error {
 		s.rs.Radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(Capacity))))
 	}
 
-	s.metrics.Radius.Set(float64(s.rs.Radius))
-
 	// in the edge case that the new radius is lower because total commitment has decreased, the global storage radius has to be readjusted
 	if s.rs.Radius < s.rs.StorageRadius {
 		s.rs.StorageRadius = s.rs.Radius

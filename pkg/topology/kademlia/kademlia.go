@@ -104,7 +104,7 @@ type Kad struct {
 	knownPeers         *pslice.PSlice        // both are po aware slice of addresses
 	bootnodes          []ma.Multiaddr
 	depth              uint8         // current neighborhood depth
-	storageDepth       uint8         // storage area of responsibility
+	storageRadius      uint8         // storage area of responsibility
 	depthMu            sync.RWMutex  // protect depth changes
 	manageC            chan struct{} // trigger the manage forever loop to connect to new peers
 	peerSig            []chan struct{}
@@ -184,7 +184,7 @@ func New(
 		staticPeer:         isStaticPeer(o.StaticNodes),
 		peerFilter:         o.ReachabilityFunc,
 		ignoreStorageDepth: o.IgnoreRadius,
-		storageDepth:       swarm.MaxPO,
+		storageRadius:      swarm.MaxPO,
 	}
 
 	blocklistCallback := func(a swarm.Address) {
@@ -553,11 +553,9 @@ func (k *Kad) manage() {
 			if k.bootnode {
 				k.depthMu.Lock()
 				depth := k.depth
-				storageDepth := k.storageDepth
 				k.depthMu.Unlock()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
-				k.metrics.CurrentStorageDepth.Set(float64(storageDepth))
 				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
 				k.metrics.CurrentlyConnectedPeers.Set(float64(k.connectedPeers.Length()))
 
@@ -571,7 +569,6 @@ func (k *Kad) manage() {
 
 			k.depthMu.Lock()
 			depth := k.depth
-			storageDepth := k.storageDepth
 			k.depthMu.Unlock()
 
 			k.pruneFunc(depth)
@@ -584,7 +581,6 @@ func (k *Kad) manage() {
 			)
 
 			k.metrics.CurrentDepth.Set(float64(depth))
-			k.metrics.CurrentStorageDepth.Set(float64(storageDepth))
 			k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
 			k.metrics.CurrentlyConnectedPeers.Set(float64(k.connectedPeers.Length()))
 
@@ -910,8 +906,8 @@ func (k *Kad) recalcDepth() {
 		depth = candidate
 	}
 
-	if k.storageDepth < depth && !k.ignoreStorageDepth {
-		depth = k.storageDepth
+	if k.storageRadius < depth && !k.ignoreStorageDepth {
+		depth = k.storageRadius
 	}
 
 	k.depth = depth
@@ -1438,11 +1434,13 @@ func (k *Kad) SetStorageRadius(d uint8) {
 	k.depthMu.Lock()
 	defer k.depthMu.Unlock()
 
-	if k.storageDepth == d {
+	if k.storageRadius == d {
 		return
 	}
 
-	k.storageDepth = d
+	k.storageRadius = d
+	k.metrics.CurrentStorageDepth.Set(float64(k.storageRadius))
+	k.logger.Tracef("kademlia: set storage radius %d", k.storageRadius)
 
 	oldDepth := k.depth
 	k.recalcDepth()

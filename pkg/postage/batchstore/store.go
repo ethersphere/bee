@@ -99,17 +99,21 @@ func (s *store) SetStorageRadius(f func(uint8) uint8) error {
 	defer s.mtx.Unlock()
 
 	oldRadius := s.rs.StorageRadius
-	s.rs.StorageRadius = f(oldRadius)
+	s.rs.StorageRadius = f(s.rs.StorageRadius)
 
 	if s.storageRadiusSetter != nil {
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
 
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+
 	if s.rs.StorageRadius < oldRadius {
-		return s.lowerBatchStorageRadius()
+		if err := s.lowerBatchStorageRadius(); err != nil {
+			s.logger.Errorf("batchstore: lower batch storage radius: %v", err)
+		}
 	}
 
-	return nil
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 func (s *store) GetChainState() *postage.ChainState {
@@ -212,6 +216,9 @@ func (s *store) Save(batch *postage.Batch) error {
 			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 		}
 
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		s.metrics.Radius.Set(float64(s.rs.Radius))
+
 		return nil
 	case err == nil:
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
@@ -263,6 +270,9 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	if s.storageRadiusSetter != nil {
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
+
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	s.metrics.Radius.Set(float64(s.rs.Radius))
 
 	return nil
 }
