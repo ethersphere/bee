@@ -99,7 +99,7 @@ func (s *store) SetStorageRadius(f func(uint8) uint8) error {
 	defer s.mtx.Unlock()
 
 	oldRadius := s.rs.StorageRadius
-	s.rs.StorageRadius = f(s.rs.StorageRadius)
+	s.rs.StorageRadius = f(oldRadius)
 
 	if s.storageRadiusSetter != nil {
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)

@@ -300,7 +300,7 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		radiusAfterFirstBatches  = 5 // radius after three batches
 		radiusAfterSecondBatches = 6 // radius after two more batches
 		radiusAfterChainUpdate   = 5 // radius after expiring two batches with the chain update
-		storageRadiusAfterUpdate = 4 // storage radius after chain update
+		storageRadiusAfterUpdate = 5 // storage radius after chain update
 	)
 
 	store := setupBatchStore(t)
@@ -339,6 +339,9 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 	// add some batches to increase the radius by one
 	_ = addBatch(t, store, initDepth, expiredValue+1)
 	_ = addBatch(t, store, initDepth, expiredValue+1)
+
+	// increase storage radius to be the same as reverse radius
+	_ = store.Unreserve(cb)
 
 	state = store.GetReserveState()
 
