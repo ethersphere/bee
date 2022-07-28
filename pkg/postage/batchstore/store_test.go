@@ -193,7 +193,7 @@ func TestBatchStore_SetStorageRadius(t *testing.T) {
 	)
 
 	stateStore := mock.NewStateStore()
-	stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
+	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
 	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
 
 	_ = batchStore.SetStorageRadius(func(uint8) uint8 {
