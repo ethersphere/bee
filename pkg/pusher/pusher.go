@@ -25,8 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-
-	"github.com/sirupsen/logrus"
 )
 
 type Op struct {
@@ -120,7 +118,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	ctxLogger := func() (context.Context, *logrus.Entry) {
+	ctxLogger := func() (context.Context, logging.Logger) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return ctx, logger
@@ -228,7 +226,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 }
 
-func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger *logrus.Entry, directUpload bool) error {
+func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger logging.Logger, directUpload bool) error {
 	defer s.inflight.delete(ch)
 	var wantSelf bool
 	// Later when we process receipt, get the receipt and process it

@@ -22,7 +22,7 @@ var defaults = struct {
 	formatter *formatter
 }{
 	options: &Options{
-		sink:      Lock(os.Stderr),
+		sink:      os.Stderr,
 		verbosity: VerbosityDebug,
 		fmtOptions: fmtOptions{
 			timestampLayout: "2006-01-02 15:04:05.000000",

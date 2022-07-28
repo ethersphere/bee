@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"math/big"
-
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
