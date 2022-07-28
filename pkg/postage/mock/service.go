@@ -101,9 +101,9 @@ func (m *mockPostage) HandleTopUp(batchID []byte, newBalance *big.Int) {
 			if newBalance.Cmp(v.Amount()) > 0 {
 				v.Amount().Set(newBalance)
 			}
+			return
 		}
 	}
-	return
 }
 
 func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8, _ *big.Int) {}

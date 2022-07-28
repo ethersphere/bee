@@ -272,7 +272,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 					return err
 				}
 
-				post.HandleTopUp(batch.ID, newBalance)
+				post.HandleTopUp(batch.ID, topupAmount)
 				return nil
 			},
 		),
