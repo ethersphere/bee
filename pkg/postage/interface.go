@@ -70,7 +70,7 @@ type Storer interface {
 	// GetReserveState returns a copy of stored reserve state.
 	GetReserveState() *ReserveState
 
-	// SetStorageRadius updates the value of the storage radius.
+	// SetStorageRadius updates the value of the storage radius atomically.
 	SetStorageRadius(func(uint8) uint8) error
 
 	// SetStorageRadiusSetter sets the RadiusSetter to the given value.

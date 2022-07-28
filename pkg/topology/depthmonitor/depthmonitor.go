@@ -151,8 +151,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
-		// based on the sync rate, determine the expected size of reserve at the end of the
-		// adaptation window
+		// based on the sync rate, determine the expected size of reserve at the end of the adaptation window
 		timeleft := adaptationWindow - time.Since(adaptationStart).Seconds()
 		expectedSize := s.syncer.Rate()*timeleft + currentSize
 
@@ -162,7 +161,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		)
 
 		// if we are in the adaptation window and we are not expecting to have enough utilization
-		// by the end of it, we proactively decrease the storage depth to allow nodes to widen
+		// by the end of it, we proactively decrease the storage radius to allow nodes to widen
 		// their neighbourhoods
 		if expectedSize < halfCapacity {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {

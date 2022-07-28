@@ -334,6 +334,7 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		}
 
 		_ = store.Unreserve(cb)
+		_ = store.Unreserve(cb)
 	}
 
 	// add some batches to increase the radius by one
@@ -373,9 +374,9 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		t.Fatalf("got storage radius %d, want %d", state.StorageRadius, storageRadiusAfterUpdate)
 	}
 
-	// the radius of every batch must not exceed the current storage radius after a storage radius decrease.
+	// the radius of every batch must not exceed the current storage radius +1
 	err = store.Iterate(func(b *postage.Batch) (bool, error) {
-		if b.StorageRadius > state.StorageRadius {
+		if b.StorageRadius > state.StorageRadius+1 {
 			t.Fatalf("batch radius %d should not exceed storate radius %d", b.StorageRadius, state.StorageRadius)
 		}
 		return false, nil
