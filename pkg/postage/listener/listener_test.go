@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"testing"
 	"time"
 
@@ -461,8 +462,7 @@ func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, buc
 	return nil
 }
 
-func (u *updater) Set(error)          {}
-func (u *updater) Get() (bool, error) { return true, nil }
+func (u *updater) GetSyncStatus() (bool, error) { return true, nil }
 
 func (u *updater) TopUp(id []byte, normalisedBalance *big.Int, _ []byte) error {
 	u.eventC <- topupArgs{
@@ -491,9 +491,9 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(_ uint64, _ *postage.ChainSnapshot) (<-chan error, error) { return nil, nil }
-func (u *updater) TransactionStart() error                                        { return nil }
-func (u *updater) TransactionEnd() error                                          { return nil }
+func (u *updater) Start(uint64, *postage.ChainSnapshot, chan os.Signal) error { return nil }
+func (u *updater) TransactionStart() error                                    { return nil }
+func (u *updater) TransactionEnd() error                                      { return nil }
 
 type mockFilterer struct {
 	filterLogEvents      []types.Log

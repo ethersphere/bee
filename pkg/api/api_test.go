@@ -93,7 +93,6 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	Post               postage.Service
 	Steward            steward.Interface
-	BatchSyncStatus    postage.SyncStatus
 	WsHeaders          http.Header
 	Authenticator      *mockauth.Auth
 	DebugAPI           bool
@@ -111,9 +110,11 @@ type testServerOptions struct {
 	AccountingOpts  []accountingmock.Option
 	ChequebookOpts  []chequebookmock.Option
 	SwapOpts        []swapmock.Option
-	BatchStore      postage.Storer
 	TransactionOpts []transactionmock.Option
 	Traverser       traversal.Traverser
+
+	BatchStore        postage.Storer
+	BatchEventUpdater postage.SyncStatus
 
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
@@ -140,8 +141,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
 	}
-	if o.BatchSyncStatus == nil {
-		o.BatchSyncStatus = new(mockbatchstore.MockSyncStatus)
+	if o.BatchEventUpdater == nil {
+		o.BatchEventUpdater = new(mockbatchstore.MockEventUpdater)
 	}
 	if o.Authenticator == nil {
 		o.Authenticator = &mockauth.Auth{
@@ -166,25 +167,25 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	backend := backendmock.New(o.BackendOpts...)
 
 	var extraOpts = api.ExtraOptions{
-		TopologyDriver:   topologyDriver,
-		Accounting:       acc,
-		Pseudosettle:     recipient,
-		LightNodes:       ln,
-		Swap:             settlement,
-		Chequebook:       chequebook,
-		Pingpong:         o.Pingpong,
-		BlockTime:        o.BlockTime,
-		Tags:             o.Tags,
-		Storer:           o.Storer,
-		Resolver:         o.Resolver,
-		Pss:              o.Pss,
-		TraversalService: o.Traversal,
-		Pinning:          o.Pinning,
-		FeedFactory:      o.Feeds,
-		Post:             o.Post,
-		PostageContract:  o.PostageContract,
-		Steward:          o.Steward,
-		BatchSyncStatus:  o.BatchSyncStatus,
+		TopologyDriver:    topologyDriver,
+		Accounting:        acc,
+		Pseudosettle:      recipient,
+		LightNodes:        ln,
+		Swap:              settlement,
+		Chequebook:        chequebook,
+		Pingpong:          o.Pingpong,
+		BlockTime:         o.BlockTime,
+		Tags:              o.Tags,
+		Storer:            o.Storer,
+		Resolver:          o.Resolver,
+		Pss:               o.Pss,
+		TraversalService:  o.Traversal,
+		Pinning:           o.Pinning,
+		FeedFactory:       o.Feeds,
+		Post:              o.Post,
+		PostageContract:   o.PostageContract,
+		Steward:           o.Steward,
+		BatchEventUpdater: o.BatchEventUpdater,
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, o.CORSAllowedOrigins)
