@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+	"os"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -231,7 +232,7 @@ func (svc *batchService) TransactionStart() error {
 func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
-func (svc *batchService) Get() (isDone bool, err error) {
+func (svc *batchService) GetSyncStatus() (isDone bool, err error) {
 	iErr := svc.syncErrorStatus.Load()
 	if iErr != nil {
 		err = iErr.(error)
@@ -239,18 +240,14 @@ func (svc *batchService) Get() (isDone bool, err error) {
 	isDone = svc.isSynced.Load() != nil
 	return isDone, err
 }
-func (svc *batchService) Set(err error) {
-	svc.isSynced.Store(true)
-	if err != nil {
-		svc.syncErrorStatus.Store(err)
-	}
-}
 
-func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot) (<-chan error, error) {
+var ErrInterruped = errors.New("postage sync interrupted")
+
+func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot, interrupt chan os.Signal) (err error) {
 	dirty := false
-	err := svc.stateStore.Get(dirtyDBKey, &dirty)
+	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
+		return err
 	}
 
 	if dirty || svc.resync || initState != nil {
@@ -262,10 +259,10 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		}
 
 		if err := svc.storer.Reset(); err != nil {
-			return nil, err
+			return err
 		}
 		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
-			return nil, err
+			return err
 		}
 		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
@@ -279,7 +276,21 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		startBlock = initState.LastBlockNumber
 	}
 
-	return svc.listener.Listen(startBlock+1, svc, initState), nil
+	defer func() {
+		svc.isSynced.Store(true)
+		if err != nil {
+			svc.syncErrorStatus.Store(err)
+		}
+	}()
+
+	syncedChan := svc.listener.Listen(startBlock+1, svc, initState)
+
+	select {
+	case err = <-syncedChan:
+		return err
+	case <-interrupt:
+		return ErrInterruped
+	}
 }
 
 // updateChecksum updates the batchservice checksum once an event gets

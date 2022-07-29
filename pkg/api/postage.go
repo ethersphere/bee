@@ -39,7 +39,7 @@ func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
 
 func (s *Service) postageSyncStatusCheckHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		done, err := s.batchSyncStatus.Get()
+		done, err := s.batchEventUpdater.GetSyncStatus()
 		if err != nil {
 			s.logger.Debugf("postage access: %v", err)
 			s.logger.Error("postage access: syncing failed")

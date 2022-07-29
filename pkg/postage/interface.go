@@ -7,14 +7,14 @@ package postage
 import (
 	"io"
 	"math/big"
+	"os"
 
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // SyncStatus interface definitions reflect the status of the postage syncing progress.
 type SyncStatus interface {
-	Get() (bool, error)
-	Set(error)
+	GetSyncStatus() (bool, error)
 }
 
 // EventUpdater interface definitions reflect the updates triggered by events
@@ -26,7 +26,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
 	UpdatePrice(price *big.Int, txHash []byte) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(startBlock uint64, initState *ChainSnapshot) (<-chan error, error)
+	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan os.Signal) error
 
 	TransactionStart() error
 	TransactionEnd() error
