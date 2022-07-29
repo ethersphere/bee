@@ -23,7 +23,12 @@ var _ Logger = (*logger)(nil)
 type levelHooks map[Level][]Hook
 
 // fire triggers all the hooks for the given level.
+// If level V is enabled in debug verbosity, then
+// the VerbosityAll hooks are triggered.
 func (lh levelHooks) fire(level Level) error {
+	if level > VerbosityDebug {
+		level = VerbosityAll
+	}
 	for _, hook := range lh[level] {
 		if err := hook.Fire(level); err != nil {
 			return err

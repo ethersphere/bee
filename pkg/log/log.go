@@ -246,9 +246,9 @@ func WithCallerDepth(depth int) Option {
 	return func(opts *Options) { opts.fmtOptions.callerDepth = depth }
 }
 
-// WithLevelHooks tells the logger to register and execute hooks at
-// related severity log levels. If VerbosityAll is given, then the
-// given hooks will be registered with each severity log level.
+// WithLevelHooks tells the logger to register and execute hooks at related
+// severity log levels. If VerbosityAll is given, then the given hooks will
+// be registered with each severity log level, including the debug V levels.
 // On the other hand, if VerbosityNone is given, hooks will
 // not be registered with any severity log level.
 func WithLevelHooks(l Level, hooks ...Hook) Option {
@@ -265,6 +265,7 @@ func WithLevelHooks(l Level, hooks ...Hook) Option {
 				VerbosityWarning,
 				VerbosityInfo,
 				VerbosityDebug,
+				VerbosityAll, // V levels.
 			} {
 				opts.levelHooks[ml] = append(opts.levelHooks[ml], hooks...)
 			}
