@@ -74,9 +74,9 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -89,7 +89,7 @@ type Bee struct {
 	apiServer                *http.Server
 	debugAPIServer           *http.Server
 	resolverCloser           io.Closer
-	errorLogWriter           *io.PipeWriter
+	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
 	tagsCloser               io.Closer
 	stateStoreCloser         io.Closer
@@ -207,9 +207,14 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		warmupTime = 0
 	}
 
+	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
+		logger.Error(string(p))
+		return len(p), nil
+	})
+
 	b = &Bee{
 		p2pCancel:      p2pCancel,
-		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
+		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
 		syncingStopped: make(chan struct{}),
 	}
@@ -1145,7 +1150,6 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.nsCloser, "netstore")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
-	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr

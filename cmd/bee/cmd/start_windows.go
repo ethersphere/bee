@@ -8,7 +8,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
@@ -39,6 +38,10 @@ func createWindowsEventLogger(svcName string, logger logging.Logger) (logging.Lo
 type windowsEventLogger struct {
 	logger logging.Logger
 	winlog debug.Log
+}
+
+func (l *windowsEventLogger) Log(verbosity logrus.Level, args ...interface{}) {
+	// ignore
 }
 
 func (l *windowsEventLogger) Tracef(format string, args ...interface{}) {
@@ -81,18 +84,6 @@ func (l *windowsEventLogger) Error(args ...interface{}) {
 	_ = l.winlog.Error(1633, fmt.Sprint(args...))
 }
 
-func (l *windowsEventLogger) WithField(key string, value interface{}) *logrus.Entry {
-	return l.logger.WithField(key, value)
-}
-
-func (l *windowsEventLogger) WithFields(fields logrus.Fields) *logrus.Entry {
-	return l.logger.WithFields(fields)
-}
-
-func (l *windowsEventLogger) WriterLevel(level logrus.Level) *io.PipeWriter {
-	return l.NewEntry().WriterLevel(level)
-}
-
-func (l *windowsEventLogger) NewEntry() *logrus.Entry {
-	return l.logger.NewEntry()
+func (l *windowsEventLogger) WithValues(keysAndValues ...interface{}) logging.Logger {
+	return l.logger.WithValues(keysAndValues...)
 }

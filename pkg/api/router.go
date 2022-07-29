@@ -144,6 +144,25 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(statusHandler),
 	))
+
+	s.router.Handle("/loggers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
+		"PUT": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
+		),
+	})
 }
 
 func (s *Service) mountAPI() {

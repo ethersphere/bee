@@ -53,9 +53,9 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -66,7 +66,7 @@ type DevBee struct {
 	apiCloser        io.Closer
 	pssCloser        io.Closer
 	tagsCloser       io.Closer
-	errorLogWriter   *io.PipeWriter
+	errorLogWriter   io.Writer
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
 }
@@ -96,8 +96,13 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
+	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
+		logger.Error(string(p))
+		return len(p), nil
+	})
+
 	b = &DevBee{
-		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
+		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
 	}
 
@@ -499,7 +504,6 @@ func (b *DevBee) Shutdown() error {
 	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
-	tryClose(b.errorLogWriter, "error log writer")
 
 	return mErr
 }

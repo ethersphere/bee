@@ -47,7 +47,6 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -95,9 +94,8 @@ func bootstrapNode(
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 
 	b := &Bee{
-		p2pCancel:      p2pCancel,
-		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
-		tracerCloser:   tracerCloser,
+		p2pCancel:    p2pCancel,
+		tracerCloser: tracerCloser,
 	}
 
 	defer func() {

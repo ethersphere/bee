@@ -42,7 +42,6 @@ const (
 var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a Swarm node",
