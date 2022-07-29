@@ -72,18 +72,16 @@ func TestExecute(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			b := breaker.NewBreaker(breaker.Options{
-				Limit:        tc.limit,
-				StartBackoff: startBackoff,
-				FailInterval: failInterval,
-			})
-
-			if tc.times != nil {
-				timeMock := timeMock{times: tc.times}
-				breaker.SetTimeNow(timeMock.next)
-			} else {
-				breaker.SetTimeNow(time.Now)
+			ctMock := &currentTimeMock{
+				times: tc.times,
 			}
+
+			b := breaker.NewBreaker(breaker.Options{
+				Limit:         tc.limit,
+				StartBackoff:  startBackoff,
+				FailInterval:  failInterval,
+				CurrentTimeFn: ctMock.Time,
+			})
 
 			for i := 0; i < tc.iterations; i++ {
 				if err := b.Execute(func() error {
@@ -104,12 +102,14 @@ func TestClosedUntil(t *testing.T) {
 	timestamp := time.Now()
 	startBackoff := 1 * time.Minute
 	testError := errors.New("test error")
-	timeMock := timeMock{times: []time.Time{timestamp, timestamp, timestamp}}
-	breaker.SetTimeNow(timeMock.next)
+	ctMock := &currentTimeMock{
+		times: []time.Time{timestamp, timestamp, timestamp},
+	}
 
 	b := breaker.NewBreaker(breaker.Options{
-		Limit:        1,
-		StartBackoff: startBackoff,
+		Limit:         1,
+		StartBackoff:  startBackoff,
+		CurrentTimeFn: ctMock.Time,
 	})
 
 	notClosed := b.ClosedUntil()
@@ -129,12 +129,17 @@ func TestClosedUntil(t *testing.T) {
 	}
 }
 
-type timeMock struct {
+type currentTimeMock struct {
 	times []time.Time
 	curr  int
 }
 
-func (t *timeMock) next() time.Time {
-	defer func() { t.curr++ }()
-	return t.times[t.curr]
+func (c *currentTimeMock) Time() time.Time {
+	if c.times == nil {
+		return time.Now()
+	}
+
+	t := c.times[c.curr]
+	c.curr++
+	return t
 }
