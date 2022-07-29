@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"math/big"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -31,6 +32,8 @@ type BatchStore struct {
 	radiusSetter postage.StorageRadiusSetter
 
 	existsFn func([]byte) (bool, error)
+
+	mtx sync.Mutex
 }
 
 // Option is an option passed to New.
@@ -177,6 +180,9 @@ func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 }
 
 func (bs *BatchStore) GetReserveState() *postage.ReserveState {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
 	rs := new(postage.ReserveState)
 	if bs.rs != nil {
 		rs.Radius = bs.rs.Radius
@@ -190,6 +196,9 @@ func (bs *BatchStore) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
 }
 
 func (bs *BatchStore) SetStorageRadius(f func(uint8) uint8) error {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
 	bs.rs.StorageRadius = f(bs.rs.StorageRadius)
 	if bs.radiusSetter != nil {
 		bs.radiusSetter.SetStorageRadius(bs.rs.StorageRadius)
