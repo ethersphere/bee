@@ -58,7 +58,6 @@ func TestExist(t *testing.T) {
 	if exists {
 		t.Fatal("got  exists, expected not exists")
 	}
-
 }
 
 func TestPeers(t *testing.T) {
