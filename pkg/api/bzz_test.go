@@ -118,6 +118,62 @@ func TestBzzFiles(t *testing.T) {
 			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
 		}
 	})
+	t.Run("tar-file-upload-long-directory", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+			{
+				data: []byte("image 1"),
+				name: "1.png",
+				dir:  "img",
+				header: http.Header{
+					"Content-Type": {"image/png"},
+				},
+			},
+			{
+				data: []byte("image 2"),
+				name: "2.png",
+				dir:  "specification-for-fairdrive-and-everything-else-you-need-to-know-about-your-digital-safe-zone",
+				header: http.Header{
+					"Content-Type": {"image/png"},
+				},
+			},
+		})
+		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
+				Reference: address,
+			}),
+		)
+
+		isTagFoundInResponse(t, rcvdHeader, nil)
+
+		has, err := storerMock.Has(context.Background(), address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("storer check root chunk address: have none; want one")
+		}
+
+		refs, err := pinningMock.Pins()
+		if err != nil {
+			t.Fatal("unable to get pinned references")
+		}
+		if have, want := len(refs), 0; have != want {
+			t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
+		}
+	})
 
 	t.Run("tar-file-upload-with-pinning", func(t *testing.T) {
 		tr := tarFiles(t, []f{
