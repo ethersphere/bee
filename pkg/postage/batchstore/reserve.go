@@ -260,8 +260,8 @@ func (s *store) lowerBatchStorageRadius() error {
 		}
 
 		if b.StorageRadius > s.rs.StorageRadius {
-			b.StorageRadius = s.rs.StorageRadius
 			s.logger.Debugf("batchstore: lowering storage radius for batch %x from %d to %d", b.ID, b.StorageRadius, s.rs.StorageRadius)
+			b.StorageRadius = s.rs.StorageRadius
 			updates = append(updates, b)
 		}
 
