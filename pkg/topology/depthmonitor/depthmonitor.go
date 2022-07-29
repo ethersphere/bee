@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	adaptationFullWindow float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
-	adaptationRollback   float64 = 5 * 60      // seconds to slightly roll back the adaption window in case half capacity is not reached
+	adaptationFullWindow    float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
+	adaptationMinimumWindow float64 = 10 * 60     // minimum seconds allowed for the window duration
 )
 
 var (
@@ -142,16 +142,15 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 			adaptationPeriod = true
 			adaptationStart = time.Now()
 			adaptationWindow = adaptationRate * (halfCapacity - currentSize)
+			if adaptationWindow < adaptationMinimumWindow {
+				adaptationWindow = adaptationMinimumWindow
+			}
 			s.logger.Infof("depthmonitor: starting adaptation period with window time %s", time.Second*time.Duration(adaptationWindow))
 		}
 
 		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
 		if time.Since(adaptationStart).Seconds() > adaptationWindow {
-			rollback := adaptationRollback
-			if rollback > adaptationWindow {
-				rollback = adaptationWindow
-			}
-			adaptationStart = time.Now().Add(-time.Second * time.Duration(adaptationWindow-rollback))
+			adaptationStart = time.Now().Add(-time.Second * time.Duration(adaptationWindow-adaptationMinimumWindow))
 			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
 		}
 
