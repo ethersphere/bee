@@ -148,10 +148,11 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 			s.logger.Infof("depthmonitor: starting adaptation period with window time %s", time.Second*time.Duration(adaptationWindow))
 		}
 
-		// edge case, if we have crossed the adaptation window, roll it back a little to allow sync to fill the reserve
+		// if we have crossed the adaptation window, reset to compute new adaptation window
 		if time.Since(adaptationStart).Seconds() > adaptationWindow {
-			adaptationStart = time.Now().Add(-time.Second * time.Duration(adaptationWindow-adaptationMinimumWindow))
-			s.logger.Infof("depthmonitor: rolling back adaptation window to allow sync to fill reserve")
+			adaptationPeriod = false
+			s.logger.Infof("depthmonitor: exceeded adaptation window")
+			continue
 		}
 
 		// based on the sync rate, determine the expected size of reserve at the end of the adaptation window
@@ -159,7 +160,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		expectedSize := s.syncer.Rate()*timeleft + currentSize
 
 		s.logger.Infof(
-			"depthmonitor: expected size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %s",
+			"depthmonitor: estimated size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %s",
 			expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft),
 		)
 
