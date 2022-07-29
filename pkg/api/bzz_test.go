@@ -145,7 +145,7 @@ func TestBzzFiles(t *testing.T) {
 				},
 			},
 		})
-		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+		address := swarm.MustParseHexAddress("5d4b0a469c9a601f349211bd90a70b67ce16ceb76b8688450921c662cb3082ba")
 		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
