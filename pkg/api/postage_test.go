@@ -202,8 +202,8 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	t.Run("syncing in progress", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:          true,
-			BatchEventUpdater: mock.NewNotReady(),
+			DebugAPI:   true,
+			SyncStatus: func() (bool, error) { return false, nil },
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusServiceUnavailable,
@@ -215,8 +215,8 @@ func TestPostageCreateStamp(t *testing.T) {
 	})
 	t.Run("syncing failed", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:          true,
-			BatchEventUpdater: mock.NewWithError(errors.New("oops")),
+			DebugAPI:   true,
+			SyncStatus: func() (bool, error) { return true, errors.New("oops") },
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusServiceUnavailable,

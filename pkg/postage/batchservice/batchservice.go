@@ -12,7 +12,6 @@ import (
 	"hash"
 	"math/big"
 	"os"
-	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -37,9 +36,6 @@ type batchService struct {
 
 	checksum hash.Hash // checksum hasher
 	resync   bool
-
-	isSynced        atomic.Value
-	syncErrorStatus atomic.Value
 }
 
 type Interface interface {
@@ -95,7 +91,7 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync, atomic.Value{}, atomic.Value{}}, nil
+	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -232,14 +228,6 @@ func (svc *batchService) TransactionStart() error {
 func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
-func (svc *batchService) GetSyncStatus() (isDone bool, err error) {
-	iErr := svc.syncErrorStatus.Load()
-	if iErr != nil {
-		err = iErr.(error)
-	}
-	isDone = svc.isSynced.Load() != nil
-	return isDone, err
-}
 
 var ErrInterruped = errors.New("postage sync interrupted")
 
@@ -275,13 +263,6 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 	if initState != nil && initState.LastBlockNumber > startBlock {
 		startBlock = initState.LastBlockNumber
 	}
-
-	defer func() {
-		svc.isSynced.Store(true)
-		if err != nil {
-			svc.syncErrorStatus.Store(err)
-		}
-	}()
 
 	syncedChan := svc.listener.Listen(startBlock+1, svc, initState)
 
