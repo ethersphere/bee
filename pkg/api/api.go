@@ -153,8 +153,8 @@ type Service struct {
 	pseudosettle   settlement.Interface
 	pingpong       pingpong.Interface
 
-	batchStore        postage.Storer
-	batchEventUpdater postage.SyncStatus
+	batchStore postage.Storer
+	syncStatus func() (bool, error)
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -191,25 +191,25 @@ type Options struct {
 }
 
 type ExtraOptions struct {
-	Pingpong          pingpong.Interface
-	TopologyDriver    topology.Driver
-	LightNodes        *lightnode.Container
-	Accounting        accounting.Interface
-	Pseudosettle      settlement.Interface
-	Swap              swap.Interface
-	Chequebook        chequebook.Service
-	BlockTime         *big.Int
-	Tags              *tags.Tags
-	Storer            storage.Storer
-	Resolver          resolver.Interface
-	Pss               pss.Interface
-	TraversalService  traversal.Traverser
-	Pinning           pinning.Interface
-	FeedFactory       feeds.Factory
-	Post              postage.Service
-	PostageContract   postagecontract.Interface
-	Steward           steward.Interface
-	BatchEventUpdater postage.SyncStatus
+	Pingpong         pingpong.Interface
+	TopologyDriver   topology.Driver
+	LightNodes       *lightnode.Container
+	Accounting       accounting.Interface
+	Pseudosettle     settlement.Interface
+	Swap             swap.Interface
+	Chequebook       chequebook.Service
+	BlockTime        *big.Int
+	Tags             *tags.Tags
+	Storer           storage.Storer
+	Resolver         resolver.Interface
+	Pss              pss.Interface
+	TraversalService traversal.Traverser
+	Pinning          pinning.Interface
+	FeedFactory      feeds.Factory
+	Post             postage.Service
+	PostageContract  postagecontract.Interface
+	Steward          steward.Interface
+	SyncStatus       func() (bool, error)
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
@@ -268,7 +268,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.chainBackend = chainBackend
-	s.batchEventUpdater = e.BatchEventUpdater
+	s.syncStatus = e.SyncStatus
 
 	return s.chunkPushC
 }

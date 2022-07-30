@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -693,16 +694,36 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
 
+	var (
+		syncErr    atomic.Value
+		syncStatus atomic.Value
+
+		syncStatusFn = func() (isDone bool, err error) {
+			iErr := syncErr.Load()
+			if iErr != nil {
+				err = iErr.(error)
+			}
+			isDone = syncStatus.Load() != nil
+			return isDone, err
+		}
+	)
+
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 		if o.FullNodeMode {
-			if err := batchSvc.Start(postageSyncStart, initBatchState, interrupt); err != nil {
+			err = batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
 			}
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				if err := batchSvc.Start(postageSyncStart, initBatchState, interrupt); err != nil {
+				err := batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+				syncStatus.Store(true)
+				if err != nil {
+					syncErr.Store(err)
 					logger.Errorf("unable to sync batches: %v", err)
 				}
 			}()
@@ -868,25 +889,25 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
 	extraOpts := api.ExtraOptions{
-		Pingpong:          pingPong,
-		TopologyDriver:    kad,
-		LightNodes:        lightNodes,
-		Accounting:        acc,
-		Pseudosettle:      pseudosettleService,
-		Swap:              swapService,
-		Chequebook:        chequebookService,
-		BlockTime:         big.NewInt(int64(o.BlockTime)),
-		Tags:              tagService,
-		Storer:            ns,
-		Resolver:          multiResolver,
-		Pss:               pssService,
-		TraversalService:  traversalService,
-		Pinning:           pinningService,
-		FeedFactory:       feedFactory,
-		Post:              post,
-		PostageContract:   postageContractService,
-		Steward:           steward,
-		BatchEventUpdater: batchSvc,
+		Pingpong:         pingPong,
+		TopologyDriver:   kad,
+		LightNodes:       lightNodes,
+		Accounting:       acc,
+		Pseudosettle:     pseudosettleService,
+		Swap:             swapService,
+		Chequebook:       chequebookService,
+		BlockTime:        big.NewInt(int64(o.BlockTime)),
+		Tags:             tagService,
+		Storer:           ns,
+		Resolver:         multiResolver,
+		Pss:              pssService,
+		TraversalService: traversalService,
+		Pinning:          pinningService,
+		FeedFactory:      feedFactory,
+		Post:             post,
+		PostageContract:  postageContractService,
+		Steward:          steward,
+		SyncStatus:       syncStatusFn,
 	}
 
 	if o.APIAddr != "" {
