@@ -1340,6 +1340,17 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error
 		return f(addr, po)
 	})
 }
+func (k *Kad) PeersCount(filter topology.Filter) int {
+	count := 0
+	_ = k.connectedPeers.EachBinRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		if filter.Reachable && k.peerFilter(addr) {
+			return false, false, nil
+		}
+		count++
+		return false, false, nil
+	})
+	return count
+}
 
 // Reachable sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {

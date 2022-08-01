@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 
@@ -41,6 +42,7 @@ const (
 )
 
 const logMore = false // enable this for more logging
+const MaxCursor = math.MaxUint64
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
@@ -128,6 +130,7 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+	isLiveSync := to == MaxCursor
 	var ru pb.Ruid
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -260,7 +263,9 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		chunksToPut = append(chunksToPut, chunk)
 	}
 	if len(chunksToPut) > 0 {
-		s.rate.Add(len(chunksToPut))
+		if !isLiveSync {
+			s.rate.Add(len(chunksToPut))
+		}
 		s.metrics.DbOps.Inc()
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()

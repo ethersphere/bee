@@ -156,3 +156,7 @@ type NeighborhoodDepther interface {
 type SetStorageRadiuser interface {
 	SetStorageRadius(uint8)
 }
+
+type PeersCounter interface {
+	PeersCount(Filter) int
+}

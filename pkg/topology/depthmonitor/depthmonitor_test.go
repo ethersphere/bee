@@ -15,6 +15,7 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
@@ -230,6 +231,7 @@ type mockTopology struct {
 	sync.Mutex
 	connDepth    uint8
 	storageDepth uint8
+	peers        int
 }
 
 func (m *mockTopology) NeighborhoodDepth() uint8 {
@@ -240,6 +242,10 @@ func (m *mockTopology) SetStorageRadius(newDepth uint8) {
 	m.Lock()
 	defer m.Unlock()
 	m.storageDepth = newDepth
+}
+
+func (m *mockTopology) PeersCount(topology.Filter) int {
+	return m.peers
 }
 
 func (m *mockTopology) getStorageDepth() uint8 {
