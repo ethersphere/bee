@@ -104,21 +104,6 @@ func (s *Service) mountTechnicalDebug() {
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
-	if s.transaction != nil {
-		var handle = func(path string, handler http.Handler) {
-			s.router.Handle(path, handler)
-		}
-
-		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
-		})
-		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
-		})
-	}
-
 	s.router.Path("/metrics").Handler(web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
@@ -358,6 +343,17 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		}
 		s.router.Handle(path, handler)
 		s.router.Handle(rootPath+path, handler)
+	}
+
+	if s.transaction != nil {
+		handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
 	}
 
 	handle("/peers", jsonhttp.MethodHandler{
