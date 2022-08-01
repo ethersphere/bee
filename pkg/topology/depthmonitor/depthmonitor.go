@@ -103,7 +103,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		s.logger.Errorf("depthmonitor: batchstore set storage radius: %w", err)
 	}
 
-	halfCapacity := s.reserve.ReserveCapacity()
+	halfCapacity := s.reserve.ReserveCapacity() / 2
 
 	for {
 		select {
