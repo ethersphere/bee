@@ -43,12 +43,13 @@ type Topology interface {
 
 // Service implements the depthmonitor service
 type Service struct {
-	syncer  SyncReporter
-	reserve ReserveReporter
-	logger  logging.Logger
-	bs      postage.Storer
-	quit    chan struct{} // to request service to stop
-	stopped chan struct{} // to signal stopping of bg worker
+	topology Topology
+	syncer   SyncReporter
+	reserve  ReserveReporter
+	logger   logging.Logger
+	bs       postage.Storer
+	quit     chan struct{} // to request service to stop
+	stopped  chan struct{} // to signal stopping of bg worker
 }
 
 // New constructs a new depthmonitor service
@@ -62,20 +63,21 @@ func New(
 ) *Service {
 
 	s := &Service{
-		syncer:  syncer,
-		reserve: reserve,
-		bs:      bs,
-		logger:  logger,
-		quit:    make(chan struct{}),
-		stopped: make(chan struct{}),
+		topology: t,
+		syncer:   syncer,
+		reserve:  reserve,
+		bs:       bs,
+		logger:   logger,
+		quit:     make(chan struct{}),
+		stopped:  make(chan struct{}),
 	}
 
-	go s.manage(t, warmupTime)
+	go s.manage(warmupTime)
 
 	return s
 }
 
-func (s *Service) manage(topology Topology, warmupTime time.Duration) {
+func (s *Service) manage(warmupTime time.Duration) {
 	defer close(s.stopped)
 
 	// wait for warmup
@@ -86,7 +88,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 	}
 
 	// wire up batchstore to start reporting storage radius to kademlia
-	s.bs.SetStorageRadiusSetter(topology)
+	s.bs.SetStorageRadiusSetter(s.topology)
 	reserveRadius := s.bs.GetReserveState().Radius
 
 	err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
@@ -124,7 +126,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
-		if s.syncer.Rate() == 0 && topology.PeersCount(topologyDriver.Filter{}) != 0 {
+		if s.syncer.Rate() == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > 0 {
 					radius--
