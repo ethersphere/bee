@@ -101,7 +101,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		s.logger.Errorf("depthmonitor: batchstore set storage radius: %w", err)
 	}
 
-	halfCapacity := float64(s.reserve.ReserveCapacity()) / 2
+	halfCapacity := s.reserve.ReserveCapacity()
 
 	for {
 		select {
@@ -110,17 +110,16 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		case <-time.After(manageWait):
 		}
 
-		size, err := s.reserve.ReserveSize()
+		currentSize, err := s.reserve.ReserveSize()
 		if err != nil {
 			s.logger.Errorf("depthmonitor: failed reading reserve size %v", err)
 			continue
 		}
 
-		currentSize := float64(size)
+		s.logger.Tracef("depthmonitor: current size %d", currentSize)
 
 		// if we have crossed 50% utilization, dont do anything
 		if currentSize > halfCapacity {
-			s.logger.Trace("depthmonitor: current size %d is above half capacity", currentSize)
 			continue
 		}
 
