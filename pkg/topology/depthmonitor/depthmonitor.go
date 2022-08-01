@@ -10,12 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/topology"
-)
-
-const (
-	adaptationFullWindow    float64 = 2 * 60 * 60 // seconds allowed to fill half of the fully empty reserve
-	adaptationMinimumWindow float64 = 10 * 60     // minimum seconds allowed for the window duration
+	topologyDriver "github.com/ethersphere/bee/pkg/topology"
 )
 
 var (
@@ -41,18 +36,20 @@ type SyncReporter interface {
 // Topology interface encapsulates the functionality required by the topology component
 // of the node.
 type Topology interface {
-	topology.NeighborhoodDepther
-	topology.SetStorageRadiuser
+	topologyDriver.NeighborhoodDepther
+	topologyDriver.SetStorageRadiuser
+	topologyDriver.PeersCounter
 }
 
 // Service implements the depthmonitor service
 type Service struct {
-	syncer  SyncReporter
-	reserve ReserveReporter
-	logger  logging.Logger
-	bs      postage.Storer
-	quit    chan struct{} // to request service to stop
-	stopped chan struct{} // to signal stopping of bg worker
+	topology Topology
+	syncer   SyncReporter
+	reserve  ReserveReporter
+	logger   logging.Logger
+	bs       postage.Storer
+	quit     chan struct{} // to request service to stop
+	stopped  chan struct{} // to signal stopping of bg worker
 }
 
 // New constructs a new depthmonitor service
@@ -66,20 +63,21 @@ func New(
 ) *Service {
 
 	s := &Service{
-		syncer:  syncer,
-		reserve: reserve,
-		bs:      bs,
-		logger:  logger,
-		quit:    make(chan struct{}),
-		stopped: make(chan struct{}),
+		topology: t,
+		syncer:   syncer,
+		reserve:  reserve,
+		bs:       bs,
+		logger:   logger,
+		quit:     make(chan struct{}),
+		stopped:  make(chan struct{}),
 	}
 
-	go s.manage(t, warmupTime)
+	go s.manage(warmupTime)
 
 	return s
 }
 
-func (s *Service) manage(topology Topology, warmupTime time.Duration) {
+func (s *Service) manage(warmupTime time.Duration) {
 	defer close(s.stopped)
 
 	// wait for warmup
@@ -90,28 +88,27 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 	}
 
 	// wire up batchstore to start reporting storage radius to kademlia
-	s.bs.SetStorageRadiusSetter(topology)
+	s.bs.SetStorageRadiusSetter(s.topology)
+	reserveRadius := s.bs.GetReserveState().Radius
 
 	err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
-		// if we are starting from scratch, we can use the initial NeighborhoodDepth as a starting point.
+		// if we are starting from scratch, we can use the reserve radius.
 		if radius == 0 {
-			radius = topology.NeighborhoodDepth()
+			radius = reserveRadius
 		}
 		s.logger.Infof("depthmonitor: warmup period complete, starting worker with initial depth %d", radius)
 		return radius
 	})
 	if err != nil {
-		s.logger.Errorf("depthmonitor: batchstore set storage radius: %w", err)
+		s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
 	}
 
-	halfCapacity := float64(s.reserve.ReserveCapacity()) / 2
-
-	var (
-		adaptationPeriod bool
-		adaptationStart  time.Time                                       // start of the adaptation window
-		adaptationWindow float64                                         // allowed time in seconds to fill upto half of the reserve
-		adaptationRate   float64   = adaptationFullWindow / halfCapacity // minimum rate of seconds per chunks to fill the reserve
-	)
+	halfCapacity := s.reserve.ReserveCapacity() / 2
+	// when the reserve reaches the desired size after decrementing the storage radius,
+	// if the syncing rate is high enough such that the reserve becomes full and a large eviction causes the
+	// size to drop below the half mark, storage radius may begin to oscillate, as such,
+	// we increment the storage radius by one to prevent oscillation.
+	unstable := false
 
 	for {
 		select {
@@ -120,54 +117,30 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 		case <-time.After(manageWait):
 		}
 
-		size, err := s.reserve.ReserveSize()
+		currentSize, err := s.reserve.ReserveSize()
 		if err != nil {
 			s.logger.Errorf("depthmonitor: failed reading reserve size %v", err)
 			continue
 		}
 
-		currentSize := float64(size)
+		rate := s.syncer.Rate()
+		s.logger.Tracef("depthmonitor: current size %d, %d chunks/sec rate", currentSize, rate)
 
-		// if we have crossed 50% utilization, dont do anything
+		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
-			adaptationPeriod = false
-			s.logger.Trace("depthmonitor: current size is above half capacity, not entering adaptation period.")
-			continue
-		}
-
-		// if we dont have 50% utilization of the reserve, enter into an adaptation period
-		// to see if we need to modify the depth to improve utilization
-		// using a rate of window_size / half_reserve, compute max adaption window time allowed to fill the reserve
-		if !adaptationPeriod {
-			adaptationPeriod = true
-			adaptationStart = time.Now()
-			adaptationWindow = adaptationRate * (halfCapacity - currentSize)
-			if adaptationWindow < adaptationMinimumWindow {
-				adaptationWindow = adaptationMinimumWindow
+			if unstable {
+				err := s.bs.SetStorageRadius(func(radius uint8) uint8 { return radius + 1 })
+				if err != nil {
+					s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
+				}
 			}
-			s.logger.Infof("depthmonitor: starting adaptation period with window time %s", time.Second*time.Duration(adaptationWindow))
-		}
-
-		// if we have crossed the adaptation window, reset to compute new adaptation window
-		if time.Since(adaptationStart).Seconds() > adaptationWindow {
-			adaptationPeriod = false
-			s.logger.Infof("depthmonitor: exceeded adaptation window")
+			unstable = false
 			continue
 		}
 
-		// based on the sync rate, determine the expected size of reserve at the end of the adaptation window
-		timeleft := adaptationWindow - time.Since(adaptationStart).Seconds()
-		expectedSize := s.syncer.Rate()*timeleft + currentSize
-
-		s.logger.Infof(
-			"depthmonitor: estimated size %.0f with current size %.0f and pullsync rate %.2f ch/s, time left %s",
-			expectedSize, currentSize, s.syncer.Rate(), time.Second*time.Duration(timeleft),
-		)
-
-		// if we are in the adaptation window and we are not expecting to have enough utilization
-		// by the end of it, we proactively decrease the storage radius to allow nodes to widen
-		// their neighbourhoods
-		if expectedSize < halfCapacity {
+		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
+		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
+			unstable = true
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > 0 {
 					radius--
@@ -176,7 +149,7 @@ func (s *Service) manage(topology Topology, warmupTime time.Duration) {
 				return radius
 			})
 			if err != nil {
-				s.logger.Errorf("depthmonitor: batchstore set storage radius: %w", err)
+				s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
 			}
 		}
 	}

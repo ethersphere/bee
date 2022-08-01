@@ -451,7 +451,7 @@ func TestManage(t *testing.T) {
 	}
 	defer kad.Close()
 
-	kad.SetStorageRadius(6)
+	kad.SetStorageRadius(swarm.MaxPO)
 
 	// first, we add peers to bin 0
 	for i := 0; i < saturation; i++ {
@@ -569,8 +569,6 @@ func TestBinSaturation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer kad.Close()
-
-	kad.SetStorageRadius(6)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
