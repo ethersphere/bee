@@ -95,7 +95,7 @@ func New(
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
-func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error {
+func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error {
 	// don't add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks
 	val := big.NewInt(0).Add(svc.storer.GetChainState().TotalAmount, svc.storer.GetChainState().CurrentPrice)
@@ -118,8 +118,10 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 		return fmt.Errorf("put: %w", err)
 	}
 
+	amount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(batch.Depth))))
+
 	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
-		if err := svc.batchListener.HandleCreate(batch); err != nil {
+		if err := svc.batchListener.HandleCreate(batch, amount); err != nil {
 			return fmt.Errorf("create batch: %w", err)
 		}
 	}
@@ -135,7 +137,7 @@ func (svc *batchService) Create(id, owner []byte, normalisedBalance *big.Int, de
 
 // TopUp implements the EventUpdater interface. It tops ups a batch with the
 // given ID with the given amount.
-func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txHash []byte) error {
+func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int, txHash []byte) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
@@ -146,7 +148,7 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txHash []b
 		return fmt.Errorf("update: %w", err)
 	}
 
-	topUpAmount := big.NewInt(0).Div(b.Value, big.NewInt(int64(1<<(b.Depth))))
+	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(b.Depth))))
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
 		svc.batchListener.HandleTopUp(id, topUpAmount)
@@ -173,10 +175,8 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("put: %w", err)
 	}
 
-	normalizedAmount := big.NewInt(0).Div(b.Value, big.NewInt(int64(1<<(b.Depth))))
-
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		svc.batchListener.HandleDepthIncrease(id, depth, normalizedAmount)
+		svc.batchListener.HandleDepthIncrease(id, depth)
 	}
 
 	cs, err := svc.updateChecksum(txHash)

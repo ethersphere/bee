@@ -123,6 +123,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
+			c.TotalAmount,
 			c.NormalisedBalance,
 			c.Depth,
 			c.BucketDepth,
@@ -138,6 +139,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		l.metrics.TopupCounter.Inc()
 		return updater.TopUp(
 			c.BatchId[:],
+			c.TopupAmount,
 			c.NormalisedBalance,
 			e.TxHash.Bytes(),
 		)
