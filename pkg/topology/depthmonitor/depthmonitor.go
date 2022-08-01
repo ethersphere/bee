@@ -118,7 +118,8 @@ func (s *Service) manage(warmupTime time.Duration) {
 			continue
 		}
 
-		s.logger.Tracef("depthmonitor: current size %d", currentSize)
+		rate := s.syncer.Rate()
+		s.logger.Tracef("depthmonitor: current size %d, %d chunks/sec rate", currentSize, rate)
 
 		// if we have crossed 50% utilization, dont do anything
 		if currentSize > halfCapacity {
@@ -126,7 +127,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
-		if s.syncer.Rate() == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
+		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > 0 {
 					radius--
