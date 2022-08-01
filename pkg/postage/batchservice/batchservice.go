@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"math"
 	"math/big"
 
 	"github.com/ethersphere/bee/pkg/logging"
@@ -147,7 +146,7 @@ func (svc *batchService) TopUp(id []byte, normalisedBalance *big.Int, txHash []b
 		return fmt.Errorf("update: %w", err)
 	}
 
-	topUpAmount := big.NewInt(normalisedBalance.Int64() / int64(math.Pow(2, float64(b.Depth))))
+	topUpAmount := big.NewInt(0).Div(b.Value, big.NewInt(int64(1<<(b.Depth))))
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
 		svc.batchListener.HandleTopUp(id, topUpAmount)
@@ -174,8 +173,10 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("put: %w", err)
 	}
 
+	normalizedAmount := big.NewInt(0).Div(b.Value, big.NewInt(int64(1<<(b.Depth))))
+
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		svc.batchListener.HandleDepthIncrease(id, depth, normalisedBalance)
+		svc.batchListener.HandleDepthIncrease(id, depth, normalizedAmount)
 	}
 
 	cs, err := svc.updateChecksum(txHash)
