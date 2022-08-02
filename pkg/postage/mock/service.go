@@ -90,7 +90,7 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
 
-func (m *mockPostage) HandleCreate(_ *postage.Batch) error { return nil }
+func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
 func (m *mockPostage) HandleTopUp(batchID []byte, newBalance *big.Int) {
 	m.issuerLock.Lock()
@@ -106,7 +106,7 @@ func (m *mockPostage) HandleTopUp(batchID []byte, newBalance *big.Int) {
 	}
 }
 
-func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8, _ *big.Int) {}
+func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
 
 func (m *mockPostage) Close() error {
 	return nil
