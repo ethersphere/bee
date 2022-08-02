@@ -884,7 +884,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
-		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
+		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, log.NewLogger("root").WithName(chainsyncer.LoggerName).Register(), nil) // TODO: get the root logger from the source.
 		if err != nil {
 			return nil, fmt.Errorf("new chainsyncer: %w", err)
 		}
