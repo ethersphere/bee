@@ -118,7 +118,7 @@ func (b *builder) Build() Logger {
 // Register implements the Builder interface Register method.
 func (b *builder) Register() Logger {
 	val := b.Build()
-	key := hash(b.l.namesStr, b.l.v, b.l.valuesStr, b.l.sink)
+	key := hash(b.namesStr, b.v, b.valuesStr, b.l.sink)
 	res, _ := loggers.LoadOrStore(key, val)
 	return res.(*logger)
 }
