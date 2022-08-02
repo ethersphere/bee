@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -41,7 +42,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		logger.Errorf("pingpong failed to peer %s", peerID)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("ping addr: %v", err))
 		return
 	}
 

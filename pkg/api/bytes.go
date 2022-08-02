@@ -37,13 +37,13 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bytes upload: get putter:%v", err)
 		logger.Error("bytes upload: putter")
-		jsonhttp.BadRequest(w, nil)
+		jsonhttp.BadRequest(w, fmt.Sprintf("new stamper putter: %v", err))
 		return
 	}
 
 	if strings.Contains(strings.ToLower(r.Header.Get(contentTypeHeader)), "multipart/form-data") {
 		logger.Error("bytes upload: multipart uploads are not supported on this endpoint")
-		jsonhttp.BadRequest(w, nil)
+		jsonhttp.BadRequest(w, "multipart uploads not supported")
 		return
 	}
 
@@ -86,14 +86,14 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, fmt.Sprintf("split write all: %v", err))
 		}
 		return
 	}
 	if err = wait(); err != nil {
 		logger.Debugf("bytes upload: sync chunks: %v", err)
 		logger.Error("bytes upload: sync chunks")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("sync chunks: %v", err))
 		return
 	}
 
@@ -102,7 +102,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			logger.Debugf("bytes upload: done split: %v", err)
 			logger.Error("bytes upload: done split failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, fmt.Sprintf("done split: %v", err))
 			return
 		}
 	}
@@ -111,7 +111,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.pinning.CreatePin(ctx, address, false); err != nil {
 			logger.Debugf("bytes upload: creation of pin for %q failed: %v", address, err)
 			logger.Error("bytes upload: creation of pin failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, fmt.Sprintf("create ping: %v", err))
 			return
 		}
 	}

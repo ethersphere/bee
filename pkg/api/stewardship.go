@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -26,7 +27,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		s.logger.Debugf("stewardship put: re-upload %s: %v", address, err)
 		s.logger.Error("stewardship put: re-upload")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("reupload: %v", err))
 		return
 	}
 	jsonhttp.OK(w, nil)
@@ -50,7 +51,7 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		s.logger.Debugf("stewardship get: is retrievable %s: %v", address, err)
 		s.logger.Error("stewardship get: is retrievable")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("check is retrievable: %v", err))
 		return
 	}
 	jsonhttp.OK(w, isRetrievableResponse{

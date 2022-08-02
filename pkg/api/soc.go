@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -175,7 +176,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.pinning.CreatePin(ctx, sch.Address(), false); err != nil {
 			s.logger.Debugf("soc upload: creation of pin for %q failed: %v", sch.Address(), err)
 			s.logger.Error("soc upload: creation of pin failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, fmt.Sprintf("create pin: %v", err))
 			return
 		}
 	}

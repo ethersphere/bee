@@ -67,7 +67,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debugf("bzz upload dir: get or create tag: %v", err)
 		logger.Error("bzz upload dir: get or create tag")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("get or create tag: %v", err))
 		return
 	}
 
@@ -104,7 +104,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 		if err != nil {
 			logger.Debugf("bzz upload dir: done split: %v", err)
 			logger.Error("bzz upload dir: done split failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, fmt.Sprintf("done split: %v", err))
 			return
 		}
 	}
@@ -113,7 +113,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 		if err := s.pinning.CreatePin(r.Context(), reference, false); err != nil {
 			logger.Debugf("bzz upload dir: creation of pin for %q failed: %v", reference, err)
 			logger.Error("bzz upload dir: creation of pin failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, fmt.Sprintf("create pin: %v", err))
 			return
 		}
 	}
@@ -121,7 +121,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err = waitFn(); err != nil {
 		s.logger.Debugf("bzz upload: sync chunks: %v", err)
 		s.logger.Error("bzz upload: sync chunks")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("sync chunks: %v", err))
 		return
 	}
 

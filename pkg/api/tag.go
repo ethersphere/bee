@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -187,7 +188,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("done split: failed for address %v", tagr.Address)
 		s.logger.Errorf("done split: failed for address %v", tagr.Address)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("done split: %v", err))
 		return
 	}
 	jsonhttp.OK(w, "ok")

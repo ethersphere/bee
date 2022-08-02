@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -91,7 +92,7 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request
 	peers, err := s.p2p.BlocklistedPeers()
 	if err != nil {
 		s.logger.Debugf("blocklisted peers: %v", err)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, fmt.Sprintf("get blocklisted peers: %v", err))
 		return
 	}
 
