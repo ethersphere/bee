@@ -4,15 +4,16 @@
 
 package depthmonitor
 
-const DepthKey = depthKey
-
 var (
 	ManageWait = &manageWait
 )
 
 func (s *Service) StorageDepth() uint8 {
-	s.depthLock.Lock()
-	defer s.depthLock.Unlock()
+	return s.bs.GetReserveState().StorageRadius
+}
 
-	return s.storageDepth
+func (s *Service) SetStorageRadius(r uint8) {
+	_ = s.bs.SetStorageRadius(func(_ uint8) uint8 {
+		return r
+	})
 }

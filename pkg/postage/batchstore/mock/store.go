@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"math/big"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -28,7 +29,11 @@ type BatchStore struct {
 	updateErrDelayCnt int
 	resetCallCount    int
 
+	radiusSetter postage.StorageRadiusSetter
+
 	existsFn func([]byte) (bool, error)
+
+	mtx sync.Mutex
 }
 
 // Option is an option passed to New.
@@ -38,6 +43,7 @@ type Option func(*BatchStore)
 func New(opts ...Option) *BatchStore {
 	bs := &BatchStore{}
 	bs.cs = &postage.ChainState{}
+	bs.rs = &postage.ReserveState{}
 	for _, o := range opts {
 		o(bs)
 	}
@@ -174,16 +180,33 @@ func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 }
 
 func (bs *BatchStore) GetReserveState() *postage.ReserveState {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
 	rs := new(postage.ReserveState)
 	if bs.rs != nil {
 		rs.Radius = bs.rs.Radius
+		rs.StorageRadius = bs.rs.StorageRadius
 	}
 	return rs
 }
-func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {
-	panic("not implemented")
-}
+
 func (bs *BatchStore) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
+	bs.radiusSetter = r
+}
+
+func (bs *BatchStore) SetStorageRadius(f func(uint8) uint8) error {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
+	bs.rs.StorageRadius = f(bs.rs.StorageRadius)
+	if bs.radiusSetter != nil {
+		bs.radiusSetter.SetStorageRadius(bs.rs.StorageRadius)
+	}
+	return nil
+}
+
+func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {
 	panic("not implemented")
 }
 

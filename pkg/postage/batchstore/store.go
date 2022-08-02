@@ -26,6 +26,7 @@ const (
 
 // ErrNotFound signals that the element was not found.
 var ErrNotFound = errors.New("batchstore: not found")
+var ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
 
 type evictFn func(batchID []byte) error
 
@@ -92,6 +93,34 @@ func (s *store) GetReserveState() *postage.ReserveState {
 		Radius:        s.rs.Radius,
 		StorageRadius: s.rs.StorageRadius,
 	}
+}
+
+func (s *store) SetStorageRadius(f func(uint8) uint8) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	oldRadius := s.rs.StorageRadius
+	newRadius := f(oldRadius)
+
+	if newRadius > s.rs.Radius {
+		return ErrStorageRadiusExceeds
+	}
+
+	s.rs.StorageRadius = newRadius
+
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(newRadius)
+	}
+
+	s.metrics.StorageRadius.Set(float64(newRadius))
+
+	if newRadius < oldRadius {
+		if err := s.lowerBatchStorageRadius(); err != nil {
+			s.logger.Errorf("batchstore: lower batch storage radius: %v", err)
+		}
+	}
+
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 func (s *store) GetChainState() *postage.ChainState {
@@ -193,6 +222,10 @@ func (s *store) Save(batch *postage.Batch) error {
 		if s.storageRadiusSetter != nil {
 			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 		}
+
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		s.metrics.Radius.Set(float64(s.rs.Radius))
+
 		return nil
 	case err == nil:
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
@@ -245,6 +278,9 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
 
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	s.metrics.Radius.Set(float64(s.rs.Radius))
+
 	return nil
 }
 
@@ -270,8 +306,6 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
-	// this needs to be improved, since we can miss some calls on
-	// startup. the same goes for the other call to radiusSetter
 	if s.storageRadiusSetter != nil {
 		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}

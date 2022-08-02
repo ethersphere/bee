@@ -37,6 +37,8 @@ func (b *NoOpBatchStore) PutChainState(*ChainState) error { return nil }
 
 func (b *NoOpBatchStore) GetReserveState() *ReserveState { return nil }
 
+func (b *NoOpBatchStore) SetStorageRadius(func(uint8) uint8) error { return nil }
+
 func (b *NoOpBatchStore) SetStorageRadiusSetter(StorageRadiusSetter) {}
 
 func (b *NoOpBatchStore) Unreserve(UnreserveIteratorFn) error { return nil }
