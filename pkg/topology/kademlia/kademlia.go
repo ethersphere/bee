@@ -288,9 +288,10 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 	}
 }
 
-// connectNeighbours attempts to connect to the neighbours
+// connectUntilOversaturation attempts to connect to the neighbours
 // which were not considered by the connectBalanced method.
-func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
+// For neighborhood bins, connections are not limited.
+func (k *Kad) connectUntilOversaturation(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
 
 	sent := 0
 	var currentPo uint8 = 0
@@ -565,7 +566,7 @@ func (k *Kad) manage() {
 
 			oldDepth := k.NeighborhoodDepth()
 			k.connectBalanced(&wg, balanceChan)
-			k.connectNeighbours(&wg, neighbourhoodChan)
+			k.connectUntilOversaturation(&wg, neighbourhoodChan)
 			wg.Wait()
 
 			k.depthMu.Lock()
