@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/hive"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/netstore"
@@ -154,7 +155,7 @@ func bootstrapNode(
 		paymentThreshold,
 		o.PaymentTolerance,
 		o.PaymentEarly,
-		logger,
+		log.NewLogger("root").WithName(accounting.LoggerName).Register(), // TODO: get the root logger from the source.
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),

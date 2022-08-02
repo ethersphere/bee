@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
@@ -36,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/localstore"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
@@ -333,7 +334,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           debugService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		go func() {
@@ -358,7 +359,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		apiListener, err := net.Listen("tcp", o.APIAddr)
@@ -757,7 +758,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		paymentThreshold,
 		o.PaymentTolerance,
 		o.PaymentEarly,
-		logger,
+		log.NewLogger("root").WithName(accounting.LoggerName).Register(), // TODO: get the root logger from the source.,
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
@@ -937,7 +938,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 				IdleTimeout:       30 * time.Second,
 				ReadHeaderTimeout: 3 * time.Second,
 				Handler:           apiService,
-				ErrorLog:          log.New(b.errorLogWriter, "", 0),
+				ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 			}
 
 			apiListener, err := net.Listen("tcp", o.APIAddr)
