@@ -124,7 +124,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		}
 
 		rate := s.syncer.Rate()
-		s.logger.Tracef("depthmonitor: current size %d, %d chunks/sec rate", currentSize, rate)
+		s.logger.Tracef("depthmonitor: current size %d, %.1f chunks/sec rate", currentSize, rate)
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
