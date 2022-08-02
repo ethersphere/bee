@@ -299,7 +299,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		depth := k.NeighborhoodDepth()
 
 		// out of depth, skip bin
-		if po < depth {
+		if po < depth && k.connectedPeers.BinSize(po) >= overSaturationPeers {
 			return false, true, nil
 		}
 

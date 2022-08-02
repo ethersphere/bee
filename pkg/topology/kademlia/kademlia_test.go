@@ -437,6 +437,12 @@ func TestEachNeighbor(t *testing.T) {
 // What Saturation does _not_ mean: that all nodes are performent, that all nodes we know of
 // in a given bin are connected (since some of them might be offline)
 func TestManage(t *testing.T) {
+
+	defer func(p int) {
+		*kademlia.OverSaturationPeers = p
+	}(*kademlia.OverSaturationPeers)
+	*kademlia.OverSaturationPeers = 8
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = *kademlia.SaturationPeers
@@ -557,6 +563,11 @@ func TestBinSaturation(t *testing.T) {
 	}(*kademlia.SaturationPeers)
 	*kademlia.SaturationPeers = 2
 
+	defer func(p int) {
+		*kademlia.OverSaturationPeers = p
+	}(*kademlia.OverSaturationPeers)
+	*kademlia.OverSaturationPeers = 2
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
@@ -603,7 +614,6 @@ func TestBinSaturation(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 
 	waitCounter(t, &conns, 1)
-
 }
 
 func TestOversaturation(t *testing.T) {
