@@ -61,8 +61,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageRadius(swarm.MaxPO) // initial tests do not check for radius
-
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -215,8 +213,6 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 	)
-
-	kad.SetStorageRadius(swarm.MaxPO) // initial tests do not check for radius
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -451,8 +447,6 @@ func TestManage(t *testing.T) {
 	}
 	defer kad.Close()
 
-	kad.SetStorageRadius(swarm.MaxPO)
-
 	// first, we add peers to bin 0
 	for i := 0; i < saturation; i++ {
 		addr := test.RandomAddressAt(base, 0)
@@ -499,8 +493,6 @@ func TestManageWithBalancing(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	// implement saturation function (while having access to Kademlia instance)
 	sfImpl := func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool {
@@ -612,7 +604,6 @@ func TestOversaturation(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -667,7 +658,6 @@ func TestOversaturationBootnode(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -731,7 +721,6 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1385,8 +1374,6 @@ func TestOutofDepthPrune(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
-
 	// implement empty prune func
 	pruneMux.Lock()
 	pruneImpl := func(uint8) {}
@@ -1538,7 +1525,6 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
 		for j := 0; j < *kademlia.OverSaturationPeers; j++ {
@@ -1667,7 +1653,6 @@ func TestIteratorOpts(t *testing.T) {
 		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
 	)
 
-	kad.SetStorageRadius(swarm.MaxPO) // don't use radius for checks
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 4; j++ {
 			addr := test.RandomAddressAt(base, i)
