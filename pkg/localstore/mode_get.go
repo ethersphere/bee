@@ -114,7 +114,7 @@ func (db *DB) updateGCItems(items ...shed.Item) {
 			err := db.updateGC(item)
 			if err != nil {
 				db.metrics.GCUpdateError.Inc()
-				db.logger.Errorf("localstore update gc: %v", err)
+				db.logger.Error(err, "localstore update gc failed")
 			}
 		}
 		// if gc update hook is defined, call it

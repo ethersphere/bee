@@ -135,7 +135,7 @@ func migrateSharky(db *DB) error {
 		compactStart, compactEnd *shed.Item
 	)
 
-	db.logger.Debugf("starting to move entries with batch size %d", batchSize)
+	db.logger.Debug("starting to move entries", "batch_size", batchSize)
 	for {
 		isBatchEmpty := true
 
@@ -162,7 +162,7 @@ func migrateSharky(db *DB) error {
 			isBatchEmpty = false
 			if batchesCount%batchSize == 0 {
 				compactEnd = &item
-				db.logger.Debugf("collected %d entries; trying to flush...", batchSize)
+				db.logger.Debug("collected entries; trying to flush...", "count", batchSize)
 				return true, nil
 			}
 			return false, nil
@@ -182,11 +182,11 @@ func migrateSharky(db *DB) error {
 			return fmt.Errorf("write batch: %w", err)
 		}
 		dirtyLocations = nil
-		db.logger.Debugf("flush ok; progress so far: %d chunks", batchesCount)
+		db.logger.Debug("flush ok; batch of chunks migrated", "count", batchesCount)
 		batch.Reset()
 
 		if batchesCount%compactionSize == 0 {
-			db.logger.Debugf("starting intermediate compaction")
+			db.logger.Debug("starting intermediate compaction")
 
 			// the items are references from the iteration so encoding should be error-free
 			start, _ := retrievalDataIndex.ItemKey(*compactStart)
@@ -197,7 +197,7 @@ func migrateSharky(db *DB) error {
 				return err
 			}
 			compactionTime += dur
-			db.logger.Debugf("intermediate compaction done %s", dur)
+			db.logger.Debug("intermediate compaction done", "elapsed", dur)
 			compactStart = nil
 		}
 	}
@@ -209,7 +209,7 @@ func migrateSharky(db *DB) error {
 	}
 	compactionTime += dur
 
-	db.logger.Debugf("leveldb compaction took: %v", compactionTime)
-	db.logger.Infof("done migrating to sharky; it took me %s to move %d chunks.", time.Since(start), batchesCount)
+	db.logger.Debug("leveldb compaction done", "elapsed", compactionTime)
+	db.logger.Info("done migrating to sharky", "elapsed", time.Since(start), "total_chunks", batchesCount)
 	return nil
 }

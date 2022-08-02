@@ -71,7 +71,7 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 			case <-ctx.Done():
 				err := ctx.Err()
 				if err != nil {
-					db.logger.Debugf("localstore push subscription iteration: %v", err)
+					db.logger.Debug("push subscription iteration failed", "error", err)
 				}
 				return
 			case <-resetC:
@@ -139,7 +139,7 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 
 				if err != nil {
 					db.metrics.SubscribePushIterationFailure.Inc()
-					db.logger.Debugf("localstore push subscription iteration: %v", err)
+					db.logger.Debug("push subscription iteration failed", "error", err)
 					return
 				}
 

@@ -219,7 +219,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	var swarmAddress swarm.Address
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
+	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, log.NewLogger("root").WithName(localstore.LoggerName).Register()) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}

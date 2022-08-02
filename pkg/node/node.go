@@ -592,7 +592,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 	}
 
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
+	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, log.NewLogger("root").WithName(localstore.LoggerName).Register()) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
