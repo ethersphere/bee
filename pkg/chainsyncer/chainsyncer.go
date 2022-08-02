@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/blocker"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -88,7 +89,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		c.logger.Warningf("chainsyncer: peer %s is unsynced and will be temporarily blocklisted", a.String())
 		c.metrics.UnsyncedPeers.Inc()
 	}
-	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, logger)
+	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, log.NewLogger("root").WithName(blocker.LoggerName).Register()) // TODO: get the root logger from the source.
 
 	c.wg.Add(1)
 	go c.manage()

@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/discovery"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -191,7 +192,7 @@ func New(
 		k.metrics.Blocklist.Inc()
 	}
 
-	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger)
+	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, log.NewLogger("root").WithName(blocker.LoggerName).Register()) // TODO: get the root logger from the source.
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins

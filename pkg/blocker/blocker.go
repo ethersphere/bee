@@ -9,11 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "blocker"
 
 // sequencerResolution represents monotonic sequencer resolution.
 // It must be in the time.Duration base form without a multiplier.
@@ -31,14 +34,14 @@ type Blocker struct {
 	flagTimeout       time.Duration // how long before blocking a flagged peer
 	blockDuration     time.Duration // how long to blocklist a bad peer
 	peers             map[string]*peer
-	logger            logging.Logger
+	logger            log.Logger
 	wakeupCh          chan struct{}
 	quit              chan struct{}
 	closeWg           sync.WaitGroup
 	blocklistCallback func(swarm.Address)
 }
 
-func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, callback func(swarm.Address), logger logging.Logger) *Blocker {
+func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime time.Duration, callback func(swarm.Address), logger log.Logger) *Blocker {
 	if flagTimeout <= sequencerResolution {
 		panic(fmt.Errorf("flag timeout %v cannot be equal to or lower then the sequencer resolution %v", flagTimeout, sequencerResolution))
 	}
@@ -102,7 +105,7 @@ func (b *Blocker) block() {
 
 		if 0 < peer.blockAfter && peer.blockAfter < b.sequence.Load() {
 			if err := b.blocklister.Blocklist(peer.address, b.blockDuration, "blocker: flag timeout"); err != nil {
-				b.logger.Warningf("blocker: blocking peer %s failed: %v", peer.address, err)
+				b.logger.Warning("failed blocking peer", "address", peer.address, "error", err)
 			}
 			if b.blocklistCallback != nil {
 				b.blocklistCallback(peer.address)
