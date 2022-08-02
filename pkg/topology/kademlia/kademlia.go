@@ -844,6 +844,11 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc, k *Kad) b
 // recalcDepth calculates, assigns the new depth, and returns if depth has changed
 func (k *Kad) recalcDepth() {
 
+	if k.storageRadius != swarm.MaxPO {
+		k.depth = k.storageRadius
+		return
+	}
+
 	var (
 		peers                 = k.connectedPeers
 		filter                = k.peerFilter
@@ -904,10 +909,6 @@ func (k *Kad) recalcDepth() {
 
 	if depth > candidate {
 		depth = candidate
-	}
-
-	if k.storageRadius < depth && !k.ignoreStorageDepth {
-		depth = k.storageRadius
 	}
 
 	k.depth = depth
@@ -1339,6 +1340,9 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error
 		}
 		return f(addr, po)
 	})
+}
+func (k *Kad) PeersCount(filter topology.Filter) int {
+	return k.connectedPeers.Length()
 }
 
 // Reachable sets the peer reachability status.

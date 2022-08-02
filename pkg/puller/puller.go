@@ -420,7 +420,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		default:
 		}
-		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, math.MaxUint64)
+		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
 		if err != nil {
 			if logMore {
 				p.logger.Debugf("liveSyncWorker exit on sync error. peer %s bin %d from %d err %v", peer, bin, from, err)
