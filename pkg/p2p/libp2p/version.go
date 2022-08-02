@@ -48,7 +48,7 @@ func (s *Service) protocolSemverMatcher(base protocol.ID) (func(string) bool, er
 
 		chvers, err := semver.NewVersion(chparts[chpartsLen-2])
 		if err != nil {
-			s.logger.Debugf("invalid protocol version %q: %v", check, err)
+			s.logger.Debug("invalid protocol version", "version", check, "error", err)
 			return false
 		}
 

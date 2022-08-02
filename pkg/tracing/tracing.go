@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/opentracing/opentracing-go"
@@ -242,6 +243,29 @@ func FromContext(ctx context.Context) opentracing.SpanContext {
 // exists in tracing span context stored from go context.
 func NewLoggerWithTraceID(ctx context.Context, l logging.Logger) logging.Logger {
 	return loggerWithTraceID(FromContext(ctx), l)
+}
+
+// NewRootLoggerWithTraceID creates a new log Entry with "traceID" field added if it
+// exists in tracing span context stored from go context.
+// TODO: rename it to NewLoggerWithTraceID when logger migration is done.
+func NewRootLoggerWithTraceID(ctx context.Context, l log.Logger) log.Logger {
+	return loggerRootWithTraceID(FromContext(ctx), l)
+}
+
+// TODO: rename it to loggerWithTraceID when logger migration is done.
+func loggerRootWithTraceID(sc opentracing.SpanContext, l log.Logger) log.Logger {
+	if l == nil {
+		return nil
+	}
+	jsc, ok := sc.(jaeger.SpanContext)
+	if !ok {
+		return l
+	}
+	traceID := jsc.TraceID()
+	if !traceID.IsValid() {
+		return l
+	}
+	return l.WithValues(LogField, traceID).Build()
 }
 
 func loggerWithTraceID(sc opentracing.SpanContext, l logging.Logger) logging.Logger {

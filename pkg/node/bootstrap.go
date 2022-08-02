@@ -106,7 +106,7 @@ func bootstrapNode(
 		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown()).ErrorOrNil()
 	}()
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, log.NewLogger("root").WithName(libp2p.LoggerName).Register(), tracer, libp2p.Options{ // TODO: get the root logger from the source.
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,

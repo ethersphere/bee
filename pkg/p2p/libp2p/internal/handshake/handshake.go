@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -22,6 +22,9 @@ import (
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "handshake"
 
 const (
 	// ProtocolName is the text of the name of the handshake protocol.
@@ -68,7 +71,7 @@ type Service struct {
 	networkID             uint64
 	validateOverlay       bool
 	welcomeMessage        atomic.Value
-	logger                logging.Logger
+	logger                log.Logger
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
@@ -89,7 +92,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -118,6 +121,8 @@ func (s *Service) SetPicker(n p2p.Picker) {
 
 // Handshake initiates a handshake with a peer.
 func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
+	loggerV1 := s.logger.V(1).Register()
+
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
@@ -155,7 +160,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	if s.libp2pID != observedUnderlayAddrInfo.ID {
 		//NOTE eventually we will return error here, but for now we want to gather some statistics
-		s.logger.Warningf("received peer ID %s does not match ours: %s", observedUnderlayAddrInfo.ID, s.libp2pID)
+		s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
 	}
 
 	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
@@ -207,9 +212,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
-	s.logger.Tracef("handshake finished for peer (outbound) %s", remoteBzzAddress.Overlay.String())
+	loggerV1.Debug("handshake finished for peer (outbound)", "peer", remoteBzzAddress.Overlay)
 	if len(resp.Ack.WelcomeMessage) > 0 {
-		s.logger.Debugf("greeting %q from peer: %s", resp.Ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
+		s.logger.Debug("greeting message from peer", "peer", remoteBzzAddress.Overlay, "message", resp.Ack.WelcomeMessage)
 	}
 
 	return &Info{
@@ -220,6 +225,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 // Handle handles an incoming handshake from a peer.
 func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
+	loggerV1 := s.logger.V(1).Register()
+
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
@@ -313,9 +320,9 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	s.logger.Tracef("handshake finished for peer (inbound) %s", remoteBzzAddress.Overlay.String())
+	loggerV1.Debug("handshake finished for peer (inbound)", "peer", remoteBzzAddress.Overlay)
 	if len(ack.WelcomeMessage) > 0 {
-		s.logger.Debugf("greeting %q from peer: %s", ack.WelcomeMessage, remoteBzzAddress.Overlay.String())
+		loggerV1.Debug("greeting message from peer", "peer", remoteBzzAddress.Overlay, "message", ack.WelcomeMessage)
 	}
 
 	return &Info{
