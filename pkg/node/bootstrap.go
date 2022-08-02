@@ -192,7 +192,7 @@ func bootstrapNode(
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, noopValidStamp, retrieve, logger)
+	ns := netstore.New(storer, noopValidStamp, retrieve, log.NewLogger("root").WithName(netstore.LoggerName).Register()) // TODO: get the root logger from the source.
 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err

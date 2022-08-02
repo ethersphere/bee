@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -449,8 +450,9 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
-	logger := logging.New(io.Discard, 0)
-	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
+	logger := logging.New(io.Discard, 0) // TODO: remove this logger when migration is done.
+	loggerNew := log.NewLogger("test", log.WithSink(io.Discard))
+	storer, err := localstore.New("", addr.Bytes(), nil, nil, loggerNew)
 	if err != nil {
 		t.Fatal(err)
 	}

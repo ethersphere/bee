@@ -819,7 +819,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
-	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, logger)
+	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, log.NewLogger("root").WithName(netstore.LoggerName).Register()) // TODO: get the root logger from the source.
 	b.nsCloser = ns
 
 	traversalService := traversal.New(ns)

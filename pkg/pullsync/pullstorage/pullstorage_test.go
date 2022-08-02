@@ -18,7 +18,7 @@ import (
 	"unsafe"
 
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -561,7 +561,7 @@ func newTestDB(t testing.TB, o *localstore.Options) (baseKey []byte, db *localst
 		t.Fatal(err)
 	}
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	db, err := localstore.New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)

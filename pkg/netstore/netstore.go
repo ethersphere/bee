@@ -16,13 +16,16 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "netstore"
 
 const (
 	maxBgPutters int = 16
@@ -31,7 +34,7 @@ const (
 type store struct {
 	storage.Storer
 	retrieval  retrieval.Interface
-	logger     logging.Logger
+	logger     log.Logger
 	validStamp postage.ValidStampFn
 	bgWorkers  chan struct{}
 	sCtx       context.Context
@@ -45,7 +48,7 @@ var (
 )
 
 // New returns a new NetStore that wraps a given Storer.
-func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interface, logger logging.Logger) storage.Storer {
+func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interface, logger log.Logger) storage.Storer {
 	ns := &store{
 		Storer:     s,
 		validStamp: validStamp,
@@ -111,7 +114,7 @@ func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
 
 		stamp, err := ch.Stamp().MarshalBinary()
 		if err != nil {
-			s.logger.Errorf("netstore: failed to marshal stamp from chunk %s err:%s", ch.Address(), err.Error())
+			s.logger.Error(err, "failed to marshal stamp from chunk", "address", ch.Address())
 			return
 		}
 
@@ -130,7 +133,7 @@ func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
 
 		_, err = s.Storer.Put(s.sCtx, putMode, cch)
 		if err != nil {
-			s.logger.Errorf("netstore: failed to put chunk %s err: %s", cch.Address(), err.Error())
+			s.logger.Error(err, "failed to put chunk", "address", cch.Address())
 		}
 	}()
 }
