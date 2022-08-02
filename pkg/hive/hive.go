@@ -23,7 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/hive/pb"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/ratelimit"
@@ -32,6 +32,9 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "hive"
 
 const (
 	protocolName           = "hive"
@@ -58,7 +61,7 @@ type Service struct {
 	addressBook       addressbook.GetPutter
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
-	logger            logging.Logger
+	logger            log.Logger
 	metrics           metrics
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
@@ -72,7 +75,7 @@ type Service struct {
 	allowPrivateCIDRs bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger logging.Logger) (*Service, error) {
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) (*Service, error) {
 	lruCache, err := lru.New(cacheSize)
 	if err != nil {
 		return nil, err
@@ -197,7 +200,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
 			if err == addressbook.ErrNotFound {
-				s.logger.Debugf("hive broadcast peers: peer not found in the addressbook. Skipping peer %s", p)
+				s.logger.Debug("broadcast peers; peer not found in the addressbook, skipping...", "peer", p)
 				continue
 			}
 			return err
@@ -340,7 +343,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
 			if err != nil {
 				s.metrics.PeerUnderlayErr.Inc()
-				s.logger.Errorf("hive: multi address underlay err: %v", err)
+				s.logger.Error(err, "multi address underlay")
 				return
 			}
 
@@ -353,7 +356,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
 				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
 				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debugf("hive: peer %s: underlay %s not reachable", hex.EncodeToString(newPeer.Overlay), multiUnderlay)
+				s.logger.Debug("unreachable peer underlay", "peer", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
 				return
 			}
 			s.metrics.PingTime.Observe(time.Since(start).Seconds())
@@ -370,7 +373,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
 			if err != nil {
 				s.metrics.StorePeerErr.Inc()
-				s.logger.Warningf("skipping peer in response %s: %v", newPeer.String(), err)
+				s.logger.Warning("skipping peer in response", "peer", newPeer.String(), "error", err)
 				return
 			}
 

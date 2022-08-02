@@ -50,6 +50,9 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "hive"
+
 var (
 	snapshotFeed    = swarm.MustParseHexAddress("b181b084df07a550c9fc0007110bff67000fa92a090af6c5212fe8e19f888a28")
 	errDataMismatch = errors.New("data length mismatch")
@@ -117,7 +120,7 @@ func bootstrapNode(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
+	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, log.NewLogger("root").WithName(hive.LoggerName).Register()) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, fmt.Errorf("hive: %w", err)
 	}

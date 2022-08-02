@@ -24,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/hive/pb"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -38,8 +38,7 @@ var (
 )
 
 func TestHandlerRateLimit(t *testing.T) {
-
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
 	networkID := uint64(1)
@@ -107,8 +106,8 @@ func TestHandlerRateLimit(t *testing.T) {
 }
 
 func TestBroadcastPeers(t *testing.T) {
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	rand.Seed(time.Now().UnixNano())
-	logger := logging.New(io.Discard, 0)
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
 	networkID := uint64(1)

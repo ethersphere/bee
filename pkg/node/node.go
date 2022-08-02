@@ -672,7 +672,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
+	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, log.NewLogger("root").WithName(hive.LoggerName).Register()) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, fmt.Errorf("hive: %w", err)
 	}
