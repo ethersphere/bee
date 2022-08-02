@@ -6,12 +6,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func (s *Accounting) SetTimeNow(f func() time.Time) {
-	s.timeNow = f
+func (a *Accounting) SetTimeNow(f func() time.Time) {
+	a.timeNow = f
 }
 
-func (s *Accounting) SetTime(k int64) {
-	s.SetTimeNow(func() time.Time {
+func (a *Accounting) SetTime(k int64) {
+	a.SetTimeNow(func() time.Time {
 		return time.Unix(k, 0)
 	})
 }
