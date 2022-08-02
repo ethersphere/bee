@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 const (
@@ -51,7 +51,7 @@ func TestAuthorize(t *testing.T) {
 }
 
 func TestExpiry(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, logging.New(io.Discard, 0))
+	a, err := auth.New(encryptionKey, passwordHash, log.NewLogger("test", log.WithSink(io.Discard)))
 	if err != nil {
 		t.Error(err)
 	}

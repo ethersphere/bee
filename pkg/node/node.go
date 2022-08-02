@@ -297,7 +297,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, log.NewLogger("root").WithName(auth.LoggerName).Register()); err != nil { // TODO: get the root logger from the source.
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
