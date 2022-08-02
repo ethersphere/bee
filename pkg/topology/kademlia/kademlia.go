@@ -299,7 +299,7 @@ func (k *Kad) connectUntilOversaturation(wg *sync.WaitGroup, peerConnChan chan<-
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		depth := k.NeighborhoodDepth()
 
-		// out of depth && oversaturad, skip bin
+		// out of depth AND oversaturad, skip bin
 		if po < depth && k.connectedPeers.BinSize(po) >= overSaturationPeers {
 			return false, true, nil
 		}
