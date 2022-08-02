@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
@@ -36,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/localstore"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
@@ -297,7 +298,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, log.NewLogger("root").WithName(auth.LoggerName).Register()); err != nil { // TODO: get the root logger from the source.
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
@@ -334,7 +335,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           debugService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		go func() {
@@ -359,7 +360,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		apiListener, err := net.Listen("tcp", o.APIAddr)
@@ -922,7 +923,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 				IdleTimeout:       30 * time.Second,
 				ReadHeaderTimeout: 3 * time.Second,
 				Handler:           apiService,
-				ErrorLog:          log.New(b.errorLogWriter, "", 0),
+				ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 			}
 
 			apiListener, err := net.Listen("tcp", o.APIAddr)

@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
@@ -139,7 +140,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, log.NewLogger("root").WithName(auth.LoggerName).Register()); err != nil { // TODO: get the root logger from the source.
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
@@ -188,7 +189,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           debugApiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		debugApiService.MountTechnicalDebug()
@@ -442,7 +443,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		IdleTimeout:       30 * time.Second,
 		ReadHeaderTimeout: 3 * time.Second,
 		Handler:           apiService,
-		ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 	}
 
 	go func() {

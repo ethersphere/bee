@@ -18,9 +18,12 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "auth"
 
 type authRecord struct {
 	Role   string    `json:"r"`
@@ -31,10 +34,10 @@ type Authenticator struct {
 	passwordHash []byte
 	ciph         *encrypter
 	enforcer     *casbin.Enforcer
-	log          logging.Logger
+	log          log.Logger
 }
 
-func New(encryptionKey, passwordHash string, logger logging.Logger) (*Authenticator, error) {
+func New(encryptionKey, passwordHash string, logger log.Logger) (*Authenticator, error) {
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
@@ -156,30 +159,30 @@ func (a *Authenticator) RefreshKey(apiKey string, expiryDuration int) (string, e
 func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
 	decoded, err := base64.StdEncoding.DecodeString(apiKey)
 	if err != nil {
-		a.log.Error("decode token", err)
+		a.log.Error(err, "decode token failed")
 		return false, err
 	}
 
 	decryptedBytes, err := a.ciph.decrypt(decoded)
 	if err != nil {
-		a.log.Error("decrypt token", err)
+		a.log.Error(err, "decrypt token failed")
 		return false, err
 	}
 
 	var ar authRecord
 	if err := json.Unmarshal(decryptedBytes, &ar); err != nil {
-		a.log.Error("unmarshal token", err)
+		a.log.Error(err, "unmarshal token failed")
 		return false, err
 	}
 
 	if time.Now().After(ar.Expiry) {
-		a.log.Error("token expired")
+		a.log.Error(nil, "token expired")
 		return false, ErrTokenExpired
 	}
 
 	allow, err := a.enforcer.Enforce(ar.Role, obj, act)
 	if err != nil {
-		a.log.Error("enforce", err)
+		a.log.Error(err, "enforce failed")
 		return false, err
 	}
 
