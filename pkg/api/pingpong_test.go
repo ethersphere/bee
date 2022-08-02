@@ -71,7 +71,7 @@ func TestPingpong(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
-				Message: http.StatusText(http.StatusInternalServerError), // do not leak internal error
+				Message: "ping addr: test error", // do leak internal error
 			}),
 		)
 	})
