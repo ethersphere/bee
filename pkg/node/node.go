@@ -631,7 +631,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+	batchSvc, err = batchservice.New(stateStore, batchStore, log.NewLogger("root").WithName(batchservice.LoggerName).Register(), eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, err
 	}

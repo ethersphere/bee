@@ -13,7 +13,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	testLog    = logging.New(io.Discard, 0)
+	testLog    = log.NewLogger("test", log.WithSink(io.Discard))
 	errTest    = errors.New("fails")
 	testTxHash = make([]byte, 32)
 )
