@@ -295,7 +295,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 					return err
 				}
 
-				post.HandleDepthIncrease(batch.ID, newDepth)
+				post.HandleDepthIncrease(batch.ID, newDepth, newBalance)
 				return nil
 			},
 		),

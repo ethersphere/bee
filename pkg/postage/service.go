@@ -123,14 +123,14 @@ func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
 	for _, v := range ps.issuers {
 		if bytes.Equal(batchID, v.data.BatchID) {
 			if amount.Cmp(v.data.BatchAmount) > 0 {
-				v.data.BatchAmount = v.data.BatchAmount.Add(v.data.BatchAmount, amount)
+				v.data.BatchAmount.Add(v.data.BatchAmount, amount)
 			}
 			return
 		}
 	}
 }
 
-func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
+func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8, newBalance *big.Int) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
@@ -138,6 +138,7 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 		if bytes.Equal(batchID, v.data.BatchID) {
 			if newDepth > v.data.BatchDepth {
 				v.data.BatchDepth = newDepth
+				v.data.BatchAmount = newBalance
 			}
 			return
 		}
