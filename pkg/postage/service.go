@@ -123,7 +123,7 @@ func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
 	for _, v := range ps.issuers {
 		if bytes.Equal(batchID, v.data.BatchID) {
 			if amount.Cmp(v.data.BatchAmount) > 0 {
-				v.data.BatchAmount = amount
+				v.data.BatchAmount = v.data.BatchAmount.Add(v.data.BatchAmount, amount)
 			}
 			return
 		}
