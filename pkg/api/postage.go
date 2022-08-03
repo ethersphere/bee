@@ -45,7 +45,7 @@ func (s *Service) postageSyncStatusCheckHandler(h http.Handler) http.Handler {
 		if err != nil {
 			s.logger.Debugf("postage access: %v", err)
 			s.logger.Error("postage access: syncing failed")
-			jsonhttp.ServiceUnavailable(w, "batch unavailable: syncing failed")
+			jsonhttp.ServiceUnavailable(w, "postage: syncing failed")
 			return
 		}
 		if !done {
