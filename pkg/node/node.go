@@ -836,7 +836,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
+	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, log.NewLogger("root").WithName(pullsync.LoggerName).Register()) // TODO: get the root logger from the source.
 	b.pullSyncCloser = pullSyncProtocol
 
 	var pullerService *puller.Puller

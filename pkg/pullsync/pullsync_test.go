@@ -10,7 +10,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
@@ -213,7 +213,7 @@ func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 
 func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.PullStorage) {
 	storage := mock.NewPullStorage(o...)
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	unwrap := func(swarm.Chunk) {}
 	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
 	return pullsync.New(s, storage, unwrap, validStamp, logger), storage
