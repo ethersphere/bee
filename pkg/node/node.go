@@ -841,7 +841,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, pullSyncProtocol, log.NewLogger("root").WithName(puller.LoggerName).Register(), puller.Options{}, warmupTime) // TODO: get the root logger from the source.
 		b.pullerCloser = pullerService
 	}
 

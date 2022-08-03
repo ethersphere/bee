@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/puller"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -592,7 +592,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 
 	o := puller.Options{
 		Bins: ops.bins,
