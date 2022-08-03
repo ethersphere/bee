@@ -106,13 +106,20 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
-			networkID := c.config.GetUint64(optionNameNetworkID)
+			userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
 
-			if mainnet {
-				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
-				if userHasSetNetworkID && networkID != 1 {
+			var networkID uint64 = 10
+
+			// if the user has provided a value - we use it and overwrite the default
+			// if mainnet is true then we only accept networkID value 1
+			// if the user has not provided a network ID but mainnet is true - just overwrite with 1
+			// in all the other cases default to value 10
+			if userHasSetNetworkID {
+				networkID = c.config.GetUint64(optionNameNetworkID)
+				if mainnet && networkID != 1 {
 					return errors.New("provided network ID does not match mainnet")
 				}
+			} else if mainnet {
 				networkID = 1
 			}
 
