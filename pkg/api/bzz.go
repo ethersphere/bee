@@ -56,7 +56,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable yet")
 		default:
-			jsonhttp.BadRequest(w, fmt.Sprintf("new stamper putter: %v", err))
+			jsonhttp.BadRequest(w, nil)
 		}
 		return
 	}

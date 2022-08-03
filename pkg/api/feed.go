@@ -153,7 +153,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid postage batch id")
 		default:
-			jsonhttp.BadRequest(w, fmt.Sprintf("new stamper putter: %v", err))
+			jsonhttp.BadRequest(w, nil)
 		}
 		return
 	}

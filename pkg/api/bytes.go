@@ -37,7 +37,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("bytes upload: get putter:%v", err)
 		logger.Error("bytes upload: putter")
-		jsonhttp.BadRequest(w, fmt.Sprintf("new stamper putter: %v", err))
+		jsonhttp.BadRequest(w, nil)
 		return
 	}
 
