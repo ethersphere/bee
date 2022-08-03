@@ -17,7 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/util"
@@ -38,7 +38,7 @@ func toBatchBlock(block uint64) uint64 {
 }
 
 func TestListener(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	blockNumber := uint64(500)
 	timeout := 5 * time.Second
 	// test that when the listener gets a certain event
@@ -326,7 +326,7 @@ func TestListener(t *testing.T) {
 }
 
 func TestListenerBatchState(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	ev, evC := newEventUpdaterMock()
 	mf := newMockFilterer()
 
