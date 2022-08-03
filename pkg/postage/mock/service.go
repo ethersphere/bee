@@ -92,14 +92,14 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
-func (m *mockPostage) HandleTopUp(batchID []byte, newBalance *big.Int) {
+func (m *mockPostage) HandleTopUp(batchID []byte, amount *big.Int) {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
 
 	for _, v := range m.issuersMap {
 		if bytes.Equal(batchID, v.ID()) {
-			if newBalance.Cmp(v.Amount()) > 0 {
-				v.Amount().Set(newBalance)
+			if amount.Cmp(v.Amount()) > 0 {
+				v.Amount().Set(amount)
 			}
 			return
 		}
