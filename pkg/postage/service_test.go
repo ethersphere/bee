@@ -143,8 +143,8 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if ps.StampIssuers()[0].Amount().Cmp(big.NewInt(10)) != 0 {
-			t.Fatalf("expected amount %d got %d", 10, ps.StampIssuers()[0].Amount().Int64())
+		if ps.StampIssuers()[0].Amount().Cmp(big.NewInt(13)) != 0 {
+			t.Fatalf("expected amount %d got %d", 13, ps.StampIssuers()[0].Amount().Int64())
 		}
 	})
 	t.Run("dilute", func(t *testing.T) {
