@@ -12,7 +12,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -35,7 +35,7 @@ func (t *testThresholdObserver) NotifyPaymentThreshold(peerAddr swarm.Address, p
 }
 
 func TestAnnouncePaymentThreshold(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	testThreshold := big.NewInt(100000)
 	observer := &testThresholdObserver{}
 
@@ -100,7 +100,7 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 }
 
 func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	testThreshold := big.NewInt(100_000)
 	observer := &testThresholdObserver{}
 

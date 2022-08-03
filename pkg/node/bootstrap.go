@@ -149,7 +149,7 @@ func bootstrapNode(
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
+	pricing := pricing.New(p2ps, log.NewLogger("root").WithName(pricing.LoggerName).Register(), paymentThreshold, big.NewInt(minPaymentThreshold)) // TODO: get the root logger from the source.
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
