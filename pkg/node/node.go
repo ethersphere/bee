@@ -831,7 +831,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime)
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, log.NewLogger("root").WithName(pusher.LoggerName).Register(), tracer, warmupTime) // TODO: get the root logger from the source.
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
