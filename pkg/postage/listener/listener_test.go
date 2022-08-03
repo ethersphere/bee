@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/listener"
+	"github.com/ethersphere/bee/pkg/util"
 )
 
 var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
@@ -287,13 +287,13 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			WithBlockNumberError(errors.New("dummy error")),
 		)
-		c := make(chan struct{})
+		c := util.NewSignaler()
 		l := listener.New(c, logger, mf, postageStampAddress, 1, 50*time.Millisecond, 0*time.Second)
 		<-l.Listen(0, ev, nil)
 
 		time.Sleep(time.Millisecond * 100)
 		select {
-		case <-c:
+		case <-c.C:
 		case <-time.After(5 * time.Second):
 			t.Fatal("expected shutdown call by now")
 		}
@@ -305,7 +305,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			WithBlockNumber(blockNumber),
 		)
-		c := make(chan struct{})
+		c := util.NewSignaler()
 		l := listener.New(c, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
 		<-l.Listen(0, ev, nil)
 
@@ -318,7 +318,7 @@ func TestListener(t *testing.T) {
 
 		time.Sleep(time.Millisecond * 100)
 		select {
-		case <-c:
+		case <-c.C:
 		case <-time.After(time.Second * 5):
 			t.Fatal("expected shutdown call by now")
 		}
@@ -491,9 +491,9 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(uint64, *postage.ChainSnapshot, chan os.Signal) error { return nil }
-func (u *updater) TransactionStart() error                                    { return nil }
-func (u *updater) TransactionEnd() error                                      { return nil }
+func (u *updater) Start(uint64, *postage.ChainSnapshot, chan struct{}) error { return nil }
+func (u *updater) TransactionStart() error                                   { return nil }
+func (u *updater) TransactionEnd() error                                     { return nil }
 
 type mockFilterer struct {
 	filterLogEvents      []types.Log

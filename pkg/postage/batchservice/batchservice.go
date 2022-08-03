@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
-	"os"
 
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -231,7 +230,7 @@ func (svc *batchService) TransactionEnd() error {
 
 var ErrInterruped = errors.New("postage sync interrupted")
 
-func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot, interrupt chan os.Signal) (err error) {
+func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot, interrupt chan struct{}) (err error) {
 	dirty := false
 	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {

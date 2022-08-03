@@ -7,7 +7,6 @@ package postage
 import (
 	"io"
 	"math/big"
-	"os"
 
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -20,7 +19,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
 	UpdatePrice(price *big.Int, txHash []byte) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan os.Signal) error
+	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan struct{}) error
 
 	TransactionStart() error
 	TransactionEnd() error
