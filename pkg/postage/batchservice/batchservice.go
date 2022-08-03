@@ -175,10 +175,8 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("put: %w", err)
 	}
 
-	updatedBalance := big.NewInt(0).Div(normalisedBalance, big.NewInt(int64(1<<(depth))))
-
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		svc.batchListener.HandleDepthIncrease(id, depth, updatedBalance)
+		svc.batchListener.HandleDepthIncrease(id, depth, normalisedBalance)
 	}
 
 	cs, err := svc.updateChecksum(txHash)
