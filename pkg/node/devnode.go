@@ -228,7 +228,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
-	pssService := pss.New(mockKey, logger)
+	pssService := pss.New(mockKey, log.NewLogger("root").WithName(pss.LoggerName).Register()) // TODO: get the root logger from the source.
 	b.pssCloser = pssService
 
 	pssService.SetPushSyncer(mockPushsync.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {

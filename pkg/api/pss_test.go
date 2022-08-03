@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -410,7 +411,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	}
 	var (
 		logger = logging.New(io.Discard, 0)
-		pss    = pss.New(privkey, logger)
+		pss    = pss.New(privkey, log.NewLogger("test", log.WithSink(io.Discard)))
 	)
 	if o.pingPeriod == 0 {
 		o.pingPeriod = 10 * time.Second

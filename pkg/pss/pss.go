@@ -17,11 +17,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "pss"
 
 var (
 	_            Interface = (*pss)(nil)
@@ -50,12 +53,12 @@ type pss struct {
 	handlers   map[Topic][]*Handler
 	handlersMu sync.Mutex
 	metrics    metrics
-	logger     logging.Logger
+	logger     log.Logger
 	quit       chan struct{}
 }
 
 // New returns a new pss service.
-func New(key *ecdsa.PrivateKey, logger logging.Logger) Interface {
+func New(key *ecdsa.PrivateKey, logger log.Logger) Interface {
 	return &pss{
 		key:      key,
 		logger:   logger,
