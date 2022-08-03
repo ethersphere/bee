@@ -666,7 +666,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	// Construct protocols.
-	pingPong := pingpong.New(p2ps, logger, tracer)
+	pingPong := pingpong.New(p2ps, log.NewLogger("root").WithName(pingpong.LoggerName).Register(), tracer) // TODO: get the root logger from the source.
 
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		return nil, fmt.Errorf("pingpong service: %w", err)

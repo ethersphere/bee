@@ -12,13 +12,16 @@ import (
 	"io"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "pinpong"
 
 const (
 	protocolName    = "pingpong"
@@ -32,12 +35,12 @@ type Interface interface {
 
 type Service struct {
 	streamer p2p.Streamer
-	logger   logging.Logger
+	logger   log.Logger
 	tracer   *tracing.Tracer
 	metrics  metrics
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, tracer *tracing.Tracer) *Service {
+func New(streamer p2p.Streamer, logger log.Logger, tracer *tracing.Tracer) *Service {
 	return &Service{
 		streamer: streamer,
 		logger:   logger,
@@ -60,7 +63,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-ping", s.logger)
+	span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, "pingpong-p2p-ping", s.logger)
 	defer span.Finish()
 
 	start := time.Now()
@@ -99,7 +102,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.FullClose()
 
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-handler", s.logger)
+	span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, "pingpong-p2p-handler", s.logger)
 	defer span.Finish()
 
 	var ping pb.Ping
