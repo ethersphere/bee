@@ -99,7 +99,7 @@ func (m *mockPostage) HandleTopUp(batchID []byte, amount *big.Int) {
 	for _, v := range m.issuersMap {
 		if bytes.Equal(batchID, v.ID()) {
 			if amount.Cmp(v.Amount()) > 0 {
-				v.Amount().Set(amount)
+				v.Amount().Add(v.Amount(), amount)
 			}
 			return
 		}
