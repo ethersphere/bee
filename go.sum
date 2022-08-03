@@ -141,6 +141,7 @@ github.com/btcsuite/winsvc v1.0.0/go.mod h1:jsenWakMcC0zFBFurPLEAyrnc/teJEM1O46f
 github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23/go.mod h1:bbYlZJ7hK1yFx9hf58LP0zeX7UjIGs20ufpu3evjr+s=
 github.com/bytecodealliance/wasmtime-go v0.36.0 h1:B6thr7RMM9xQmouBtUqm1RpkJjuLS37m6nxX+iwsQSc=
 github.com/bytecodealliance/wasmtime-go v0.36.0/go.mod h1:q320gUxqyI8yB+ZqRuaJOEnGkAnHh6WtJjMaT2CW4wI=
+github.com/bytecodealliance/wasmtime-go v0.38.1 h1:eqrJmy1nR/uyxZC4OydXWpvGeEHzprW1Fao6eXvNnEE=
 github.com/c-bata/go-prompt v0.2.2/go.mod h1:VzqtzE2ksDBcdln8G7mk2RX9QyGjH+OVqOCSiVIqS34=
 github.com/casbin/casbin/v2 v2.1.2/go.mod h1:YcPU1XXisHhLzuxH9coDNf2FbKpjGlbCg3n9yuLkIJQ=
 github.com/casbin/casbin/v2 v2.35.0 h1:f0prVg9LgTJTihjAxWEZhfJptXvah1GpZh12sb5KXNA=
@@ -1098,6 +1099,8 @@ github.com/tdewolff/parse/v2 v2.4.2/go.mod h1:WzaJpRSbwq++EIQHYIRTpbYKNA3gn9it1I
 github.com/tdewolff/test v1.0.6/go.mod h1:6DAvZliBAAnD7rhVgwaM7DE5/d9NMOAJ09SqYqeK4QE=
 github.com/tetratelabs/wazero v0.0.0-20220529032218-029a79476b4f h1:bN4C2nSpz/ND03EbZoV+3xR8Ivc5rV6FBpoErU2uU14=
 github.com/tetratelabs/wazero v0.0.0-20220529032218-029a79476b4f/go.mod h1:Y4X/zO4sC2dJjZG9GDYNRbJGogfqFYJY/BbyKlOxXGI=
+github.com/tetratelabs/wazero v0.0.0-20220714084325-040736caac8f h1:MmGwq39JVO05i+4oj7TyZPJLMC5Sn+d2qqyywKVHEDc=
+github.com/tetratelabs/wazero v0.0.0-20220714084325-040736caac8f/go.mod h1:Y4X/zO4sC2dJjZG9GDYNRbJGogfqFYJY/BbyKlOxXGI=
 github.com/tinylib/msgp v1.0.2/go.mod h1:+d+yLhGm8mzTaHzB+wgMYrodPfmZrzkirds8fDWklFE=
 github.com/tinylib/msgp v1.1.5/go.mod h1:eQsjooMTnV42mHu917E26IogZ2930nFyBQdofk10Udg=
 github.com/tklauser/go-sysconf v0.3.5/go.mod h1:MkWzOF4RMCshBAMXuhXJs64Rte09mITnppBXY/rYEFI=
@@ -1131,6 +1134,8 @@ github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAh
 github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV6mEfg5OIWRZA9qds=
 github.com/wapc/wapc-go v0.4.3 h1:lD4de1c5welSg29UdO4WlTlQoDzyFBgv/C5U/TKof1M=
 github.com/wapc/wapc-go v0.4.3/go.mod h1:/Y7RklYSW0epYCU+Jm+wiJvfryYmnJYDT9GzhlTFcE4=
+github.com/wapc/wapc-go v0.4.4 h1:NXNuZU1+w9DRXJwHxDSxX8Y16Rp0Vf4xVn1ypjVR43E=
+github.com/wapc/wapc-go v0.4.4/go.mod h1:S1G3TBoBrgdCyk8zBVlUzKfeKhMrn4KH/58uRlg6tSM=
 github.com/wasmerio/wasmer-go v1.0.4 h1:MnqHoOGfiQ8MMq2RF6wyCeebKOe84G88h5yv+vmxJgs=
 github.com/wasmerio/wasmer-go v1.0.4/go.mod h1:0gzVdSfg6pysA6QVp6iVRPTagC6Wq9pOE8J86WKb2Fk=
 github.com/wealdtech/go-ens/v3 v3.5.1 h1:0VqkCjIGfIVdwHIf2QqYWWt3bbR1UE7RwBGx7YPpufQ=

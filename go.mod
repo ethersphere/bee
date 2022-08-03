@@ -71,8 +71,8 @@ require (
 
 require (
 	github.com/libp2p/go-libp2p-yamux v0.6.0
-	github.com/tetratelabs/wazero v0.0.0-20220529032218-029a79476b4f
-	github.com/wapc/wapc-go v0.4.3
+	github.com/tetratelabs/wazero v0.0.0-20220714084325-040736caac8f
+	github.com/wapc/wapc-go v0.4.4
 )
 
 require (

@@ -1,13 +1,13 @@
 package api
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 	"github.com/vmihailenco/msgpack/v5"
@@ -16,20 +16,33 @@ import (
 	"golang.org/x/net/context"
 	"io"
 	"net/http"
+	"strings"
 )
+
+func normaliseBatch(batch string) ([]byte, error) {
+	h := strings.ToLower(batch)
+	if len(h) != 64 {
+		return nil, errInvalidPostageBatch
+	}
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		return nil, errInvalidPostageBatch
+	}
+	return b, nil
+}
 
 func handleStoreChunk(server *server, request *http.Request, ctx context.Context, payload []byte) ([]byte, error) {
 	var args StoreChunkArgs
 	err := msgpack.Unmarshal(payload, &args)
 	data := args.Data
+	batch, err := normaliseBatch(args.Stamp)
 
-	if len(data) < swarm.SpanSize {
-		server.logger.Debug("chunk upload: not enough data")
-		server.logger.Error("chunk upload: data length")
-		return nil, errors.New("not enough data")
+	if err != nil {
+		return nil, err
 	}
 
-	putter, wait, err := server.newStamperPutter(request)
+	putter, err := newStoringStamperPutter(server.storer, server.post, server.signer, batch)
+
 	if err != nil {
 		server.logger.Debugf("chunk upload: putter: %v", err)
 		server.logger.Error("chunk upload: putter")
@@ -42,19 +55,15 @@ func handleStoreChunk(server *server, request *http.Request, ctx context.Context
 		return nil, err
 	}
 
-	chunk, err := cac.NewWithDataSpan(data)
+	chunk, err := cac.New(data)
 	if err != nil {
 		return nil, err
 	}
+
+	server.logger.Info("storing chunk")
 
 	_, err = putter.Put(ctx, storage.ModePutUpload, chunk)
 	if err != nil {
-		return nil, err
-	}
-
-	if err = wait(); err != nil {
-		server.logger.Debugf("chunk upload: sync chunk: %v", err)
-		server.logger.Error("chunk upload: sync chunk")
 		return nil, err
 	}
 
@@ -77,6 +86,8 @@ func handleGetChunk(server *server, ctx context.Context, payload []byte) ([]byte
 		server.logger.Error("chunk: parse chunk address error")
 		return nil, err
 	}
+
+	server.logger.Info("reading chunk")
 
 	chunk, err := server.storer.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
@@ -104,6 +115,16 @@ func bootstrapEngine(server *server, request *http.Request, ctx context.Context,
 				return handleStoreChunk(server, request, ctx, payload)
 			case "getChunk":
 				return handleGetChunk(server, ctx, payload)
+			case "log":
+				var inputArgs LogArgs
+				err := msgpack.Unmarshal(payload, &inputArgs)
+				if err != nil {
+					return nil, err
+				}
+				server.logger.Info("Protocol log entry: ", inputArgs.Str)
+
+				result := true
+				return msgpack.Marshal(result)
 			}
 		}
 		return []byte(""), nil
@@ -138,13 +159,16 @@ func (s *server) handleProtocol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	protocol := mux.Vars(r)["protocol"]
-	rest := mux.Vars(r)["rest"]
 
 	// TODO: Add headers
 	request := HttpRequest{
-		Path: rest,
-		Body: string(requestBody),
+		Path:   r.URL.Path,
+		Query:  r.URL.Query().Encode(),
+		Method: r.Method,
+		Body:   string(requestBody),
 	}
+
+	s.logger.Info(request)
 
 	protocolAddress, err := s.resolveProtocol(protocol)
 	if err != nil {
@@ -228,7 +252,12 @@ type GetChunkArgs struct {
 }
 
 type StoreChunkArgs struct {
-	Data []byte `json:"data" msgpack:"data"`
+	Data  []byte `json:"data" msgpack:"data"`
+	Stamp string `json:"stamp" msgpack:"stamp"`
+}
+
+type LogArgs struct {
+	Str string `json:"str" msgpack:"str"`
 }
 
 type HandleRequestArgs struct {
@@ -244,7 +273,9 @@ type HttpResponse struct {
 type HttpRequest struct {
 	Headers []Header `json:"headers" msgpack:"headers"`
 	Body    string   `json:"body" msgpack:"body"`
-	Path    string
+	Path    string   `json:"path" msgpack:"path"`
+	Method  string   `json:"method" msgpack:"method"`
+	Query   string   `json:"query" msgpack:"query"`
 }
 
 type Header struct {
