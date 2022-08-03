@@ -267,7 +267,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			_, err := unreserveFn(b, swarm.MaxPO+1)
 			return err
 		}
-		batchStore, err = batchstore.New(stateStore, evictFn, logger)
+		batchStore, err = batchstore.New(stateStore, evictFn, log.NewLogger("root").WithName(batchstore.LoggerName).Register()) // TODO: get the root logger from the source.
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}

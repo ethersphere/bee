@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -401,7 +402,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, logger)
+	bStore, _ := batchstore.New(stateStore, evictFn, log.NewLogger("test", log.WithSink(io.Discard))) // TODO: replace with logger when state-store is migrated.
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{

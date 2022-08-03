@@ -113,7 +113,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.stateStoreCloser = stateStore
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, log.NewLogger("root").WithName(batchstore.LoggerName).Register()) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
