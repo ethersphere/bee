@@ -176,7 +176,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	}
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		svc.batchListener.HandleDepthIncrease(id, depth, normalisedBalance)
+		svc.batchListener.HandleDepthIncrease(id, depth)
 	}
 
 	cs, err := svc.updateChecksum(txHash)

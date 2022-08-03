@@ -106,7 +106,7 @@ func (m *mockPostage) HandleTopUp(batchID []byte, amount *big.Int) {
 	}
 }
 
-func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8, _ *big.Int) {}
+func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
 
 func (m *mockPostage) Close() error {
 	return nil

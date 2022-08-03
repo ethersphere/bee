@@ -55,7 +55,7 @@ func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
 	m.topupCount++
 }
 
-func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8, _ *big.Int) {
+func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 	m.diluteCount++
 }
 
