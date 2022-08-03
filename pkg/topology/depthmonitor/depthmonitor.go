@@ -108,7 +108,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 	// if the syncing rate is high enough such that the reserve becomes full and a large eviction causes the
 	// size to drop below the half mark, storage radius may begin to oscillate, as such,
 	// we increment the storage radius by one to prevent oscillation.
-	unstable := false
+	// unstable := false
 
 	for {
 		select {
@@ -128,19 +128,19 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
-			if unstable {
-				err := s.bs.SetStorageRadius(func(radius uint8) uint8 { return radius + 1 })
-				if err != nil {
-					s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
-				}
-			}
-			unstable = false
+			// if unstable {
+			// 	err := s.bs.SetStorageRadius(func(radius uint8) uint8 { return radius + 1 })
+			// 	if err != nil {
+			// 		s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
+			// 	}
+			// }
+			// unstable = false
 			continue
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
 		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
-			unstable = true
+			// unstable = true
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > 0 {
 					radius--
