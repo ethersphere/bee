@@ -155,10 +155,6 @@ func (c *command) initStartCmd() (err error) {
 			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
 			interruptChannel := make(chan struct{})
-			go func() {
-				<-sysInterruptChannel
-				close(interruptChannel)
-			}()
 
 			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -219,8 +215,9 @@ func (c *command) initStartCmd() (err error) {
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
 					select {
-					case <-interruptChannel:
+					case <-sysInterruptChannel:
 						logger.Debug("received interrupt signal")
+						close(interruptChannel)
 					case <-b.SyncingStopped():
 					}
 
@@ -240,7 +237,7 @@ func (c *command) initStartCmd() (err error) {
 					// If shutdown function is blocking too long,
 					// allow process termination by receiving another signal.
 					select {
-					case <-interruptChannel:
+					case <-sysInterruptChannel:
 						logger.Debug("received interrupt signal")
 					case <-done:
 					}
