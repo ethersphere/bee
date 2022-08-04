@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
@@ -387,7 +386,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)

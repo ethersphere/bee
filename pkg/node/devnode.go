@@ -107,7 +107,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		tracerCloser:   tracerCloser,
 	}
 
-	stateStore, err := leveldb.NewInMemoryStateStore(logger)
+	stateStore, err := leveldb.NewInMemoryStateStore(log.NewLogger("root").WithName(leveldb.LoggerName).Register()) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, err
 	}

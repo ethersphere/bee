@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldberr "github.com/syndtr/goleveldb/leveldb/errors"
@@ -21,15 +21,18 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "leveldb"
+
 var _ storage.StateStorer = (*Store)(nil)
 
 // Store uses LevelDB to store values.
 type Store struct {
 	db     *leveldb.DB
-	logger logging.Logger
+	logger log.Logger
 }
 
-func NewInMemoryStateStore(l logging.Logger) (*Store, error) {
+func NewInMemoryStateStore(l log.Logger) (*Store, error) {
 	ldb, err := ldb.Open(ldbs.NewMemStorage(), nil)
 	if err != nil {
 		return nil, err
@@ -48,19 +51,19 @@ func NewInMemoryStateStore(l logging.Logger) (*Store, error) {
 }
 
 // NewStateStore creates a new persistent state storage.
-func NewStateStore(path string, l logging.Logger) (*Store, error) {
+func NewStateStore(path string, l log.Logger) (*Store, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		if !ldberr.IsCorrupted(err) {
 			return nil, err
 		}
 
-		l.Warningf("statestore open failed: %v. attempting recovery", err)
+		l.Warning("statestore open failed, attempting recovery", "error", err)
 		db, err = leveldb.RecoverFile(path, nil)
 		if err != nil {
 			return nil, fmt.Errorf("statestore recovery: %w", err)
 		}
-		l.Warning("statestore recovery ok! you are kindly request to inform us about the steps that preceded the last Bee shutdown.")
+		l.Warning("statestore recovery done; you are kindly request to inform us about the steps that preceded the last bee shutdown")
 	}
 
 	s := &Store{

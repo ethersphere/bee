@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
@@ -196,7 +195,7 @@ func TestBatchStore_Reset(t *testing.T) {
 	)
 
 	path := t.TempDir()
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 
 	// we use the real statestore since the mock uses a mutex,
 	// therefore deleting while iterating (in Reset() implementation)

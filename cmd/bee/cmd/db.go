@@ -274,7 +274,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return nil
 			}
 
-			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
+			stateStore, err := leveldb.NewStateStore(statestorePath, log.NewLogger("root").WithName(leveldb.LoggerName).Register()) // TODO: get the root logger from the source.
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}
