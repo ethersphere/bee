@@ -36,6 +36,7 @@ type Options struct {
 
 type Puller struct {
 	topology   topology.Driver
+	depther    topology.NeighborhoodDepther
 	statestore storage.StateStorer
 	syncer     pullsync.Interface
 
@@ -54,7 +55,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, depther topology.NeighborhoodDepther, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -65,6 +66,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 	p := &Puller{
 		statestore: stateStore,
 		topology:   topology,
+		depther:    depther,
 		syncer:     pullSync,
 		metrics:    newMetrics(),
 		logger:     logger,
@@ -121,7 +123,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 			// if we're already syncing with this peer, make sure
 			// that we're syncing the correct bins according to depth
-			depth := p.topology.NeighborhoodDepth()
+			depth := p.depther.NeighborhoodDepth()
 
 			// we defer the actual start of syncing to get out of the iterator first
 			var (

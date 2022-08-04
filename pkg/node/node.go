@@ -793,6 +793,8 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	pricing.SetPaymentThresholdObserver(acc)
 
+	depther := newDepther(o.FullNodeMode, swarmAddress, kad, batchStore)
+
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
@@ -807,12 +809,12 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, depther, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime)
+	pusherService := pusher.New(networkID, storer, depther, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
@@ -822,7 +824,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, depther, pullSyncProtocol, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
