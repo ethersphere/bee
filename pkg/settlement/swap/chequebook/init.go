@@ -8,11 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -34,7 +35,7 @@ const (
 
 func checkBalance(
 	ctx context.Context,
-	logger logging.Logger,
+	logger log.Logger,
 	swapInitialDeposit *big.Int,
 	swapBackend transaction.Backend,
 	chainId int64,
@@ -82,14 +83,14 @@ func checkBalance(
 			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), ethSmallUnit)
 
 			if insufficientETH && insufficientERC20 {
-				logger.Warningf("cannot continue until there is at least %f xDAI (for Gas) and at least %d BZZ bridged on the xDAI network available on %x", neededETH, neededERC20, overlayEthAddress)
+				logger.Warning("cannot continue until there is at least min xDAI (for Gas) and at least min BZZ bridged on the xDAI network available on address", "min_xdai_amount", neededETH, "min_bzz_amount", neededERC20, "address", fmt.Sprintf("%x", overlayEthAddress))
 			} else if insufficientETH {
-				logger.Warningf("cannot continue until there is at least %f xDAI (for Gas) available on %x", neededETH, overlayEthAddress)
+				logger.Warning("cannot continue until there is at least min xDAI (for Gas) available on address", "min_xdai_amount", neededETH, "address", fmt.Sprintf("%x", overlayEthAddress))
 			} else {
-				logger.Warningf("cannot continue until there is at least %d BZZ available on %x", neededERC20, overlayEthAddress)
+				logger.Warning("cannot continue until there is at least min BZZ available on address", "min_bzz_amount", neededERC20, "address", fmt.Sprintf("%x", overlayEthAddress))
 			}
 			if chainId == 5 {
-				logger.Warningf("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
+				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 			select {
 			case <-time.After(balanceCheckBackoffDuration):
@@ -112,7 +113,7 @@ func Init(
 	ctx context.Context,
 	chequebookFactory Factory,
 	stateStore storage.StateStorer,
-	logger logging.Logger,
+	logger log.Logger,
 	swapInitialDeposit *big.Int,
 	transactionService transaction.Service,
 	swapBackend transaction.Backend,
@@ -158,14 +159,14 @@ func Init(
 				return nil, err
 			}
 
-			logger.Infof("deploying new chequebook in transaction %x", txHash)
+			logger.Info("deploying new chequebook", "tx", fmt.Sprintf("%x", txHash))
 
 			err = stateStore.Put(ChequebookDeploymentKey, txHash)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			logger.Infof("waiting for chequebook deployment in transaction %x", txHash)
+			logger.Info("waiting for chequebook deployment", "tx", fmt.Sprintf("%x", txHash))
 		}
 
 		chequebookAddress, err = chequebookFactory.WaitDeployed(ctx, txHash)
@@ -173,7 +174,7 @@ func Init(
 			return nil, err
 		}
 
-		logger.Infof("deployed chequebook at address %x", chequebookAddress)
+		logger.Info("chequebook deployed", "chequebook_address", fmt.Sprintf("%x", chequebookAddress))
 
 		// save the address for later use
 		err = stateStore.Put(chequebookKey, chequebookAddress)
@@ -187,13 +188,13 @@ func Init(
 		}
 
 		if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
-			logger.Infof("depositing %d token into new chequebook", swapInitialDeposit)
+			logger.Info("depositing token into new chequebook", "amount", swapInitialDeposit)
 			depositHash, err := chequebookService.Deposit(ctx, swapInitialDeposit)
 			if err != nil {
 				return nil, err
 			}
 
-			logger.Infof("sent deposit transaction %x", depositHash)
+			logger.Info("sent deposit transaction", "tx", fmt.Sprintf("%x", depositHash))
 			err = chequebookService.WaitForDeposit(ctx, depositHash)
 			if err != nil {
 				return nil, err
@@ -207,7 +208,7 @@ func Init(
 			return nil, err
 		}
 
-		logger.Infof("using existing chequebook %x", chequebookAddress)
+		logger.Info("using existing chequebook", "chequebook_address", fmt.Sprintf("%x", chequebookAddress))
 	}
 
 	// regardless of how the chequebook service was initialised make sure that the chequebook is valid

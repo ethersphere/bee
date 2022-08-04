@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
@@ -183,7 +184,7 @@ func InitChequebookService(
 		ctx,
 		chequebookFactory,
 		stateStore,
-		logger,
+		log.NewLogger("root").WithName(chequebook.LoggerName).Register(), // TODO: get the root logger from the source.
 		deposit,
 		transactionService,
 		backend,

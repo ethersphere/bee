@@ -20,6 +20,9 @@ import (
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "chequebook"
+
 // SendChequeFunc is a function to send cheques.
 type SendChequeFunc func(cheque *SignedCheque) error
 
