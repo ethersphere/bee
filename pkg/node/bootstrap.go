@@ -135,7 +135,7 @@ func bootstrapNode(
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, metricsDB, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, metricsDB, log.NewLogger("root").WithName(kademlia.LoggerName).Register(), // TODO: get the root logger from the source.
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)

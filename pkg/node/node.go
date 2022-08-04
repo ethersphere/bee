@@ -689,7 +689,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, log.NewLogger("root").WithName(kademlia.LoggerName).Register(), // TODO: get the root logger from the source.
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)

@@ -24,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bzz"
 	beeCrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/discovery/mock"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
@@ -1051,7 +1051,7 @@ func TestClosestPeer(t *testing.T) {
 	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 	connectedPeers := []p2p.Peer{
 		{
@@ -1469,7 +1469,7 @@ func TestLatency(t *testing.T) {
 
 	*kademlia.PeerPingPollTime = 1 * time.Second
 	var (
-		logger = logging.New(io.Discard, 0)
+		logger = log.NewLogger("test", log.WithSink(io.Discard))
 		base   = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 		p1     = test.RandomAddress()
 
@@ -1830,7 +1830,7 @@ func newTestKademliaWithAddrDiscovery(
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
 		ab     = addressbook.New(mockstate.NewStateStore())          // address book
 		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock
-		logger = logging.New(io.Discard, 0)                          // logger
+		logger = log.NewLogger("test", log.WithSink(io.Discard))     // logger
 		ppm    = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
 			return 0, nil
 		})
