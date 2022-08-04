@@ -12,7 +12,6 @@ import (
 )
 
 func TestRateLimit(t *testing.T) {
-
 	var (
 		key1  = "test1"
 		key2  = "test2"
