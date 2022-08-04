@@ -93,15 +93,15 @@ type Options struct {
 
 // Kad is the Swarm forwarding kademlia implementation.
 type Kad struct {
-	base              swarm.Address         // this node's overlay address
-	discovery         discovery.Driver      // the discovery driver
-	addressBook       addressbook.Interface // address book to get underlays
-	p2p               p2p.Service           // p2p service to connect to nodes with
-	saturationFunc    binSaturationFunc     // pluggable saturation function
-	bitSuffixLength   int                   // additional depth of common prefix for bin
-	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
-	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
-	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
+	base              swarm.Address     // this node's overlay address
+	discovery         discovery.Driver  // the discovery driver
+	addressBook       addressbook.Store // address book to get underlays
+	p2p               p2p.Service       // p2p service to connect to nodes with
+	saturationFunc    binSaturationFunc // pluggable saturation function
+	bitSuffixLength   int               // additional depth of common prefix for bin
+	commonBinPrefixes [][]swarm.Address // list of address prefixes for each bin
+	connectedPeers    *pslice.PSlice    // a slice of peers sorted and indexed by po, indexes kept in `bins`
+	knownPeers        *pslice.PSlice    // both are po aware slice of addresses
 	bootnodes         []ma.Multiaddr
 	depth             uint8         // current neighborhood depth
 	radius            uint8         // storage area of responsibility
@@ -132,7 +132,7 @@ type Kad struct {
 // New returns a new Kademlia.
 func New(
 	base swarm.Address,
-	addressbook addressbook.Interface,
+	addressbook addressbook.Store,
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
 	pinger pingpong.Interface,

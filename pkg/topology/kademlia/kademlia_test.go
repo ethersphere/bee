@@ -1813,7 +1813,7 @@ func newTestKademliaWithAddrDiscovery(
 	disc *mock.Discovery,
 	connCounter, failedConnCounter *int32,
 	kadOpts kademlia.Options,
-) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+) (swarm.Address, *kademlia.Kad, addressbook.Store, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
 	metricsDB, err := shed.NewDB("", nil)
@@ -1845,7 +1845,7 @@ func newTestKademliaWithAddrDiscovery(
 	return base, kad, ab, disc, signer
 }
 
-func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Store, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
 	base := test.RandomAddress()
@@ -1853,7 +1853,7 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 	return newTestKademliaWithAddrDiscovery(t, base, disc, connCounter, failedConnCounter, kadOpts)
 }
 
-func newTestKademliaWithAddr(t *testing.T, base swarm.Address, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+func newTestKademliaWithAddr(t *testing.T, base swarm.Address, connCounter, failedConnCounter *int32, kadOpts kademlia.Options) (swarm.Address, *kademlia.Kad, addressbook.Store, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
 	disc := mock.NewDiscovery() // mock discovery protocol
@@ -1865,14 +1865,14 @@ func newTestKademliaWithDiscovery(
 	disc *mock.Discovery,
 	connCounter, failedConnCounter *int32,
 	kadOpts kademlia.Options,
-) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
+) (swarm.Address, *kademlia.Kad, addressbook.Store, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
 	base := test.RandomAddress()
 	return newTestKademliaWithAddrDiscovery(t, base, disc, connCounter, failedConnCounter, kadOpts)
 }
 
-func p2pMock(ab addressbook.Interface, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {
+func p2pMock(ab addressbook.Store, signer beeCrypto.Signer, counter, failedCounter *int32) p2p.Service {
 	p2ps := p2pmock.New(
 		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
 			if addr.Equal(nonConnectableAddress) {

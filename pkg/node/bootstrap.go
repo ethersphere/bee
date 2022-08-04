@@ -66,7 +66,7 @@ func bootstrapNode(
 	txHash []byte,
 	chainID int64,
 	overlayEthAddress common.Address,
-	addressbook addressbook.Interface,
+	addressbook addressbook.Store,
 	bootnodes []ma.Multiaddr,
 	lightNodes *lightnode.Container,
 	senderMatcher p2p.SenderMatcher,

@@ -27,7 +27,7 @@ import (
 
 type libp2pServiceOpts struct {
 	Logger      logging.Logger
-	Addressbook addressbook.Interface
+	Addressbook addressbook.Store
 	PrivateKey  *ecdsa.PrivateKey
 	MockPeerKey *ecdsa.PrivateKey
 	libp2pOpts  libp2p.Options
