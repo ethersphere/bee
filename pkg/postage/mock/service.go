@@ -100,7 +100,6 @@ func (m *mockPostage) HandleTopUp(batchID []byte, amount *big.Int) {
 		if bytes.Equal(batchID, v.ID()) {
 			v.Amount().Add(v.Amount(), amount)
 		}
-		return
 	}
 }
 

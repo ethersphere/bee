@@ -124,7 +124,6 @@ func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
 		if bytes.Equal(batchID, v.data.BatchID) {
 			v.data.BatchAmount.Add(v.data.BatchAmount, amount)
 		}
-		return
 	}
 }
 
