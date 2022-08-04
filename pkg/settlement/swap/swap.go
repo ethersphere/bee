@@ -11,7 +11,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -19,6 +19,9 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "swap"
 
 var (
 	// ErrWrongChequebook is the error if a peer uses a different chequebook from before.
@@ -49,7 +52,7 @@ type Interface interface {
 // Service is the implementation of the swap settlement layer.
 type Service struct {
 	proto          swapprotocol.Interface
-	logger         logging.Logger
+	logger         log.Logger
 	store          storage.StateStorer
 	accounting     settlement.Accounting
 	metrics        metrics
@@ -62,7 +65,7 @@ type Service struct {
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger logging.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting, cashoutAddress common.Address) *Service {
+func New(proto swapprotocol.Interface, logger log.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting, cashoutAddress common.Address) *Service {
 	return &Service{
 		proto:          proto,
 		logger:         logger,
@@ -248,12 +251,14 @@ func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 
 // Handshake is called by the swap protocol when a handshake is received.
 func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) error {
+	loggerV1 := s.logger.V(1).Register()
+
 	oldPeer, known, err := s.addressbook.BeneficiaryPeer(beneficiary)
 	if err != nil {
 		return err
 	}
 	if known && !peer.Equal(oldPeer) {
-		s.logger.Debugf("migrating swap addresses from peer %s to %s", oldPeer, peer)
+		s.logger.Debug("migrating swap addresses", "old_peer_address", oldPeer, "new_peer_address", peer)
 		return s.addressbook.MigratePeer(oldPeer, peer)
 	}
 
@@ -262,7 +267,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return err
 	}
 	if !known {
-		s.logger.Tracef("initial swap handshake peer: %v beneficiary: %x", peer, beneficiary)
+		loggerV1.Debug("initial swap handshake", "peer_address", peer, "beneficiary_address", beneficiary)
 		return s.addressbook.PutBeneficiary(peer, beneficiary)
 	}
 

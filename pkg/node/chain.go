@@ -266,7 +266,7 @@ func InitSwap(
 
 	swapService := swap.New(
 		swapProtocol,
-		logger,
+		log.NewLogger("root").WithName(swap.LoggerName).Register(), // TODO: get the root logger from the source.
 		stateStore,
 		chequebookService,
 		chequeStore,

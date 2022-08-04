@@ -14,7 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
@@ -151,7 +151,7 @@ func (m *cashoutMock) CashoutStatus(ctx context.Context, chequebookAddress commo
 }
 
 func TestReceiveCheque(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
 	amount := big.NewInt(50)
@@ -255,7 +255,7 @@ func TestReceiveCheque(t *testing.T) {
 }
 
 func TestReceiveChequeReject(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
 	chequebookAddress := common.HexToAddress("0xcd")
@@ -318,7 +318,7 @@ func TestReceiveChequeReject(t *testing.T) {
 }
 
 func TestReceiveChequeWrongChequebook(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
 	chequebookAddress := common.HexToAddress("0xcd")
@@ -374,7 +374,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 }
 
 func TestPay(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	amount := big.NewInt(50)
@@ -429,7 +429,7 @@ func TestPay(t *testing.T) {
 }
 
 func TestPayIssueError(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	amount := big.NewInt(50)
@@ -485,7 +485,7 @@ func TestPayIssueError(t *testing.T) {
 }
 
 func TestPayUnknownBeneficiary(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	amount := big.NewInt(50)
@@ -532,7 +532,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 }
 
 func TestHandshake(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	beneficiary := common.HexToAddress("0xcd")
@@ -580,7 +580,7 @@ func TestHandshake(t *testing.T) {
 }
 
 func TestHandshakeNewPeer(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	beneficiary := common.HexToAddress("0xcd")
@@ -627,7 +627,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 }
 
 func TestMigratePeer(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	beneficiary := common.HexToAddress("0xcd")
@@ -662,7 +662,7 @@ func TestMigratePeer(t *testing.T) {
 }
 
 func TestCashout(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	theirChequebookAddress := common.HexToAddress("ffff")
@@ -712,7 +712,7 @@ func TestCashout(t *testing.T) {
 }
 
 func TestCashoutStatus(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	store := mockstore.NewStateStore()
 
 	theirChequebookAddress := common.HexToAddress("ffff")
