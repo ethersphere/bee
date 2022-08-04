@@ -254,7 +254,7 @@ func InitSwap(
 		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
 	}
 
-	priceOracle := priceoracle.New(logger, currentPriceOracleAddress, transactionService, 300)
+	priceOracle := priceoracle.New(log.NewLogger("root").WithName(priceoracle.LoggerName).Register(), currentPriceOracleAddress, transactionService, 300) // TODO: get the root logger from the source.
 	priceOracle.Start()
 	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, priceOracle)
 	swapAddressBook := swap.NewAddressbook(stateStore)

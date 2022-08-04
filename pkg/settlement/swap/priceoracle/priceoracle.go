@@ -13,17 +13,20 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "priceoracle"
 
 var (
 	errDecodeABI = errors.New("could not decode abi data")
 )
 
 type service struct {
-	logger             logging.Logger
+	logger             log.Logger
 	priceOracleAddress common.Address
 	transactionService transaction.Service
 	exchangeRate       *big.Int
@@ -46,7 +49,7 @@ var (
 	priceOracleABI = transaction.ParseABIUnchecked(priceoracleabi.PriceOracleABIv0_1_0)
 )
 
-func New(logger logging.Logger, priceOracleAddress common.Address, transactionService transaction.Service, timeDivisor int64) Service {
+func New(logger log.Logger, priceOracleAddress common.Address, transactionService transaction.Service, timeDivisor int64) Service {
 	return &service{
 		logger:             logger,
 		priceOracleAddress: priceOracleAddress,
@@ -59,6 +62,8 @@ func New(logger logging.Logger, priceOracleAddress common.Address, transactionSe
 }
 
 func (s *service) Start() {
+	loggerV1 := s.logger.V(1).Register()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
@@ -70,9 +75,9 @@ func (s *service) Start() {
 		for {
 			exchangeRate, deduction, err := s.GetPrice(ctx)
 			if err != nil {
-				s.logger.Errorf("could not get price: %v", err)
+				s.logger.Error(err, "could not get price")
 			} else {
-				s.logger.Tracef("updated exchange rate to %d and deduction to %d", exchangeRate, deduction)
+				loggerV1.Debug("updated exchange rate and deduction", "new_exchange_rate", exchangeRate, "new_deduction", deduction)
 				s.exchangeRate = exchangeRate
 				s.deduction = deduction
 			}
