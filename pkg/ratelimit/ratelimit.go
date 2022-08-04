@@ -30,24 +30,28 @@ func New(r time.Duration, burst int) *Limiter {
 	}
 }
 
-// Allow checks if the limiter that belongs to 'key' has not exceeded the limit.
+// Allow checks if the limiter that belongs to key has not exceeded the limit.
 func (l *Limiter) Allow(key string, count int) bool {
-
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
-
-	limiter, ok := l.limiter[key]
-	if !ok {
-		limiter = rate.NewLimiter(l.rate, l.burst)
-		l.limiter[key] = limiter
-	}
-
+	limiter := l.limiterForKey(key)
 	return limiter.AllowN(time.Now(), count)
 }
 
-// Clear deletes the limiter that belongs to 'key'
-func (l *Limiter) Clear(key string) {
+// limiterForKey returns limiter used for specifed key.
+func (l *Limiter) limiterForKey(key string) *rate.Limiter {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 
+	if limiter, exists := l.limiter[key]; exists {
+		return limiter
+	}
+
+	limiter := rate.NewLimiter(l.rate, l.burst)
+	l.limiter[key] = limiter
+	return limiter
+}
+
+// Clear deletes the limiter that belongs to key.
+func (l *Limiter) Clear(key string) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
