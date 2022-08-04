@@ -89,9 +89,9 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
 	}
 
-	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
+	transactionMonitor := transaction.NewMonitor(log.NewLogger("root").WithName(transaction.LoggerName).Register(), backend, overlayEthAddress, pollingInterval, cancellationDepth) // TODO: get the root logger from the source.
 
-	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(log.NewLogger("root").WithName(transaction.LoggerName).Register(), backend, signer, stateStore, chainID, transactionMonitor) // TODO: get the root logger from the source.
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}

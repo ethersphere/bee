@@ -17,11 +17,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"golang.org/x/net/context"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "transaction"
 
 const (
 	noncePrefix              = "transaction_nonce_"
@@ -95,7 +98,7 @@ type transactionService struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	logger  logging.Logger
+	logger  log.Logger
 	backend Backend
 	signer  crypto.Signer
 	sender  common.Address
@@ -105,7 +108,7 @@ type transactionService struct {
 }
 
 // NewService creates a new transaction service.
-func NewService(logger logging.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor) (Service, error) {
+func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -138,6 +141,8 @@ func NewService(logger logging.Logger, backend Backend, signer crypto.Signer, st
 
 // Send creates and signs a transaction based on the request and sends it.
 func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error) {
+	loggerV1 := t.logger.V(1).Register()
+
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
@@ -156,7 +161,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
-	t.logger.Tracef("sending transaction %x with nonce %d", signedTx.Hash(), nonce)
+	loggerV1.Debug("sending transaction", "tx", fmt.Sprintf("%x", signedTx.Hash()), "nonce", nonce)
 
 	err = t.backend.SendTransaction(ctx, signedTx)
 	if err != nil {
@@ -195,24 +200,26 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 }
 
 func (t *transactionService) waitForPendingTx(txHash common.Hash) {
+	loggerV1 := t.logger.V(1).Register()
+
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
 		_, err := t.WaitForReceipt(t.ctx, txHash)
 		if err != nil {
 			if !errors.Is(err, ErrTransactionCancelled) {
-				t.logger.Errorf("error while waiting for pending transaction %x: %v", txHash, err)
+				t.logger.Error(err, "error while waiting for pending transaction", "tx", fmt.Sprintf("%x", txHash))
 				return
 			} else {
-				t.logger.Warningf("pending transaction %x cancelled", txHash)
+				t.logger.Warning("pending transaction cancelled", "tx", fmt.Sprintf("%x", txHash))
 			}
 		} else {
-			t.logger.Tracef("pending transaction %x confirmed", txHash)
+			loggerV1.Debug("pending transaction confirmed", "tx", fmt.Sprintf("%x", txHash))
 		}
 
 		err = t.store.Delete(pendingTransactionKey(txHash))
 		if err != nil {
-			t.logger.Errorf("error while unregistering transaction as pending %x: %v", txHash, err)
+			t.logger.Error(err, "error while unregistering transaction as pending", "tx", fmt.Sprintf("%x", txHash))
 		}
 	}()
 }

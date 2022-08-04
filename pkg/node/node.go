@@ -388,7 +388,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	if !isSynced {
 		logger.Infof("waiting to sync with the Ethereum backend")
 
-		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
+		err := transaction.WaitSynced(p2pCtx, log.NewLogger("root").WithName(transaction.LoggerName).Register(), chainBackend, maxDelay) // TODO: get the root logger from the source.
 		if err != nil {
 			return nil, fmt.Errorf("waiting backend sync: %w", err)
 		}

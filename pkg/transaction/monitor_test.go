@@ -12,13 +12,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendsimulation"
 )
 
 func TestMonitorWatchTransaction(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	txHash := common.HexToHash("0xabcd")
 	nonce := uint64(10)
 	sender := common.HexToAddress("0xffee")
