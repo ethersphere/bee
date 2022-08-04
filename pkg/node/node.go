@@ -870,7 +870,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
-		multiresolver.WithLogger(o.Logger),
+		multiresolver.WithLogger(log.NewLogger("root").WithName(multiresolver.LoggerName).Register()), // TODO: replace it with o.Logger when the migration is done.
 		multiresolver.WithDefaultCIDResolver(),
 	)
 	b.resolverCloser = multiResolver
