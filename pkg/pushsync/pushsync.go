@@ -105,6 +105,7 @@ func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnec
 		streamer:       streamer,
 		storer:         storer,
 		topologyDriver: topology,
+		depther:        depther,
 		tagger:         tagger,
 		isFullNode:     isFullNode,
 		unwrap:         unwrap,
