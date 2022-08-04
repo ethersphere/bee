@@ -74,8 +74,6 @@ type Storer interface {
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
 
-	GetReserveState() *ReserveState
-
 	// SetStorageRadius updates the value of the storage radius atomically.
 	SetStorageRadius(func(uint8) uint8) error
 
