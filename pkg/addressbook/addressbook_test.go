@@ -17,10 +17,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type bookFunc func(t *testing.T) (book addressbook.Interface)
+type bookFunc func(t *testing.T) (book addressbook.Store)
 
 func TestInMem(t *testing.T) {
-	run(t, func(t *testing.T) addressbook.Interface {
+	run(t, func(t *testing.T) addressbook.Store {
 		store := mock.NewStateStore()
 		book := addressbook.New(store)
 		return book

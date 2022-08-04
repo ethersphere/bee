@@ -7,7 +7,6 @@ package addressbook
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -16,14 +15,15 @@ import (
 
 const keyPrefix = "addressbook_entry_"
 
-var _ Interface = (*store)(nil)
+var _ Store = (*store)(nil)
 
 var ErrNotFound = errors.New("addressbook: not found")
 
-// Interface is the AddressBook interface.
-type Interface interface {
+// Store is state storage wrapper which maps swarm.Address to bzz.Address types.
+type Store interface {
 	GetPutter
-	Remover
+	// Remove removes overlay address.
+	Remove(overlay swarm.Address) error
 	// Overlays returns a list of all overlay addresses saved in addressbook.
 	Overlays() ([]swarm.Address, error)
 	// IterateOverlays exposes overlays in a form of an iterator.
@@ -47,73 +47,60 @@ type Putter interface {
 	Put(overlay swarm.Address, addr bzz.Address) (err error)
 }
 
-type Remover interface {
-	// Remove removes overlay address.
-	Remove(overlay swarm.Address) error
-}
-
 type store struct {
-	store storage.StateStorer
+	store storage.EntityStore
 }
 
 // New creates new addressbook for state storer.
-func New(storer storage.StateStorer) Interface {
+func New(storer storage.StateStorer) Store {
 	return &store{
-		store: storer,
+		store: storage.NewEntityStore(storer, keyFromEntityFunc, entityFromKeyFunc, valueUnmarshalFunc),
 	}
 }
 
 func (s *store) Get(overlay swarm.Address) (*bzz.Address, error) {
-	key := keyPrefix + overlay.String()
 	v := &bzz.Address{}
-	err := s.store.Get(key, &v)
-	if err != nil {
+
+	if err := s.store.Get(overlay, v); err != nil {
 		if err == storage.ErrNotFound {
 			return nil, ErrNotFound
 		}
-
 		return nil, err
 	}
+
 	return v, nil
 }
 
 func (s *store) Put(overlay swarm.Address, addr bzz.Address) (err error) {
-	key := keyPrefix + overlay.String()
-	return s.store.Put(key, &addr)
+	return s.store.Put(overlay, &addr)
 }
 
 func (s *store) Remove(overlay swarm.Address) error {
-	return s.store.Delete(keyPrefix + overlay.String())
+	return s.store.Delete(overlay)
 }
 
 func (s *store) IterateOverlays(cb func(swarm.Address) (bool, error)) error {
-	return s.store.Iterate(keyPrefix, func(key, _ []byte) (stop bool, err error) {
-		k := string(key)
-		if !strings.HasPrefix(k, keyPrefix) {
-			return true, nil
+	return s.store.IterateKeys(keyPrefix, func(key interface{}) (stop bool, err error) {
+		if overlay, ok := key.(swarm.Address); ok {
+			stop, err = cb(overlay)
+			if err != nil {
+				return true, err
+			}
+			if stop {
+				return true, nil
+			}
 		}
-		split := strings.SplitAfter(k, keyPrefix)
-		if len(split) != 2 {
-			return true, fmt.Errorf("invalid overlay key: %s", k)
-		}
-		addr, err := swarm.ParseHexAddress(split[1])
-		if err != nil {
-			return true, err
-		}
-		stop, err = cb(addr)
-		if err != nil {
-			return true, err
-		}
-		if stop {
-			return true, nil
-		}
+
 		return false, nil
 	})
 }
 
 func (s *store) Overlays() (overlays []swarm.Address, err error) {
-	err = s.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
-		overlays = append(overlays, addr)
+	err = s.store.IterateKeys(keyPrefix, func(key interface{}) (stop bool, err error) {
+		if overlay, ok := key.(swarm.Address); ok {
+			overlays = append(overlays, overlay)
+		}
+
 		return false, nil
 	})
 	if err != nil {
@@ -124,14 +111,11 @@ func (s *store) Overlays() (overlays []swarm.Address, err error) {
 }
 
 func (s *store) Addresses() (addresses []bzz.Address, err error) {
-	err = s.store.Iterate(keyPrefix, func(_, value []byte) (stop bool, err error) {
-		entry := &bzz.Address{}
-		err = entry.UnmarshalJSON(value)
-		if err != nil {
-			return true, err
+	err = s.store.IterateValues(keyPrefix, func(value interface{}) (stop bool, err error) {
+		if addr, ok := value.(bzz.Address); ok {
+			addresses = append(addresses, addr)
 		}
 
-		addresses = append(addresses, *entry)
 		return false, nil
 	})
 	if err != nil {
@@ -139,4 +123,28 @@ func (s *store) Addresses() (addresses []bzz.Address, err error) {
 	}
 
 	return addresses, nil
+}
+
+func keyFromEntityFunc(key interface{}) string {
+	overlay := key.(swarm.Address)
+	return keyPrefix + overlay.String()
+}
+
+func entityFromKeyFunc(key string) (interface{}, error) {
+	addr, err := swarm.ParseHexAddress(key[len(keyPrefix):])
+	if err != nil {
+		return nil, fmt.Errorf("invalid overlay key: %s, err: %w", key, err)
+	}
+
+	return addr, nil
+}
+
+func valueUnmarshalFunc(v []byte) (interface{}, error) {
+	value := &bzz.Address{}
+
+	if err := value.UnmarshalJSON(v); err != nil {
+		return nil, err
+	}
+
+	return *value, nil
 }
