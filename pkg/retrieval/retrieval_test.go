@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/topology"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
@@ -41,7 +41,7 @@ var (
 func TestDelivery(t *testing.T) {
 	var (
 		chunk                = testingc.FixtureChunk("0033")
-		logger               = logging.New(io.Discard, 0)
+		logger               = log.NewLogger("test", log.WithSink(io.Discard))
 		mockStorer           = storemock.NewStorer()
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
@@ -149,7 +149,7 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 
 	var (
-		logger = logging.New(io.Discard, 0)
+		logger = log.NewLogger("test", log.WithSink(io.Discard))
 		pricer = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
 
@@ -260,7 +260,7 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
