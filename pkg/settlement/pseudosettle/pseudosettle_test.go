@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	mockp2p "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
@@ -224,7 +224,7 @@ func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, observer *tes
 }
 
 func TestPayment(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()
@@ -258,7 +258,7 @@ func TestPayment(t *testing.T) {
 }
 
 func TestTimeLimitedPayment(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()
@@ -315,7 +315,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 }
 
 func TestTimeLimitedPaymentLight(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()

@@ -777,7 +777,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
 	}
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
+	pseudosettleService := pseudosettle.New(p2ps, log.NewLogger("root").WithName(pseudosettle.LoggerName).Register(), stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps) // TODO: get the root logger from the source.
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}

@@ -30,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -161,7 +162,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	transaction := transactionmock.New(o.TransactionOpts...)
 
 	storeRecipient := statestore.NewStateStore()
-	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P)
+	recipient := pseudosettle.New(nil, log.NewLogger("root").WithName(pseudosettle.LoggerName).Register(), storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P) // TODO: replace with o.Logger when the migration is done.
 
 	erc20 := erc20mock.New(o.Erc20Opts...)
 	backend := backendmock.New(o.BackendOpts...)
