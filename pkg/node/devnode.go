@@ -225,7 +225,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.localstoreCloser = storer
 
-	tagService := tags.NewTags(stateStore, logger)
+	tagService := tags.NewTags(stateStore, log.NewLogger("root").WithName(tags.LoggerName).Register()) // TODO: get the root logger from the source.
 	b.tagsCloser = tagService
 
 	pssService := pss.New(mockKey, log.NewLogger("root").WithName(pss.LoggerName).Register()) // TODO: get the root logger from the source.

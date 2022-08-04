@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -46,12 +47,12 @@ func TestTags(t *testing.T) {
 		tagsResource             = "/tags"
 		chunk                    = testingc.GenerateTestRandomChunk()
 		mockStatestore           = statestore.NewStateStore()
-		logger                   = logging.New(io.Discard, 0)
+		logger                   = log.NewLogger("test", log.WithSink(io.Discard))
 		tag                      = tags.NewTags(mockStatestore, logger)
 		client, _, listenAddr, _ = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),
 			Tags:   tag,
-			Logger: logger,
+			Logger: logging.New(io.Discard, 0), // TODO: replace with logger.
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)

@@ -813,7 +813,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	pricing.SetPaymentThresholdObserver(acc)
 
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, log.NewLogger("root").WithName(retrieval.LoggerName).Register(), acc, pricer, tracer, o.RetrievalCaching, validStamp) // TODO: get the root logger from the source.
-	tagService := tags.NewTags(stateStore, logger)
+	tagService := tags.NewTags(stateStore, log.NewLogger("root").WithName(tags.LoggerName).Register())                                                                               // TODO: get the root logger from the source.
 	b.tagsCloser = tagService
 
 	pssService := pss.New(pssPrivateKey, log.NewLogger("root").WithName(pss.LoggerName).Register()) // TODO: get the root logger from the source.

@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -45,7 +46,7 @@ func TestFeed_Get(t *testing.T) {
 			return fmt.Sprintf("/feeds/%s/%s", owner, topic)
 		}
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		tag             = tags.NewTags(mockStatestore, logger)
 		mockStorer      = mock.NewStorer()
 		client, _, _, _ = newTestServer(t, testServerOptions{
@@ -151,7 +152,7 @@ func TestFeed_Post(t *testing.T) {
 	// manifest entry and make sure all metadata correct
 	var (
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		tag             = tags.NewTags(mockStatestore, logger)
 		topic           = "aabbcc"
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
@@ -159,7 +160,7 @@ func TestFeed_Post(t *testing.T) {
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tag,
-			Logger: logger,
+			Logger: logging.New(io.Discard, 0), // TODO: replace with logger.
 			Post:   mp,
 		})
 		url = fmt.Sprintf("/feeds/%s/%s?type=%s", ownerString, topic, "sequence")

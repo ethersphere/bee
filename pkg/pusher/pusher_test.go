@@ -21,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
@@ -450,9 +449,8 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
-	logger := logging.New(io.Discard, 0) // TODO: remove this logger when migration is done.
-	loggerNew := log.NewLogger("test", log.WithSink(io.Discard))
-	storer, err := localstore.New("", addr.Bytes(), nil, nil, loggerNew)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +465,7 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, loggerNew, nil, 0)
+	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0)
 	return mtags, pusherService, pusherStorer
 }
 

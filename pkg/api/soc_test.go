@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
@@ -31,7 +31,7 @@ func TestSOC(t *testing.T) {
 		testData        = []byte("foo")
 		socResource     = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		tag             = tags.NewTags(mockStatestore, logger)
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		mockStorer      = mock.NewStorer()

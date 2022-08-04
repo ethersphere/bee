@@ -25,7 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -68,11 +68,11 @@ type Tag struct {
 	span       opentracing.Span    // tracing root span
 	spanOnce   sync.Once           // make sure we close root span only once
 	stateStore storage.StateStorer // to persist the tag
-	logger     logging.Logger      // logger instance for logging
+	logger     log.Logger          // logger instance for logging
 }
 
 // NewTag creates a new tag, and returns it
-func NewTag(ctx context.Context, uid uint32, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger logging.Logger) *Tag {
+func NewTag(ctx context.Context, uid uint32, total int64, tracer *tracing.Tracer, stateStore storage.StateStorer, logger log.Logger) *Tag {
 	t := &Tag{
 		Uid:        uid,
 		StartedAt:  time.Now(),

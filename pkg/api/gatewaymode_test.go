@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -22,12 +23,12 @@ import (
 )
 
 func TestGatewayMode(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.NewLogger("test", log.WithSink(io.Discard))
 	chunk := testingc.GenerateTestRandomChunk()
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:      mock.NewStorer(),
 		Tags:        tags.NewTags(statestore.NewStateStore(), logger),
-		Logger:      logger,
+		Logger:      logging.New(io.Discard, 0), // TODO: replace with logger.
 		GatewayMode: true,
 		Post:        mockpost.New(mockpost.WithAcceptAll()),
 	})

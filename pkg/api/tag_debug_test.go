@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/logging"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -25,7 +26,7 @@ import (
 
 func TestDebugTags(t *testing.T) {
 	var (
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		chunk           = testingc.GenerateTestRandomChunk()
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()
@@ -33,7 +34,7 @@ func TestDebugTags(t *testing.T) {
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:   mock.NewStorer(),
 			Tags:     tagsStore,
-			Logger:   logger,
+			Logger:   logging.New(io.Discard, 0), // TODO: replace with logger.
 			Post:     mockpost.New(mockpost.WithAcceptAll()),
 			DebugAPI: true,
 		})

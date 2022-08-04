@@ -419,12 +419,12 @@ func TestPostageHeaderError(t *testing.T) {
 	var (
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 5)
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logger,
+			Logger: logging.New(io.Discard, 5), // TODO: replace with logger.
 			Post:   mp,
 		})
 
@@ -520,12 +520,12 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 	var (
 		mockStorer               = mock.NewStorer()
 		mockStatestore           = statestore.NewStateStore()
-		logger                   = logging.New(io.Discard, 5)
+		logger                   = log.NewLogger("test", log.WithSink(io.Discard))
 		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, chanStorer = newTestServer(t, testServerOptions{
 			Storer:       mockStorer,
 			Tags:         tags.NewTags(mockStatestore, logger),
-			Logger:       logger,
+			Logger:       logging.New(io.Discard, 5), // TODO: replace with logger.
 			Post:         mp,
 			DirectUpload: true,
 		})
