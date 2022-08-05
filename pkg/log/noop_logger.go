@@ -4,8 +4,8 @@
 
 package log
 
-// noop is an implementation of a logger that does not log.
-var noop Logger = new(noopLogger)
+// Noop is an implementation of a logger that does not log.
+var Noop Logger = new(noopLogger)
 
 type noopLogger struct{}
 

@@ -64,7 +64,7 @@ func NewLogger(name string, opts ...Option) Logger {
 	}
 
 	if options.sink == io.Discard {
-		return noop
+		return Noop
 	}
 
 	formatter := defaults.formatter
