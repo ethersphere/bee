@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -83,13 +82,14 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 
 func TestPinHandlers(t *testing.T) {
 	var (
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		storerMock      = mock.NewStorer()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,
 			Traversal: traversal.New(storerMock),
-			Tags:      tags.NewTags(statestore.NewStateStore(), log.NewLogger("test", log.WithSink(io.Discard))),
+			Tags:      tags.NewTags(statestore.NewStateStore(), logger),
 			Pinning:   pinning.NewServiceMock(),
-			Logger:    logging.New(io.Discard, 5),
+			Logger:    logger,
 			Post:      mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)

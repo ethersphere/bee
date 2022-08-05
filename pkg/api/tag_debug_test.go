@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -34,7 +33,7 @@ func TestDebugTags(t *testing.T) {
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:   mock.NewStorer(),
 			Tags:     tagsStore,
-			Logger:   logging.New(io.Discard, 0), // TODO: replace with logger.
+			Logger:   logger,
 			Post:     mockpost.New(mockpost.WithAcceptAll()),
 			DebugAPI: true,
 		})

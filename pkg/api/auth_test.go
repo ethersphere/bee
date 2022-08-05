@@ -14,13 +14,13 @@ import (
 	"github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 func TestAuth(t *testing.T) {
 	var (
 		resource      = "/auth"
-		logger        = logging.New(io.Discard, 0)
+		logger        = log.NewLogger("test", log.WithSink(io.Discard))
 		authenticator = &mock.Auth{
 			AuthorizeFunc:   func(string) bool { return true },
 			GenerateKeyFunc: func(string) (string, error) { return "123", nil },

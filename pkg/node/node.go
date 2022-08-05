@@ -327,7 +327,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -352,7 +352,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -919,7 +919,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{

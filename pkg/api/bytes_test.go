@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -39,7 +38,7 @@ func TestBytes(t *testing.T) {
 	var (
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.NewLogger("test", log.WithSink(io.Discard))
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Tags:    tags.NewTags(statestore.NewStateStore(), log.NewLogger("test", log.WithSink(io.Discard))),
@@ -182,7 +181,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	var (
 		storerMock        = mock.NewStorer()
 		pinningMock       = pinning.NewServiceMock()
-		logger            = logging.New(io.Discard, 0)
+		logger            = log.NewLogger("test", log.WithSink(io.Discard))
 		retBool           = false
 		retErr      error = nil
 		existsFn          = func(id []byte) (bool, error) {

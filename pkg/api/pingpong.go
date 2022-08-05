@@ -22,30 +22,30 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
 	ctx := r.Context()
 
-	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", s.logger)
+	span, logger, ctx := s.tracer.StartRootSpanFromContext(ctx, "pingpong-api", s.logger)
 	defer span.Finish()
 
 	address, err := swarm.ParseHexAddress(peerID)
 	if err != nil {
-		logger.Debugf("pingpong: parse peer address %s: %v", peerID, err)
-		jsonhttp.BadRequest(w, "invalid peer address")
+		logger.Debug("pingpong: parse peer address string failed", "string", peerID, "error", err)
+		jsonhttp.BadRequest(w, "parse peer address string failed")
 		return
 	}
 
 	rtt, err := s.pingpong.Ping(ctx, address, "ping")
 	if err != nil {
-		logger.Debugf("pingpong: ping %s: %v", peerID, err)
+		logger.Debug("pingpong: ping failed", "address", address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
 
-		logger.Errorf("pingpong failed to peer %s", peerID)
+		logger.Error(nil, "pingpong: ping failed", "address", address)
 		jsonhttp.InternalServerError(w, "pingpong: ping failed")
 		return
 	}
 
-	logger.Infof("pingpong succeeded to peer %s", peerID)
+	logger.Info("pingpong: ping succeeded", "address", address)
 	jsonhttp.OK(w, pingpongResponse{
 		RTT: rtt.String(),
 	})

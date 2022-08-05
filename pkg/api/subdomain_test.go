@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -100,7 +99,7 @@ func TestSubdomains(t *testing.T) {
 				client, _, _, _   = newTestServer(t, testServerOptions{
 					Storer:          storer,
 					Tags:            tags.NewTags(mockStatestore, logger),
-					Logger:          logging.New(io.Discard, 0), // TODO: replace with logger.
+					Logger:          logger,
 					PreventRedirect: true,
 					Post:            mockpost.New(mockpost.WithAcceptAll()),
 					Resolver: resolverMock.NewResolver(

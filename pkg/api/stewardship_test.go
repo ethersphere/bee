@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -33,7 +32,7 @@ func TestStewardship(t *testing.T) {
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
 		Tags:    tags.NewTags(statestoreMock, logger),
-		Logger:  logging.New(io.Discard, 0), // TODO: replace with logger.
+		Logger:  logger,
 		Steward: stewardMock,
 	})
 

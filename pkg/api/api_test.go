@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -87,7 +86,7 @@ type testServerOptions struct {
 	Tags               *tags.Tags
 	GatewayMode        bool
 	WsPingPeriod       time.Duration
-	Logger             logging.Logger
+	Logger             log.Logger
 	PreventRedirect    bool
 	Feeds              feeds.Factory
 	CORSAllowedOrigins []string
@@ -128,7 +127,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		o.Logger = logging.New(io.Discard, 0)
+		o.Logger = log.NewLogger("test", log.WithSink(io.Discard))
 	}
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
@@ -162,7 +161,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	transaction := transactionmock.New(o.TransactionOpts...)
 
 	storeRecipient := statestore.NewStateStore()
-	recipient := pseudosettle.New(nil, log.NewLogger("root").WithName(pseudosettle.LoggerName).Register(), storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P) // TODO: replace with o.Logger when the migration is done.
+	recipient := pseudosettle.New(nil, o.Logger.WithName(pseudosettle.LoggerName).Register(), storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P)
 
 	erc20 := erc20mock.New(o.Erc20Opts...)
 	backend := backendmock.New(o.BackendOpts...)
@@ -301,7 +300,7 @@ func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func(
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
-	log := logging.New(io.Discard, 0)
+	log := log.NewLogger("test", log.WithSink(io.Discard))
 
 	testCases := []struct {
 		desc       string
@@ -424,7 +423,7 @@ func TestPostageHeaderError(t *testing.T) {
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(io.Discard, 5), // TODO: replace with logger.
+			Logger: logger,
 			Post:   mp,
 		})
 
@@ -525,7 +524,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 		client, _, _, chanStorer = newTestServer(t, testServerOptions{
 			Storer:       mockStorer,
 			Tags:         tags.NewTags(mockStatestore, logger),
-			Logger:       logging.New(io.Discard, 5), // TODO: replace with logger.
+			Logger:       logger,
 			Post:         mp,
 			DirectUpload: true,
 		})

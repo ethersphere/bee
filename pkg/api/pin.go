@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -19,16 +18,16 @@ import (
 func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
 	if err != nil {
-		s.logger.Debugf("pin root hash: unable to parse reference %q: %v", ref, err)
-		s.logger.Error("pin root hash: unable to parse reference")
-		jsonhttp.BadRequest(w, "bad reference")
+		s.logger.Debug("pin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
+		s.logger.Error(nil, "pin root hash: parse reference string failed")
+		jsonhttp.BadRequest(w, "parse reference string failed")
 		return
 	}
 
 	has, err := s.pinning.HasPin(ref)
 	if err != nil {
-		s.logger.Debugf("pin root hash: checking of tracking pin for %q failed: %v", ref, err)
-		s.logger.Error("pin root hash: checking of tracking pin failed")
+		s.logger.Debug("pin root hash: has pin failed", "address", ref, "error", err)
+		s.logger.Error(nil, "pin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin failed")
 		return
 	}
@@ -42,8 +41,8 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	case err != nil:
-		s.logger.Debugf("pin root hash: creation of tracking pin for %q failed: %v", ref, err)
-		s.logger.Error("pin root hash: creation of tracking pin failed")
+		s.logger.Debug("pin root hash: create pin failed", "address", ref, "error", err)
+		s.logger.Error(nil, "pin root hash: create pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: creation of tracking pin failed")
 		return
 	}
@@ -55,16 +54,16 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
 	if err != nil {
-		s.logger.Debugf("unpin root hash: unable to parse reference: %v", err)
-		s.logger.Error("unpin root hash: unable to parse reference")
-		jsonhttp.BadRequest(w, "bad reference")
+		s.logger.Debug("unpin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
+		s.logger.Error(nil, "unpin root hash: parse reference string failed")
+		jsonhttp.BadRequest(w, "parse reference string failed")
 		return
 	}
 
 	has, err := s.pinning.HasPin(ref)
 	if err != nil {
-		s.logger.Debugf("pin root hash: checking of tracking pin for %q failed: %v", ref, err)
-		s.logger.Error("pin root hash: checking of tracking pin failed")
+		s.logger.Debug("unpin root hash: has pin failed", "address", ref, "error", err)
+		s.logger.Error(nil, "unpin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin")
 		return
 	}
@@ -73,14 +72,9 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err := s.pinning.DeletePin(r.Context(), ref); {
-	case errors.Is(err, pinning.ErrTraversal):
-		s.logger.Debugf("unpin root hash: deletion of pin for %q failed: %v", ref, err)
-		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
-		return
-	case err != nil:
-		s.logger.Debugf("unpin root hash: deletion of pin for %q failed: %v", ref, err)
-		s.logger.Error("unpin root hash: deletion of pin for failed")
+	if err := s.pinning.DeletePin(r.Context(), ref); err != nil {
+		s.logger.Debug("unpin root hash: delete pin failed", "address", ref, "error", err)
+		s.logger.Error(nil, "unpin root hash: delete pin failed")
 		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
 		return
 	}
@@ -92,16 +86,16 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
 	if err != nil {
-		s.logger.Debugf("pinned root hash: unable to parse reference %q: %v", ref, err)
-		s.logger.Error("pinned root hash: unable to parse reference")
-		jsonhttp.BadRequest(w, "bad reference")
+		s.logger.Debug("pinned root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
+		s.logger.Error(nil, "pinned root hash: parse reference string failed")
+		jsonhttp.BadRequest(w, "parse reference string failed")
 		return
 	}
 
 	has, err := s.pinning.HasPin(ref)
 	if err != nil {
-		s.logger.Debugf("pinned root hash: unable to check reference %q in the localstore: %v", ref, err)
-		s.logger.Error("pinned root hash: unable to check reference in the localstore")
+		s.logger.Debug("pinned root hash: has pin failed", "address", ref, "error", err)
+		s.logger.Error(nil, "pinned root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pinned root hash: check reference failed")
 		return
 	}
@@ -122,8 +116,8 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	pinned, err := s.pinning.Pins()
 	if err != nil {
-		s.logger.Debugf("list pinned root references: unable to list references: %v", err)
-		s.logger.Error("list pinned root references: unable to list references")
+		s.logger.Debug("list pinned root references: unable to list references", "error", err)
+		s.logger.Error(nil, "list pinned root references: unable to list references")
 		jsonhttp.InternalServerError(w, "list pinned root references failed")
 		return
 	}

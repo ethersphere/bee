@@ -21,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -46,7 +45,7 @@ func TestBzzFiles(t *testing.T) {
 			Storer:  storerMock,
 			Pinning: pinningMock,
 			Tags:    tags.NewTags(statestoreMock, logger),
-			Logger:  logging.New(io.Discard, 0), // TODO: replace with logger.
+			Logger:  logger,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
@@ -445,7 +444,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 			client, _, _, _ := newTestServer(t, testServerOptions{
 				Storer: smock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
-				Logger: logging.New(io.Discard, 0), // TODO: repace with logger.
+				Logger: logger,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
 			})
 
@@ -563,7 +562,7 @@ func TestFeedIndirection(t *testing.T) {
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logging.New(io.Discard, 0), // TODO: replace with logger.
+			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
@@ -613,7 +612,7 @@ func TestFeedIndirection(t *testing.T) {
 	client, _, _, _ = newTestServer(t, testServerOptions{
 		Storer: storer,
 		Tags:   tags.NewTags(mockStatestore, logger),
-		Logger: logging.New(io.Discard, 0), // TODO: replace with logger.
+		Logger: logger,
 		Feeds:  factory,
 	})
 	_, err := storer.Put(ctx, storage.ModePutUpload, feedUpdate)
@@ -657,7 +656,7 @@ func TestBzzReupload(t *testing.T) {
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
 		Tags:    tags.NewTags(statestoreMock, logger),
-		Logger:  logging.New(io.Discard, 0), // TODO: replace with logger.
+		Logger:  logger,
 		Steward: stewardMock,
 	})
 	jsonhttptest.Request(t, client, http.MethodPatch, "/v1/bzz/"+addr.String(), http.StatusOK,

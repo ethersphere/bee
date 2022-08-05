@@ -14,16 +14,17 @@ import (
 )
 
 func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
-	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	str := mux.Vars(r)["address"]
+	addr, err := swarm.ParseHexAddress(str)
 	if err != nil {
-		s.logger.Debugf("parse chunk address: %v", err)
+		s.logger.Debug("has chunk: parse chunk address string failed", "string", str, "error", err)
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
 	has, err := s.storer.Has(r.Context(), addr)
 	if err != nil {
-		s.logger.Debugf("chunk address: localstore has: %v", err)
+		s.logger.Debug("has chunk: has chunk failed", "address", addr, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
@@ -36,16 +37,17 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
-	addr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	str := mux.Vars(r)["address"]
+	addr, err := swarm.ParseHexAddress(str)
 	if err != nil {
-		s.logger.Debugf("parse chunk address: %v", err)
+		s.logger.Debug("remove chunk: parse chunk address string failed", "string", str, "error", err)
 		jsonhttp.BadRequest(w, "bad address")
 		return
 	}
 
 	has, err := s.storer.Has(r.Context(), addr)
 	if err != nil {
-		s.logger.Debugf("chunk address: localstore remove: %v", err)
+		s.logger.Debug("remove chunk: has chunk failed", "address", addr, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
@@ -57,7 +59,7 @@ func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 
 	err = s.storer.Set(r.Context(), storage.ModeSetRemove, addr)
 	if err != nil {
-		s.logger.Debugf("chunk address: localstore remove: %v", err)
+		s.logger.Debug("remove chunk: remove chunk failed", "address", addr, "error", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

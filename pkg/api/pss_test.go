@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -166,7 +165,7 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 // TestPssSend tests that the pss message sending over http works correctly.
 func TestPssSend(t *testing.T) {
 	var (
-		logger = logging.New(io.Discard, 0)
+		logger = log.NewLogger("test", log.WithSink(io.Discard))
 
 		mtx             sync.Mutex
 		receivedTopic   pss.Topic
@@ -410,7 +409,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 		t.Fatal(err)
 	}
 	var (
-		logger = logging.New(io.Discard, 0)
+		logger = log.NewLogger("test", log.WithSink(io.Discard))
 		pss    = pss.New(privkey, log.NewLogger("test", log.WithSink(io.Discard)))
 	)
 	if o.pingPeriod == 0 {

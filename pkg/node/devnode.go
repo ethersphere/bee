@@ -184,7 +184,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -406,7 +406,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
 
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
