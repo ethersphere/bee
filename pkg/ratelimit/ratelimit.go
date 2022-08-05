@@ -15,7 +15,7 @@ import (
 )
 
 type Limiter struct {
-	mtx     sync.RWMutex
+	mtx     sync.Mutex
 	limiter map[string]*rate.Limiter
 	rate    rate.Limit
 	burst   int
@@ -38,15 +38,6 @@ func (l *Limiter) Allow(key string, count int) bool {
 
 // limiterForKey returns limiter used for specifed key.
 func (l *Limiter) limiterForKey(key string) *rate.Limiter {
-	// Optimistically read lock if limiter exists
-	l.mtx.RLock()
-	if limiter, exists := l.limiter[key]; exists {
-		defer l.mtx.RUnlock()
-		return limiter
-	}
-	l.mtx.RUnlock()
-
-	// Write lock to ensure that single limiter will be created
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
