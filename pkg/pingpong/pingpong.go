@@ -63,7 +63,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
-	span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, "pingpong-p2p-ping", s.logger)
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-ping", s.logger)
 	defer span.Finish()
 
 	start := time.Now()
@@ -102,7 +102,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.FullClose()
 
-	span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, "pingpong-p2p-handler", s.logger)
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-p2p-handler", s.logger)
 	defer span.Finish()
 
 	var ping pb.Ping

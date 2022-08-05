@@ -22,7 +22,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	peerID := mux.Vars(r)["peer-id"]
 	ctx := r.Context()
 
-	span, logger, ctx := s.tracer.StartRootSpanFromContext(ctx, "pingpong-api", s.logger)
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", s.logger)
 	defer span.Finish()
 
 	address, err := swarm.ParseHexAddress(peerID)

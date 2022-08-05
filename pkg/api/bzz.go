@@ -35,7 +35,7 @@ import (
 )
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	contentType := r.Header.Get(contentTypeHeader)
 	mediaType, _, err := mime.ParseMediaType(contentType)
@@ -77,7 +77,7 @@ type bzzUploadResponse struct {
 // fileUploadHandler uploads the file and its metadata supplied in the file body and
 // the headers
 func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	var (
 		reader   io.Reader
 		fileName string
@@ -237,7 +237,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 }
 
 func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	nameOrHex := mux.Vars(r)["address"]
 	pathVar := mux.Vars(r)["path"]
@@ -259,7 +259,7 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) serveReference(address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	loggerV1 := logger.V(1).Build()
 	ls := loadsave.NewReadonly(s.storer)
 	feedDereferenced := false
@@ -430,7 +430,7 @@ func (s *Service) serveManifestEntry(
 
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	reader, l, err := joiner.New(r.Context(), s.storer, reference)
 	if err != nil {

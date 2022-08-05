@@ -35,7 +35,7 @@ var errEmptyDir = errors.New("no files in root directory")
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	if r.Body == http.NoBody {
 		logger.Error(nil, "bzz upload dir: request has no body")
 		jsonhttp.BadRequest(w, errInvalidRequest)
@@ -146,7 +146,7 @@ func storeDir(
 	tag *tags.Tag,
 	tagCreated bool,
 ) (swarm.Address, error) {
-	logger := tracing.NewRootLoggerWithTraceID(ctx, log)
+	logger := tracing.NewLoggerWithTraceID(ctx, log)
 	loggerV1 := logger.V(1).Build()
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)

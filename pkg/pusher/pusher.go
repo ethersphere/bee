@@ -105,7 +105,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		cctx, cancel      = context.WithCancel(context.Background())
 		mtx               sync.Mutex
 		wg                sync.WaitGroup
-		span, logger, ctx = tracer.StartRootSpanFromContext(cctx, "pusher-sync-batch", s.logger)
+		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 		loggerV1          = logger.V(1).Build()
 		timer             = time.NewTimer(traceDuration)
 	)
@@ -169,7 +169,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				// reset the span
 				mtx.Lock()
 				span.Finish()
-				span, logger, ctx = tracer.StartRootSpanFromContext(cctx, "pusher-sync-batch", s.logger)
+				span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 				loggerV1 = logger.V(1).Build()
 				mtx.Unlock()
 			}

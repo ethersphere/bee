@@ -5,6 +5,7 @@
 package httpaccess
 
 import (
+	"bufio"
 	"net"
 	"net/http"
 	"time"
@@ -31,19 +32,21 @@ func NewHTTPAccessSuppressLogHandler() func(h http.Handler) http.Handler {
 func NewHTTPAccessLogHandler(logger log.Logger, tracer *tracing.Tracer, message string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if logger.Verbosity() < log.VerbosityInfo {
-				h.ServeHTTP(w, r)
-				return
+			rr, ok := w.(*responseRecorder)
+			if !ok { // No need to layer on another responseRecorder.
+				rr = &responseRecorder{ResponseWriter: w}
 			}
 
-			rr := &responseRecorder{ResponseWriter: w}
 			now := time.Now()
 			h.ServeHTTP(rr, r)
+			if logger.Verbosity() < log.VerbosityInfo {
+				return
+			}
 			duration := time.Since(now)
 
 			ctx, _ := tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
 
-			logger := tracing.NewRootLoggerWithTraceID(ctx, logger)
+			logger := tracing.NewLoggerWithTraceID(ctx, logger)
 
 			status := rr.status
 			if status == 0 {
@@ -94,16 +97,37 @@ type responseRecorder struct {
 }
 
 // Write implements http.ResponseWriter.
-func (l *responseRecorder) Write(b []byte) (int, error) {
-	size, err := l.ResponseWriter.Write(b)
-	l.size += size
+func (rr *responseRecorder) Write(b []byte) (int, error) {
+	size, err := rr.ResponseWriter.Write(b)
+	rr.size += size
 	return size, err
 }
 
 // WriteHeader implements http.ResponseWriter.
-func (l *responseRecorder) WriteHeader(s int) {
-	l.ResponseWriter.WriteHeader(s)
-	if l.status == 0 {
-		l.status = s
+func (rr *responseRecorder) WriteHeader(s int) {
+	rr.ResponseWriter.WriteHeader(s)
+	if rr.status == 0 {
+		rr.status = s
 	}
+}
+
+// CloseNotify implements http.CloseNotifier.
+func (rr *responseRecorder) CloseNotify() <-chan bool {
+	// nolint:staticcheck; staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler.
+	return rr.ResponseWriter.(http.CloseNotifier).CloseNotify()
+}
+
+// Hijack implements http.Hijacker.
+func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return rr.ResponseWriter.(http.Hijacker).Hijack()
+}
+
+// Flush implements http.Flusher.
+func (rr *responseRecorder) Flush() {
+	rr.ResponseWriter.(http.Flusher).Flush()
+}
+
+// Push implements http.Pusher.
+func (rr *responseRecorder) Push(target string, opts *http.PushOptions) error {
+	return rr.ResponseWriter.(http.Pusher).Push(target, opts)
 }

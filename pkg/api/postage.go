@@ -391,7 +391,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 
 // chainStateHandler returns the current chain state.
 func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	state := s.batchStore.GetChainState()
 	chainTip, err := s.chainBackend.BlockNumber(r.Context())
 	if err != nil {

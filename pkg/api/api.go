@@ -503,7 +503,7 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 				// ignore
 			}
 
-			span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, spanName, s.logger)
+			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger)
 			defer span.Finish()
 
 			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)

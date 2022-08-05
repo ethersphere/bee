@@ -163,7 +163,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, logger, ctx := ps.tracer.StartRootSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
 	stamp := new(postage.Stamp)
@@ -200,7 +200,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			ctxd, canceld := context.WithTimeout(context.Background(), replicationTTL)
 			defer canceld()
 
-			span, _, ctxd := ps.tracer.StartRootSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+			span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 			defer span.Finish()
 
 			realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false, topology.Filter{Reachable: true})
@@ -334,7 +334,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 }
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool, originAddr swarm.Address) (*pb.Receipt, error) {
-	span, logger, ctx := ps.tracer.StartRootSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
 
@@ -628,7 +628,7 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 
 	// now bring in the span data to the new context
 	ctx = tracing.WithContext(ctx, span)
-	spanInner, logger, ctx := ps.tracer.StartRootSpanFromContext(ctx, "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	spanInner, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	loggerV1 := logger.V(1).Build()
 	defer spanInner.Finish()
 	defer func() {

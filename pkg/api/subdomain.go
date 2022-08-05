@@ -14,7 +14,7 @@ import (
 )
 
 func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewRootLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 
 	nameOrHex := mux.Vars(r)["subdomain"]
 	pathVar := mux.Vars(r)["path"]

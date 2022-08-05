@@ -544,7 +544,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
-			logger := tracing.NewRootLoggerWithTraceID(ctx, s.logger)
+			logger := tracing.NewLoggerWithTraceID(ctx, s.logger)
 			loggerV1 := logger.V(1).Build()
 
 			s.metrics.HandledStreamCount.Inc()

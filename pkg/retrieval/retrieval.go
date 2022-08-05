@@ -159,7 +159,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 				ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
 
 				// get the tracing span
-				span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+				span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 				defer span.Finish()
 
 				peerAttempt++
@@ -394,7 +394,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
 
-	span, _, ctx := s.tracer.StartRootSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
 
 	addr := swarm.NewAddress(req.Addr)
