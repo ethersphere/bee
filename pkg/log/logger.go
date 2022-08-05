@@ -160,6 +160,11 @@ type logger struct {
 	levelHooks levelHooks
 }
 
+// Verbosity implements the Logger interface Verbosity method.
+func (l *logger) Verbosity() Level {
+	return l.verbosity.get()
+}
+
 // Debug implements the Logger interface Debug method.
 func (l *logger) Debug(msg string, keysAndValues ...interface{}) {
 	if int(l.verbosity.get()) >= int(l.v) {

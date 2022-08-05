@@ -125,6 +125,9 @@ type Builder interface {
 type Logger interface {
 	Builder
 
+	// Verbosity returns the current verbosity level of this logger.
+	Verbosity() Level
+
 	// Debug logs a debug message with the given key/value pairs as context.
 	// The msg argument should be used to add some constant description to
 	// the log line. The key/value pairs can then be used to add additional
