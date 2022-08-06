@@ -17,10 +17,10 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -74,6 +74,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
@@ -112,7 +113,7 @@ type Bee struct {
 	chainSyncerCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncingStopped           chan struct{}
+	syncingStopped           *util.Signaler
 }
 
 type Options struct {
@@ -178,9 +179,7 @@ const (
 	mainnetNetworkID              = uint64(1)
 )
 
-var ErrInterruped = errors.New("interrupted")
-
-func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -216,7 +215,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		p2pCancel:      p2pCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
-		syncingStopped: make(chan struct{}),
+		syncingStopped: util.NewSignaler(),
 	}
 
 	defer func(b *Bee) {
@@ -700,25 +699,40 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
 
-	if batchSvc != nil && chainEnabled {
-		syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
-		if err != nil {
-			return nil, fmt.Errorf("unable to start batch service: %w", err)
-		}
-		// wait for the postage contract listener to sync
-		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+	var (
+		syncErr    atomic.Value
+		syncStatus atomic.Value
 
-		// arguably this is not a very nice solution since we dont support
-		// interrupts at this stage of the application lifecycle. some changes
-		// would be needed on the cmd level to support context cancellation at
-		// this stage
-		select {
-		case err = <-syncedChan:
-			if err != nil {
-				return nil, err
+		syncStatusFn = func() (isDone bool, err error) {
+			iErr := syncErr.Load()
+			if iErr != nil {
+				err = iErr.(error)
 			}
-		case <-interrupt:
-			return nil, ErrInterruped
+			isDone = syncStatus.Load() != nil
+			return isDone, err
+		}
+	)
+
+	if batchSvc != nil && chainEnabled {
+		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+		if o.FullNodeMode {
+			err = batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
+				return nil, fmt.Errorf("unable to start batch service: %w", err)
+			}
+		} else {
+			go func() {
+				logger.Info("started postage contract data sync in the background...")
+				err := batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+				syncStatus.Store(true)
+				if err != nil {
+					syncErr.Store(err)
+					logger.Errorf("unable to sync batches: %v", err)
+					b.syncingStopped.Signal() // trigger shutdown in start.go
+				}
+			}()
 		}
 	}
 
@@ -899,6 +913,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		Post:             post,
 		PostageContract:  postageContractService,
 		Steward:          steward,
+		SyncStatus:       syncStatusFn,
 	}
 
 	if o.APIAddr != "" {
@@ -1021,7 +1036,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 }
 
 func (b *Bee) SyncingStopped() chan struct{} {
-	return b.syncingStopped
+	return b.syncingStopped.C
 }
 
 func (b *Bee) Shutdown() error {
