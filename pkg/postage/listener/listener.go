@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -67,11 +68,11 @@ type listener struct {
 	metrics             metrics
 	stallingTimeout     time.Duration
 	backoffTime         time.Duration
-	syncingStopped      chan struct{}
+	syncingStopped      *util.Signaler
 }
 
 func New(
-	syncingStopped chan struct{},
+	syncingStopped *util.Signaler,
 	logger logging.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
@@ -330,7 +331,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
 		}
 		closeOnce.Do(func() { synced <- err })
-		close(l.syncingStopped) // trigger shutdown in start.go
+		l.syncingStopped.Signal() // trigger shutdown in start.go
 	}()
 
 	return synced

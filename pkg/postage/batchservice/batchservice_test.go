@@ -32,7 +32,9 @@ type mockListener struct {
 }
 
 func (*mockListener) Listen(from uint64, updater postage.EventUpdater, _ *postage.ChainSnapshot) <-chan error {
-	return nil
+	c := make(chan error, 1)
+	c <- nil
+	return c
 }
 func (*mockListener) Close() error { return nil }
 
@@ -490,7 +492,7 @@ func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 
 func TestTransactionOk(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
-	if _, err := svc.Start(10, nil); err != nil {
+	if err := svc.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -506,7 +508,7 @@ func TestTransactionOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc2.Start(10, nil); err != nil {
+	if err := svc2.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -517,7 +519,7 @@ func TestTransactionOk(t *testing.T) {
 
 func TestTransactionError(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
-	if _, err := svc.Start(10, nil); err != nil {
+	if err := svc.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -529,7 +531,7 @@ func TestTransactionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc2.Start(10, nil); err != nil {
+	if err := svc2.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 

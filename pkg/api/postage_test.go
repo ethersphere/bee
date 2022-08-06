@@ -199,6 +199,33 @@ func TestPostageCreateStamp(t *testing.T) {
 			t.Fatalf("want true, got %v", immutable)
 		}
 	})
+
+	t.Run("syncing in progress", func(t *testing.T) {
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:   true,
+			SyncStatus: func() (bool, error) { return false, nil },
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusServiceUnavailable,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Message: "syncing in progress",
+				Code:    503,
+			}),
+		)
+	})
+	t.Run("syncing failed", func(t *testing.T) {
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:   true,
+			SyncStatus: func() (bool, error) { return true, errors.New("oops") },
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusServiceUnavailable,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Message: "postage: syncing failed",
+				Code:    503,
+			}),
+		)
+	})
 }
 
 func TestPostageGetStamps(t *testing.T) {

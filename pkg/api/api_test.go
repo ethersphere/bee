@@ -110,9 +110,11 @@ type testServerOptions struct {
 	AccountingOpts  []accountingmock.Option
 	ChequebookOpts  []chequebookmock.Option
 	SwapOpts        []swapmock.Option
-	BatchStore      postage.Storer
 	TransactionOpts []transactionmock.Option
 	Traverser       traversal.Traverser
+
+	BatchStore postage.Storer
+	SyncStatus func() (bool, error)
 
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
@@ -138,6 +140,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
+	}
+	if o.SyncStatus == nil {
+		o.SyncStatus = func() (bool, error) { return true, nil }
 	}
 	if o.Authenticator == nil {
 		o.Authenticator = &mockauth.Auth{
@@ -180,6 +185,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Post:             o.Post,
 		PostageContract:  o.PostageContract,
 		Steward:          o.Steward,
+		SyncStatus:       o.SyncStatus,
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, o.CORSAllowedOrigins)

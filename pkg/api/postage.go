@@ -39,6 +39,26 @@ func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
 	})
 }
 
+func (s *Service) postageSyncStatusCheckHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		done, err := s.syncStatus()
+		if err != nil {
+			s.logger.Debugf("postage access: %v", err)
+			s.logger.Error("postage access: syncing failed")
+			jsonhttp.ServiceUnavailable(w, "postage: syncing failed")
+			return
+		}
+		if !done {
+			s.logger.Debug("postage access: syncing in progress")
+			s.logger.Error("postage access: syncing in progress")
+			jsonhttp.ServiceUnavailable(w, "syncing in progress")
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
+}
+
 // hexByte takes care that a byte slice gets correctly
 // marshaled by the json serializer.
 type hexByte []byte

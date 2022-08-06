@@ -151,8 +151,10 @@ func (c *command) initStartCmd() (err error) {
 
 			// Wait for termination or interrupt signals.
 			// We want to clean up things at the end.
-			interruptChannel := make(chan os.Signal, 1)
-			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+			sysInterruptChannel := make(chan os.Signal, 1)
+			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+			interruptChannel := make(chan struct{})
 
 			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -213,8 +215,9 @@ func (c *command) initStartCmd() (err error) {
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
 					select {
-					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+					case <-sysInterruptChannel:
+						logger.Debug("received interrupt signal")
+						close(interruptChannel)
 					case <-b.SyncingStopped():
 					}
 
@@ -234,8 +237,8 @@ func (c *command) initStartCmd() (err error) {
 					// If shutdown function is blocking too long,
 					// allow process termination by receiving another signal.
 					select {
-					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+					case <-sysInterruptChannel:
+						logger.Debug("received interrupt signal")
 					case <-done:
 					}
 				},

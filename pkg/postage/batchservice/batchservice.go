@@ -228,11 +228,13 @@ func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
-func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot) (<-chan error, error) {
+var ErrInterruped = errors.New("postage sync interrupted")
+
+func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot, interrupt chan struct{}) (err error) {
 	dirty := false
-	err := svc.stateStore.Get(dirtyDBKey, &dirty)
+	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
+		return err
 	}
 
 	if dirty || svc.resync || initState != nil {
@@ -244,10 +246,10 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		}
 
 		if err := svc.storer.Reset(); err != nil {
-			return nil, err
+			return err
 		}
 		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
-			return nil, err
+			return err
 		}
 		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
@@ -261,7 +263,14 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		startBlock = initState.LastBlockNumber
 	}
 
-	return svc.listener.Listen(startBlock+1, svc, initState), nil
+	syncedChan := svc.listener.Listen(startBlock+1, svc, initState)
+
+	select {
+	case err = <-syncedChan:
+		return err
+	case <-interrupt:
+		return ErrInterruped
+	}
 }
 
 // updateChecksum updates the batchservice checksum once an event gets
