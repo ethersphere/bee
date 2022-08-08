@@ -156,7 +156,7 @@ func TestBytes(t *testing.T) {
 	t.Run("internal error", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Internal Server Error",
+				Message: "api download: joiner failed",
 				Code:    http.StatusInternalServerError,
 			}),
 		)

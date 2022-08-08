@@ -180,7 +180,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("feed post: add manifest entry: %v", err)
 		s.logger.Error("feed post: add manifest entry")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "feed post: add manifest entry failed")
 		return
 	}
 	ref, err := feedManifest.Store(r.Context())
@@ -191,7 +191,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "feed post: store manifest failed")
 		}
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.pinning.CreatePin(r.Context(), ref, false); err != nil {
 			s.logger.Debugf("feed post: creation of pin for %q failed: %v", ref, err)
 			s.logger.Error("feed post: creation of pin failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "feed post: creation of pin failed")
 			return
 		}
 	}
@@ -208,7 +208,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err = wait(); err != nil {
 		s.logger.Debugf("feed upload: sync chunks: %v", err)
 		s.logger.Error("feed upload: sync chunks")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "feed upload: sync failed")
 		return
 	}
 

@@ -90,7 +90,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	if err != nil {
 		logger.Debugf("bzz upload file: get or create tag: %v", err)
 		logger.Error("bzz upload file: get or create tag")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "bzz upload file: get or create tag failed")
 		return
 	}
 
@@ -101,7 +101,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 			if err != nil {
 				s.logger.Debugf("bzz upload file: increment tag: %v", err)
 				s.logger.Error("bzz upload file: increment tag")
-				jsonhttp.InternalServerError(w, nil)
+				jsonhttp.InternalServerError(w, "bzz upload file: increment tag failed")
 				return
 			}
 		}
@@ -142,7 +142,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	if err != nil {
 		logger.Debugf("bzz upload file: create manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: create manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "bzz upload file: create manifest failed")
 		return
 	}
 
@@ -154,7 +154,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	if err != nil {
 		logger.Debugf("bzz upload file: adding metadata to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding metadata to manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "bzz upload file: add metadata failed")
 		return
 	}
 
@@ -167,7 +167,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	if err != nil {
 		logger.Debugf("bzz upload file: adding file to manifest, file %q: %v", fileName, err)
 		logger.Errorf("bzz upload file: adding file to manifest, file %q", fileName)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "bzz upload file: add file failed")
 		return
 	}
 
@@ -197,7 +197,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "bzz upload file: manifest store failed")
 		}
 		return
 	}
@@ -208,7 +208,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		if err != nil {
 			logger.Debugf("bzz upload file: done split: %v", err)
 			logger.Error("bzz upload file: done split failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "bzz upload file: done split failed")
 			return
 		}
 	}
@@ -217,7 +217,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		if err := s.pinning.CreatePin(ctx, manifestReference, false); err != nil {
 			logger.Debugf("bzz upload file: creation of pin for %q failed: %v", manifestReference, err)
 			logger.Error("bzz upload file: creation of pin failed")
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "bzz upload file: create pin failed")
 			return
 		}
 	}
@@ -225,7 +225,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	if err = waitFn(); err != nil {
 		s.logger.Debugf("bzz upload: sync chunks: %v", err)
 		s.logger.Error("bzz upload: sync chunks")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "bzz upload file: sync chunks failed")
 		return
 	}
 
@@ -442,7 +442,7 @@ func (s *Service) downloadHandler(w http.ResponseWriter, r *http.Request, refere
 		}
 		logger.Debugf("api download: unexpected error %s: %v", reference, err)
 		logger.Error("api download: unexpected error")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "api download: joiner failed")
 		return
 	}
 
@@ -532,7 +532,7 @@ func (s *Service) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("bzz patch: reupload %s: %v", address.String(), err)
 		s.logger.Error("bzz patch: reupload")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "bzz patch: reupload failed")
 		return
 	}
 	jsonhttp.OK(w, nil)

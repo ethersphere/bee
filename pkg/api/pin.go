@@ -29,7 +29,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pin root hash: checking of tracking pin for %q failed: %v", ref, err)
 		s.logger.Error("pin root hash: checking of tracking pin failed")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin failed")
 		return
 	}
 	if has {
@@ -44,7 +44,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.logger.Debugf("pin root hash: creation of tracking pin for %q failed: %v", ref, err)
 		s.logger.Error("pin root hash: creation of tracking pin failed")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pin root hash: creation of tracking pin failed")
 		return
 	}
 
@@ -65,7 +65,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pin root hash: checking of tracking pin for %q failed: %v", ref, err)
 		s.logger.Error("pin root hash: checking of tracking pin failed")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin")
 		return
 	}
 	if !has {
@@ -76,12 +76,12 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	switch err := s.pinning.DeletePin(r.Context(), ref); {
 	case errors.Is(err, pinning.ErrTraversal):
 		s.logger.Debugf("unpin root hash: deletion of pin for %q failed: %v", ref, err)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
 		return
 	case err != nil:
 		s.logger.Debugf("unpin root hash: deletion of pin for %q failed: %v", ref, err)
 		s.logger.Error("unpin root hash: deletion of pin for failed")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
 		return
 	}
 
@@ -102,7 +102,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pinned root hash: unable to check reference %q in the localstore: %v", ref, err)
 		s.logger.Error("pinned root hash: unable to check reference in the localstore")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pinned root hash: check reference failed")
 		return
 	}
 
@@ -124,7 +124,7 @@ func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("list pinned root references: unable to list references: %v", err)
 		s.logger.Error("list pinned root references: unable to list references")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "list pinned root references failed")
 		return
 	}
 

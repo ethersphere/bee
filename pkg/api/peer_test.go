@@ -222,7 +222,7 @@ func TestBlocklistedPeersErr(t *testing.T) {
 		jsonhttptest.WithExpectedJSONResponse(
 			jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
-				Message: http.StatusText(http.StatusInternalServerError),
+				Message: "get blocklisted peers failed",
 			}),
 	)
 }
