@@ -22,7 +22,7 @@ func (c *command) initInitCmd() (err error) {
 			}
 
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-			logger, err := newRootLogger(cmd, v)
+			logger, err := newLogger(cmd, v)
 			if err != nil {
 				return fmt.Errorf("new logger: %w", err)
 			}

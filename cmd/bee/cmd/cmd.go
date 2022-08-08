@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -278,29 +276,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 }
 
-func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
-	var logger logging.Logger
-	switch verbosity {
-	case "0", "silent":
-		logger = logging.New(io.Discard, 0)
-	case "1", "error":
-		logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
-	case "2", "warn":
-		logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
-	case "3", "info":
-		logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
-	case "4", "debug":
-		logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
-	case "5", "trace":
-		logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
-	default:
-		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
-	}
-	return logger, nil
-}
-
-// TODO: rename to newLogger and remove the original.
-func newRootLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
+func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 	sink := cmd.OutOrStdout()
 	vLevel := log.VerbosityNone
 	switch verbosity {
