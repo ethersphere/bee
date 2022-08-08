@@ -397,7 +397,7 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debugf("chainstate: block number: %v", err)
 		logger.Error("chainstate: block number unavailable")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "chainstate: block number unavailable")
 		return
 	}
 	jsonhttp.OK(w, chainStateResponse{
