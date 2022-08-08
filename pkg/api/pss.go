@@ -66,7 +66,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.logger.Debugf("pss recipient: %v", err)
 			s.logger.Error("pss recipient")
-			jsonhttp.BadRequest(w, nil)
+			jsonhttp.BadRequest(w, "pss recipient: invalid format")
 			return
 		}
 	}
@@ -75,7 +75,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pss read payload: %v", err)
 		s.logger.Error("pss read payload")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pss send failed")
 		return
 	}
 	batch, err := requestPostageBatchId(r)
@@ -109,7 +109,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "pss send failed")
 		}
 		return
 	}
@@ -129,7 +129,7 @@ func (s *Service) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debugf("pss ws: upgrade: %v", err)
 		s.logger.Error("pss ws: cannot upgrade")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pss ws: upgrade failed")
 		return
 	}
 

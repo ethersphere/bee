@@ -147,7 +147,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 				s.logger.Debugf("chunk upload: deletion of pin for %s failed: %v", chunk.Address(), err)
 				s.logger.Error("chunk upload: deletion of pin failed")
 			}
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "chunk upload: creation of pin failed")
 			return
 		}
 	}
@@ -155,7 +155,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err = wait(); err != nil {
 		s.logger.Debugf("chunk upload: sync chunk: %v", err)
 		s.logger.Error("chunk upload: sync chunk")
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "chunk upload: sync failed")
 		return
 	}
 
