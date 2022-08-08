@@ -108,6 +108,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("expect put create put error", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
+		testAmount := postagetesting.NewBigInt()
+
 		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
 			testBatch.Owner,
@@ -120,7 +122,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
-			testBatch.Value,
+			testAmount,
 			testBatch.Depth,
 			testBatch.BucketDepth,
 			testBatch.Immutable,
@@ -136,6 +138,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("passes", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
+		testAmount := postagetesting.NewBigInt()
+
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
 			testBatch.Owner,
@@ -146,7 +150,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
-			testBatch.Value,
+			testAmount,
 			testBatch.Value,
 			testBatch.Depth,
 			testBatch.BucketDepth,
@@ -165,6 +169,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("passes without recovery", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
+		testAmount := postagetesting.NewBigInt()
+
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
 		rand.Read(owner)
@@ -181,7 +187,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
-			testBatch.Value,
+			testAmount,
 			testBatch.Value,
 			testBatch.Depth,
 			testBatch.BucketDepth,

@@ -271,9 +271,9 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 				if err != nil {
 					return err
 				}
-				topUpTotalAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
+				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
 
-				post.HandleTopUp(batch.ID, topUpTotalAmount)
+				post.HandleTopUp(batch.ID, topUpAmount)
 				return nil
 			},
 		),
