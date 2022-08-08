@@ -95,7 +95,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		case errors.Is(err, errEmptyDir):
 			jsonhttp.BadRequest(w, errEmptyDir)
-		case errors.Is(err, errInvalidTar):
+		case err.Error() == errInvalidTar.Error():
 			jsonhttp.BadRequest(w, "invalid filename in tar archive")
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
