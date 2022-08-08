@@ -186,6 +186,7 @@ type Options struct {
 	verbosity  Level
 	levelHooks levelHooks
 	fmtOptions fmtOptions
+	logMetrics *metrics
 }
 
 // Option represent Options parameters modifier.
@@ -275,5 +276,16 @@ func WithLevelHooks(l Level, hooks ...Hook) Option {
 		default:
 			opts.levelHooks[l] = append(opts.levelHooks[l], hooks...)
 		}
+	}
+}
+
+// WithLogMetrics tells the logger to collect metrics about log messages.
+func WithLogMetrics() Option {
+	return func(opts *Options) {
+		if opts.logMetrics != nil {
+			return
+		}
+		opts.logMetrics = newLogMetrics()
+		WithLevelHooks(VerbosityAll, opts.logMetrics)
 	}
 }

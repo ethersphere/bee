@@ -277,8 +277,11 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
-	sink := cmd.OutOrStdout()
-	vLevel := log.VerbosityNone
+	var (
+		sink   = cmd.OutOrStdout()
+		vLevel = log.VerbosityNone
+	)
+
 	switch verbosity {
 	case "0", "silent":
 		sink = io.Discard
@@ -298,7 +301,12 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 
 	log.ModifyDefaults(
 		log.WithTimestamp(),
-		//log.WithLevelHooks(log.VerbosityAll, metrics), // TODO: log metrics!
+		log.WithLogMetrics(),
 	)
-	return log.NewLogger("root", log.WithSink(sink), log.WithVerbosity(vLevel)).Register(), nil
+
+	return log.NewLogger(
+		"root",
+		log.WithSink(sink),
+		log.WithVerbosity(vLevel),
+	).Register(), nil
 }
