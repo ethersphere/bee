@@ -70,23 +70,23 @@ type Receipt struct {
 }
 
 type PushSync struct {
-	address      swarm.Address
-	blockHash    []byte
-	streamer     p2p.StreamerDisconnecter
-	storer       storage.Putter
-	topology     topology.Driver
-	tagger       *tags.Tags
-	unwrap       func(swarm.Chunk)
-	logger       logging.Logger
-	accounting   accounting.Interface
-	pricer       pricer.Interface
-	metrics      metrics
-	tracer       *tracing.Tracer
-	validStamp   postage.ValidStampFn
-	signer       crypto.Signer
-	isFullNode   bool
-	warmupPeriod time.Time
-	skipList     *peerSkipList
+	address        swarm.Address
+	blockHash      []byte
+	streamer       p2p.StreamerDisconnecter
+	storer         storage.Putter
+	topologyDriver topology.Driver
+	tagger         *tags.Tags
+	unwrap         func(swarm.Chunk)
+	logger         logging.Logger
+	accounting     accounting.Interface
+	pricer         pricer.Interface
+	metrics        metrics
+	tracer         *tracing.Tracer
+	validStamp     postage.ValidStampFn
+	signer         crypto.Signer
+	isFullNode     bool
+	warmupPeriod   time.Time
+	skipList       *peerSkipList
 }
 
 type receiptResult struct {
@@ -99,22 +99,22 @@ type receiptResult struct {
 
 func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
-		address:      address,
-		blockHash:    blockHash,
-		streamer:     streamer,
-		storer:       storer,
-		topology:     topology,
-		tagger:       tagger,
-		isFullNode:   isFullNode,
-		unwrap:       unwrap,
-		logger:       logger,
-		accounting:   accounting,
-		pricer:       pricer,
-		metrics:      newMetrics(),
-		tracer:       tracer,
-		signer:       signer,
-		skipList:     newPeerSkipList(),
-		warmupPeriod: time.Now().Add(warmupTime),
+		address:        address,
+		blockHash:      blockHash,
+		streamer:       streamer,
+		storer:         storer,
+		topologyDriver: topology,
+		tagger:         tagger,
+		isFullNode:     isFullNode,
+		unwrap:         unwrap,
+		logger:         logger,
+		accounting:     accounting,
+		pricer:         pricer,
+		metrics:        newMetrics(),
+		tracer:         tracer,
+		signer:         signer,
+		skipList:       newPeerSkipList(),
+		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
@@ -200,7 +200,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 			defer span.Finish()
 
-			realClosestPeer, err := ps.topology.ClosestPeer(chunk.Address(), false, topology.Filter{Reachable: true})
+			realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false, topology.Filter{Reachable: true})
 			if err == nil {
 				if !realClosestPeer.Equal(p.Address) {
 					ps.metrics.TotalReplicationFromDistantPeer.Inc()
@@ -245,7 +245,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// forwarding replication
 	storerNode := false
 	defer func() {
-		if !storerNode && ps.warmedUp() && ps.topology.IsWithinDepth(chunkAddress) {
+		if !storerNode && ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
 				logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
@@ -363,7 +363,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers.All()...)
 
-		peer, err = ps.topology.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
+		peer, err = ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
 			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
 			// in which case we should return immediately.
@@ -376,7 +376,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
 					// we don't act on ErrWantSelf unless there are no overdraft peers
-					if !ps.topology.IsWithinDepth(ch.Address()) {
+					if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
 						return swarm.ZeroAddress, false, ErrOutOfDepthStoring
 					}
 					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
@@ -580,7 +580,7 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 	count := 0
 	// Push the chunk to some peers in the neighborhood in parallel for replication.
 	// Any errors here should NOT impact the rest of the handler.
-	_ = ps.topology.EachPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	_ = ps.topologyDriver.EachPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		// skip forwarding peer
 		if peer.Equal(originAddr) {
 			return false, false, nil
