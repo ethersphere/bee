@@ -38,6 +38,12 @@ const (
 	serviceName = "SwarmBeeSvc"
 )
 
+// default values for network IDs
+const (
+	defaultMainNetworkID uint64 = 1
+	defaultTestNetworkID uint64 = 10
+)
+
 //go:embed bee-welcome-message.txt
 var beeWelcomeMessage string
 
@@ -106,14 +112,21 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
-			networkID := c.config.GetUint64(optionNameNetworkID)
+			userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
 
-			if mainnet {
-				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
-				if userHasSetNetworkID && networkID != 1 {
+			// if the user has provided a value - we use it and overwrite the default
+			// if mainnet is true then we only accept networkID value 1, error otherwise
+			// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
+			// in all the other cases we default to test network ID (10)
+			var networkID = defaultTestNetworkID
+
+			if userHasSetNetworkID {
+				networkID = c.config.GetUint64(optionNameNetworkID)
+				if mainnet && networkID != defaultMainNetworkID {
 					return errors.New("provided network ID does not match mainnet")
 				}
-				networkID = 1
+			} else if mainnet {
+				networkID = defaultMainNetworkID
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
