@@ -41,7 +41,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		logger.Errorf("pingpong failed to peer %s", peerID)
-		jsonhttp.InternalServerError(w, nil)
+		jsonhttp.InternalServerError(w, "pingpong: ping failed")
 		return
 	}
 
