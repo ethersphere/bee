@@ -28,7 +28,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	address, err := swarm.ParseHexAddress(peerID)
 	if err != nil {
 		logger.Debug("pingpong: parse peer address string failed", "string", peerID, "error", err)
-		jsonhttp.BadRequest(w, "parse peer address string failed")
+		jsonhttp.BadRequest(w, "invalid peer address")
 		return
 	}
 

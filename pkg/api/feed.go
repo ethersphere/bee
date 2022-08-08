@@ -43,7 +43,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed get: decode owner string failed", "string", str, "error", err)
 		s.logger.Error(nil, "feed get: decode owner string failed")
-		jsonhttp.BadRequest(w, "decode owner string failed")
+		jsonhttp.BadRequest(w, "bad owner")
 		return
 	}
 
@@ -52,7 +52,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed get: decode topic string failed", "error", err)
 		s.logger.Error(nil, "feed get: decode topic string failed")
-		jsonhttp.BadRequest(w, "decode topic string failed")
+		jsonhttp.BadRequest(w, "bad topic")
 		return
 	}
 
@@ -63,7 +63,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.logger.Debug("feed get: decode at string failed", "string", atStr, "error", err)
 			s.logger.Error(nil, "feed get: decode at string failed")
-			jsonhttp.BadRequest(w, "decode at string failed")
+			jsonhttp.BadRequest(w, "bad at")
 			return
 		}
 	} else {
@@ -132,7 +132,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed post: decode owner string failed", "string", str, "error", err)
 		s.logger.Error(nil, "feed post: decode owner string failed")
-		jsonhttp.BadRequest(w, "decode owner string failed")
+		jsonhttp.BadRequest(w, "bad owner")
 		return
 	}
 
@@ -141,7 +141,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed post: decode topic string failed", "string", str, "error", err)
 		s.logger.Error(nil, "feed post: decode topic string failed")
-		jsonhttp.BadRequest(w, "decode topic string failed")
+		jsonhttp.BadRequest(w, "bad topic")
 		return
 	}
 

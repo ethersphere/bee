@@ -54,7 +54,7 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	swarmAddr, err := swarm.ParseHexAddress(addr)
 	if err != nil {
 		s.logger.Debug("peer disconnect: parse address string failed", "string", addr, "error", err)
-		jsonhttp.BadRequest(w, "parse address string failed")
+		jsonhttp.BadRequest(w, "invalid peer address")
 		return
 	}
 

@@ -77,7 +77,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	amount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
 	if !ok {
 		s.logger.Error(nil, "create batch: invalid amount")
-		jsonhttp.BadRequest(w, "invalid amount")
+		jsonhttp.BadRequest(w, "invalid postage amount")
 		return
 
 	}
@@ -86,7 +86,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("create batch: parse depth string failed", "string", depthStr, "error", err)
 		s.logger.Error(nil, "create batch: parse depth string failed")
-		jsonhttp.BadRequest(w, "parse depth string failed")
+		jsonhttp.BadRequest(w, "invalid depth")
 		return
 	}
 
