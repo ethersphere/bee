@@ -75,7 +75,7 @@ type PushSync struct {
 	streamer       p2p.StreamerDisconnecter
 	storer         storage.Putter
 	topologyDriver topology.EachPeerer
-	depther        topology.NeighborhoodDepther
+	syncRadius     topology.SyncRadius
 	tagger         *tags.Tags
 	unwrap         func(swarm.Chunk)
 	logger         logging.Logger
@@ -98,14 +98,14 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.EachPeerer, depther topology.NeighborhoodDepther, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.EachPeerer, syncRadius topology.SyncRadius, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		blockHash:      blockHash,
 		streamer:       streamer,
 		storer:         storer,
 		topologyDriver: topology,
-		depther:        depther,
+		syncRadius:     syncRadius,
 		tagger:         tagger,
 		isFullNode:     isFullNode,
 		unwrap:         unwrap,
@@ -247,7 +247,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// forwarding replication
 	storerNode := false
 	defer func() {
-		if !storerNode && ps.warmedUp() && ps.depther.IsWithinDepth(chunkAddress) {
+		if !storerNode && ps.warmedUp() && ps.syncRadius.IsWithinSyncRadius(chunkAddress) {
 			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
 				logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
@@ -378,7 +378,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
 					// we don't act on ErrWantSelf unless there are no overdraft peers
-					if !ps.depther.IsWithinDepth(ch.Address()) {
+					if !ps.syncRadius.IsWithinSyncRadius(ch.Address()) {
 						return swarm.ZeroAddress, false, ErrOutOfDepthStoring
 					}
 					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)

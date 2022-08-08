@@ -36,7 +36,7 @@ type Options struct {
 
 type Puller struct {
 	topology   topologyDriver
-	depther    topology.NeighborhoodDepther
+	syncRadius topology.SyncRadius
 	statestore storage.StateStorer
 	syncer     pullsync.Interface
 
@@ -58,9 +58,10 @@ type Puller struct {
 type topologyDriver interface {
 	topology.EachPeerer
 	topology.TopologyChangeSubscriber
+	topology.NeighborhoodDepther
 }
 
-func New(stateStore storage.StateStorer, topology topologyDriver, depther topology.NeighborhoodDepther, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topologyDriver, syncRadius topology.SyncRadius, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -71,7 +72,7 @@ func New(stateStore storage.StateStorer, topology topologyDriver, depther topolo
 	p := &Puller{
 		statestore: stateStore,
 		topology:   topology,
-		depther:    depther,
+		syncRadius: syncRadius,
 		syncer:     pullSync,
 		metrics:    newMetrics(),
 		logger:     logger,
@@ -128,7 +129,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 			// if we're already syncing with this peer, make sure
 			// that we're syncing the correct bins according to depth
-			depth := p.depther.NeighborhoodDepth()
+			neighborhoodDepth := p.topology.NeighborhoodDepth()
+			syncRadius := p.syncRadius.SyncRadius()
 
 			// we defer the actual start of syncing to get out of the iterator first
 			var (
@@ -155,7 +157,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// way that it returns an error - the value must be checked.
 			_ = p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 				bp := p.syncPeers[po]
-				if po >= depth {
+				if po >= neighborhoodDepth {
 					// delete from peersDisconnected since we'd like to sync
 					// with this peer
 					delete(peersDisconnected, peerAddr.ByteString())
@@ -183,11 +185,11 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			p.syncPeersMtx.Unlock()
 
 			for _, v := range peersToSync {
-				p.syncPeer(ctx, v.addr, v.po, depth)
+				p.syncPeer(ctx, v.addr, v.po, syncRadius)
 			}
 
 			for _, v := range peersToRecalc {
-				dontSync := p.recalcPeer(ctx, v.addr, v.po, depth)
+				dontSync := p.recalcPeer(ctx, v.addr, v.po, syncRadius)
 				// stopgap solution for peers that dont return the correct
 				// amount of cursors we expect
 				if dontSync {

@@ -158,6 +158,11 @@ type NeighborhoodDepther interface {
 	NeighborhoodDepth() uint8
 }
 
+type SyncRadius interface {
+	SyncRadius() uint8
+	IsWithinSyncRadius(swarm.Address) bool
+}
+
 type SetStorageRadiuser interface {
 	SetStorageRadius(uint8)
 }

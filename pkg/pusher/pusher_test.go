@@ -463,9 +463,9 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 		modeSet:        make(map[string]storage.ModeSet),
 		modeSetMu:      &sync.Mutex{},
 	}
-	peerSuggester := mock.NewTopologyDriver(mockOpts...)
+	// peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0)
+	pusherService := pusher.New(1, pusherStorer, nil, pushSyncService, validStamp, mtags, logger, nil, 0)
 	return mtags, pusherService, pusherStorer
 }
 
