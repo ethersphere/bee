@@ -232,7 +232,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{""}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
-	cmd.Flags().Uint64(optionNameNetworkID, 10, "ID of the Swarm network")
+	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")

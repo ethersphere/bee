@@ -104,21 +104,6 @@ func (s *Service) mountTechnicalDebug() {
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
-	if s.transaction != nil {
-		var handle = func(path string, handler http.Handler) {
-			s.router.Handle(path, handler)
-		}
-
-		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
-		})
-		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
-		})
-	}
-
 	s.router.Path("/metrics").Handler(web.ChainHandlers(
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
@@ -144,6 +129,25 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
 		web.FinalHandlerFunc(statusHandler),
 	))
+
+	s.router.Handle("/loggers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
+		"PUT": web.ChainHandlers(
+			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
+		),
+	})
 }
 
 func (s *Service) mountAPI() {
@@ -341,6 +345,17 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		s.router.Handle(rootPath+path, handler)
 	}
 
+	if s.transaction != nil {
+		handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
+	}
+
 	handle("/peers", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
@@ -448,18 +463,21 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	}
 
 	handle("/stamps", web.ChainHandlers(
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
 	handle("/stamps/{id}", web.ChainHandlers(
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
 	handle("/stamps/{id}/buckets", web.ChainHandlers(
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
 		})),
@@ -467,6 +485,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
@@ -474,6 +493,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
@@ -481,6 +501,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),

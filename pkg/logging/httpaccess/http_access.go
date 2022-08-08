@@ -42,30 +42,30 @@ func NewHTTPAccessLogHandler(logger logging.Logger, level logrus.Level, tracer *
 			if err != nil {
 				ip = r.RemoteAddr
 			}
-			fields := logrus.Fields{
-				"ip":       ip,
-				"method":   r.Method,
-				"host":     r.Host,
-				"uri":      r.RequestURI,
-				"proto":    r.Proto,
-				"status":   status,
-				"size":     rl.size,
-				"duration": time.Since(startTime).Seconds(),
+			fields := []interface{}{
+				"ip", ip,
+				"method", r.Method,
+				"host", r.Host,
+				"uri", r.RequestURI,
+				"proto", r.Proto,
+				"status", status,
+				"size", rl.size,
+				"duration", time.Since(startTime).Seconds(),
 			}
 			if v := r.Referer(); v != "" {
-				fields["referrer"] = v
+				fields = append(fields, "referrer", v)
 			}
 			if v := r.UserAgent(); v != "" {
-				fields["user-agent"] = v
+				fields = append(fields, "user-agent", v)
 			}
 			if v := r.Header.Get("X-Forwarded-For"); v != "" {
-				fields["x-forwarded-for"] = v
+				fields = append(fields, "x-forwarded-for", v)
 			}
 			if v := r.Header.Get("X-Real-Ip"); v != "" {
-				fields["x-real-ip"] = v
+				fields = append(fields, "x-real-ip", v)
 			}
 
-			logger.WithFields(fields).Log(rl.level, message)
+			logger.WithValues(fields...).Log(rl.level, message)
 		})
 	}
 }

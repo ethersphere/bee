@@ -38,11 +38,16 @@ const (
 	serviceName = "SwarmBeeSvc"
 )
 
+// default values for network IDs
+const (
+	defaultMainNetworkID uint64 = 1
+	defaultTestNetworkID uint64 = 10
+)
+
 //go:embed bee-welcome-message.txt
 var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a Swarm node",
@@ -107,14 +112,21 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
-			networkID := c.config.GetUint64(optionNameNetworkID)
+			userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
 
-			if mainnet {
-				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
-				if userHasSetNetworkID && networkID != 1 {
+			// if the user has provided a value - we use it and overwrite the default
+			// if mainnet is true then we only accept networkID value 1, error otherwise
+			// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
+			// in all the other cases we default to test network ID (10)
+			var networkID = defaultTestNetworkID
+
+			if userHasSetNetworkID {
+				networkID = c.config.GetUint64(optionNameNetworkID)
+				if mainnet && networkID != defaultMainNetworkID {
 					return errors.New("provided network ID does not match mainnet")
 				}
-				networkID = 1
+			} else if mainnet {
+				networkID = defaultMainNetworkID
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
@@ -152,8 +164,10 @@ func (c *command) initStartCmd() (err error) {
 
 			// Wait for termination or interrupt signals.
 			// We want to clean up things at the end.
-			interruptChannel := make(chan os.Signal, 1)
-			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+			sysInterruptChannel := make(chan os.Signal, 1)
+			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+			interruptChannel := make(chan struct{})
 
 			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -214,8 +228,9 @@ func (c *command) initStartCmd() (err error) {
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
 					select {
-					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+					case <-sysInterruptChannel:
+						logger.Debug("received interrupt signal")
+						close(interruptChannel)
 					case <-b.SyncingStopped():
 					}
 
@@ -235,8 +250,8 @@ func (c *command) initStartCmd() (err error) {
 					// If shutdown function is blocking too long,
 					// allow process termination by receiving another signal.
 					select {
-					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+					case <-sysInterruptChannel:
+						logger.Debug("received interrupt signal")
 					case <-done:
 					}
 				},
