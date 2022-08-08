@@ -213,7 +213,7 @@ func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 
 func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.PullStorage) {
 	storage := mock.NewPullStorage(o...)
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
 	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
 	return pullsync.New(s, storage, unwrap, validStamp, logger), storage

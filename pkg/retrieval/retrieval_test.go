@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"sync"
 	"testing"
 	"time"
@@ -41,7 +40,7 @@ var (
 func TestDelivery(t *testing.T) {
 	var (
 		chunk                = testingc.FixtureChunk("0033")
-		logger               = log.NewLogger("test", log.WithSink(io.Discard))
+		logger               = log.Noop
 		mockStorer           = storemock.NewStorer()
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
@@ -149,7 +148,7 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 
 	var (
-		logger = log.NewLogger("test", log.WithSink(io.Discard))
+		logger = log.Noop
 		pricer = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
 
@@ -260,7 +259,7 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")

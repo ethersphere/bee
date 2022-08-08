@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -82,7 +81,7 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 
 func TestPinHandlers(t *testing.T) {
 	var (
-		logger          = log.NewLogger("test", log.WithSink(io.Discard))
+		logger          = log.Noop
 		storerMock      = mock.NewStorer()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,

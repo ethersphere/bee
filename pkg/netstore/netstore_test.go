@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -207,7 +206,7 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	ns = netstore.New(store, validStamp, retrieve, logger)
 	t.Cleanup(func() {
 		err := ns.Close()

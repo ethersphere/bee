@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -32,7 +31,7 @@ func TestHandshake(t *testing.T) {
 		testWelcomeMessage = "HelloWorld"
 	)
 
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	networkID := uint64(3)
 
 	node1ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")

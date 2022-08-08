@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"testing"
 	"time"
@@ -38,7 +37,7 @@ func toBatchBlock(block uint64) uint64 {
 }
 
 func TestListener(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	blockNumber := uint64(500)
 	timeout := 5 * time.Second
 	// test that when the listener gets a certain event
@@ -326,7 +325,7 @@ func TestListener(t *testing.T) {
 }
 
 func TestListenerBatchState(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	ev, evC := newEventUpdaterMock()
 	mf := newMockFilterer()
 

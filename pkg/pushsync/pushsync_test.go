@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"testing"
 	"time"
@@ -808,7 +807,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameter
 
 func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags) {
 	t.Helper()
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	storer := mocks.NewStorer()
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)
@@ -826,7 +825,7 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 		return ch, nil
 	}
 
-	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, log.NewLogger("test", log.WithSink(io.Discard)), acct, mockPricer, signer, nil, -1), storer, mtag // TODO: move to one logger when migration is done.
+	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, log.Noop, acct, mockPricer, signer, nil, -1), storer, mtag // TODO: move to one logger when migration is done.
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

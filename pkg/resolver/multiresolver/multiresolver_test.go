@@ -7,7 +7,6 @@ package multiresolver_test
 import (
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"testing"
 
@@ -25,7 +24,7 @@ func newAddr(s string) Address {
 }
 
 func TestMultiresolverOpts(t *testing.T) {
-	wantLog := log.NewLogger("test", log.WithSink(io.Discard))
+	wantLog := log.Noop
 	wantCfgs := []multiresolver.ConnectionConfig{
 		{
 			Address:  "testadr1",

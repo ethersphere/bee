@@ -224,7 +224,7 @@ func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, observer *tes
 }
 
 func TestPayment(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()
@@ -258,7 +258,7 @@ func TestPayment(t *testing.T) {
 }
 
 func TestTimeLimitedPayment(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()
@@ -315,7 +315,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 }
 
 func TestTimeLimitedPaymentLight(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 
 	storeRecipient := mock.NewStateStore()
 	defer storeRecipient.Close()

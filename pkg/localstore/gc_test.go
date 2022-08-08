@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"math/rand"
 	"sync"
 	"testing"
@@ -482,7 +481,7 @@ func TestDB_gcSize(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	db, err := New(dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)

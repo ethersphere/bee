@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"testing"
 
@@ -20,7 +19,7 @@ import (
 func TestAuth(t *testing.T) {
 	var (
 		resource      = "/auth"
-		logger        = log.NewLogger("test", log.WithSink(io.Discard))
+		logger        = log.Noop
 		authenticator = &mock.Auth{
 			AuthorizeFunc:   func(string) bool { return true },
 			GenerateKeyFunc: func(string) (string, error) { return "123", nil },

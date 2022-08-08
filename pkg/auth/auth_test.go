@@ -6,7 +6,6 @@ package auth_test
 
 import (
 	"errors"
-	"io"
 	"testing"
 	"time"
 
@@ -51,7 +50,7 @@ func TestAuthorize(t *testing.T) {
 }
 
 func TestExpiry(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, log.NewLogger("test", log.WithSink(io.Discard)))
+	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}

@@ -38,10 +38,10 @@ func TestBytes(t *testing.T) {
 	var (
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()
-		logger          = log.NewLogger("test", log.WithSink(io.Discard))
+		logger          = log.Noop
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
-			Tags:    tags.NewTags(statestore.NewStateStore(), log.NewLogger("test", log.WithSink(io.Discard))),
+			Tags:    tags.NewTags(statestore.NewStateStore(), log.Noop),
 			Pinning: pinningMock,
 			Logger:  logger,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
@@ -181,7 +181,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	var (
 		storerMock        = mock.NewStorer()
 		pinningMock       = pinning.NewServiceMock()
-		logger            = log.NewLogger("test", log.WithSink(io.Discard))
+		logger            = log.Noop
 		retBool           = false
 		retErr      error = nil
 		existsFn          = func(id []byte) (bool, error) {
@@ -189,7 +189,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 		}
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Tags:       tags.NewTags(statestore.NewStateStore(), log.NewLogger("test", log.WithSink(io.Discard))),
+			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
 			Pinning:    pinningMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),

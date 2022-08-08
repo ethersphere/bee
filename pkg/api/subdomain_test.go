@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"path"
 	"testing"
@@ -95,7 +94,7 @@ func TestSubdomains(t *testing.T) {
 				dirUploadResource = "/bzz"
 				storer            = mock.NewStorer()
 				mockStatestore    = statestore.NewStateStore()
-				logger            = log.NewLogger("test", log.WithSink(io.Discard))
+				logger            = log.Noop
 				client, _, _, _   = newTestServer(t, testServerOptions{
 					Storer:          storer,
 					Tags:            tags.NewTags(mockStatestore, logger),

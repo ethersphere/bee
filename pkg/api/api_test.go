@@ -127,7 +127,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		o.Logger = log.NewLogger("test", log.WithSink(io.Discard))
+		o.Logger = log.Noop
 	}
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
@@ -300,7 +300,7 @@ func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func(
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
-	log := log.NewLogger("test", log.WithSink(io.Discard))
+	log := log.Noop
 
 	testCases := []struct {
 		desc       string
@@ -418,7 +418,7 @@ func TestPostageHeaderError(t *testing.T) {
 	var (
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()
-		logger          = log.NewLogger("test", log.WithSink(io.Discard))
+		logger          = log.Noop
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
@@ -519,7 +519,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 	var (
 		mockStorer               = mock.NewStorer()
 		mockStatestore           = statestore.NewStateStore()
-		logger                   = log.NewLogger("test", log.WithSink(io.Discard))
+		logger                   = log.Noop
 		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, chanStorer = newTestServer(t, testServerOptions{
 			Storer:       mockStorer,

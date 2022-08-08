@@ -7,7 +7,6 @@ package api_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"testing"
 
@@ -25,7 +24,7 @@ import (
 
 func TestDebugTags(t *testing.T) {
 	var (
-		logger          = log.NewLogger("test", log.WithSink(io.Discard))
+		logger          = log.Noop
 		chunk           = testingc.GenerateTestRandomChunk()
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()

@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"runtime"
 	"sort"
@@ -238,7 +237,7 @@ func newTestDB(t testing.TB, o *Options) *DB {
 			return nil
 		}
 	}
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)

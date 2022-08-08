@@ -6,7 +6,6 @@ package puller_test
 
 import (
 	"errors"
-	"io"
 	"math"
 	"testing"
 	"time"
@@ -592,7 +591,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := mockk.NewMockKademlia(ops.kad...)
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 
 	o := puller.Options{
 		Bins: ops.bins,

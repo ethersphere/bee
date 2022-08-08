@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"runtime"
 	"testing"
 	"time"
@@ -24,7 +23,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 
 	// create a pingpong server that handles the incoming stream
 	server := pingpong.New(nil, logger, nil)

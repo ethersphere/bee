@@ -37,7 +37,7 @@ func TestDirs(t *testing.T) {
 		ctx                 = context.Background()
 		storer              = mock.NewStorer()
 		mockStatestore      = statestore.NewStateStore()
-		logger              = log.NewLogger("test", log.WithSink(io.Discard))
+		logger              = log.Noop
 		client, _, _, _     = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			Tags:            tags.NewTags(mockStatestore, logger),
@@ -457,7 +457,7 @@ func TestEmtpyDir(t *testing.T) {
 		dirUploadResource = "/bzz"
 		storer            = mock.NewStorer()
 		mockStatestore    = statestore.NewStateStore()
-		logger            = log.NewLogger("test", log.WithSink(io.Discard))
+		logger            = log.Noop
 		client, _, _, _   = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			Tags:            tags.NewTags(mockStatestore, logger),

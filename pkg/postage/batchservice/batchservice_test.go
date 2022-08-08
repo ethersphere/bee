@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"errors"
 	"hash"
-	"io"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -23,7 +22,7 @@ import (
 )
 
 var (
-	testLog    = log.NewLogger("test", log.WithSink(io.Discard))
+	testLog    = log.Noop
 	errTest    = errors.New("fails")
 	testTxHash = make([]byte, 32)
 )

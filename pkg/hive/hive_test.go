@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"runtime/debug"
 	"strconv"
@@ -38,7 +37,7 @@ var (
 )
 
 func TestHandlerRateLimit(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
 	networkID := uint64(1)
@@ -106,7 +105,7 @@ func TestHandlerRateLimit(t *testing.T) {
 }
 
 func TestBroadcastPeers(t *testing.T) {
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	rand.Seed(time.Now().UnixNano())
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)

@@ -5,7 +5,6 @@
 package batchstore_test
 
 import (
-	"io"
 	"math/big"
 	"testing"
 
@@ -386,7 +385,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
 
-	logger := log.NewLogger("test", log.WithSink(io.Discard))
+	logger := log.Noop
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -401,7 +400,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, log.NewLogger("test", log.WithSink(io.Discard))) // TODO: replace with logger when state-store is migrated.
+	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop) // TODO: replace with logger when state-store is migrated.
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{
