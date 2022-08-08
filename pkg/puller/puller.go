@@ -16,6 +16,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -35,10 +36,10 @@ type Options struct {
 }
 
 type Puller struct {
-	topology   topologyDriver
-	syncRadius topology.SyncRadius
-	statestore storage.StateStorer
-	syncer     pullsync.Interface
+	topology     topologyDriver
+	reserveState postage.ReserveStateGetter
+	statestore   storage.StateStorer
+	syncer       pullsync.Interface
 
 	metrics metrics
 	logger  logging.Logger
@@ -61,7 +62,7 @@ type topologyDriver interface {
 	topology.NeighborhoodDepther
 }
 
-func New(stateStore storage.StateStorer, topology topologyDriver, syncRadius topology.SyncRadius, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topologyDriver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -70,13 +71,13 @@ func New(stateStore storage.StateStorer, topology topologyDriver, syncRadius top
 	}
 
 	p := &Puller{
-		statestore: stateStore,
-		topology:   topology,
-		syncRadius: syncRadius,
-		syncer:     pullSync,
-		metrics:    newMetrics(),
-		logger:     logger,
-		cursors:    make(map[string]peerCursors),
+		statestore:   stateStore,
+		topology:     topology,
+		reserveState: reserveState,
+		syncer:       pullSync,
+		metrics:      newMetrics(),
+		logger:       logger,
+		cursors:      make(map[string]peerCursors),
 
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),
@@ -130,7 +131,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// if we're already syncing with this peer, make sure
 			// that we're syncing the correct bins according to depth
 			neighborhoodDepth := p.topology.NeighborhoodDepth()
-			syncRadius := p.syncRadius.SyncRadius()
+			syncRadius := p.syncRadius()
 
 			// we defer the actual start of syncing to get out of the iterator first
 			var (
@@ -465,6 +466,10 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		from = top + 1
 	}
+}
+
+func (p *Puller) syncRadius() uint8 {
+	return p.reserveState.GetReserveState().StorageRadius
 }
 
 func (p *Puller) Close() error {

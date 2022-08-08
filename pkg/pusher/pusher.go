@@ -42,7 +42,7 @@ type Service struct {
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
-	syncRadius        topology.SyncRadius
+	depther           topology.NeighborhoodDepther
 	logger            logging.Logger
 	tag               *tags.Tags
 	metrics           metrics
@@ -68,13 +68,13 @@ var (
 
 const chunkStoreTimeout = 2 * time.Second
 
-func New(networkID uint64, storer storage.Storer, syncRadius topology.SyncRadius, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	p := &Service{
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
 		validStamp:        validStamp,
-		syncRadius:        syncRadius,
+		depther:           depther,
 		tag:               tagger,
 		logger:            logger,
 		metrics:           newMetrics(),
@@ -294,12 +294,12 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 	}
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
-	sr := s.syncRadius.SyncRadius()
+	d := s.depther.NeighborhoodDepth()
 
 	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
-	if po < sr && s.attempts.try(addr) {
+	if po < d && s.attempts.try(addr) {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, sr)
+		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)
 	}
 	s.logger.Tracef("pusher: pushed chunk %s to node %s, receipt depth %d", addr, peer, po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/puller"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -594,13 +595,23 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	kad := mockk.NewMockKademlia(ops.kad...)
 	logger := logging.New(io.Discard, 0)
 
+	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: kad.NeighborhoodDepth()}}
+
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	return puller.New(s, kad, nil, ps, logger, o, 0), s, kad, ps
+	return puller.New(s, kad, rs, ps, logger, o, 0), s, kad, ps
 }
 
 type c struct {
 	b    uint8  //bin
 	f, t uint64 //from, to
+}
+
+type reserveStateGetter struct {
+	rs postage.ReserveState
+}
+
+func (r *reserveStateGetter) GetReserveState() *postage.ReserveState {
+	return &r.rs
 }
