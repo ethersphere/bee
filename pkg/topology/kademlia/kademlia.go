@@ -194,7 +194,7 @@ func New(
 		k.metrics.Blocklist.Inc()
 	}
 
-	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, log.NewLogger("root").WithName(blocker.LoggerName).Register()) // TODO: get the root logger from the source.
+	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger.WithName(blocker.LoggerName).Register())
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins

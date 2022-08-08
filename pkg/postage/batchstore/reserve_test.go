@@ -400,7 +400,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop) // TODO: replace with logger when state-store is migrated.
+	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{

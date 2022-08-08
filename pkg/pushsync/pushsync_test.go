@@ -825,7 +825,7 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 		return ch, nil
 	}
 
-	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, log.Noop, acct, mockPricer, signer, nil, -1), storer, mtag // TODO: move to one logger when migration is done.
+	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1), storer, mtag
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

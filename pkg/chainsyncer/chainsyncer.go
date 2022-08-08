@@ -91,7 +91,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		c.logger.Warning("peer is unsynced and will be temporarily blocklisted", "peer", a)
 		c.metrics.UnsyncedPeers.Inc()
 	}
-	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, log.NewLogger("root").WithName(blocker.LoggerName).Register()) // TODO: get the root logger from the source.
+	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, logger.WithName(blocker.LoggerName).Register())
 
 	c.wg.Add(1)
 	go c.manage()
