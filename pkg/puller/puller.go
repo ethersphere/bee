@@ -36,7 +36,7 @@ type Options struct {
 }
 
 type Puller struct {
-	topology     topologyDriver
+	topology     topology.Driver
 	reserveState postage.ReserveStateGetter
 	statestore   storage.StateStorer
 	syncer       pullsync.Interface
@@ -56,13 +56,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 }
 
-type topologyDriver interface {
-	topology.EachPeerer
-	topology.TopologyChangeSubscriber
-	topology.NeighborhoodDepther
-}
-
-func New(stateStore storage.StateStorer, topology topologyDriver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)

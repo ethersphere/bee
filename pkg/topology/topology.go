@@ -24,18 +24,14 @@ var (
 type Driver interface {
 	p2p.Notifier
 	PeerAdder
+	ClosestPeerer
 	EachPeerer
 	EachNeighbor
 	NeighborhoodDepther
-	TopologyChangeSubscriber
+	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
 	Halter
 	Snapshot() *KadParams
-}
-
-type TopologyChangeSubscriber interface {
-	// AddPeers is called when peers are added to the topology backlog
-	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 }
 
 type PeerAdder interface {
@@ -52,7 +48,6 @@ type ClosestPeerer interface {
 }
 
 type EachPeerer interface {
-	ClosestPeerer
 	// EachPeer iterates from closest bin to farthest
 	EachPeer(EachPeerFunc, Filter) error
 	// EachPeerRev iterates from farthest bin to closest
@@ -64,6 +59,8 @@ type EachNeighbor interface {
 	EachNeighbor(EachPeerFunc) error
 	// EachNeighborRev iterates from farthest bin to closest within the neighborhood.
 	EachNeighborRev(EachPeerFunc) error
+	// IsWithinDepth checks if an address is the within neighborhood.
+	IsWithinDepth(swarm.Address) bool
 }
 
 // Filter defines the different filters that can be used with the Peer iterators
@@ -153,14 +150,7 @@ type Halter interface {
 }
 
 type NeighborhoodDepther interface {
-	// IsWithinDepth checks if an address is the within neighborhood.
-	IsWithinDepth(swarm.Address) bool
 	NeighborhoodDepth() uint8
-}
-
-type SyncRadius interface {
-	SyncRadius() uint8
-	IsWithinSyncRadius(swarm.Address) bool
 }
 
 type SetStorageRadiuser interface {
