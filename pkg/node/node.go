@@ -267,28 +267,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
-	// Check if the the batchstore exists. If not, we can assume it's missing
-	// due to a migration or it's a fresh install.
-	batchStoreExists, err := batchStoreExists(stateStore)
-	if err != nil {
-		return nil, err
-	}
-
-	v2Flag, err := batchStoreV2FlagExists(stateStore)
-	if err != nil {
-		return nil, err
-	}
-
-	if batchStoreExists && !v2Flag {
-		batchStoreExists = false
-		if err := batchStore.CleanupReset(); err != nil {
-			return nil, fmt.Errorf("batchstore: cleanup and reset: %w", err)
-		}
-		if err := setV2Flag(stateStore); err != nil {
-			return nil, fmt.Errorf("batchstore: set V2 flag: %w", err)
-		}
-	}
-
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 		p2pCtx,
 		logger,
@@ -540,6 +518,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
+	// Check if the the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
+	batchStoreExists, err := batchStoreExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: exists: %w", err)
+	}
+
 	var initBatchState *postage.ChainSnapshot
 	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
 	// install or explicitly asked by user to resync
@@ -614,6 +599,21 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
+
+	v2Flag, err := batchStoreV2FlagExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: v2 flag exists: %w", err)
+	}
+
+	if batchStoreExists && !v2Flag {
+		batchStoreExists = false
+		if err := batchStore.CleanupReset(); err != nil {
+			return nil, fmt.Errorf("batchstore: cleanup and reset: %w", err)
+		}
+		if err := setV2Flag(stateStore); err != nil {
+			return nil, fmt.Errorf("batchstore: set V2 flag: %w", err)
+		}
+	}
 
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
