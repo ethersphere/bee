@@ -33,8 +33,8 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "hive"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "hive"
 
 const (
 	protocolName           = "hive"
@@ -83,7 +83,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 
 	svc := &Service{
 		streamer:          streamer,
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		addressBook:       addressbook,
 		networkID:         networkID,
 		metrics:           newMetrics(),

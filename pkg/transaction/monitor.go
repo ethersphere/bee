@@ -59,7 +59,7 @@ func NewMonitor(logger log.Logger, backend Backend, sender common.Address, polli
 	t := &transactionMonitor{
 		ctx:        ctx,
 		cancelFunc: cancelFunc,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		backend:    backend,
 		sender:     sender,
 

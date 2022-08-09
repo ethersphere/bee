@@ -29,8 +29,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "pullsync"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pullsync"
 
 const (
 	protocolName     = "pullsync"
@@ -91,7 +91,7 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		metrics:    newMetrics(),
 		unwrap:     unwrap,
 		validStamp: validStamp,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		ruidCtx:    make(map[string]map[uint32]func()),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),

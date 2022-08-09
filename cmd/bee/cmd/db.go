@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/spf13/cobra"
 )
@@ -66,7 +65,7 @@ func dbIndicesCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, log.NewLogger("root").WithName(localstore.LoggerName).Register()) // TODO: get the root logger from the source.
+			storer, err := localstore.New(path, nil, nil, nil, logger)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -120,7 +119,7 @@ func dbExportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger.WithName(localstore.LoggerName).Register())
+			storer, err := localstore.New(path, nil, nil, nil, logger)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -180,7 +179,7 @@ func dbImportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger.WithName(localstore.LoggerName).Register())
+			storer, err := localstore.New(path, nil, nil, nil, logger)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -274,7 +273,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return nil
 			}
 
-			stateStore, err := leveldb.NewStateStore(statestorePath, log.NewLogger("root").WithName(leveldb.LoggerName).Register()) // TODO: get the root logger from the source.
+			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}

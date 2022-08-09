@@ -34,8 +34,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "tags"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "tags"
 
 const (
 	maxPage      = 1000 // hard limit of page size
@@ -62,7 +62,7 @@ func NewTags(stateStore storage.StateStorer, logger log.Logger) *Tags {
 	return &Tags{
 		tags:       &sync.Map{},
 		stateStore: stateStore,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }

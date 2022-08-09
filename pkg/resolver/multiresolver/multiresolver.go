@@ -17,8 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "multiresolver"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "multiresolver"
 
 // Ensure MultiResolver implements Resolver interface.
 var _ resolver.Interface = (*MultiResolver)(nil)
@@ -95,7 +95,7 @@ func WithConnectionConfigs(cfgs []ConnectionConfig) Option {
 // WithLogger will set the logger used by the MultiResolver.
 func WithLogger(logger log.Logger) Option {
 	return func(mr *MultiResolver) {
-		mr.logger = logger
+		mr.logger = logger.WithName(loggerName).Register()
 	}
 }
 

@@ -23,8 +23,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "swapprotocol"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "swapprotocol"
 
 const (
 	protocolName    = "swap"
@@ -74,7 +74,7 @@ type Service struct {
 func New(streamer p2p.Streamer, logger log.Logger, beneficiary common.Address, priceOracle priceoracle.Service) *Service {
 	return &Service{
 		streamer:    streamer,
-		logger:      logger,
+		logger:      logger.WithName(loggerName).Register(),
 		beneficiary: beneficiary,
 		priceOracle: priceOracle,
 	}

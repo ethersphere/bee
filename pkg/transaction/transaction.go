@@ -23,8 +23,8 @@ import (
 	"golang.org/x/net/context"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "transaction"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "transaction"
 
 const (
 	noncePrefix              = "transaction_nonce_"
@@ -119,7 +119,7 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 	t := &transactionService{
 		ctx:     ctx,
 		cancel:  cancel,
-		logger:  logger,
+		logger:  logger.WithName(loggerName).Register(),
 		backend: backend,
 		signer:  signer,
 		sender:  senderAddress,

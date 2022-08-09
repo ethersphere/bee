@@ -17,8 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "batchstore"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "batchstore"
 
 const (
 	batchKeyPrefix  = "batchstore_batch_"
@@ -80,7 +80,7 @@ func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer,
 		rs:      rs,
 		evictFn: ev,
 		metrics: newMetrics(),
-		logger:  logger,
+		logger:  logger.WithName(loggerName).Register(),
 	}
 
 	return s, nil

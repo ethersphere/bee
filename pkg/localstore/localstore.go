@@ -43,8 +43,8 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "localstore"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "localstore"
 
 var _ storage.Storer = &DB{}
 
@@ -308,7 +308,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		collectGarbageWorkerDone:  make(chan struct{}),
 		reserveEvictionWorkerDone: make(chan struct{}),
 		metrics:                   newMetrics(),
-		logger:                    logger,
+		logger:                    logger.WithName(loggerName).Register(),
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity

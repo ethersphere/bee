@@ -66,6 +66,8 @@ func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (boo
 // with the given maxDelay duration as the maximum time we can be behind the
 // last block.
 func WaitSynced(ctx context.Context, logger log.Logger, backend Backend, maxDelay time.Duration) error {
+	logger = logger.WithName(loggerName).Register()
+
 	for {
 		synced, blockTime, err := IsSynced(ctx, backend, maxDelay)
 		if err != nil {

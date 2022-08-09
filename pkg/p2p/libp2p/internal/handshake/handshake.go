@@ -23,8 +23,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "handshake"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "handshake"
 
 const (
 	// ProtocolName is the text of the name of the handshake protocol.
@@ -107,7 +107,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		transaction:           transaction,
 		senderMatcher:         isSender,
 		libp2pID:              ownPeerID,
-		logger:                logger,
+		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
 	}
 	svc.welcomeMessage.Store(welcomeMessage)

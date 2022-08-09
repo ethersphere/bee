@@ -21,8 +21,8 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "leveldb"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "leveldb"
 
 var _ storage.StateStorer = (*Store)(nil)
 
@@ -40,7 +40,7 @@ func NewInMemoryStateStore(l log.Logger) (*Store, error) {
 
 	s := &Store{
 		db:     ldb,
-		logger: l,
+		logger: l.WithName(loggerName).Register(),
 	}
 
 	if err := migrate(s); err != nil {
@@ -52,6 +52,8 @@ func NewInMemoryStateStore(l log.Logger) (*Store, error) {
 
 // NewStateStore creates a new persistent state storage.
 func NewStateStore(path string, l log.Logger) (*Store, error) {
+	l = l.WithName(loggerName).Register()
+
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
 		if !ldberr.IsCorrupted(err) {

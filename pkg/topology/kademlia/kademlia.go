@@ -34,8 +34,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "kademlia"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "kademlia"
 
 const (
 	maxConnAttempts        = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
@@ -155,12 +155,10 @@ func New(
 		o.BitSuffixLength = defaultBitSuffixLength
 	}
 
-	start := time.Now()
 	imc, err := im.NewCollector(metricsDB)
 	if err != nil {
 		return nil, err
 	}
-	logger.Debug("creating metrics collector", "elapsed", time.Since(start))
 
 	k = &Kad{
 		base:              base,
@@ -175,7 +173,7 @@ func New(
 		bootnodes:         o.Bootnodes,
 		manageC:           make(chan struct{}, 1),
 		waitNext:          waitnext.New(),
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		bootnode:          o.BootnodeMode,
 		collector:         imc,
 		quit:              make(chan struct{}),
@@ -194,7 +192,7 @@ func New(
 		k.metrics.Blocklist.Inc()
 	}
 
-	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger.WithName(blocker.LoggerName).Register())
+	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, k.logger)
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins

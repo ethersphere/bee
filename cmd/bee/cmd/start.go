@@ -187,7 +187,7 @@ func (c *command) initStartCmd() (err error) {
 				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
 				TracingEndpoint:            tracingEndpoint,
 				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
-				Logger:                     logger.WithName(node.LoggerName).Register(),
+				Logger:                     logger,
 				PaymentThreshold:           c.config.GetString(optionNamePaymentThreshold),
 				PaymentTolerance:           c.config.GetInt64(optionNamePaymentTolerance),
 				PaymentEarly:               c.config.GetInt64(optionNamePaymentEarly),

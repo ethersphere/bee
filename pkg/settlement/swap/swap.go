@@ -20,8 +20,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "swap"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "swap"
 
 var (
 	// ErrWrongChequebook is the error if a peer uses a different chequebook from before.
@@ -68,7 +68,7 @@ type Service struct {
 func New(proto swapprotocol.Interface, logger log.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting, cashoutAddress common.Address) *Service {
 	return &Service{
 		proto:          proto,
-		logger:         logger,
+		logger:         logger.WithName(loggerName).Register(),
 		store:          store,
 		metrics:        newMetrics(),
 		chequebook:     chequebook,

@@ -15,8 +15,8 @@ import (
 	"go.uber.org/atomic"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "blocker"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "blocker"
 
 // sequencerResolution represents monotonic sequencer resolution.
 // It must be in the time.Duration base form without a multiplier.
@@ -56,7 +56,7 @@ func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime tim
 		peers:             map[string]*peer{},
 		wakeupCh:          make(chan struct{}),
 		quit:              make(chan struct{}),
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		closeWg:           sync.WaitGroup{},
 		blocklistCallback: callback,
 	}

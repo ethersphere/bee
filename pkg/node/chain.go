@@ -88,9 +88,9 @@ func InitChain(
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
 	}
 
-	transactionMonitor := transaction.NewMonitor(logger.WithName(transaction.LoggerName).Register(), backend, overlayEthAddress, pollingInterval, cancellationDepth)
+	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger.WithName(transaction.LoggerName).Register(), backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
@@ -183,7 +183,7 @@ func InitChequebookService(
 		ctx,
 		chequebookFactory,
 		stateStore,
-		logger.WithName(chequebook.LoggerName).Register(),
+		logger,
 		deposit,
 		transactionService,
 		backend,
@@ -253,9 +253,9 @@ func InitSwap(
 		currentPriceOracleAddress = common.HexToAddress(priceOracleAddress)
 	}
 
-	priceOracle := priceoracle.New(logger.WithName(priceoracle.LoggerName).Register(), currentPriceOracleAddress, transactionService, 300)
+	priceOracle := priceoracle.New(logger, currentPriceOracleAddress, transactionService, 300)
 	priceOracle.Start()
-	swapProtocol := swapprotocol.New(p2ps, logger.WithName(swapprotocol.LoggerName).Register(), overlayEthAddress, priceOracle)
+	swapProtocol := swapprotocol.New(p2ps, logger, overlayEthAddress, priceOracle)
 	swapAddressBook := swap.NewAddressbook(stateStore)
 
 	cashoutAddress := overlayEthAddress
@@ -265,7 +265,7 @@ func InitSwap(
 
 	swapService := swap.New(
 		swapProtocol,
-		logger.WithName(swap.LoggerName).Register(),
+		logger,
 		stateStore,
 		chequebookService,
 		chequeStore,

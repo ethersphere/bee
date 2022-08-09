@@ -27,8 +27,8 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "pusher"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pusher"
 
 type Op struct {
 	Chunk  swarm.Chunk
@@ -77,7 +77,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		validStamp:        validStamp,
 		depther:           depther,
 		tag:               tagger,
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),

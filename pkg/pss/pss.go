@@ -23,8 +23,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "pss"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pss"
 
 var (
 	_            Interface = (*pss)(nil)
@@ -61,7 +61,7 @@ type pss struct {
 func New(key *ecdsa.PrivateKey, logger log.Logger) Interface {
 	return &pss{
 		key:      key,
-		logger:   logger,
+		logger:   logger.WithName(loggerName).Register(),
 		handlers: make(map[Topic][]*Handler),
 		metrics:  newMetrics(),
 		quit:     make(chan struct{}),

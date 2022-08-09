@@ -32,8 +32,8 @@ import (
 	"resenje.org/singleflight"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "retrieval"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "retrieval"
 
 const (
 	protocolName    = "retrieval"
@@ -80,7 +80,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
 		storer:        storer,
-		logger:        logger,
+		logger:        logger.WithName(loggerName).Register(),
 		accounting:    accounting,
 		pricer:        pricer,
 		metrics:       newMetrics(),

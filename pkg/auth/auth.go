@@ -22,8 +22,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "auth"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "auth"
 
 type authRecord struct {
 	Role   string    `json:"r"`
@@ -76,7 +76,7 @@ func New(encryptionKey, passwordHash string, logger log.Logger) (*Authenticator,
 		enforcer:     e,
 		ciph:         ciph,
 		passwordHash: []byte(passwordHash),
-		log:          logger,
+		log:          logger.WithName(loggerName).Register(),
 	}
 
 	return &auth, nil

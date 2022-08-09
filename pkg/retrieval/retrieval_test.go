@@ -510,7 +510,7 @@ func TestClosestPeer(t *testing.T) {
 	addr2 := swarm.MustParseHexAddress("0300000000000000000000000000000000000000000000000000000000000000")
 	addr3 := swarm.MustParseHexAddress("0400000000000000000000000000000000000000000000000000000000000000")
 
-	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), nil, nil, nil, nil, false, nil)
+	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), log.Noop, nil, nil, nil, false, nil)
 
 	t.Run("closest", func(t *testing.T) {
 		addr, err := ret.ClosestPeer(addr1, nil, false)

@@ -23,8 +23,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "accounting"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "accounting"
 
 var (
 	_                        Interface = (*Accounting)(nil)
@@ -180,7 +180,7 @@ func NewAccounting(
 	PaymentThreshold *big.Int,
 	PaymentTolerance,
 	EarlyPayment int64,
-	Logger log.Logger,
+	logger log.Logger,
 	Store storage.StateStorer,
 	Pricing pricing.Interface,
 	refreshRate *big.Int,
@@ -193,7 +193,7 @@ func NewAccounting(
 		paymentTolerance: PaymentTolerance,
 		earlyPayment:     EarlyPayment,
 		disconnectLimit:  new(big.Int).Div(new(big.Int).Mul(PaymentThreshold, big.NewInt(100+PaymentTolerance)), big.NewInt(100)),
-		logger:           Logger,
+		logger:           logger.WithName(loggerName).Register(),
 		store:            Store,
 		pricing:          Pricing,
 		metrics:          newMetrics(),

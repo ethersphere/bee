@@ -60,8 +60,8 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "api"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "api"
 
 const (
 	SwarmPinHeader            = "Swarm-Pin"
@@ -222,8 +222,8 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.CORSAllowedOrigins = cors
 	s.beeMode = beeMode
 	s.gatewayMode = gatewayMode
-	s.logger = logger
-	s.loggerV1 = logger.V(1).Register()
+	s.logger = logger.WithName(loggerName).Register()
+	s.loggerV1 = s.logger.V(1).Register()
 	s.chequebookEnabled = chequebookEnabled
 	s.swapEnabled = swapEnabled
 	s.publicKey = publicKey

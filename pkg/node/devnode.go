@@ -106,13 +106,13 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		tracerCloser:   tracerCloser,
 	}
 
-	stateStore, err := leveldb.NewInMemoryStateStore(logger.WithName(leveldb.LoggerName).Register())
+	stateStore, err := leveldb.NewInMemoryStateStore(logger)
 	if err != nil {
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger.WithName(batchstore.LoggerName).Register())
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -139,7 +139,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger.WithName(auth.LoggerName).Register()); err != nil {
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
@@ -183,7 +183,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -218,16 +218,16 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	var swarmAddress swarm.Address
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger.WithName(localstore.LoggerName).Register())
+	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
 
-	tagService := tags.NewTags(stateStore, logger.WithName(tags.LoggerName).Register())
+	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
-	pssService := pss.New(mockKey, logger.WithName(pss.LoggerName).Register())
+	pssService := pss.New(mockKey, logger)
 	b.pssCloser = pssService
 
 	pssService.SetPushSyncer(mockPushsync.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -324,7 +324,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		acc            = mockAccounting.NewAccounting()
 		kad            = mockTopology.NewTopologyDriver()
 		storeRecipient = mockStateStore.NewStateStore()
-		pseudoset      = pseudosettle.New(nil, logger.WithName(pseudosettle.LoggerName).Register(), storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
+		pseudoset      = pseudosettle.New(nil, logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
 		mockSwap       = swapmock.New(swapmock.WithCashoutStatusFunc(
 			func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 				return &chequebook.CashoutStatus{
@@ -405,7 +405,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
 
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,

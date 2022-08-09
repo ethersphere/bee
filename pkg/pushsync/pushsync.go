@@ -32,8 +32,8 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "pushsync"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pushsync"
 
 const (
 	protocolName    = "pushsync"
@@ -110,7 +110,7 @@ func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnec
 		tagger:         tagger,
 		isFullNode:     isFullNode,
 		unwrap:         unwrap,
-		logger:         logger,
+		logger:         logger.WithName(loggerName).Register(),
 		accounting:     accounting,
 		pricer:         pricer,
 		metrics:        newMetrics(),

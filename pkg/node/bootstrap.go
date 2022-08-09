@@ -102,7 +102,7 @@ func bootstrapNode(
 		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown()).ErrorOrNil()
 	}()
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger.WithName(libp2p.LoggerName).Register(), tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
@@ -116,7 +116,7 @@ func bootstrapNode(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger.WithName(hive.LoggerName).Register())
+	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
 	if err != nil {
 		return nil, fmt.Errorf("hive: %w", err)
 	}
@@ -131,7 +131,7 @@ func bootstrapNode(
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, metricsDB, logger.WithName(kademlia.LoggerName).Register(),
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, metricsDB, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -145,7 +145,7 @@ func bootstrapNode(
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger.WithName(pricing.LoggerName).Register(), paymentThreshold, big.NewInt(minPaymentThreshold))
+	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
 	}
@@ -154,7 +154,7 @@ func bootstrapNode(
 		paymentThreshold,
 		o.PaymentTolerance,
 		o.PaymentEarly,
-		logger.WithName(accounting.LoggerName).Register(),
+		logger,
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
@@ -168,7 +168,7 @@ func bootstrapNode(
 	// bootstraper mode uses the light node refresh rate
 	enforcedRefreshRate := big.NewInt(lightRefreshRate)
 
-	pseudosettleService := pseudosettle.New(p2ps, logger.WithName(pseudosettle.LoggerName).Register(), stateStore, acc, enforcedRefreshRate, enforcedRefreshRate, p2ps)
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, enforcedRefreshRate, p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
@@ -183,12 +183,12 @@ func bootstrapNode(
 
 	storer := inmemstore.New()
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger.WithName(retrieval.LoggerName).Register(), acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, noopValidStamp, retrieve, logger.WithName(netstore.LoggerName).Register())
+	ns := netstore.New(storer, noopValidStamp, retrieve, logger)
 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err

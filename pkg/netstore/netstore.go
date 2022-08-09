@@ -24,8 +24,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "netstore"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "netstore"
 
 const (
 	maxBgPutters int = 16
@@ -53,7 +53,7 @@ func New(s storage.Storer, validStamp postage.ValidStampFn, r retrieval.Interfac
 		Storer:     s,
 		validStamp: validStamp,
 		retrieval:  r,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		bgWorkers:  make(chan struct{}, maxBgPutters),
 		metrics:    newMetrics(),
 	}

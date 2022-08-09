@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -305,7 +306,7 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 	)
 
 	return log.NewLogger(
-		"root",
+		node.LoggerName,
 		log.WithSink(sink),
 		log.WithVerbosity(vLevel),
 	).Register(), nil

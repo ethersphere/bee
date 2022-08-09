@@ -19,7 +19,7 @@ const (
 )
 
 func TestAuthorize(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, nil)
+	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}
@@ -73,7 +73,7 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestEnforce(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, nil)
+	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}

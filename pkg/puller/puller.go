@@ -22,8 +22,8 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "puller"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "puller"
 
 const (
 	cursorPruneTimeout = 24 * time.Hour
@@ -66,7 +66,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 		topology:   topology,
 		syncer:     pullSync,
 		metrics:    newMetrics(),
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		cursors:    make(map[string]peerCursors),
 
 		syncPeers: make([]map[string]*syncPeer, bins),

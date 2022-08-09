@@ -20,8 +20,8 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "pinpong"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pinpong"
 
 const (
 	protocolName    = "pingpong"
@@ -43,7 +43,7 @@ type Service struct {
 func New(streamer p2p.Streamer, logger log.Logger, tracer *tracing.Tracer) *Service {
 	return &Service{
 		streamer: streamer,
-		logger:   logger,
+		logger:   logger.WithName(loggerName).Register(),
 		tracer:   tracer,
 		metrics:  newMetrics(),
 	}

@@ -55,8 +55,8 @@ import (
 	"go.uber.org/atomic"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "libp2p"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "libp2p"
 
 var (
 	_ p2p.Service      = (*Service)(nil)
@@ -249,7 +249,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, swapBackend, overlay, networkID, o.FullNode, o.Transaction, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger.WithName(handshake.LoggerName).Register())
+	handshakeService, err := handshake.New(signer, advertisableAddresser, swapBackend, overlay, networkID, o.FullNode, o.Transaction, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -279,7 +279,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		peers:             peerRegistry,
 		addressbook:       ab,
 		blocklist:         blocklist.NewBlocklist(storer),
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		tracer:            tracer,
 		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
 		ready:             make(chan struct{}),

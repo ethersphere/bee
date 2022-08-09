@@ -18,8 +18,8 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "batchservice"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "batchservice"
 
 const (
 	dirtyDBKey    = "batchservice_dirty_db"
@@ -93,7 +93,7 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync}, nil
+	return &batchService{stateStore, storer, logger.WithName(loggerName).Register(), listener, owner, batchListener, sum, resync}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and

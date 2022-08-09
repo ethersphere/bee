@@ -21,9 +21,9 @@ import (
 func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
-		return leveldb.NewInMemoryStateStore(logger.WithName(leveldb.LoggerName).Register())
+		return leveldb.NewInMemoryStateStore(logger)
 	}
-	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), logger.WithName(leveldb.LoggerName).Register())
+	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), logger)
 }
 
 const secureOverlayKey = "non-mineable-overlay"

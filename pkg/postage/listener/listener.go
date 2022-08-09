@@ -27,8 +27,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "listener"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "listener"
 
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
@@ -85,7 +85,7 @@ func New(
 ) postage.Listener {
 	return &listener{
 		syncingStopped:      syncingStopped,
-		logger:              logger,
+		logger:              logger.WithName(loggerName).Register(),
 		ev:                  ev,
 		blockTime:           blockTime,
 		postageStampAddress: postageStampAddress,

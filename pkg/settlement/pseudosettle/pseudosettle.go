@@ -22,8 +22,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "pseudosettle"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pseudosettle"
 
 const (
 	protocolName    = "pseudosettle"
@@ -73,7 +73,7 @@ type lastPayment struct {
 func New(streamer p2p.Streamer, logger log.Logger, store storage.StateStorer, accounting settlement.Accounting, refreshRate, lightRefreshRate *big.Int, p2pService p2p.Service) *Service {
 	return &Service{
 		streamer:         streamer,
-		logger:           logger,
+		logger:           logger.WithName(loggerName).Register(),
 		metrics:          newMetrics(),
 		store:            store,
 		accounting:       accounting,

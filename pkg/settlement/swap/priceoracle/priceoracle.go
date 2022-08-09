@@ -18,8 +18,8 @@ import (
 	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "priceoracle"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "priceoracle"
 
 var (
 	errDecodeABI = errors.New("could not decode abi data")
@@ -51,7 +51,7 @@ var (
 
 func New(logger log.Logger, priceOracleAddress common.Address, transactionService transaction.Service, timeDivisor int64) Service {
 	return &service{
-		logger:             logger,
+		logger:             logger.WithName(loggerName).Register(),
 		priceOracleAddress: priceOracleAddress,
 		transactionService: transactionService,
 		exchangeRate:       big.NewInt(0),

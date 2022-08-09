@@ -24,8 +24,8 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
-// LoggerName is the tree path name of the logger for this package.
-const LoggerName = "chainsyncer"
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "chainsyncer"
 
 const (
 	defaultFlagTimeout     = 20 * time.Minute
@@ -80,7 +80,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		peerIterator: peerIterator,
 		pollEvery:    o.PollEvery,
 		flagTimeout:  o.FlagTimeout,
-		logger:       logger,
+		logger:       logger.WithName(loggerName).Register(),
 		lru:          lruCache,
 		disconnecter: disconnecter,
 		metrics:      newMetrics(),
@@ -91,7 +91,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		c.logger.Warning("peer is unsynced and will be temporarily blocklisted", "peer", a)
 		c.metrics.UnsyncedPeers.Inc()
 	}
-	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, logger.WithName(blocker.LoggerName).Register())
+	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, c.logger)
 
 	c.wg.Add(1)
 	go c.manage()
