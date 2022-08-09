@@ -606,7 +606,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	if batchStoreExists && !v2Flag {
-		batchStoreExists = false
 		if err := batchStore.CleanupReset(); err != nil {
 			return nil, fmt.Errorf("batchstore: cleanup and reset: %w", err)
 		}
