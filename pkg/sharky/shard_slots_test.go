@@ -5,7 +5,6 @@ package sharky
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -21,12 +20,12 @@ func TestShard(t *testing.T) {
 
 	shard := newShard(t)
 
-	payload := write{buf: []byte{0xff}, res: make(chan entry)}
-	loc := writePayload(t, shard, payload)
+	write := []byte{0xff}
+	loc := writePayload(t, shard, write)
 	buf := readFromLocation(t, shard, loc)
 
-	if !bytes.Equal(buf, payload.buf) {
-		t.Fatalf("want %x, got %x", buf, payload.buf)
+	if !bytes.Equal(buf, write) {
+		t.Fatalf("want %x, got %x", buf, write)
 	}
 
 	if loc.Slot != 0 {
@@ -34,24 +33,24 @@ func TestShard(t *testing.T) {
 	}
 
 	// in order for the test to succeed this slot is expected to become available before test finishes
-	releaseSlot(t, shard, loc)
+	shard.release(loc.Slot)
 
-	payload = write{buf: []byte{0xff >> 1}, res: make(chan entry)}
-	loc = writePayload(t, shard, payload)
+	write = []byte{0xff >> 1}
+	loc = writePayload(t, shard, write)
 
 	// immediate write should pick the next slot
 	if loc.Slot != 1 {
 		t.Fatalf("expected to write to slot 1, got %d", loc.Slot)
 	}
 
-	releaseSlot(t, shard, loc)
+	shard.release(loc.Slot)
 
 	// we make ten writes expecting that slot 0 is released and becomes available for writing eventually
 	i, runs := 0, 10
 	for ; i < runs; i++ {
-		payload = write{buf: []byte{0x01 << i}, res: make(chan entry)}
-		loc = writePayload(t, shard, payload)
-		releaseSlot(t, shard, loc)
+		write = []byte{0x01 << i}
+		loc = writePayload(t, shard, write)
+		shard.release(loc.Slot)
 		if loc.Slot == 0 {
 			break
 		}
@@ -62,47 +61,33 @@ func TestShard(t *testing.T) {
 	}
 }
 
-func writePayload(t *testing.T, shard *shard, payload write) (loc Location) {
+func writePayload(t *testing.T, shard *shard, buf []byte) Location {
 	t.Helper()
 
 	select {
-	case shard.writes <- payload:
-		e := <-payload.res
-		if e.err != nil {
-			t.Fatal("write entry", e.err)
+	case slot := <-shard.available:
+		loc, err := shard.write(buf, slot.slot)
+		if err != nil {
+			t.Fatal(err)
 		}
-		loc = e.loc
+		return loc
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("write timeout")
 	}
 
-	return loc
+	return Location{}
 }
 
 func readFromLocation(t *testing.T, shard *shard, loc Location) []byte {
 	t.Helper()
 	buf := make([]byte, loc.Length)
 
-	select {
-	case shard.reads <- read{ctx: context.Background(), buf: buf[:loc.Length], slot: loc.Slot}:
-		if err := <-shard.errc; err != nil {
-			t.Fatal("read", err)
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout reading")
+	err := shard.read(buf, loc.Slot)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	return buf
-}
-
-func releaseSlot(t *testing.T, shard *shard, loc Location) {
-	t.Helper()
-	ctx := context.Background()
-	cctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-	if err := shard.release(cctx, loc.Slot); err != nil {
-		t.Fatal("release slot", loc.Slot, "err", err)
-	}
-	cancel()
 }
 
 type dirFS string
@@ -129,7 +114,7 @@ func newShard(t *testing.T) *shard {
 
 	var wg sync.WaitGroup
 
-	slots := newSlots(ffile.(sharkyFile), &wg)
+	slots := newSlots(ffile.(sharkyFile))
 	err = slots.load()
 	if err != nil {
 		t.Fatal(err)
@@ -137,9 +122,7 @@ func newShard(t *testing.T) *shard {
 
 	quit := make(chan struct{})
 	shard := &shard{
-		reads:       make(chan read),
-		errc:        make(chan error),
-		writes:      make(chan write),
+		available:   make(chan availableShard),
 		index:       uint8(index),
 		maxDataSize: 1,
 		file:        file.(sharkyFile),
@@ -161,12 +144,6 @@ func newShard(t *testing.T) *shard {
 		defer wg.Done()
 		shard.process()
 		close(terminated)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		slots.process(terminated)
 	}()
 
 	return shard

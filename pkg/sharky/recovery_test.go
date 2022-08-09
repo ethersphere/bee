@@ -78,9 +78,7 @@ func TestRecovery(t *testing.T) {
 		})
 		for i, add := range preserved {
 			if add {
-				if err := r.Add(locs[i]); err != nil {
-					t.Fatal(err)
-				}
+				r.Use(locs[i])
 			}
 		}
 		if err := r.Save(); err != nil {
@@ -96,7 +94,7 @@ func TestRecovery(t *testing.T) {
 		t.Run("preserved are found", func(t *testing.T) {
 			for i := range preserved {
 				loc := locs[i]
-				if err := s.Read(ctx, loc, buf); err != nil {
+				if err := s.Read(loc, buf); err != nil {
 					t.Fatal(err)
 				}
 				j := binary.BigEndian.Uint32(buf)
@@ -133,7 +131,7 @@ func TestRecovery(t *testing.T) {
 				if !added {
 					continue
 				}
-				if err := s.Read(ctx, locs[int(i)], buf); err != nil {
+				if err := s.Read(locs[int(i)], buf); err != nil {
 					t.Fatal(err)
 				}
 				j := binary.BigEndian.Uint32(buf)
@@ -144,7 +142,7 @@ func TestRecovery(t *testing.T) {
 		})
 		t.Run("all other slots also overwritten", func(t *testing.T) {
 			for _, loc := range freelocs {
-				if err := s.Read(ctx, loc, buf); err != nil {
+				if err := s.Read(loc, buf); err != nil {
 					t.Fatal(err)
 				}
 				data := buf[:len(payload)]
