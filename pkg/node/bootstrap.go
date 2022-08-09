@@ -373,6 +373,9 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 func batchStoreV2FlagExists(s storage.StateStorer) (bool, error) {
 	exists := false
 	if err := s.Get("batchstoreV2_flag", &exists); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return false, nil
+		}
 		return false, err
 	}
 	return exists, nil
