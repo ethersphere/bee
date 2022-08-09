@@ -248,7 +248,8 @@ func newTestDB(tb testing.TB, o *Options) *DB {
 		}
 	}
 	logger := log.Noop
-	db, err := New("", baseKey, nil, o, logger)
+
+	db, err := New(tb.TempDir(), baseKey, nil, o, logger)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -575,7 +576,7 @@ func validateData(t *testing.T, db *DB, item shed.Item, data []byte) {
 		t.Fatal("failed reading sharky location", err)
 	}
 	buf := make([]byte, loc.Length)
-	err = db.sharky.Read(context.TODO(), loc, buf)
+	err = db.sharky.Read(loc, buf)
 	if err != nil {
 		t.Fatal("failed reading data from sharky", err)
 	}
