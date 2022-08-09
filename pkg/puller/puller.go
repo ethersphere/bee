@@ -125,7 +125,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// if we're already syncing with this peer, make sure
 			// that we're syncing the correct bins according to depth
 			neighborhoodDepth := p.topology.NeighborhoodDepth()
-			syncRadius := p.syncRadius()
+			syncRadius := p.reserveState.GetReserveState().StorageRadius
 
 			// we defer the actual start of syncing to get out of the iterator first
 			var (
@@ -142,8 +142,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// should be removed from the syncPeer bin.
 			for po, bin := range p.syncPeers {
 				for peerAddr, v := range bin {
-					pe := peer{addr: v.address, po: uint8(po)}
-					peersDisconnected[peerAddr] = pe
+					peersDisconnected[peerAddr] = peer{addr: v.address, po: uint8(po)}
 				}
 			}
 
@@ -151,8 +150,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// never returns an error. In case in the future changes are made to the callback in a
 			// way that it returns an error - the value must be checked.
 			_ = p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-				bp := p.syncPeers[po]
 				if po >= neighborhoodDepth {
+					bp := p.syncPeers[po]
 					// delete from peersDisconnected since we'd like to sync
 					// with this peer
 					delete(peersDisconnected, peerAddr.ByteString())
@@ -161,12 +160,10 @@ func (p *Puller) manage(warmupTime time.Duration) {
 					if _, ok := bp[peerAddr.ByteString()]; !ok {
 						// we're not syncing with this peer yet, start doing so
 						bp[peerAddr.ByteString()] = newSyncPeer(peerAddr, p.bins)
-						peerEntry := peer{addr: peerAddr, po: po}
-						peersToSync = append(peersToSync, peerEntry)
+						peersToSync = append(peersToSync, peer{addr: peerAddr, po: po})
 					} else {
 						// already syncing, recalc
-						peerEntry := peer{addr: peerAddr, po: po}
-						peersToRecalc = append(peersToRecalc, peerEntry)
+						peersToRecalc = append(peersToRecalc, peer{addr: peerAddr, po: po})
 					}
 				}
 
@@ -460,10 +457,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		from = top + 1
 	}
-}
-
-func (p *Puller) syncRadius() uint8 {
-	return p.reserveState.GetReserveState().StorageRadius
 }
 
 func (p *Puller) Close() error {
