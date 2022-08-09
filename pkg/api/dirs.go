@@ -32,7 +32,6 @@ import (
 )
 
 var errEmptyDir = errors.New("no files in root directory")
-var errInvalidTar = errors.New("read tar stream: archive/tar: invalid tar header")
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
@@ -95,7 +94,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		case errors.Is(err, errEmptyDir):
 			jsonhttp.BadRequest(w, errEmptyDir)
-		case err.Error() == errInvalidTar.Error():
+		case errors.Is(err, tar.ErrHeader):
 			jsonhttp.BadRequest(w, "invalid filename in tar archive")
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
