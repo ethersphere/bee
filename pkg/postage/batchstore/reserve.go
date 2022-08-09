@@ -122,6 +122,46 @@ func (s *store) cleanup() error {
 	return nil
 }
 
+// cleanupReset removes all previous batches.
+// Must be called under lock.
+func (s *store) CleanupReset() error {
+
+	var evictions []*postage.Batch
+
+	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
+
+		b, err := s.get(valueKeyToID(key))
+		if err != nil {
+			return false, err
+		}
+
+		evictions = append(evictions, b)
+
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, b := range evictions {
+
+		err := s.evictFn(b.ID)
+		if err != nil {
+			return fmt.Errorf("evict batch %x: %w", b.ID, err)
+		}
+		err = s.store.Delete(valueKey(b.Value, b.ID))
+		if err != nil {
+			return fmt.Errorf("delete value key for batch %x: %w", b.ID, err)
+		}
+		err = s.store.Delete(batchKey(b.ID))
+		if err != nil {
+			return fmt.Errorf("delete batch %x: %w", b.ID, err)
+		}
+	}
+
+	return nil
+}
+
 // computeRadius calculates the radius by using the sum of all batch depths
 // and the node capacity using the formula totalCommitment/node_capacity = 2^R.
 // In the case that the new radius is lower than the current storage radius,

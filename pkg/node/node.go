@@ -242,6 +242,16 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, err
 	}
 
+	v2Flag, err := BatchStoreV2FlagExists(stateStore)
+	if err != nil {
+		return nil, err
+	}
+
+	if batchStoreExists && !v2Flag {
+		batchstore.CleanupReset(stateStore)
+		setV2Flag(stateStore)
+	}
+
 	addressbook := addressbook.New(stateStore)
 
 	var (
