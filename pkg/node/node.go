@@ -247,6 +247,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	if batchStoreExists && !v2Flag {
 		batchstore.CleanupReset(stateStore)
+		batchStoreExists = false
 		setV2Flag(stateStore)
 	}
 
