@@ -235,24 +235,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 	b.stateStoreCloser = stateStore
 
-	// Check if the the batchstore exists. If not, we can assume it's missing
-	// due to a migration or it's a fresh install.
-	batchStoreExists, err := batchStoreExists(stateStore)
-	if err != nil {
-		return nil, err
-	}
-
-	v2Flag, err := BatchStoreV2FlagExists(stateStore)
-	if err != nil {
-		return nil, err
-	}
-
-	if batchStoreExists && !v2Flag {
-		batchstore.CleanupReset(stateStore)
-		batchStoreExists = false
-		setV2Flag(stateStore)
-	}
-
 	addressbook := addressbook.New(stateStore)
 
 	var (
@@ -282,6 +264,28 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		batchStore, err = batchstore.New(stateStore, evictFn, logger)
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
+		}
+	}
+
+	// Check if the the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
+	batchStoreExists, err := batchStoreExists(stateStore)
+	if err != nil {
+		return nil, err
+	}
+
+	v2Flag, err := batchStoreV2FlagExists(stateStore)
+	if err != nil {
+		return nil, err
+	}
+
+	if batchStoreExists && !v2Flag {
+		batchStoreExists = false
+		if err := batchStore.CleanupReset(); err != nil {
+			return nil, fmt.Errorf("batchstore: cleanup and reset: %w", err)
+		}
+		if err := setV2Flag(stateStore); err != nil {
+			return nil, fmt.Errorf("batchstore: set V2 flag: %w", err)
 		}
 	}
 
