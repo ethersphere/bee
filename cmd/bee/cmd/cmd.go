@@ -319,5 +319,10 @@ func newRootLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 	default:
 		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
 	}
+
+	log.ModifyDefaults(
+		log.WithTimestamp(),
+		//log.WithLevelHooks(log.VerbosityAll, metrics), // TODO: log metrics!
+	)
 	return log.NewLogger("root", log.WithSink(sink), log.WithVerbosity(vLevel)).Register(), nil
 }

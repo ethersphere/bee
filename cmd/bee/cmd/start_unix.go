@@ -9,13 +9,13 @@ package cmd
 import (
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 func isWindowsService() (bool, error) {
 	return false, nil
 }
 
-func createWindowsEventLogger(svcName string, logger logging.Logger) (logging.Logger, error) {
+func createWindowsEventLogger(_ string, _ log.Logger) (log.Logger, error) {
 	return nil, errors.New("cannot create Windows event logger")
 }

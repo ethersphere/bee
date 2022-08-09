@@ -51,7 +51,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "data length",
+				Message: "insufficient data length",
 				Code:    http.StatusBadRequest,
 			}),
 		)

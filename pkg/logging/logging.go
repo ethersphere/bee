@@ -117,7 +117,6 @@ func New(w io.Writer, verbosity logrus.Level) Logger {
 	metrics := newMetrics()
 	log.ModifyDefaults(
 		log.WithTimestamp(),
-		log.WithJSONOutput(),
 		log.WithLevelHooks(log.VerbosityAll, metrics),
 	)
 	logger := log.NewLogger(

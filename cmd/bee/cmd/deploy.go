@@ -27,7 +27,7 @@ func (c *command) initDeployCmd() error {
 			}
 
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-			logger, err := newLogger(cmd, v)
+			logger, err := newRootLogger(cmd, v)
 			if err != nil {
 				return fmt.Errorf("new logger: %w", err)
 			}

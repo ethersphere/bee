@@ -27,7 +27,7 @@ func (c *command) initStartDevCmd() (err error) {
 			}
 
 			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-			logger, err := newLogger(cmd, v)
+			logger, err := newRootLogger(cmd, v)
 			if err != nil {
 				return fmt.Errorf("new logger: %w", err)
 			}
@@ -95,7 +95,7 @@ func (c *command) initStartDevCmd() (err error) {
 					// Block main goroutine until it is interrupted
 					sig := <-interruptChannel
 
-					logger.Debugf("received signal: %v", sig)
+					logger.Debug("signal received", "signal", sig)
 					logger.Info("shutting down")
 				},
 				stop: func() {
@@ -104,7 +104,7 @@ func (c *command) initStartDevCmd() (err error) {
 					go func() {
 						defer close(done)
 						if err := b.Shutdown(); err != nil {
-							logger.Errorf("shutdown: %v", err)
+							logger.Error(err, "shutdown failed")
 						}
 					}()
 
@@ -112,7 +112,7 @@ func (c *command) initStartDevCmd() (err error) {
 					// allow process termination by receiving another signal.
 					select {
 					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+						logger.Debug("signal received", "signal", sig)
 					case <-done:
 					}
 				},

@@ -113,7 +113,8 @@ func (rr *responseRecorder) WriteHeader(s int) {
 
 // CloseNotify implements http.CloseNotifier.
 func (rr *responseRecorder) CloseNotify() <-chan bool {
-	// nolint:staticcheck; staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler.
+	// staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler.
+	// nolint:staticcheck
 	return rr.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
 

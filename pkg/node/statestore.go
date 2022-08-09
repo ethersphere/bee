@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -19,13 +18,12 @@ import (
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(logger logging.Logger, dataDir string) (storage.StateStorer, error) {
-	newLogger := log.NewLogger("root").WithName(leveldb.LoggerName).Register()
+func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, error) {
 	if dataDir == "" {
-		newLogger.Warning("using in-mem state store, no node state will be persisted")
-		return leveldb.NewInMemoryStateStore(newLogger)
+		logger.Warning("using in-mem state store, no node state will be persisted")
+		return leveldb.NewInMemoryStateStore(logger.WithName(leveldb.LoggerName).Register())
 	}
-	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), newLogger)
+	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), logger.WithName(leveldb.LoggerName).Register())
 }
 
 const secureOverlayKey = "non-mineable-overlay"

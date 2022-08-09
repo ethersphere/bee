@@ -37,7 +37,6 @@ import (
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -82,6 +81,9 @@ import (
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "node"
 
 type Bee struct {
 	p2pService               io.Closer
@@ -132,7 +134,7 @@ type Options struct {
 	WelcomeMessage             string
 	Bootnodes                  []string
 	CORSAllowedOrigins         []string
-	Logger                     logging.Logger
+	Logger                     log.Logger
 	TracingEnabled             bool
 	TracingEndpoint            string
 	TracingServiceName         string
@@ -180,8 +182,7 @@ const (
 	mainnetNetworkID              = uint64(1)
 )
 
-func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
-
+func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -208,7 +209,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
-		logger.Error(string(p))
+		logger.Error(nil, string(p))
 		return len(p), nil
 	})
 
@@ -221,9 +222,9 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	defer func(b *Bee) {
 		if err != nil {
-			logger.Errorf("got error %v, shutting down...", err)
+			logger.Error(err, "got error, shutting down...")
 			if err2 := b.Shutdown(); err2 != nil {
-				logger.Errorf("got error while shutting down: %v", err2)
+				logger.Error(err2, "got error while shutting down")
 			}
 		}
 	}(b)
@@ -267,7 +268,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			_, err := unreserveFn(b, swarm.MaxPO+1)
 			return err
 		}
-		batchStore, err = batchstore.New(stateStore, evictFn, log.NewLogger("root").WithName(batchstore.LoggerName).Register()) // TODO: get the root logger from the source.
+		batchStore, err = batchstore.New(stateStore, evictFn, logger.WithName(batchstore.LoggerName).Register())
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
@@ -297,7 +298,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, log.NewLogger("root").WithName(auth.LoggerName).Register()); err != nil { // TODO: get the root logger from the source.
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger.WithName(auth.LoggerName).Register()); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
@@ -327,7 +328,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -338,11 +339,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 
 		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+			logger.Info("starting debug server", "address", debugAPIListener.Addr())
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
+				logger.Debug("debug api server failed to start", "error", err)
+				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
 
@@ -352,7 +353,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -368,11 +369,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 
 		go func() {
-			logger.Infof("single debug & api address: %s", apiListener.Addr())
+			logger.Info("starting debug & api server", "address", apiListener.Addr())
 
 			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("single debug & api server: %v", err)
-				logger.Error("unable to serve debug & api")
+				logger.Debug("debug & api server failed to start", "error", err)
+				logger.Error(nil, "debug & api server failed to start")
 			}
 		}()
 
@@ -386,9 +387,9 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
+		logger.Info("waiting to sync with the Ethereum backend")
 
-		err := transaction.WaitSynced(p2pCtx, log.NewLogger("root").WithName(transaction.LoggerName).Register(), chainBackend, maxDelay) // TODO: get the root logger from the source.
+		err := transaction.WaitSynced(p2pCtx, logger.WithName(transaction.LoggerName).Register(), chainBackend, maxDelay)
 		if err != nil {
 			return nil, fmt.Errorf("waiting backend sync: %w", err)
 		}
@@ -472,7 +473,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
-	logger.Infof("using overlay address %s", swarmAddress)
+	logger.Info("using overlay address", "address", swarmAddress)
 
 	apiService.SetSwarmAddress(&swarmAddress)
 
@@ -493,8 +494,8 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	for _, a := range o.Bootnodes {
 		addr, err := ma.NewMultiaddr(a)
 		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
+			logger.Debug("create bootnode multiaddress from string failed", "string", a, "error", err)
+			logger.Warning("create bootnode multiaddress from string failed", "string", a)
 			continue
 		}
 
@@ -547,17 +548,17 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			stateStore,
 			signer,
 			networkID,
-			logging.New(io.Discard, 0),
+			log.Noop,
 			libp2pPrivateKey,
 			o,
 		)
-		logger.Infof("bootstrapper took %s", time.Since(start))
+		logger.Info("bootstrapper created", "elapsed", time.Since(start))
 		if err != nil {
-			logger.Errorf("bootstrapper failed to fetch batch state: %v", err)
+			logger.Error(err, "bootstrapper failed to fetch batch state")
 		}
 	}
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, log.NewLogger("root").WithName(libp2p.LoggerName).Register(), tracer, libp2p.Options{ // TODO: get the root logger from the source.
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger.WithName(libp2p.LoggerName).Register(), tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
 		EnableWS:        o.EnableWS,
@@ -579,7 +580,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var path string
 
 	if o.DataDir != "" {
-		logger.Infof("using datadir in: '%s'", o.DataDir)
+		logger.Info("using datadir", "path", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
@@ -592,7 +593,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 	}
 
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, log.NewLogger("root").WithName(localstore.LoggerName).Register()) // TODO: get the root logger from the source.
+	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger.WithName(localstore.LoggerName).Register())
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
@@ -628,10 +629,10 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		postageSyncStart = startBlock
 	}
 
-	eventListener = listener.New(b.syncingStopped, log.NewLogger("root").WithName(listener.LoggerName).Register(), chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout) // TODO: get the root logger from the source.
+	eventListener = listener.New(b.syncingStopped, logger.WithName(listener.LoggerName).Register(), chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, log.NewLogger("root").WithName(batchservice.LoggerName).Register(), eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync) // TODO: get the root logger from the source.
+	batchSvc, err = batchservice.New(stateStore, batchStore, logger.WithName(batchservice.LoggerName).Register(), eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 	if err != nil {
 		return nil, err
 	}
@@ -666,13 +667,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	// Construct protocols.
-	pingPong := pingpong.New(p2ps, log.NewLogger("root").WithName(pingpong.LoggerName).Register(), tracer) // TODO: get the root logger from the source.
+	pingPong := pingpong.New(p2ps, logger.WithName(pingpong.LoggerName).Register(), tracer)
 
 	if err = p2ps.AddProtocol(pingPong.Protocol()); err != nil {
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, log.NewLogger("root").WithName(hive.LoggerName).Register()) // TODO: get the root logger from the source.
+	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger.WithName(hive.LoggerName).Register())
 	if err != nil {
 		return nil, fmt.Errorf("hive: %w", err)
 	}
@@ -689,7 +690,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
 	}
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, log.NewLogger("root").WithName(kademlia.LoggerName).Register(), // TODO: get the root logger from the source.
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, logger.WithName(kademlia.LoggerName).Register(),
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -730,7 +731,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
-					logger.Errorf("unable to sync batches: %v", err)
+					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
 				}
 			}()
@@ -739,7 +740,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, log.NewLogger("root").WithName(pricing.LoggerName).Register(), paymentThreshold, big.NewInt(minPaymentThreshold)) // TODO: get the root logger from the source.
+	pricing := pricing.New(p2ps, logger.WithName(pricing.LoggerName).Register(), paymentThreshold, big.NewInt(minPaymentThreshold))
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
@@ -751,14 +752,14 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	for _, addr := range addrs {
-		logger.Debugf("p2p address: %s", addr)
+		logger.Debug("p2p address", "address", addr)
 	}
 
 	acc, err := accounting.NewAccounting(
 		paymentThreshold,
 		o.PaymentTolerance,
 		o.PaymentEarly,
-		log.NewLogger("root").WithName(accounting.LoggerName).Register(), // TODO: get the root logger from the source.
+		logger.WithName(accounting.LoggerName).Register(),
 		stateStore,
 		pricing,
 		big.NewInt(refreshRate),
@@ -777,7 +778,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
 	}
 
-	pseudosettleService := pseudosettle.New(p2ps, log.NewLogger("root").WithName(pseudosettle.LoggerName).Register(), stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps) // TODO: get the root logger from the source.
+	pseudosettleService := pseudosettle.New(p2ps, logger.WithName(pseudosettle.LoggerName).Register(), stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
@@ -812,36 +813,36 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, log.NewLogger("root").WithName(retrieval.LoggerName).Register(), acc, pricer, tracer, o.RetrievalCaching, validStamp) // TODO: get the root logger from the source.
-	tagService := tags.NewTags(stateStore, log.NewLogger("root").WithName(tags.LoggerName).Register())                                                                               // TODO: get the root logger from the source.
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger.WithName(retrieval.LoggerName).Register(), acc, pricer, tracer, o.RetrievalCaching, validStamp)
+	tagService := tags.NewTags(stateStore, logger.WithName(tags.LoggerName).Register())
 	b.tagsCloser = tagService
 
-	pssService := pss.New(pssPrivateKey, log.NewLogger("root").WithName(pss.LoggerName).Register()) // TODO: get the root logger from the source.
+	pssService := pss.New(pssPrivateKey, logger.WithName(pss.LoggerName).Register())
 	b.pssCloser = pssService
 
-	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, log.NewLogger("root").WithName(netstore.LoggerName).Register()) // TODO: get the root logger from the source.
+	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, logger.WithName(netstore.LoggerName).Register())
 	b.nsCloser = ns
 
 	traversalService := traversal.New(ns)
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, log.NewLogger("root").WithName(pushsync.LoggerName).Register(), acc, pricer, signer, tracer, warmupTime) // TODO: get the root logger from the source.
+	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger.WithName(pushsync.LoggerName).Register(), acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, log.NewLogger("root").WithName(pusher.LoggerName).Register(), tracer, warmupTime) // TODO: get the root logger from the source.
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger.WithName(pusher.LoggerName).Register(), tracer, warmupTime)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
 
-	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, log.NewLogger("root").WithName(pullsync.LoggerName).Register()) // TODO: get the root logger from the source.
+	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger.WithName(pullsync.LoggerName).Register())
 	b.pullSyncCloser = pullSyncProtocol
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, pullSyncProtocol, log.NewLogger("root").WithName(puller.LoggerName).Register(), puller.Options{}, warmupTime) // TODO: get the root logger from the source.
+		pullerService = puller.New(stateStore, kad, pullSyncProtocol, logger.WithName(puller.LoggerName).Register(), puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
@@ -870,7 +871,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
-		multiresolver.WithLogger(log.NewLogger("root").WithName(multiresolver.LoggerName).Register()), // TODO: replace it with o.Logger when the migration is done.
+		multiresolver.WithLogger(o.Logger.WithName(multiresolver.LoggerName).Register()),
 		multiresolver.WithDefaultCIDResolver(),
 	)
 	b.resolverCloser = multiResolver
@@ -884,7 +885,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
-		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, log.NewLogger("root").WithName(chainsyncer.LoggerName).Register(), nil) // TODO: get the root logger from the source.
+		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger.WithName(chainsyncer.LoggerName).Register(), nil)
 		if err != nil {
 			return nil, fmt.Errorf("new chainsyncer: %w", err)
 		}
@@ -919,7 +920,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
@@ -947,10 +948,10 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			}
 
 			go func() {
-				logger.Infof("api address: %s", apiListener.Addr())
+				logger.Info("starting api server", "address", apiListener.Addr())
 				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-					logger.Debugf("api server: %v", err)
-					logger.Error("unable to serve api")
+					logger.Debug("api server failed to start", "error", err)
+					logger.Error(nil, "api server failed to start")
 				}
 			}()
 
@@ -1173,7 +1174,7 @@ func (b *Bee) Shutdown() error {
 
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
-func isChainEnabled(o *Options, swapEndpoint string, logger logging.Logger) bool {
+func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""
 	lightMode := !o.FullNodeMode
 

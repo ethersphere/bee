@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
@@ -73,7 +72,7 @@ type DevBee struct {
 }
 
 type DevOptions struct {
-	Logger                   logging.Logger
+	Logger                   log.Logger
 	APIAddr                  string
 	DebugAPIAddr             string
 	CORSAllowedOrigins       []string
@@ -89,7 +88,7 @@ type DevOptions struct {
 
 // NewDevBee starts the bee instance in 'development' mode
 // this implies starting an API and a Debug endpoints while mocking all their services.
-func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
+func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})
@@ -98,7 +97,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
-		logger.Error(string(p))
+		logger.Error(nil, string(p))
 		return len(p), nil
 	})
 
@@ -107,13 +106,13 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		tracerCloser:   tracerCloser,
 	}
 
-	stateStore, err := leveldb.NewInMemoryStateStore(log.NewLogger("root").WithName(leveldb.LoggerName).Register()) // TODO: get the root logger from the source.
+	stateStore, err := leveldb.NewInMemoryStateStore(logger.WithName(leveldb.LoggerName).Register())
 	if err != nil {
 		return nil, err
 	}
 	b.stateStoreCloser = stateStore
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, log.NewLogger("root").WithName(batchstore.LoggerName).Register()) // TODO: get the root logger from the source.
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger.WithName(batchstore.LoggerName).Register())
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -140,7 +139,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	var authenticator *auth.Authenticator
 
 	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, log.NewLogger("root").WithName(auth.LoggerName).Register()); err != nil { // TODO: get the root logger from the source.
+		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger.WithName(auth.LoggerName).Register()); err != nil {
 			return nil, fmt.Errorf("authenticator: %w", err)
 		}
 		logger.Info("starting with restricted APIs")
@@ -184,7 +183,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -195,11 +194,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		debugApiService.MountTechnicalDebug()
 
 		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
+				logger.Debug("debug api server failed to start", "error", err)
+				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
 
@@ -219,16 +218,16 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	var swarmAddress swarm.Address
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, log.NewLogger("root").WithName(localstore.LoggerName).Register()) // TODO: get the root logger from the source.
+	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger.WithName(localstore.LoggerName).Register())
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
 
-	tagService := tags.NewTags(stateStore, log.NewLogger("root").WithName(tags.LoggerName).Register()) // TODO: get the root logger from the source.
+	tagService := tags.NewTags(stateStore, logger.WithName(tags.LoggerName).Register())
 	b.tagsCloser = tagService
 
-	pssService := pss.New(mockKey, log.NewLogger("root").WithName(pss.LoggerName).Register()) // TODO: get the root logger from the source.
+	pssService := pss.New(mockKey, logger.WithName(pss.LoggerName).Register())
 	b.pssCloser = pssService
 
 	pssService.SetPushSyncer(mockPushsync.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -325,7 +324,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		acc            = mockAccounting.NewAccounting()
 		kad            = mockTopology.NewTopologyDriver()
 		storeRecipient = mockStateStore.NewStateStore()
-		pseudoset      = pseudosettle.New(nil, log.NewLogger("root").WithName(pseudosettle.LoggerName).Register(), storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps) // TODO: get the root logger from the source.
+		pseudoset      = pseudosettle.New(nil, logger.WithName(pseudosettle.LoggerName).Register(), storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
 		mockSwap       = swapmock.New(swapmock.WithCashoutStatusFunc(
 			func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 				return &chequebook.CashoutStatus{
@@ -406,7 +405,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, log.NewLogger("root").WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins) // TODO: get the root logger from the source.
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger.WithName(api.LoggerName).Register(), mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
 
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -447,11 +446,11 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	go func() {
-		logger.Infof("api address: %s", apiListener.Addr())
+		logger.Info("starting api server", "address", apiListener.Addr())
 
 		if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-			logger.Debugf("api server: %v", err)
-			logger.Error("unable to serve api")
+			logger.Debug("api server failed to start", "error", err)
+			logger.Error(nil, "api server failed to start")
 		}
 	}()
 
