@@ -166,7 +166,7 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 		if err == nil {
 			return addr, nil
 		}
-		multierror.Append(errs, err)
+		err = multierror.Append(err)
 	}
 
 	return addr, errs.ErrorOrNil()
@@ -179,7 +179,7 @@ func (mr *MultiResolver) Close() error {
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
 			if err := r.Close(); err != nil {
-				multierror.Append(errs, err)
+				err = multierror.Append(err)
 			}
 		}
 	}
