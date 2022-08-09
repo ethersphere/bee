@@ -26,7 +26,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.pinning.HasPin(ref)
 	if err != nil {
-		s.logger.Debug("pin root hash: has pin failed", "address", ref, "error", err)
+		s.logger.Debug("pin root hash: has pin failed", "chunk_address", ref, "error", err)
 		s.logger.Error(nil, "pin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin failed")
 		return
@@ -41,7 +41,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, nil)
 		return
 	case err != nil:
-		s.logger.Debug("pin root hash: create pin failed", "address", ref, "error", err)
+		s.logger.Debug("pin root hash: create pin failed", "chunk_address", ref, "error", err)
 		s.logger.Error(nil, "pin root hash: create pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: creation of tracking pin failed")
 		return
@@ -62,7 +62,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.pinning.HasPin(ref)
 	if err != nil {
-		s.logger.Debug("unpin root hash: has pin failed", "address", ref, "error", err)
+		s.logger.Debug("unpin root hash: has pin failed", "chunk_address", ref, "error", err)
 		s.logger.Error(nil, "unpin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin")
 		return
@@ -73,7 +73,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.pinning.DeletePin(r.Context(), ref); err != nil {
-		s.logger.Debug("unpin root hash: delete pin failed", "address", ref, "error", err)
+		s.logger.Debug("unpin root hash: delete pin failed", "chunk_address", ref, "error", err)
 		s.logger.Error(nil, "unpin root hash: delete pin failed")
 		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
 		return
@@ -94,7 +94,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.pinning.HasPin(ref)
 	if err != nil {
-		s.logger.Debug("pinned root hash: has pin failed", "address", ref, "error", err)
+		s.logger.Debug("pinned root hash: has pin failed", "chunk_address", ref, "error", err)
 		s.logger.Error(nil, "pinned root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pinned root hash: check reference failed")
 		return

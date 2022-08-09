@@ -7,7 +7,6 @@ package chainsyncer_test
 import (
 	"context"
 	"errors"
-	"io/ioutil"
 	"math/big"
 	"testing"
 	"time"
@@ -25,7 +24,7 @@ import (
 func TestChainsyncer(t *testing.T) {
 	var (
 		expBlockHash    = common.HexToHash("0x9de2787d1d80a6164f4bc6359d9017131cbc14402ee0704bff0c6d691701c1dc").Bytes()
-		logger          = log.NewLogger("test", log.WithSink(ioutil.Discard))
+		logger          = log.Noop
 		trxBlock        = common.HexToHash("0x2")
 		blockC          = make(chan struct{})
 		nextBlockHeader = &types.Header{ParentHash: trxBlock}

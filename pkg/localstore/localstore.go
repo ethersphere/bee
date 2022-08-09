@@ -317,9 +317,9 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	capacityMB := float64((db.cacheCapacity+uint64(batchstore.Capacity))*swarm.ChunkSize) * 9.5367431640625e-7
 
 	if capacityMB <= 1000 {
-		db.logger.Info("database capacity", "chunks", db.cacheCapacity, "approximate (MB) size", capacityMB)
+		db.logger.Info("database capacity", "chunks", db.cacheCapacity, "~size(MB)", capacityMB)
 	} else {
-		db.logger.Info("database capacity", "chunks", db.cacheCapacity, "approximate (GB) size", capacityMB/1000)
+		db.logger.Info("database capacity", "chunks", db.cacheCapacity, "~size(GB)", capacityMB/1000)
 	}
 
 	if maxParallelUpdateGC > 0 {

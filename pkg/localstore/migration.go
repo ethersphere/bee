@@ -117,7 +117,7 @@ func truncateIndex(db *DB, idx shed.Index) (n int, err error) {
 		if err = idx.DeleteInBatch(batch, item); err != nil {
 			return true, err
 		}
-		db.logger.Debug("truncateIndex: deleted", "address", item.Address)
+		db.logger.Debug("truncateIndex: deleted", "address", fmt.Sprintf("%x", item.Address))
 
 		if n++; n%maxBatchSize == 0 {
 			db.logger.Debug("truncateIndex: writing batch", "processed", n)

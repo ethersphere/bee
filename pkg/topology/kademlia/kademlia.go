@@ -386,11 +386,11 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
-			k.logger.Debug("peer still in blocklist", "peer", bzzAddr)
+			k.logger.Debug("peer still in blocklist", "peer_address", bzzAddr)
 			k.logger.Warning("peer still in blocklist")
 			return
 		case err != nil:
-			k.logger.Debug("peer not reachable from kademlia", "peer", bzzAddr, "error", err)
+			k.logger.Debug("peer not reachable from kademlia", "peer_address", bzzAddr, "error", err)
 			k.logger.Warning("peer not reachable when attempting to connect")
 			return
 		}

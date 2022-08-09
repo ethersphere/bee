@@ -24,7 +24,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.Has(r.Context(), addr)
 	if err != nil {
-		s.logger.Debug("has chunk: has chunk failed", "address", addr, "error", err)
+		s.logger.Debug("has chunk: has chunk failed", "chunk_address", addr, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
@@ -47,7 +47,7 @@ func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.Has(r.Context(), addr)
 	if err != nil {
-		s.logger.Debug("remove chunk: has chunk failed", "address", addr, "error", err)
+		s.logger.Debug("remove chunk: has chunk failed", "chunk_address", addr, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
@@ -59,7 +59,7 @@ func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 
 	err = s.storer.Set(r.Context(), storage.ModeSetRemove, addr)
 	if err != nil {
-		s.logger.Debug("remove chunk: remove chunk failed", "address", addr, "error", err)
+		s.logger.Debug("remove chunk: remove chunk failed", "chunk_address", addr, "error", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

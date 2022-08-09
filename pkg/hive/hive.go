@@ -200,7 +200,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
 			if err == addressbook.ErrNotFound {
-				s.logger.Debug("broadcast peers; peer not found in the addressbook, skipping...", "peer", p)
+				s.logger.Debug("broadcast peers; peer not found in the addressbook, skipping...", "peer_address", p)
 				continue
 			}
 			return err
@@ -356,7 +356,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
 				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
 				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debug("unreachable peer underlay", "peer", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
+				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
 				return
 			}
 			s.metrics.PingTime.Observe(time.Since(start).Seconds())
@@ -373,7 +373,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
 			if err != nil {
 				s.metrics.StorePeerErr.Inc()
-				s.logger.Warning("skipping peer in response", "peer", newPeer.String(), "error", err)
+				s.logger.Warning("skipping peer in response", "peer_address", newPeer.String(), "error", err)
 				return
 			}
 

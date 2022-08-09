@@ -24,7 +24,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	err = s.steward.Reupload(r.Context(), address)
 	if err != nil {
-		s.logger.Debug("stewardship put: re-upload failed", "address", address, "error", err)
+		s.logger.Debug("stewardship put: re-upload failed", "chunk_address", address, "error", err)
 		s.logger.Error(nil, "stewardship put: re-upload failed")
 		jsonhttp.InternalServerError(w, "stewardship put: re-upload failed")
 		return
@@ -48,7 +48,7 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	res, err := s.steward.IsRetrievable(r.Context(), address)
 	if err != nil {
-		s.logger.Debug("stewardship get: is retrievable check failed", "address", address, "error", err)
+		s.logger.Debug("stewardship get: is retrievable check failed", "chunk_address", address, "error", err)
 		s.logger.Error(nil, "stewardship get: is retrievable")
 		jsonhttp.InternalServerError(w, "stewardship get: is retrievable check failed")
 		return

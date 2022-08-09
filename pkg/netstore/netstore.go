@@ -114,7 +114,7 @@ func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
 
 		stamp, err := ch.Stamp().MarshalBinary()
 		if err != nil {
-			s.logger.Error(err, "failed to marshal stamp from chunk", "address", ch.Address())
+			s.logger.Error(err, "failed to marshal stamp from chunk", "chunk_address", ch.Address())
 			return
 		}
 
@@ -133,7 +133,7 @@ func (s *store) put(ch swarm.Chunk, mode storage.ModeGet) {
 
 		_, err = s.Storer.Put(s.sCtx, putMode, cch)
 		if err != nil {
-			s.logger.Error(err, "failed to put chunk", "address", cch.Address())
+			s.logger.Error(err, "failed to put chunk", "chunk_address", cch.Address())
 		}
 	}()
 }

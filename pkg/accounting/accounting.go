@@ -320,7 +320,7 @@ func (c *creditAction) Apply() error {
 	// Calculate next balance by decreasing current balance with the price we credit
 	nextBalance := new(big.Int).Sub(currentBalance, c.price)
 
-	loggerV1.Debug("credit action apply", "crediting peer", c.peer, "price", c.price, "new balance", nextBalance)
+	loggerV1.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_balance", nextBalance)
 
 	err = c.accounting.store.Put(peerBalanceKey(c.peer), nextBalance)
 	if err != nil {
@@ -342,7 +342,7 @@ func (c *creditAction) Apply() error {
 	// Calculate next balance by decreasing current balance with the price we credit
 	nextOriginBalance := new(big.Int).Sub(originBalance, c.price)
 
-	loggerV1.Debug("credit action apply", "crediting peer", c.peer, "price", c.price, "new originated balance", nextOriginBalance)
+	loggerV1.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_originated_balance", nextOriginBalance)
 
 	zero := big.NewInt(0)
 	// only consider negative balance for limiting originated balance
@@ -353,7 +353,7 @@ func (c *creditAction) Apply() error {
 	// If originated balance is more into the negative domain, set it to balance
 	if nextOriginBalance.Cmp(nextBalance) < 0 {
 		nextOriginBalance.Set(nextBalance)
-		loggerV1.Debug("credit action apply; decreasing originated balance", "crediting peer", c.peer, "current balance", nextOriginBalance)
+		loggerV1.Debug("credit action apply; decreasing originated balance", "crediting_peer_address", c.peer, "current_balance", nextOriginBalance)
 	}
 
 	err = c.accounting.store.Put(originatedBalanceKey(c.peer), nextOriginBalance)
@@ -447,7 +447,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 		oldBalance = new(big.Int).Add(oldBalance, acceptedAmount)
 
-		loggerV1.Debug("registering refreshment sent", "peer", peer, "amount", acceptedAmount, "new balance", oldBalance)
+		loggerV1.Debug("registering refreshment sent", "peer_address", peer, "amount", acceptedAmount, "new_balance", oldBalance)
 
 		err = a.store.Put(peerBalanceKey(peer), oldBalance)
 		if err != nil {
@@ -838,7 +838,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	// Get nextBalance by increasing current balance with price
 	nextBalance := new(big.Int).Add(currentBalance, amount)
 
-	loggerV1.Debug("registering payment sent", "peer", peer, "amount", amount, "new balance", nextBalance)
+	loggerV1.Debug("registering payment sent", "peer", peer, "amount", amount, "new_balance", nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
@@ -889,7 +889,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		}
 		increasedSurplus := new(big.Int).Add(surplus, amount)
 
-		loggerV1.Debug("surplus crediting peer", "peer", peer, "amount", amount, "new balance", increasedSurplus)
+		loggerV1.Debug("surplus crediting peer", "peer_address", peer, "amount", amount, "new_balance", increasedSurplus)
 
 		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
 		if err != nil {
@@ -910,7 +910,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		nextBalance = big.NewInt(0)
 	}
 
-	loggerV1.Debug("crediting peer", "peer", peer, "amount", amount, "new balance", nextBalance)
+	loggerV1.Debug("crediting peer", "peer_address", peer, "amount", amount, "new_balance", nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
@@ -929,7 +929,7 @@ func (a *Accounting) NotifyPaymentReceived(peer swarm.Address, amount *big.Int) 
 		}
 		increasedSurplus := new(big.Int).Add(surplus, surplusGrowth)
 
-		loggerV1.Debug("surplus crediting peer %v with amount %d due to refreshment, new surplus balance is %d", peer, surplusGrowth, increasedSurplus)
+		loggerV1.Debug("surplus crediting peer due to refreshment", "peer_address", peer, "amount", surplusGrowth, "new_balance", increasedSurplus)
 
 		err = a.store.Put(peerSurplusBalanceKey(peer), increasedSurplus)
 		if err != nil {
@@ -960,7 +960,7 @@ func (a *Accounting) NotifyRefreshmentReceived(peer swarm.Address, amount *big.I
 	nextBalance := new(big.Int).Sub(currentBalance, amount)
 
 	// We allow a refreshment to potentially put us into debt as it was previously negotiated and be limited to the peer's outstanding debt plus shadow reserve
-	loggerV1.Debug("crediting peer", "peer", peer, "amount", amount, "new balance", nextBalance)
+	loggerV1.Debug("crediting peer", "peer_address", peer, "amount", amount, "new_balance", nextBalance)
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
@@ -1014,7 +1014,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, _ *accountingPeer, pric
 
 		// if nothing left for debiting, store new surplus balance and return from debit
 		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
-			loggerV1.Debug("surplus debiting peer", "peer", peer, "price", price, "new balance", newSurplusBalance)
+			loggerV1.Debug("surplus debiting peer", "peer_address", peer, "price", price, "new_balance", newSurplusBalance)
 
 			err = a.store.Put(peerSurplusBalanceKey(peer), newSurplusBalance)
 			if err != nil {
@@ -1035,7 +1035,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, _ *accountingPeer, pric
 
 		// if we still have something to debit, than have run out of surplus balance,
 		// let's store 0 as surplus balance
-		loggerV1.Debug("surplus debiting peer", "peer", peer, "amount", debitIncrease, "new balance", 0)
+		loggerV1.Debug("surplus debiting peer", "peer_address", peer, "amount", debitIncrease, "new_balance", 0)
 
 		err = a.store.Put(peerSurplusBalanceKey(peer), big.NewInt(0))
 		if err != nil {
@@ -1053,7 +1053,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, _ *accountingPeer, pric
 	// Get nextBalance by increasing current balance with price
 	nextBalance := new(big.Int).Add(currentBalance, cost)
 
-	loggerV1.Debug("debiting peer", "peer", peer, "price", price, "new balance", nextBalance)
+	loggerV1.Debug("debiting peer", "peer_address", peer, "price", price, "new_balance", nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
@@ -1201,7 +1201,7 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 		if err != nil {
 			return fmt.Errorf("failed to persist originated balance: %w", err)
 		}
-		loggerV1.Debug("decreasing originated balance of peer", peer, "new balance", toSet)
+		loggerV1.Debug("decreasing originated balance of peer", "peer_address", peer, "new_balance", toSet)
 	}
 
 	return nil
@@ -1223,7 +1223,7 @@ func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big
 	if err != nil {
 		return fmt.Errorf("failed to persist originated balance: %w", err)
 	}
-	loggerV1.Debug("decreasing originated balance of peer", "peer", peer, "by amount", amount, "new balance", newOriginatedBalance)
+	loggerV1.Debug("decreasing originated balance of peer", "peer_address", peer, "amount", amount, "new_balance", newOriginatedBalance)
 
 	return nil
 }

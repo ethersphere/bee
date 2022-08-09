@@ -88,7 +88,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 	}
 
 	cb := func(a swarm.Address) {
-		c.logger.Warning("peer is unsynced and will be temporarily blocklisted", "peer", a)
+		c.logger.Warning("peer is unsynced and will be temporarily blocklisted", "peer_address", a)
 		c.metrics.UnsyncedPeers.Inc()
 	}
 	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, c.logger)

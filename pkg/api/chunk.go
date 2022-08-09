@@ -185,7 +185,7 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			return
 
 		}
-		s.logger.Debug("chunk get: read chunk failed", "address", address, "error", err)
+		s.logger.Debug("chunk get: read chunk failed", "chunk_address", address, "error", err)
 		s.logger.Error(nil, "chunk get: read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return
