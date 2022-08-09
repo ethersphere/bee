@@ -91,6 +91,8 @@ type shard struct {
 
 // forever loop processing
 func (sh *shard) process() {
+	defer sh.close()
+
 	for {
 		freeSlot, err := sh.slots.pop()
 		// there are no free slots, so wait for a release
@@ -105,7 +107,7 @@ func (sh *shard) process() {
 		}
 
 		select {
-		// pick up new free slot
+		// pick up new free slot from release
 		case head := <-sh.onRelease:
 			sh.slots.rewindHead(head)
 		// write free slot

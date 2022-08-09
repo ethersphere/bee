@@ -82,11 +82,9 @@ func (s *Store) Close() error {
 	select {
 	case <-done:
 		return nil
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		return errors.New("did not close on time")
 	}
-
-	return nil
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
@@ -133,15 +131,15 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 		return loc, ErrTooLong
 	}
 
-	if len(s.availableShards) == 0 {
-		return loc, ErrUnavailable
-	}
-
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	available := <-s.availableShards
-	return s.shards[available.shardIndex].write(data, available.slot)
+	select {
+	case available := <-s.availableShards:
+		return s.shards[available.shardIndex].write(data, available.slot)
+	case <-ctx.Done():
+		return Location{}, ctx.Err()
+	}
 }
 
 // Release gives back the slot to the shard

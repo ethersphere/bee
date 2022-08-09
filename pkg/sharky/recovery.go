@@ -7,7 +7,6 @@ package sharky
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 
@@ -24,27 +23,28 @@ var ErrShardNotFound = errors.New("shard not found")
 func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
-		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
-		}
-		if err != nil {
-			return nil, err
-		}
-		fi, err := file.Stat()
-		if err != nil {
-			return nil, err
-		}
-		if err = file.Close(); err != nil {
-			return nil, err
-		}
-		size := uint32(fi.Size() / int64(datasize))
+		// file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
+		// if errors.Is(err, fs.ErrNotExist) {
+		// 	return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
+		// }
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// fi, err := file.Stat()
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// if err = file.Close(); err != nil {
+		// 	return nil, err
+		// }
 		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			return nil, err
 		}
-		sl := newSlots(ffile, nil)
-		sl.bits = make([]byte, size/8)
+		sl := newSlots(ffile, 1_024_000)
+		if err := sl.load(); err != nil {
+			return nil, err
+		}
 		shards[i] = sl
 	}
 	return &Recovery{shards}, nil
@@ -52,28 +52,29 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 
 // Add marks a location as used (not free).
 func (r *Recovery) Add(loc Location) error {
-	sh := r.shards[loc.Shard]
-	l := len(sh.bits)
-	if diff := int(loc.Slot/8) - l; diff >= 0 {
-		sh.extend(diff + 1)
-		for i := 0; i <= diff; i++ {
-			sh.bits[l+i] = 0x0
-		}
-	}
-	sh.push(loc.Slot)
+	// sh := r.shards[loc.Shard]
+	// l := len(sh.bits)
+	// if diff := int(loc.Slot/8) - l; diff >= 0 {
+	// 	sh.extend(diff + 1)
+	// 	for i := 0; i <= diff; i++ {
+	// 		sh.bits[l+i] = 0x0
+	// 	}
+	// }
+	// sh.push(loc.Slot)
 	return nil
 }
 
 // Save saves all free slots files of the recovery (without closing).
 func (r *Recovery) Save() error {
-	err := new(multierror.Error)
-	for _, sh := range r.shards {
-		for i := range sh.bits {
-			sh.bits[i] ^= 0xff
-		}
-		err = multierror.Append(err, sh.save())
-	}
-	return err.ErrorOrNil()
+	// err := new(multierror.Error)
+	// for _, sh := range r.shards {
+	// 	for i := range sh.bits {
+	// 		sh.bits[i] ^= 0xff
+	// 	}
+	// 	err = multierror.Append(err, sh.save())
+	// }
+	// return err.ErrorOrNil()
+	return nil
 }
 
 // Close closes data and free slots files of the recovery (without saving).
