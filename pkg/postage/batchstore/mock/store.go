@@ -200,6 +200,10 @@ func (bs *BatchStore) Reset() error {
 	return nil
 }
 
+func (bs *BatchStore) CleanupReset() error {
+	return nil
+}
+
 func (bs *BatchStore) ResetCalls() int {
 	return bs.resetCallCount
 }
