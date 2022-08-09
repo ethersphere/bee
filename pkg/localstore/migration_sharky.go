@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
-	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -177,7 +176,7 @@ func migrateSharky(db *DB) error {
 
 		if err := db.shed.WriteBatch(batch); err != nil {
 			for _, loc := range dirtyLocations {
-				err = multierror.Append(err, db.sharky.Release(context.TODO(), loc))
+				db.sharky.Release(loc)
 			}
 			return fmt.Errorf("write batch: %w", err)
 		}

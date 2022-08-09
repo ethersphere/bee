@@ -282,7 +282,6 @@ func (m *MockStorer) MorePull(d ...storage.Descriptor) {
 	// clear out what we already have in subpull
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-
 	m.subpull = make([]storage.Descriptor, len(d))
 	copy(m.subpull, d)
 	close(m.morePull)
