@@ -44,7 +44,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 			return nil, err
 		}
 		sl := newSlots(ffile, nil)
-		sl.data = make([]byte, size/8)
+		sl.bits = make([]byte, size/8)
 		shards[i] = sl
 	}
 	return &Recovery{shards}, nil
@@ -53,11 +53,11 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 // Add marks a location as used (not free).
 func (r *Recovery) Add(loc Location) error {
 	sh := r.shards[loc.Shard]
-	l := len(sh.data)
+	l := len(sh.bits)
 	if diff := int(loc.Slot/8) - l; diff >= 0 {
 		sh.extend(diff + 1)
 		for i := 0; i <= diff; i++ {
-			sh.data[l+i] = 0x0
+			sh.bits[l+i] = 0x0
 		}
 	}
 	sh.push(loc.Slot)
@@ -68,8 +68,8 @@ func (r *Recovery) Add(loc Location) error {
 func (r *Recovery) Save() error {
 	err := new(multierror.Error)
 	for _, sh := range r.shards {
-		for i := range sh.data {
-			sh.data[i] ^= 0xff
+		for i := range sh.bits {
+			sh.bits[i] ^= 0xff
 		}
 		err = multierror.Append(err, sh.save())
 	}
