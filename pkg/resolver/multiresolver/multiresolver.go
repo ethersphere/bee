@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/cidv1"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
-	"github.com/ethersphere/bee/pkg/resolver/multiresolver/multierror"
+	"github.com/hashicorp/go-multierror"
 )
 
 // Ensure MultiResolver implements Resolver interface.
@@ -160,13 +160,13 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 		chain = mr.resolvers[""]
 	}
 
-	errs := multierror.New()
+	var errs *multierror.Error
 	for _, res := range chain {
 		addr, err = res.Resolve(name)
 		if err == nil {
 			return addr, nil
 		}
-		errs.Append(err)
+		multierror.Append(errs, err)
 	}
 
 	return addr, errs.ErrorOrNil()
@@ -174,12 +174,12 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 
 // Close all will call Close on all resolvers in all resolver chains.
 func (mr *MultiResolver) Close() error {
-	errs := multierror.New()
+	var errs *multierror.Error
 
 	for _, chain := range mr.resolvers {
 		for _, r := range chain {
 			if err := r.Close(); err != nil {
-				errs.Append(err)
+				multierror.Append(errs, err)
 			}
 		}
 	}
