@@ -6,12 +6,11 @@ package auth_test
 
 import (
 	"errors"
-	"io"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 const (
@@ -20,7 +19,7 @@ const (
 )
 
 func TestAuthorize(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, nil)
+	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}
@@ -51,7 +50,7 @@ func TestAuthorize(t *testing.T) {
 }
 
 func TestExpiry(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, logging.New(io.Discard, 0))
+	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}
@@ -74,7 +73,7 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestEnforce(t *testing.T) {
-	a, err := auth.New(encryptionKey, passwordHash, nil)
+	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}

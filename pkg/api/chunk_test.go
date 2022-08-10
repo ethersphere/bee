@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -35,7 +35,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
 		chunk           = testingc.GenerateTestRandomChunk()
 		statestoreMock  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.Noop
 		tag             = tags.NewTags(statestoreMock, logger)
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()
@@ -51,7 +51,7 @@ func TestChunkUploadDownload(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "data length",
+				Message: "insufficient data length",
 				Code:    http.StatusBadRequest,
 			}),
 		)

@@ -7,13 +7,12 @@ package api_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -25,7 +24,7 @@ import (
 
 func TestDebugTags(t *testing.T) {
 	var (
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.Noop
 		chunk           = testingc.GenerateTestRandomChunk()
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()

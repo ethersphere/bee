@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"time"
@@ -45,8 +46,8 @@ type transactionPendingList struct {
 func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request) {
 	txHashes, err := s.transaction.PendingTransactions()
 	if err != nil {
-		s.logger.Debugf("transactions: get pending transactions: %v", err)
-		s.logger.Error("transactions: can't get pending transactions")
+		s.logger.Debug("transactions get: get pending transactions failed", "error", err)
+		s.logger.Error(nil, "transactions get: get pending transactions failed")
 		jsonhttp.InternalServerError(w, errCantGetTransaction)
 		return
 	}
@@ -55,8 +56,8 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 	for _, txHash := range txHashes {
 		storedTransaction, err := s.transaction.StoredTransaction(txHash)
 		if err != nil {
-			s.logger.Debugf("transactions: get stored transaction %x: %v", txHash, err)
-			s.logger.Errorf("transactions: can't get stored transaction %x", txHash)
+			s.logger.Debug("transactions get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
+			s.logger.Error(nil, "transactions get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
 			jsonhttp.InternalServerError(w, errCantGetTransaction)
 			return
 		}
@@ -86,8 +87,8 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 
 	storedTransaction, err := s.transaction.StoredTransaction(txHash)
 	if err != nil {
-		s.logger.Debugf("transactions: get transaction %x: %v", txHash, err)
-		s.logger.Errorf("transactions: can't get transaction %x", txHash)
+		s.logger.Debug("transaction get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
+		s.logger.Error(nil, "transaction get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else {
@@ -119,8 +120,8 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 
 	err := s.transaction.ResendTransaction(r.Context(), txHash)
 	if err != nil {
-		s.logger.Debugf("transactions: resend %x: %v", txHash, err)
-		s.logger.Errorf("transactions: can't resend transaction %x", txHash)
+		s.logger.Debug("transaction post: resend transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
+		s.logger.Error(nil, "transaction post: resend transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
@@ -144,7 +145,7 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 	if price, ok := r.Header[gasPriceHeader]; ok {
 		p, ok := big.NewInt(0).SetString(price[0], 10)
 		if !ok {
-			s.logger.Error("transactions: cancel: bad gas price")
+			s.logger.Error(nil, "transaction delete: bad gas price")
 			jsonhttp.BadRequest(w, errBadGasPrice)
 			return
 		}
@@ -153,8 +154,8 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 
 	txHash, err := s.transaction.CancelTransaction(ctx, txHash)
 	if err != nil {
-		s.logger.Debugf("transactions: cancel %x: %v", txHash, err)
-		s.logger.Errorf("transactions: can't cancel transaction %x", txHash)
+		s.logger.Debug("transactions delete: cancel transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
+		s.logger.Error(nil, "transactions delete: cancel transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {

@@ -142,7 +142,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			for _, l := range committedLocations {
 				err := db.sharky.Release(ctx, l)
 				if err != nil {
-					db.logger.Warningf("failed releasing sharky location on error %v", err)
+					db.logger.Warning("failed releasing sharky location on error", "error", err)
 				}
 			}
 		}
@@ -233,7 +233,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	for _, v := range *releaseLocs {
 		err = db.sharky.Release(ctx, v)
 		if err != nil {
-			db.logger.Warning("failed releasing sharky location", v)
+			db.logger.Warning("failed releasing sharky location", "location", v)
 		}
 	}
 

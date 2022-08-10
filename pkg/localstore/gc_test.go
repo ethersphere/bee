@@ -20,13 +20,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -482,7 +481,7 @@ func TestDB_gcSize(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	db, err := New(dir, baseKey, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)

@@ -7,7 +7,6 @@ package pusher_test
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,12 +14,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/topology"
 
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
@@ -449,7 +448,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)

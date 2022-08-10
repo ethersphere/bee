@@ -7,7 +7,6 @@ package api_test
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -15,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
@@ -46,7 +45,7 @@ func TestTags(t *testing.T) {
 		tagsResource             = "/tags"
 		chunk                    = testingc.GenerateTestRandomChunk()
 		mockStatestore           = statestore.NewStateStore()
-		logger                   = logging.New(io.Discard, 0)
+		logger                   = log.Noop
 		tag                      = tags.NewTags(mockStatestore, logger)
 		client, _, listenAddr, _ = newTestServer(t, testServerOptions{
 			Storer: mock.NewStorer(),

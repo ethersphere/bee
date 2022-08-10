@@ -19,6 +19,7 @@ package intervalstore
 import (
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -33,7 +34,7 @@ func TestInmemoryStore(t *testing.T) {
 func TestDBStore(t *testing.T) {
 	dir := t.TempDir()
 
-	store, err := leveldb.NewStateStore(dir, nil)
+	store, err := leveldb.NewStateStore(dir, log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}

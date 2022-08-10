@@ -31,7 +31,7 @@ func (s *Service) addressesHandler(w http.ResponseWriter, r *http.Request) {
 	if s.p2p != nil {
 		u, err := s.p2p.Addresses()
 		if err != nil {
-			s.logger.Debugf("p2p addresses: %v", err)
+			s.logger.Debug("p2p addresses: get address failed", "error", err)
 			jsonhttp.InternalServerError(w, err)
 			return
 		}

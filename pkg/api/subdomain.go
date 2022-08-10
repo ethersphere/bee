@@ -26,8 +26,8 @@ func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		logger.Debugf("subdomain handler: parse address %s: %v", nameOrHex, err)
-		logger.Error("subdomain handler: parse address")
+		logger.Debug("subdomain get: parse address string failed", "string", nameOrHex, "error", err)
+		logger.Error(nil, "subdomain get: parse address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}

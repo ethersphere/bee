@@ -226,13 +226,13 @@ func migrateYuj(db *DB) error {
 		{"retrievalAccess", retrievalAccessIndex},
 		{"retrievalData", retrievalDataIndex},
 	} {
-		db.logger.Debugf("truncating %s index", v.name)
+		db.logger.Debug("truncating index", "name", v.name)
 		n, err := truncateIndex(db, v.idx)
 		if err != nil {
 			return fmt.Errorf("truncate %s index: %w", v.name, err)
 		}
 		count += n
-		db.logger.Debugf("truncated %d %s index entries", count, v.name)
+		db.logger.Debug("truncated index", "name", v.name, "count", count)
 	}
 
 	gcSize, err := db.shed.NewUint64Field("gc-size")
@@ -251,6 +251,6 @@ func migrateYuj(db *DB) error {
 		}
 	}
 
-	db.logger.Debugf("done truncating indexes. took %s", time.Since(start))
+	db.logger.Debug("done truncating indexes", "elapsed", time.Since(start))
 	return nil
 }

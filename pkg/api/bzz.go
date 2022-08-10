@@ -40,16 +40,16 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get(contentTypeHeader)
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		logger.Debugf("bzz upload: parse content type header %q: %v", contentType, err)
-		logger.Errorf("bzz upload: parse content type header %q", contentType)
+		logger.Debug("bzz upload: parse content type header string failed", "string", contentType, "error", err)
+		logger.Error(nil, "bzz upload: parse content type header string failed", "string", contentType)
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
 
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
-		logger.Debugf("bzz upload: putter: %v", err)
-		logger.Error("bzz upload: putter")
+		logger.Debug("bzz upload: putter failed", "error", err)
+		logger.Error(nil, "bzz upload: putter failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.BadRequest(w, "batch not found")
@@ -88,8 +88,8 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
-		logger.Debugf("bzz upload file: get or create tag: %v", err)
-		logger.Error("bzz upload file: get or create tag")
+		logger.Debug("bzz upload file: get or create tag failed", "error", err)
+		logger.Error(nil, "bzz upload file: get or create tag failed")
 		jsonhttp.InternalServerError(w, "bzz upload file: get or create tag failed")
 		return
 	}
@@ -99,8 +99,8 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
 			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 			if err != nil {
-				s.logger.Debugf("bzz upload file: increment tag: %v", err)
-				s.logger.Error("bzz upload file: increment tag")
+				s.logger.Debug("bzz upload file: increment tag failed", "error", err)
+				s.logger.Error(nil, "bzz upload file: increment tag failed")
 				jsonhttp.InternalServerError(w, "bzz upload file: increment tag failed")
 				return
 			}
@@ -118,8 +118,8 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	// first store the file and get its reference
 	fr, err := p(ctx, reader)
 	if err != nil {
-		logger.Debugf("bzz upload file: file store, file %q: %v", fileName, err)
-		logger.Errorf("bzz upload file: file store, file %q", fileName)
+		logger.Debug("bzz upload file: file store failed", "file_name", fileName, "error", err)
+		logger.Error(nil, "bzz upload file: file store failed", "file_name", fileName)
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -140,8 +140,8 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
-		logger.Debugf("bzz upload file: create manifest, file %q: %v", fileName, err)
-		logger.Errorf("bzz upload file: create manifest, file %q", fileName)
+		logger.Debug("bzz upload file: create manifest failed", "file_name", fileName, "error", err)
+		logger.Error(nil, "bzz upload file: create manifest failed", "file_name", fileName)
 		jsonhttp.InternalServerError(w, "bzz upload file: create manifest failed")
 		return
 	}
@@ -152,8 +152,8 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
 	if err != nil {
-		logger.Debugf("bzz upload file: adding metadata to manifest, file %q: %v", fileName, err)
-		logger.Errorf("bzz upload file: adding metadata to manifest, file %q", fileName)
+		logger.Debug("bzz upload file: adding metadata to manifest failed", "file_name", fileName, "error", err)
+		logger.Error(nil, "bzz upload file: adding metadata to manifest failed", "file_name", fileName)
 		jsonhttp.InternalServerError(w, "bzz upload file: add metadata failed")
 		return
 	}
@@ -165,14 +165,13 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	err = m.Add(ctx, fileName, manifest.NewEntry(fr, fileMtdt))
 	if err != nil {
-		logger.Debugf("bzz upload file: adding file to manifest, file %q: %v", fileName, err)
-		logger.Errorf("bzz upload file: adding file to manifest, file %q", fileName)
+		logger.Debug("bzz upload file: adding file to manifest failed", "file_name", fileName, "error", err)
+		logger.Error(nil, "bzz upload file: adding file to manifest failed", "file_name", fileName)
 		jsonhttp.InternalServerError(w, "bzz upload file: add file failed")
 		return
 	}
 
-	logger.Debugf("bzz upload file: encrypt %v filename: %s hash: %s metadata: %v",
-		encrypt, fileName, fr.String(), fileMtdt)
+	logger.Debug("bzz upload file: info", "encrypt", encrypt, "file_name", fileName, "hash", fr, "metadata", fileMtdt)
 
 	storeSizeFn := []manifest.StoreSizeFunc{}
 	if !created {
@@ -191,8 +190,8 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	manifestReference, err := m.Store(ctx, storeSizeFn...)
 	if err != nil {
-		logger.Debugf("bzz upload file: manifest store, file %q: %v", fileName, err)
-		logger.Errorf("bzz upload file: manifest store, file %q", fileName)
+		logger.Debug("bzz upload file: manifest store failed", "file_name", fileName, "error", err)
+		logger.Error(nil, "bzz upload file: manifest store failed", "file_name", fileName)
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -201,13 +200,13 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		}
 		return
 	}
-	logger.Debugf("bzz upload file: manifest reference: %s", manifestReference.String())
+	logger.Debug("bzz upload file: store", "manifest_reference", manifestReference)
 
 	if created {
 		_, err = tag.DoneSplit(manifestReference)
 		if err != nil {
-			logger.Debugf("bzz upload file: done split: %v", err)
-			logger.Error("bzz upload file: done split failed")
+			logger.Debug("bzz upload file: done split failed", "error", err)
+			logger.Error(nil, "bzz upload file: done split failed")
 			jsonhttp.InternalServerError(w, "bzz upload file: done split failed")
 			return
 		}
@@ -215,16 +214,16 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
 		if err := s.pinning.CreatePin(ctx, manifestReference, false); err != nil {
-			logger.Debugf("bzz upload file: creation of pin for %q failed: %v", manifestReference, err)
-			logger.Error("bzz upload file: creation of pin failed")
+			logger.Debug("bzz upload file: pin creation failed", "manifest_reference", manifestReference, "error", err)
+			logger.Error(nil, "bzz upload file: pin creation failed")
 			jsonhttp.InternalServerError(w, "bzz upload file: create pin failed")
 			return
 		}
 	}
 
 	if err = waitFn(); err != nil {
-		s.logger.Debugf("bzz upload: sync chunks: %v", err)
-		s.logger.Error("bzz upload: sync chunks")
+		s.logger.Debug("bzz upload: sync chunks failed", "error", err)
+		s.logger.Error(nil, "bzz upload: sync chunks failed")
 		jsonhttp.InternalServerError(w, "bzz upload file: sync chunks failed")
 		return
 	}
@@ -250,8 +249,8 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		logger.Debugf("bzz download: parse address %s: %v", nameOrHex, err)
-		logger.Error("bzz download: parse address")
+		logger.Debug("bzz download: parse address string failed", "string", nameOrHex, "error", err)
+		logger.Error(nil, "bzz download: parse address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
@@ -261,6 +260,7 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) serveReference(address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	loggerV1 := logger.V(1).Build()
 	ls := loadsave.NewReadonly(s.storer)
 	feedDereferenced := false
 
@@ -273,8 +273,8 @@ FETCH:
 		ls,
 	)
 	if err != nil {
-		logger.Debugf("bzz download: not manifest %s: %v", address, err)
-		logger.Error("bzz download: not manifest")
+		logger.Debug("bzz download: not manifest", "address", address, "error", err)
+		logger.Error(nil, "bzz download: not manifest")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
@@ -288,21 +288,21 @@ FETCH:
 			//we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
-				logger.Debugf("bzz download: feed lookup: %v", err)
-				logger.Error("bzz download: feed lookup")
+				logger.Debug("bzz download: feed lookup failed", "error", err)
+				logger.Error(nil, "bzz download: feed lookup failed")
 				jsonhttp.NotFound(w, "feed not found")
 				return
 			}
 			if ch == nil {
-				logger.Debugf("bzz download: feed lookup: no updates")
-				logger.Error("bzz download: feed lookup")
+				logger.Debug("bzz download: feed lookup: no updates")
+				logger.Error(nil, "bzz download: feed lookup")
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
 			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
-				logger.Debugf("bzz download: parse feed update: %v", err)
-				logger.Error("bzz download: parse feed update")
+				logger.Debug("bzz download: parse feed update failed", "error", err)
+				logger.Error(nil, "bzz download: parse feed update failed")
 				jsonhttp.InternalServerError(w, "parse feed update")
 				return
 			}
@@ -310,8 +310,8 @@ FETCH:
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
-				s.logger.Debugf("bzz download: marshal feed index: %v", err)
-				s.logger.Error("bzz download: marshal index")
+				s.logger.Debug("bzz download: marshal feed index failed", "error", err)
+				s.logger.Error(nil, "bzz download: marshal index failed")
 				jsonhttp.InternalServerError(w, "marshal index")
 				return
 			}
@@ -327,14 +327,14 @@ FETCH:
 	}
 
 	if pathVar == "" {
-		logger.Tracef("bzz download: handle empty path %s", address)
+		loggerV1.Debug("bzz download: handle empty path", "address", address)
 
 		if indexDocumentSuffixKey, ok := manifestMetadataLoad(ctx, m, manifest.RootPath, manifest.WebsiteIndexDocumentSuffixKey); ok {
 			pathWithIndex := path.Join(pathVar, indexDocumentSuffixKey)
 			indexDocumentManifestEntry, err := m.Lookup(ctx, pathWithIndex)
 			if err == nil {
 				// index document exists
-				logger.Debugf("bzz download: serving path: %s", pathWithIndex)
+				logger.Debug("bzz download: serving path", "path", pathWithIndex)
 
 				s.serveManifestEntry(w, r, address, indexDocumentManifestEntry, !feedDereferenced)
 				return
@@ -344,8 +344,8 @@ FETCH:
 
 	me, err := m.Lookup(ctx, pathVar)
 	if err != nil {
-		logger.Debugf("bzz download: invalid path %s/%s: %v", address, pathVar, err)
-		logger.Error("bzz download: invalid path")
+		loggerV1.Debug("bzz download: invalid path", "address", address, "path", pathVar, "error", err)
+		logger.Error(nil, "bzz download: invalid path")
 
 		if errors.Is(err, manifest.ErrNotFound) {
 
@@ -359,7 +359,7 @@ FETCH:
 					u.Path += "/"
 					redirectURL := u.String()
 
-					logger.Debugf("bzz download: redirecting to %s: %v", redirectURL, err)
+					logger.Debug("bzz download: redirecting failed", "url", redirectURL, "error", err)
 
 					http.Redirect(w, r, redirectURL, http.StatusPermanentRedirect)
 					return
@@ -374,7 +374,7 @@ FETCH:
 					indexDocumentManifestEntry, err := m.Lookup(ctx, pathWithIndex)
 					if err == nil {
 						// index document exists
-						logger.Debugf("bzz download: serving path: %s", pathWithIndex)
+						logger.Debug("bzz download: serving path", "path", pathWithIndex)
 
 						s.serveManifestEntry(w, r, address, indexDocumentManifestEntry, !feedDereferenced)
 						return
@@ -388,7 +388,7 @@ FETCH:
 					errorDocumentManifestEntry, err := m.Lookup(ctx, errorDocumentPath)
 					if err == nil {
 						// error document exists
-						logger.Debugf("bzz download: serving path: %s", errorDocumentPath)
+						logger.Debug("bzz download: serving path", "path", errorDocumentPath)
 
 						s.serveManifestEntry(w, r, address, errorDocumentManifestEntry, !feedDereferenced)
 						return
@@ -435,13 +435,13 @@ func (s *Service) downloadHandler(w http.ResponseWriter, r *http.Request, refere
 	reader, l, err := joiner.New(r.Context(), s.storer, reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			logger.Debugf("api download: not found %s: %v", reference, err)
-			logger.Error("api download: not found")
+			logger.Debug("api download: not found ", "address", reference, "error", err)
+			logger.Error(nil, "api download: not found")
 			jsonhttp.NotFound(w, nil)
 			return
 		}
-		logger.Debugf("api download: unexpected error %s: %v", reference, err)
-		logger.Error("api download: unexpected error")
+		logger.Debug("api download: unexpected error", "address", reference, "error", err)
+		logger.Error(nil, "api download: unexpected error")
 		jsonhttp.InternalServerError(w, "api download: joiner failed")
 		return
 	}
@@ -523,15 +523,15 @@ func (s *Service) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.logger.Debugf("bzz patch: parse address %s: %v", nameOrHex, err)
-		s.logger.Error("bzz patch: parse address")
+		s.logger.Debug("bzz patch: parse address string failed", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "bzz patch: parse address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	err = s.steward.Reupload(r.Context(), address)
 	if err != nil {
-		s.logger.Debugf("bzz patch: reupload %s: %v", address.String(), err)
-		s.logger.Error("bzz patch: reupload")
+		s.logger.Debug("bzz patch: reupload failed", "address", address, "error", err)
+		s.logger.Error(nil, "bzz patch: reupload failed")
 		jsonhttp.InternalServerError(w, "bzz patch: reupload failed")
 		return
 	}

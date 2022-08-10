@@ -35,8 +35,8 @@ func (s *Service) balancesHandler(w http.ResponseWriter, r *http.Request) {
 	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		s.logger.Debugf("balances: %v", err)
-		s.logger.Error("balances: can not get balances")
+		s.logger.Debug("balances: get balances failed", "error", err)
+		s.logger.Error(nil, "balances: get balances failed")
 		return
 	}
 
@@ -57,8 +57,8 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.logger.Debugf("balances peer: invalid peer address %s: %v", addr, err)
-		s.logger.Errorf("balances peer: invalid peer address %s", addr)
+		s.logger.Debug("balances peer: parse address string failed", "string", addr, "error", err)
+		s.logger.Error(nil, "balances peer: parse address string failed", "string", addr)
 		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
@@ -69,8 +69,8 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.logger.Debugf("balances peer: get peer %s balance: %v", peer.String(), err)
-		s.logger.Errorf("balances peer: can't get peer %s balance", peer.String())
+		s.logger.Debug("balances peer: get peer balance failed", "peer_address", peer, "error", err)
+		s.logger.Error(nil, "balances peer: get peer balance failed", "peer_address", peer)
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
@@ -85,8 +85,8 @@ func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, r *http.Requ
 	balances, err := s.accounting.CompensatedBalances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		s.logger.Debugf("compensated balances: %v", err)
-		s.logger.Error("can not get compensated balances")
+		s.logger.Debug("compensated balances: get compensated balances failed", "error", err)
+		s.logger.Error(nil, "compensated balances: get compensated balances failed")
 		return
 	}
 
@@ -107,8 +107,8 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.logger.Debugf("compensated balances peer: invalid peer address %s: %v", addr, err)
-		s.logger.Errorf("compensated balances peer: invalid peer address %s", addr)
+		s.logger.Debug("compensated balances peer: parse address string failed", "string", addr, "error", err)
+		s.logger.Error(nil, "compensated balances peer: parse address string failed", "string", addr)
 		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
@@ -119,8 +119,8 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.logger.Debugf("compensated balances peer: get peer %s balance: %v", peer.String(), err)
-		s.logger.Errorf("compensated balances peer: can't get peer %s balance", peer.String())
+		s.logger.Debug("compensated balances peer: get compensated balances failed", "peer_address", peer, "error", err)
+		s.logger.Error(nil, "compensated balances peer: get compensated balances failed", "peer_address", peer)
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}

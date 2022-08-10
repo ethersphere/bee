@@ -54,7 +54,7 @@ func (db *DB) migrate(schemaName string) error {
 		return nil
 	}
 
-	db.logger.Infof("localstore migration: need to run %v data migrations on localstore to schema %s", len(migrations), schemaName)
+	db.logger.Info("localstore migration: need to run data migrations on localstore", "total", len(migrations), "schema", schemaName)
 	db.logger.Info("localstore migration: warning: if one of the migration fails it wouldn't be possible to downgrade back to the old version")
 	for i, migration := range migrations {
 		if err := migration.fn(db); err != nil {
@@ -66,7 +66,7 @@ func (db *DB) migrate(schemaName string) error {
 		if schemaName, err = db.schemaName.Get(); err != nil {
 			return err
 		}
-		db.logger.Infof("localstore migration: successfully ran migration: id %v current schema: %s", i, schemaName)
+		db.logger.Info("localstore migration: successfully ran migration", "id", i, "current_schema", schemaName)
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 				return nil, errors.New("found schema name for the second time when looking for migrations")
 			}
 			foundCurrent = true
-			db.logger.Infof("localstore migration: found current localstore schema %s, migrate to %s, total migrations %d", currentSchema, DBSchemaCurrent, len(allSchemeMigrations)-i)
+			db.logger.Info("localstore migration: proceeding", "current_schema", currentSchema, "new_schema", DBSchemaCurrent, "total_migrations", len(allSchemeMigrations)-i)
 			continue // current schema migration should not be executed (already has been when schema was migrated to)
 		case targetSchema:
 			foundTarget = true
@@ -117,10 +117,10 @@ func truncateIndex(db *DB, idx shed.Index) (n int, err error) {
 		if err = idx.DeleteInBatch(batch, item); err != nil {
 			return true, err
 		}
-		db.logger.Debugf("truncateIndex: deleted %x", item.Address)
+		db.logger.Debug("truncateIndex: deleted", "address", fmt.Sprintf("%x", item.Address))
 
 		if n++; n%maxBatchSize == 0 {
-			db.logger.Debugf("truncateIndex: writing batch; processed %d", n)
+			db.logger.Debug("truncateIndex: writing batch", "processed", n)
 			err := db.shed.WriteBatch(batch)
 			if err != nil {
 				return true, err

@@ -7,14 +7,13 @@ package accounting_test
 import (
 	"context"
 	"errors"
-	"io"
 	"math/big"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -102,7 +101,7 @@ func TestMutex(t *testing.T) {
 
 // TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
 func TestAccountingAddBalance(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -169,7 +168,7 @@ func TestAccountingAddBalance(t *testing.T) {
 
 // TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
 func TestAccountingAddOriginatedBalance(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -285,7 +284,7 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 // It creates an accounting instance, does some accounting
 // Then it creates a new accounting instance with the same store and verifies the balances
 func TestAccountingAdd_persistentBalances(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -355,7 +354,7 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 
 // TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded
 func TestAccountingReserve(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -384,7 +383,7 @@ func TestAccountingReserve(t *testing.T) {
 
 // TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.DisconnectError
 func TestAccountingDisconnect(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -431,7 +430,7 @@ func TestAccountingDisconnect(t *testing.T) {
 
 // TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
 func TestAccountingCallSettlement(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -555,7 +554,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 }
 
 func TestAccountingCallSettlementMonetary(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -674,7 +673,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 }
 
 func TestAccountingCallSettlementTooSoon(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -813,7 +812,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 
 // TestAccountingCallSettlementEarly tests that settlement is called correctly if the payment threshold minus early payment is hit
 func TestAccountingCallSettlementEarly(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -881,7 +880,7 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 }
 
 func TestAccountingSurplusBalance(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1004,7 +1003,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 
 // TestAccountingNotifyPayment tests that payments adjust the balance
 func TestAccountingNotifyPaymentReceived(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1067,7 +1066,7 @@ func (p *pricingMock) AnnouncePaymentThreshold(ctx context.Context, peer swarm.A
 }
 
 func TestAccountingConnected(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1103,7 +1102,7 @@ func TestAccountingConnected(t *testing.T) {
 }
 
 func TestAccountingNotifyPaymentThreshold(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1167,7 +1166,7 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 }
 
 func TestAccountingPeerDebt(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1229,7 +1228,7 @@ func TestAccountingPeerDebt(t *testing.T) {
 }
 
 func TestAccountingCallPaymentErrorRetries(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1346,7 +1345,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 var errInvalidReason = errors.New("invalid blocklist reason")
 
 func TestAccountingGhostOverdraft(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1420,7 +1419,7 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 }
 
 func TestAccountingReconnectBeforeAllowed(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -1490,7 +1489,7 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 }
 
 func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	store := mock.NewStateStore()
 	defer store.Close()

@@ -21,7 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -37,15 +37,15 @@ var errEmptyDir = errors.New("no files in root directory")
 func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	if r.Body == http.NoBody {
-		logger.Error("bzz upload dir: request has no body")
+		logger.Error(nil, "bzz upload dir: request has no body")
 		jsonhttp.BadRequest(w, errInvalidRequest)
 		return
 	}
 	contentType := r.Header.Get(contentTypeHeader)
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		logger.Error("bzz upload dir: invalid content-type")
-		logger.Debugf("bzz upload dir: invalid content-type err: %v", err)
+		logger.Error(nil, "bzz upload dir: parse media type failed")
+		logger.Debug("bzz upload dir: parse media type failed", "error", err)
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
@@ -57,7 +57,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	case multiPartFormData:
 		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"])}
 	default:
-		logger.Error("bzz upload dir: invalid content-type for directory upload")
+		logger.Error(nil, "bzz upload dir: invalid content-type for directory upload")
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
@@ -65,8 +65,8 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
-		logger.Debugf("bzz upload dir: get or create tag: %v", err)
-		logger.Error("bzz upload dir: get or create tag")
+		logger.Debug("bzz upload dir: get or create tag failed", "error", err)
+		logger.Error(nil, "bzz upload dir: get or create tag failed")
 		jsonhttp.InternalServerError(w, "bzz upload dir: get or create tag failed")
 		return
 	}
@@ -87,8 +87,8 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 		created,
 	)
 	if err != nil {
-		logger.Debugf("bzz upload dir: store dir err: %v", err)
-		logger.Error("bzz upload dir: store dir")
+		logger.Debug("bzz upload dir: store dir failed", "error", err)
+		logger.Error(nil, "bzz upload dir: store dir failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -104,8 +104,8 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if created {
 		_, err = tag.DoneSplit(reference)
 		if err != nil {
-			logger.Debugf("bzz upload dir: done split: %v", err)
-			logger.Error("bzz upload dir: done split failed")
+			logger.Debug("bzz upload dir: done split failed", "error", err)
+			logger.Error(nil, "bzz upload dir: done split failed")
 			jsonhttp.InternalServerError(w, "bzz upload dir: done split failed")
 			return
 		}
@@ -113,16 +113,16 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
 		if err := s.pinning.CreatePin(r.Context(), reference, false); err != nil {
-			logger.Debugf("bzz upload dir: creation of pin for %q failed: %v", reference, err)
-			logger.Error("bzz upload dir: creation of pin failed")
+			logger.Debug("bzz upload dir: pin creation failed", "address", reference, "error", err)
+			logger.Error(nil, "bzz upload dir: pin creation failed")
 			jsonhttp.InternalServerError(w, "bzz upload dir: create pin failed")
 			return
 		}
 	}
 
 	if err = waitFn(); err != nil {
-		s.logger.Debugf("bzz upload: sync chunks: %v", err)
-		s.logger.Error("bzz upload: sync chunks")
+		s.logger.Debug("bzz upload: sync chunks failed", "error", err)
+		s.logger.Error(nil, "bzz upload: sync chunks failed")
 		jsonhttp.InternalServerError(w, "bzz upload: sync chunks failed")
 		return
 	}
@@ -140,7 +140,7 @@ func storeDir(
 	ctx context.Context,
 	encrypt bool,
 	reader dirReader,
-	log logging.Logger,
+	log log.Logger,
 	p pipelineFunc,
 	ls file.LoadSaver,
 	indexFilename,
@@ -149,6 +149,7 @@ func storeDir(
 	tagCreated bool,
 ) (swarm.Address, error) {
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
+	loggerV1 := logger.V(1).Build()
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {
@@ -185,7 +186,7 @@ func storeDir(
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
-		logger.Tracef("uploaded dir file %v with reference %v", fileInfo.Path, fileReference)
+		loggerV1.Debug("bzz upload dir: file dir uploaded", "file_path", fileInfo.Path, "address", fileReference)
 
 		fileMtdt := map[string]string{
 			manifest.EntryMetadataContentTypeKey: fileInfo.ContentType,
@@ -241,7 +242,7 @@ func storeDir(
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
-	logger.Tracef("finished uploaded dir with reference %v", manifestReference)
+	loggerV1.Debug("bzz upload dir: uploaded dir finished", "address", manifestReference)
 
 	return manifestReference, nil
 }
@@ -260,7 +261,7 @@ type dirReader interface {
 
 type tarReader struct {
 	r      *tar.Reader
-	logger logging.Logger
+	logger log.Logger
 }
 
 func (t *tarReader) Next() (*FileInfo, error) {
@@ -285,7 +286,7 @@ func (t *tarReader) Next() (*FileInfo, error) {
 		}
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {
-			t.logger.Warningf("skipping file upload for %s as it is not a regular file", filePath)
+			t.logger.Warning("bzz upload dir: skipping file upload as it is not a regular file", "file_path", filePath)
 			continue
 		}
 

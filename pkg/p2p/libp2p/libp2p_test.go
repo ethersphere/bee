@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"io"
 	"sort"
 	"testing"
 	"time"
@@ -16,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -26,7 +25,7 @@ import (
 )
 
 type libp2pServiceOpts struct {
-	Logger      logging.Logger
+	Logger      log.Logger
 	Addressbook addressbook.Interface
 	PrivateKey  *ecdsa.PrivateKey
 	MockPeerKey *ecdsa.PrivateKey
@@ -55,7 +54,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	addr := ":0"
 
 	if o.Logger == nil {
-		o.Logger = logging.New(io.Discard, 0)
+		o.Logger = log.Noop
 	}
 
 	statestore := mock.NewStateStore()

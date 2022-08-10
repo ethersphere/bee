@@ -61,7 +61,7 @@ func dbIndicesCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Infof("getting db indices with data-dir at %s", dataDir)
+			logger.Info("getting db indices with data-dir", "path", dataDir)
 
 			path := filepath.Join(dataDir, "localstore")
 
@@ -76,10 +76,10 @@ func dbIndicesCmd(cmd *cobra.Command) {
 			}
 
 			for k, v := range indices {
-				logger.Infof("localstore index: %s, value: %d", k, v)
+				logger.Info("localstore", "index", k, "value", v)
 			}
 
-			logger.Infof("done. took %s", time.Since(start))
+			logger.Info("done", "elapsed", time.Since(start))
 
 			return nil
 		},
@@ -115,7 +115,7 @@ func dbExportCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Infof("starting export process with data-dir at %s", dataDir)
+			logger.Info("starting export process with data-dir", "path", dataDir)
 
 			path := filepath.Join(dataDir, "localstore")
 
@@ -140,7 +140,7 @@ func dbExportCmd(cmd *cobra.Command) {
 				return fmt.Errorf("error exporting database: %w", err)
 			}
 
-			logger.Infof("database exported %d records successfully", c)
+			logger.Info("database exported successfully", "total_records", c)
 
 			return nil
 		},
@@ -226,7 +226,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
 			if err != nil {
-				logger.Errorf("getting sleep value: %w", err)
+				logger.Error(err, "getting sleep value failed")
 			}
 
 			defer func() { time.Sleep(d) }()
@@ -239,12 +239,12 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Warningf("Starting to nuke the DB with data-dir at %s", dataDir)
-			logger.Warningf("This process will erase all persisted chunks in your local storage!")
-			logger.Warningf("It will NOT discriminate any pinned content, in case you were wondering.")
-			logger.Warningf("You have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
+			logger.Warning("this process will erase all persisted chunks in your local storage")
+			logger.Warning("it will NOT discriminate any pinned content, in case you were wondering")
+			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 			time.Sleep(10 * time.Second)
-			logger.Warningf("Proceeding with database nuke...")
+			logger.Warning("proceeding with database nuke...")
 
 			localstorePath := filepath.Join(dataDir, "localstore")
 			err = removeContent(localstorePath)
@@ -278,7 +278,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return fmt.Errorf("new statestore: %w", err)
 			}
 
-			logger.Warningf("Proceeding with statestore nuke...")
+			logger.Warning("proceeding with statestore nuke...")
 
 			if err = stateStore.Nuke(forgetStamps); err != nil {
 				return fmt.Errorf("statestore nuke: %w", err)

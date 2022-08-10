@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -26,6 +26,9 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pusher"
 
 type Op struct {
 	Chunk  swarm.Chunk
@@ -41,7 +44,7 @@ type Service struct {
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
 	depther           topology.NeighborhoodDepther
-	logger            logging.Logger
+	logger            log.Logger
 	tag               *tags.Tags
 	metrics           metrics
 	quit              chan struct{}
@@ -66,7 +69,7 @@ var (
 
 const chunkStoreTimeout = 2 * time.Second
 
-func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger logging.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger log.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
 	p := &Service{
 		networkID:         networkID,
 		storer:            storer,
@@ -74,7 +77,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		validStamp:        validStamp,
 		depther:           depther,
 		tag:               tagger,
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
@@ -103,6 +106,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		mtx               sync.Mutex
 		wg                sync.WaitGroup
 		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
+		loggerV1          = logger.V(1).Build()
 		timer             = time.NewTimer(traceDuration)
 	)
 
@@ -118,7 +122,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	ctxLogger := func() (context.Context, logging.Logger) {
+	ctxLogger := func() (context.Context, log.Logger) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		return ctx, logger
@@ -146,7 +150,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				repeat()
 				s.metrics.TotalErrors.Inc()
 				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-				logger.Tracef("pusher: cannot push chunk %s: %v", op.Chunk.Address().String(), err)
+				loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
 				return
 			}
 			if op.Err != nil {
@@ -166,6 +170,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				mtx.Lock()
 				span.Finish()
 				span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
+				loggerV1 = logger.V(1).Build()
 				mtx.Unlock()
 			}
 		}
@@ -180,12 +185,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			// since other nodes would reject the chunk, so the chunk is marked as
 			// synced which makes it available to the node but not to the network
 			if err := s.valid(ch); err != nil {
-				logger.Warningf("pusher: stamp with batch ID %x is no longer valid, skipping syncing for chunk %s: %v", ch.Stamp().BatchID(), ch.Address().String(), err)
+				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", fmt.Sprintf("%x", ch.Stamp().BatchID()), "chunk_address", ch.Address(), "error", err)
 
 				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
 
 				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-					s.logger.Errorf("pusher: set sync: %v", err)
+					s.logger.Error(err, "set sync failed")
 				}
 				cancel()
 			}
@@ -226,7 +231,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 }
 
-func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger logging.Logger, directUpload bool) error {
+func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger log.Logger, directUpload bool) error {
+	loggerV1 := logger.V(1).Build()
+
 	defer s.inflight.delete(ch)
 	var wantSelf bool
 	// Later when we process receipt, get the receipt and process it
@@ -246,7 +253,7 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger logging.
 		// the edge case is on the uploader node, in the case where the uploader node is
 		// connected to other nodes, but is the closest one to the chunk.
 		wantSelf = true
-		logger.Tracef("pusher: chunk %s stays here, i'm the closest node", ch.Address().String())
+		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", ch.Address())
 	} else if err = s.checkReceipt(receipt); err != nil {
 		return err
 	}
@@ -264,13 +271,13 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger logging.
 		if err == nil && t != nil {
 			err = t.Inc(tags.StateSynced)
 			if err != nil {
-				logger.Debugf("pusher: increment synced: %v", err)
+				logger.Debug("increment synced failed", "error", err)
 				return nil // tag error is non-fatal
 			}
 			if wantSelf {
 				err = t.Inc(tags.StateSent)
 				if err != nil {
-					logger.Debugf("pusher: increment sent: %v", err)
+					logger.Debug("increment sent failed", "error", err)
 					return nil // tag error is non-fatal
 				}
 			}
@@ -280,6 +287,8 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger logging.
 }
 
 func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
+	loggerV1 := s.logger.V(1).Register()
+
 	addr := receipt.Address
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
 	if err != nil {
@@ -299,7 +308,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)
 	}
-	s.logger.Tracef("pusher: pushed chunk %s to node %s, receipt depth %d", addr, peer, po)
+	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 	s.attempts.delete(addr)
 	return nil

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 const (
@@ -19,7 +19,7 @@ var (
 	versionReleased = time.Unix(commitTime, 0)
 )
 
-func startTimeBomb(logger logging.Logger) {
+func startTimeBomb(logger log.Logger) {
 	for {
 		outdated := time.Now().AddDate(0, 0, -limitDays)
 

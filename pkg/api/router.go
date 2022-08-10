@@ -13,12 +13,11 @@ import (
 
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging/httpaccess"
+	"github.com/ethersphere/bee/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
@@ -35,7 +34,7 @@ func (s *Service) MountTechnicalDebug() {
 	s.mountTechnicalDebug()
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
@@ -47,7 +46,7 @@ func (s *Service) MountDebug(restricted bool) {
 	s.mountBusinessDebug(restricted)
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
@@ -76,7 +75,7 @@ func (s *Service) MountAPI() {
 	}
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
 		skipHeadHandler(handlers.CompressHandler),
 		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
@@ -88,7 +87,7 @@ func (s *Service) MountAPI() {
 
 func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(statusHandler),
 	))
 
@@ -105,7 +104,7 @@ func (s *Service) mountTechnicalDebug() {
 	})
 
 	s.router.Path("/metrics").Handler(web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
 			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
@@ -126,25 +125,25 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/health", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(statusHandler),
 	))
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
 	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
 	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
 		"PUT": web.ChainHandlers(
-			httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
 		),
 	})
@@ -521,7 +520,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
-			s.logger.Tracef("gateway mode: forbidden %s", r.URL.String())
+			s.loggerV1.Debug("gateway mode: forbidden", "url", r.URL)
 			jsonhttp.Forbidden(w, nil)
 			return
 		}
@@ -533,12 +532,12 @@ func (s *Service) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
-				s.logger.Tracef("gateway mode: forbidden pinning %s", r.URL.String())
+				s.loggerV1.Debug("gateway mode: forbidden pinning", "url", r.URL)
 				jsonhttp.Forbidden(w, "pinning is disabled")
 				return
 			}
 			if strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true" {
-				s.logger.Tracef("gateway mode: forbidden encryption %s", r.URL.String())
+				s.loggerV1.Debug("gateway mode: forbidden encryption", "url", r.URL)
 				jsonhttp.Forbidden(w, "encryption is disabled")
 				return
 			}

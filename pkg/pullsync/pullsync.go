@@ -18,7 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bitvector"
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -29,6 +29,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pullsync"
+
 const (
 	protocolName     = "pullsync"
 	protocolVersion  = "1.1.0"
@@ -36,8 +39,6 @@ const (
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
 )
-
-const logMore = false // enable this for more logging
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
@@ -69,7 +70,7 @@ type Interface interface {
 type Syncer struct {
 	streamer   p2p.Streamer
 	metrics    metrics
-	logger     logging.Logger
+	logger     log.Logger
 	storage    pullstorage.Storer
 	quit       chan struct{}
 	wg         sync.WaitGroup
@@ -83,14 +84,14 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger) *Syncer {
 	return &Syncer{
 		streamer:   streamer,
 		storage:    storage,
 		metrics:    newMetrics(),
 		unwrap:     unwrap,
 		validStamp: validStamp,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		ruidCtx:    make(map[string]map[uint32]func()),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
@@ -123,6 +124,8 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+	loggerV2 := s.logger.V(2).Register()
+
 	var ru pb.Ruid
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -131,9 +134,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			if logMore {
-				s.logger.Debugf("pullsync: error syncing peer %s ruid %d bin %d from %d to %d: %v", peer.String(), ru.Ruid, bin, from, to, err)
-			}
+			loggerV2.Debug("error syncing peer", "peer_address", peer, "ruid", ru.Ruid, "bin", bin, "from", from, "to", to, "error", err)
 		} else {
 			go stream.FullClose()
 		}
@@ -146,9 +147,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	ru.Ruid = binary.BigEndian.Uint32(b)
-	if logMore {
-		s.logger.Debugf("pullsync: syncing peer %s ruid %d bin %d from %d to %d, ruid %d", peer.String(), ru.Ruid, bin, from, to, ru.Ruid)
-	}
+	loggerV2.Debug("syncing peer", "peer_address", peer, "ruid", ru.Ruid, "bin", bin, "from", from, "to", to)
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -191,7 +190,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
-			s.logger.Error("syncer got a zero address hash on offer")
+			s.logger.Error(nil, "syncer got a zero address hash on offer")
 			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
 		}
 		s.metrics.Offered.Inc()
@@ -241,7 +240,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			s.logger.Debugf("pullsync: unverified stamp: %v", err)
+			s.logger.Debug("unverified stamp", "error", err)
 			continue
 		}
 
@@ -276,6 +275,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 // handler handles an incoming request to sync an interval
 func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	loggerV2 := s.logger.V(2).Register()
+
 	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
@@ -288,9 +289,7 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 	if err := r.ReadMsgWithContext(ctx, &ru); err != nil {
 		return fmt.Errorf("send ruid: %w", err)
 	}
-	if logMore {
-		s.logger.Debugf("pullsync: peer %s pulling with ruid %d", p.Address.String(), ru.Ruid)
-	}
+	loggerV2.Debug("peer pulling", "peer_address", p.Address, "ruid", ru.Ruid)
 	ctx, cancel := context.WithCancel(ctx)
 
 	s.ruidMtx.Lock()
@@ -416,19 +415,17 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 }
 
 func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, err error) {
+	loggerV2 := s.logger.V(2).Register()
+
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
-	if logMore {
-		s.logger.Debugf("pullsync: getting cursors from peer %s", peer.String())
-	}
+	loggerV2.Debug("getting cursors from peer", "peer_address", peer)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			if logMore {
-				s.logger.Debugf("pullsync: error getting cursors from peer %s: %v", peer.String(), err)
-			}
+			loggerV2.Debug("error getting cursors from peer", "peer_address", peer, "error", err)
 		} else {
 			go stream.FullClose()
 		}
@@ -451,16 +448,14 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 }
 
 func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	loggerV2 := s.logger.V(2).Register()
+
 	w, r := protobuf.NewWriterAndReader(stream)
-	if logMore {
-		s.logger.Debugf("pullsync: peer %s wants cursors", p.Address.String())
-	}
+	loggerV2.Debug("peer wants cursors", "peer_address", p.Address)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			if logMore {
-				s.logger.Debugf("pullsync: error getting cursors for peer %s: %v", p.Address.String(), err)
-			}
+			loggerV2.Debug("error getting cursors for peer", "peer_address", p.Address, "error", err)
 		} else {
 			_ = stream.FullClose()
 		}
@@ -486,20 +481,19 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32) (err error) {
+	loggerV2 := s.logger.V(2).Register()
+
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cancelStreamName)
 	if err != nil {
 		return fmt.Errorf("new stream: %w", err)
 	}
-	if logMore {
-		s.logger.Debugf("pullsync: sending ruid %d cancellation to %s", ruid, peer.String())
-	}
+	loggerV2.Debug("sending ruid cancellation", "ruid", ruid, "peer_address", peer)
 	w := protobuf.NewWriter(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			if logMore {
-				s.logger.Debugf("pullsync: error sending ruid %d cancellation to %s: %v", ruid, peer.String(), err)
-			}
+			loggerV2.Debug("error sending ruid cancellation failed", "ruid", ruid, "peer_address", peer, "error", err)
+
 		} else {
 			go stream.FullClose()
 		}
@@ -518,14 +512,14 @@ func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32
 
 // handler handles an incoming request to explicitly cancel a ruid
 func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	loggerV2 := s.logger.V(2).Register()
+
 	r := protobuf.NewReader(stream)
 	var c pb.Cancel
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			if logMore {
-				s.logger.Debugf("pullsync: peer %s failed cancelling %d: %v", p.Address.String(), c.Ruid, err)
-			}
+			loggerV2.Debug("cancellation failed", "peer_address", p.Address, "ruid", c.Ruid, "error", err)
 		} else {
 			_ = stream.FullClose()
 		}
@@ -535,9 +529,7 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read cancel: %w", err)
 	}
 
-	if logMore {
-		s.logger.Debugf("pullsync: peer %s cancelling %d", p.Address.String(), c.Ruid)
-	}
+	loggerV2.Debug("cancelling", "peer_address", p.Address, "ruid", c.Ruid)
 
 	s.ruidMtx.Lock()
 	defer s.ruidMtx.Unlock()

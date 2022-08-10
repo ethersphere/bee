@@ -9,13 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -31,7 +30,7 @@ func TestEmitCheques(t *testing.T) {
 
 	// Test negotiating / sending cheques
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
@@ -146,7 +145,7 @@ func TestEmitCheques(t *testing.T) {
 }
 
 func TestCantEmitChequeRateMismatch(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
@@ -210,7 +209,7 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 
 func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()
@@ -273,7 +272,7 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 }
 
 func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	swapReceiver := swapmock.NewSwap()

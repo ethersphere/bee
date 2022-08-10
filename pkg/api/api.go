@@ -32,7 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -59,6 +59,9 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "api"
 
 const (
 	SwarmPinHeader            = "Swarm-Pin"
@@ -120,7 +123,8 @@ type Service struct {
 	traversal       traversal.Traverser
 	pinning         pinning.Interface
 	steward         steward.Interface
-	logger          logging.Logger
+	logger          log.Logger
+	loggerV1        log.Logger
 	tracer          *tracing.Tracer
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
@@ -212,13 +216,14 @@ type ExtraOptions struct {
 	SyncStatus       func() (bool, error)
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger logging.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
 	s.beeMode = beeMode
 	s.gatewayMode = gatewayMode
-	s.logger = logger
+	s.logger = logger.WithName(loggerName).Register()
+	s.loggerV1 = s.logger.V(1).Register()
 	s.chequebookEnabled = chequebookEnabled
 	s.swapEnabled = swapEnabled
 	s.publicKey = publicKey
@@ -317,12 +322,10 @@ func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
 }
 
 func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
-	log := s.logger
-
 	// Try and parse the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
 	if err == nil {
-		log.Tracef("name resolve: valid bzz address %q", str)
+		s.loggerV1.Debug("resolve name: parsing bzz address successful", "string", str, "address", addr)
 		return addr, nil
 	}
 
@@ -332,10 +335,10 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	// Try and resolve the name using the provided resolver.
-	log.Debugf("name resolve: attempting to resolve %s to bzz address", str)
+	s.logger.Debug("resolve name: attempting to resolve string to address", "string", str)
 	addr, err = s.resolver.Resolve(str)
 	if err == nil {
-		log.Tracef("name resolve: resolved name %s to %s", str, addr)
+		s.loggerV1.Debug("resolve name: address resolved successfully", "string", str, "address", addr)
 		return addr, nil
 	}
 
@@ -389,14 +392,14 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 	_, pass, ok := r.BasicAuth()
 
 	if !ok {
-		s.logger.Error("api: auth handler: missing basic auth")
+		s.logger.Error(nil, "auth handler: missing basic auth")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		jsonhttp.Unauthorized(w, "Unauthorized")
 		return
 	}
 
 	if !s.auth.Authorize(pass) {
-		s.logger.Error("api: auth handler: unauthorized")
+		s.logger.Error(nil, "auth handler: unauthorized")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 		jsonhttp.Unauthorized(w, "Unauthorized")
 		return
@@ -404,30 +407,30 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debugf("api: auth handler: read request body: %v", err)
-		s.logger.Error("api: auth handler: read request body")
+		s.logger.Debug("auth handler: read request body failed", "error", err)
+		s.logger.Error(nil, "auth handler: read request body failed")
 		jsonhttp.BadRequest(w, "Read request body")
 		return
 	}
 
 	var payload securityTokenReq
 	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debugf("api: auth handler: unmarshal request body: %v", err)
-		s.logger.Error("api: auth handler: unmarshal request body")
+		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
+		s.logger.Error(nil, "auth handler: unmarshal request body failed")
 		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
 	}
 
 	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
 	if errors.Is(err, auth.ErrExpiry) {
-		s.logger.Debugf("api: auth handler: generate key: %v", err)
-		s.logger.Error("api: auth handler: generate key")
+		s.logger.Debug("auth handler: generate key failed", "error", err)
+		s.logger.Error(nil, "auth handler: generate key failed")
 		jsonhttp.BadRequest(w, "Expiry duration must be a positive number")
 		return
 	}
 	if err != nil {
-		s.logger.Debugf("api: auth handler: add auth token: %v", err)
-		s.logger.Error("api: auth handler: add auth token")
+		s.logger.Debug("auth handler: add auth token failed", "error", err)
+		s.logger.Error(nil, "auth handler: add auth token failed")
 		jsonhttp.InternalServerError(w, "Error generating authorization token")
 		return
 	}
@@ -455,31 +458,31 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debugf("api: auth handler: read request body: %v", err)
-		s.logger.Error("api: auth handler: read request body")
+		s.logger.Debug("auth handler: read request body failed", "error", err)
+		s.logger.Error(nil, "auth handler: read request body failed")
 		jsonhttp.BadRequest(w, "Read request body")
 		return
 	}
 
 	var payload securityTokenReq
 	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debugf("api: auth handler: unmarshal request body: %v", err)
-		s.logger.Error("api: auth handler: unmarshal request body")
+		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
+		s.logger.Error(nil, "auth handler: unmarshal request body failed")
 		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
 	}
 
 	key, err := s.auth.RefreshKey(authToken, payload.Expiry)
 	if errors.Is(err, auth.ErrTokenExpired) {
-		s.logger.Debugf("api: auth handler: refresh key: %v", err)
-		s.logger.Error("api: auth handler: refresh key")
+		s.logger.Debug("auth handler: refresh key failed", "error", err)
+		s.logger.Error(nil, "auth handler: refresh key failed")
 		jsonhttp.BadRequest(w, "Token expired")
 		return
 	}
 
 	if err != nil {
-		s.logger.Debugf("api: auth handler: refresh token: %v", err)
-		s.logger.Error("api: auth handler: refresh token")
+		s.logger.Debug("auth handler: refresh token failed", "error", err)
+		s.logger.Error(nil, "auth handler: refresh token failed")
 		jsonhttp.InternalServerError(w, "Error refreshing authorization token")
 		return
 	}
@@ -494,7 +497,7 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, err := s.tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-				s.logger.Debugf("span '%s': extract tracing context: %v", spanName, err)
+				s.logger.Debug("extract tracing context failed", "span_name", spanName, "error", err)
 				// ignore
 			}
 
@@ -503,7 +506,7 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 
 			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)
 			if err != nil {
-				s.logger.Debugf("span '%s': inject tracing context: %v", spanName, err)
+				s.logger.Debug("inject tracing context failed", "span_name", spanName, "error", err)
 				// ignore
 			}
 
@@ -521,16 +524,16 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 			case http.MethodGet:
 				hdr := w.Header().Get("Decompressed-Content-Length")
 				if hdr == "" {
-					s.logger.Debug("api: decompressed content length header not found")
+					s.logger.Debug("decompressed content length header not found")
 					hdr = w.Header().Get("Content-Length")
 					if hdr == "" {
-						s.logger.Debug("api: content length header not found")
+						s.logger.Debug("content length header not found")
 						return
 					}
 				}
 				contentLength, err := strconv.Atoi(hdr)
 				if err != nil {
-					s.logger.Debugf("api: content length: '%s', int conversion failed: %v", hdr, err)
+					s.logger.Debug("int conversion failed", "content_length", hdr, "error", err)
 					return
 				}
 				if contentLength > 0 {

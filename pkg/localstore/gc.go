@@ -69,7 +69,7 @@ func (db *DB) collectGarbageWorker() {
 			// another collect garbage run is needed
 			collectedCount, done, err := db.collectGarbage()
 			if err != nil {
-				db.logger.Errorf("localstore: collect garbage: %v", err)
+				db.logger.Error(err, "collect garbage failed")
 			}
 			// check if another gc run is needed
 			if !done {
@@ -244,7 +244,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	for _, loc := range locations {
 		err = db.sharky.Release(db.ctx, loc)
 		if err != nil {
-			db.logger.Warningf("failed releasing sharky location %+v", loc)
+			db.logger.Warning("failed releasing sharky location", "location", loc)
 		}
 	}
 
@@ -362,7 +362,7 @@ func (db *DB) reserveEvictionWorker() {
 		case <-db.reserveEvictionTrigger:
 			evictedCount, done, err := db.evictReserve()
 			if err != nil {
-				db.logger.Errorf("localstore: evict reserve: %v", err)
+				db.logger.Error(err, "evict reserve failed")
 			}
 
 			if !done {

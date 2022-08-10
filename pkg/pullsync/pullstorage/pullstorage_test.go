@@ -9,7 +9,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"io"
 	"reflect"
 	"runtime/pprof"
 	"strings"
@@ -18,7 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -561,7 +560,7 @@ func newTestDB(t testing.TB, o *localstore.Options) (baseKey []byte, db *localst
 		t.Fatal(err)
 	}
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	db, err := localstore.New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)

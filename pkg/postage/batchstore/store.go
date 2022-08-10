@@ -12,10 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "batchstore"
 
 const (
 	batchKeyPrefix  = "batchstore_batch_"
@@ -39,14 +42,14 @@ type store struct {
 	rs      *reserveState // the reserve state
 	evictFn evictFn       // evict function
 	metrics metrics       // metrics
-	logger  logging.Logger
+	logger  log.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
-func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -77,7 +80,7 @@ func New(st storage.StateStorer, ev evictFn, logger logging.Logger) (postage.Sto
 		rs:      rs,
 		evictFn: ev,
 		metrics: newMetrics(),
-		logger:  logger,
+		logger:  logger.WithName(loggerName).Register(),
 	}
 
 	return s, nil
@@ -200,7 +203,7 @@ func (s *store) Save(batch *postage.Batch) error {
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
 	}
 
-	s.logger.Debugf("batchstore: saved batch %x depth %d value %d, radius %d, storage radius %d", batch.ID, batch.Depth, batch.Value.Int64(), s.rs.Radius, s.rs.StorageRadius)
+	s.logger.Debug("batch saved", "batch_id", fmt.Sprintf("%x", batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
 
 	return nil
 }
@@ -214,7 +217,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	oldBatch := &postage.Batch{}
 
-	s.logger.Debugf("batchstore: update batch %x depth %d value %d", batch.ID, depth, value.Int64())
+	s.logger.Debug("update batch", "batch_id", fmt.Sprintf("%x", batch.ID), "new_batch_depth", depth, "new_batch_value", value.Int64())
 
 	switch err := s.store.Get(batchKey(batch.ID), oldBatch); {
 	case errors.Is(err, storage.ErrNotFound):
@@ -258,7 +261,7 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 
 	s.cs = cs
 
-	s.logger.Debugf("batchstore: put chain state block %d amount %d price %d", cs.Block, cs.TotalAmount.Int64(), cs.CurrentPrice.Int64())
+	s.logger.Debug("put chain state", "block", cs.Block, "amount", cs.TotalAmount.Int64(), "price", cs.CurrentPrice.Int64())
 
 	err := s.cleanup()
 	if err != nil {

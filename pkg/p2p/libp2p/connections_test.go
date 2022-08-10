@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
@@ -975,10 +975,10 @@ func TestUserAgentLogging(t *testing.T) {
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
 		},
-		Logger: logging.New(s1Logs, 5),
+		Logger: log.NewLogger("s1", log.WithSink(s1Logs), log.WithVerbosity(log.VerbosityDebug)),
 	})
 	s2, _ := newService(t, 1, libp2pServiceOpts{
-		Logger: logging.New(s2Logs, 5),
+		Logger: log.NewLogger("s2", log.WithSink(s2Logs), log.WithVerbosity(log.VerbosityDebug)),
 	})
 
 	addr := serviceUnderlayAddress(t, s1)

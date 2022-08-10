@@ -7,13 +7,12 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -33,7 +32,7 @@ func TestChunkUploadStream(t *testing.T) {
 
 	var (
 		statestoreMock  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.Noop
 		tag             = tags.NewTags(statestoreMock, logger)
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()

@@ -16,7 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 // Backend is the minimum of blockchain backend functions we need.
@@ -65,7 +65,9 @@ func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (boo
 // WaitSynced will wait until we are synced with the given blockchain backend,
 // with the given maxDelay duration as the maximum time we can be behind the
 // last block.
-func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, maxDelay time.Duration) error {
+func WaitSynced(ctx context.Context, logger log.Logger, backend Backend, maxDelay time.Duration) error {
+	logger = logger.WithName(loggerName).Register()
+
 	for {
 		synced, blockTime, err := IsSynced(ctx, backend, maxDelay)
 		if err != nil {
@@ -76,7 +78,7 @@ func WaitSynced(ctx context.Context, logger logging.Logger, backend Backend, max
 			return nil
 		}
 
-		logger.Infof("still waiting for Ethereum to sync. Block time is %s.", blockTime)
+		logger.Info("still waiting for Ethereum to sync", "block_time", blockTime)
 
 		select {
 		case <-ctx.Done():

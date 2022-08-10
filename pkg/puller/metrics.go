@@ -61,6 +61,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Puller) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(s.metrics)
+func (p *Puller) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(p.metrics)
 }

@@ -53,8 +53,8 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := mux.Vars(r)["exp"]; ok {
 		buf, err := base64.URLEncoding.DecodeString(val)
 		if err != nil {
-			s.logger.Debugf("loggers get: query parameter decoding failed: %v", err)
-			s.logger.Error("loggers get: query parameter decoding failed")
+			s.logger.Debug("loggers get: decoding exp string failed", "string", mux.Vars(r)["exp"], "error", err)
+			s.logger.Error(nil, "loggers get: decoding exp string failed")
 			jsonhttp.BadRequest(w, err)
 		}
 		exp = string(buf)
@@ -96,8 +96,8 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if len(result.Loggers) == 0 && err != nil {
-		s.logger.Debugf("loggers get: regexp compilation failed: %v", err)
-		s.logger.Error("loggers get: regexp compilation failed")
+		s.logger.Debug("loggers get: regexp compilation failed", "error", err)
+		s.logger.Error(nil, "loggers get: regexp compilation failed")
 		jsonhttp.BadRequest(w, err)
 	} else {
 		jsonhttp.OK(w, result)
@@ -109,16 +109,16 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Request) {
 	verbosity, err := log.ParseVerbosityLevel(mux.Vars(r)["verbosity"])
 	if err != nil {
-		s.logger.Debugf("loggers set verbosity: parse verbosity level failed: %v", err)
-		s.logger.Error("loggers set verbosity: parse verbosity level failed")
+		s.logger.Debug("loggers set verbosity: parse verbosity level failed", "error", err)
+		s.logger.Error(nil, "loggers set verbosity: parse verbosity level failed")
 		jsonhttp.BadRequest(w, err)
 		return
 	}
 
 	exp, err := base64.URLEncoding.DecodeString(mux.Vars(r)["exp"])
 	if err != nil {
-		s.logger.Debugf("loggers set verbosity: query parameter decoding failed: %v", err)
-		s.logger.Error("loggers set verbosity: query parameter decoding failed")
+		s.logger.Debug("loggers set verbosity: decoding exp string failed", "string", mux.Vars(r)["exp"], "error", err)
+		s.logger.Error(nil, "loggers set verbosity: decoding exp string failed")
 		jsonhttp.BadRequest(w, err)
 		return
 	}

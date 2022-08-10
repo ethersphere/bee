@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ import (
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
 	cryptomock "github.com/ethersphere/bee/pkg/crypto/mock"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -808,7 +807,7 @@ func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameter
 
 func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags) {
 	t.Helper()
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	storer := mocks.NewStorer()
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)

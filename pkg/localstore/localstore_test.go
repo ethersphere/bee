@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"runtime"
 	"sort"
@@ -29,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
@@ -238,7 +237,7 @@ func newTestDB(t testing.TB, o *Options) *DB {
 			return nil
 		}
 	}
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
 		t.Fatal(err)

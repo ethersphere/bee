@@ -38,21 +38,21 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 
 	settlementsSent, err := s.swap.SettlementsSent()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		s.logger.Debugf("sent settlements: %v", err)
-		s.logger.Error("can not get sent settlements")
+		s.logger.Debug("settlements get: sent settlements failed", "error", err)
+		s.logger.Error(nil, "settlements get: sent settlements failed")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
-		s.logger.Debugf("sent settlements: %v", err)
-		s.logger.Error("can not get sent settlements")
+		s.logger.Debug("settlements get: sent settlements failed", "error", err)
+		s.logger.Error(nil, "settlements get: sent settlements failed")
 		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
 	}
 	settlementsReceived, err := s.swap.SettlementsReceived()
 	if err != nil {
-		s.logger.Debugf("received settlements: %v", err)
-		s.logger.Error("can not get received settlements")
+		s.logger.Debug("settlements get: get received settlements failed", "error", err)
+		s.logger.Error(nil, "settlements get: get received settlements failed")
 		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
 	}
@@ -100,8 +100,8 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	addr := mux.Vars(r)["peer"]
 	peer, err := swarm.ParseHexAddress(addr)
 	if err != nil {
-		s.logger.Debugf("settlements peer: invalid peer address %s: %v", addr, err)
-		s.logger.Errorf("settlements peer: invalid peer address %s", addr)
+		s.logger.Debug("settlements peer: parse peer address string failed", "string", addr, "error", err)
+		s.logger.Error(nil, "settlements peer: parse peer address string failed", "string", addr)
 		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
@@ -110,15 +110,15 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 
 	received, err := s.swap.TotalReceived(peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		s.logger.Debugf("settlements peer: %v", err)
-		s.logger.Errorf("settlements peer: can't get peer %s received settlement", peer.String())
+		s.logger.Debug("settlements peer: get total received failed", "peer_address", peer, "error", err)
+		s.logger.Error(nil, "settlements peer: get total received failed", "peer_address", peer)
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			s.logger.Debugf("settlements peer: get peer %s received settlement: %v", peer.String(), err)
-			s.logger.Errorf("settlements peer: can't get peer %s received settlement", peer.String())
+			s.logger.Debug("settlements peer: get total received failed", "peer_address", peer, "error", err)
+			s.logger.Error(nil, "settlements peer: get total received failed", "peer_address", peer)
 			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
 			return
 		} else {
@@ -133,8 +133,8 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	sent, err := s.swap.TotalSent(peer)
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			s.logger.Debugf("settlements peer: get peer %s sent settlement: %v", peer.String(), err)
-			s.logger.Errorf("settlements peer: can't get peer %s sent settlement", peer.String())
+			s.logger.Debug("settlements peer: get total sent failed", "peer_address", peer, "error", err)
+			s.logger.Error(nil, "settlements peer: get total sent failed", "peer_address", peer)
 			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
 			return
 		} else {
@@ -163,15 +163,15 @@ func (s *Service) settlementsHandlerPseudosettle(w http.ResponseWriter, r *http.
 	settlementsSent, err := s.pseudosettle.SettlementsSent()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantSettlements)
-		s.logger.Debugf("sent settlements: %v", err)
-		s.logger.Error("can not get sent settlements")
+		s.logger.Debug("time settlements: sent settlements failed", "error", err)
+		s.logger.Error(nil, "time settlements: sent settlements failed")
 		return
 	}
 	settlementsReceived, err := s.pseudosettle.SettlementsReceived()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantSettlements)
-		s.logger.Debugf("received settlements: %v", err)
-		s.logger.Error("can not get received settlements")
+		s.logger.Debug("time settlements: get received settlements failed", "error", err)
+		s.logger.Error(nil, "time settlements: get received settlements failed")
 		return
 	}
 

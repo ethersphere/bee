@@ -105,11 +105,11 @@ func migrateDeadPush(db *DB) error {
 	if err != nil {
 		return fmt.Errorf("iterate index: %w", err)
 	}
-	db.logger.Debugf("found %d entries to remove. trying to flush...", count)
+	db.logger.Debug("found entries to remove; trying to flush...", "count", count)
 	err = db.shed.WriteBatch(batch)
 	if err != nil {
 		return fmt.Errorf("write batch: %w", err)
 	}
-	db.logger.Debugf("done cleaning index. took %s", time.Since(start))
+	db.logger.Debug("done cleaning index", "elapsed", time.Since(start))
 	return nil
 }

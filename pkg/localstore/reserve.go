@@ -17,6 +17,8 @@ import (
 // Unpinning will result in all chunks with pincounter 0 to be put in the gc index
 // so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able.
 func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error) {
+	loggerV1 := db.logger.V(1).Register()
+
 	var (
 		item = shed.Item{
 			BatchID: id,
@@ -47,7 +49,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 			} else {
 				// this is possible when we are resyncing chain data after
 				// a dirty shutdown
-				db.logger.Tracef("unreserve set unpin chunk %s: %v", addr.String(), err)
+				loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
 			}
 		} else {
 			// we need to do this because a user might pin a chunk on top of

@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/hashicorp/go-multierror"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var _ Logger = (*logger)(nil)
@@ -118,7 +120,7 @@ func (b *builder) Build() Logger {
 // Register implements the Builder interface Register method.
 func (b *builder) Register() Logger {
 	val := b.Build()
-	key := hash(b.l.namesStr, b.l.v, b.l.valuesStr, b.l.sink)
+	key := hash(b.namesStr, b.v, b.valuesStr, b.l.sink)
 	res, _ := loggers.LoadOrStore(key, val)
 	return res.(*logger)
 }
@@ -158,6 +160,19 @@ type logger struct {
 	// levelHooks allow triggering of registered hooks
 	// on their associated severity log levels.
 	levelHooks levelHooks
+
+	// metrics collects basic statistics about logged messages.
+	metrics *metrics
+}
+
+// Metrics implements metrics.Collector interface.
+func (l *logger) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(l.metrics)
+}
+
+// Verbosity implements the Logger interface Verbosity method.
+func (l *logger) Verbosity() Level {
+	return l.verbosity.get()
 }
 
 // Debug implements the Logger interface Debug method.

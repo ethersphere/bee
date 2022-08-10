@@ -7,16 +7,18 @@ package multiresolver
 import (
 	"errors"
 	"fmt"
-	"io"
 	"path"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/cidv1"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/hashicorp/go-multierror"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "multiresolver"
 
 // Ensure MultiResolver implements Resolver interface.
 var _ resolver.Interface = (*MultiResolver)(nil)
@@ -40,7 +42,7 @@ type resolverMap map[string][]resolver.Interface
 // MultiResolver performs name resolutions based on the TLD label in the name.
 type MultiResolver struct {
 	resolvers resolverMap
-	logger    logging.Logger
+	logger    log.Logger
 	cfgs      []ConnectionConfig
 	// ForceDefault will force all names to be resolved by the default
 	// resolution chain, regadless of their TLD.
@@ -63,7 +65,7 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 
 	// Discard log output by default.
 	if mr.logger == nil {
-		mr.logger = logging.New(io.Discard, 0)
+		mr.logger = log.Noop
 	}
 	log := mr.logger
 
@@ -91,9 +93,9 @@ func WithConnectionConfigs(cfgs []ConnectionConfig) Option {
 }
 
 // WithLogger will set the logger used by the MultiResolver.
-func WithLogger(logger logging.Logger) Option {
+func WithLogger(logger log.Logger) Option {
 	return func(mr *MultiResolver) {
-		mr.logger = logger
+		mr.logger = logger.WithName(loggerName).Register()
 	}
 }
 
@@ -195,16 +197,16 @@ func (mr *MultiResolver) connectENSClient(tld, address, endpoint string) {
 	log := mr.logger
 
 	if address == "" {
-		log.Debugf("name resolver: resolver for %q: connecting to endpoint %s", tld, endpoint)
+		log.Debug("connecting to endpoint", "tld", tld, "endpoint", endpoint)
 	} else {
-		log.Debugf("name resolver: resolver for %q: connecting to endpoint %s with contract address %s", tld, endpoint, address)
+		log.Debug("connecting to endpoint with contract address", "tld", tld, "endpoint", endpoint, "contract_address", address)
 	}
 
 	ensCl, err := ens.NewClient(endpoint, ens.WithContractAddress(address))
 	if err != nil {
-		log.Errorf("name resolver: resolver for %q domain on endpoint %q: %v", tld, endpoint, err)
+		log.Error(err, "resolver on endpoint failed", "tld", tld, "endpoint", endpoint)
 	} else {
-		log.Infof("name resolver: resolver for %q domain: connected to %s", tld, endpoint)
+		log.Info("connected", "tld", tld, "endpoint", endpoint)
 		mr.PushResolver(tld, ensCl)
 	}
 }

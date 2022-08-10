@@ -36,17 +36,26 @@ Explicit `error` values that are constructed with `errors.New` may have a messag
 
 ## Logging
 
-Log messages are categorized in five different severities: error, warning, info, debug and trace, with semantic meaning associated with each of them.
+The log messages are divided into four basic categories: error, warning, info, debug, with a semantic meaning associated with each. Then there is a notion of V-level attached to the severity of debugging. V-levels provide a simple way of changing the verbosity of debug messages. V-levels provide a way for a given package to distinguish the relative importance or verbosity of a given log message. Then, if a particular logger or package logs too many messages, the package can simply change the V levels for that logger.
 
-Two types of application users are identified: regular users and developers. Regular users should not be presented with confusing technical implementation details in log messages, but only with meaningful information related to application operability in a form of meaningful statements. Developers are users that are aware of implementation details and they will benefit from technical details to help them debug the problematic application state.
+The key-value pairs (after a log message) should add more context to log messages. Keys are quite flexible and can contain more or less any string value. For consistency with existing code, there are a few conventions that should be followed:
 
-This means that the same problematic event may have two log lines but with different severities. This is the case with Error/Debug or Warning/Debug combo where Error or Warning is meant for the regular user and the Debug for developers to help them investigate the issue. Info and Trace log levels are informative about the expected state changes, but Info, with operable information, for regular users, and Trace, with technical details, for developers.
+- make your keys human-readable and be specific as much as possible (choose "peer_address" instead of "address" or "peer"; "batch_id" instead of "id" or "batch", etc.)
+- be consistent throughout the codebase
+- keys should naturally correspond to parts of the message string
+- use lower case for simple keys and lower_snake_case for more complex keys
 
-Error and warning log messages should provide enough information to identify a problem in the codebase without the need to log the filename and line number alongside, even if that information is possible to be added by the logging library.
+Although key names are mostly unrestricted, it is generally a good idea to stick to printable ascii characters, or at least to match the general character set of your log lines.
+
+Two types of application users are identified: regular users and developers. Ordinary users should not be presented with confusing technical implementation details in log messages, but only with meaningful information regarding the functionality of the application in the form of meaningful statements. Developers are the users who know the implementation details and the technical details will help them in debugging the problematic state of the application.
+
+That is, the same problem event can have two log lines, but with different severity. This is the case for a combination of Error/Debug or Warning/Debug, where Error or Warning is for the normal user and Debug is for the developer to help them investigate the problem. Log Info and Debug V-levels are informative about expected state changes, but Info, with operational information, is for ordinary users and Debug V-levels, with technical details, for developers.
+
+Error and warning log messages should provide enough information to identify the problem in the code base without the need to record the file name and line number alongside them, although this information can be added using the logging library.
 
 ### Error
 
-Error log messages are meant for regular users to be informed about the event that is happening which is not expected or may require intervention from the user for application to function properly. Log messages should be written as a statement, e.g. *unable to connect to peer 12345* and should not reveal technical details about internal implementation, such are package name, variable name or internal variable state. It should contain information only relevant to the user operating the application, concepts that can be operated on using exposed application interfaces.
+Error log messages are meant for regular users to be informed about the event that is happening which is not expected or may require intervention from the user for application to function properly. Log messages should be written as a statement, e.g. *"unable to connect to peer", "peer_address", r12345* and should not reveal technical details about internal implementation, such are package name, variable name or internal variable state. It should contain information only relevant to the user operating the application, concepts that can be operated on using exposed application interfaces.
 
 ### Warning
 
@@ -54,17 +63,21 @@ Warning log messages are also meant for regular users, as Error log messages, bu
 
 ### Info
 
-Info log messages are informing users about the changes that are affecting the application state in the expected manner, or presenting the user the information that can be used to operate the application, such as *node address: 12345*.
+Info log messages are informing users about the changes that are affecting the application state in the expected manner, or presenting the user the information that can be used to operate the application, such as *"node has successfully started" "listening_address", 12345*.
 
 ### Debug
 
-Debug log messages are meant for developers to identify the problem that has happened. They should contain as much as possible internal technical information and applications state to be able to reproduce and debug the issue. Format of such log messages should be declarative with colon `:` as the separator between code concepts as nested call stacks, components or abstractions, e.g. *handshake: parse peer /p2p/Qm2313123 address 12345: encoding/hex: odd length hex string*, just like Go error values are chained with annotations.
+Debug log messages are meant for developers to identify the problem that has happened. They should contain as much as possible internal technical information and applications state to be able to reproduce and debug the issue.
 
-### Trace
+### Debug V-levels
 
-Trace log messages are meant to inform developers about expected successful operations that are not relevant for regular users, but may be useful for understanding states in which application is going through. The form should be the same as Debug log messages.
+Debug V-levels log messages are meant to inform developers about expected successful operations that are not relevant for regular users, but may be useful for understanding states in which application is going through. The form should be the same as Debug log messages.
 
 
 ### Commit Messages
 
-For commit messages, follow [this guideline](https://www.conventionalcommits.org/en/v1.0.0/). Use reasonable length for the subject and body, ideally no longer than 72 characters.
+For commit messages, follow [this guideline](https://www.conventionalcommits.org/en/v1.0.0/). Use reasonable length for the subject and body, ideally no longer than 72 characters. Use the imperative mood for subject lines. A few examples:
+
+- Clean your room
+- Close the door
+- Take out the trash

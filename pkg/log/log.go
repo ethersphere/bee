@@ -125,6 +125,9 @@ type Builder interface {
 type Logger interface {
 	Builder
 
+	// Verbosity returns the current verbosity level of this logger.
+	Verbosity() Level
+
 	// Debug logs a debug message with the given key/value pairs as context.
 	// The msg argument should be used to add some constant description to
 	// the log line. The key/value pairs can then be used to add additional
@@ -183,6 +186,7 @@ type Options struct {
 	verbosity  Level
 	levelHooks levelHooks
 	fmtOptions fmtOptions
+	logMetrics *metrics
 }
 
 // Option represent Options parameters modifier.
@@ -272,5 +276,16 @@ func WithLevelHooks(l Level, hooks ...Hook) Option {
 		default:
 			opts.levelHooks[l] = append(opts.levelHooks[l], hooks...)
 		}
+	}
+}
+
+// WithLogMetrics tells the logger to collect metrics about log messages.
+func WithLogMetrics() Option {
+	return func(opts *Options) {
+		if opts.logMetrics != nil {
+			return
+		}
+		opts.logMetrics = newLogMetrics()
+		WithLevelHooks(VerbosityAll, opts.logMetrics)
 	}
 }

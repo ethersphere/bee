@@ -16,13 +16,16 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/blocker"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/transaction"
 	lru "github.com/hashicorp/golang-lru"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "chainsyncer"
 
 const (
 	defaultFlagTimeout     = 20 * time.Minute
@@ -48,7 +51,7 @@ type ChainSyncer struct {
 	prove                  prover              // the chainsync protocol
 	peerIterator           topology.EachPeerer // topology peer iterator
 	pollEvery, flagTimeout time.Duration
-	logger                 logging.Logger
+	logger                 log.Logger
 	lru                    *lru.Cache
 	blocker                *blocker.Blocker
 	disconnecter           p2p.Disconnecter
@@ -58,7 +61,7 @@ type ChainSyncer struct {
 	wg   sync.WaitGroup
 }
 
-func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer, disconnecter p2p.Disconnecter, logger logging.Logger, o *Options) (*ChainSyncer, error) {
+func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer, disconnecter p2p.Disconnecter, logger log.Logger, o *Options) (*ChainSyncer, error) {
 	lruCache, err := lru.New(blocksToRemember)
 	if err != nil {
 		return nil, err
@@ -77,7 +80,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 		peerIterator: peerIterator,
 		pollEvery:    o.PollEvery,
 		flagTimeout:  o.FlagTimeout,
-		logger:       logger,
+		logger:       logger.WithName(loggerName).Register(),
 		lru:          lruCache,
 		disconnecter: disconnecter,
 		metrics:      newMetrics(),
@@ -85,10 +88,10 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 	}
 
 	cb := func(a swarm.Address) {
-		c.logger.Warningf("chainsyncer: peer %s is unsynced and will be temporarily blocklisted", a.String())
+		c.logger.Warning("peer is unsynced and will be temporarily blocklisted", "peer_address", a)
 		c.metrics.UnsyncedPeers.Inc()
 	}
-	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, logger)
+	c.blocker = blocker.New(disconnecter, o.FlagTimeout, blockDuration, o.BlockerPollTime, cb, c.logger)
 
 	c.wg.Add(1)
 	go c.manage()
@@ -96,6 +99,8 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 }
 
 func (c *ChainSyncer) manage() {
+	loggerV1 := c.logger.V(1).Register()
+
 	defer c.wg.Done()
 	var (
 		ctx, cancel = context.WithCancel(context.Background())
@@ -128,7 +133,7 @@ func (c *ChainSyncer) manage() {
 		// when subsequent checks continue failing we eventually blocklist.
 		blockHeight, blockHash, err := c.getBlockHeight(ctx)
 		if err != nil {
-			c.logger.Warningf("chainsyncer: failed getting block height for challenge: %v", err)
+			c.logger.Warning("failed getting block height for challenge", "error", err)
 			continue
 		}
 
@@ -145,18 +150,18 @@ func (c *ChainSyncer) manage() {
 				defer wg.Done()
 				hash, err := c.prove.Prove(cctx, peer, blockHeight)
 				if err != nil {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d in %s: %v", peer.String(), blockHeight, time.Since(start), err)
+					c.logger.Info("failed to prove block", "peer", peer, "block", blockHeight, "elapsed", time.Since(start), "error", err)
 					c.metrics.PeerErrors.Inc()
 					c.blocker.Flag(peer)
 					return
 				}
 				if !bytes.Equal(blockHash, hash) {
-					c.logger.Infof("chainsync: peer %s failed to prove block %d in %s: want block hash %x got %x", peer.String(), blockHeight, time.Since(start), blockHash, hash)
+					c.logger.Info("failed to prove block", "peer", peer, "block", blockHeight, "elapsed", time.Since(start), "want hash", blockHash, "have hash", hash)
 					c.metrics.InvalidProofs.Inc()
 					c.blocker.Flag(peer)
 					return
 				}
-				c.logger.Tracef("chainsync: peer %s proved block %d in %s", peer.String(), blockHeight, time.Since(start))
+				loggerV1.Debug("block successfully proved", "peer", peer, "block", blockHeight, "elapsed", time.Since(start))
 				c.metrics.SyncedPeers.Inc()
 				c.blocker.Unflag(peer)
 				atomic.AddInt32(&positives, 1)
