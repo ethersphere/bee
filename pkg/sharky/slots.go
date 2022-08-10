@@ -5,11 +5,8 @@
 package sharky
 
 import (
-	"errors"
 	"io"
 )
-
-var errFull = errors.New("full")
 
 type slots struct {
 	data []byte     // byteslice serving as bitvector: i-t bit set <>
@@ -39,7 +36,7 @@ func (sl *slots) load() error {
 		sl.data = append(sl.data, 0xff)
 	}
 
-	sl.head = sl.next(0)
+	sl.head = sl.next()
 	return nil
 }
 
@@ -57,26 +54,26 @@ func (sl *slots) save() error {
 	return sl.file.Sync()
 }
 
-func (sl *slots) rewindHead(head uint32) {
+func (sl *slots) push(head uint32) {
 	if head < sl.head {
 		sl.head = head
 	}
+	sl.data[head/8] |= 1 << (head % 8)
 }
 
-// pop returns the lowest available free slot.
-func (sl *slots) pop() (uint32, error) {
+// pop sets the head as used, and finds the next free slot.
+func (sl *slots) pop() {
 	head := sl.head
 	if head >= sl.size {
-		return 0, errFull
+		return
 	}
 	sl.data[head/8] &= ^(1 << (head % 8)) // set bit to 0
-	sl.head = sl.next(head + 1)
-	return head, nil
+	sl.head = sl.next()
 }
 
 // next returns the lowest free slot after start.
-func (sl *slots) next(start uint32) uint32 {
-	for i := start; i < sl.size; i++ {
+func (sl *slots) next() uint32 {
+	for i := sl.head; i < sl.size; i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 { // first 1 bit
 			return i
 		}

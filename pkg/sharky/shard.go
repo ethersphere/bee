@@ -7,6 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -92,14 +93,16 @@ type shard struct {
 // forever loop processing
 func (sh *shard) process() {
 	defer sh.close()
+	defer fmt.Println("quit")
 
 	for {
-		freeSlot, err := sh.slots.pop()
+		freeSlot := sh.slots.next()
 		// there are no free slots, so wait for a release
-		if err != nil {
+		if freeSlot == sh.slots.size {
+			fmt.Println("no free slot", sh.index, freeSlot)
 			select {
 			case head := <-sh.onRelease:
-				sh.slots.rewindHead(head)
+				sh.slots.push(head)
 				continue
 			case <-sh.quit:
 				return
@@ -109,9 +112,12 @@ func (sh *shard) process() {
 		select {
 		// pick up new free slot from release
 		case head := <-sh.onRelease:
-			sh.slots.rewindHead(head)
+			sh.slots.push(head)
 		// write free slot
 		case sh.available <- availableShard{shardIndex: sh.index, slot: uint32(freeSlot)}:
+			fmt.Println("wrote", sh.index, freeSlot)
+			sh.slots.pop()
+		// quit
 		case <-sh.quit:
 			return
 		}
@@ -158,6 +164,7 @@ func (sh *shard) release(ctx context.Context, slot uint32) error {
 	case sh.onRelease <- slot:
 		return nil
 	case <-ctx.Done():
+		fmt.Println("release context done")
 		return ctx.Err()
 	}
 }
