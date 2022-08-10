@@ -165,9 +165,10 @@ type bucketData struct {
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	isAll := strings.ToLower(r.URL.Query().Get("all")) == "true"
 	resp := postageStampsResponse{}
-	var isExpired bool
+
 	resp.Stamps = make([]postageStampResponse, 0, len(s.post.StampIssuers()))
 	for _, v := range s.post.StampIssuers() {
+		var isExpired bool
 		exists, err := s.batchStore.Exists(v.ID())
 		if err != nil {
 			s.logger.Debugf("get stamp issuer: check batch: %v", err)
@@ -179,8 +180,6 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			state := s.batchStore.GetChainState()
 			if state.TotalAmount.Cmp(v.Amount()) == -1 {
 				isExpired = true
-			} else {
-				isExpired = false
 			}
 		}
 
@@ -288,7 +287,6 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 }
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
-	var isExpired bool
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
@@ -334,13 +332,12 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if issuer != nil {
+		var isExpired bool
 
 		if !exists {
 			state := s.batchStore.GetChainState()
 			if state.TotalAmount.Cmp(issuer.Amount()) == -1 {
 				isExpired = true
-			} else {
-				isExpired = false
 			}
 		}
 
