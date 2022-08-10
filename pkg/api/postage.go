@@ -131,6 +131,7 @@ type postageStampResponse struct {
 	ImmutableFlag bool           `json:"immutableFlag"`
 	Exists        bool           `json:"exists"`
 	BatchTTL      int64          `json:"batchTTL"`
+	Expired       bool           `json:"expired"`
 }
 
 type postageStampsResponse struct {
@@ -164,6 +165,7 @@ type bucketData struct {
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	isAll := strings.ToLower(r.URL.Query().Get("all")) == "true"
 	resp := postageStampsResponse{}
+	var isExpired bool
 	resp.Stamps = make([]postageStampResponse, 0, len(s.post.StampIssuers()))
 	for _, v := range s.post.StampIssuers() {
 		exists, err := s.batchStore.Exists(v.ID())
@@ -172,6 +174,14 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			s.logger.Error("get stamp issuer: check batch")
 			jsonhttp.InternalServerError(w, "unable to check batch")
 			return
+		}
+		if !exists {
+			state := s.batchStore.GetChainState()
+			if state.TotalAmount.Cmp(v.Amount()) == -1 {
+				isExpired = true
+			} else {
+				isExpired = false
+			}
 		}
 
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
@@ -194,6 +204,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 				ImmutableFlag: v.ImmutableFlag(),
 				Exists:        exists,
 				BatchTTL:      batchTTL,
+				Expired:       isExpired,
 			})
 		}
 	}
@@ -277,6 +288,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 }
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
+	var isExpired bool
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error("get stamp issuer: invalid batchID")
@@ -306,6 +318,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		jsonhttp.InternalServerError(w, "unable to check batch")
 		return
 	}
+
 	batchTTL, err := s.estimateBatchTTLFromID(id)
 	if err != nil {
 		s.logger.Debugf("get stamp issuer: estimate batch expiration: %v", err)
@@ -321,6 +334,16 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if issuer != nil {
+
+		if !exists {
+			state := s.batchStore.GetChainState()
+			if state.TotalAmount.Cmp(issuer.Amount()) == -1 {
+				isExpired = true
+			} else {
+				isExpired = false
+			}
+		}
+
 		resp.Utilization = issuer.Utilization()
 		resp.Usable = exists && s.post.IssuerUsable(issuer)
 		resp.Label = issuer.Label()
@@ -329,6 +352,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		resp.BucketDepth = issuer.BucketDepth()
 		resp.BlockNumber = issuer.BlockNumber()
 		resp.ImmutableFlag = issuer.ImmutableFlag()
+		resp.Expired = isExpired
 	}
 
 	jsonhttp.OK(w, &resp)
