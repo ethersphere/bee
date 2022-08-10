@@ -607,6 +607,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("batchstore: v2 flag exists: %w", err)
 	}
 
+	// a new node will not have any of this flags true
+	if !batchStoreExists && !v2Flag {
+		if err := setV2Flag(stateStore); err != nil {
+			return nil, fmt.Errorf("batchstore: set V2 flag: %w", err)
+		}
+	}
+
 	if batchStoreExists && !v2Flag && !chainCfg.IsObsoleteConfig() {
 		if err := batchStore.CleanupReset(); err != nil {
 			return nil, fmt.Errorf("batchstore: cleanup and reset: %w", err)

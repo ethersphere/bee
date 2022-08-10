@@ -50,7 +50,9 @@ import (
 )
 
 var (
-	snapshotFeed    = swarm.MustParseHexAddress("b181b084df07a550c9fc0007110bff67000fa92a090af6c5212fe8e19f888a28")
+	// zeroed out while waiting to be  replacement for the new snapshot feed address
+	// must be different to avoid stale reads on the old contract
+	snapshotFeed    = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
 	errDataMismatch = errors.New("data length mismatch")
 )
 
@@ -370,9 +372,11 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	return hasOne, err
 }
 
+const batchStoreV2flag = "batchstoreV2_flag"
+
 func batchStoreV2FlagExists(s storage.StateStorer) (bool, error) {
 	exists := false
-	if err := s.Get("batchstoreV2_flag", &exists); err != nil {
+	if err := s.Get(batchStoreV2flag, &exists); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return false, nil
 		}
@@ -382,5 +386,5 @@ func batchStoreV2FlagExists(s storage.StateStorer) (bool, error) {
 }
 
 func setV2Flag(s storage.StateStorer) error {
-	return s.Put("batchstoreV2_flag", true)
+	return s.Put(batchStoreV2flag, true)
 }
