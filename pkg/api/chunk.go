@@ -35,8 +35,8 @@ func (s *Service) processUploadRequest(
 	if h := r.Header.Get(SwarmTagHeader); h != "" {
 		tag, err = s.getTag(h)
 		if err != nil {
-			s.logger.Debugf("chunk upload: get tag: %v", err)
-			s.logger.Error("chunk upload: get tag")
+			s.logger.Debug("chunk upload: get tag failed", "error", err)
+			s.logger.Error(nil, "chunk upload: get tag failed")
 			return nil, nil, nil, nil, errors.New("cannot get tag")
 		}
 
@@ -48,8 +48,8 @@ func (s *Service) processUploadRequest(
 
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
-		s.logger.Debugf("chunk upload: putter: %v", err)
-		s.logger.Error("chunk upload: putter")
+		s.logger.Debug("chunk upload: putter failed", "error", err)
+		s.logger.Error(nil, "chunk upload: putter failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			return nil, nil, nil, nil, errors.New("batch not found")
@@ -72,8 +72,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if tag != nil {
 		err = tag.Inc(tags.StateSplit)
 		if err != nil {
-			s.logger.Debugf("chunk upload: increment tag: %v", err)
-			s.logger.Error("chunk upload: increment tag")
+			s.logger.Debug("chunk upload: increment tag failed", "error", err)
+			s.logger.Error(nil, "chunk upload: increment tag failed")
 			jsonhttp.InternalServerError(w, "increment tag")
 			return
 		}
@@ -84,31 +84,31 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
-		s.logger.Debugf("chunk upload: read chunk data error: %v", err)
-		s.logger.Error("chunk upload: read chunk data error")
+		s.logger.Debug("chunk upload: read chunk data failed", "error", err)
+		s.logger.Error(nil, "chunk upload: read chunk data failed")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 	}
 
 	if len(data) < swarm.SpanSize {
-		s.logger.Debug("chunk upload: not enough data")
-		s.logger.Error("chunk upload: data length")
-		jsonhttp.BadRequest(w, "data length")
+		s.logger.Debug("chunk upload: insufficient data length")
+		s.logger.Error(nil, "chunk upload: insufficient data length")
+		jsonhttp.BadRequest(w, "insufficient data length")
 		return
 	}
 
 	chunk, err := cac.NewWithDataSpan(data)
 	if err != nil {
-		s.logger.Debugf("chunk upload: create chunk error: %v", err)
-		s.logger.Error("chunk upload: create chunk error")
+		s.logger.Debug("chunk upload: create chunk failed", "error", err)
+		s.logger.Error(nil, "chunk upload: create chunk error")
 		jsonhttp.InternalServerError(w, "create chunk error")
 		return
 	}
 
 	seen, err := putter.Put(ctx, requestModePut(r), chunk)
 	if err != nil {
-		s.logger.Debugf("chunk upload: chunk write error: %v, addr %s", err, chunk.Address())
-		s.logger.Error("chunk upload: chunk write error")
+		s.logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
+		s.logger.Error(nil, "chunk upload: write chunk failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -119,8 +119,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	} else if len(seen) > 0 && seen[0] && tag != nil {
 		err := tag.Inc(tags.StateSeen)
 		if err != nil {
-			s.logger.Debugf("chunk upload: increment tag", err)
-			s.logger.Error("chunk upload: increment tag")
+			s.logger.Debug("chunk upload: increment tag failed", "error", err)
+			s.logger.Error(nil, "chunk upload: increment tag failed")
 			jsonhttp.BadRequest(w, "increment tag")
 			return
 		}
@@ -130,9 +130,9 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		// indicate that the chunk is stored
 		err = tag.Inc(tags.StateStored)
 		if err != nil {
-			s.logger.Debugf("chunk upload: increment tag", err)
-			s.logger.Error("chunk upload: increment tag")
-			jsonhttp.InternalServerError(w, "increment tag")
+			s.logger.Debug("chunk upload: increment tag failed", "error", err)
+			s.logger.Error(nil, "chunk upload: increment tag failed")
+			jsonhttp.InternalServerError(w, "increment tag failed")
 			return
 		}
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
@@ -140,22 +140,22 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
 		if err := s.pinning.CreatePin(ctx, chunk.Address(), false); err != nil {
-			s.logger.Debugf("chunk upload: creation of pin for %q failed: %v", chunk.Address(), err)
-			s.logger.Error("chunk upload: creation of pin failed")
+			s.logger.Debug("chunk upload: pin creation failed", "chunk_address", chunk.Address(), "error", err)
+			s.logger.Error(nil, "chunk upload: pin creation failed")
 			err = s.storer.Set(ctx, storage.ModeSetUnpin, chunk.Address())
 			if err != nil {
-				s.logger.Debugf("chunk upload: deletion of pin for %s failed: %v", chunk.Address(), err)
-				s.logger.Error("chunk upload: deletion of pin failed")
+				s.logger.Debug("chunk upload: pin deletion failed", "chunk_address", chunk.Address(), "error", err)
+				s.logger.Error(nil, "chunk upload: pin deletion failed")
 			}
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "chunk upload: creation of pin failed")
 			return
 		}
 	}
 
 	if err = wait(); err != nil {
-		s.logger.Debugf("chunk upload: sync chunk: %v", err)
-		s.logger.Error("chunk upload: sync chunk")
-		jsonhttp.InternalServerError(w, nil)
+		s.logger.Debug("chunk upload: sync chunk failed", "error", err)
+		s.logger.Error(nil, "chunk upload: sync chunk failed")
+		jsonhttp.InternalServerError(w, "chunk upload: sync failed")
 		return
 	}
 
@@ -164,13 +164,15 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
+	loggerV1 := s.logger.V(1).Build()
+
 	nameOrHex := mux.Vars(r)["address"]
 	ctx := r.Context()
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.logger.Debugf("chunk: parse chunk address %s: %v", nameOrHex, err)
-		s.logger.Error("chunk: parse chunk address error")
+		s.logger.Debug("chunk get: parse chunk address string failed", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "chunk get: parse chunk address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
@@ -178,14 +180,14 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.logger.Tracef("chunk: chunk not found. addr %s", address)
-			jsonhttp.NotFound(w, "chunk not found")
+			loggerV1.Debug("chunk get: chunk not found", "address", address)
+			jsonhttp.NotFound(w, "chunk get: chunk not found")
 			return
 
 		}
-		s.logger.Debugf("chunk: chunk read error: %v ,addr %s", err, address)
-		s.logger.Error("chunk: chunk read error")
-		jsonhttp.InternalServerError(w, "chunk read error")
+		s.logger.Debug("chunk get: read chunk failed", "chunk_address", address, "error", err)
+		s.logger.Error(nil, "chunk get: read chunk failed")
+		jsonhttp.InternalServerError(w, "read chunk failed")
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")

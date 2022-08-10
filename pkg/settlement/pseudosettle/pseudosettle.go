@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement"
@@ -21,6 +21,9 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pseudosettle"
 
 const (
 	protocolName    = "pseudosettle"
@@ -44,7 +47,7 @@ var (
 
 type Service struct {
 	streamer         p2p.Streamer
-	logger           logging.Logger
+	logger           log.Logger
 	store            storage.StateStorer
 	accounting       settlement.Accounting
 	metrics          metrics
@@ -67,10 +70,10 @@ type lastPayment struct {
 	Total          *big.Int
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, store storage.StateStorer, accounting settlement.Accounting, refreshRate, lightRefreshRate *big.Int, p2pService p2p.Service) *Service {
+func New(streamer p2p.Streamer, logger log.Logger, store storage.StateStorer, accounting settlement.Accounting, refreshRate, lightRefreshRate *big.Int, p2pService p2p.Service) *Service {
 	return &Service{
 		streamer:         streamer,
-		logger:           logger,
+		logger:           logger.WithName(loggerName).Register(),
 		metrics:          newMetrics(),
 		store:            store,
 		accounting:       accounting,
@@ -177,6 +180,8 @@ func (s *Service) peerAllowance(peer swarm.Address, fullNode bool) (limit *big.I
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	loggerV1 := s.logger.V(1).Register()
+
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer func() {
 		if err != nil {
@@ -212,10 +217,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	if allowance.Cmp(attemptedAmount) < 0 {
 		paymentAmount.Set(allowance)
-		s.logger.Tracef("pseudosettle accepting reduced payment from peer %v of %d", p.Address, paymentAmount)
-	} else {
-		s.logger.Tracef("pseudosettle accepting payment message from peer %v of %d", p.Address, paymentAmount)
 	}
+	loggerV1.Debug("pseudosettle accepting payment message from peer", "peer_address", p.Address, "amount", paymentAmount)
 
 	if paymentAmount.Cmp(big.NewInt(0)) < 0 {
 		paymentAmount.Set(big.NewInt(0))
@@ -254,6 +257,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 // Pay initiates a payment to the given peer
 func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllowance *big.Int) (*big.Int, int64, error) {
+	loggerV1 := s.logger.V(1).Register()
+
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -300,7 +305,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		checkAllowance.Set(amount)
 	}
 
-	s.logger.Tracef("pseudosettle sending payment message to peer %v of %d", peer, amount)
+	loggerV1.Debug("pseudosettle sending payment message to peer", "peer_address", peer, "amount", amount)
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{

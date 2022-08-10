@@ -4,7 +4,10 @@
 
 package api
 
-import "github.com/ethersphere/bee/pkg/swarm"
+import (
+	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/swarm"
+)
 
 type (
 	BytesPostResponse     = bytesPostResponse
@@ -108,3 +111,16 @@ var (
 	ErrCantResendTransaction = errCantResendTransaction
 	ErrAlreadyImported       = errAlreadyImported
 )
+
+type (
+	LogRegistryIterateFn   func(fn func(string, string, log.Level, uint) bool)
+	LogSetVerbosityByExpFn func(e string, v log.Level) error
+)
+
+var (
+	LogRegistryIterate   = logRegistryIterate
+	LogSetVerbosityByExp = logSetVerbosityByExp
+)
+
+func ReplaceLogRegistryIterateFn(fn LogRegistryIterateFn)   { logRegistryIterate = fn }
+func ReplaceLogSetVerbosityByExp(fn LogSetVerbosityByExpFn) { logSetVerbosityByExp = fn }

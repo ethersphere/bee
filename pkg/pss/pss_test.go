@@ -7,12 +7,11 @@ package pss_test
 import (
 	"bytes"
 	"context"
-	"io"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -32,7 +31,7 @@ func TestSend(t *testing.T) {
 		storedChunk = chunk
 		return nil, nil
 	})
-	p := pss.New(nil, logging.New(io.Discard, 0))
+	p := pss.New(nil, log.Noop)
 	p.SetPushSyncer(pushSyncService)
 
 	target := pss.Target([]byte{1}) // arbitrary test target
@@ -81,7 +80,7 @@ func TestDeliver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := pss.New(privkey, logging.New(io.Discard, 0))
+	p := pss.New(privkey, log.Noop)
 
 	target := pss.Target([]byte{1}) // arbitrary test target
 	targets := pss.Targets([]pss.Target{target})
@@ -136,7 +135,7 @@ func TestRegister(t *testing.T) {
 	}
 	recipient := &privkey.PublicKey
 	var (
-		p       = pss.New(privkey, logging.New(io.Discard, 0))
+		p       = pss.New(privkey, log.Noop)
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0

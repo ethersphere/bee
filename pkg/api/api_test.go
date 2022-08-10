@@ -30,7 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/pinning"
@@ -86,7 +86,7 @@ type testServerOptions struct {
 	Tags               *tags.Tags
 	GatewayMode        bool
 	WsPingPeriod       time.Duration
-	Logger             logging.Logger
+	Logger             log.Logger
 	PreventRedirect    bool
 	Feeds              feeds.Factory
 	CORSAllowedOrigins []string
@@ -110,9 +110,11 @@ type testServerOptions struct {
 	AccountingOpts  []accountingmock.Option
 	ChequebookOpts  []chequebookmock.Option
 	SwapOpts        []swapmock.Option
-	BatchStore      postage.Storer
 	TransactionOpts []transactionmock.Option
 	Traverser       traversal.Traverser
+
+	BatchStore postage.Storer
+	SyncStatus func() (bool, error)
 
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
@@ -125,7 +127,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		o.Logger = logging.New(io.Discard, 0)
+		o.Logger = log.Noop
 	}
 	if o.Resolver == nil {
 		o.Resolver = resolverMock.NewResolver()
@@ -138,6 +140,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
+	}
+	if o.SyncStatus == nil {
+		o.SyncStatus = func() (bool, error) { return true, nil }
 	}
 	if o.Authenticator == nil {
 		o.Authenticator = &mockauth.Auth{
@@ -180,6 +185,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Post:             o.Post,
 		PostageContract:  o.PostageContract,
 		Steward:          o.Steward,
+		SyncStatus:       o.SyncStatus,
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, o.CORSAllowedOrigins)
@@ -294,7 +300,7 @@ func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func(
 
 func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
-	log := logging.New(io.Discard, 0)
+	log := log.Noop
 
 	testCases := []struct {
 		desc       string
@@ -412,7 +418,7 @@ func TestPostageHeaderError(t *testing.T) {
 	var (
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 5)
+		logger          = log.Noop
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
@@ -513,7 +519,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 	var (
 		mockStorer               = mock.NewStorer()
 		mockStatestore           = statestore.NewStateStore()
-		logger                   = logging.New(io.Discard, 5)
+		logger                   = log.Noop
 		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, chanStorer = newTestServer(t, testServerOptions{
 			Storer:       mockStorer,

@@ -8,14 +8,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -24,7 +23,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	// create a pingpong server that handles the incoming stream
 	server := pingpong.New(nil, logger, nil)

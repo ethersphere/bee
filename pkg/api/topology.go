@@ -20,7 +20,7 @@ func (s *Service) topologyHandler(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(params)
 	if err != nil {
-		s.logger.Errorf("topology marshal to json: %v", err)
+		s.logger.Error(err, "topology get: marshal to json failed")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

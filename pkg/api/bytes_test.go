@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -38,10 +38,10 @@ func TestBytes(t *testing.T) {
 	var (
 		storerMock      = mock.NewStorer()
 		pinningMock     = pinning.NewServiceMock()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.Noop
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
-			Tags:    tags.NewTags(statestore.NewStateStore(), logging.New(io.Discard, 0)),
+			Tags:    tags.NewTags(statestore.NewStateStore(), log.Noop),
 			Pinning: pinningMock,
 			Logger:  logger,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
@@ -156,7 +156,7 @@ func TestBytes(t *testing.T) {
 	t.Run("internal error", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Internal Server Error",
+				Message: "api download: joiner failed",
 				Code:    http.StatusInternalServerError,
 			}),
 		)
@@ -181,7 +181,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	var (
 		storerMock        = mock.NewStorer()
 		pinningMock       = pinning.NewServiceMock()
-		logger            = logging.New(io.Discard, 0)
+		logger            = log.Noop
 		retBool           = false
 		retErr      error = nil
 		existsFn          = func(id []byte) (bool, error) {
@@ -189,7 +189,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 		}
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Tags:       tags.NewTags(statestore.NewStateStore(), logging.New(io.Discard, 0)),
+			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
 			Pinning:    pinningMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),

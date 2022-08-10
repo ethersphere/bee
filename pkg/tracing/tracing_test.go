@@ -5,12 +5,14 @@
 package tracing_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/uber/jaeger-client-go"
@@ -129,12 +131,20 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
-	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", logging.New(io.Discard, 0))
+	buf := new(bytes.Buffer)
+
+	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", log.NewLogger("test", log.WithSink(buf), log.WithJSONOutput()))
 	defer span.Finish()
 
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
-	v, ok := logger.Data[tracing.LogField]
+	logger.Info("msg")
+	data := make(map[string]interface{})
+	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	v, ok := data[tracing.LogField]
 	if !ok {
 		t.Fatalf("log field %q not found", tracing.LogField)
 	}
@@ -168,11 +178,19 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
 
-	logger := tracing.NewLoggerWithTraceID(ctx, logging.New(io.Discard, 0))
+	buf := new(bytes.Buffer)
+
+	logger := tracing.NewLoggerWithTraceID(ctx, log.NewLogger("test", log.WithSink(buf), log.WithJSONOutput()))
 
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
-	v, ok := logger.Data[tracing.LogField]
+	logger.Info("msg")
+	data := make(map[string]interface{})
+	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	v, ok := data[tracing.LogField]
 	if !ok {
 		t.Fatalf("log field %q not found", tracing.LogField)
 	}

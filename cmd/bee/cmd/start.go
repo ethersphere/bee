@@ -26,7 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -38,11 +38,16 @@ const (
 	serviceName = "SwarmBeeSvc"
 )
 
+// default values for network IDs
+const (
+	defaultMainNetworkID uint64 = 1
+	defaultTestNetworkID uint64 = 10
+)
+
 //go:embed bee-welcome-message.txt
 var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a Swarm node",
@@ -97,7 +102,7 @@ func (c *command) initStartCmd() (err error) {
 				return err
 			}
 
-			logger.Infof("version: %v", bee.Version)
+			logger.Info("bee version", "version", bee.Version)
 
 			bootNode := c.config.GetBool(optionNameBootnodeMode)
 			fullNode := c.config.GetBool(optionNameFullNode)
@@ -107,14 +112,21 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			mainnet := c.config.GetBool(optionNameMainNet)
-			networkID := c.config.GetUint64(optionNameNetworkID)
+			userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
 
-			if mainnet {
-				userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
-				if userHasSetNetworkID && networkID != 1 {
+			// if the user has provided a value - we use it and overwrite the default
+			// if mainnet is true then we only accept networkID value 1, error otherwise
+			// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
+			// in all the other cases we default to test network ID (10)
+			var networkID = defaultTestNetworkID
+
+			if userHasSetNetworkID {
+				networkID = c.config.GetUint64(optionNameNetworkID)
+				if mainnet && networkID != defaultMainNetworkID {
 					return errors.New("provided network ID does not match mainnet")
 				}
-				networkID = 1
+			} else if mainnet {
+				networkID = defaultMainNetworkID
 			}
 
 			bootnodes := c.config.GetStringSlice(optionNameBootnodes)
@@ -152,8 +164,10 @@ func (c *command) initStartCmd() (err error) {
 
 			// Wait for termination or interrupt signals.
 			// We want to clean up things at the end.
-			interruptChannel := make(chan os.Signal, 1)
-			signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+			sysInterruptChannel := make(chan os.Signal, 1)
+			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+			interruptChannel := make(chan struct{})
 
 			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
@@ -214,8 +228,9 @@ func (c *command) initStartCmd() (err error) {
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
 					select {
-					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+					case <-sysInterruptChannel:
+						logger.Debug("received interrupt signal")
+						close(interruptChannel)
 					case <-b.SyncingStopped():
 					}
 
@@ -228,15 +243,15 @@ func (c *command) initStartCmd() (err error) {
 						defer close(done)
 
 						if err := b.Shutdown(); err != nil {
-							logger.Errorf("shutdown: %v", err)
+							logger.Error(err, "shutdown failed")
 						}
 					}()
 
 					// If shutdown function is blocking too long,
 					// allow process termination by receiving another signal.
 					select {
-					case sig := <-interruptChannel:
-						logger.Debugf("received signal: %v", sig)
+					case <-sysInterruptChannel:
+						logger.Debug("received interrupt signal")
 					case <-done:
 					}
 				},
@@ -296,7 +311,7 @@ type signerConfig struct {
 	pssPrivateKey    *ecdsa.PrivateKey
 }
 
-func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
+func waitForClef(logger log.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
 	for {
 		externalSigner, err = external.NewExternalSigner(endpoint)
 		if err == nil {
@@ -306,13 +321,13 @@ func waitForClef(logger logging.Logger, maxRetries uint64, endpoint string) (ext
 			return nil, err
 		}
 		maxRetries--
-		logger.Warningf("failing to connect to clef signer: %v", err)
+		logger.Warning("connect to clef signer failed", "error", err)
 
 		time.Sleep(5 * time.Second)
 	}
 }
 
-func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (config *signerConfig, err error) {
+func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config *signerConfig, err error) {
 	var keystore keystore.Service
 	if c.config.GetString(optionNameDataDir) == "" {
 		keystore = memkeystore.New()
@@ -399,16 +414,16 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		publicKey = &swarmPrivateKey.PublicKey
 	}
 
-	logger.Infof("swarm public key %x", crypto.EncodeSecp256k1PublicKey(publicKey))
+	logger.Info("swarm public key", "public_key", fmt.Sprintf("%x", crypto.EncodeSecp256k1PublicKey(publicKey)))
 
 	libp2pPrivateKey, created, err := keystore.Key("libp2p", password)
 	if err != nil {
 		return nil, fmt.Errorf("libp2p key: %w", err)
 	}
 	if created {
-		logger.Debugf("new libp2p key created")
+		logger.Debug("new libp2p key created")
 	} else {
-		logger.Debugf("using existing libp2p key")
+		logger.Debug("using existing libp2p key")
 	}
 
 	pssPrivateKey, created, err := keystore.Key("pss", password)
@@ -416,19 +431,19 @@ func (c *command) configureSigner(cmd *cobra.Command, logger logging.Logger) (co
 		return nil, fmt.Errorf("pss key: %w", err)
 	}
 	if created {
-		logger.Debugf("new pss key created")
+		logger.Debug("new pss key created")
 	} else {
-		logger.Debugf("using existing pss key")
+		logger.Debug("using existing pss key")
 	}
 
-	logger.Infof("pss public key %x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey))
+	logger.Info("pss public key", "public_key", fmt.Sprintf("%x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)))
 
 	// postinst and post scripts inside packaging/{deb,rpm} depend and parse on this log output
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
-	logger.Infof("using ethereum address %x", overlayEthAddress)
+	logger.Info("using ethereum address", "address", fmt.Sprintf("%x", overlayEthAddress))
 
 	return &signerConfig{
 		signer:           signer,

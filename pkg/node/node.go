@@ -13,14 +13,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -36,7 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -74,12 +74,16 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util"
+	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "node"
 
 type Bee struct {
 	p2pService               io.Closer
@@ -89,7 +93,7 @@ type Bee struct {
 	apiServer                *http.Server
 	debugAPIServer           *http.Server
 	resolverCloser           io.Closer
-	errorLogWriter           *io.PipeWriter
+	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
 	tagsCloser               io.Closer
 	stateStoreCloser         io.Closer
@@ -112,7 +116,7 @@ type Bee struct {
 	chainSyncerCloser        io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncingStopped           chan struct{}
+	syncingStopped           *util.Signaler
 }
 
 type Options struct {
@@ -130,7 +134,7 @@ type Options struct {
 	WelcomeMessage             string
 	Bootnodes                  []string
 	CORSAllowedOrigins         []string
-	Logger                     logging.Logger
+	Logger                     log.Logger
 	TracingEnabled             bool
 	TracingEndpoint            string
 	TracingServiceName         string
@@ -178,10 +182,7 @@ const (
 	mainnetNetworkID              = uint64(1)
 )
 
-var ErrInterruped = errors.New("interrupted")
-
-func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
-
+func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -207,18 +208,23 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		warmupTime = 0
 	}
 
+	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
+		logger.Error(nil, string(p))
+		return len(p), nil
+	})
+
 	b = &Bee{
 		p2pCancel:      p2pCancel,
-		errorLogWriter: logger.WriterLevel(logrus.ErrorLevel),
+		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
-		syncingStopped: make(chan struct{}),
+		syncingStopped: util.NewSignaler(),
 	}
 
 	defer func(b *Bee) {
 		if err != nil {
-			logger.Errorf("got error %v, shutting down...", err)
+			logger.Error(err, "got error, shutting down...")
 			if err2 := b.Shutdown(); err2 != nil {
-				logger.Errorf("got error while shutting down: %v", err2)
+				logger.Error(err2, "got error while shutting down")
 			}
 		}
 	}(b)
@@ -329,15 +335,15 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           debugService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+			logger.Info("starting debug server", "address", debugAPIListener.Addr())
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
+				logger.Debug("debug api server failed to start", "error", err)
+				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
 
@@ -354,7 +360,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		apiListener, err := net.Listen("tcp", o.APIAddr)
@@ -363,11 +369,11 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		}
 
 		go func() {
-			logger.Infof("single debug & api address: %s", apiListener.Addr())
+			logger.Info("starting debug & api server", "address", apiListener.Addr())
 
 			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("single debug & api server: %v", err)
-				logger.Error("unable to serve debug & api")
+				logger.Debug("debug & api server failed to start", "error", err)
+				logger.Error(nil, "debug & api server failed to start")
 			}
 		}()
 
@@ -381,7 +387,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
+		logger.Info("waiting to sync with the Ethereum backend")
 
 		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
 		if err != nil {
@@ -467,7 +473,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
-	logger.Infof("using overlay address %s", swarmAddress)
+	logger.Info("using overlay address", "address", swarmAddress)
 
 	apiService.SetSwarmAddress(&swarmAddress)
 
@@ -488,8 +494,8 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	for _, a := range o.Bootnodes {
 		addr, err := ma.NewMultiaddr(a)
 		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
+			logger.Debug("create bootnode multiaddress from string failed", "string", a, "error", err)
+			logger.Warning("create bootnode multiaddress from string failed", "string", a)
 			continue
 		}
 
@@ -542,13 +548,13 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			stateStore,
 			signer,
 			networkID,
-			logging.New(io.Discard, 0),
+			log.Noop,
 			libp2pPrivateKey,
 			o,
 		)
-		logger.Infof("bootstrapper took %s", time.Since(start))
+		logger.Info("bootstrapper created", "elapsed", time.Since(start))
 		if err != nil {
-			logger.Errorf("bootstrapper failed to fetch batch state: %v", err)
+			logger.Error(err, "bootstrapper failed to fetch batch state")
 		}
 	}
 
@@ -574,7 +580,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	var path string
 
 	if o.DataDir != "" {
-		logger.Infof("using datadir in: '%s'", o.DataDir)
+		logger.Info("using datadir", "path", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
@@ -695,25 +701,40 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	p2ps.SetPickyNotifier(kad)
 	batchStore.SetRadiusSetter(kad)
 
-	if batchSvc != nil && chainEnabled {
-		syncedChan, err := batchSvc.Start(postageSyncStart, initBatchState)
-		if err != nil {
-			return nil, fmt.Errorf("unable to start batch service: %w", err)
-		}
-		// wait for the postage contract listener to sync
-		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+	var (
+		syncErr    atomic.Value
+		syncStatus atomic.Value
 
-		// arguably this is not a very nice solution since we dont support
-		// interrupts at this stage of the application lifecycle. some changes
-		// would be needed on the cmd level to support context cancellation at
-		// this stage
-		select {
-		case err = <-syncedChan:
-			if err != nil {
-				return nil, err
+		syncStatusFn = func() (isDone bool, err error) {
+			iErr := syncErr.Load()
+			if iErr != nil {
+				err = iErr.(error)
 			}
-		case <-interrupt:
-			return nil, ErrInterruped
+			isDone = syncStatus.Load() != nil
+			return isDone, err
+		}
+	)
+
+	if batchSvc != nil && chainEnabled {
+		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+		if o.FullNodeMode {
+			err = batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
+				return nil, fmt.Errorf("unable to start batch service: %w", err)
+			}
+		} else {
+			go func() {
+				logger.Info("started postage contract data sync in the background...")
+				err := batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+				syncStatus.Store(true)
+				if err != nil {
+					syncErr.Store(err)
+					logger.Error(err, "unable to sync batches")
+					b.syncingStopped.Signal() // trigger shutdown in start.go
+				}
+			}()
 		}
 	}
 
@@ -731,7 +752,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 	}
 
 	for _, addr := range addrs {
-		logger.Debugf("p2p address: %s", addr)
+		logger.Debug("p2p address", "address", addr)
 	}
 
 	acc, err := accounting.NewAccounting(
@@ -894,6 +915,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 		Post:             post,
 		PostageContract:  postageContractService,
 		Steward:          steward,
+		SyncStatus:       syncStatusFn,
 	}
 
 	if o.APIAddr != "" {
@@ -917,7 +939,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 				IdleTimeout:       30 * time.Second,
 				ReadHeaderTimeout: 3 * time.Second,
 				Handler:           apiService,
-				ErrorLog:          log.New(b.errorLogWriter, "", 0),
+				ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 			}
 
 			apiListener, err := net.Listen("tcp", o.APIAddr)
@@ -926,10 +948,10 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 			}
 
 			go func() {
-				logger.Infof("api address: %s", apiListener.Addr())
+				logger.Info("starting api server", "address", apiListener.Addr())
 				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-					logger.Debugf("api server: %v", err)
-					logger.Error("unable to serve api")
+					logger.Debug("api server failed to start", "error", err)
+					logger.Error(nil, "api server failed to start")
 				}
 			}()
 
@@ -1016,7 +1038,7 @@ func NewBee(interrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, s
 }
 
 func (b *Bee) SyncingStopped() chan struct{} {
-	return b.syncingStopped
+	return b.syncingStopped.C
 }
 
 func (b *Bee) Shutdown() error {
@@ -1145,7 +1167,6 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.nsCloser, "netstore")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
-	tryClose(b.errorLogWriter, "error log writer")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr
@@ -1153,7 +1174,7 @@ func (b *Bee) Shutdown() error {
 
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
-func isChainEnabled(o *Options, swapEndpoint string, logger logging.Logger) bool {
+func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""
 	lightMode := !o.FullNodeMode
 

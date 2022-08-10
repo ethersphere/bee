@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/topology"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
@@ -41,7 +40,7 @@ var (
 func TestDelivery(t *testing.T) {
 	var (
 		chunk                = testingc.FixtureChunk("0033")
-		logger               = logging.New(io.Discard, 0)
+		logger               = log.Noop
 		mockStorer           = storemock.NewStorer()
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
@@ -149,7 +148,7 @@ func TestDelivery(t *testing.T) {
 func TestRetrieveChunk(t *testing.T) {
 
 	var (
-		logger = logging.New(io.Discard, 0)
+		logger = log.Noop
 		pricer = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
 
@@ -260,7 +259,7 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	chunk := testingc.FixtureChunk("0025")
 	someOtherChunk := testingc.FixtureChunk("0033")
@@ -511,7 +510,7 @@ func TestClosestPeer(t *testing.T) {
 	addr2 := swarm.MustParseHexAddress("0300000000000000000000000000000000000000000000000000000000000000")
 	addr3 := swarm.MustParseHexAddress("0400000000000000000000000000000000000000000000000000000000000000")
 
-	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), nil, nil, nil, nil, false, nil)
+	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), log.Noop, nil, nil, nil, false, nil)
 
 	t.Run("closest", func(t *testing.T) {
 		addr, err := ret.ClosestPeer(addr1, nil, false)

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -232,7 +232,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{""}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
-	cmd.Flags().Uint64(optionNameNetworkID, 10, "ID of the Swarm network")
+	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
@@ -277,23 +277,37 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 }
 
-func newLogger(cmd *cobra.Command, verbosity string) (logging.Logger, error) {
-	var logger logging.Logger
+func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
+	var (
+		sink   = cmd.OutOrStdout()
+		vLevel = log.VerbosityNone
+	)
+
 	switch verbosity {
 	case "0", "silent":
-		logger = logging.New(io.Discard, 0)
+		sink = io.Discard
 	case "1", "error":
-		logger = logging.New(cmd.OutOrStdout(), logrus.ErrorLevel)
+		vLevel = log.VerbosityError
 	case "2", "warn":
-		logger = logging.New(cmd.OutOrStdout(), logrus.WarnLevel)
+		vLevel = log.VerbosityWarning
 	case "3", "info":
-		logger = logging.New(cmd.OutOrStdout(), logrus.InfoLevel)
+		vLevel = log.VerbosityInfo
 	case "4", "debug":
-		logger = logging.New(cmd.OutOrStdout(), logrus.DebugLevel)
+		vLevel = log.VerbosityDebug
 	case "5", "trace":
-		logger = logging.New(cmd.OutOrStdout(), logrus.TraceLevel)
+		vLevel = log.VerbosityAll
 	default:
 		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
 	}
-	return logger, nil
+
+	log.ModifyDefaults(
+		log.WithTimestamp(),
+		log.WithLogMetrics(),
+	)
+
+	return log.NewLogger(
+		node.LoggerName,
+		log.WithSink(sink),
+		log.WithVerbosity(vLevel),
+	).Register(), nil
 }

@@ -7,11 +7,10 @@ package multiresolver_test
 import (
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
@@ -25,7 +24,7 @@ func newAddr(s string) Address {
 }
 
 func TestMultiresolverOpts(t *testing.T) {
-	wantLog := logging.New(io.Discard, 1)
+	wantLog := log.Noop
 	wantCfgs := []multiresolver.ConnectionConfig{
 		{
 			Address:  "testadr1",

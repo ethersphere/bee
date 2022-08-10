@@ -7,6 +7,7 @@ package leveldb_test
 import (
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/statestore/test"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -16,7 +17,7 @@ func TestPersistentStateStore(t *testing.T) {
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		dir := t.TempDir()
 
-		store, err := leveldb.NewStateStore(dir, nil)
+		store, err := leveldb.NewStateStore(dir, log.Noop)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -30,7 +31,7 @@ func TestPersistentStateStore(t *testing.T) {
 	})
 
 	test.RunPersist(t, func(t *testing.T, dir string) storage.StateStorer {
-		store, err := leveldb.NewStateStore(dir, nil)
+		store, err := leveldb.NewStateStore(dir, log.Noop)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -42,7 +43,7 @@ func TestPersistentStateStore(t *testing.T) {
 func TestGetSchemaName(t *testing.T) {
 	dir := t.TempDir()
 
-	store, err := leveldb.NewStateStore(dir, nil)
+	store, err := leveldb.NewStateStore(dir, log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}

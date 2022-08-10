@@ -1,19 +1,16 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2022 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package logging
+package log
 
 import (
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 )
 
+// metrics groups various metrics counters for statistical reasons.
 type metrics struct {
-	// all metrics fields must be exported
-	// to be able to return them by Metrics()
-	// using reflection
 	ErrorCount prometheus.Counter
 	WarnCount  prometheus.Counter
 	InfoCount  prometheus.Counter
@@ -21,10 +18,28 @@ type metrics struct {
 	TraceCount prometheus.Counter
 }
 
-func newMetrics() metrics {
-	subsystem := "log"
+// Fire implements Hook interface.
+func (m metrics) Fire(v Level) error {
+	switch v {
+	case VerbosityError:
+		m.ErrorCount.Inc()
+	case VerbosityWarning:
+		m.WarnCount.Inc()
+	case VerbosityInfo:
+		m.InfoCount.Inc()
+	case VerbosityDebug:
+		m.DebugCount.Inc()
+	default:
+		m.TraceCount.Inc()
+	}
+	return nil
+}
 
-	return metrics{
+// newLogMetrics returns pointer to a new metrics instance ready to use.
+func newLogMetrics() *metrics {
+	const subsystem = "log"
+
+	return &metrics{
 		ErrorCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -56,34 +71,4 @@ func newMetrics() metrics {
 			Help:      "Number TRACE log messages.",
 		}),
 	}
-}
-
-func (l *logger) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(l.metrics)
-}
-
-func (m metrics) Levels() []logrus.Level {
-	return []logrus.Level{
-		logrus.ErrorLevel,
-		logrus.WarnLevel,
-		logrus.InfoLevel,
-		logrus.DebugLevel,
-		logrus.TraceLevel,
-	}
-}
-
-func (m metrics) Fire(e *logrus.Entry) error {
-	switch e.Level {
-	case logrus.ErrorLevel:
-		m.ErrorCount.Inc()
-	case logrus.WarnLevel:
-		m.WarnCount.Inc()
-	case logrus.InfoLevel:
-		m.InfoCount.Inc()
-	case logrus.DebugLevel:
-		m.DebugCount.Inc()
-	case logrus.TraceLevel:
-		m.TraceCount.Inc()
-	}
-	return nil
 }

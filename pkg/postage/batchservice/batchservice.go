@@ -12,11 +12,14 @@ import (
 	"hash"
 	"math/big"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"golang.org/x/crypto/sha3"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "batchservice"
 
 const (
 	dirtyDBKey    = "batchservice_dirty_db"
@@ -28,7 +31,7 @@ var ErrZeroValueBatch = errors.New("low balance batch")
 type batchService struct {
 	stateStore    storage.StateStorer
 	storer        postage.Storer
-	logger        logging.Logger
+	logger        log.Logger
 	listener      postage.Listener
 	owner         []byte
 	batchListener postage.BatchEventListener
@@ -45,7 +48,7 @@ type Interface interface {
 func New(
 	stateStore storage.StateStorer,
 	storer postage.Storer,
-	logger logging.Logger,
+	logger log.Logger,
 	listener postage.Listener,
 	owner []byte,
 	batchListener postage.BatchEventListener,
@@ -90,7 +93,7 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger, listener, owner, batchListener, sum, resync}, nil
+	return &batchService{stateStore, storer, logger.WithName(loggerName).Register(), listener, owner, batchListener, sum, resync}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -131,7 +134,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: created batch id %s, tx %x, checksum %x", hex.EncodeToString(batch.ID), txHash, cs)
+	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", txHash, "tx_checksum", cs)
 	return nil
 }
 
@@ -159,7 +162,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: topped up batch id %s from %v to %v, tx %x, checksum %x", hex.EncodeToString(b.ID), b.Value, normalisedBalance, txHash, cs)
+	svc.logger.Debug("topped up batch", "batch_id", hex.EncodeToString(b.ID), "old_value", b.Value, "new_value", normalisedBalance, "tx", fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
@@ -184,7 +187,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: updated depth of batch id %s from %d to %d, tx %x, checksum %x", hex.EncodeToString(b.ID), b.Depth, depth, txHash, cs)
+	svc.logger.Debug("updated depth of batch", "batch_id", hex.EncodeToString(b.ID), "old_depth", b.Depth, "new_depth", depth, "tx", fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
@@ -202,7 +205,7 @@ func (svc *batchService) UpdatePrice(price *big.Int, txHash []byte) error {
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: updated chain price to %s, tx %x, checksum %x", price, txHash, sum)
+	svc.logger.Debug("updated chain price", "new_price", price, fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", sum))
 	return nil
 }
 
@@ -222,7 +225,7 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	svc.logger.Debugf("batch service: updated block height to %d", blockNumber)
+	svc.logger.Debug("block height updated", "new_block", blockNumber)
 	return nil
 }
 func (svc *batchService) TransactionStart() error {
@@ -232,11 +235,13 @@ func (svc *batchService) TransactionEnd() error {
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
-func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot) (<-chan error, error) {
+var ErrInterruped = errors.New("postage sync interrupted")
+
+func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot, interrupt chan struct{}) (err error) {
 	dirty := false
-	err := svc.stateStore.Get(dirtyDBKey, &dirty)
+	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
+		return err
 	}
 
 	if dirty || svc.resync || initState != nil {
@@ -248,10 +253,10 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		}
 
 		if err := svc.storer.Reset(); err != nil {
-			return nil, err
+			return err
 		}
 		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
-			return nil, err
+			return err
 		}
 		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
@@ -265,7 +270,14 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		startBlock = initState.LastBlockNumber
 	}
 
-	return svc.listener.Listen(startBlock+1, svc, initState), nil
+	syncedChan := svc.listener.Listen(startBlock+1, svc, initState)
+
+	select {
+	case err = <-syncedChan:
+		return err
+	case <-interrupt:
+		return ErrInterruped
+	}
 }
 
 // updateChecksum updates the batchservice checksum once an event gets

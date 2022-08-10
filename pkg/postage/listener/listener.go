@@ -18,13 +18,17 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "listener"
 
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
@@ -57,7 +61,7 @@ type BlockHeightContractFilterer interface {
 }
 
 type listener struct {
-	logger    logging.Logger
+	logger    log.Logger
 	ev        BlockHeightContractFilterer
 	blockTime uint64
 
@@ -67,12 +71,12 @@ type listener struct {
 	metrics             metrics
 	stallingTimeout     time.Duration
 	backoffTime         time.Duration
-	syncingStopped      chan struct{}
+	syncingStopped      *util.Signaler
 }
 
 func New(
-	syncingStopped chan struct{},
-	logger logging.Logger,
+	syncingStopped *util.Signaler,
+	logger log.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
 	blockTime uint64,
@@ -81,7 +85,7 @@ func New(
 ) postage.Listener {
 	return &listener{
 		syncingStopped:      syncingStopped,
-		logger:              logger,
+		logger:              logger.WithName(loggerName).Register(),
 		ev:                  ev,
 		blockTime:           blockTime,
 		postageStampAddress: postageStampAddress,
@@ -196,7 +200,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				if !errors.Is(err, batchservice.ErrZeroValueBatch) {
 					return err
 				}
-				l.logger.Debugf("listener: failed processing event: %v", err)
+				l.logger.Debug("failed processing event", "error", err)
 			}
 			totalTimeMetric(l.metrics.EventProcessDuration, startEv)
 		}
@@ -216,17 +220,17 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 	if initState != nil {
 		err := processEvents(initState.Events, initState.LastBlockNumber+1)
 		if err != nil {
-			l.logger.Errorf("failed bootstrapping from initial state %v", err)
+			l.logger.Error(err, "failed bootstrapping from initial state")
 		}
 	}
 
 	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
 	if err != nil {
-		l.logger.Warningf("listener: batch factor conversation failed %s: %w", batchFactor, err)
+		l.logger.Warning("batch factor conversation failed", "batch_factor", batchFactor, "error", err)
 		batchFactor = defaultBatchFactor
 	}
 
-	l.logger.Debugf("listener: batch factor %d", batchFactor)
+	l.logger.Debug("batch factor", "value", batchFactor)
 
 	synced := make(chan error)
 	closeOnce := new(sync.Once)
@@ -271,7 +275,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
-				l.logger.Warningf("listener: could not get block number: %v", err)
+				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
 				continue
 			}
@@ -305,7 +309,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
-				l.logger.Warningf("listener: could not get logs: %v", err)
+				l.logger.Warning("could not get logs", "error", err)
 				lastConfirmedBlock = 0
 				continue
 			}
@@ -329,10 +333,10 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				// therefore we do nothing here
 				return
 			}
-			l.logger.Errorf("failed syncing event listener, shutting down node err: %v", err)
+			l.logger.Error(err, "failed syncing event listener; shutting down node error")
 		}
 		closeOnce.Do(func() { synced <- err })
-		close(l.syncingStopped) // trigger shutdown in start.go
+		l.syncingStopped.Signal() // trigger shutdown in start.go
 	}()
 
 	return synced

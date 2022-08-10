@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -31,6 +31,9 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pushsync"
 
 const (
 	protocolName    = "pushsync"
@@ -77,7 +80,7 @@ type PushSync struct {
 	topologyDriver topology.Driver
 	tagger         *tags.Tags
 	unwrap         func(swarm.Chunk)
-	logger         logging.Logger
+	logger         log.Logger
 	accounting     accounting.Interface
 	pricer         pricer.Interface
 	metrics        metrics
@@ -97,7 +100,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger logging.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		blockHash:      blockHash,
@@ -107,7 +110,7 @@ func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnec
 		tagger:         tagger,
 		isFullNode:     isFullNode,
 		unwrap:         unwrap,
-		logger:         logger,
+		logger:         logger.WithName(loggerName).Register(),
 		accounting:     accounting,
 		pricer:         pricer,
 		metrics:        newMetrics(),
@@ -248,12 +251,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if !storerNode && ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
 			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
-				logger.Warningf("pushsync: forwarder, invalid stamp for chunk %s", chunkAddress.String())
+				logger.Warning("forwarder, invalid stamp for chunk", "chunk_address", chunkAddress)
 				return
 			}
 			_, err = ps.storer.Put(ctx, storage.ModePutSync, verifiedChunk)
 			if err != nil {
-				logger.Warningf("pushsync: within depth peer's attempt to store chunk failed: %v", err)
+				logger.Warning("within depth peer's attempt to store chunk failed", "chunk_address", verifiedChunk.Address(), "error", err)
 			}
 		}
 	}()
@@ -442,14 +445,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
 			if errors.Is(result.err, errNotAttempted) {
-				logger.Debugf("pushsync: not attempted: adding overdraft peer to skiplist %s", result.peer.String())
+				logger.Debug("not attempted: adding overdraft peer to skiplist", "peer_address", result.peer)
 				skipPeers.AddOverdraft(result.peer)
 			}
 
 			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
-				logger.Debugf("pushsync: adding to skiplist peer %s", result.peer.String())
+				logger.Debug("adding peer to skiplist", "peer_address", result.peer)
 			}
 
 			if result.err == nil {
@@ -457,7 +460,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			logger.Debugf("pushsync: could not push to peer: %v", result.err)
+			logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
 
 			// pushPeer returned early, do not count as an attempt
 			if !result.pushed {
@@ -626,10 +629,11 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 	// now bring in the span data to the new context
 	ctx = tracing.WithContext(ctx, span)
 	spanInner, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	loggerV1 := logger.V(1).Build()
 	defer spanInner.Finish()
 	defer func() {
 		if err != nil {
-			logger.Tracef("pushsync replication: %v", err)
+			loggerV1.Debug("pushsync replication failed", "error", err)
 			ps.metrics.TotalReplicatedError.Inc()
 		}
 	}()

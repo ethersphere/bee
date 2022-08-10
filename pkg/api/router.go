@@ -13,12 +13,11 @@ import (
 
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/logging/httpaccess"
+	"github.com/ethersphere/bee/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sirupsen/logrus"
 	"resenje.org/web"
 )
 
@@ -35,7 +34,7 @@ func (s *Service) MountTechnicalDebug() {
 	s.mountTechnicalDebug()
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
@@ -47,7 +46,7 @@ func (s *Service) MountDebug(restricted bool) {
 	s.mountBusinessDebug(restricted)
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
@@ -76,7 +75,7 @@ func (s *Service) MountAPI() {
 	}
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, logrus.InfoLevel, s.tracer, "api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
 		skipHeadHandler(handlers.CompressHandler),
 		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
@@ -88,7 +87,7 @@ func (s *Service) MountAPI() {
 
 func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(statusHandler),
 	))
 
@@ -104,23 +103,8 @@ func (s *Service) mountTechnicalDebug() {
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
-	if s.transaction != nil {
-		var handle = func(path string, handler http.Handler) {
-			s.router.Handle(path, handler)
-		}
-
-		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
-		})
-		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
-		})
-	}
-
 	s.router.Path("/metrics").Handler(web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
 			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
@@ -141,9 +125,28 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/health", web.ChainHandlers(
-		httpaccess.SetAccessLogLevelHandler(0), // suppress access log messages
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(statusHandler),
 	))
+
+	s.router.Handle("/loggers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
+		"PUT": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
+		),
+	})
 }
 
 func (s *Service) mountAPI() {
@@ -341,6 +344,17 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		s.router.Handle(rootPath+path, handler)
 	}
 
+	if s.transaction != nil {
+		handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+		handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
+	}
+
 	handle("/peers", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
@@ -448,18 +462,21 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	}
 
 	handle("/stamps", web.ChainHandlers(
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
 	handle("/stamps/{id}", web.ChainHandlers(
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
 	handle("/stamps/{id}/buckets", web.ChainHandlers(
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
 		})),
@@ -467,6 +484,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
@@ -474,6 +492,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
@@ -481,6 +500,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
+		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
@@ -500,7 +520,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
-			s.logger.Tracef("gateway mode: forbidden %s", r.URL.String())
+			s.loggerV1.Debug("gateway mode: forbidden", "url", r.URL)
 			jsonhttp.Forbidden(w, nil)
 			return
 		}
@@ -512,12 +532,12 @@ func (s *Service) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
 			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
-				s.logger.Tracef("gateway mode: forbidden pinning %s", r.URL.String())
+				s.loggerV1.Debug("gateway mode: forbidden pinning", "url", r.URL)
 				jsonhttp.Forbidden(w, "pinning is disabled")
 				return
 			}
 			if strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true" {
-				s.logger.Tracef("gateway mode: forbidden encryption %s", r.URL.String())
+				s.loggerV1.Debug("gateway mode: forbidden encryption", "url", r.URL)
 				jsonhttp.Forbidden(w, "encryption is disabled")
 				return
 			}

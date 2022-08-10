@@ -43,8 +43,8 @@ func (s *Service) getDebugTagHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		s.logger.Debugf("get tag: parse id  %s: %v", idStr, err)
-		s.logger.Error("get tag: parse id")
+		s.logger.Debug("get tag: parse id string failed", "string", idStr, "error", err)
+		s.logger.Error(nil, "get tag: parse id string failed")
 		jsonhttp.BadRequest(w, "invalid id")
 		return
 	}
@@ -52,13 +52,13 @@ func (s *Service) getDebugTagHandler(w http.ResponseWriter, r *http.Request) {
 	tag, err := s.tags.Get(uint32(id))
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debugf("get tag: tag not present: %v, id %s", err, idStr)
-			s.logger.Error("get tag: tag not present")
+			s.logger.Debug("get tag: tag not found", "tag_id", id)
+			s.logger.Error(nil, "get tag: tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debugf("get tag: tag %v: %v", idStr, err)
-		s.logger.Errorf("get tag: %v", idStr)
+		s.logger.Debug("get tag: get tag failed", "tag_id", id, "error", err)
+		s.logger.Error(nil, "get tag: get tag failed", "tag_id", id)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
