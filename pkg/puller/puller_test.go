@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/puller"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -46,8 +47,9 @@ func TestOneSync(t *testing.T) {
 				mockk.AddrTuple{Addr: addr, PO: 1},
 			), mockk.WithDepth(1),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:     3,
+		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:       3,
+		syncRadius: 1,
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -75,8 +77,9 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 				mockk.AddrTuple{Addr: addr2, PO: 1},
 			), mockk.WithDepth(2),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:     3,
+		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:       3,
+		syncRadius: 2,
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -122,8 +125,9 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 1},
 					), mockk.WithDepth(1),
 				},
-				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
-				bins:     2,
+				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
+				bins:       2,
+				syncRadius: 1,
 			})
 			t.Cleanup(func() {
 				pullsync.Close()
@@ -198,8 +202,9 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 1},
 					), mockk.WithDepth(1),
 				},
-				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
-				bins:     2,
+				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
+				bins:       2,
+				syncRadius: 1,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -245,8 +250,9 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
 					), mockk.WithDepth(2),
 				},
-				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
-				bins:     5,
+				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
+				bins:       5,
+				syncRadius: 2,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -277,8 +283,9 @@ func TestPeerDisconnected(t *testing.T) {
 				mockk.AddrTuple{Addr: addr, PO: 1},
 			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
-		bins:     5,
+		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
+		bins:       5,
+		syncRadius: 2,
 	})
 	t.Cleanup(func() {
 		pullsync.Close()
@@ -385,8 +392,9 @@ func TestDepthChange(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 3},
 					), mockk.WithDepthCalls(tc.depths...),
 				},
-				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
-				bins:     5,
+				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
+				bins:       5,
+				syncRadius: tc.depths[len(tc.depths)-1],
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -583,9 +591,10 @@ func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.A
 }
 
 type opts struct {
-	pullSync []mockps.Option
-	kad      []mockk.Option
-	bins     uint8
+	pullSync   []mockps.Option
+	kad        []mockk.Option
+	bins       uint8
+	syncRadius uint8
 }
 
 func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *mockps.PullSyncMock) {
@@ -594,13 +603,23 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	kad := mockk.NewMockKademlia(ops.kad...)
 	logger := logging.New(io.Discard, 0)
 
+	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: ops.syncRadius}}
+
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	return puller.New(s, kad, ps, logger, o, 0), s, kad, ps
+	return puller.New(s, kad, rs, ps, logger, o, 0), s, kad, ps
 }
 
 type c struct {
 	b    uint8  //bin
 	f, t uint64 //from, to
+}
+
+type reserveStateGetter struct {
+	rs postage.ReserveState
+}
+
+func (r *reserveStateGetter) GetReserveState() *postage.ReserveState {
+	return &r.rs
 }

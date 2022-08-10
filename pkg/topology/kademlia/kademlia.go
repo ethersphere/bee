@@ -844,11 +844,6 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc, k *Kad) b
 // recalcDepth calculates, assigns the new depth, and returns if depth has changed
 func (k *Kad) recalcDepth() {
 
-	if k.storageRadius != swarm.MaxPO {
-		k.depth = k.storageRadius
-		return
-	}
-
 	var (
 		peers                 = k.connectedPeers
 		filter                = k.peerFilter
@@ -906,6 +901,10 @@ func (k *Kad) recalcDepth() {
 		}
 		return false, false, nil
 	})
+
+	if k.storageRadius < depth && !k.ignoreStorageDepth {
+		depth = k.storageRadius
+	}
 
 	if depth > candidate {
 		depth = candidate

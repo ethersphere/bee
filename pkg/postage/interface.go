@@ -39,9 +39,16 @@ type ChainSnapshot struct {
 // UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
 type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
 
+type ReserveStateGetter interface {
+	// GetReserveState returns a copy of stored reserve state.
+	GetReserveState() *ReserveState
+}
+
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
+	ReserveStateGetter
+
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
 
@@ -66,9 +73,6 @@ type Storer interface {
 
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
-
-	// GetReserveState returns a copy of stored reserve state.
-	GetReserveState() *ReserveState
 
 	// SetStorageRadius updates the value of the storage radius atomically.
 	SetStorageRadius(func(uint8) uint8) error
