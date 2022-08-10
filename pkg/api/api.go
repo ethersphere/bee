@@ -322,12 +322,10 @@ func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
 }
 
 func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
-	loggerV1 := s.logger.V(1).Register()
-
 	// Try and parse the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
 	if err == nil {
-		loggerV1.Debug("resolve name: parsing bzz address successful", "string", str, "address", addr)
+		s.loggerV1.Debug("resolve name: parsing bzz address successful", "string", str, "address", addr)
 		return addr, nil
 	}
 
@@ -340,7 +338,7 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	s.logger.Debug("resolve name: attempting to resolve string to address", "string", str)
 	addr, err = s.resolver.Resolve(str)
 	if err == nil {
-		loggerV1.Debug("resolve name: address resolved successfully", "string", str, "address", addr)
+		s.loggerV1.Debug("resolve name: address resolved successfully", "string", str, "address", addr)
 		return addr, nil
 	}
 
