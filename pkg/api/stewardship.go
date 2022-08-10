@@ -17,15 +17,15 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.logger.Debugf("stewardship put: parse address %s: %v", nameOrHex, err)
-		s.logger.Error("stewardship put: parse address")
+		s.logger.Debug("stewardship put: parse address string failed", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "stewardship put: parse address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	err = s.steward.Reupload(r.Context(), address)
 	if err != nil {
-		s.logger.Debugf("stewardship put: re-upload %s: %v", address, err)
-		s.logger.Error("stewardship put: re-upload")
+		s.logger.Debug("stewardship put: re-upload failed", "chunk_address", address, "error", err)
+		s.logger.Error(nil, "stewardship put: re-upload failed")
 		jsonhttp.InternalServerError(w, "stewardship put: re-upload failed")
 		return
 	}
@@ -41,15 +41,15 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		s.logger.Debugf("stewardship get: parse address %s: %v", nameOrHex, err)
-		s.logger.Error("stewardship get: parse address")
+		s.logger.Debug("stewardship get: parse address string failed", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "stewardship get: parse address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 	res, err := s.steward.IsRetrievable(r.Context(), address)
 	if err != nil {
-		s.logger.Debugf("stewardship get: is retrievable %s: %v", address, err)
-		s.logger.Error("stewardship get: is retrievable")
+		s.logger.Debug("stewardship get: is retrievable check failed", "chunk_address", address, "error", err)
+		s.logger.Error(nil, "stewardship get: is retrievable")
 		jsonhttp.InternalServerError(w, "stewardship get: is retrievable check failed")
 		return
 	}

@@ -6,14 +6,13 @@ package api_test
 
 import (
 	"encoding/hex"
-	"io"
 	"net/http"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -23,7 +22,7 @@ import (
 
 func TestStewardship(t *testing.T) {
 	var (
-		logger         = logging.New(io.Discard, 0)
+		logger         = log.Noop
 		statestoreMock = statestore.NewStateStore()
 		stewardMock    = &mock.Steward{}
 		storer         = smock.NewStorer()

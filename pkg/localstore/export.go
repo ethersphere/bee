@@ -146,13 +146,13 @@ func (db *DB) Import(ctx context.Context, r io.Reader) (count int64, err error) 
 			}
 
 			if len(hdr.Name) != 64 {
-				db.logger.Warningf("localstore export: ignoring non-chunk file: %s", hdr.Name)
+				db.logger.Warning("export: ignoring non-chunk file", "name", hdr.Name)
 				continue
 			}
 
 			keybytes, err := hex.DecodeString(hdr.Name)
 			if err != nil {
-				db.logger.Warningf("localstore export: ignoring invalid chunk file %s: %v", hdr.Name, err)
+				db.logger.Warning("export: ignoring invalid chunk file", "name", hdr.Name, "error", err)
 				continue
 			}
 

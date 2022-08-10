@@ -21,7 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -37,7 +37,7 @@ func TestDirs(t *testing.T) {
 		ctx                 = context.Background()
 		storer              = mock.NewStorer()
 		mockStatestore      = statestore.NewStateStore()
-		logger              = logging.New(io.Discard, 0)
+		logger              = log.Noop
 		client, _, _, _     = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			Tags:            tags.NewTags(mockStatestore, logger),
@@ -457,7 +457,7 @@ func TestEmtpyDir(t *testing.T) {
 		dirUploadResource = "/bzz"
 		storer            = mock.NewStorer()
 		mockStatestore    = statestore.NewStateStore()
-		logger            = logging.New(io.Discard, 0)
+		logger            = log.Noop
 		client, _, _, _   = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			Tags:            tags.NewTags(mockStatestore, logger),

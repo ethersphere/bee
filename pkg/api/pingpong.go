@@ -27,25 +27,25 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := swarm.ParseHexAddress(peerID)
 	if err != nil {
-		logger.Debugf("pingpong: parse peer address %s: %v", peerID, err)
+		logger.Debug("pingpong: parse peer address string failed", "string", peerID, "error", err)
 		jsonhttp.BadRequest(w, "invalid peer address")
 		return
 	}
 
 	rtt, err := s.pingpong.Ping(ctx, address, "ping")
 	if err != nil {
-		logger.Debugf("pingpong: ping %s: %v", peerID, err)
+		logger.Debug("pingpong: ping failed", "peer_address", address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
 
-		logger.Errorf("pingpong failed to peer %s", peerID)
+		logger.Error(nil, "pingpong: ping failed", "peer_address", address)
 		jsonhttp.InternalServerError(w, "pingpong: ping failed")
 		return
 	}
 
-	logger.Infof("pingpong succeeded to peer %s", peerID)
+	logger.Info("pingpong: ping succeeded", "peer_address", address)
 	jsonhttp.OK(w, pingpongResponse{
 		RTT: rtt.String(),
 	})

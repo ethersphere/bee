@@ -5,11 +5,10 @@
 package batchstore_test
 
 import (
-	"io"
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
@@ -386,7 +385,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	stateStore, err := leveldb.NewStateStore(dir, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -401,7 +400,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, logger)
+	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{

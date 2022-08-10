@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"testing"
 
@@ -18,7 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	signermock "github.com/ethersphere/bee/pkg/crypto/mock"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -74,7 +73,7 @@ func signerMockForTransaction(signedTx *types.Transaction, sender common.Address
 }
 
 func TestTransactionSend(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	sender := common.HexToAddress("0xddff")
 	recipient := common.HexToAddress("0xabcd")
 	txData := common.Hex2Bytes("0xabcdee")
@@ -347,7 +346,7 @@ func TestTransactionSend(t *testing.T) {
 }
 
 func TestTransactionWaitForReceipt(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	txHash := common.HexToHash("0xabcdee")
 	chainID := big.NewInt(5)
 	nonce := uint64(10)
@@ -405,7 +404,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 }
 
 func TestTransactionResend(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	recipient := common.HexToAddress("0xbbbddd")
 	chainID := big.NewInt(5)
 	nonce := uint64(10)
@@ -464,7 +463,7 @@ func TestTransactionResend(t *testing.T) {
 }
 
 func TestTransactionCancel(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	recipient := common.HexToAddress("0xbbbddd")
 	chainID := big.NewInt(5)
 	nonce := uint64(10)

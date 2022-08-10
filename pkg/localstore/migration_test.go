@@ -17,12 +17,11 @@
 package localstore
 
 import (
-	"io"
 	"math/rand"
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -53,7 +52,7 @@ func TestOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)
@@ -136,7 +135,7 @@ func TestManyMigrations(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)
@@ -212,7 +211,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	if _, err := rand.Read(baseKey); err != nil {
 		t.Fatal(err)
 	}
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)
@@ -269,7 +268,7 @@ func TestMigrationErrorTo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
 	db, err := New(dir, baseKey, nil, nil, logger)

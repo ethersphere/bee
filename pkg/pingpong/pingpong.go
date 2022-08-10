@@ -12,13 +12,16 @@ import (
 	"io"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pingpong/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pinpong"
 
 const (
 	protocolName    = "pingpong"
@@ -32,15 +35,15 @@ type Interface interface {
 
 type Service struct {
 	streamer p2p.Streamer
-	logger   logging.Logger
+	logger   log.Logger
 	tracer   *tracing.Tracer
 	metrics  metrics
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, tracer *tracing.Tracer) *Service {
+func New(streamer p2p.Streamer, logger log.Logger, tracer *tracing.Tracer) *Service {
 	return &Service{
 		streamer: streamer,
-		logger:   logger,
+		logger:   logger.WithName(loggerName).Register(),
 		tracer:   tracer,
 		metrics:  newMetrics(),
 	}

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -22,6 +22,9 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "swapprotocol"
 
 const (
 	protocolName    = "swap"
@@ -61,17 +64,17 @@ type Swap interface {
 // Service is the main implementation of the swap protocol.
 type Service struct {
 	streamer    p2p.Streamer
-	logger      logging.Logger
+	logger      log.Logger
 	swap        Swap
 	priceOracle priceoracle.Service
 	beneficiary common.Address
 }
 
 // New creates a new swap protocol Service.
-func New(streamer p2p.Streamer, logger logging.Logger, beneficiary common.Address, priceOracle priceoracle.Service) *Service {
+func New(streamer p2p.Streamer, logger log.Logger, beneficiary common.Address, priceOracle priceoracle.Service) *Service {
 	return &Service{
 		streamer:    streamer,
-		logger:      logger,
+		logger:      logger.WithName(loggerName).Register(),
 		beneficiary: beneficiary,
 		priceOracle: priceOracle,
 	}
@@ -160,6 +163,8 @@ func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address
 
 // InitiateCheque attempts to send a cheque to a peer.
 func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiary common.Address, amount *big.Int, issue IssueFunc) (balance *big.Int, err error) {
+	loggerV1 := s.logger.V(1).Register()
+
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -227,7 +232,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		}
 
 		// sending cheque
-		s.logger.Tracef("sending cheque message to peer %v (%v)", peer, cheque)
+		loggerV1.Debug("sending cheque message to peer", "peer_address", peer, "", "cheque", cheque)
 
 		w := protobuf.NewWriter(stream)
 		return w.WriteMsgWithContext(ctx, &pb.EmitCheque{

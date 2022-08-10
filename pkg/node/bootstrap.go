@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/hive"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -77,7 +77,7 @@ func bootstrapNode(
 	stateStore storage.StateStorer,
 	signer crypto.Signer,
 	networkID uint64,
-	logger logging.Logger,
+	logger log.Logger,
 	libp2pPrivateKey *ecdsa.PrivateKey,
 	o *Options,
 ) (snapshot *postage.ChainSnapshot, retErr error) {
@@ -221,7 +221,7 @@ func bootstrapNode(
 
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
 		if err != nil {
-			logger.Warningf("bootstrap: fetching snapshot: %v", err)
+			logger.Warning("bootstrap: fetching snapshot failed", "error", err)
 			continue
 		}
 		break
@@ -240,19 +240,19 @@ func bootstrapNode(
 
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
 		if err != nil {
-			logger.Warningf("bootstrap: file joiner: %v", err)
+			logger.Warning("bootstrap: file joiner failed", "error", err)
 			continue
 		}
 
 		eventsJSON, err = io.ReadAll(reader)
 		if err != nil {
-			logger.Warningf("bootstrap: reading: %v", err)
+			logger.Warning("bootstrap: reading failed", "error", err)
 			continue
 		}
 
 		if len(eventsJSON) != int(l) {
 			err = errDataMismatch
-			logger.Warningf("bootstrap: %v", err)
+			logger.Warning("bootstrap: count mismatch", "error", err)
 			continue
 		}
 		break

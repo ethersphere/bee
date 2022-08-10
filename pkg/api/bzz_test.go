@@ -20,7 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -40,7 +40,7 @@ func TestBzzFiles(t *testing.T) {
 		storerMock           = smock.NewStorer()
 		statestoreMock       = statestore.NewStateStore()
 		pinningMock          = pinning.NewServiceMock()
-		logger               = logging.New(io.Discard, 0)
+		logger               = log.Noop
 		client, _, _, _      = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Pinning: pinningMock,
@@ -440,7 +440,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 	for _, upload := range uploads {
 		t.Run(upload.name, func(t *testing.T) {
 			mockStatestore := statestore.NewStateStore()
-			logger := logging.New(io.Discard, 0)
+			logger := log.Noop
 			client, _, _, _ := newTestServer(t, testServerOptions{
 				Storer: smock.NewStorer(),
 				Tags:   tags.NewTags(mockStatestore, logger),
@@ -557,7 +557,7 @@ func TestFeedIndirection(t *testing.T) {
 	var (
 		updateData      = []byte("<h1>Swarm Feeds Hello World!</h1>")
 		mockStatestore  = statestore.NewStateStore()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.Noop
 		storer          = smock.NewStorer()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
@@ -647,7 +647,7 @@ func TestFeedIndirection(t *testing.T) {
 
 func TestBzzReupload(t *testing.T) {
 	var (
-		logger         = logging.New(io.Discard, 0)
+		logger         = log.Noop
 		statestoreMock = statestore.NewStateStore()
 		stewardMock    = &mock.Steward{}
 		storer         = smock.NewStorer()

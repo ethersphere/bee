@@ -13,22 +13,21 @@ import (
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
 
-	"github.com/ethersphere/bee/pkg/logging"
-	"github.com/sirupsen/logrus"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 func isWindowsService() (bool, error) {
 	return svc.IsWindowsService()
 }
 
-func createWindowsEventLogger(svcName string, logger logging.Logger) (logging.Logger, error) {
+func createWindowsEventLogger(svcName string, logger log.Logger) (log.Logger, error) {
 	el, err := eventlog.Open(svcName)
 	if err != nil {
 		return nil, err
 	}
 
 	winlog := &windowsEventLogger{
-		logger: logger,
+		Logger: logger,
 		winlog: el,
 	}
 
@@ -36,54 +35,23 @@ func createWindowsEventLogger(svcName string, logger logging.Logger) (logging.Lo
 }
 
 type windowsEventLogger struct {
-	logger logging.Logger
+	log.Logger
 	winlog debug.Log
 }
 
-func (l *windowsEventLogger) Log(verbosity logrus.Level, args ...interface{}) {
-	// ignore
+func (l windowsEventLogger) Debug(_ string, _ ...interface{}) {}
+
+func (l windowsEventLogger) Info(msg string, keysAndValues ...interface{}) {
+	_ = l.winlog.Info(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(keysAndValues...)))
 }
 
-func (l *windowsEventLogger) Tracef(format string, args ...interface{}) {
-	// ignore
+func (l windowsEventLogger) Warning(msg string, keysAndValues ...interface{}) {
+	_ = l.winlog.Warning(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(keysAndValues...)))
 }
 
-func (l *windowsEventLogger) Trace(args ...interface{}) {
-	// ignore
-}
-
-func (l *windowsEventLogger) Debugf(format string, args ...interface{}) {
-	// ignore
-}
-
-func (l *windowsEventLogger) Debug(args ...interface{}) {
-	// ignore
-}
-
-func (l *windowsEventLogger) Infof(format string, args ...interface{}) {
-	_ = l.winlog.Info(1633, fmt.Sprintf(format, args...))
-}
-
-func (l *windowsEventLogger) Info(args ...interface{}) {
-	_ = l.winlog.Info(1633, fmt.Sprint(args...))
-}
-
-func (l *windowsEventLogger) Warningf(format string, args ...interface{}) {
-	_ = l.winlog.Warning(1633, fmt.Sprintf(format, args...))
-}
-
-func (l *windowsEventLogger) Warning(args ...interface{}) {
-	_ = l.winlog.Warning(1633, fmt.Sprint(args...))
-}
-
-func (l *windowsEventLogger) Errorf(format string, args ...interface{}) {
-	_ = l.winlog.Error(1633, fmt.Sprintf(format, args...))
-}
-
-func (l *windowsEventLogger) Error(args ...interface{}) {
-	_ = l.winlog.Error(1633, fmt.Sprint(args...))
-}
-
-func (l *windowsEventLogger) WithValues(keysAndValues ...interface{}) logging.Logger {
-	return l.logger.WithValues(keysAndValues...)
+func (l windowsEventLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+	if err != nil {
+		keysAndValues = append(keysAndValues, "error", err)
+	}
+	_ = l.winlog.Error(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(keysAndValues...)))
 }

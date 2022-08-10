@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
@@ -36,7 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -81,6 +81,9 @@ import (
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "node"
 
 type Bee struct {
 	p2pService               io.Closer
@@ -131,7 +134,7 @@ type Options struct {
 	WelcomeMessage             string
 	Bootnodes                  []string
 	CORSAllowedOrigins         []string
-	Logger                     logging.Logger
+	Logger                     log.Logger
 	TracingEnabled             bool
 	TracingEndpoint            string
 	TracingServiceName         string
@@ -179,8 +182,7 @@ const (
 	mainnetNetworkID              = uint64(1)
 )
 
-func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger logging.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
-
+func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -207,7 +209,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
-		logger.Error(string(p))
+		logger.Error(nil, string(p))
 		return len(p), nil
 	})
 
@@ -220,9 +222,9 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	defer func(b *Bee) {
 		if err != nil {
-			logger.Errorf("got error %v, shutting down...", err)
+			logger.Error(err, "got error, shutting down...")
 			if err2 := b.Shutdown(); err2 != nil {
-				logger.Errorf("got error while shutting down: %v", err2)
+				logger.Error(err2, "got error while shutting down")
 			}
 		}
 	}(b)
@@ -333,15 +335,15 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           debugService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+			logger.Info("starting debug server", "address", debugAPIListener.Addr())
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
+				logger.Debug("debug api server failed to start", "error", err)
+				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
 
@@ -358,7 +360,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		apiListener, err := net.Listen("tcp", o.APIAddr)
@@ -367,11 +369,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 
 		go func() {
-			logger.Infof("single debug & api address: %s", apiListener.Addr())
+			logger.Info("starting debug & api server", "address", apiListener.Addr())
 
 			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("single debug & api server: %v", err)
-				logger.Error("unable to serve debug & api")
+				logger.Debug("debug & api server failed to start", "error", err)
+				logger.Error(nil, "debug & api server failed to start")
 			}
 		}()
 
@@ -385,7 +387,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		logger.Infof("waiting to sync with the Ethereum backend")
+		logger.Info("waiting to sync with the Ethereum backend")
 
 		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
 		if err != nil {
@@ -471,7 +473,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
-	logger.Infof("using overlay address %s", swarmAddress)
+	logger.Info("using overlay address", "address", swarmAddress)
 
 	apiService.SetSwarmAddress(&swarmAddress)
 
@@ -492,8 +494,8 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	for _, a := range o.Bootnodes {
 		addr, err := ma.NewMultiaddr(a)
 		if err != nil {
-			logger.Debugf("multiaddress fail %s: %v", a, err)
-			logger.Warningf("invalid bootnode address %s", a)
+			logger.Debug("create bootnode multiaddress from string failed", "string", a, "error", err)
+			logger.Warning("create bootnode multiaddress from string failed", "string", a)
 			continue
 		}
 
@@ -546,13 +548,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			stateStore,
 			signer,
 			networkID,
-			logging.New(io.Discard, 0),
+			log.Noop,
 			libp2pPrivateKey,
 			o,
 		)
-		logger.Infof("bootstrapper took %s", time.Since(start))
+		logger.Info("bootstrapper created", "elapsed", time.Since(start))
 		if err != nil {
-			logger.Errorf("bootstrapper failed to fetch batch state: %v", err)
+			logger.Error(err, "bootstrapper failed to fetch batch state")
 		}
 	}
 
@@ -578,7 +580,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var path string
 
 	if o.DataDir != "" {
-		logger.Infof("using datadir in: '%s'", o.DataDir)
+		logger.Info("using datadir", "path", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 	lo := &localstore.Options{
@@ -729,7 +731,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
-					logger.Errorf("unable to sync batches: %v", err)
+					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
 				}
 			}()
@@ -750,7 +752,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	for _, addr := range addrs {
-		logger.Debugf("p2p address: %s", addr)
+		logger.Debug("p2p address", "address", addr)
 	}
 
 	acc, err := accounting.NewAccounting(
@@ -937,7 +939,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 				IdleTimeout:       30 * time.Second,
 				ReadHeaderTimeout: 3 * time.Second,
 				Handler:           apiService,
-				ErrorLog:          log.New(b.errorLogWriter, "", 0),
+				ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 			}
 
 			apiListener, err := net.Listen("tcp", o.APIAddr)
@@ -946,10 +948,10 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			}
 
 			go func() {
-				logger.Infof("api address: %s", apiListener.Addr())
+				logger.Info("starting api server", "address", apiListener.Addr())
 				if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-					logger.Debugf("api server: %v", err)
-					logger.Error("unable to serve api")
+					logger.Debug("api server failed to start", "error", err)
+					logger.Error(nil, "api server failed to start")
 				}
 			}()
 
@@ -1172,7 +1174,7 @@ func (b *Bee) Shutdown() error {
 
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
-func isChainEnabled(o *Options, swapEndpoint string, logger logging.Logger) bool {
+func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""
 	lightMode := !o.FullNodeMode
 

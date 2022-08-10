@@ -12,7 +12,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/uber/jaeger-client-go"
@@ -133,12 +133,12 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 
 	buf := new(bytes.Buffer)
 
-	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", logging.New(buf, 0))
+	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", log.NewLogger("test", log.WithSink(buf), log.WithJSONOutput()))
 	defer span.Finish()
 
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
-	logger.Info(nil)
+	logger.Info("msg")
 	data := make(map[string]interface{})
 	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -180,11 +180,11 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 
 	buf := new(bytes.Buffer)
 
-	logger := tracing.NewLoggerWithTraceID(ctx, logging.New(buf, 0))
+	logger := tracing.NewLoggerWithTraceID(ctx, log.NewLogger("test", log.WithSink(buf), log.WithJSONOutput()))
 
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
-	logger.Info(nil)
+	logger.Info("msg")
 	data := make(map[string]interface{})
 	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
 		t.Fatalf("unexpected error: %v", err)

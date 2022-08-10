@@ -11,12 +11,15 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/pricing/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pricing"
 
 const (
 	protocolName    = "pricing"
@@ -43,16 +46,16 @@ type PaymentThresholdObserver interface {
 
 type Service struct {
 	streamer                 p2p.Streamer
-	logger                   logging.Logger
+	logger                   log.Logger
 	paymentThreshold         *big.Int
 	minPaymentThreshold      *big.Int
 	paymentThresholdObserver PaymentThresholdObserver
 }
 
-func New(streamer p2p.Streamer, logger logging.Logger, paymentThreshold, minThreshold *big.Int) *Service {
+func New(streamer p2p.Streamer, logger log.Logger, paymentThreshold, minThreshold *big.Int) *Service {
 	return &Service{
 		streamer:            streamer,
-		logger:              logger,
+		logger:              logger.WithName(loggerName).Register(),
 		paymentThreshold:    paymentThreshold,
 		minPaymentThreshold: minThreshold,
 	}
@@ -74,6 +77,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	loggerV1 := s.logger.V(1).Register()
+
 	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
@@ -85,15 +90,15 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	var req pb.AnnouncePaymentThreshold
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
-		s.logger.Debugf("could not receive payment threshold and/or price table announcement from peer %v", p.Address)
+		s.logger.Debug("could not receive payment threshold and/or price table announcement from peer", "peer_address", p.Address)
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
-	s.logger.Tracef("received payment threshold announcement from peer %v of %d", p.Address, paymentThreshold)
+	loggerV1.Debug("received payment threshold announcement from peer", "peer_address", p.Address, "payment_threshold", paymentThreshold)
 
 	if paymentThreshold.Cmp(s.minPaymentThreshold) < 0 {
-		s.logger.Tracef("payment threshold from peer %v of %d too small, need at least %d", p.Address, paymentThreshold, s.minPaymentThreshold)
+		loggerV1.Debug("payment threshold from peer too small, need at least min payment threshold", "peer_address", p.Address, "payment_threshold", paymentThreshold, "min_payment_threshold", s.minPaymentThreshold)
 		return p2p.NewDisconnectError(ErrThresholdTooLow)
 	}
 
@@ -106,13 +111,15 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 	err := s.AnnouncePaymentThreshold(ctx, p.Address, s.paymentThreshold)
 	if err != nil {
-		s.logger.Warningf("could not send payment threshold announcement to peer %v", p.Address)
+		s.logger.Warning("could not send payment threshold announcement to peer", "peer_address", p.Address)
 	}
 	return err
 }
 
 // AnnouncePaymentThreshold announces the payment threshold to per
 func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Address, paymentThreshold *big.Int) error {
+	loggerV1 := s.logger.V(1).Register()
+
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -128,7 +135,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 		}
 	}()
 
-	s.logger.Tracef("sending payment threshold announcement to peer %v of %d", peer, paymentThreshold)
+	loggerV1.Debug("sending payment threshold announcement to peer", "peer_address", peer, "payment_threshold", paymentThreshold)
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.AnnouncePaymentThreshold{
 		PaymentThreshold: paymentThreshold.Bytes(),
