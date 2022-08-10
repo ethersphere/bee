@@ -29,10 +29,10 @@ var (
 // - read prioritisation over writing
 // - free slots allow write
 type Store struct {
-	maxDataSize     int             // max length of blobs
-	shards          []*shard        // shards
-	wg              *sync.WaitGroup // count started operations
-	quit            chan struct{}   // quit channel
+	maxDataSize     int            // max length of blobs
+	shards          []*shard       // shards
+	wg              sync.WaitGroup // count started operations
+	quit            chan struct{}  // quit channel
 	metrics         metrics
 	availableShards chan availableShard
 }
@@ -48,14 +48,13 @@ type availableShard struct {
 // - shard count - positive integer < 256 - cannot be zero or expect panic
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
 // - maxDataSize - positive integer representing the maximum blob size to be stored
-func New(basedir fs.FS, shardCnt uint8, maxDataSize int, perShardMaxCount int) (*Store, error) {
+func New(basedir fs.FS, shardCnt int, maxDataSize int, perShardMaxCount int) (*Store, error) {
 	store := &Store{
 		maxDataSize:     maxDataSize,
 		shards:          make([]*shard, shardCnt),
-		wg:              &sync.WaitGroup{},
 		quit:            make(chan struct{}),
 		metrics:         newMetrics(),
-		availableShards: make(chan availableShard, shardCnt),
+		availableShards: make(chan availableShard),
 	}
 	for i := range store.shards {
 		s, err := store.create(uint8(i), maxDataSize, basedir, perShardMaxCount)
@@ -103,6 +102,8 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS, perShardMaxC
 		return nil, err
 	}
 	sh := &shard{
+		available:   s.availableShards,
+		onRelease:   make(chan uint32),
 		index:       index,
 		maxDataSize: maxDataSize,
 		file:        file.(sharkyFile),
@@ -121,7 +122,7 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS, perShardMaxC
 // The location is assumed to be obtained by an earlier Write call storing the blob
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
-	return sh.read(buf, loc.Slot)
+	return sh.read(buf[:loc.Length], loc.Slot)
 }
 
 // Write stores a new blob and returns its location to be used as a reference
@@ -131,6 +132,10 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 		return loc, ErrTooLong
 	}
 
+	// if len(s.availableShards) == 0 {
+	// 	return loc, ErrUnavailable
+	// }
+
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -138,6 +143,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	case available := <-s.availableShards:
 		return s.shards[available.shardIndex].write(data, available.slot)
 	case <-ctx.Done():
+		fmt.Println("write context done")
 		return Location{}, ctx.Err()
 	}
 }

@@ -33,7 +33,7 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 func TestSingleRetrieval(t *testing.T) {
 	datasize := 4
 	dir := t.TempDir()
-	s, err := sharky.New(&dirFS{basedir: dir}, 2, datasize)
+	s, err := sharky.New(&dirFS{basedir: dir}, 2, datasize, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +76,7 @@ func TestSingleRetrieval(t *testing.T) {
 				if !errors.Is(err, tc.err) {
 					t.Fatalf("error mismatch on write. want %v, got %v", tc.err, err)
 				}
+				t.Log(loc.Shard, loc.Slot, loc.Length)
 				if err != nil {
 					return
 				}
@@ -108,8 +109,8 @@ func TestPersistence(t *testing.T) {
 	ctx := context.Background()
 	// simulate several subsequent sessions filling up the store
 	for ; i < items; j++ {
-		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
+		cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize, int(shardSize))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +134,7 @@ func TestPersistence(t *testing.T) {
 
 	// check location and data consisency
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize, int(shardSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestConcurrency(t *testing.T) {
 
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
-		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
+		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize, int(shardSize))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -171,7 +172,8 @@ func TestConcurrency(t *testing.T) {
 		start := make(chan struct{})
 		deleted := make(map[uint32]int)
 		entered := make(map[uint32]struct{})
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
 		eg, ectx := errgroup.WithContext(ctx)
 		// a number of workers write sequential numbers to sharky
 		for k := 0; k < workers; k++ {
