@@ -598,12 +598,14 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
 
+	chainCfg, found := config.GetChainConfig(chainID)
+
 	v2Flag, err := batchStoreV2FlagExists(stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: v2 flag exists: %w", err)
 	}
 
-	if batchStoreExists && !v2Flag {
+	if batchStoreExists && !v2Flag && !chainCfg.IsObsoleteConfig() {
 		if err := batchStore.CleanupReset(); err != nil {
 			return nil, fmt.Errorf("batchstore: cleanup and reset: %w", err)
 		}
@@ -627,7 +629,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	var postageSyncStart uint64 = 0
 
-	chainCfg, found := config.GetChainConfig(chainID)
 	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
