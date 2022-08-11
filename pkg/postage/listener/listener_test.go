@@ -449,10 +449,11 @@ type updater struct {
 	blockNumberUpdateError error
 }
 
-func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, bucketDepth uint8, immutable bool, _ []byte) error {
+func (u *updater) Create(id, owner []byte, amount, normalisedAmount *big.Int, depth, bucketDepth uint8, immutable bool, _ []byte) error {
 	u.eventC <- createArgs{
 		id:               id,
 		owner:            owner,
+		amount:           amount,
 		normalisedAmount: normalisedAmount,
 		bucketDepth:      bucketDepth,
 		depth:            depth,
@@ -463,10 +464,11 @@ func (u *updater) Create(id, owner []byte, normalisedAmount *big.Int, depth, buc
 
 func (u *updater) GetSyncStatus() (bool, error) { return true, nil }
 
-func (u *updater) TopUp(id []byte, normalisedBalance *big.Int, _ []byte) error {
+func (u *updater) TopUp(id []byte, amount, normalisedBalance *big.Int, _ []byte) error {
 	u.eventC <- topupArgs{
 		id:                id,
 		normalisedBalance: normalisedBalance,
+		amount:            amount,
 	}
 	return nil
 }
