@@ -276,8 +276,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 				if err != nil {
 					return err
 				}
+				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
 
-				post.HandleTopUp(batch.ID, newBalance)
+				post.HandleTopUp(batch.ID, topUpAmount)
 				return nil
 			},
 		),
@@ -299,7 +300,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 					return err
 				}
 
-				post.HandleDepthIncrease(batch.ID, newDepth, newBalance)
+				post.HandleDepthIncrease(batch.ID, newDepth)
 				return nil
 			},
 		),
