@@ -323,7 +323,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			runtime.SetBlockProfileRate(1)
 		}
 
-		debugAPIListener, err := net.Listen("tcp6", o.DebugAPIAddr)
+		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
@@ -363,7 +363,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
-		apiListener, err := net.Listen("tcp", o.APIAddr)
+		apiListener, err := net.Listen("tcp6", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
 		}
@@ -942,7 +942,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 				ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 			}
 
-			apiListener, err := net.Listen("tcp", o.APIAddr)
+			apiListener, err := net.Listen("tcp6", o.APIAddr)
 			if err != nil {
 				return nil, fmt.Errorf("api listener: %w", err)
 			}
