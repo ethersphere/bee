@@ -5,7 +5,10 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+
+	"github.com/ethersphere/bee/pkg/resolver"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/gorilla/mux"
@@ -16,10 +19,31 @@ import (
 func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
-	if err != nil {
+	switch {
+	case errors.Is(err, resolver.ErrParse):
 		s.logger.Debug("stewardship put: parse address string failed", "string", nameOrHex, "error", err)
 		s.logger.Error(nil, "stewardship put: parse address string failed")
-		jsonhttp.NotFound(w, nil)
+		jsonhttp.BadRequest(w, "invalid address")
+		return
+	case errors.Is(err, resolver.ErrNotFound):
+		s.logger.Debug("stewardship put: address not found", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "stewardship put: address not found")
+		jsonhttp.NotFound(w, "address not found")
+		return
+	case errors.Is(err, resolver.ErrServiceNotAvailable):
+		s.logger.Debug("stewardship put: service unavailable", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "stewardship put: service unavailable")
+		jsonhttp.ServiceUnavailable(w, nil)
+		return
+	case errors.Is(err, resolver.ErrInvalidContentHash):
+		s.logger.Debug("stewardship put: invalid content hash", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "stewardship put: invalid content hash")
+		jsonhttp.Respond(w, 422, "stewardship put: invalid content hash")
+		return
+	case err != nil:
+		s.logger.Debug("stewardship put: resolve address or name string failed", "string", nameOrHex, "error", err)
+		s.logger.Error(nil, "stewardship put: resolve address or name string failed")
+		jsonhttp.InternalServerError(w, "stewardship put: resolve name or address")
 		return
 	}
 	err = s.steward.Reupload(r.Context(), address)
