@@ -426,6 +426,8 @@ components:
           type: boolean
         batchTTL:
           type: integer
+        expired:
+          type: boolean
 
     PostageBatchNoIssuer:
       type: object
