@@ -228,10 +228,69 @@ func TestPostageGetStamps(t *testing.T) {
 						ImmutableFlag: si.ImmutableFlag(),
 						Exists:        true,
 						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+						Expired:       false,
 					},
 				},
 			}),
 		)
+	})
+
+	t.Run("expired stamp", func(t *testing.T) {
+
+		esi := postage.NewStampIssuer("", "", b.ID, big.NewInt(3), 50, 10, 1000, true)
+		esmp := mockpost.New(mockpost.WithIssuer(esi))
+		escs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(10), CurrentPrice: big.NewInt(2)}
+		bs := mock.New(mock.WithChainState(escs))
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: esmp, BatchStore: bs, BlockTime: big.NewInt(2)})
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
+				Stamps: []api.PostageStampResponse{
+					{
+						BatchID:       b.ID,
+						Utilization:   esi.Utilization(),
+						Usable:        false,
+						Label:         esi.Label(),
+						Depth:         esi.Depth(),
+						Amount:        bigint.Wrap(esi.Amount()),
+						BucketDepth:   esi.BucketDepth(),
+						BlockNumber:   esi.BlockNumber(),
+						ImmutableFlag: esi.ImmutableFlag(),
+						Exists:        false,
+						BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+						Expired:       true,
+					},
+				},
+			}),
+		)
+
+	})
+
+	t.Run("single expired stamp", func(t *testing.T) {
+
+		esi := postage.NewStampIssuer("", "", b.ID, big.NewInt(5), 50, 10, 1000, true)
+		esmp := mockpost.New(mockpost.WithIssuer(esi))
+		escs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(2)}
+		bs := mock.New(mock.WithChainState(escs))
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: esmp, BatchStore: bs, BlockTime: big.NewInt(2)})
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
+				BatchID:       b.ID,
+				Utilization:   esi.Utilization(),
+				Usable:        false,
+				Label:         esi.Label(),
+				Depth:         esi.Depth(),
+				Amount:        bigint.Wrap(esi.Amount()),
+				BucketDepth:   esi.BucketDepth(),
+				BlockNumber:   esi.BlockNumber(),
+				ImmutableFlag: esi.ImmutableFlag(),
+				Exists:        false,
+				BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				Expired:       true,
+			}),
+		)
+
 	})
 
 	t.Run("expired batch", func(t *testing.T) {
@@ -258,6 +317,7 @@ func TestPostageGetStamps(t *testing.T) {
 						ImmutableFlag: si.ImmutableFlag(),
 						Exists:        false,
 						BatchTTL:      -1,
+						Expired:       true,
 					},
 				},
 			}),
@@ -324,6 +384,7 @@ func TestPostageGetStamp(t *testing.T) {
 				ImmutableFlag: si.ImmutableFlag(),
 				Exists:        true,
 				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				Expired:       false,
 			}),
 		)
 	})

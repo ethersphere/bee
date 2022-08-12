@@ -178,7 +178,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		}
 		if !exists {
 			state := s.batchStore.GetChainState()
-			if state.TotalAmount.Cmp(v.Amount()) == -1 {
+			if v.Amount().Cmp(state.TotalAmount) <= 0 {
 				isExpired = true
 			}
 		}
@@ -336,7 +336,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 
 		if !exists {
 			state := s.batchStore.GetChainState()
-			if state.TotalAmount.Cmp(issuer.Amount()) == -1 {
+			if issuer.Amount().Cmp(state.TotalAmount) <= 0 {
 				isExpired = true
 			}
 		}
