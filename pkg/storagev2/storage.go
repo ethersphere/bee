@@ -63,6 +63,8 @@ const (
 // ErrInvalidQuery indicates that the query is not a valid query.
 var ErrInvalidQuery = errors.New("invalid query")
 
+var ErrNotFound = errors.New("storage: not found")
+
 // Query denotes the iteration attributes.
 type Query struct {
 	// Factory is a constructor passed by client
