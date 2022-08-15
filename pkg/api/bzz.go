@@ -517,23 +517,3 @@ func (s *Service) manifestFeed(
 	f := feeds.New(topic, common.BytesToAddress(owner))
 	return s.feedFactory.NewLookup(*t, f)
 }
-
-// bzzPatchHandler endpoint has been deprecated; use stewardship endpoint instead.
-func (s *Service) bzzPatchHandler(w http.ResponseWriter, r *http.Request) {
-	nameOrHex := mux.Vars(r)["address"]
-	address, err := s.resolveNameOrAddress(nameOrHex)
-	if err != nil {
-		s.logger.Debug("bzz patch: parse address string failed", "string", nameOrHex, "error", err)
-		s.logger.Error(nil, "bzz patch: parse address string failed")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-	err = s.steward.Reupload(r.Context(), address)
-	if err != nil {
-		s.logger.Debug("bzz patch: reupload failed", "address", address, "error", err)
-		s.logger.Error(nil, "bzz patch: reupload failed")
-		jsonhttp.InternalServerError(w, "bzz patch: reupload failed")
-		return
-	}
-	jsonhttp.OK(w, nil)
-}
