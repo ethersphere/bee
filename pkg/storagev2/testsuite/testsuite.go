@@ -36,7 +36,7 @@ func (o *obj1) Unmarshal(buf []byte) error {
 	if len(buf) < 40 {
 		return errors.New("invalid length")
 	}
-	o.Id = strings.TrimRight(string(buf[:32]), string(0))
+	o.Id = strings.TrimRight(string(buf[:32]), string([]byte{0}))
 	o.SomeInt = binary.LittleEndian.Uint64(buf[32:])
 	o.Buf = buf[40:]
 	return nil
