@@ -13,6 +13,8 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/resolver"
+	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -58,7 +60,6 @@ func TestStewardship(t *testing.T) {
 			}),
 		)
 	})
-
 }
 
 func TestStewardshipInputValidations(t *testing.T) {
@@ -73,6 +74,13 @@ func TestStewardshipInputValidations(t *testing.T) {
 		Tags:    tags.NewTags(statestoreMock, logger),
 		Logger:  logger,
 		Steward: stewardMock,
+		Resolver: resolverMock.NewResolver(
+			resolverMock.WithResolveFunc(
+				func(string) (swarm.Address, error) {
+					return swarm.Address{}, resolver.ErrParse
+				},
+			),
+		),
 	})
 	for _, tt := range []struct {
 		name            string
@@ -81,25 +89,28 @@ func TestStewardshipInputValidations(t *testing.T) {
 		expectedMessage string
 	}{
 		{
-			name:           "correct reference",
-			reference:      "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542da",
-			expectedStatus: http.StatusOK,
+			name:            "correct reference",
+			reference:       "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542da",
+			expectedStatus:  http.StatusOK,
+			expectedMessage: http.StatusText(http.StatusOK),
 		},
 		{
-			name:           "reference not found",
-			reference:      "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542d/",
-			expectedStatus: http.StatusNotFound,
+			name:            "reference not found",
+			reference:       "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542d/",
+			expectedStatus:  http.StatusNotFound,
+			expectedMessage: http.StatusText(http.StatusNotFound),
 		},
 		{
-			name:           "incorrect reference",
-			reference:      "0xc0f61cf5c158f1cd96a10fa9b4dd9918b76f94c0637bbd805e5689a1a6284358",
-			expectedStatus: http.StatusBadRequest,
+			name:            "incorrect reference",
+			reference:       "xc0f6",
+			expectedStatus:  http.StatusBadRequest,
+			expectedMessage: "invalid address",
 		},
 	} {
 		t.Run("input validation -"+tt.name, func(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+tt.reference, tt.expectedStatus,
 				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: http.StatusText(tt.expectedStatus),
+					Message: tt.expectedMessage,
 					Code:    tt.expectedStatus,
 				}),
 			)
