@@ -84,7 +84,7 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	}
 
 	if bytes.Compare(buf1, buf2) != 0 {
-		t.Fatal("bytes not equal for item %s/%s", a.Namespace(), a.ID())
+		t.Fatalf("bytes not equal for item %s/%s", a.Namespace(), a.ID())
 	}
 }
 
@@ -410,12 +410,20 @@ func RunTests(t *testing.T, s storage.Store) {
 					t.Fatalf("found id %s, expected to not be found", i.ID())
 				}
 				if idx < 3 {
-					err = s.Get(&obj1{})
+					err = s.Get(&obj1{Id: i.ID()})
 				} else {
-					err = s.Get(&obj2{})
+					err = s.Get(&obj2{Id: i.(*obj2).Id})
 				}
 				if !errors.Is(err, storage.ErrNotFound) {
-					t.Fatalf("expected storage.NotFound error")
+					t.Fatal("expected storage.NotFound error")
+				}
+				if idx < 3 {
+					_, err = s.GetSize(&obj1{Id: i.ID()})
+				} else {
+					_, err = s.GetSize(&obj2{Id: i.(*obj2).Id})
+				}
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Fatal("expected storage.NotFound error")
 				}
 			}
 		}
@@ -477,6 +485,19 @@ func RunTests(t *testing.T, s storage.Store) {
 				t.Fatalf("unexpected no of entries in iteration exp 3 found %d", idx-5)
 			}
 		})
+	})
+
+	t.Run("error during iteration", func(t *testing.T) {
+		expErr := errors.New("test error")
+		err := s.Iterate(storage.Query{
+			Factory:       func() storage.Item { return new(obj1) },
+			ItemAttribute: storage.QueryItem,
+		}, func(r storage.Result) (bool, error) {
+			return true, expErr
+		})
+		if !errors.Is(err, expErr) {
+			t.Fatal("incorrect error returned")
+		}
 	})
 
 	t.Run("close", func(t *testing.T) {
