@@ -38,7 +38,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	case errors.Is(err, resolver.ErrInvalidContentHash):
 		s.logger.Debug("stewardship put: invalid content hash", "string", nameOrHex, "error", err)
 		s.logger.Error(nil, "stewardship put: invalid content hash")
-		jsonhttp.Respond(w, 422, "stewardship put: invalid content hash")
+		jsonhttp.Respond(w, http.StatusUnprocessableEntity, "stewardship put: invalid content hash")
 		return
 	case err != nil:
 		s.logger.Debug("stewardship put: resolve address or name string failed", "string", nameOrHex, "error", err)

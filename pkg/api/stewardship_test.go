@@ -58,4 +58,51 @@ func TestStewardship(t *testing.T) {
 			}),
 		)
 	})
+
+}
+
+func TestStewardshipInputValidations(t *testing.T) {
+	var (
+		logger         = log.Noop
+		statestoreMock = statestore.NewStateStore()
+		stewardMock    = &mock.Steward{}
+		storer         = smock.NewStorer()
+	)
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:  storer,
+		Tags:    tags.NewTags(statestoreMock, logger),
+		Logger:  logger,
+		Steward: stewardMock,
+	})
+	for _, tt := range []struct {
+		name            string
+		reference       string
+		expectedStatus  int
+		expectedMessage string
+	}{
+		{
+			name:           "correct reference",
+			reference:      "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542da",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "reference not found",
+			reference:      "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542d/",
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name:           "incorrect reference",
+			reference:      "0xc0f61cf5c158f1cd96a10fa9b4dd9918b76f94c0637bbd805e5689a1a6284358",
+			expectedStatus: http.StatusBadRequest,
+		},
+	} {
+		t.Run("input validation -"+tt.name, func(t *testing.T) {
+			jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+tt.reference, tt.expectedStatus,
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Message: http.StatusText(tt.expectedStatus),
+					Code:    tt.expectedStatus,
+				}),
+			)
+		})
+	}
 }
