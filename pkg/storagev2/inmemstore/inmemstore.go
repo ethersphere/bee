@@ -23,17 +23,24 @@ type store struct {
 	mu sync.RWMutex
 }
 
+func New() storage.Store {
+	return &store{st: radix.New()}
+}
+
 func getKeyString(i storage.Key) string {
 	return strings.Join([]string{i.Namespace(), i.ID()}, separator)
+}
+
+func idFromKey(pfx, key string) string {
+	return strings.TrimPrefix(key, pfx+separator)
 }
 
 func (s *store) Get(i storage.Item) error {
 	key := getKeyString(i)
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	val, found := s.st.Get(key)
+	s.mu.RUnlock()
 	if !found {
 		return storage.ErrNotFound
 	}
@@ -60,9 +67,8 @@ func (s *store) GetSize(k storage.Key) (int, error) {
 	key := getKeyString(k)
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	val, found := s.st.Get(key)
+	s.mu.RUnlock()
 	if !found {
 		return 0, storage.ErrNotFound
 	}
@@ -89,9 +95,8 @@ func (s *store) Delete(k storage.Key) error {
 	key := getKeyString(k)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, deleted := s.st.Delete(key)
+	s.mu.Unlock()
 	if !deleted {
 		return storage.ErrNotFound
 	}
@@ -122,14 +127,14 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 	getNext := func(k string, v interface{}) (*storage.Result, error) {
 		for _, filter := range q.Filters {
-			if filter(k, v.([]byte)) {
+			if filter(idFromKey(q.Factory().Namespace(), k), v.([]byte)) {
 				return nil, nil
 			}
 		}
 		var res *storage.Result
 		switch q.ItemAttribute {
 		case storage.QueryItemID, storage.QueryItemSize:
-			res = &storage.Result{ID: k, Size: len(v.([]byte))}
+			res = &storage.Result{ID: idFromKey(q.Factory().Namespace(), k), Size: len(v.([]byte))}
 		case storage.QueryItem:
 			newItem := q.Factory()
 			err := newItem.Unmarshal(v.([]byte))
@@ -187,4 +192,8 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 	}
 	return retErr.ErrorOrNil()
+}
+
+func (store) Close() error {
+	return nil
 }

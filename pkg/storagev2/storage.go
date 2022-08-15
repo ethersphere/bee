@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 )
 
 // Result represents the item returned by the read operation, which returns
@@ -133,7 +134,7 @@ type Store interface {
 
 	// Iterate executes the given IterateFn on this store.
 	// The Result of the iteration will be affected by the given Query.
-	Iterate(Query, IterateFn)
+	Iterate(Query, IterateFn) error
 
 	// Count returns the count of items in the
 	// store that are in the same Key.Namespace.
@@ -144,6 +145,9 @@ type Store interface {
 
 	// Delete removes the Item with the given Key.ID form the store.
 	Delete(Key) error
+
+	// Closes the store
+	io.Closer
 }
 
 // Tx represents an in-progress store transaction.
