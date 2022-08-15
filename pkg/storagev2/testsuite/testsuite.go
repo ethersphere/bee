@@ -58,7 +58,7 @@ func (o *obj2) Unmarshal(buf []byte) error { return json.Unmarshal(buf, o) }
 
 func randBytes(count int) []byte {
 	buf := make([]byte, count)
-	rand.Read(buf)
+	_, _ = rand.Read(buf)
 	return buf
 }
 
@@ -83,7 +83,7 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 		t.Fatalf("failed marshaling %s", err.Error())
 	}
 
-	if bytes.Compare(buf1, buf2) != 0 {
+	if !bytes.Equal(buf1, buf2) {
 		t.Fatalf("bytes not equal for item %s/%s", a.Namespace(), a.ID())
 	}
 }
@@ -376,10 +376,7 @@ func RunTests(t *testing.T, s storage.Store) {
 			ItemAttribute: storage.QueryItem,
 			Filters: []storage.Filter{
 				func(_ string, v []byte) bool {
-					if binary.LittleEndian.Uint64(v[32:]) < 5 {
-						return true
-					}
-					return false
+					return binary.LittleEndian.Uint64(v[32:]) < 5
 				},
 			},
 		}, func(r storage.Result) (bool, error) {

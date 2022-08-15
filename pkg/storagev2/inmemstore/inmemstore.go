@@ -194,6 +194,6 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	return retErr.ErrorOrNil()
 }
 
-func (store) Close() error {
+func (s *store) Close() error {
 	return nil
 }
