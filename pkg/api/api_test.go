@@ -482,10 +482,6 @@ func TestOptions(t *testing.T) {
 			expectedMethods: "POST",
 		},
 		{
-			endpoint:        "bzz/0101011",
-			expectedMethods: "GET, PATCH",
-		},
-		{
 			endpoint:        "chunks",
 			expectedMethods: "POST",
 		},
