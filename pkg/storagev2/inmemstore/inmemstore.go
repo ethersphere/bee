@@ -168,7 +168,7 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			return false
 		})
 	case storage.KeyDescendingOrder:
-		// currently there is no optimal way to do reverse iteration. We can effeciently do forward
+		// currently there is no optimal way to do reverse iteration. We can efficiently do forward
 		// iteration. So we have two options, first is to reduce time complexity by compromising
 		// on space complexity. So we keep track of keys and values during forward iteration
 		// to do a simple reverse iteration. Other option is to reduce space complexity by keeping
