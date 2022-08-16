@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -505,6 +506,58 @@ func RunCorrectnessTests(t *testing.T, s storage.Store) {
 		err := s.Close()
 		if err != nil {
 			t.Fatalf("failed closing: %v", err)
+		}
+	})
+}
+
+// packages using the store would define Items and define the Serializable interface
+// on them. They could use these tests to test the serialization part.
+func RunItemSerializationTests(t *testing.T, i storage.Item, factory func() storage.Item) {
+	t.Helper()
+
+	t.Run("marshal", func(t *testing.T) {
+		buf1, err := i.Marshal()
+		if err != nil {
+			t.Fatalf("failed marshaling: %v", err)
+		}
+
+		if buf1 == nil || len(buf1) <= 0 {
+			t.Fatal("marshaling produced nil buffer")
+		}
+
+		buf2, err := i.Marshal()
+		if err != nil {
+			t.Fatalf("failed marshaling: %v", err)
+		}
+
+		if !bytes.Equal(buf1, buf2) {
+			t.Fatal("marshaling twice produced different result")
+		}
+	})
+
+	t.Run("marshal then unmarshal", func(t *testing.T) {
+		buf1, err := i.Marshal()
+		if err != nil {
+			t.Fatalf("failed marshaling: %v", err)
+		}
+
+		i2 := factory()
+		err = i2.Unmarshal(buf1)
+		if err != nil {
+			t.Fatalf("failed unmarshaling: %v", err)
+		}
+
+		if !reflect.DeepEqual(i, i2) {
+			t.Fatal("new item is not equal to old one")
+		}
+
+		buf2, err := i2.Marshal()
+		if err != nil {
+			t.Fatalf("failed marshaling new item: %v", err)
+		}
+
+		if !bytes.Equal(buf1, buf2) {
+			t.Fatal("marshaling new item produced different result")
 		}
 	})
 }
