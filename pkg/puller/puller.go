@@ -383,7 +383,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.logger.Error(err, "could not persist interval for peer, quitting...", "peer_address", peer)
 			return
 		}
-		loggerV2.Debug("histSyncWorker pulled bin %d [%d:%d], peer %s", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
+		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
 	}
 }
 

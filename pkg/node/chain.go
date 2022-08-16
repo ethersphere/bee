@@ -337,7 +337,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 	hash := block.Hash()
 	hashBytes := hash.Bytes()
 
-	logger.Info("using the next block hash from the blockchain %x", "block_hash", fmt.Sprintf("%x", hashBytes))
+	logger.Info("using the next block hash from the blockchain", "block_hash", fmt.Sprintf("%x", hashBytes))
 
 	return hashBytes, nil
 }
