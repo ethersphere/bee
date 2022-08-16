@@ -276,25 +276,6 @@ paths:
           description: Default response
 
   "/bzz/{reference}":
-    patch:
-      summary: "Reupload a root hash to the network; deprecated: use /stewardship/{reference} instead"
-      deprecated: true
-      tags:
-        - BZZ
-      parameters:
-        - in: path
-          name: reference
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
-          required: true
-          description: "Root hash of content (can be of any type: collection, file, chunk)"
-      responses:
-        "200":
-          description: Ok
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
     get:
       summary: "Get file or index document from a collection of files"
       tags:
