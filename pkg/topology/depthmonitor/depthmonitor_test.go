@@ -87,16 +87,22 @@ func TestDepthMonitorService(t *testing.T) {
 	})
 
 	t.Run("depth decrease due to under utilization", func(t *testing.T) {
-		topo := &mockTopology{peers: 1}
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 26000, capacity: 50000}
 
-		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
+		defer func(w uint8) {
+			*depthmonitor.MinimumRadius = w
+		}(*depthmonitor.MinimumRadius)
+		*depthmonitor.MinimumRadius = 0
 
 		defer func(w time.Duration) {
 			*depthmonitor.ManageWait = w
 		}(*depthmonitor.ManageWait)
 		*depthmonitor.ManageWait = 200 * time.Millisecond
+
+		topo := &mockTopology{peers: 1}
+		// >50% utilized reserve
+		reserve := &mockReserveReporter{size: 26000, capacity: 50000}
+
+		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 100*time.Millisecond)
 

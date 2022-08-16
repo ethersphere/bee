@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	manageWait = 5 * time.Minute
+	manageWait          = 5 * time.Minute
+	minimumRadius uint8 = 4
 )
 
 // ReserveReporter interface defines the functionality required from the local storage
@@ -80,13 +81,6 @@ func New(
 func (s *Service) manage(warmupTime time.Duration) {
 	defer close(s.stopped)
 
-	// wait for warmup
-	select {
-	case <-s.quit:
-		return
-	case <-time.After(warmupTime):
-	}
-
 	// wire up batchstore to start reporting storage radius to kademlia
 	s.bs.SetStorageRadiusSetter(s.topology)
 	reserveRadius := s.bs.GetReserveState().Radius
@@ -101,6 +95,13 @@ func (s *Service) manage(warmupTime time.Duration) {
 	})
 	if err != nil {
 		s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
+	}
+
+	// wait for warmup
+	select {
+	case <-s.quit:
+		return
+	case <-time.After(warmupTime):
 	}
 
 	halfCapacity := s.reserve.ReserveCapacity() / 2
@@ -129,7 +130,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
 		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
-				if radius > 0 {
+				if radius > minimumRadius {
 					radius--
 					s.logger.Infof("depthmonitor: reducing storage depth to %d", radius)
 				}

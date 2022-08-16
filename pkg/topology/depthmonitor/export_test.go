@@ -5,7 +5,8 @@
 package depthmonitor
 
 var (
-	ManageWait = &manageWait
+	ManageWait    = &manageWait
+	MinimumRadius = &minimumRadius
 )
 
 func (s *Service) StorageDepth() uint8 {
