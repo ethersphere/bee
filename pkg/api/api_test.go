@@ -337,7 +337,7 @@ func TestParseName(t *testing.T) {
 			name: "not.good",
 			res: resolverMock.NewResolver(
 				resolverMock.WithResolveFunc(func(string) (swarm.Address, error) {
-					return swarm.ZeroAddress, errors.New("failed to resolve")
+					return swarm.ZeroAddress, api.ErrInvalidNameOrAddress
 				}),
 			),
 			wantErr: api.ErrInvalidNameOrAddress,
