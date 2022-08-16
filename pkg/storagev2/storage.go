@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 )
 
 // Result represents the item returned by the read operation, which returns
@@ -27,7 +28,9 @@ type Result struct {
 // IterateFn iterates through the Items of the store in the Key.Namespace.
 type IterateFn func(Result) (bool, error)
 
-// Filter subtracts entries from the iteration.
+// Filter subtracts entries from the iteration. Filters would not construct the
+// Item from the serialized bytes. Instead, users can add logic to check the entries
+// directly in byte format or partially or fully unmarshal the data and check.
 type Filter func(string, []byte) bool
 
 // ItemAttribute tells the Query which Item
@@ -48,18 +51,20 @@ const (
 )
 
 // Order represents order of the iteration
-type Order bool
+type Order int
 
 const (
-	// AscendingOrder indicates a forward iteration.
-	AscendingOrder Order = false
+	// KeyAscendingOrder indicates a forward iteration based on ordering of keys.
+	KeyAscendingOrder Order = iota
 
-	// DescendingOrder denotes the backward iteration.
-	DescendingOrder Order = true
+	// KeyDescendingOrder denotes the backward iteration based on ordering of keys.
+	KeyDescendingOrder
 )
 
 // ErrInvalidQuery indicates that the query is not a valid query.
 var ErrInvalidQuery = errors.New("invalid query")
+
+var ErrNotFound = errors.New("storage: not found")
 
 // Query denotes the iteration attributes.
 type Query struct {
@@ -101,8 +106,6 @@ type Unmarshaler interface {
 
 // Key represents the item identifiers.
 type Key interface {
-	fmt.Stringer
-
 	// ID is the unique identifier of Item.
 	ID() string
 
@@ -131,7 +134,7 @@ type Store interface {
 
 	// Iterate executes the given IterateFn on this store.
 	// The Result of the iteration will be affected by the given Query.
-	Iterate(Query, IterateFn)
+	Iterate(Query, IterateFn) error
 
 	// Count returns the count of items in the
 	// store that are in the same Key.Namespace.
@@ -142,6 +145,9 @@ type Store interface {
 
 	// Delete removes the Item with the given Key.ID form the store.
 	Delete(Key) error
+
+	// Closes the store
+	io.Closer
 }
 
 // Tx represents an in-progress store transaction.
