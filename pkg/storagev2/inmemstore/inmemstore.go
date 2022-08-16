@@ -93,8 +93,8 @@ func (s *store) Put(i storage.Item) error {
 	return nil
 }
 
-func (s *store) Delete(k storage.Key) error {
-	key := getKeyString(k)
+func (s *store) Delete(i storage.Item) error {
+	key := getKeyString(i)
 
 	s.mu.Lock()
 	_, deleted := s.st.Delete(key)
