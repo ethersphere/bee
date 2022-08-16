@@ -168,6 +168,14 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			return false
 		})
 	case storage.KeyDescendingOrder:
+		// currently there is no optimal way to do reverse iteration. We can effeciently do forward
+		// iteration. So we have two options, first is to reduce time complexity by compromising
+		// on space complexity. So we keep track of keys and values during forward iteration
+		// to do a simple reverse iteration. Other option is to reduce space complexity by keeping
+		// track of only keys during forward iteration, then use Get to read the value on reverse
+		// iteration. This would involve additional complexity of doing a Get on reverse iteration.
+		// For now, inmem implementation is not meant to work for large datasets, so first option
+		// is chosen.
 		results := make([]storage.Result, 0)
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
 			res, err := getNext(k, v)
