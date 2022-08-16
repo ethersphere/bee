@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package inmem
 
 import (
@@ -14,10 +18,8 @@ const (
 	separator = "/"
 )
 
-// store implements an in-memory Store. We need lexicographic ordering of keys for the
-// store. So if we use the go in-built map, we might end up complicating this implementation.
-// Instead we will use the hashicorp/go-radix implementation. This pkg provides a mutable radix
-// which gives O(k) lookup and ordered iteration
+// store implements an in-memory Store. We will use the hashicorp/go-radix implementation.
+// This pkg provides a mutable radix which gives O(k) lookup and ordered iteration.
 type store struct {
 	st *radix.Tree
 	mu sync.RWMutex
@@ -47,7 +49,7 @@ func (s *store) Get(i storage.Item) error {
 
 	err := i.Unmarshal(val.([]byte))
 	if err != nil {
-		return fmt.Errorf("failed unmarshaling item %w", err)
+		return fmt.Errorf("failed unmarshaling item: %w", err)
 	}
 
 	return nil
@@ -81,7 +83,7 @@ func (s *store) Put(i storage.Item) error {
 
 	val, err := i.Marshal()
 	if err != nil {
-		return fmt.Errorf("failed marshaling item %w", err)
+		return fmt.Errorf("failed marshaling item: %w", err)
 	}
 
 	s.mu.Lock()
@@ -117,36 +119,36 @@ func (s *store) Count(k storage.Key) (int, error) {
 
 func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	if err := q.Validate(); err != nil {
-		return fmt.Errorf("invalid query %w", err)
+		return fmt.Errorf("failed iteration: %w", err)
 	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var retErr *multierror.Error
+	prefix := q.Factory().Namespace()
 
 	getNext := func(k string, v interface{}) (*storage.Result, error) {
 		for _, filter := range q.Filters {
-			if filter(idFromKey(q.Factory().Namespace(), k), v.([]byte)) {
+			if filter(idFromKey(prefix, k), v.([]byte)) {
 				return nil, nil
 			}
 		}
 		var res *storage.Result
 		switch q.ItemAttribute {
 		case storage.QueryItemID, storage.QueryItemSize:
-			res = &storage.Result{ID: idFromKey(q.Factory().Namespace(), k), Size: len(v.([]byte))}
+			res = &storage.Result{ID: idFromKey(prefix, k), Size: len(v.([]byte))}
 		case storage.QueryItem:
 			newItem := q.Factory()
 			err := newItem.Unmarshal(v.([]byte))
 			if err != nil {
-				return nil, fmt.Errorf("failed unmarshaling %w", err)
+				return nil, fmt.Errorf("failed unmarshaling: %w", err)
 			}
 			res = &storage.Result{Entry: newItem}
 		}
 		return res, nil
 	}
 
-	prefix := q.Factory().Namespace()
 	switch q.Order {
 	case storage.KeyAscendingOrder:
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
@@ -158,7 +160,7 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			if res != nil {
 				stop, err := fn(*res)
 				if err != nil {
-					retErr = multierror.Append(retErr, fmt.Errorf("failed in iteration %w", err))
+					retErr = multierror.Append(retErr, fmt.Errorf("failed in iterate function: %w", err))
 					return true
 				}
 				return stop
@@ -184,7 +186,7 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		for i := len(results) - 1; i >= 0; i-- {
 			stop, err := fn(results[i])
 			if err != nil {
-				return fmt.Errorf("failed in iteration %w", err)
+				return fmt.Errorf("failed in iterate function: %w", err)
 			}
 			if stop {
 				break

@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package storetesting
 
 import (
@@ -75,12 +79,12 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 
 	buf1, err := a.Marshal()
 	if err != nil {
-		t.Fatalf("failed marshaling %s", err.Error())
+		t.Fatalf("failed marshaling: %v", err)
 	}
 
 	buf2, err := b.Marshal()
 	if err != nil {
-		t.Fatalf("failed marshaling %s", err.Error())
+		t.Fatalf("failed marshaling: %v", err)
 	}
 
 	if !bytes.Equal(buf1, buf2) {
@@ -88,7 +92,7 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	}
 }
 
-func RunTests(t *testing.T, s storage.Store) {
+func RunCorrectnessTests(t *testing.T, s storage.Store) {
 	t.Helper()
 
 	testObjs := []storage.Item{
@@ -148,7 +152,7 @@ func RunTests(t *testing.T, s storage.Store) {
 		for _, i := range testObjs {
 			err := s.Put(i)
 			if err != nil {
-				t.Fatalf("failed to add new entry: %s", err.Error())
+				t.Fatalf("failed to add new entry: %v", err)
 			}
 		}
 	})
@@ -157,7 +161,7 @@ func RunTests(t *testing.T, s storage.Store) {
 		for _, i := range testObjs {
 			found, err := s.Has(i)
 			if err != nil {
-				t.Fatalf("failed to check entry: %s", err.Error())
+				t.Fatalf("failed to check entry: %v", err)
 			}
 			if !found {
 				t.Fatalf("expected entry to be found %s/%s", i.Namespace(), i.ID())
@@ -199,7 +203,7 @@ func RunTests(t *testing.T, s storage.Store) {
 
 			buf, err := i.Marshal()
 			if err != nil {
-				t.Fatalf("failed marshaling test item %s", err.Error())
+				t.Fatalf("failed marshaling test item: %v", err)
 			}
 
 			if sz != len(buf) {
@@ -212,7 +216,7 @@ func RunTests(t *testing.T, s storage.Store) {
 		t.Run("obj1", func(t *testing.T) {
 			count1, err := s.Count(&obj1{})
 			if err != nil {
-				t.Fatalf("failed getting count %s", err.Error())
+				t.Fatalf("failed getting count: %v", err)
 			}
 			if count1 != 5 {
 				t.Fatalf("unexpected count exp 5 found %d", count1)
@@ -221,7 +225,7 @@ func RunTests(t *testing.T, s storage.Store) {
 		t.Run("obj2", func(t *testing.T) {
 			count2, err := s.Count(&obj2{})
 			if err != nil {
-				t.Fatalf("failed getting count %s", err.Error())
+				t.Fatalf("failed getting count: %v", err)
 			}
 			if count2 != 5 {
 				t.Fatalf("unexpected count exp 5 found %d", count2)
@@ -241,7 +245,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != 5 {
 				t.Fatalf("unexpected no of entries in iteration exp 5 found %d", idx)
@@ -258,7 +262,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != 10 {
 				t.Fatalf("unexpected no of entries in iteration exp 5 found %d", idx-5)
@@ -282,7 +286,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != -1 {
 				t.Fatalf("unexpected no of entries in iteration exp 5 found %d", 4-idx)
@@ -303,7 +307,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != 4 {
 				t.Fatalf("unexpected no of entries in iteration exp 5 found %d", 9-idx)
@@ -328,7 +332,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration %v", err)
 			}
 			if idx != 5 {
 				t.Fatalf("unexpected no of entries in iteration exp 5 found %d", idx)
@@ -352,7 +356,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				}
 				buf, err := testObjs[idx].Marshal()
 				if err != nil {
-					t.Fatalf("failed marshaling %s", err.Error())
+					t.Fatalf("failed marshaling: %v", err)
 				}
 				if r.Size != len(buf) {
 					t.Fatalf("incorrect size in query expected %d found %d  id %s", len(buf), r.Size, r.ID)
@@ -361,7 +365,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != 4 {
 				t.Fatalf("unexpected no of entries in iteration exp 5 found %d", 9-idx)
@@ -385,7 +389,7 @@ func RunTests(t *testing.T, s storage.Store) {
 			return false, nil
 		})
 		if err != nil {
-			t.Fatalf("unexpected error while iteration %s", err.Error())
+			t.Fatalf("unexpected error while iteration: %v", err)
 		}
 		if idx != 5 {
 			t.Fatalf("unexpected no of entries in iteration exp 3 found %d", idx-2)
@@ -397,11 +401,11 @@ func RunTests(t *testing.T, s storage.Store) {
 			if idx < 3 || idx > 7 {
 				err := s.Delete(i)
 				if err != nil {
-					t.Fatalf("failed deleting entry %s", err.Error())
+					t.Fatalf("failed deleting entry: %v", err)
 				}
 				found, err := s.Has(i)
 				if err != nil {
-					t.Fatalf("unexpected error in has %s", err.Error())
+					t.Fatalf("unexpected error in has: %v", err)
 				}
 				if found {
 					t.Fatalf("found id %s, expected to not be found", i.ID())
@@ -430,7 +434,7 @@ func RunTests(t *testing.T, s storage.Store) {
 		t.Run("obj1", func(t *testing.T) {
 			count1, err := s.Count(&obj1{})
 			if err != nil {
-				t.Fatalf("failed getting count %s", err.Error())
+				t.Fatalf("failed getting count: %v", err)
 			}
 			if count1 != 2 {
 				t.Fatalf("unexpected count exp 2 found %d", count1)
@@ -439,7 +443,7 @@ func RunTests(t *testing.T, s storage.Store) {
 		t.Run("obj2", func(t *testing.T) {
 			count2, err := s.Count(&obj2{})
 			if err != nil {
-				t.Fatalf("failed getting count %s", err.Error())
+				t.Fatalf("failed getting count: %v", err)
 			}
 			if count2 != 3 {
 				t.Fatalf("unexpected count exp 3 found %d", count2)
@@ -459,7 +463,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != 5 {
 				t.Fatalf("unexpected no of entries in iteration exp 2 found %d", idx-3)
@@ -476,7 +480,7 @@ func RunTests(t *testing.T, s storage.Store) {
 				return false, nil
 			})
 			if err != nil {
-				t.Fatalf("unexpected error while iteration %s", err.Error())
+				t.Fatalf("unexpected error while iteration: %v", err)
 			}
 			if idx != 8 {
 				t.Fatalf("unexpected no of entries in iteration exp 3 found %d", idx-5)
@@ -500,7 +504,7 @@ func RunTests(t *testing.T, s storage.Store) {
 	t.Run("close", func(t *testing.T) {
 		err := s.Close()
 		if err != nil {
-			t.Fatalf("failed closing %s", err.Error())
+			t.Fatalf("failed closing: %v", err)
 		}
 	})
 }
