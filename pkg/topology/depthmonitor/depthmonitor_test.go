@@ -118,12 +118,6 @@ func TestDepthMonitorService(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		// ensure new depth is stored on close
-		var storedDepth uint8 = bs.GetReserveState().StorageRadius
-		if storedDepth != 1 {
-			t.Fatal("incorrect depth stored on shutdown")
-		}
 	})
 
 	t.Run("depth doesnt change due to non-zero pull rate", func(t *testing.T) {
