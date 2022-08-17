@@ -371,6 +371,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		))
 	)
 
+	var (
+		syncStatusFn = func() (isDone bool, err error) {
+			return true, nil
+		}
+	)
+
 	mockFeeds := factory.New(storer)
 	mockResolver := resolverMock.NewResolver()
 	mockPinning := pinning.NewServiceMock()
@@ -395,6 +401,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Post:             post,
 		PostageContract:  postageContract,
 		Steward:          mockSteward,
+		SyncStatus:       syncStatusFn,
 	}
 
 	var erc20 = erc20mock.New(
