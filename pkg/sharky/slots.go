@@ -6,42 +6,43 @@ package sharky
 
 import (
 	"io"
+	"sync"
 )
 
 type slots struct {
 	data []byte     // byteslice serving as bitvector: i-t bit set <>
 	head uint32     // the first free slot
-	size uint32     // the first free slot
+	size uint32     // number of slots
 	file sharkyFile // file to persist free slots across sessions
+	mtx  sync.Mutex
 }
 
-func newSlots(file sharkyFile, size uint32) *slots {
+func newSlots(file sharkyFile) *slots {
 	return &slots{
 		file: file,
-		size: size,
 	}
 }
 
 // load inits the slots from file, called after init
-func (sl *slots) load() error {
-	tmp, err := io.ReadAll(sl.file)
+func (sl *slots) load() (err error) {
+
+	sl.mtx.Lock()
+	defer sl.mtx.Unlock()
+
+	sl.data, err = io.ReadAll(sl.file)
 	if err != nil {
 		return err
 	}
-	sl.data = tmp
-
-	// if the size of the loaded file is smaller than the desired size
-	// then set the trailing bits as free slots
-	for i := len(sl.data) * 8; i < int(sl.size); i += 8 {
-		sl.data = append(sl.data, 0xff)
-	}
-
-	sl.head = sl.next()
-	return nil
+	sl.size = uint32(len(sl.data) * 8)
+	return err
 }
 
 // save persists the free slot bitvector on disk (without closing)
-func (sl *slots) save() error {
+func (sl *slots) Save() error {
+
+	sl.mtx.Lock()
+	defer sl.mtx.Unlock()
+
 	if err := sl.file.Truncate(0); err != nil {
 		return err
 	}
@@ -54,29 +55,52 @@ func (sl *slots) save() error {
 	return sl.file.Sync()
 }
 
-func (sl *slots) push(head uint32) {
-	if head < sl.head {
-		sl.head = head
+func (sl *slots) Free(slot uint32) {
+
+	sl.mtx.Lock()
+	defer sl.mtx.Unlock()
+
+	if slot < sl.head {
+		sl.head = slot
 	}
-	sl.data[head/8] |= 1 << (head % 8)
+	sl.data[slot/8] |= 1 << (slot % 8) // set bit to 1
 }
 
 // pop sets the head as used, and finds the next free slot.
-func (sl *slots) pop() {
-	head := sl.head
-	if head >= sl.size {
-		return
+func (sl *slots) Use(slot uint32) {
+
+	sl.mtx.Lock()
+	defer sl.mtx.Unlock()
+
+	if sl.data[slot/8]&(1<<(slot%8)) == 0 {
+		panic("lol")
 	}
-	sl.data[head/8] &= ^(1 << (head % 8)) // set bit to 0
-	sl.head = sl.next()
+
+	sl.data[slot/8] &= ^(1 << (slot % 8)) // set bit to 0
 }
 
-// next returns the lowest free slot after start.
+// next returns the lowest free slot.
+func (sl *slots) Next() uint32 {
+	sl.mtx.Lock()
+	defer sl.mtx.Unlock()
+
+	sl.head = sl.next()
+
+	if sl.data[sl.head/8]&(1<<(sl.head%8)) == 0 {
+		panic("lol")
+	}
+
+	return sl.head
+}
+
 func (sl *slots) next() uint32 {
 	for i := sl.head; i < sl.size; i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 { // first 1 bit
 			return i
 		}
 	}
-	return sl.size
+	// extend
+	sl.size += 8
+	sl.data = append(sl.data, 0xff)
+	return sl.size - 8
 }

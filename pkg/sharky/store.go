@@ -48,7 +48,7 @@ type availableShard struct {
 // - shard count - positive integer < 256 - cannot be zero or expect panic
 // - shard size - positive integer multiple of 8 - for others expect undefined behaviour
 // - maxDataSize - positive integer representing the maximum blob size to be stored
-func New(basedir fs.FS, shardCnt int, maxDataSize int, perShardMaxCount int) (*Store, error) {
+func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 	store := &Store{
 		maxDataSize:     maxDataSize,
 		shards:          make([]*shard, shardCnt),
@@ -57,7 +57,7 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int, perShardMaxCount int) (*S
 		availableShards: make(chan availableShard),
 	}
 	for i := range store.shards {
-		s, err := store.create(uint8(i), maxDataSize, basedir, perShardMaxCount)
+		s, err := store.create(uint8(i), maxDataSize, basedir)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func (s *Store) Close() error {
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS, perShardMaxCount int) (*shard, error) {
+func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, error) {
 	file, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
@@ -96,14 +96,13 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS, perShardMaxC
 	if err != nil {
 		return nil, err
 	}
-	sl := newSlots(ffile.(sharkyFile), uint32(perShardMaxCount))
+	sl := newSlots(ffile.(sharkyFile))
 	err = sl.load()
 	if err != nil {
 		return nil, err
 	}
 	sh := &shard{
 		available:   s.availableShards,
-		onRelease:   make(chan uint32),
 		index:       index,
 		maxDataSize: maxDataSize,
 		file:        file.(sharkyFile),
@@ -120,7 +119,7 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS, perShardMaxC
 
 // Read reads the content of the blob found at location into the byte buffer given
 // The location is assumed to be obtained by an earlier Write call storing the blob
-func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
+func (s *Store) Read(loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	return sh.read(buf[:loc.Length], loc.Slot)
 }
@@ -131,10 +130,6 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	if len(data) > s.maxDataSize {
 		return loc, ErrTooLong
 	}
-
-	// if len(s.availableShards) == 0 {
-	// 	return loc, ErrUnavailable
-	// }
 
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -154,16 +149,11 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // Note that releasing is not safe for obfuscating earlier content, since
 // even after reuse, the slot may be used by a very short blob and leaves the
 // rest of the old blob bytes untouched
-func (s *Store) Release(ctx context.Context, loc Location) error {
+func (s *Store) Release(loc Location) {
 	sh := s.shards[loc.Shard]
-	err := sh.release(ctx, loc.Slot)
+	sh.release(loc.Slot)
 	s.metrics.TotalReleaseCalls.Inc()
-	if err == nil {
-		shard := strconv.Itoa(int(sh.index))
-		s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()
-		s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
-	} else {
-		s.metrics.TotalReleaseCallsErr.Inc()
-	}
-	return err
+	shard := strconv.Itoa(int(sh.index))
+	s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()
+	s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
 }

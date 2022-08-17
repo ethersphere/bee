@@ -41,7 +41,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		if err != nil {
 			return nil, err
 		}
-		sl := newSlots(ffile, 1_024_000)
+		sl := newSlots(ffile)
 		if err := sl.load(); err != nil {
 			return nil, err
 		}
