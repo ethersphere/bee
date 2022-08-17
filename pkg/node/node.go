@@ -465,7 +465,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
 	if err == nil && previousOverlay && o.FullNodeMode && !nonceExists {
-
 		blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
 		if err != nil {
 			return nil, fmt.Errorf("invalid block hash: %w", err)
@@ -475,7 +474,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			binary.LittleEndian.PutUint64(nonce, j)
-			if (j/100000)*100000 == j {
+			if (j/1000000)*1000000 == j {
 				logger.Infof("finding new overlay corresponding to previous overlay with nonce %s", nonce)
 			}
 			newOverlayCandidate, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
@@ -484,6 +483,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			} else {
 				logger.Infof("error finding new overlay: %w, with nonce: %s", err, nonce)
 			}
+		}
+
+		foundProximity := swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
+		if foundProximity < swarm.MaxPO {
+			return nil, fmt.Errorf("mining new overlay address failed")
 		}
 	}
 
