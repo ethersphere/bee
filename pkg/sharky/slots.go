@@ -37,7 +37,7 @@ func (sl *slots) load() (err error) {
 	return err
 }
 
-// save persists the free slot bitvector on disk (without closing)
+// Save persists the free slot bitvector on disk (without closing)
 func (sl *slots) Save() error {
 
 	sl.mtx.Lock()
@@ -66,7 +66,7 @@ func (sl *slots) Free(slot uint32) {
 	sl.data[slot/8] |= 1 << (slot % 8) // set bit to 1
 }
 
-// pop sets the head as used, and finds the next free slot.
+// Use sets the slot as used.
 func (sl *slots) Use(slot uint32) {
 
 	sl.mtx.Lock()
@@ -79,7 +79,7 @@ func (sl *slots) Use(slot uint32) {
 	sl.data[slot/8] &= ^(1 << (slot % 8)) // set bit to 0
 }
 
-// next returns the lowest free slot.
+// Next returns the lowest free slot.
 func (sl *slots) Next() uint32 {
 	sl.mtx.Lock()
 	defer sl.mtx.Unlock()
