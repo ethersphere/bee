@@ -479,8 +479,10 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 				logger.Infof("finding new overlay corresponding to previous overlay with nonce %s", nonce)
 			}
 			newOverlayCandidate, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-			if err != nil {
+			if err == nil {
 				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
+			} else {
+				logger.Infof("error finding new overlay: %w, with nonce: %s", err, nonce)
 			}
 		}
 	}
