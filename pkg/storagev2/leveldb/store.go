@@ -7,10 +7,11 @@ import (
 	"strings"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storageV2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
@@ -20,18 +21,17 @@ type Store struct {
 	closeLk sync.RWMutex
 }
 
-var _ storage.Store = (*Store)(nil)
-var _ storage.Tx = (*transaction)(nil)
+var _ storageV2.Store = (*Store)(nil)
+var _ storageV2.Tx = (*transaction)(nil)
 
 // NewDatastore returns a new datastore backed by leveldb
 // for path == "", an in memory backend will be chosen (TODO)
-func NewLevelDBStore(path string, opts *opt.Options) (storage.Store, error) {
+func NewLevelDBStore(path string, opts *opt.Options) (storageV2.Store, error) {
 	var err error
 	var db *leveldb.DB
 
 	if path == "" {
-		// db, err = leveldb.Open(storage.NewMemStorage(), opts)
-		panic("new leveldb store: path expected") //TODO in mem
+		db, err = leveldb.Open(storage.NewMemStorage(), opts)
 	} else {
 		db, err = leveldb.OpenFile(path, opts)
 		if errors.IsCorrupted(err) && !opts.GetReadOnly() {
@@ -50,7 +50,7 @@ func NewLevelDBStore(path string, opts *opt.Options) (storage.Store, error) {
 	return &ds, nil
 }
 
-func (s *Store) Count(key storage.Key) (c int, err error) {
+func (s *Store) Count(key storageV2.Key) (c int, err error) {
 	keys := util.BytesPrefix([]byte(key.Namespace() + "/"))
 
 	iter := s.DB.NewIterator(keys, nil)
@@ -68,7 +68,7 @@ func (s *Store) Count(key storage.Key) (c int, err error) {
 	return c, iter.Error()
 }
 
-func (s *Store) Put(item storage.Item) error {
+func (s *Store) Put(item storageV2.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -82,7 +82,7 @@ func (s *Store) Put(item storage.Item) error {
 	return s.DB.Put(key, value, &opt.WriteOptions{Sync: true})
 }
 
-func (s *Store) Get(item storage.Item) error {
+func (s *Store) Get(item storageV2.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -91,7 +91,7 @@ func (s *Store) Get(item storage.Item) error {
 	val, err := s.DB.Get(key, nil)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			return storage.ErrNotFound
+			return storageV2.ErrNotFound
 		}
 		return err
 	}
@@ -104,7 +104,7 @@ func (s *Store) Get(item storage.Item) error {
 	return nil
 }
 
-func (s *Store) Has(sKey storage.Key) (exists bool, err error) {
+func (s *Store) Has(sKey storageV2.Key) (exists bool, err error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -113,7 +113,7 @@ func (s *Store) Has(sKey storage.Key) (exists bool, err error) {
 	return s.DB.Has(key, nil)
 }
 
-func (s *Store) GetSize(sKey storage.Key) (size int, err error) {
+func (s *Store) GetSize(sKey storageV2.Key) (size int, err error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -122,7 +122,7 @@ func (s *Store) GetSize(sKey storage.Key) (size int, err error) {
 	val, err := s.DB.Get(key, nil)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			return 0, storage.ErrNotFound
+			return 0, storageV2.ErrNotFound
 		}
 		return 0, err
 	}
@@ -130,7 +130,7 @@ func (s *Store) GetSize(sKey storage.Key) (size int, err error) {
 	return len(val), nil
 }
 
-func (s *Store) Delete(item storage.Key) (err error) {
+func (s *Store) Delete(item storageV2.Key) (err error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -139,7 +139,7 @@ func (s *Store) Delete(item storage.Key) (err error) {
 	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
 }
 
-func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
+func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -149,7 +149,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	iter := s.DB.NewIterator(keys, nil)
 	defer iter.Release()
 
-	getNext := func(k string, v []byte) (*storage.Result, error) {
+	getNext := func(k string, v []byte) (*storageV2.Result, error) {
 		knp := strings.TrimPrefix(k, prefix)
 		for _, filter := range q.Filters {
 			if filter(knp, v) {
@@ -158,15 +158,15 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 
 		switch q.ItemAttribute {
-		case storage.QueryItemID, storage.QueryItemSize:
-			return &storage.Result{ID: knp, Size: len(v)}, nil
-		case storage.QueryItem:
+		case storageV2.QueryItemID, storageV2.QueryItemSize:
+			return &storageV2.Result{ID: knp, Size: len(v)}, nil
+		case storageV2.QueryItem:
 			newItem := q.Factory()
 			err := newItem.Unmarshal(v)
 			if err != nil {
 				return nil, fmt.Errorf("failed unmarshaling: %w", err)
 			}
-			return &storage.Result{Entry: newItem}, nil
+			return &storageV2.Result{Entry: newItem}, nil
 		}
 
 		return nil, nil
@@ -176,7 +176,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		k := string(iter.Key())
 		v := iter.Value()
 
-		var res *storage.Result
+		var res *storageV2.Result
 
 		res, err := getNext(k, v)
 		if err != nil || res == nil {
@@ -212,31 +212,31 @@ type transaction struct {
 	undo *leveldb.Batch
 }
 
-func (t *transaction) Get(storage.Item) error {
+func (t *transaction) Get(storageV2.Item) error {
 	panic("leveldb store: get not implemented")
 }
 
-func (t *transaction) Has(storage.Key) (bool, error) {
+func (t *transaction) Has(storageV2.Key) (bool, error) {
 	panic("leveldb store: batch check presence not implemented")
 }
 
-func (t *transaction) GetSize(storage.Key) (int, error) {
+func (t *transaction) GetSize(storageV2.Key) (int, error) {
 	panic("leveldb store: get size not implemented")
 }
 
-func (t *transaction) Iterate(storage.Query, storage.IterateFn) error {
+func (t *transaction) Iterate(storageV2.Query, storageV2.IterateFn) error {
 	panic("leveldb store: iterate not implemented")
 }
 
-func (t *transaction) Count(storage.Key) (int, error) {
+func (t *transaction) Count(storageV2.Key) (int, error) {
 	panic("leveldb store: count not implemented")
 }
 
-func (t *transaction) Put(storage.Item) error {
+func (t *transaction) Put(storageV2.Item) error {
 	panic("leveldb store: batch put not implemented")
 }
 
-func (t *transaction) Delete(storage.Key) error {
+func (t *transaction) Delete(storageV2.Key) error {
 	// add delete entry to do batch
 	// get and add put entry to undo batch
 	panic("leveldb store: batch delete not implemented")
@@ -254,7 +254,7 @@ func (t *transaction) Rollback(ctx context.Context) error {
 	panic("leveldb store: rollback not implemented")
 }
 
-func (s *Store) NewTransaction(ctx context.Context, readOnly bool) (storage.Tx, error) {
+func (s *Store) NewTransaction(ctx context.Context, readOnly bool) (storageV2.Tx, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
