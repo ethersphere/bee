@@ -456,7 +456,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	// get old overlay
 	// mine nonce that gives similar new overlay
 
-	nonce := make([]byte, 32)
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
 	previousOverlay := false
 	existingOverlay, err := GetExistingOverlay(stateStore)
@@ -476,6 +475,9 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			binary.LittleEndian.PutUint64(nonce, j)
+			if (j/100000)*100000 == j {
+				logger.Infof("finding new overlay corresponding to previous overlay with nonce %s", nonce)
+			}
 			newOverlayCandidate, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
 			if err != nil {
 				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
