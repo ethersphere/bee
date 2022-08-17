@@ -1,9 +1,9 @@
 package leveldbstore
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -49,8 +49,20 @@ func NewLevelDBStore(path string, opts *opt.Options) (storage.Store, error) {
 	return &ds, nil
 }
 
-func (s *Store) Count(key storage.Key) (int, error) {
-	panic("leveldb store: count not implemented")
+func (s *Store) Count(key storage.Key) (c int, err error) {
+	iter := s.DB.NewIterator(nil, nil)
+	defer iter.Release()
+
+	dbKey := []byte(key.Namespace() + "/" + key.ID())
+
+	for iter.Next() {
+		iKey := iter.Key()
+		if bytes.Equal(iKey, dbKey) {
+			c++
+		}
+	}
+
+	return c, iter.Error()
 }
 
 func (s *Store) Put(item storage.Item) error {
@@ -62,7 +74,7 @@ func (s *Store) Put(item storage.Item) error {
 		return fmt.Errorf("failed serializing %w", err)
 	}
 
-	key := []byte(strings.Join([]string{item.Namespace(), item.ID()}, "/"))
+	key := []byte(item.Namespace() + "/" + item.ID())
 
 	return s.DB.Put(key, value, &opt.WriteOptions{Sync: true})
 }
@@ -71,7 +83,7 @@ func (s *Store) Get(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(strings.Join([]string{item.Namespace(), item.ID()}, "/"))
+	key := []byte(item.Namespace() + "/" + item.ID())
 
 	val, err := s.DB.Get(key, nil)
 	if err != nil {
@@ -93,7 +105,7 @@ func (s *Store) Has(sKey storage.Key) (exists bool, err error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(strings.Join([]string{sKey.Namespace(), sKey.ID()}, "/"))
+	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	return s.DB.Has(key, nil)
 }
@@ -102,7 +114,7 @@ func (s *Store) GetSize(sKey storage.Key) (size int, err error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(strings.Join([]string{sKey.Namespace(), sKey.ID()}, "/"))
+	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	val, err := s.DB.Get(key, nil)
 	if err != nil {
@@ -119,7 +131,7 @@ func (s *Store) Delete(item storage.Key) (err error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(strings.Join([]string{item.Namespace(), item.ID()}, "/"))
+	key := []byte(item.Namespace() + "/" + item.ID())
 
 	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
 }
@@ -158,7 +170,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 	}
 
-	return nil
+	return i.Error()
 }
 
 func (s *Store) Close() (err error) {
