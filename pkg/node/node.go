@@ -470,6 +470,8 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("invalid block hash: %w", err)
 		}
 
+		newOverlayCandidate := swarm.ZeroAddress
+
 		j := uint64(0)
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
@@ -477,7 +479,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			if (j/1000000)*1000000 == j {
 				logger.Infof("finding new overlay corresponding to previous overlay with nonce %s", nonce)
 			}
-			newOverlayCandidate, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+			newOverlayCandidate, err = crypto.NewOverlayAddress(*pubKey, networkID, nonce)
 			if err == nil {
 				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
 			} else {
