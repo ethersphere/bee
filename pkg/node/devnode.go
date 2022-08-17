@@ -372,6 +372,8 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	)
 
 	var (
+		// syncStatusFn mocks sync status because complete sync is required in order to curl certain apis e.g. /stamps.
+		// this allows accessing those apis by passing true to isDone in devNode.
 		syncStatusFn = func() (isDone bool, err error) {
 			return true, nil
 		}
