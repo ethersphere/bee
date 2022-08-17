@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
-	storetesting "github.com/ethersphere/bee/pkg/storagev2/testsuite"
+	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
 
 func TestStoreTestSuite(t *testing.T) {
-	st := inmem.New()
-	storetesting.RunCorrectnessTests(t, st)
+	storagetest.TestStorage(t, inmem.New())
 }

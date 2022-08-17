@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

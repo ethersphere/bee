@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package storetesting
+package storagetest
 
 import (
 	"context"
@@ -14,7 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
+// TestChunkStore runs a correctness test suite on a given ChunkStore.
+func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 	t.Helper()
 
 	testChunks := chunktest.GenerateTestRandomChunks(50)
