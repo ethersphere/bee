@@ -386,6 +386,8 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
+	newChequebook := false
+
 	if o.SwapEnable {
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
@@ -411,7 +413,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		erc20Service = erc20.New(transactionService, erc20Address)
 
 		if o.ChequebookEnable && chainEnabled {
-			chequebookService, err = InitChequebookService(
+			chequebookService, newChequebook, err = InitChequebookService(
 				p2pCtx,
 				logger,
 				stateStore,
@@ -450,21 +452,49 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		txHash    []byte
 	)
 
+	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
+	// get old overlay
+	// mine nonce that gives similar new overlay
+
+	if o.Transaction != nil {
+		newChequebook = false
+	}
+
+	nonce := make([]byte, 32)
+	nonce, nonceExists, err := overlayNonceExists(stateStore)
+
 	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction hash: %w", err)
+	if err == nil && !newChequebook && o.FullNodeMode && !nonceExists {
+
+		blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid block hash: %w", err)
+		}
+
+		previousSwarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+
+
+		j := uint32(0)
+		for prox := 0; prox < swarm.MaxPO {
+			j++
+			binary.LittleEndian.PutUint32(nonce, j)
+			newOverlayCandidate := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+			prox = swarm.Proximity(previousSwarmAddress, newOverlayCandidate)
+		}
 	}
 
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
-	if err != nil {
-		return nil, fmt.Errorf("invalid block hash: %w", err)
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 	logger.Infof("using overlay address %s", swarmAddress)
+
+	if !nonceExists {
+		err := setOverlayNonce(stateStore, nonce)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+		}
+	}
 
 	apiService.SetSwarmAddress(&swarmAddress)
 

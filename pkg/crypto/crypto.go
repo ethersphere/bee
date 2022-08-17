@@ -47,7 +47,7 @@ func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64, blockHash [
 	binary.LittleEndian.PutUint64(netIDBytes, networkID)
 	data := append(ethAddr, netIDBytes...)
 	data = append(data, blockHash...)
-	h := sha3.Sum256(data)
+	h := sha3.NewLegacyKeccak256(data)
 	return swarm.NewAddress(h[:])
 }
 

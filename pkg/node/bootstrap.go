@@ -373,6 +373,7 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 }
 
 const batchStoreV2flag = "batchstoreV2_flag"
+const OverlayNonce = "overlayV2_nonce"
 
 func batchStoreV2FlagExists(s storage.StateStorer) (bool, error) {
 	exists := false
@@ -387,4 +388,19 @@ func batchStoreV2FlagExists(s storage.StateStorer) (bool, error) {
 
 func setV2Flag(s storage.StateStorer) error {
 	return s.Put(batchStoreV2flag, true)
+}
+
+func overlayNonceExists(s storage.StateStorer) (byte[], bool, error) {
+	overlayNonce := make(byte[], 32)
+	if err := s.Get(OverlayNonce, &overlayNonce); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return overlayNonce, true, nil
+}
+
+func setOverlayNonce(s storage.StateStorer, overlayNonce byte[]) error {
+	return s.Put(OverlayNonce, overlayNonce)
 }
