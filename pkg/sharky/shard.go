@@ -5,9 +5,7 @@
 package sharky
 
 import (
-	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 )
 
@@ -60,29 +58,9 @@ type sharkyFile interface {
 	Sync() error
 }
 
-// write models the input to a write operation
-type write struct {
-	buf []byte     // variable size read buffer
-	res chan entry // to put the result through
-}
-
-// entry models the output result of a write operation
-type entry struct {
-	loc Location // shard, slot, length combo
-	err error    // signal for end of operation
-}
-
-// read models the input to read operation (the output is an error)
-type read struct {
-	ctx  context.Context
-	buf  []byte // variable size read buffer
-	slot uint32 // slot to read from
-}
-
 // shard models a shard writing to a file with periodic offsets due to fixed maxDataSize
 type shard struct {
 	available   chan availableShard
-	onRelease   chan uint32
 	index       uint8         // index of the shard
 	maxDataSize int           // max size of blobs
 	file        sharkyFile    // the file handle the shard is writing data to
@@ -93,31 +71,12 @@ type shard struct {
 // forever loop processing
 func (sh *shard) process() {
 	defer sh.close()
-	defer fmt.Println("quit")
 
 	for {
-		freeSlot := sh.slots.next()
-		// there are no free slots, so wait for a release
-		if freeSlot == sh.slots.size {
-			fmt.Println("no free slot", sh.index, freeSlot)
-			select {
-			case head := <-sh.onRelease:
-				sh.slots.push(head)
-				continue
-			case <-sh.quit:
-				return
-			}
-		}
-
+		freeSlot := sh.slots.Next()
 		select {
-		// pick up new free slot from release
-		case head := <-sh.onRelease:
-			sh.slots.push(head)
-		// write free slot
-		case sh.available <- availableShard{shardIndex: sh.index, slot: uint32(freeSlot)}:
-			fmt.Println("wrote", sh.index, freeSlot)
-			sh.slots.pop()
-		// quit
+		case sh.available <- availableShard{shardIndex: sh.index, slot: freeSlot}:
+			sh.slots.Use(freeSlot)
 		case <-sh.quit:
 			return
 		}
@@ -127,7 +86,7 @@ func (sh *shard) process() {
 // close closes the shard:
 // wait for pending operations to finish then saves free slots and blobs on disk
 func (sh *shard) close() error {
-	if err := sh.slots.save(); err != nil {
+	if err := sh.slots.Save(); err != nil {
 		return err
 	}
 	if err := sh.slots.file.Close(); err != nil {
@@ -150,6 +109,7 @@ func (sh *shard) read(buf []byte, slot uint32) error {
 
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) write(buf []byte, slot uint32) (Location, error) {
+	// fmt.Printf("wrote slot %d\n", slot)
 	n, err := sh.file.WriteAt(buf, sh.offset(slot))
 	return Location{
 		Shard:  sh.index,
@@ -159,12 +119,7 @@ func (sh *shard) write(buf []byte, slot uint32) (Location, error) {
 }
 
 // release frees the slot allowing new entry to overwrite
-func (sh *shard) release(ctx context.Context, slot uint32) error {
-	select {
-	case sh.onRelease <- slot:
-		return nil
-	case <-ctx.Done():
-		fmt.Println("release context done")
-		return ctx.Err()
-	}
+func (sh *shard) release(slot uint32) {
+	// fmt.Printf("release %d, %d\n", sh.index, slot)
+	sh.slots.Free(slot)
 }

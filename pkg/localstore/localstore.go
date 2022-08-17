@@ -364,7 +364,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		db.fdirtyCloser = func() error { return os.Remove(filepath.Join(path, sharkyDirtyFileName)) }
 	}
 
-	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.SocMaxChunkSize, 1_024_000)
+	db.sharky, err = sharky.New(sharkyBase, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
 		return nil, err
 	}
