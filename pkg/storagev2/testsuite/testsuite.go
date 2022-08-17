@@ -75,7 +75,7 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	}
 
 	if a.ID() != b.ID() {
-		t.Fatalf("ID doesnt match %s and %s %d %d", a.ID(), b.ID(), len(a.ID()), len(b.ID()))
+		t.Fatalf("ID doesnt match %s (len %d) and %s (len %d)", a.ID(), len(a.ID()), b.ID(), len(b.ID()))
 	}
 
 	buf1, err := a.Marshal()

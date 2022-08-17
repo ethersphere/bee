@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -50,14 +51,16 @@ func NewLevelDBStore(path string, opts *opt.Options) (storage.Store, error) {
 }
 
 func (s *Store) Count(key storage.Key) (c int, err error) {
-	iter := s.DB.NewIterator(nil, nil)
+	keys := util.BytesPrefix([]byte(key.Namespace() + "/"))
+
+	iter := s.DB.NewIterator(keys, nil)
 	defer iter.Release()
 
-	dbKey := []byte(key.Namespace() + "/" + key.ID())
+	ns := []byte(key.Namespace())
 
 	for iter.Next() {
 		iKey := iter.Key()
-		if bytes.Equal(iKey, dbKey) {
+		if bytes.Equal(iKey[:len(ns)], ns) {
 			c++
 		}
 	}
@@ -140,37 +143,60 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	rnge := util.BytesPrefix([]byte(q.Factory().Namespace() + "/"))
-	i := s.DB.NewIterator(rnge, nil)
-	defer i.Release()
+	prefix := q.Factory().Namespace() + "/"
+	keys := util.BytesPrefix([]byte(prefix))
 
-	for i.Next() {
-		res := storage.Result{ID: string(i.Key()), Size: len(i.Value())}
-		// if q.KeysOnly || q.SizeOnly {
-		// 	stop, err := fn(res)
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// 	if stop {
-		// 		return nil
-		// 	}
-		// }
+	iter := s.DB.NewIterator(keys, nil)
+	defer iter.Release()
+
+	getNext := func(k string, v []byte) (*storage.Result, error) {
+		knp := strings.TrimPrefix(k, prefix)
+		for _, filter := range q.Filters {
+			if filter(knp, v) {
+				return nil, nil
+			}
+		}
+
+		switch q.ItemAttribute {
+		case storage.QueryItemID, storage.QueryItemSize:
+			return &storage.Result{ID: knp, Size: len(v)}, nil
+		case storage.QueryItem:
+			newItem := q.Factory()
+			err := newItem.Unmarshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed unmarshaling: %w", err)
+			}
+			return &storage.Result{Entry: newItem}, nil
+		}
+
+		return nil, nil
+	}
+
+	for iter.Next() {
+		k := string(iter.Key())
+		v := iter.Value()
+
+		var res *storage.Result
+
+		res, err := getNext(k, v)
+		if err != nil || res == nil {
+			continue
+		}
 
 		res.Entry = q.Factory()
-		err := res.Entry.Unmarshal(i.Value())
-		if err != nil {
+
+		if err := res.Entry.Unmarshal(iter.Value()); err != nil {
 			return err
 		}
-		stop, err := fn(res)
-		if err != nil {
+
+		if stop, err := fn(*res); err != nil {
 			return err
-		}
-		if stop {
+		} else if stop {
 			return nil
 		}
 	}
 
-	return i.Error()
+	return iter.Error()
 }
 
 func (s *Store) Close() (err error) {
