@@ -19,8 +19,6 @@ var (
 	ErrTooLong = errors.New("data too long")
 	// ErrQuitting returned by Write when the store is Closed before the write completes.
 	ErrQuitting = errors.New("quitting")
-
-	ErrUnavailable = errors.New("unavailable")
 )
 
 // Store models the sharded fix-length blobstore
