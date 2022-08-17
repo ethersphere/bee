@@ -38,9 +38,9 @@ type TxStore interface {
 	NewTx(ctx context.Context) Tx
 }
 
-// TxStatus is a mix-in for Tx. It provides
-// basic functionality for transaction status.
-type TxStatus struct {
+// TxState is a mix-in for Tx. It provides basic
+// functionality for transaction state lifecycle.
+type TxState struct {
 	// once guards cancel and done invariants.
 	once sync.Once
 
@@ -57,18 +57,18 @@ type TxStatus struct {
 	done int32
 }
 
-// AwaitDone blocks until the context in TxStatus
-// is canceled or the transaction is done.
-func (tx *TxStatus) AwaitDone() {
+// AwaitDone returns a channel that blocks until the context
+// in TxState is canceled or the transaction is done.
+func (tx *TxState) AwaitDone() <-chan struct{} {
 	// Wait for either the transaction to be committed or rolled
 	// back, or for the associated context to be closed.
-	<-tx.ctx.Done()
+	return tx.ctx.Done()
 }
 
 // IsDone returns:
 // 	- false if this transaction is still ongoing
 // 	- true if transaction was already committed or rolled back
-func (tx *TxStatus) IsDone() bool {
+func (tx *TxState) IsDone() bool {
 	if atomic.LoadInt32(&tx.done) == 1 {
 		return true
 	}
@@ -83,11 +83,17 @@ func (tx *TxStatus) IsDone() bool {
 }
 
 // Done marks this transaction as complete.
-func (tx *TxStatus) Done() {
+func (tx *TxState) Done() {
 	tx.once.Do(func() {
 		atomic.StoreInt32(&tx.done, 1)
 		tx.cancel()
 	})
+}
+
+// NewTxStatus is a convenient constructor for creating instances of TxState.
+func NewTxStatus(ctx context.Context) *TxState {
+	ctx, cancel := context.WithCancel(ctx)
+	return &TxState{ctx: ctx, cancel: cancel}
 }
 
 // opCode represents code for Store operations.
@@ -121,7 +127,7 @@ var (
 //
 // The zero value of the SimpleTxStore is usable.
 type SimpleTxStore struct {
-	TxStatus
+	*TxState
 
 	// The lock which limit access to the Store
 	// operations outside of ongoing transaction.
@@ -136,10 +142,13 @@ type SimpleTxStore struct {
 
 // AwaitDone blocks until the context
 // is canceled or the transaction is done.
-func (s *SimpleTxStore) AwaitDone() {
+func (s *SimpleTxStore) AwaitDone() <-chan struct{} {
 	if s != nil {
-		s.TxStatus.AwaitDone()
+		return s.TxState.AwaitDone()
 	}
+	c := make(chan struct{})
+	close(c)
+	return c
 }
 
 // IsDone returns:
@@ -149,13 +158,13 @@ func (s *SimpleTxStore) IsDone() bool {
 	if s != nil {
 		return true
 	}
-	return s.TxStatus.IsDone()
+	return s.TxState.IsDone()
 }
 
 // Done marks this transaction as complete.
 func (s *SimpleTxStore) Done() {
 	if s != nil {
-		s.TxStatus.IsDone()
+		s.TxState.IsDone()
 	}
 }
 
@@ -163,7 +172,7 @@ func (s *SimpleTxStore) Done() {
 // The operation is blocked until the
 // transaction is not done.
 func (s *SimpleTxStore) Close() error {
-	s.AwaitDone()
+	<-s.AwaitDone()
 	return s.Store.Close()
 }
 
@@ -273,12 +282,11 @@ func (s *SimpleTxStore) Rollback() error {
 
 // NewTx implements the TxStore interface.
 func (s *SimpleTxStore) NewTx(ctx context.Context) Tx {
-	s.AwaitDone()
+	<-s.AwaitDone()
 	if s == nil {
 		*s = SimpleTxStore{}
 	}
 	s.storeMu.Lock()
-	ctx, cancel := context.WithCancel(ctx)
-	s.TxStatus = TxStatus{ctx: ctx, cancel: cancel}
+	s.TxState = NewTxStatus(ctx)
 	return s
 }
