@@ -163,7 +163,7 @@ func InitChequebookService(
 	initialDeposit string,
 	deployGasPrice string,
 	erc20Service erc20.Service,
-) (chequebook.Service, bool, error) {
+) (chequebook.Service, error) {
 	chequeSigner := chequebook.NewChequeSigner(signer, chainID)
 
 	deposit, ok := new(big.Int).SetString(initialDeposit, 10)
@@ -179,7 +179,7 @@ func InitChequebookService(
 		ctx = sctx.SetGasPrice(ctx, gasPrice)
 	}
 
-	chequebookService, newChequebook, err := chequebook.Init(
+	chequebookService, err := chequebook.Init(
 		ctx,
 		chequebookFactory,
 		stateStore,
@@ -196,7 +196,7 @@ func InitChequebookService(
 		return nil, fmt.Errorf("chequebook init: %w", err)
 	}
 
-	return chequebookService, newChequebook, nil
+	return chequebookService, nil
 }
 
 func initChequeStoreCashout(

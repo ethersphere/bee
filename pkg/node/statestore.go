@@ -28,6 +28,16 @@ func InitStateStore(log logging.Logger, dataDir string) (storage.StateStorer, er
 
 const secureOverlayKey = "non-mineable-overlay"
 
+func GetExistingOverlay(storer storage.StateStorer) (swarm.Address, error) {
+	var storedOverlay swarm.Address
+	err := storer.Get(secureOverlayKey, &storedOverlay)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return storedOverlay, nil
+}
+
 // CheckOverlayWithStore checks the overlay is the same as stored in the statestore
 func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
 
@@ -45,4 +55,9 @@ func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) er
 	}
 
 	return nil
+}
+
+// SetOverlayInStore sets the overlay stored in the statestore (for purpose of overlay migration)
+func SetOverlayInStore(overlay swarm.Address, storer storage.StateStorer) error {
+	return storer.Put(secureOverlayKey, overlay)
 }

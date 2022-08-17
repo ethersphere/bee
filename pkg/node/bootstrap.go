@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/netstore"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
@@ -71,7 +70,6 @@ func bootstrapNode(
 	addressbook addressbook.Interface,
 	bootnodes []ma.Multiaddr,
 	lightNodes *lightnode.Container,
-	senderMatcher p2p.SenderMatcher,
 	chequebookService chequebook.Service,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
@@ -104,7 +102,7 @@ func bootstrapNode(
 		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown()).ErrorOrNil()
 	}()
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
@@ -390,8 +388,8 @@ func setV2Flag(s storage.StateStorer) error {
 	return s.Put(batchStoreV2flag, true)
 }
 
-func overlayNonceExists(s storage.StateStorer) (byte[], bool, error) {
-	overlayNonce := make(byte[], 32)
+func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
+	overlayNonce := make([]byte, 32)
 	if err := s.Get(OverlayNonce, &overlayNonce); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, false, nil
@@ -401,6 +399,6 @@ func overlayNonceExists(s storage.StateStorer) (byte[], bool, error) {
 	return overlayNonce, true, nil
 }
 
-func setOverlayNonce(s storage.StateStorer, overlayNonce byte[]) error {
+func setOverlayNonce(s storage.StateStorer, overlayNonce []byte) error {
 	return s.Put(OverlayNonce, overlayNonce)
 }

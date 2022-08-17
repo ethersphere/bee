@@ -61,7 +61,6 @@ type AdvertisableAddressResolver interface {
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	senderMatcher         p2p.SenderMatcher
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           []byte
@@ -89,7 +88,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger logging.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -102,7 +101,6 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		fullNode:              fullNode,
 		validateOverlay:       validateOverlay,
 		transaction:           transaction,
-		senderMatcher:         isSender,
 		libp2pID:              ownPeerID,
 		logger:                logger,
 		metrics:               newMetrics(),

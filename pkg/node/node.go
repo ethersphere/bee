@@ -10,10 +10,12 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -24,7 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	//	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -386,8 +388,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
-	newChequebook := false
-
 	if o.SwapEnable {
 		chequebookFactory, err = InitChequebookFactory(
 			logger,
@@ -413,7 +413,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		erc20Service = erc20.New(transactionService, erc20Address)
 
 		if o.ChequebookEnable && chainEnabled {
-			chequebookService, newChequebook, err = InitChequebookService(
+			chequebookService, err = InitChequebookService(
 				p2pCtx,
 				logger,
 				stateStore,
@@ -456,30 +456,30 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	// get old overlay
 	// mine nonce that gives similar new overlay
 
-	if o.Transaction != nil {
-		newChequebook = false
-	}
-
 	nonce := make([]byte, 32)
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
+	previousOverlay := false
+	existingOverlay, err := GetExistingOverlay(stateStore)
+	if err == nil {
+		previousOverlay = true
+	}
 
 	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
-	if err == nil && !newChequebook && o.FullNodeMode && !nonceExists {
+	if err == nil && previousOverlay && o.FullNodeMode && !nonceExists {
 
 		blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
 		if err != nil {
 			return nil, fmt.Errorf("invalid block hash: %w", err)
 		}
 
-		previousSwarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
-
-
-		j := uint32(0)
-		for prox := 0; prox < swarm.MaxPO {
-			j++
-			binary.LittleEndian.PutUint32(nonce, j)
-			newOverlayCandidate := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-			prox = swarm.Proximity(previousSwarmAddress, newOverlayCandidate)
+		j := uint64(0)
+		limit := math.Pow(2, 34)
+		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
+			binary.LittleEndian.PutUint64(nonce, j)
+			newOverlayCandidate, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+			if err != nil {
+				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
+			}
 		}
 	}
 
@@ -494,6 +494,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
 		}
+
+		err = SetOverlayInStore(swarmAddress, stateStore)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+		}
 	}
 
 	apiService.SetSwarmAddress(&swarmAddress)
@@ -504,11 +509,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	senderMatcher := transaction.NewMatcher(chainBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore, chainEnabled)
-	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
-	if err != nil {
-		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
-	}
+	// senderMatcher := transaction.NewMatcher(chainBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore, chainEnabled)
+	// _, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("identity transaction verification failed: %w", err)
+	// }
 
 	var bootnodes []ma.Multiaddr
 
@@ -568,7 +573,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			addressbook,
 			bootnodes,
 			lightNodes,
-			senderMatcher,
 			chequebookService,
 			chequeStore,
 			cashoutService,
@@ -586,7 +590,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
 		EnableWS:        o.EnableWS,
