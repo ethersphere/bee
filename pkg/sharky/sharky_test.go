@@ -267,9 +267,9 @@ func TestConcurrency(t *testing.T) {
 		workers, shards int
 		shardSize       uint32
 	}{
-		// {3, 2, 2},
-		// {2, 64, 2},
-		// {32, 8, 32},
+		{3, 2, 2},
+		{2, 64, 2},
+		{32, 8, 32},
 		{64, 32, 64},
 	} {
 		t.Run(fmt.Sprintf("workers:%d,shards:%d,size:%d", c.workers, c.shards, c.shardSize), func(t *testing.T) {
