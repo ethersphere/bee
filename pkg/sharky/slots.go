@@ -99,8 +99,17 @@ func (sl *slots) next() uint32 {
 			return i
 		}
 	}
-	// extend
+	sl.extend(1)
 	sl.size += 8
 	sl.data = append(sl.data, 0xff)
 	return sl.size - 8
+}
+
+// extend adapts the slots to an extended size shard
+// extensions are bytewise: can only be multiples of 8 bits
+func (sl *slots) extend(n int) {
+	sl.size += uint32(n) * 8
+	for i := 0; i < n; i++ {
+		sl.data = append(sl.data, 0xff)
+	}
 }
