@@ -134,7 +134,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", txHash, "tx_checksum", cs)
+	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
