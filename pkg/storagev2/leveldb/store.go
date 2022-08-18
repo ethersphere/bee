@@ -5,13 +5,13 @@
 package leveldbstore
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
 	"sync"
 
 	storageV2 "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -60,13 +60,8 @@ func (s *Store) Count(key storageV2.Key) (c int, err error) {
 	iter := s.DB.NewIterator(keys, nil)
 	defer iter.Release()
 
-	ns := []byte(key.Namespace())
-
 	for iter.Next() {
-		iKey := iter.Key()
-		if bytes.Equal(iKey[:len(ns)], ns) {
-			c++
-		}
+		c++
 	}
 
 	return c, iter.Error()
@@ -100,8 +95,7 @@ func (s *Store) Get(item storageV2.Item) error {
 		return err
 	}
 
-	err = item.Unmarshal(val)
-	if err != nil {
+	if err = item.Unmarshal(val); err != nil {
 		return fmt.Errorf("failed decoding value %w", err)
 	}
 
@@ -144,63 +138,95 @@ func (s *Store) Delete(item storageV2.Key) (err error) {
 }
 
 func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
+	if err := q.Validate(); err != nil {
+		return fmt.Errorf("failed iteration: %w", err)
+	}
+
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	prefix := q.Factory().Namespace() + "/"
+	var retErr *multierror.Error
+
+	namespace := q.Factory().Namespace()
+	prefix := namespace + "/"
+
 	keys := util.BytesPrefix([]byte(prefix))
 
 	iter := s.DB.NewIterator(keys, nil)
-	defer iter.Release()
 
-	getNext := func(k string, v []byte) (*storageV2.Result, error) {
-		knp := strings.TrimPrefix(k, prefix)
-		for _, filter := range q.Filters {
-			if filter(knp, v) {
-				return nil, nil
-			}
-		}
+	switch q.Order {
+	case storageV2.KeyAscendingOrder:
+		for iter.Next() {
+			k := string(iter.Key())
+			v := iter.Value()
 
-		switch q.ItemAttribute {
-		case storageV2.QueryItemID, storageV2.QueryItemSize:
-			return &storageV2.Result{ID: knp, Size: len(v)}, nil
-		case storageV2.QueryItem:
-			newItem := q.Factory()
-			err := newItem.Unmarshal(v)
+			stop, err := apply(k, v, q, fn)
 			if err != nil {
-				return nil, fmt.Errorf("failed unmarshaling: %w", err)
+				retErr = multierror.Append(retErr, err)
 			}
-			return &storageV2.Result{Entry: newItem}, nil
+			if stop {
+				break
+			}
 		}
+	case storageV2.KeyDescendingOrder:
+		for ok := iter.Last(); ok; ok = iter.Prev() {
+			k := string(iter.Key())
+			v := iter.Value()
 
-		return nil, nil
-	}
-
-	for iter.Next() {
-		k := string(iter.Key())
-		v := iter.Value()
-
-		var res *storageV2.Result
-
-		res, err := getNext(k, v)
-		if err != nil || res == nil {
-			continue
-		}
-
-		res.Entry = q.Factory()
-
-		if err := res.Entry.Unmarshal(iter.Value()); err != nil {
-			return err
-		}
-
-		if stop, err := fn(*res); err != nil {
-			return err
-		} else if stop {
-			return nil
+			stop, err := apply(k, v, q, fn)
+			if err != nil {
+				retErr = multierror.Append(retErr, err)
+			}
+			if stop {
+				break
+			}
 		}
 	}
 
-	return iter.Error()
+	iter.Release()
+
+	if err := iter.Error(); err != nil {
+		retErr = multierror.Append(retErr, err)
+	}
+
+	return retErr.ErrorOrNil()
+}
+
+func apply(k string, v []byte, q storageV2.Query, fn func(storageV2.Result) (bool, error)) (stop bool, err error) {
+	namespace := q.Factory().Namespace()
+	prefix := namespace + "/"
+
+	knp := strings.TrimPrefix(k, prefix)
+	for _, filter := range q.Filters {
+		if filter(knp, v) {
+			return false, nil
+		}
+	}
+
+	var res *storageV2.Result
+	switch q.ItemAttribute {
+	case storageV2.QueryItemID, storageV2.QueryItemSize:
+		res = &storageV2.Result{ID: knp, Size: len(v)}
+	case storageV2.QueryItem:
+		newItem := q.Factory()
+		err := newItem.Unmarshal(v)
+		if err != nil {
+			return true, fmt.Errorf("failed unmarshaling: %w", err)
+		}
+		res = &storageV2.Result{Entry: newItem}
+	}
+
+	if res != nil {
+		stop, err = fn(*res)
+		if err != nil {
+			return true, fmt.Errorf("failed in iterate function: %w", err)
+		}
+		if stop {
+			return true, nil
+		}
+	}
+
+	return
 }
 
 func (s *Store) Close() (err error) {
