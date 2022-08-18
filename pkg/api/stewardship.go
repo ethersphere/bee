@@ -33,7 +33,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	case errors.Is(err, resolver.ErrServiceNotAvailable):
 		s.logger.Debug("stewardship put: service unavailable", "string", nameOrHex, "error", err)
 		s.logger.Error(nil, "stewardship put: service unavailable")
-		jsonhttp.ServiceUnavailable(w, nil)
+		jsonhttp.InternalServerError(w, "stewardship put: resolver service unavailable")
 		return
 	case errors.Is(err, resolver.ErrInvalidContentHash):
 		s.logger.Debug("stewardship put: invalid content hash", "string", nameOrHex, "error", err)
