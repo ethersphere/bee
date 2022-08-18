@@ -295,7 +295,7 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 	case "4", "debug":
 		vLevel = log.VerbosityDebug
 	case "5", "trace":
-		vLevel = log.VerbosityAll
+		vLevel = log.VerbosityDebug + 1 // For backwards compatibility, just enable v1 debugging as trace.
 	default:
 		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
 	}
