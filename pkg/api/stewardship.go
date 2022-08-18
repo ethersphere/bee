@@ -20,9 +20,9 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	switch {
-	case errors.Is(err, resolver.ErrParse):
+	case errors.Is(err, resolver.ErrParse), errors.Is(err, resolver.ErrInvalidContentHash):
 		s.logger.Debug("stewardship put: parse address string failed", "string", nameOrHex, "error", err)
-		s.logger.Error(nil, "stewardship put: parse address string failed")
+		s.logger.Error(nil, "stewardship put: invalid address")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
 	case errors.Is(err, resolver.ErrNotFound):
@@ -34,11 +34,6 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		s.logger.Debug("stewardship put: service unavailable", "string", nameOrHex, "error", err)
 		s.logger.Error(nil, "stewardship put: service unavailable")
 		jsonhttp.InternalServerError(w, "stewardship put: resolver service unavailable")
-		return
-	case errors.Is(err, resolver.ErrInvalidContentHash):
-		s.logger.Debug("stewardship put: invalid content hash", "string", nameOrHex, "error", err)
-		s.logger.Error(nil, "stewardship put: invalid content hash")
-		jsonhttp.Respond(w, http.StatusUnprocessableEntity, "stewardship put: invalid content hash")
 		return
 	case err != nil:
 		s.logger.Debug("stewardship put: resolve address or name string failed", "string", nameOrHex, "error", err)
