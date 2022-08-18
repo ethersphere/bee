@@ -447,11 +447,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, err
 	}
 
-	var (
-		blockHash []byte
-		txHash    []byte
-	)
-
 	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
 	// get old overlay
 	// mine nonce that gives similar new overlay
@@ -463,12 +458,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		previousOverlay = true
 	}
 
-	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
 	if err == nil && previousOverlay && o.FullNodeMode && !nonceExists {
-		blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
-		if err != nil {
-			return nil, fmt.Errorf("invalid block hash: %w", err)
-		}
 
 		newOverlayCandidate := swarm.ZeroAddress
 
@@ -577,7 +567,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		initBatchState, err = bootstrapNode(
 			addr,
 			swarmAddress,
-			txHash,
+			nonce,
 			chainID,
 			overlayEthAddress,
 			addressbook,
@@ -606,7 +596,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		EnableWS:        o.EnableWS,
 		WelcomeMessage:  o.WelcomeMessage,
 		FullNode:        o.FullNodeMode,
-		Transaction:     txHash,
+		Transaction:     nonce,
 		ValidateOverlay: chainEnabled,
 	})
 	if err != nil {
@@ -891,7 +881,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
