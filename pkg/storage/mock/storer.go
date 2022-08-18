@@ -33,9 +33,7 @@ type MockStorer struct {
 func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
 	return optionFunc(func(m *MockStorer) {
 		m.subpull = make([]storage.Descriptor, len(chs))
-		for i, v := range chs {
-			m.subpull[i] = v
-		}
+		copy(m.subpull, chs)
 	})
 }
 
@@ -284,11 +282,8 @@ func (m *MockStorer) MorePull(d ...storage.Descriptor) {
 	// clear out what we already have in subpull
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-
 	m.subpull = make([]storage.Descriptor, len(d))
-	for i, v := range d {
-		m.subpull[i] = v
-	}
+	copy(m.subpull, d)
 	close(m.morePull)
 }
 
