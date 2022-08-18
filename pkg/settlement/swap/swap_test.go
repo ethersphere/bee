@@ -539,7 +539,7 @@ func TestHandshake(t *testing.T) {
 	networkID := uint64(1)
 	txHash := common.HexToHash("0x1")
 
-	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, txHash.Bytes())
+	peer, _ := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, txHash.Bytes())
 
 	var putCalled bool
 	swapService := swap.New(
@@ -586,7 +586,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 	beneficiary := common.HexToAddress("0xcd")
 	trx := common.HexToHash("0x1")
 	networkID := uint64(1)
-	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+	peer, _ := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
 
 	var putCalled bool
 	swapService := swap.New(
@@ -633,7 +633,7 @@ func TestMigratePeer(t *testing.T) {
 	beneficiary := common.HexToAddress("0xcd")
 	trx := common.HexToHash("0x1")
 	networkID := uint64(1)
-	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+	peer, _ := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
 
 	swapService := swap.New(
 		&swapProtocolMock{},
