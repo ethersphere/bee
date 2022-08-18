@@ -73,10 +73,10 @@ func (sh *shard) process() {
 	defer sh.close()
 
 	for {
-		freeSlot := sh.slots.Next()
+		slot := sh.slots.Next()
 		select {
-		case sh.available <- availableShard{shardIndex: sh.index, slot: freeSlot}:
-			sh.slots.Use(freeSlot)
+		case sh.available <- availableShard{shardIndex: sh.index, slot: slot}:
+			sh.slots.Use(slot)
 		case <-sh.quit:
 			return
 		}
@@ -109,7 +109,6 @@ func (sh *shard) read(buf []byte, slot uint32) error {
 
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) write(buf []byte, slot uint32) (Location, error) {
-	// fmt.Printf("wrote slot %d\n", slot)
 	n, err := sh.file.WriteAt(buf, sh.offset(slot))
 	return Location{
 		Shard:  sh.index,
@@ -120,6 +119,5 @@ func (sh *shard) write(buf []byte, slot uint32) (Location, error) {
 
 // release frees the slot allowing new entry to overwrite
 func (sh *shard) release(slot uint32) {
-	// fmt.Printf("release %d, %d\n", sh.index, slot)
 	sh.slots.Free(slot)
 }

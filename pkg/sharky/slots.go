@@ -72,10 +72,6 @@ func (sl *slots) Use(slot uint32) {
 	sl.mtx.Lock()
 	defer sl.mtx.Unlock()
 
-	if sl.data[slot/8]&(1<<(slot%8)) == 0 {
-		panic("lol")
-	}
-
 	sl.data[slot/8] &= ^(1 << (slot % 8)) // set bit to 0
 }
 
@@ -85,10 +81,6 @@ func (sl *slots) Next() uint32 {
 	defer sl.mtx.Unlock()
 
 	sl.head = sl.next()
-
-	if sl.data[sl.head/8]&(1<<(sl.head%8)) == 0 {
-		panic("lol")
-	}
 
 	return sl.head
 }
@@ -100,8 +92,6 @@ func (sl *slots) next() uint32 {
 		}
 	}
 	sl.extend(1)
-	sl.size += 8
-	sl.data = append(sl.data, 0xff)
 	return sl.size - 8
 }
 

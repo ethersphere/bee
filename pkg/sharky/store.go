@@ -136,7 +136,6 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	case available := <-s.availableShards:
 		return s.shards[available.shardIndex].write(data, available.slot)
 	case <-ctx.Done():
-		fmt.Println("write context done")
 		return Location{}, ctx.Err()
 	}
 }
