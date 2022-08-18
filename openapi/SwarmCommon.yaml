@@ -875,12 +875,6 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
-    "422":
-      description: Unprocessable Entity
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
     "429":
       description: Too many requests
       content:
@@ -889,12 +883,6 @@ components:
             $ref: "#/components/schemas/ProblemDetails"
     "500":
       description: Internal Server Error
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    "503":
-      description: Service Unavailable
       content:
         application/problem+json:
           schema:

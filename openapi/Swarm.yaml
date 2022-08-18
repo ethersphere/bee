@@ -828,12 +828,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
-        "422":
-          $ref: "SwarmCommon.yaml#/components/responses/422"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
-        "503":
-          $ref: "SwarmCommon.yaml#/components/responses/503"
         default:
           description: Default response
 
