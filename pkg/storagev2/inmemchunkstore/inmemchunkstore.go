@@ -56,6 +56,6 @@ func (c *chunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 	return retErr
 }
 
-func (chunkStore) Close() error {
+func (c *chunkStore) Close() error {
 	return nil
 }
