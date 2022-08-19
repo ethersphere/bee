@@ -14,7 +14,7 @@ import (
 
 func TestStoreTestSuite(t *testing.T) {
 	dir := t.TempDir()
-	st, err := ldb.NewLevelDBStore(dir, new(opt.Options))
+	st, err := ldb.New(dir, new(opt.Options))
 	if err != nil {
 		t.Fatal(err)
 	}
