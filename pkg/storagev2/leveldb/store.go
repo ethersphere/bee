@@ -5,7 +5,6 @@
 package leveldbstore
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -26,11 +25,10 @@ type Store struct {
 }
 
 var _ storageV2.Store = (*Store)(nil)
-var _ storageV2.Tx = (*transaction)(nil)
 
 // NewDatastore returns a new datastore backed by leveldb
 // for path == "", an in memory backend will be chosen (TODO)
-func NewLevelDBStore(path string, opts *opt.Options) (storageV2.Store, error) {
+func New(path string, opts *opt.Options) (storageV2.Store, error) {
 	var err error
 	var db *leveldb.DB
 
@@ -233,60 +231,4 @@ func (s *Store) Close() (err error) {
 	s.closeLk.Lock()
 	defer s.closeLk.Unlock()
 	return s.DB.Close()
-}
-
-// A leveldb transaction embedding the accessor backed by the transaction.
-type transaction struct {
-	st   *Store
-	do   *leveldb.Batch
-	undo *leveldb.Batch
-}
-
-func (t *transaction) Get(storageV2.Item) error {
-	panic("leveldb store: get not implemented")
-}
-
-func (t *transaction) Has(storageV2.Key) (bool, error) {
-	panic("leveldb store: batch check presence not implemented")
-}
-
-func (t *transaction) GetSize(storageV2.Key) (int, error) {
-	panic("leveldb store: get size not implemented")
-}
-
-func (t *transaction) Iterate(storageV2.Query, storageV2.IterateFn) error {
-	panic("leveldb store: iterate not implemented")
-}
-
-func (t *transaction) Count(storageV2.Key) (int, error) {
-	panic("leveldb store: count not implemented")
-}
-
-func (t *transaction) Put(storageV2.Item) error {
-	panic("leveldb store: batch put not implemented")
-}
-
-func (t *transaction) Delete(storageV2.Key) error {
-	// add delete entry to do batch
-	// get and add put entry to undo batch
-	panic("leveldb store: batch delete not implemented")
-}
-
-func (t *transaction) Close() error {
-	panic("leveldb store: batch close not implemented")
-}
-
-func (t *transaction) Commit(ctx context.Context) error {
-	panic("leveldb store: batch commit not implemented")
-}
-
-func (t *transaction) Rollback(ctx context.Context) error {
-	panic("leveldb store: rollback not implemented")
-}
-
-func (s *Store) NewTransaction(ctx context.Context, readOnly bool) (storageV2.Tx, error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
-	return &transaction{st: s, do: new(leveldb.Batch), undo: new(leveldb.Batch)}, nil
 }
