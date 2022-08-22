@@ -49,40 +49,37 @@ func New(path string, opts *opt.Options) (storageV2.Store, error) {
 		DB:   db,
 		path: path,
 	}
+
 	return &ds, nil
 }
 
 func (s *Store) Count(key storageV2.Key) (c int, err error) {
-	keys := util.BytesPrefix([]byte(key.Namespace() + "/"))
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
 
+	keys := util.BytesPrefix([]byte(key.Namespace() + "/"))
 	iter := s.DB.NewIterator(keys, nil)
-	defer iter.Release()
 
 	for iter.Next() {
 		c++
 	}
 
+	iter.Release()
+
 	return c, iter.Error()
 }
 
 func (s *Store) Put(item storageV2.Item) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	value, err := item.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed serializing %w", err)
 	}
 
 	key := []byte(item.Namespace() + "/" + item.ID())
-
 	return s.DB.Put(key, value, &opt.WriteOptions{Sync: true})
 }
 
 func (s *Store) Get(item storageV2.Item) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	key := []byte(item.Namespace() + "/" + item.ID())
 
 	val, err := s.DB.Get(key, nil)
@@ -101,18 +98,12 @@ func (s *Store) Get(item storageV2.Item) error {
 }
 
 func (s *Store) Has(sKey storageV2.Key) (exists bool, err error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	return s.DB.Has(key, nil)
 }
 
 func (s *Store) GetSize(sKey storageV2.Key) (size int, err error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	val, err := s.DB.Get(key, nil)
@@ -127,21 +118,18 @@ func (s *Store) GetSize(sKey storageV2.Key) (size int, err error) {
 }
 
 func (s *Store) Delete(item storageV2.Key) (err error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	key := []byte(item.Namespace() + "/" + item.ID())
 
 	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
 }
 
 func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
 	if err := q.Validate(); err != nil {
 		return fmt.Errorf("failed iteration: %w", err)
 	}
-
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
 
 	var retErr *multierror.Error
 
@@ -152,32 +140,52 @@ func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 
 	iter := s.DB.NewIterator(keys, nil)
 
-	switch q.Order {
-	case storageV2.KeyAscendingOrder:
-		for iter.Next() {
-			k := string(iter.Key())
-			v := iter.Value()
+	nextF := iter.Next
 
-			stop, err := apply(k, v, q, fn)
-			if err != nil {
-				retErr = multierror.Append(retErr, err)
-			}
-			if stop {
-				break
-			}
+	if q.Order == storageV2.KeyDescendingOrder {
+		nextF = func() bool {
+			nextF = iter.Prev
+			return iter.Last()
 		}
-	case storageV2.KeyDescendingOrder:
-		for ok := iter.Last(); ok; ok = iter.Prev() {
-			k := string(iter.Key())
-			v := iter.Value()
+	}
 
-			stop, err := apply(k, v, q, fn)
-			if err != nil {
-				retErr = multierror.Append(retErr, err)
-			}
-			if stop {
-				break
-			}
+	for nextF() {
+		nextKey := string(iter.Key())
+		nextVal := iter.Value()
+
+		key := strings.TrimPrefix(nextKey, prefix)
+
+		if filters(q.Filters).matchAny(key, nextVal) {
+			continue
+		}
+
+		var err error
+
+		var res *storageV2.Result
+		switch q.ItemAttribute {
+		case storageV2.QueryItemID, storageV2.QueryItemSize:
+			res = &storageV2.Result{ID: key, Size: len(nextVal)}
+		case storageV2.QueryItem:
+			newItem := q.Factory()
+			err = newItem.Unmarshal(nextVal)
+			res = &storageV2.Result{Entry: newItem}
+		}
+
+		if err != nil {
+			retErr = multierror.Append(retErr, fmt.Errorf("failed unmarshaling: %w", err))
+			break
+		}
+
+		if res == nil {
+			retErr = multierror.Append(retErr, fmt.Errorf("unknown item attribute type: %v", q.ItemAttribute))
+			break
+		}
+
+		if stop, err := fn(*res); err != nil {
+			retErr = multierror.Append(retErr, fmt.Errorf("failed in iterate function: %w", err))
+			break
+		} else if stop {
+			break
 		}
 	}
 
@@ -190,45 +198,20 @@ func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 	return retErr.ErrorOrNil()
 }
 
-func apply(k string, v []byte, q storageV2.Query, fn func(storageV2.Result) (bool, error)) (stop bool, err error) {
-	namespace := q.Factory().Namespace()
-	prefix := namespace + "/"
-
-	knp := strings.TrimPrefix(k, prefix)
-	for _, filter := range q.Filters {
-		if filter(knp, v) {
-			return false, nil
-		}
-	}
-
-	var res *storageV2.Result
-	switch q.ItemAttribute {
-	case storageV2.QueryItemID, storageV2.QueryItemSize:
-		res = &storageV2.Result{ID: knp, Size: len(v)}
-	case storageV2.QueryItem:
-		newItem := q.Factory()
-		err := newItem.Unmarshal(v)
-		if err != nil {
-			return true, fmt.Errorf("failed unmarshaling: %w", err)
-		}
-		res = &storageV2.Result{Entry: newItem}
-	}
-
-	if res != nil {
-		stop, err = fn(*res)
-		if err != nil {
-			return true, fmt.Errorf("failed in iterate function: %w", err)
-		}
-		if stop {
-			return true, nil
-		}
-	}
-
-	return
-}
-
 func (s *Store) Close() (err error) {
 	s.closeLk.Lock()
 	defer s.closeLk.Unlock()
 	return s.DB.Close()
+}
+
+type filters []storageV2.Filter
+
+func (f filters) matchAny(k string, v []byte) bool {
+	for _, filter := range f {
+		if filter(k, v) {
+			return true
+		}
+	}
+
+	return false
 }
