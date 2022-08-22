@@ -371,20 +371,3 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 
 	return hasOne, err
 }
-
-const batchStoreV2flag = "batchstoreV2_flag"
-
-func batchStoreV2FlagExists(s storage.StateStorer) (bool, error) {
-	exists := false
-	if err := s.Get(batchStoreV2flag, &exists); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return exists, nil
-}
-
-func setV2Flag(s storage.StateStorer) error {
-	return s.Put(batchStoreV2flag, true)
-}

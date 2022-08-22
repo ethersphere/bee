@@ -42,5 +42,3 @@ func (b *NoOpBatchStore) SetRadiusSetter(RadiusSetter) {}
 func (b *NoOpBatchStore) Unreserve(UnreserveIteratorFn) error { return nil }
 
 func (b *NoOpBatchStore) Reset() error { return nil }
-
-func (b *NoOpBatchStore) CleanupReset() error { return nil }

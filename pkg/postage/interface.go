@@ -80,9 +80,6 @@ type Storer interface {
 
 	// Reset resets chain state and reserve state of the storage.
 	Reset() error
-
-	// CleanupReset resets and cleans up chain state and reserve state of the storage.
-	CleanupReset() error
 }
 
 // RadiusSetter is used as a callback when the radius of a node changes.

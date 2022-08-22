@@ -23,10 +23,6 @@ var (
 	xdaiPostageStampContractAddress   = common.HexToAddress("0x6a1a21eca3ab28be85c7ba22b2d6eae5907c900e")
 )
 
-func (cfg *ChainConfig) IsObsoleteConfig() bool {
-	return cfg.PostageStamp == common.HexToAddress("0x6a1a21eca3ab28be85c7ba22b2d6eae5907c900e")
-}
-
 type ChainConfig struct {
 	StartBlock         uint64
 	LegacyFactories    []common.Address
