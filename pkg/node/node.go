@@ -235,6 +235,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 	b.stateStoreCloser = stateStore
 
+	// Check if the the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
+	batchStoreExists, err := batchStoreExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: exists: %w", err)
+	}
+
 	addressbook := addressbook.New(stateStore)
 
 	var (
@@ -518,13 +525,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
-	// Check if the the batchstore exists. If not, we can assume it's missing
-	// due to a migration or it's a fresh install.
-	batchStoreExists, err := batchStoreExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: exists: %w", err)
-	}
-
 	var initBatchState *postage.ChainSnapshot
 	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
 	// install or explicitly asked by user to resync
@@ -600,8 +600,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
 
-	chainCfg, found := config.GetChainConfig(chainID)
-
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
@@ -617,6 +615,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	var postageSyncStart uint64 = 0
 
+	chainCfg, found := config.GetChainConfig(chainID)
 	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {

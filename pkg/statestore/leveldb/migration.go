@@ -42,6 +42,7 @@ const (
 	dbSchemaSwapAddr        = "swapaddr"
 	dBSchemaKademliaMetrics = "kademlia-metrics"
 	dBSchemaBatchStore      = "batchstore"
+	dBSchemaBatchStoreV2    = "batchstoreV2"
 )
 
 var (
@@ -64,6 +65,7 @@ var schemaMigrations = []migration{
 	{name: dbSchemaSwapAddr, fn: migrateSwap},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
 	{name: dBSchemaBatchStore, fn: migrateBatchstore},
+	{name: dBSchemaBatchStoreV2, fn: migrateBatchstore},
 }
 
 func migrateFB(s *Store) error {
