@@ -310,7 +310,7 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 		return nil, err
 	}
 
-	logger.Info("using the chequebook transaction hash", "tx_hash", fmt.Sprintf("%x", txHash))
+	logger.Info("using the chequebook transaction hash", "tx_hash", txHash)
 	return txHash.Bytes(), nil
 }
 

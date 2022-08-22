@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"math/big"
 	"time"
 
@@ -161,14 +160,14 @@ func Init(
 				return nil, err
 			}
 
-			logger.Info("deploying new chequebook", "tx", fmt.Sprintf("%x", txHash))
+			logger.Info("deploying new chequebook", "tx", txHash)
 
 			err = stateStore.Put(ChequebookDeploymentKey, txHash)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			logger.Info("waiting for chequebook deployment", "tx", fmt.Sprintf("%x", txHash))
+			logger.Info("waiting for chequebook deployment", "tx", txHash)
 		}
 
 		chequebookAddress, err = chequebookFactory.WaitDeployed(ctx, txHash)
@@ -196,7 +195,7 @@ func Init(
 				return nil, err
 			}
 
-			logger.Info("sent deposit transaction", "tx", fmt.Sprintf("%x", depositHash))
+			logger.Info("sent deposit transaction", "tx", depositHash)
 			err = chequebookService.WaitForDeposit(ctx, depositHash)
 			if err != nil {
 				return nil, err
