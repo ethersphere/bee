@@ -9,7 +9,6 @@ package api
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -364,12 +363,12 @@ func requestDeferred(r *http.Request) (bool, error) {
 	return true, nil
 }
 
-func requestPostageBatchId(r *http.Request) ([]byte, error) {
+func requestPostageBatchId(r *http.Request) (swarm.BatchID, error) {
 	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
 		if len(h) != 64 {
 			return nil, errInvalidPostageBatch
 		}
-		b, err := hex.DecodeString(h)
+		b, err := swarm.HexToBatchID(h)
 		if err != nil {
 			return nil, errInvalidPostageBatch
 		}

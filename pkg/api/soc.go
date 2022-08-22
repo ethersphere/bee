@@ -137,7 +137,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
-		s.logger.Debug("soc upload: get postage batch issuer failed", "batch_id", swarm.BatchID(batch), "error", err)
+		s.logger.Debug("soc upload: get postage batch issuer failed", "batch_id", batch, "error", err)
 		s.logger.Error(nil, "soc upload: get postage batch issue")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):

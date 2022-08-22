@@ -266,7 +266,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-	id, err := hex.DecodeString(idStr)
+	id, err := swarm.HexToBatchID(idStr)
 	if err != nil {
 		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", idStr, "error", err)
 		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
@@ -276,7 +276,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 
 	issuer, err := s.post.GetStampIssuer(id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", swarm.BatchID(id), "error", err)
+		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", id, "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
 		jsonhttp.BadRequest(w, "cannot get batch")
 		return
@@ -304,7 +304,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-	id, err := hex.DecodeString(idStr)
+	id, err := swarm.HexToBatchID(idStr)
 	if err != nil {
 		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", idStr, "error", err)
 		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
@@ -314,7 +314,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 
 	issuer, err := s.post.GetStampIssuer(id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", swarm.BatchID(id), "error", err)
+		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", id, "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
 		jsonhttp.BadRequest(w, "cannot get batch")
 		return
@@ -322,21 +322,21 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 
 	exists, err := s.batchStore.Exists(id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: exist check failed", "batch_id", swarm.BatchID(id), "error", err)
+		s.logger.Debug("get stamp issuer: exist check failed", "batch_id", id, "error", err)
 		s.logger.Error(nil, "get stamp issuer: exist check failed")
 		jsonhttp.InternalServerError(w, "unable to check batch")
 		return
 	}
 	batchTTL, err := s.estimateBatchTTLFromID(id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", swarm.BatchID(id), "error", err)
+		s.logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", id, "error", err)
 		s.logger.Error(nil, "get stamp issuer: estimate batch expiration failed")
 		jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 		return
 	}
 
 	resp := postageStampResponse{
-		BatchID:  id,
+		BatchID:  id.Bytes(),
 		Exists:   exists,
 		BatchTTL: batchTTL,
 	}
@@ -450,7 +450,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-	id, err := hex.DecodeString(idStr)
+	id, err := swarm.HexToBatchID(idStr)
 	if err != nil {
 		s.logger.Debug("topup batch: decode batch id string failed", "string", idStr, "error", err)
 		s.logger.Error(nil, "topup batch: decode batch id string failed")
@@ -480,19 +480,19 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	err = s.postageContract.TopUpBatch(ctx, id, amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
-			s.logger.Debug("topup batch: out of funds", "batch_id", swarm.BatchID(id), "amount", amount, "error", err)
+			s.logger.Debug("topup batch: out of funds", "batch_id", id, "amount", amount, "error", err)
 			s.logger.Error(nil, "topup batch: out of funds")
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
-		s.logger.Debug("topup batch: topup failed", "batch_id", swarm.BatchID(id), "amount", amount, "error", err)
+		s.logger.Debug("topup batch: topup failed", "batch_id", id, "amount", amount, "error", err)
 		s.logger.Error(nil, "topup batch: topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
 		return
 	}
 
 	jsonhttp.Accepted(w, &postageCreateResponse{
-		BatchID: id,
+		BatchID: id.Bytes(),
 	})
 }
 
@@ -503,7 +503,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-	id, err := hex.DecodeString(idStr)
+	id, err := swarm.HexToBatchID(idStr)
 	if err != nil {
 		s.logger.Debug("dilute batch: decode batch id string failed", "string", idStr, "error", err)
 		s.logger.Error(nil, "dilute batch: decode batch id string failed")
@@ -539,13 +539,13 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
-		s.logger.Debug("dilute batch: dilute failed", "batch_id", swarm.BatchID(id), "depth", depth, "error", err)
+		s.logger.Debug("dilute batch: dilute failed", "batch_id", id, "depth", depth, "error", err)
 		s.logger.Error(nil, "dilute batch: dilute failed")
 		jsonhttp.InternalServerError(w, "cannot dilute batch")
 		return
 	}
 
 	jsonhttp.Accepted(w, &postageCreateResponse{
-		BatchID: id,
+		BatchID: id.Bytes(),
 	})
 }

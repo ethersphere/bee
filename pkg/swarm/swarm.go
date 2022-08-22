@@ -174,6 +174,16 @@ func (b BatchID) Bytes() []byte {
 	return []byte(b)
 }
 
+// HexToBatchID returns BatchID form supplied hex string.
+func HexToBatchID(s string) (BatchID, error) {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return BatchID(b), nil
+}
+
 // Stamp interface for postage.Stamp to avoid circular dependency
 type Stamp interface {
 	BatchID() BatchID
