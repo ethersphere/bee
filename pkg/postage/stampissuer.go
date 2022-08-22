@@ -124,7 +124,7 @@ func (si *StampIssuer) Utilization() uint32 {
 }
 
 // ID returns the BatchID for this batch.
-func (si *StampIssuer) ID() []byte {
+func (si *StampIssuer) ID() swarm.BatchID {
 	id := make([]byte, len(si.data.BatchID))
 	copy(id, si.data.BatchID)
 	return id

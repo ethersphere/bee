@@ -87,7 +87,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
-		s.logger.Debug("pss post: get postage batch issuer failed", "batch_id", fmt.Sprintf("%x", batch), "error", err)
+		s.logger.Debug("pss post: get postage batch issuer failed", "batch_id", swarm.BatchID(batch), "error", err)
 		s.logger.Error(nil, "pss post: get postage batch issuer failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
