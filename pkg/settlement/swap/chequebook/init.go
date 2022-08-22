@@ -83,11 +83,11 @@ func checkBalance(
 			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), ethSmallUnit)
 
 			if insufficientETH && insufficientERC20 {
-				logger.Warning("cannot continue until there is at least min xDAI (for Gas) and at least min BZZ bridged on the xDAI network available on address", "min_xdai_amount", neededETH, "min_bzz_amount", neededERC20, "address", fmt.Sprintf("%x", overlayEthAddress))
+				logger.Warning("cannot continue until there is at least min xDAI (for Gas) and at least min BZZ bridged on the xDAI network available on address", "min_xdai_amount", neededETH, "min_bzz_amount", neededERC20, "address", overlayEthAddress)
 			} else if insufficientETH {
-				logger.Warning("cannot continue until there is at least min xDAI (for Gas) available on address", "min_xdai_amount", neededETH, "address", fmt.Sprintf("%x", overlayEthAddress))
+				logger.Warning("cannot continue until there is at least min xDAI (for Gas) available on address", "min_xdai_amount", neededETH, "address", overlayEthAddress)
 			} else {
-				logger.Warning("cannot continue until there is at least min BZZ available on address", "min_bzz_amount", neededERC20, "address", fmt.Sprintf("%x", overlayEthAddress))
+				logger.Warning("cannot continue until there is at least min BZZ available on address", "min_bzz_amount", neededERC20, "address", overlayEthAddress)
 			}
 			if chainId == 5 {
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
@@ -176,7 +176,7 @@ func Init(
 			return nil, err
 		}
 
-		logger.Info("chequebook deployed", "chequebook_address", fmt.Sprintf("%x", chequebookAddress))
+		logger.Info("chequebook deployed", "chequebook_address", chequebookAddress)
 
 		// save the address for later use
 		err = stateStore.Put(chequebookKey, chequebookAddress)
@@ -210,7 +210,7 @@ func Init(
 			return nil, err
 		}
 
-		logger.Info("using existing chequebook", "chequebook_address", fmt.Sprintf("%x", chequebookAddress))
+		logger.Info("using existing chequebook", "chequebook_address", chequebookAddress)
 	}
 
 	// regardless of how the chequebook service was initialised make sure that the chequebook is valid

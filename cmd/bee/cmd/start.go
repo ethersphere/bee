@@ -443,7 +443,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("using ethereum address", "address", fmt.Sprintf("%x", overlayEthAddress))
+	logger.Info("using ethereum address", "address", overlayEthAddress)
 
 	return &signerConfig{
 		signer:           signer,

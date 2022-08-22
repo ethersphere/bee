@@ -119,12 +119,12 @@ func InitChequebookFactory(
 			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
 		}
 		currentFactory = foundFactory
-		logger.Info("using default factory address", "chain_id", chainID, "factory_address", fmt.Sprintf("%x", currentFactory))
+		logger.Info("using default factory address", "chain_id", chainID, "factory_address", currentFactory)
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
 		currentFactory = common.HexToAddress(factoryAddress)
-		logger.Info("using custom factory address", "factory_address", fmt.Sprintf("%x", currentFactory))
+		logger.Info("using custom factory address", "factory_address", currentFactory)
 	}
 
 	if len(legacyFactoryAddresses) == 0 {
