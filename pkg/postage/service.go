@@ -62,6 +62,13 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		if err := st.UnmarshalBinary(value); err != nil {
 			return false, err
 		}
+		exists, err := s.postageStore.Exists(st.ID())
+		if err != nil {
+			//TODO
+		}
+		if !exists {
+			st.data.Expired = true
+		}
 		_ = s.add(st)
 		return false, nil
 	}); err != nil {
@@ -111,6 +118,7 @@ func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 		b.BucketDepth,
 		b.Start,
 		b.Immutable,
+		ps.postageStore,
 	))
 }
 

@@ -31,6 +31,7 @@ const (
 var ErrNotFound = errors.New("batchstore: not found")
 
 type evictFn func(batchID []byte) error
+type expiredFn func(batchID []byte) (*postage.Batch, error)
 
 // store implements postage.Storer
 type store struct {
@@ -39,10 +40,11 @@ type store struct {
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	rs      *reserveState // the reserve state
-	evictFn evictFn       // evict function
-	metrics metrics       // metrics
-	logger  log.Logger
+	rs        *reserveState // the reserve state
+	evictFn   evictFn       // evict function
+	expiredFn expiredFn     // expiry function
+	metrics   metrics       // metrics
+	logger    log.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }

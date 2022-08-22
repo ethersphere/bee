@@ -28,6 +28,7 @@ type stampIssuerData struct {
 	MaxBucketCount uint32   `msgpack:"maxBucketCount"` // the count of the fullest bucket
 	BlockNumber    uint64   `msgpack:"blockNumber"`    // BlockNumber when this batch was created
 	ImmutableFlag  bool     `msgpack:"immutableFlag"`  // Specifies immutability of the created batch.
+	Expired        bool     `msgpack:"expired"`        // Specifies the expiry of the batch
 }
 
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
@@ -42,7 +43,15 @@ type StampIssuer struct {
 // upload.
 //
 // BucketDepth must always be smaller than batchDepth otherwise inc() panics.
-func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
+func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool, batchStore Storer) *StampIssuer {
+	exists, err := batchStore.Exists(batchID)
+	var isExpired bool
+	if err != nil {
+		//TODO
+	}
+	if !exists {
+		isExpired = true
+	}
 	return &StampIssuer{
 		data: stampIssuerData{
 			Label:         label,
@@ -54,6 +63,7 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 			Buckets:       make([]uint32, 1<<bucketDepth),
 			BlockNumber:   blockNumber,
 			ImmutableFlag: immutableFlag,
+			Expired:       isExpired,
 		},
 	}
 }

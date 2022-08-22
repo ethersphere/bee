@@ -92,6 +92,7 @@ func (s *store) cleanup() error {
 
 		// batches whose balance is below the total cumulative payout
 		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
+			b.Expired = true
 			evictions = append(evictions, b)
 		} else {
 			return true, nil // stop early as an optimization at first value above the total cumulative payout
@@ -117,6 +118,7 @@ func (s *store) cleanup() error {
 		if err != nil {
 			return fmt.Errorf("delete batch %x: %w", b.ID, err)
 		}
+
 	}
 
 	return nil

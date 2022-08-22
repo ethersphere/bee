@@ -19,6 +19,7 @@ type Batch struct {
 	BucketDepth   uint8    // the depth of neighbourhoods t
 	Immutable     bool     // if the batch allows adding new capacity (dilution)
 	StorageRadius uint8    // storage radius
+	Expired       bool     // expired checks if the batch is expired or not
 }
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the
