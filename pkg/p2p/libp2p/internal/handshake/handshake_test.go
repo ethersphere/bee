@@ -69,7 +69,7 @@ func TestHandshake(t *testing.T) {
 	}
 
 	trxHash := common.HexToHash("0x1").Bytes()
-	blockhash := common.HexToHash("0x2").Bytes()
+	blockhash := trxHash
 
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 	signer2 := crypto.NewDefaultSigner(privateKey2)
@@ -301,8 +301,9 @@ func TestHandshake(t *testing.T) {
 					Overlay:   node2BzzAddress.Overlay.Bytes(),
 					Signature: node2BzzAddress.Signature,
 				},
-				NetworkID: networkID,
-				FullNode:  true,
+				Transaction: trxHash,
+				NetworkID:   networkID,
+				FullNode:    true,
 			},
 		},
 		); err != nil {
@@ -636,42 +637,6 @@ func TestHandshake(t *testing.T) {
 		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
 		if err != handshake.ErrInvalidAck {
 			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
-		}
-	})
-
-	t.Run("Handle - transaction is not on the blockchain", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, trxHash, "", true, node1AddrInfo.ID, logger)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var buffer1 bytes.Buffer
-		var buffer2 bytes.Buffer
-		stream1 := mock.NewStream(&buffer1, &buffer2)
-		stream2 := mock.NewStream(&buffer2, &buffer1)
-
-		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
-		}); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := w.WriteMsg(&pb.Ack{
-			Address: &pb.BzzAddress{
-				Underlay:  node2maBinary,
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
-			},
-			NetworkID:   networkID,
-			FullNode:    true,
-			Transaction: trxHash,
-		}); err != nil {
-			t.Fatal(err)
-		}
-
-		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err == nil {
-			t.Fatalf("expected error, got nil")
 		}
 	})
 
