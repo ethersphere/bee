@@ -44,10 +44,10 @@ type StampIssuer struct {
 //
 // BucketDepth must always be smaller than batchDepth otherwise inc() panics.
 func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool, batchStore Storer) *StampIssuer {
-	exists, err := batchStore.Exists(batchID)
 	var isExpired bool
+	exists, err := batchStore.Exists(batchID)
 	if err != nil {
-		//TODO
+		return nil
 	}
 	if !exists {
 		isExpired = true
@@ -178,4 +178,9 @@ func (si *StampIssuer) Buckets() []uint32 {
 	copy(b, si.data.Buckets)
 	si.bucketMu.Unlock()
 	return b
+}
+
+// Expired returns the expired property of stamp
+func (si *StampIssuer) Expired() bool {
+	return si.data.Expired
 }

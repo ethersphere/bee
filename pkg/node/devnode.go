@@ -255,7 +255,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 					return nil, err
 				}
 
-				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, amount, batch.Depth, 0, 0, immutable)
+				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, amount, batch.Depth, 0, 0, immutable, batchStore)
 				_ = post.Add(stampIssuer)
 
 				return id, nil

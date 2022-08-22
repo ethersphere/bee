@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
@@ -57,6 +58,7 @@ type postageContract struct {
 	transactionService     transaction.Service
 	postageService         postage.Service
 	postageStorer          postage.Storer
+	batchService           batchservice.Interface
 }
 
 func New(
@@ -66,6 +68,8 @@ func New(
 	transactionService transaction.Service,
 	postageService postage.Service,
 	postageStorer postage.Storer,
+	batchService batchservice.Interface,
+
 	chainEnabled bool,
 ) Interface {
 	if !chainEnabled {
@@ -79,6 +83,7 @@ func New(
 		transactionService:     transactionService,
 		postageService:         postageService,
 		postageStorer:          postageStorer,
+		batchService:           batchService,
 	}
 }
 
@@ -247,6 +252,20 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 
 			batchID := createdEvent.BatchId[:]
 
+			batch := &postage.Batch{
+				ID:          batchID,
+				Value:       nil,
+				Start:       0,
+				Owner:       c.owner.Bytes(),
+				Depth:       createdEvent.Depth,
+				BucketDepth: createdEvent.BucketDepth,
+				Immutable:   immutable,
+				Expired:     false,
+			}
+			err := c.postageStorer.Save(batch)
+			if err != nil {
+				return nil, err
+			}
 			err = c.postageService.Add(postage.NewStampIssuer(
 				label,
 				c.owner.Hex(),
@@ -256,6 +275,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				createdEvent.BucketDepth,
 				ev.BlockNumber,
 				createdEvent.ImmutableFlag,
+				c.postageStorer,
 			))
 
 			if err != nil {

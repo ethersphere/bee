@@ -151,6 +151,7 @@ type postageStampResponse struct {
 	ImmutableFlag bool           `json:"immutableFlag"`
 	Exists        bool           `json:"exists"`
 	BatchTTL      int64          `json:"batchTTL"`
+	Expired       bool           `json:"expired"`
 }
 
 type postageStampsResponse struct {
@@ -214,6 +215,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 				ImmutableFlag: v.ImmutableFlag(),
 				Exists:        exists,
 				BatchTTL:      batchTTL,
+				Expired:       v.Expired(),
 			})
 		}
 	}

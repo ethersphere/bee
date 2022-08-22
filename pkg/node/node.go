@@ -649,6 +649,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		transactionService,
 		post,
 		batchStore,
+		batchSvc,
 		chainEnabled,
 	)
 
