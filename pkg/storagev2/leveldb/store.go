@@ -5,6 +5,7 @@
 package leveldbstore
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	storageV2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/errors"
+	ldbErrors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -36,7 +37,7 @@ func New(path string, opts *opt.Options) (storageV2.Store, error) {
 		db, err = leveldb.Open(storage.NewMemStorage(), opts)
 	} else {
 		db, err = leveldb.OpenFile(path, opts)
-		if errors.IsCorrupted(err) && !opts.GetReadOnly() {
+		if ldbErrors.IsCorrupted(err) && !opts.GetReadOnly() {
 			db, err = leveldb.RecoverFile(path, opts)
 		}
 	}
@@ -53,13 +54,14 @@ func New(path string, opts *opt.Options) (storageV2.Store, error) {
 	return &ds, nil
 }
 
-func (s *Store) Count(key storageV2.Key) (c int, err error) {
+func (s *Store) Count(key storageV2.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
 	keys := util.BytesPrefix([]byte(key.Namespace() + "/"))
 	iter := s.DB.NewIterator(keys, nil)
 
+	var c int
 	for iter.Next() {
 		c++
 	}
@@ -72,7 +74,7 @@ func (s *Store) Count(key storageV2.Key) (c int, err error) {
 func (s *Store) Put(item storageV2.Item) error {
 	value, err := item.Marshal()
 	if err != nil {
-		return fmt.Errorf("failed serializing %w", err)
+		return fmt.Errorf("failed serializing: %w", err)
 	}
 
 	key := []byte(item.Namespace() + "/" + item.ID())
@@ -83,10 +85,12 @@ func (s *Store) Get(item storageV2.Item) error {
 	key := []byte(item.Namespace() + "/" + item.ID())
 
 	val, err := s.DB.Get(key, nil)
+
+	if errors.Is(err, leveldb.ErrNotFound) {
+		return storageV2.ErrNotFound
+	}
+
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-			return storageV2.ErrNotFound
-		}
 		return err
 	}
 
@@ -97,27 +101,29 @@ func (s *Store) Get(item storageV2.Item) error {
 	return nil
 }
 
-func (s *Store) Has(sKey storageV2.Key) (exists bool, err error) {
+func (s *Store) Has(sKey storageV2.Key) (bool, error) {
 	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	return s.DB.Has(key, nil)
 }
 
-func (s *Store) GetSize(sKey storageV2.Key) (size int, err error) {
+func (s *Store) GetSize(sKey storageV2.Key) (int, error) {
 	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	val, err := s.DB.Get(key, nil)
+
+	if errors.Is(err, leveldb.ErrNotFound) {
+		return 0, storageV2.ErrNotFound
+	}
+
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-			return 0, storageV2.ErrNotFound
-		}
 		return 0, err
 	}
 
 	return len(val), nil
 }
 
-func (s *Store) Delete(item storageV2.Key) (err error) {
+func (s *Store) Delete(item storageV2.Key) error {
 	key := []byte(item.Namespace() + "/" + item.ID())
 
 	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
