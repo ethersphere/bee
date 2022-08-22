@@ -7,18 +7,20 @@ package postage
 import (
 	"encoding/binary"
 	"math/big"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // Batch represents a postage batch, a payment on the blockchain.
 type Batch struct {
-	ID            []byte   // batch ID
-	Value         *big.Int // normalised balance of the batch
-	Start         uint64   // block number the batch was created
-	Owner         []byte   // owner's ethereum address
-	Depth         uint8    // batch depth, i.e., size = 2^{depth}
-	BucketDepth   uint8    // the depth of neighbourhoods t
-	Immutable     bool     // if the batch allows adding new capacity (dilution)
-	StorageRadius uint8    // storage radius
+	ID            swarm.BatchID // batch ID
+	Value         *big.Int      // normalised balance of the batch
+	Start         uint64        // block number the batch was created
+	Owner         []byte        // owner's ethereum address
+	Depth         uint8         // batch depth, i.e., size = 2^{depth}
+	BucketDepth   uint8         // the depth of neighbourhoods t
+	Immutable     bool          // if the batch allows adding new capacity (dilution)
+	StorageRadius uint8         // storage radius
 }
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the

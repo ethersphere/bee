@@ -244,7 +244,7 @@ func TestPostageGetStamps(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{
 					{
-						BatchID:       b.ID,
+						BatchID:       b.ID.Bytes(),
 						Utilization:   si.Utilization(),
 						Usable:        true,
 						Label:         si.Label(),
@@ -274,7 +274,7 @@ func TestPostageGetStamps(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{
 					{
-						BatchID:       b.ID,
+						BatchID:       b.ID.Bytes(),
 						Utilization:   si.Utilization(),
 						Usable:        false,
 						Label:         si.Label(),
@@ -308,7 +308,7 @@ func TestGetAllBatches(t *testing.T) {
 	}{
 		Batches: []api.PostageBatchResponse{
 			{
-				BatchID:       b.ID,
+				BatchID:       b.ID.Bytes(),
 				Value:         bigint.Wrap(b.Value),
 				Start:         b.Start,
 				Owner:         b.Owner,
@@ -340,7 +340,7 @@ func TestPostageGetStamp(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:       b.ID,
+				BatchID:       b.ID.Bytes(),
 				Utilization:   si.Utilization(),
 				Usable:        true,
 				Label:         si.Label(),

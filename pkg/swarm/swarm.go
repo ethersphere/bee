@@ -161,9 +161,22 @@ type Chunk interface {
 	Equal(Chunk) bool
 }
 
+// BatchID type represents unique batch identifier.
+type BatchID []byte
+
+// String implements fmt.Stringer.
+func (b BatchID) String() string {
+	return fmt.Sprintf("%x", b.Bytes())
+}
+
+// Bytes returns raw []bytes value for this BatchID.
+func (b BatchID) Bytes() []byte {
+	return []byte(b)
+}
+
 // Stamp interface for postage.Stamp to avoid circular dependency
 type Stamp interface {
-	BatchID() []byte
+	BatchID() BatchID
 	Index() []byte
 	Sig() []byte
 	Timestamp() []byte

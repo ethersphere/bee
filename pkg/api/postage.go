@@ -230,7 +230,7 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 		}
 
 		batches = append(batches, postageBatchResponse{
-			BatchID:       b.ID,
+			BatchID:       b.ID.Bytes(),
 			Value:         bigint.Wrap(b.Value),
 			Start:         b.Start,
 			Owner:         b.Owner,

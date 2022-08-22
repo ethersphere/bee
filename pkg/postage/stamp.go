@@ -36,10 +36,10 @@ var _ swarm.Stamp = (*Stamp)(nil)
 
 // Stamp represents a postage stamp as attached to a chunk.
 type Stamp struct {
-	batchID   []byte // postage batch ID
-	index     []byte // index of the batch
-	timestamp []byte // to signal order when assigning the indexes to multiple chunks
-	sig       []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature of batchID|index|address by owner or grantee
+	batchID   swarm.BatchID // postage batch ID
+	index     []byte        // index of the batch
+	timestamp []byte        // to signal order when assigning the indexes to multiple chunks
+	sig       []byte        // common r[32]s[32]v[1]-style 65 byte ECDSA signature of batchID|index|address by owner or grantee
 }
 
 // NewStamp constructs a new stamp from a given batch ID, index and signatures.
@@ -48,7 +48,7 @@ func NewStamp(batchID, index, timestamp, sig []byte) *Stamp {
 }
 
 // BatchID returns the batch ID of the stamp.
-func (s *Stamp) BatchID() []byte {
+func (s *Stamp) BatchID() swarm.BatchID {
 	return s.batchID
 }
 
