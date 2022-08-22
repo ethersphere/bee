@@ -125,14 +125,8 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // bytesGetHandler handles retrieval of raw binary data of arbitrary length.
 func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
-	nameOrHex := mux.Vars(r)["address"]
-
-	address, err := s.resolveNameOrAddress(nameOrHex)
+	address, err := s.ValidateAddress(w, r)
 	if err != nil {
-		logger.Debug("bytes: parse address string failed", nameOrHex, err)
-		logger.Error(nil, "bytes: parse address string failed")
-		jsonhttp.NotFound(w, nil)
 		return
 	}
 
