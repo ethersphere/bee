@@ -185,7 +185,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			// since other nodes would reject the chunk, so the chunk is marked as
 			// synced which makes it available to the node but not to the network
 			if err := s.valid(ch); err != nil {
-				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", fmt.Sprintf("%x", ch.Stamp().BatchID()), "chunk_address", ch.Address(), "error", err)
+				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", ch.Stamp().BatchID(), "chunk_address", ch.Address(), "error", err)
 
 				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
 

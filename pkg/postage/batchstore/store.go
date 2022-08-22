@@ -203,7 +203,7 @@ func (s *store) Save(batch *postage.Batch) error {
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
 	}
 
-	s.logger.Debug("batch saved", "batch_id", fmt.Sprintf("%x", batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
+	s.logger.Debug("batch saved", "batch_id", batch.ID, "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
 
 	return nil
 }
@@ -217,7 +217,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	oldBatch := &postage.Batch{}
 
-	s.logger.Debug("update batch", "batch_id", fmt.Sprintf("%x", batch.ID), "new_batch_depth", depth, "new_batch_value", value.Int64())
+	s.logger.Debug("update batch", "batch_id", batch.ID, "new_batch_depth", depth, "new_batch_value", value.Int64())
 
 	switch err := s.store.Get(batchKey(batch.ID), oldBatch); {
 	case errors.Is(err, storage.ErrNotFound):

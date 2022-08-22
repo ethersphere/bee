@@ -225,7 +225,7 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, nil
 		}
 
-		s.logger.Debug("unreserve callback", "batch_id", fmt.Sprintf("%x", id), "batch_storage_radius", b.StorageRadius)
+		s.logger.Debug("unreserve callback", "batch_id", id, "batch_storage_radius", b.StorageRadius)
 
 		stopped, err = cb(id, b.StorageRadius)
 		if err != nil {
@@ -280,7 +280,7 @@ func (s *store) lowerBatchStorageRadius() error {
 
 		if b.StorageRadius > s.rs.StorageRadius {
 			b.StorageRadius = s.rs.StorageRadius
-			s.logger.Debug("lowering storage radius", "batch_id", fmt.Sprintf("%x", b.ID), "old_batch_storage_radius", b.StorageRadius, "new_batch_storage_radius", s.rs.StorageRadius)
+			s.logger.Debug("lowering storage radius", "batch_id", b.ID, "old_batch_storage_radius", b.StorageRadius, "new_batch_storage_radius", s.rs.StorageRadius)
 			updates = append(updates, b)
 		}
 
