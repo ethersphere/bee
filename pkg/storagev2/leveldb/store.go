@@ -19,13 +19,15 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-type Store struct {
+type store struct {
 	DB      *leveldb.DB
 	path    string
 	closeLk sync.RWMutex
 }
 
-var _ storageV2.Store = (*Store)(nil)
+const separator = "/"
+
+var _ storageV2.Store = (*store)(nil)
 
 // NewDatastore returns a new datastore backed by leveldb
 // for path == "", an in memory backend will be chosen (TODO)
@@ -46,7 +48,7 @@ func New(path string, opts *opt.Options) (storageV2.Store, error) {
 		return nil, err
 	}
 
-	ds := Store{
+	ds := store{
 		DB:   db,
 		path: path,
 	}
@@ -54,11 +56,11 @@ func New(path string, opts *opt.Options) (storageV2.Store, error) {
 	return &ds, nil
 }
 
-func (s *Store) Count(key storageV2.Key) (int, error) {
+func (s *store) Count(key storageV2.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	keys := util.BytesPrefix([]byte(key.Namespace() + "/"))
+	keys := util.BytesPrefix([]byte(key.Namespace() + separator))
 	iter := s.DB.NewIterator(keys, nil)
 
 	var c int
@@ -71,7 +73,7 @@ func (s *Store) Count(key storageV2.Key) (int, error) {
 	return c, iter.Error()
 }
 
-func (s *Store) Put(item storageV2.Item) error {
+func (s *store) Put(item storageV2.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -80,15 +82,15 @@ func (s *Store) Put(item storageV2.Item) error {
 		return fmt.Errorf("failed serializing: %w", err)
 	}
 
-	key := []byte(item.Namespace() + "/" + item.ID())
+	key := []byte(item.Namespace() + separator + item.ID())
 	return s.DB.Put(key, value, &opt.WriteOptions{Sync: true})
 }
 
-func (s *Store) Get(item storageV2.Item) error {
+func (s *store) Get(item storageV2.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(item.Namespace() + "/" + item.ID())
+	key := []byte(item.Namespace() + separator + item.ID())
 
 	val, err := s.DB.Get(key, nil)
 
@@ -107,20 +109,20 @@ func (s *Store) Get(item storageV2.Item) error {
 	return nil
 }
 
-func (s *Store) Has(sKey storageV2.Key) (bool, error) {
+func (s *store) Has(sKey storageV2.Key) (bool, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(sKey.Namespace() + "/" + sKey.ID())
+	key := []byte(sKey.Namespace() + separator + sKey.ID())
 
 	return s.DB.Has(key, nil)
 }
 
-func (s *Store) GetSize(sKey storageV2.Key) (int, error) {
+func (s *store) GetSize(sKey storageV2.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(sKey.Namespace() + "/" + sKey.ID())
+	key := []byte(sKey.Namespace() + separator + sKey.ID())
 
 	val, err := s.DB.Get(key, nil)
 
@@ -135,16 +137,16 @@ func (s *Store) GetSize(sKey storageV2.Key) (int, error) {
 	return len(val), nil
 }
 
-func (s *Store) Delete(item storageV2.Key) error {
+func (s *store) Delete(item storageV2.Key) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(item.Namespace() + "/" + item.ID())
+	key := []byte(item.Namespace() + separator + item.ID())
 
 	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
 }
 
-func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
+func (s *store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -155,7 +157,7 @@ func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 	var retErr *multierror.Error
 
 	namespace := q.Factory().Namespace()
-	prefix := namespace + "/"
+	prefix := namespace + separator
 
 	keys := util.BytesPrefix([]byte(prefix))
 
@@ -219,7 +221,7 @@ func (s *Store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 	return retErr.ErrorOrNil()
 }
 
-func (s *Store) Close() (err error) {
+func (s *store) Close() (err error) {
 	s.closeLk.Lock()
 	defer s.closeLk.Unlock()
 	return s.DB.Close()
