@@ -64,7 +64,7 @@ func NewLogger(name string, opts ...Option) Logger {
 	}
 
 	if options.sink == io.Discard {
-		return noop
+		return Noop
 	}
 
 	formatter := defaults.formatter
@@ -82,6 +82,7 @@ func NewLogger(name string, opts ...Option) Logger {
 		verbosity:  options.verbosity,
 		sink:       options.sink,
 		levelHooks: options.levelHooks,
+		metrics:    options.logMetrics,
 	}
 	l.builder = &builder{
 		l:        l,

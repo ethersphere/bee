@@ -14,12 +14,12 @@ import (
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
-	Create(id []byte, owner []byte, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
-	TopUp(id []byte, normalisedBalance *big.Int, txHash []byte) error
+	Create(id []byte, owner []byte, totalAmount, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
+	TopUp(id []byte, topUpAmount, normalisedBalance *big.Int, txHash []byte) error
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
 	UpdatePrice(price *big.Int, txHash []byte) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(startBlock uint64, initState *ChainSnapshot) (<-chan error, error)
+	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan struct{}) error
 
 	TransactionStart() error
 	TransactionEnd() error
@@ -94,7 +94,7 @@ type Listener interface {
 }
 
 type BatchEventListener interface {
-	HandleCreate(*Batch) error
+	HandleCreate(*Batch, *big.Int) error
 	HandleTopUp(id []byte, newBalance *big.Int)
-	HandleDepthIncrease(id []byte, newDepth uint8, normalisedBalance *big.Int)
+	HandleDepthIncrease(id []byte, newDepth uint8)
 }

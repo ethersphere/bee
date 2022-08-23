@@ -186,7 +186,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange, r
 			// we handle this error internally, since this is an internal inconsistency of the indices
 			// this error can happen if the chunk is put with ModePutRequest or ModePutSync
 			// but this function is called with ModeSetSync
-			db.logger.Debugf("localstore: chunk with address %s not found in push index", addr)
+			db.logger.Debug("chunk not found in push index", "address", addr)
 		} else {
 			return 0, 0, err
 		}
@@ -196,7 +196,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange, r
 		if err != nil {
 			// we cannot break or return here since the function needs to
 			// run to end from db.pushIndex.DeleteInBatch
-			db.logger.Errorf("localstore: get tags on push sync set uid %d: %v", i.Tag, err)
+			db.logger.Error(err, "get tags on push sync set failed", "uid", i.Tag)
 		} else {
 			err = t.Inc(tags.StateSynced)
 			if err != nil {

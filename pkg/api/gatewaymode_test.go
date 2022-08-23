@@ -6,14 +6,13 @@ package api_test
 
 import (
 	"bytes"
-	"io"
 	"net/http"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
@@ -22,7 +21,7 @@ import (
 )
 
 func TestGatewayMode(t *testing.T) {
-	logger := logging.New(io.Discard, 0)
+	logger := log.Noop
 	chunk := testingc.GenerateTestRandomChunk()
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:      mock.NewStorer(),

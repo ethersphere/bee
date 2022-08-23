@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -42,6 +42,9 @@ import (
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "localstore"
 
 var _ storage.Storer = &DB{}
 
@@ -184,7 +187,7 @@ type DB struct {
 
 	metrics metrics
 
-	logger logging.Logger
+	logger log.Logger
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -275,7 +278,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger logging.Logger) (db *DB, err error) {
+func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger log.Logger) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -305,7 +308,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		collectGarbageWorkerDone:  make(chan struct{}),
 		reserveEvictionWorkerDone: make(chan struct{}),
 		metrics:                   newMetrics(),
-		logger:                    logger,
+		logger:                    logger.WithName(loggerName).Register(),
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity
@@ -314,9 +317,9 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	capacityMB := float64((db.cacheCapacity+uint64(batchstore.Capacity))*swarm.ChunkSize) * 9.5367431640625e-7
 
 	if capacityMB <= 1000 {
-		db.logger.Infof("database capacity: %d chunks (approximately %fMB)", db.cacheCapacity, capacityMB)
+		db.logger.Info("database capacity", "chunks", db.cacheCapacity, "~size(MB)", capacityMB)
 	} else {
-		db.logger.Infof("database capacity: %d chunks (approximately %0.1fGB)", db.cacheCapacity, capacityMB/1000)
+		db.logger.Info("database capacity", "chunks", db.cacheCapacity, "~size(GB)", capacityMB/1000)
 	}
 
 	if maxParallelUpdateGC > 0 {
@@ -684,7 +687,7 @@ func (db *DB) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		db.logger.Error("localstore closed with still active goroutines")
+		db.logger.Error(nil, "closed with still active goroutines")
 		// Print a full goroutine dump to debug blocking.
 		// TODO: use a logger to write a goroutine profile
 		prof := pprof.Lookup("goroutine")

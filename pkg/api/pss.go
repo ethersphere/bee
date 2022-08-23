@@ -40,14 +40,14 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	for _, v := range tgts {
 		target, err := hex.DecodeString(v)
 		if err != nil {
-			s.logger.Debugf("pss send: bad target (%s): %v", target, err)
-			s.logger.Errorf("pss send: bad target (%s): %v", target, err)
+			s.logger.Debug("pss post: decode target string failed", "string", target, "error", err)
+			s.logger.Error(nil, "pss post: decode target string failed", "string", target)
 			jsonhttp.BadRequest(w, "target is not valid hex string")
 			return
 		}
 		if len(target) > targetMaxLength {
-			s.logger.Debugf("pss send: bad target length: %d", len(target))
-			s.logger.Errorf("pss send: bad target length: %d", len(target))
+			s.logger.Debug("pss post: invalid target string length", "string", target, "length", len(target))
+			s.logger.Error(nil, "pss post: invalid target string length", "string", target, "length", len(target))
 			jsonhttp.BadRequest(w, fmt.Sprintf("hex string target exceeds max length of %d", targetMaxLength*2))
 			return
 		}
@@ -64,31 +64,31 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		var err error
 		recipient, err = pss.ParseRecipient(recipientQueryString)
 		if err != nil {
-			s.logger.Debugf("pss recipient: %v", err)
-			s.logger.Error("pss recipient")
-			jsonhttp.BadRequest(w, nil)
+			s.logger.Debug("pss post: parse recipient string failed", "string", recipientQueryString, "error", err)
+			s.logger.Error(nil, "pss post: parse recipient string failed")
+			jsonhttp.BadRequest(w, "pss recipient: invalid format")
 			return
 		}
 	}
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debugf("pss read payload: %v", err)
-		s.logger.Error("pss read payload")
-		jsonhttp.InternalServerError(w, nil)
+		s.logger.Debug("pss post: read body failed", "error", err)
+		s.logger.Error(nil, "pss post: read body failed")
+		jsonhttp.InternalServerError(w, "pss send failed")
 		return
 	}
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
-		s.logger.Debugf("pss: postage batch id: %v", err)
-		s.logger.Error("pss: postage batch id")
+		s.logger.Debug("pss post: decode postage batch id failed", "error", err)
+		s.logger.Error(nil, "pss post: decode postage batch id failed")
 		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
-		s.logger.Debugf("pss: postage batch issuer: %v", err)
-		s.logger.Error("pss: postage batch issue")
+		s.logger.Debug("pss post: get postage batch issuer failed", "batch_id", fmt.Sprintf("%x", batch), "error", err)
+		s.logger.Error(nil, "pss post: get postage batch issuer failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.BadRequest(w, "batch not found")
@@ -103,13 +103,13 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.pss.Send(r.Context(), topic, payload, stamper, recipient, targets)
 	if err != nil {
-		s.logger.Debugf("pss send payload: %v. topic: %s", err, topicVar)
-		s.logger.Error("pss send payload")
+		s.logger.Debug("pss post: send payload failed", "topic", fmt.Sprintf("%x", topic), "error", err)
+		s.logger.Error(nil, "pss post: send payload failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "pss send failed")
 		}
 		return
 	}
@@ -127,9 +127,9 @@ func (s *Service) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.logger.Debugf("pss ws: upgrade: %v", err)
-		s.logger.Error("pss ws: cannot upgrade")
-		jsonhttp.InternalServerError(w, nil)
+		s.logger.Debug("pss ws: upgrade failed", "error", err)
+		s.logger.Error(nil, "pss ws: upgrade failed")
+		jsonhttp.InternalServerError(w, "pss ws: upgrade failed")
 		return
 	}
 
@@ -159,7 +159,7 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 	defer cleanup()
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		s.logger.Debugf("pss handler: client gone. code %d message %s", code, text)
+		s.logger.Debug("pss ws: client gone", "code", code, "message", text)
 		close(gone)
 		return nil
 	})
@@ -169,13 +169,13 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 		case b := <-dataC:
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
-				s.logger.Debugf("pss set write deadline: %v", err)
+				s.logger.Debug("pss ws: set write deadline failed", "error", err)
 				return
 			}
 
 			err = conn.WriteMessage(websocket.BinaryMessage, b)
 			if err != nil {
-				s.logger.Debugf("pss write to websocket: %v", err)
+				s.logger.Debug("pss ws: write message failed", "error", err)
 				return
 			}
 
@@ -183,12 +183,12 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 			// shutdown
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
-				s.logger.Debugf("pss set write deadline: %v", err)
+				s.logger.Debug("pss ws: set write deadline failed", "error", err)
 				return
 			}
 			err = conn.WriteMessage(websocket.CloseMessage, []byte{})
 			if err != nil {
-				s.logger.Debugf("pss write close message: %v", err)
+				s.logger.Debug("pss ws: write close message failed", "error", err)
 			}
 			return
 		case <-gone:
@@ -197,7 +197,7 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 		case <-ticker.C:
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
-				s.logger.Debugf("pss set write deadline: %v", err)
+				s.logger.Debug("pss ws: set write deadline failed", "error", err)
 				return
 			}
 			if err = conn.WriteMessage(websocket.PingMessage, nil); err != nil {

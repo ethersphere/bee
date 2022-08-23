@@ -21,7 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/discovery"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/shed"
@@ -33,6 +33,9 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "kademlia"
 
 const (
 	maxConnAttempts        = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
@@ -109,8 +112,8 @@ type Kad struct {
 	manageC           chan struct{} // trigger the manage forever loop to connect to new peers
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
-	logger            logging.Logger // logger
-	bootnode          bool           // indicates whether the node is working in bootnode mode
+	logger            log.Logger // logger
+	bootnode          bool       // indicates whether the node is working in bootnode mode
 	collector         *im.Collector
 	quit              chan struct{} // quit channel
 	halt              chan struct{} // halt channel
@@ -137,7 +140,7 @@ func New(
 	p2pSvc p2p.Service,
 	pinger pingpong.Interface,
 	metricsDB *shed.DB,
-	logger logging.Logger,
+	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
 	var k *Kad
@@ -152,12 +155,10 @@ func New(
 		o.BitSuffixLength = defaultBitSuffixLength
 	}
 
-	start := time.Now()
 	imc, err := im.NewCollector(metricsDB)
 	if err != nil {
 		return nil, err
 	}
-	logger.Debugf("kademlia: NewCollector(...) took %v", time.Since(start))
 
 	k = &Kad{
 		base:              base,
@@ -172,7 +173,7 @@ func New(
 		bootnodes:         o.Bootnodes,
 		manageC:           make(chan struct{}, 1),
 		waitNext:          waitnext.New(),
-		logger:            logger,
+		logger:            logger.WithName(loggerName).Register(),
 		bootnode:          o.BootnodeMode,
 		collector:         imc,
 		quit:              make(chan struct{}),
@@ -187,11 +188,11 @@ func New(
 	}
 
 	blocklistCallback := func(a swarm.Address) {
-		k.logger.Debugf("kademlia: disconnecting peer %s for ping failure", a.String())
+		k.logger.Debug("disconnecting peer for ping failure", "peer_address", a)
 		k.metrics.Blocklist.Inc()
 	}
 
-	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, logger)
+	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, k.logger)
 
 	if k.pruneFunc == nil {
 		k.pruneFunc = k.pruneOversaturatedBins
@@ -262,7 +263,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 			blocklisted, err := k.p2p.Blocklisted(closestKnownPeer)
 			if err != nil {
-				k.logger.Warningf("kademlia: peer blocklist check: %v", err)
+				k.logger.Warning("peer blocklist check failed", "error", err)
 			}
 			if blocklisted {
 				continue
@@ -314,7 +315,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 
 		blocklisted, err := k.p2p.Blocklisted(addr)
 		if err != nil {
-			k.logger.Warningf("kademlia: peer blocklist check: %v", err)
+			k.logger.Warning("peer blocklist check failed", "error", err)
 		}
 		if blocklisted {
 			return false, false, nil
@@ -356,11 +357,11 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		bzzAddr, err := k.addressBook.Get(peer.addr)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
-			k.logger.Debugf("kademlia: empty address book entry for peer %s", peer.addr)
+			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)
 			k.knownPeers.Remove(peer.addr)
 			return
 		case err != nil:
-			k.logger.Debugf("kademlia: failed to get address book entry for peer %s: %v", peer.addr, err)
+			k.logger.Debug("failed to get address book entry for peer", "peer_address", peer.addr, "error", err)
 			return
 		}
 
@@ -368,29 +369,29 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
 			if err := k.addressBook.Remove(peer.addr); err != nil {
-				k.logger.Debugf("kademlia: could not remove peer %s from addressbook", peer.addr)
+				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer.addr)
 			}
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
-			k.logger.Debugf("kademlia: network unavailable when reaching peer with overlay %q and underlay %q", peer.addr, bzzAddr.Underlay)
+			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
 			return
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debugf("kademlia: dial to light node with overlay %s and underlay %s", peer.addr, bzzAddr.Underlay)
+			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debugf("kademlia: overlay mismatch has occurred to an overlay %s with underlay %s", peer.addr, bzzAddr.Underlay)
+			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
-			k.logger.Debugf("kademlia: peer still in blocklist: %s", bzzAddr)
-			k.logger.Warningf("peer still in blocklist")
+			k.logger.Debug("peer still in blocklist", "peer_address", bzzAddr)
+			k.logger.Warning("peer still in blocklist")
 			return
 		case err != nil:
-			k.logger.Debugf("kademlia: peer not reachable from kademlia %s: %v", bzzAddr, err)
-			k.logger.Warningf("peer not reachable when attempting to connect")
+			k.logger.Debug("peer not reachable from kademlia", "peer_address", bzzAddr, "error", err)
+			k.logger.Warning("peer not reachable when attempting to connect")
 			return
 		}
 
@@ -405,7 +406,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
 		k.depthMu.Unlock()
 
-		k.logger.Infof("kademlia: connected to peer: %s in bin: %d", peer.addr, peer.po)
+		k.logger.Info("connected to peer", "peer_address", peer.addr, "proximity_order", peer.po)
 		k.notifyManageLoop()
 		k.notifyPeerSig()
 	}
@@ -462,9 +463,11 @@ func (k *Kad) notifyManageLoop() {
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
+	loggerV1 := k.logger.V(1).Register()
+
 	defer k.wg.Done()
 	defer close(k.done)
-	defer k.logger.Debugf("kademlia manage loop exited")
+	defer k.logger.Debug("kademlia manage loop exited")
 
 	timer := time.NewTimer(0)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -499,13 +502,13 @@ func (k *Kad) manage() {
 				return
 			case <-time.After(5 * time.Minute):
 				start := time.Now()
-				k.logger.Tracef("kademlia: starting to flush metrics at %s", start)
+				loggerV1.Debug("starting to flush metrics", "start_time", start)
 				if err := k.collector.Flush(); err != nil {
 					k.metrics.InternalMetricsFlushTotalErrors.Inc()
-					k.logger.Debugf("kademlia: unable to flush metrics counters to the persistent store: %v", err)
+					k.logger.Debug("unable to flush metrics counters to the persistent store", "error", err)
 				} else {
 					k.metrics.InternalMetricsFlushTime.Observe(time.Since(start).Seconds())
-					k.logger.Tracef("kademlia: took %s to flush", time.Since(start))
+					loggerV1.Debug("flush metrics done", "elapsed", time.Since(start))
 				}
 			}
 		}
@@ -575,12 +578,7 @@ func (k *Kad) manage() {
 
 			k.pruneFunc(depth)
 
-			k.logger.Tracef(
-				"kademlia: connector took %s to finish: old depth %d; new depth %d",
-				time.Since(start),
-				oldDepth,
-				depth,
-			)
+			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
 
 			k.metrics.CurrentDepth.Set(float64(depth))
 			k.metrics.CurrentRadius.Set(float64(radius))
@@ -605,7 +603,7 @@ func (k *Kad) manage() {
 					}
 					return false, false, nil
 				}); err != nil {
-					k.logger.Errorf("kademlia: unable to set peers reachability status: %v", err)
+					k.logger.Error(err, "unable to set peers reachability status")
 				}
 
 				for status, count := range rs {
@@ -619,6 +617,8 @@ func (k *Kad) manage() {
 // recordPeerLatencies tries to record the average
 // peer latencies from the p2p layer.
 func (k *Kad) recordPeerLatencies(ctx context.Context) {
+	loggerV1 := k.logger.V(1).Register()
+
 	ctx, cancel := context.WithTimeout(ctx, peerPingPollTime)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -637,7 +637,7 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 			defer wg.Done()
 			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
 			case err != nil:
-				k.logger.Tracef("kademlia: cannot get latency for peer %s: %v", addr.String(), err)
+				loggerV1.Debug("cannot get latency for peer", "peer_address", addr, "error", err)
 				k.blocker.Flag(addr)
 				k.metrics.Flag.Inc()
 			default:
@@ -696,7 +696,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			}
 			err := k.p2p.Disconnect(newestPeer, "pruned from oversaturated bin")
 			if err != nil {
-				k.logger.Debugf("prune disconnect fail %v", err)
+				k.logger.Debug("prune disconnect failed", "error", err)
 			}
 			peersToRemove--
 		}
@@ -745,7 +745,7 @@ func (k *Kad) Start(_ context.Context) error {
 			return false, nil
 		})
 		if err != nil {
-			k.logger.Errorf("addressbook overlays: %v", err)
+			k.logger.Error(err, "addressbook iterate overlays failed")
 			return
 		}
 		k.AddPeers(addresses...)
@@ -760,10 +760,11 @@ func (k *Kad) Start(_ context.Context) error {
 }
 
 func (k *Kad) previouslyConnected() []swarm.Address {
+	loggerV1 := k.logger.V(1).Register()
 
 	now := time.Now()
 	ss := k.collector.Snapshot(now)
-	k.logger.Tracef("kademlia: getting metrics snapshot took %s", time.Since(now))
+	loggerV1.Debug("metrics snapshot taken", "elapsed", time.Since(now))
 
 	var peers []swarm.Address
 
@@ -777,6 +778,8 @@ func (k *Kad) previouslyConnected() []swarm.Address {
 }
 
 func (k *Kad) connectBootNodes(ctx context.Context) {
+	loggerV1 := k.logger.V(1).Register()
+
 	var attempts, connected int
 	totalAttempts := maxBootNodeAttempts * len(k.bootnodes)
 
@@ -789,7 +792,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 		}
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-			k.logger.Tracef("kademlia: connecting to bootnode %s", addr)
+			loggerV1.Debug("connecting to bootnode", "bootnode_address", addr)
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
@@ -800,11 +803,11 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debugf("kademlia: connect fail %s: %v", addr, err)
-					k.logger.Warningf("kademlia: connect to bootnode %s", addr)
+					k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
 					return false, err
 				}
-				k.logger.Debugf("kademlia: connect to bootnode fail: %v", err)
+				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
 				return false, nil
 			}
 
@@ -814,14 +817,14 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			k.metrics.TotalOutboundConnections.Inc()
 			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
-			k.logger.Tracef("kademlia: connected to bootnode %s", addr)
+			loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
 			connected++
 
 			// connect to max 3 bootnodes
 			return connected >= 3, nil
 		}); err != nil && !errors.Is(err, context.Canceled) {
-			k.logger.Debugf("kademlia: discover fail %s: %v", addr, err)
-			k.logger.Warningf("kademlia: discover to bootnode %s", addr)
+			k.logger.Debug("discover to bootnode failed", "bootnode_address", addr, "error", err)
+			k.logger.Warning("discover to bootnode failed", "bootnode_address", addr)
 			return
 		}
 	}
@@ -914,7 +917,7 @@ func (k *Kad) recalcDepth(peers *pslice.PSlice, radius uint8, filter peerFilterF
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
-	k.logger.Debugf("attempting to connect to peer %s", peer)
+	k.logger.Debug("attempting connect to peer", "peer_address", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
@@ -938,7 +941,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
 	case err != nil:
-		k.logger.Debugf("could not connect to peer %s: %v", peer, err)
+		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
 
 		retryTime := time.Now().Add(timeToRetry)
 		var e *p2p.ConnectionBackoffError
@@ -959,9 +962,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
 			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debugf("could not remove peer from addressbook: %s", peer)
+				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer)
 			}
-			k.logger.Debugf("kademlia pruned peer from address book %s", peer)
+			k.logger.Debug("peer pruned from address book", "peer_address", peer)
 		} else {
 			k.waitNext.Set(peer, retryTime, failedAttempts)
 		}
@@ -1017,7 +1020,7 @@ outer:
 				defer cCancel()
 
 				if err := k.discovery.BroadcastPeers(cCtx, connectedPeer, peer); err != nil {
-					k.logger.Debugf("could not gossip peer %s to peer %s: %v", peer, connectedPeer, err)
+					k.logger.Debug("peer gossip failed", "new_peer_address", peer, "connected_peer_address", connectedPeer, "error", err)
 				}
 			}(connectedPeer)
 		}
@@ -1035,7 +1038,7 @@ outer:
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
-		k.logger.Errorf("kademlia: could not broadcast to peer %s", peer)
+		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
 		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
 
@@ -1159,7 +1162,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(peer p2p.Peer) {
-	k.logger.Infof("kademlia: disconnected peer %s", peer.Address)
+	k.logger.Info("disconnected peer", "peer_address", peer.Address)
 
 	k.connectedPeers.Remove(peer.Address)
 
@@ -1340,8 +1343,9 @@ func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error
 
 // Reachable sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
+	loggerV1 := k.logger.V(1).Register()
 	k.collector.Record(addr, im.PeerReachability(status))
-	k.logger.Tracef("kademlia: reachability of peer %s is %s", addr.String(), status.String())
+	loggerV1.Debug("reachability of peer updated", "peer_address", addr, "reachability", status)
 	if status == p2p.ReachabilityStatusPublic {
 		k.depthMu.Lock()
 		k.depth = k.recalcDepth(k.connectedPeers, k.radius, k.peerFilter)
@@ -1357,7 +1361,7 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	if status == p2p.ReachabilityStatusUnknown {
 		return
 	}
-	k.logger.Infof("kademlia: updated reachability to %s", status.String())
+	k.logger.Info("reachability updated", "reachability", status)
 	k.reachability = status
 	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
@@ -1530,7 +1534,7 @@ func (k *Kad) String() string {
 	j := k.Snapshot()
 	b, err := json.MarshalIndent(j, "", "  ")
 	if err != nil {
-		k.logger.Errorf("could not marshal kademlia into json: %v", err)
+		k.logger.Error(err, "could not marshal kademlia into json")
 		return ""
 	}
 	return string(b)
@@ -1584,9 +1588,9 @@ func (k *Kad) Close() error {
 	k.logger.Info("kademlia persisting peer metrics")
 	start := time.Now()
 	if err := k.collector.Finalize(start, false); err != nil {
-		k.logger.Debugf("kademlia: unable to finalize open sessions: %v", err)
+		k.logger.Debug("unable to finalize open sessions", "error", err)
 	}
-	k.logger.Debugf("kademlia: Finalize(...) took %v", time.Since(start))
+	k.logger.Debug("metrics collector finalized", "elapsed", time.Since(start))
 
 	return err
 }

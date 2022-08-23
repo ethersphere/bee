@@ -7,7 +7,6 @@ package chainsyncer_test
 import (
 	"context"
 	"errors"
-	"io"
 	"math/big"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/chainsyncer"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
@@ -25,7 +24,7 @@ import (
 func TestChainsyncer(t *testing.T) {
 	var (
 		expBlockHash    = common.HexToHash("0x9de2787d1d80a6164f4bc6359d9017131cbc14402ee0704bff0c6d691701c1dc").Bytes()
-		logger          = logging.New(io.Discard, 0)
+		logger          = log.Noop
 		trxBlock        = common.HexToHash("0x2")
 		blockC          = make(chan struct{})
 		nextBlockHeader = &types.Header{ParentHash: trxBlock}

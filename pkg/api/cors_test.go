@@ -5,9 +5,10 @@
 package api_test
 
 import (
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"net/http"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 )
 
 func TestCORSHeaders(t *testing.T) {

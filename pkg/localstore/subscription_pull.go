@@ -29,8 +29,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-const logMore = false
-
 // SubscribePull returns a channel that provides chunk addresses and stored times from pull syncing index.
 // Pull syncing index can be only subscribed to a particular proximity order bin. If since
 // is not 0, the iteration will start from the since item (the item with binID == since). If until is not 0,
@@ -40,6 +38,8 @@ const logMore = false
 // Make sure that you check the second returned parameter from the channel to stop iteration when its value
 // is false.
 func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan storage.Descriptor, closed <-chan struct{}, stop func()) {
+	loggerV2 := db.logger.V(2).Register()
+
 	db.metrics.SubscribePull.Inc()
 
 	chunkDescriptors := make(chan storage.Descriptor)
@@ -141,9 +141,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 						return
 					}
 					db.metrics.SubscribePullIterationFailure.Inc()
-					if logMore {
-						db.logger.Debugf("localstore pull subscription iteration: bin: %d, since: %d, until: %d: %v", bin, since, until, err)
-					}
+					loggerV2.Debug("pull subscription iteration failed", "bin", bin, "since", since, "until", until, "error", err)
 					return
 				}
 				if count > 0 {
@@ -158,10 +156,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 				// on database close
 				return
 			case <-ctx.Done():
-				err := ctx.Err()
-				if err != nil && logMore {
-					db.logger.Debugf("localstore pull subscription iteration: bin: %d, since: %d, until: %d: %v", bin, since, until, err)
-				}
+				loggerV2.Debug("pull subscription iteration failed", "bin", bin, "since", since, "until", until, "error", ctx.Err())
 				return
 			}
 		}

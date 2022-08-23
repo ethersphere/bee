@@ -35,22 +35,22 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
-		logger.Debugf("bytes upload: get putter:%v", err)
-		logger.Error("bytes upload: putter")
+		logger.Debug("bytes upload: get putter failed", "error", err)
+		logger.Error(nil, "bytes upload: get putter failed")
 		jsonhttp.BadRequest(w, nil)
 		return
 	}
 
 	if strings.Contains(strings.ToLower(r.Header.Get(contentTypeHeader)), "multipart/form-data") {
-		logger.Error("bytes upload: multipart uploads are not supported on this endpoint")
-		jsonhttp.BadRequest(w, nil)
+		logger.Error(nil, "bytes upload: multipart uploads are not supported on this endpoint")
+		jsonhttp.BadRequest(w, "multipart uploads not supported")
 		return
 	}
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
-		logger.Debugf("bytes upload: get or create tag: %v", err)
-		logger.Error("bytes upload: get or create tag")
+		logger.Debug("bytes upload: get or create tag failed", "error", err)
+		logger.Error(nil, "bytes upload: get or create tag failed")
 		jsonhttp.InternalServerError(w, "cannot get or create tag")
 		return
 	}
@@ -60,8 +60,8 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if estimatedTotalChunks := requestCalculateNumberOfChunks(r); estimatedTotalChunks > 0 {
 			err = tag.IncN(tags.TotalChunks, estimatedTotalChunks)
 			if err != nil {
-				s.logger.Debugf("bytes upload: increment tag: %v", err)
-				s.logger.Error("bytes upload: increment tag")
+				s.logger.Debug("bytes upload: increment tag failed", "error", err)
+				s.logger.Error(nil, "bytes upload: increment tag failed")
 				jsonhttp.InternalServerError(w, "increment tag")
 				return
 			}
@@ -74,44 +74,44 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	pr := ioutil.TimeoutReader(ctx, r.Body, time.Minute, func(n uint64) {
-		logger.Error("bytes upload: idle read timeout exceeded")
-		logger.Debugf("bytes upload: idle read timeout exceeded: read %d", n)
+		logger.Error(nil, "bytes upload: idle read timeout exceeded")
+		logger.Debug("bytes upload: idle read timeout exceeded", "bytes_read", n)
 		cancel()
 	})
 	address, err := p(ctx, pr)
 	if err != nil {
-		logger.Debugf("bytes upload: split write all: %v", err)
-		logger.Error("bytes upload: split write all")
+		logger.Debug("bytes upload: split write all failed", "error", err)
+		logger.Error(nil, "bytes upload: split write all failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.InternalServerError(w, "bytes upload: split write all failed")
 		}
 		return
 	}
 	if err = wait(); err != nil {
-		logger.Debugf("bytes upload: sync chunks: %v", err)
-		logger.Error("bytes upload: sync chunks")
-		jsonhttp.InternalServerError(w, nil)
+		logger.Debug("bytes upload: sync chunks failed", "error", err)
+		logger.Error(nil, "bytes upload: sync chunks failed")
+		jsonhttp.InternalServerError(w, "bytes upload: sync chunks failed")
 		return
 	}
 
 	if created {
 		_, err = tag.DoneSplit(address)
 		if err != nil {
-			logger.Debugf("bytes upload: done split: %v", err)
-			logger.Error("bytes upload: done split failed")
-			jsonhttp.InternalServerError(w, nil)
+			logger.Debug("bytes upload: done split failed", "error", err)
+			logger.Error(nil, "bytes upload: done split failed")
+			jsonhttp.InternalServerError(w, "bytes upload: done split filed")
 			return
 		}
 	}
 
 	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
 		if err := s.pinning.CreatePin(ctx, address, false); err != nil {
-			logger.Debugf("bytes upload: creation of pin for %q failed: %v", address, err)
-			logger.Error("bytes upload: creation of pin failed")
-			jsonhttp.InternalServerError(w, nil)
+			logger.Debug("bytes upload: pin creation failed", "address", address, "error", err)
+			logger.Error(nil, "bytes upload: pin creation failed")
+			jsonhttp.InternalServerError(w, "bytes upload: create ping failed")
 			return
 		}
 	}
@@ -130,8 +130,8 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
-		logger.Error("bytes: parse address error")
+		logger.Debug("bytes: parse address string failed", nameOrHex, err)
+		logger.Error(nil, "bytes: parse address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
@@ -149,15 +149,15 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
-		logger.Debugf("bytes: parse address %s: %v", nameOrHex, err)
-		logger.Error("bytes: parse address error")
+		logger.Debug("bytes: parse address string failed", "string", nameOrHex, "error", err)
+		logger.Error(nil, "bytes: parse address string failed")
 		w.WriteHeader(http.StatusBadRequest) // HEAD requests do not write a body
 		return
 	}
 	ch, err := s.storer.Get(r.Context(), storage.ModeGetRequest, address)
 	if err != nil {
-		logger.Debugf("bytes: get root chunk %s: %v", nameOrHex, err)
-		logger.Error("bytes: get rook chunk error")
+		logger.Debug("bytes: get root chunk failed", "chunk_address", address, "error", err)
+		logger.Error(nil, "bytes: get rook chunk failed")
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

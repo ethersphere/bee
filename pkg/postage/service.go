@@ -101,12 +101,12 @@ func (ps *service) add(st *StampIssuer) bool {
 // HandleCreate implements the BatchEventListener interface. This is fired on receiving
 // a batch creation event from the blockchain listener to ensure that if a stamp
 // issuer was not created initially, we will create it here.
-func (ps *service) HandleCreate(b *Batch) error {
+func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 	return ps.Add(NewStampIssuer(
 		"recovered",
 		string(b.Owner),
 		b.ID,
-		b.Value,
+		amount,
 		b.Depth,
 		b.BucketDepth,
 		b.Start,
@@ -116,21 +116,18 @@ func (ps *service) HandleCreate(b *Batch) error {
 
 // HandleTopUp implements the BatchEventListener interface. This is fired on receiving
 // a batch topup event from the blockchain to update stampissuer details
-func (ps *service) HandleTopUp(batchID []byte, newValue *big.Int) {
+func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(batchID, v.data.BatchID) {
-			if newValue.Cmp(v.data.BatchAmount) > 0 {
-				v.data.BatchAmount = newValue
-			}
-			return
+			v.data.BatchAmount.Add(v.data.BatchAmount, amount)
 		}
 	}
 }
 
-func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8, normalisedBalance *big.Int) {
+func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
@@ -138,7 +135,6 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8, normalise
 		if bytes.Equal(batchID, v.data.BatchID) {
 			if newDepth > v.data.BatchDepth {
 				v.data.BatchDepth = newDepth
-				v.data.BatchAmount = normalisedBalance
 			}
 			return
 		}

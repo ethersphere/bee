@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
@@ -22,7 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
@@ -72,7 +72,7 @@ type DevBee struct {
 }
 
 type DevOptions struct {
-	Logger                   logging.Logger
+	Logger                   log.Logger
 	APIAddr                  string
 	DebugAPIAddr             string
 	CORSAllowedOrigins       []string
@@ -88,7 +88,7 @@ type DevOptions struct {
 
 // NewDevBee starts the bee instance in 'development' mode
 // this implies starting an API and a Debug endpoints while mocking all their services.
-func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
+func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})
@@ -97,7 +97,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 
 	sink := ioutil.WriterFunc(func(p []byte) (int, error) {
-		logger.Error(string(p))
+		logger.Error(nil, string(p))
 		return len(p), nil
 	})
 
@@ -188,17 +188,17 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           debugApiService,
-			ErrorLog:          log.New(b.errorLogWriter, "", 0),
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 		}
 
 		debugApiService.MountTechnicalDebug()
 
 		go func() {
-			logger.Infof("debug api address: %s", debugAPIListener.Addr())
+			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debugf("debug api server: %v", err)
-				logger.Error("unable to serve debug api")
+				logger.Debug("debug api server failed to start", "error", err)
+				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
 
@@ -276,8 +276,9 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 				if err != nil {
 					return err
 				}
+				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
 
-				post.HandleTopUp(batch.ID, newBalance)
+				post.HandleTopUp(batch.ID, topUpAmount)
 				return nil
 			},
 		),
@@ -299,7 +300,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 					return err
 				}
 
-				post.HandleDepthIncrease(batch.ID, newDepth, newBalance)
+				post.HandleDepthIncrease(batch.ID, newDepth)
 				return nil
 			},
 		),
@@ -370,6 +371,14 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		))
 	)
 
+	var (
+		// syncStatusFn mocks sync status because complete sync is required in order to curl certain apis e.g. /stamps.
+		// this allows accessing those apis by passing true to isDone in devNode.
+		syncStatusFn = func() (isDone bool, err error) {
+			return true, nil
+		}
+	)
+
 	mockFeeds := factory.New(storer)
 	mockResolver := resolverMock.NewResolver()
 	mockPinning := pinning.NewServiceMock()
@@ -394,6 +403,7 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		Post:             post,
 		PostageContract:  postageContract,
 		Steward:          mockSteward,
+		SyncStatus:       syncStatusFn,
 	}
 
 	var erc20 = erc20mock.New(
@@ -442,15 +452,15 @@ func NewDevBee(logger logging.Logger, o *DevOptions) (b *DevBee, err error) {
 		IdleTimeout:       30 * time.Second,
 		ReadHeaderTimeout: 3 * time.Second,
 		Handler:           apiService,
-		ErrorLog:          log.New(b.errorLogWriter, "", 0),
+		ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 	}
 
 	go func() {
-		logger.Infof("api address: %s", apiListener.Addr())
+		logger.Info("starting api server", "address", apiListener.Addr())
 
 		if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-			logger.Debugf("api server: %v", err)
-			logger.Error("unable to serve api")
+			logger.Debug("api server failed to start", "error", err)
+			logger.Error(nil, "api server failed to start")
 		}
 	}()
 

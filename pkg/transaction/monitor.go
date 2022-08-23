@@ -7,6 +7,7 @@ package transaction
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"sync"
@@ -15,7 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 )
 
 var ErrTransactionCancelled = errors.New("transaction cancelled")
@@ -36,7 +37,7 @@ type transactionMonitor struct {
 	cancelFunc context.CancelFunc // function to cancel the above context
 	wg         sync.WaitGroup
 
-	logger  logging.Logger
+	logger  log.Logger
 	backend Backend
 	sender  common.Address // sender of transactions which this instance can monitor
 
@@ -52,13 +53,13 @@ type transactionWatch struct {
 	errC     chan error         // error channel (primarily for cancelled transactions)
 }
 
-func NewMonitor(logger logging.Logger, backend Backend, sender common.Address, pollingInterval time.Duration, cancellationDepth uint64) Monitor {
+func NewMonitor(logger log.Logger, backend Backend, sender common.Address, pollingInterval time.Duration, cancellationDepth uint64) Monitor {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	t := &transactionMonitor{
 		ctx:        ctx,
 		cancelFunc: cancelFunc,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		backend:    backend,
 		sender:     sender,
 
@@ -76,6 +77,8 @@ func NewMonitor(logger logging.Logger, backend Backend, sender common.Address, p
 }
 
 func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+	loggerV1 := tm.logger.V(1).Register()
+
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
@@ -98,13 +101,15 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 	default:
 	}
 
-	tm.logger.Tracef("starting to watch transaction %x with nonce %d", txHash, nonce)
+	loggerV1.Debug("starting to watch transaction", "tx", fmt.Sprintf("%x", txHash), "nonce", nonce)
 
 	return receiptC, errC, nil
 }
 
 // main watch loop
 func (tm *transactionMonitor) watchPending() {
+	loggerV1 := tm.logger.V(1).Register()
+
 	defer tm.wg.Done()
 	defer func() {
 		tm.lock.Lock()
@@ -148,7 +153,7 @@ func (tm *transactionMonitor) watchPending() {
 		// switch to new head subscriptions once websockets are the norm
 		block, err := tm.backend.BlockNumber(tm.ctx)
 		if err != nil {
-			tm.logger.Errorf("could not get block number: %v", err)
+			tm.logger.Error(err, "could not get block number")
 			continue
 		} else if block <= lastBlock && !added {
 			// if the block number is not higher than before there is nothing todo
@@ -158,7 +163,7 @@ func (tm *transactionMonitor) watchPending() {
 		}
 
 		if err := tm.checkPending(block); err != nil {
-			tm.logger.Tracef("error while checking pending transactions: %v", err)
+			loggerV1.Debug("error while checking pending transactions", "error", err)
 			continue
 		}
 		lastBlock = block

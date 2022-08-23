@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
@@ -91,7 +91,7 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 // StartSpanFromContext starts a new tracing span that is either a root one or a
 // child of existing one from the provided Context. If logger is provided, a new
 // log Entry will be returned with "traceID" log field.
-func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l logging.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, logging.Logger, context.Context) {
+func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, log.Logger, context.Context) {
 	if t == nil {
 		t = noopTracer
 	}
@@ -240,11 +240,11 @@ func FromContext(ctx context.Context) opentracing.SpanContext {
 
 // NewLoggerWithTraceID creates a new log Entry with "traceID" field added if it
 // exists in tracing span context stored from go context.
-func NewLoggerWithTraceID(ctx context.Context, l logging.Logger) logging.Logger {
+func NewLoggerWithTraceID(ctx context.Context, l log.Logger) log.Logger {
 	return loggerWithTraceID(FromContext(ctx), l)
 }
 
-func loggerWithTraceID(sc opentracing.SpanContext, l logging.Logger) logging.Logger {
+func loggerWithTraceID(sc opentracing.SpanContext, l log.Logger) log.Logger {
 	if l == nil {
 		return nil
 	}
@@ -256,5 +256,5 @@ func loggerWithTraceID(sc opentracing.SpanContext, l logging.Logger) logging.Log
 	if !traceID.IsValid() {
 		return l
 	}
-	return l.WithValues(LogField, traceID.String())
+	return l.WithValues(LogField, traceID).Build()
 }

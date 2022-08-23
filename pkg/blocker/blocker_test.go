@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -24,7 +24,7 @@ var (
 	checkTime = time.Millisecond * 100
 	blockTime = time.Second
 	addr      = test.RandomAddress()
-	logger    = logging.New(io.Discard, 0)
+	logger    = log.NewLogger("test", log.WithSink(io.Discard))
 )
 
 func TestMain(m *testing.M) {
@@ -89,8 +89,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 			mu.Unlock()
 			return nil
 		})
-		logger = logging.New(io.Discard, 0)
-		b      = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
+		b = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 	)
 	defer b.Close()
 	b.Flag(addr)

@@ -29,10 +29,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "tags"
 
 const (
 	maxPage      = 1000 // hard limit of page size
@@ -48,18 +51,18 @@ var (
 type Tags struct {
 	tags       *sync.Map
 	stateStore storage.StateStorer
-	logger     logging.Logger
+	logger     log.Logger
 	rand       *rand.Rand
 	randM      sync.Mutex
 }
 
 // NewTags creates a tags object
-func NewTags(stateStore storage.StateStorer, logger logging.Logger) *Tags {
+func NewTags(stateStore storage.StateStorer, logger log.Logger) *Tags {
 
 	return &Tags{
 		tags:       &sync.Map{},
 		stateStore: stateStore,
-		logger:     logger,
+		logger:     logger.WithName(loggerName).Register(),
 		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
@@ -284,10 +287,11 @@ func (ts *Tags) getTagFromStore(uid uint32) (*Tag, error) {
 
 // Close is called when the node goes down. This is when all the tags in memory is persisted.
 func (ts *Tags) Close() (err error) {
+	loggerV1 := ts.logger.V(1).Register()
 	// store all the tags in memory
 	tags := ts.All()
 	for _, t := range tags {
-		ts.logger.Trace("updating tag: ", t.Uid)
+		loggerV1.Debug("updating tag", "tag_uid", t.Uid)
 		err := t.saveTag()
 		if err != nil {
 			return err

@@ -8,12 +8,11 @@ import (
 	"bytes"
 	"errors"
 	"hash"
-	"io"
 	"math/big"
 	"math/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -23,7 +22,7 @@ import (
 )
 
 var (
-	testLog    = logging.New(io.Discard, 0)
+	testLog    = log.Noop
 	errTest    = errors.New("fails")
 	testTxHash = make([]byte, 32)
 )
@@ -32,7 +31,9 @@ type mockListener struct {
 }
 
 func (*mockListener) Listen(from uint64, updater postage.EventUpdater, _ *postage.ChainSnapshot) <-chan error {
-	return nil
+	c := make(chan error, 1)
+	c <- nil
+	return c
 }
 func (*mockListener) Close() error { return nil }
 
@@ -46,7 +47,7 @@ type mockBatchListener struct {
 	diluteCount int
 }
 
-func (m *mockBatchListener) HandleCreate(b *postage.Batch) error {
+func (m *mockBatchListener) HandleCreate(b *postage.Batch, topUpAmount *big.Int) error {
 	m.createCount++
 	return nil
 }
@@ -55,7 +56,7 @@ func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
 	m.topupCount++
 }
 
-func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8, _ *big.Int) {
+func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 	m.diluteCount++
 }
 
@@ -108,6 +109,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("expect put create put error", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
+		testAmount := postagetesting.NewBigInt()
+
 		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
 			testBatch.Owner,
@@ -120,6 +123,7 @@ func TestBatchServiceCreate(t *testing.T) {
 			testBatch.ID,
 			testBatch.Owner,
 			testBatch.Value,
+			testAmount,
 			testBatch.Depth,
 			testBatch.BucketDepth,
 			testBatch.Immutable,
@@ -135,6 +139,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("passes", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
+		testAmount := postagetesting.NewBigInt()
+
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
 			testBatch.Owner,
@@ -145,6 +151,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
+			testAmount,
 			testBatch.Value,
 			testBatch.Depth,
 			testBatch.BucketDepth,
@@ -163,6 +170,8 @@ func TestBatchServiceCreate(t *testing.T) {
 	t.Run("passes without recovery", func(t *testing.T) {
 		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
+		testAmount := postagetesting.NewBigInt()
+
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
 		rand.Read(owner)
@@ -179,6 +188,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
+			testAmount,
 			testBatch.Value,
 			testBatch.Depth,
 			testBatch.BucketDepth,
@@ -208,6 +218,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		if err := svc.Create(
 			testBatch.ID,
 			testBatch.Owner,
+			testBatch.Value,
 			vv,
 			testBatch.Depth,
 			testBatch.BucketDepth,
@@ -228,7 +239,7 @@ func TestBatchServiceCreate(t *testing.T) {
 func TestBatchServiceTopUp(t *testing.T) {
 	testBatch := postagetesting.MustNewBatch()
 	testNormalisedBalance := big.NewInt(2000000000000)
-
+	testTopUpAmount := big.NewInt(1000)
 	t.Run("expect get error", func(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		svc, _, _ := newTestStoreAndServiceWithListener(
@@ -238,7 +249,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 			mock.WithGetErr(errTest, 0),
 		)
 
-		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err == nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance, testTxHash); err == nil {
 			t.Fatal("expected error")
 		}
 		if testBatchListener.topupCount != 0 {
@@ -256,7 +267,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		)
 		createBatch(t, batchStore, testBatch)
 
-		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err == nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance, testTxHash); err == nil {
 			t.Fatal("expected error")
 		}
 		if testBatchListener.topupCount != 0 {
@@ -275,7 +286,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 		want := testNormalisedBalance
 
-		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err != nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance, testTxHash); err != nil {
 			t.Fatalf("top up: %v", err)
 		}
 
@@ -309,7 +320,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 
 		want := testNormalisedBalance
 
-		if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err != nil {
+		if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance, testTxHash); err != nil {
 			t.Fatalf("top up: %v", err)
 		}
 
@@ -490,7 +501,7 @@ func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 
 func TestTransactionOk(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
-	if _, err := svc.Start(10, nil); err != nil {
+	if err := svc.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -506,7 +517,7 @@ func TestTransactionOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc2.Start(10, nil); err != nil {
+	if err := svc2.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -517,7 +528,7 @@ func TestTransactionOk(t *testing.T) {
 
 func TestTransactionError(t *testing.T) {
 	svc, store, s := newTestStoreAndService(t)
-	if _, err := svc.Start(10, nil); err != nil {
+	if err := svc.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -529,7 +540,7 @@ func TestTransactionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc2.Start(10, nil); err != nil {
+	if err := svc2.Start(10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -547,10 +558,11 @@ func TestChecksum(t *testing.T) {
 		t.Fatal(err)
 	}
 	testNormalisedBalance := big.NewInt(2000000000000)
+	testTopUpAmount := big.NewInt(1000)
 	testBatch := postagetesting.MustNewBatch()
 	createBatch(t, store, testBatch)
 
-	if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err != nil {
+	if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance, testTxHash); err != nil {
 		t.Fatalf("top up: %v", err)
 	}
 	if m := mockHash.ctr; m != 2 {
@@ -567,10 +579,11 @@ func TestChecksumResync(t *testing.T) {
 		t.Fatal(err)
 	}
 	testNormalisedBalance := big.NewInt(2000000000000)
+	testTopUpAmount := big.NewInt(1000)
 	testBatch := postagetesting.MustNewBatch()
 	createBatch(t, store, testBatch)
 
-	if err := svc.TopUp(testBatch.ID, testNormalisedBalance, testTxHash); err != nil {
+	if err := svc.TopUp(testBatch.ID, testTopUpAmount, testNormalisedBalance, testTxHash); err != nil {
 		t.Fatalf("top up: %v", err)
 	}
 	if m := mockHash.ctr; m != 2 {
