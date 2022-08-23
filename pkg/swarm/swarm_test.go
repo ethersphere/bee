@@ -10,6 +10,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -107,5 +109,28 @@ func TestCloser(t *testing.T) {
 
 	if cmp, _ := x.Closer(a, y); !cmp {
 		t.Fatal("x is closer")
+	}
+}
+
+func TestBatchID(t *testing.T) {
+	tests := []struct {
+		hex   string
+		valid bool
+	}{
+		{"24798dd5a470e927fa", true},
+		{"35a26b7bb6455cbabe7a0e05aafbd0b8b26feac843e3b9a649468d0ea37a12b2", true},
+		{"24798dd5a470e9ggcc", false},
+	}
+
+	for _, tc := range tests {
+		if tc.valid {
+			bid, err := swarm.HexToBatchID(tc.hex)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.hex, bid.String())
+		} else {
+			bid, err := swarm.HexToBatchID(tc.hex)
+			assert.Error(t, err)
+			assert.Nil(t, bid)
+		}
 	}
 }
