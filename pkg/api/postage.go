@@ -296,29 +296,25 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	jsonhttp.OK(w, resp)
 }
 
-func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
-	if len(idStr) != 64 {
-		s.logger.Error(nil, "get stamp issuer: invalid batch id string length", "string", idStr, "length", len(idStr))
-		jsonhttp.BadRequest(w, "invalid batchID")
-		return
-	}
-	id, err := hex.DecodeString(idStr)
+func (s *Service) postageGetStampIssuer(w http.ResponseWriter, r *http.Request) (issuer *postage.StampIssuer, err error) {
+	id, err := s.ValidateBatchId(w, r)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-
-	issuer, err := s.post.GetStampIssuer(id)
+	issuer, err = s.post.GetStampIssuer(id)
 	if err != nil {
 		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
 		jsonhttp.BadRequest(w, "cannot get batch")
+		return nil, nil
+	}
+	return
+}
+func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := s.ValidateBatchId(w, r)
+	if err != nil {
 		return
 	}
-
 	exists, err := s.batchStore.Exists(id)
 	if err != nil {
 		s.logger.Debug("get stamp issuer: exist check failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
@@ -339,7 +335,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		Exists:   exists,
 		BatchTTL: batchTTL,
 	}
-
+	issuer, err := s.post.GetStampIssuer(id)
+	if err != nil {
+		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
+		s.logger.Error(nil, "get stamp issuer: get issuer failed")
+		jsonhttp.BadRequest(w, "cannot get batch")
+		return
+	}
 	if issuer != nil {
 		resp.Utilization = issuer.Utilization()
 		resp.Usable = exists && s.post.IssuerUsable(issuer)
@@ -443,17 +445,8 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 }
 
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
-	if len(idStr) != 64 {
-		s.logger.Error(nil, "topup batch: invalid batch id string length", "string", idStr, "length", len(idStr))
-		jsonhttp.BadRequest(w, "invalid batchID")
-		return
-	}
-	id, err := hex.DecodeString(idStr)
+	id, err := s.ValidateBatchId(w, r)
 	if err != nil {
-		s.logger.Debug("topup batch: decode batch id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "topup batch: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
 
@@ -496,20 +489,10 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
-	if len(idStr) != 64 {
-		s.logger.Error(nil, "dilute batch: invalid batch id string length", "string", idStr, "length", len(idStr))
-		jsonhttp.BadRequest(w, "invalid batchID")
-		return
-	}
-	id, err := hex.DecodeString(idStr)
+	id, err := s.ValidateBatchId(w, r)
 	if err != nil {
-		s.logger.Debug("dilute batch: decode batch id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "dilute batch: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-
 	depthStr := mux.Vars(r)["depth"]
 	depth, err := strconv.ParseUint(depthStr, 10, 8)
 	if err != nil {
