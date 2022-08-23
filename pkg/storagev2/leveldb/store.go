@@ -10,33 +10,34 @@ import (
 	"strings"
 	"sync"
 
-	storageV2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldbErrors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
-	"github.com/syndtr/goleveldb/leveldb/storage"
+	ldbStorage "github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
+
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 type store struct {
-	DB      *leveldb.DB
+	db      *leveldb.DB
 	path    string
 	closeLk sync.RWMutex
 }
 
 const separator = "/"
 
-var _ storageV2.Store = (*store)(nil)
+var _ storage.Store = (*store)(nil)
 
 // NewDatastore returns a new datastore backed by leveldb
 // for path == "", an in memory backend will be chosen (TODO)
-func New(path string, opts *opt.Options) (storageV2.Store, error) {
+func New(path string, opts *opt.Options) (storage.Store, error) {
 	var err error
 	var db *leveldb.DB
 
 	if path == "" {
-		db, err = leveldb.Open(storage.NewMemStorage(), opts)
+		db, err = leveldb.Open(ldbStorage.NewMemStorage(), opts)
 	} else {
 		db, err = leveldb.OpenFile(path, opts)
 		if ldbErrors.IsCorrupted(err) && !opts.GetReadOnly() {
@@ -49,19 +50,19 @@ func New(path string, opts *opt.Options) (storageV2.Store, error) {
 	}
 
 	ds := store{
-		DB:   db,
+		db:   db,
 		path: path,
 	}
 
 	return &ds, nil
 }
 
-func (s *store) Count(key storageV2.Key) (int, error) {
+func (s *store) Count(key storage.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
 	keys := util.BytesPrefix([]byte(key.Namespace() + separator))
-	iter := s.DB.NewIterator(keys, nil)
+	iter := s.db.NewIterator(keys, nil)
 
 	var c int
 	for iter.Next() {
@@ -73,7 +74,7 @@ func (s *store) Count(key storageV2.Key) (int, error) {
 	return c, iter.Error()
 }
 
-func (s *store) Put(item storageV2.Item) error {
+func (s *store) Put(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -83,19 +84,19 @@ func (s *store) Put(item storageV2.Item) error {
 	}
 
 	key := []byte(item.Namespace() + separator + item.ID())
-	return s.DB.Put(key, value, &opt.WriteOptions{Sync: true})
+	return s.db.Put(key, value, &opt.WriteOptions{Sync: true})
 }
 
-func (s *store) Get(item storageV2.Item) error {
+func (s *store) Get(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
 	key := []byte(item.Namespace() + separator + item.ID())
 
-	val, err := s.DB.Get(key, nil)
+	val, err := s.db.Get(key, nil)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
-		return storageV2.ErrNotFound
+		return storage.ErrNotFound
 	}
 
 	if err != nil {
@@ -109,25 +110,25 @@ func (s *store) Get(item storageV2.Item) error {
 	return nil
 }
 
-func (s *store) Has(sKey storageV2.Key) (bool, error) {
+func (s *store) Has(sKey storage.Key) (bool, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
 	key := []byte(sKey.Namespace() + separator + sKey.ID())
 
-	return s.DB.Has(key, nil)
+	return s.db.Has(key, nil)
 }
 
-func (s *store) GetSize(sKey storageV2.Key) (int, error) {
+func (s *store) GetSize(sKey storage.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
 	key := []byte(sKey.Namespace() + separator + sKey.ID())
 
-	val, err := s.DB.Get(key, nil)
+	val, err := s.db.Get(key, nil)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
-		return 0, storageV2.ErrNotFound
+		return 0, storage.ErrNotFound
 	}
 
 	if err != nil {
@@ -137,16 +138,16 @@ func (s *store) GetSize(sKey storageV2.Key) (int, error) {
 	return len(val), nil
 }
 
-func (s *store) Delete(item storageV2.Key) error {
+func (s *store) Delete(item storage.Key) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
 	key := []byte(item.Namespace() + separator + item.ID())
 
-	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
+	return s.db.Delete(key, &opt.WriteOptions{Sync: true})
 }
 
-func (s *store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
+func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -161,11 +162,11 @@ func (s *store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 
 	keys := util.BytesPrefix([]byte(prefix))
 
-	iter := s.DB.NewIterator(keys, nil)
+	iter := s.db.NewIterator(keys, nil)
 
 	nextF := iter.Next
 
-	if q.Order == storageV2.KeyDescendingOrder {
+	if q.Order == storage.KeyDescendingOrder {
 		nextF = func() bool {
 			nextF = iter.Prev
 			return iter.Last()
@@ -184,14 +185,14 @@ func (s *store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 
 		var err error
 
-		var res *storageV2.Result
+		var res *storage.Result
 		switch q.ItemAttribute {
-		case storageV2.QueryItemID, storageV2.QueryItemSize:
-			res = &storageV2.Result{ID: key, Size: len(nextVal)}
-		case storageV2.QueryItem:
+		case storage.QueryItemID, storage.QueryItemSize:
+			res = &storage.Result{ID: key, Size: len(nextVal)}
+		case storage.QueryItem:
 			newItem := q.Factory()
 			err = newItem.Unmarshal(nextVal)
-			res = &storageV2.Result{Entry: newItem}
+			res = &storage.Result{Entry: newItem}
 		}
 
 		if err != nil {
@@ -224,10 +225,10 @@ func (s *store) Iterate(q storageV2.Query, fn storageV2.IterateFn) error {
 func (s *store) Close() (err error) {
 	s.closeLk.Lock()
 	defer s.closeLk.Unlock()
-	return s.DB.Close()
+	return s.db.Close()
 }
 
-type filters []storageV2.Filter
+type filters []storage.Filter
 
 func (f filters) matchAny(k string, v []byte) bool {
 	for _, filter := range f {
