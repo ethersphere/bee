@@ -206,7 +206,7 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 
 		if stop, err := fn(*res); err != nil {
-			retErr = multierror.Append(retErr, fmt.Errorf("failed in iterate function: %w", err))
+			retErr = multierror.Append(retErr, fmt.Errorf("iterate callback function errored: %w", err))
 			break
 		} else if stop {
 			break
