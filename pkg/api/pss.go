@@ -30,8 +30,8 @@ const (
 )
 
 func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
-	topicVar := mux.Vars(r)["topic"]
-	topic := pss.NewTopic(topicVar)
+	topicStr := mux.Vars(r)["topic"]
+	topic := pss.NewTopic(topicStr)
 
 	targetsVar := mux.Vars(r)["targets"]
 	var targets pss.Targets
@@ -103,7 +103,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.pss.Send(r.Context(), topic, payload, stamper, recipient, targets)
 	if err != nil {
-		s.logger.Debug("pss post: send payload failed", "topic", fmt.Sprintf("%x", topic), "error", err)
+		s.logger.Debug("pss post: send payload failed", "topic", topicStr, "error", err)
 		s.logger.Error(nil, "pss post: send payload failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
