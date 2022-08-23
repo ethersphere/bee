@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -414,7 +415,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		publicKey = &swarmPrivateKey.PublicKey
 	}
 
-	logger.Info("swarm public key", "public_key", fmt.Sprintf("%x", crypto.EncodeSecp256k1PublicKey(publicKey)))
+	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
 	libp2pPrivateKey, created, err := keystore.Key("libp2p", password)
 	if err != nil {
@@ -436,7 +437,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		logger.Debug("using existing pss key")
 	}
 
-	logger.Info("pss public key", "public_key", fmt.Sprintf("%x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)))
+	logger.Info("pss public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)))
 
 	// postinst and post scripts inside packaging/{deb,rpm} depend and parse on this log output
 	overlayEthAddress, err := signer.EthereumAddress()
