@@ -5,8 +5,10 @@
 package cidv1_test
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/cidv1"
 )
 
@@ -45,6 +47,12 @@ func TestCIDResolver(t *testing.T) {
 		_, err := r.Resolve("bafybeiekkklkqtypmqav6ytqjbdqucxfwuk5cgige4245d2qhkccuyfnly")
 		if err == nil {
 			t.Fatal("expected error")
+		}
+	})
+	t.Run("fail on invalid CID", func(t *testing.T) {
+		_, err := r.Resolve("bafybeiekk")
+		if !errors.Is(err, resolver.ErrParse) {
+			t.Fatal("expected error", resolver.ErrParse, "got", err)
 		}
 	})
 }

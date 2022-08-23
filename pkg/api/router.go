@@ -246,10 +246,6 @@ func (s *Service) mountAPI() {
 			s.newTracingHandler("bzz-download"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
-		"PATCH": web.ChainHandlers(
-			s.newTracingHandler("bzz-patch"),
-			web.FinalHandlerFunc(s.bzzPatchHandler),
-		),
 	})
 
 	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(

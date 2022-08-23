@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	goens "github.com/wealdtech/go-ens/v3"
 
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/client"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -35,9 +36,6 @@ var (
 	ErrFailedToConnect = errors.New("failed to connect")
 	// ErrResolveFailed denotes that a name could not be resolved.
 	ErrResolveFailed = errors.New("resolve failed")
-	// ErrInvalidContentHash denotes that the value of the contenthash record is
-	// not valid.
-	ErrInvalidContentHash = errors.New("invalid swarm content hash")
 	// errNotImplemented denotes that the function has not been implemented.
 	errNotImplemented = errors.New("function not implemented")
 	// errNameNotRegistered denotes that the name is not registered.
@@ -122,11 +120,16 @@ func (c *Client) Resolve(name string) (Address, error) {
 	// Ensure that the content hash string is in a valid format, eg.
 	// "bzz://<address>".
 	if !strings.HasPrefix(hash, swarmContentHashPrefix) {
-		return swarm.ZeroAddress, fmt.Errorf("contenthash %s: %w", hash, ErrInvalidContentHash)
+		return swarm.ZeroAddress, fmt.Errorf("check content hash prefix %s: %w", hash, resolver.ErrInvalidContentHash)
 	}
 
 	// Trim the prefix and try to parse the result as a bzz address.
-	return swarm.ParseHexAddress(strings.TrimPrefix(hash, swarmContentHashPrefix))
+	addr, err := swarm.ParseHexAddress(strings.TrimPrefix(hash, swarmContentHashPrefix))
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("parse response hash %s: %w", hash, resolver.ErrInvalidContentHash)
+	}
+
+	return addr, nil
 }
 
 // Close closes the RPC connection with the client, terminating all unfinished
@@ -167,25 +170,30 @@ func wrapResolve(registry *goens.Registry, _ common.Address, name string) (strin
 	// Ensure the name is registered.
 	ownerAddress, err := registry.Owner(name)
 	if err != nil {
-		return "", fmt.Errorf("owner: %w", err)
+		return "", fmt.Errorf("owner: %v: %w", err, resolver.ErrNotFound)
 	}
 
 	// If the name is not registered, return an error.
 	if bytes.Equal(ownerAddress.Bytes(), goens.UnknownAddress.Bytes()) {
-		return "", errNameNotRegistered
+		return "", fmt.Errorf("%v: %w", errNameNotRegistered, resolver.ErrNotFound)
 	}
 
 	// Obtain the resolver for this domain name.
 	ensR, err := registry.Resolver(name)
 	if err != nil {
-		return "", fmt.Errorf("resolver: %w", err)
+		return "", fmt.Errorf("resolver: %v: %w", err, resolver.ErrServiceNotAvailable)
 	}
 
 	// Try and read out the content hash record.
 	ch, err := ensR.Contenthash()
 	if err != nil {
-		return "", fmt.Errorf("contenthash: %w", err)
+		return "", fmt.Errorf("contenthash: %v: %w", err, resolver.ErrInvalidContentHash)
 	}
 
-	return goens.ContenthashToString(ch)
+	addr, err := goens.ContenthashToString(ch)
+	if err != nil {
+		return "", fmt.Errorf("contenthash to string: %v: %w", err, resolver.ErrInvalidContentHash)
+	}
+
+	return addr, nil
 }

@@ -25,7 +25,6 @@ import (
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/steward/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -643,29 +642,4 @@ func TestFeedIndirection(t *testing.T) {
 	jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 		jsonhttptest.WithExpectedResponse(updateData),
 	)
-}
-
-func TestBzzReupload(t *testing.T) {
-	var (
-		logger         = log.Noop
-		statestoreMock = statestore.NewStateStore()
-		stewardMock    = &mock.Steward{}
-		storer         = smock.NewStorer()
-		addr           = swarm.NewAddress([]byte{31: 128})
-	)
-	client, _, _, _ := newTestServer(t, testServerOptions{
-		Storer:  storer,
-		Tags:    tags.NewTags(statestoreMock, logger),
-		Logger:  logger,
-		Steward: stewardMock,
-	})
-	jsonhttptest.Request(t, client, http.MethodPatch, "/v1/bzz/"+addr.String(), http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: http.StatusText(http.StatusOK),
-			Code:    http.StatusOK,
-		}),
-	)
-	if !stewardMock.LastAddress().Equal(addr) {
-		t.Fatalf("got address %s want %s", stewardMock.LastAddress().String(), addr.String())
-	}
 }

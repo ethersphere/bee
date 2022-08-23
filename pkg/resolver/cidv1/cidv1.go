@@ -7,6 +7,7 @@ package cidv1
 import (
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
@@ -24,7 +25,7 @@ type Resolver struct{}
 func (Resolver) Resolve(name string) (swarm.Address, error) {
 	id, err := cid.Parse(name)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("failed parsing CID %s err %w", name, err)
+		return swarm.ZeroAddress, fmt.Errorf("failed parsing CID %s err %v: %w", name, err, resolver.ErrParse)
 	}
 
 	switch id.Prefix().GetCodec() {
@@ -32,15 +33,20 @@ func (Resolver) Resolve(name string) (swarm.Address, error) {
 	case SwarmManifestCodec:
 	case SwarmFeedCodec:
 	default:
-		return swarm.ZeroAddress, fmt.Errorf("unsupported codec for CID %d", id.Prefix().GetCodec())
+		return swarm.ZeroAddress, fmt.Errorf("unsupported codec for CID %d: %w", id.Prefix().GetCodec(), resolver.ErrParse)
 	}
 
 	dh, err := multihash.Decode(id.Hash())
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash %v: %w", err, resolver.ErrInvalidContentHash)
 	}
 
-	return swarm.NewAddress(dh.Digest), nil
+	addr, err := swarm.NewAddress(dh.Digest), nil
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("unable to parse digest hash %v: %w", err, resolver.ErrInvalidContentHash)
+	}
+
+	return addr, nil
 }
 
 func (Resolver) Close() error {
