@@ -12,6 +12,7 @@ import (
 	"hash"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -98,7 +99,7 @@ func New(
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
-func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error {
+func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error {
 	// don't add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks
 	val := big.NewInt(0).Add(svc.storer.GetChainState().TotalAmount, svc.storer.GetChainState().CurrentPrice)
@@ -134,13 +135,13 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", cs))
+	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
 // TopUp implements the EventUpdater interface. It tops ups a batch with the
 // given ID with the given amount.
-func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int, txHash []byte) error {
+func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int, txHash common.Hash) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
@@ -162,13 +163,13 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("topped up batch", "batch_id", hex.EncodeToString(b.ID), "old_value", b.Value, "new_value", normalisedBalance, "tx", fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", cs))
+	svc.logger.Debug("topped up batch", "batch_id", hex.EncodeToString(b.ID), "old_value", b.Value, "new_value", normalisedBalance, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
 // UpdateDepth implements the EventUpdater inteface. It sets the new depth of a
 // batch with the given ID.
-func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error {
+func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error {
 	b, err := svc.storer.Get(id)
 	if err != nil {
 		return fmt.Errorf("get: %w", err)
@@ -187,13 +188,13 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("updated depth of batch", "batch_id", hex.EncodeToString(b.ID), "old_depth", b.Depth, "new_depth", depth, "tx", fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", cs))
+	svc.logger.Debug("updated depth of batch", "batch_id", hex.EncodeToString(b.ID), "old_depth", b.Depth, "new_depth", depth, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
 // UpdatePrice implements the EventUpdater interface. It sets the current
 // price from the chain in the service chain state.
-func (svc *batchService) UpdatePrice(price *big.Int, txHash []byte) error {
+func (svc *batchService) UpdatePrice(price *big.Int, txHash common.Hash) error {
 	cs := svc.storer.GetChainState()
 	cs.CurrentPrice = price
 	if err := svc.storer.PutChainState(cs); err != nil {
@@ -205,7 +206,7 @@ func (svc *batchService) UpdatePrice(price *big.Int, txHash []byte) error {
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("updated chain price", "new_price", price, fmt.Sprintf("%x", txHash), "tx_checksum", fmt.Sprintf("%x", sum))
+	svc.logger.Debug("updated chain price", "new_price", price, txHash, "tx_checksum", fmt.Sprintf("%x", sum))
 	return nil
 }
 
@@ -283,12 +284,12 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 // updateChecksum updates the batchservice checksum once an event gets
 // processed. It swaps the existing checksum which is in the hasher
 // with the new checksum and persists it in the statestore.
-func (svc *batchService) updateChecksum(txHash []byte) ([]byte, error) {
-	n, err := svc.checksum.Write(txHash)
+func (svc *batchService) updateChecksum(txHash common.Hash) ([]byte, error) {
+	n, err := svc.checksum.Write(txHash.Bytes())
 	if err != nil {
 		return nil, err
 	}
-	if l := len(txHash); l != n {
+	if l := len(txHash.Bytes()); l != n {
 		return nil, fmt.Errorf("update checksum wrote %d bytes but want %d bytes", n, l)
 	}
 	s := svc.checksum.Sum(nil)

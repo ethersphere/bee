@@ -314,7 +314,6 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 }
 
 func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.Backend, monitor transaction.Monitor, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
-
 	if blockHash != "" {
 		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
 		if len(blockHashTrimmed) != 64 {
@@ -324,7 +323,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("using the provided block hash", "block_hash", fmt.Sprintf("%x", blockHash))
+		logger.Info("using the provided block hash", "block_hash", blockHashTrimmed)
 		return blockHash, nil
 	}
 
@@ -336,7 +335,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 	hash := block.Hash()
 	hashBytes := hash.Bytes()
 
-	logger.Info("using the next block hash from the blockchain", "block_hash", fmt.Sprintf("%x", hashBytes))
+	logger.Info("using the next block hash from the blockchain", "block_hash", hash)
 
 	return hashBytes, nil
 }
