@@ -287,7 +287,6 @@ func InitSwap(
 }
 
 func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString string) ([]byte, error) {
-
 	if trxString != "" {
 		txHashTrimmed := strings.TrimPrefix(trxString, "0x")
 		if len(txHashTrimmed) != 64 {
@@ -297,7 +296,7 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("using the provided transaction hash", "tx_hash", fmt.Sprintf("%x", txHash))
+		logger.Info("using the provided transaction hash", "tx_hash", txHashTrimmed)
 		return txHash, nil
 	}
 
