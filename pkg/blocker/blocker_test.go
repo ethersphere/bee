@@ -5,7 +5,6 @@
 package blocker_test
 
 import (
-	"io"
 	"os"
 	"sync"
 	"testing"
@@ -24,7 +23,7 @@ var (
 	checkTime = time.Millisecond * 100
 	blockTime = time.Second
 	addr      = test.RandomAddress()
-	logger    = log.NewLogger("test", log.WithSink(io.Discard))
+	logger    = log.Noop
 )
 
 func TestMain(m *testing.M) {
