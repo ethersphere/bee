@@ -26,7 +26,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 				t.Fatalf("failed putting new chunk: %v", err)
 			}
 			if exists {
-				t.Fatalf("expected chunk to not exist: %s", ch.Address().String())
+				t.Fatalf("expected chunk to not exist: %s", ch.Address())
 			}
 		}
 	})
@@ -38,7 +38,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 				t.Fatalf("failed putting new chunk: %v", err)
 			}
 			if !exists {
-				t.Fatalf("expected chunk to exist: %s", ch.Address().String())
+				t.Fatalf("expected chunk to exist: %s", ch.Address())
 			}
 		}
 	})
@@ -62,7 +62,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
 			if !exists {
-				t.Fatalf("chunk not found: %s", ch.Address().String())
+				t.Fatalf("chunk not found: %s", ch.Address())
 			}
 		}
 	})
@@ -83,6 +83,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 
 	t.Run("delete chunks", func(t *testing.T) {
 		for idx, ch := range testChunks {
+			// Delete all even numbered indexes along with 0
 			if idx%2 == 0 {
 				err := st.Delete(context.TODO(), ch.Address())
 				if err != nil {
@@ -95,6 +96,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 	t.Run("check deleted chunks", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 == 0 {
+				// Check even numbered indexes are deleted
 				_, err := st.Get(context.TODO(), ch.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("expected storage not found error found: %v", err)
@@ -107,6 +109,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 					t.Fatal("expected chunk to not be found")
 				}
 			} else {
+				// Check rest of the entries are intact
 				readCh, err := st.Get(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
@@ -119,7 +122,7 @@ func RunChunkStoreCorrectnessTests(t *testing.T, st storage.ChunkStore) {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !exists {
-					t.Fatalf("chunk not found: %s", ch.Address().String())
+					t.Fatalf("chunk not found: %s", ch.Address())
 				}
 			}
 		}
