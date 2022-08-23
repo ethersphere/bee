@@ -5,7 +5,7 @@
 package blocker_test
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -24,7 +24,7 @@ var (
 	checkTime = time.Millisecond * 100
 	blockTime = time.Second
 	addr      = test.RandomAddress()
-	logger    = logging.New(ioutil.Discard, 0)
+	logger    = logging.New(io.Discard, 0)
 )
 
 func TestMain(m *testing.M) {
@@ -89,7 +89,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 			mu.Unlock()
 			return nil
 		})
-		logger = logging.New(ioutil.Discard, 0)
+		logger = logging.New(io.Discard, 0)
 		b      = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 	)
 	defer b.Close()

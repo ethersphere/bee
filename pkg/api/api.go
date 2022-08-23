@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net/http"
@@ -398,7 +397,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Debugf("api: auth handler: read request body: %v", err)
 		s.logger.Error("api: auth handler: read request body")
@@ -449,7 +448,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	authToken := keys[1]
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Debugf("api: auth handler: read request body: %v", err)
 		s.logger.Error("api: auth handler: read request body")
