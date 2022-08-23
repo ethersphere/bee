@@ -68,7 +68,7 @@ func New(
 	transactionService transaction.Service,
 	postageService postage.Service,
 	postageStorer postage.Storer,
-	batchService batchservice.Interface,
+
 
 	chainEnabled bool,
 ) Interface {
@@ -83,7 +83,6 @@ func New(
 		transactionService:     transactionService,
 		postageService:         postageService,
 		postageStorer:          postageStorer,
-		batchService:           batchService,
 	}
 }
 

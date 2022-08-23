@@ -293,37 +293,37 @@ func TestPostageGetStamps(t *testing.T) {
 	})
 
 	t.Run("expired Stamp", func(t *testing.T) {
-		eb := postagetesting.MustNewBatch(postagetesting.WithValue(10))
+		eb := postagetesting.MustNewBatch(postagetesting.WithValue(20))
 
-		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(1), 11, 10, 1000, true)
+		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
 		emp := mockpost.New(mockpost.WithIssuer(esi))
-
+		emp.HandleStampExpiry(eb.ID)
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(11)}
-
-		ebs := mock.New(mock.WithChainState(ecs), mock.WithBatch(eb))
+		ebs := mock.New(mock.WithChainState(ecs))
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: big.NewInt(2)})
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{
 					{
-						BatchID:       b.ID,
-						Utilization:   si.Utilization(),
+						BatchID:       eb.ID,
+						Utilization:   esi.Utilization(),
 						Usable:        false,
-						Label:         si.Label(),
-						Depth:         si.Depth(),
+						Label:         esi.Label(),
+						Depth:         esi.Depth(),
 						Amount:        bigint.Wrap(si.Amount()),
-						BucketDepth:   si.BucketDepth(),
-						BlockNumber:   si.BlockNumber(),
-						ImmutableFlag: si.ImmutableFlag(),
+						BucketDepth:   esi.BucketDepth(),
+						BlockNumber:   esi.BlockNumber(),
+						ImmutableFlag: esi.ImmutableFlag(),
 						Exists:        false,
-						BatchTTL:      -1,
+						BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 						Expired:       true,
 					},
 				},
 			}),
 		)
 	})
+
 }
 
 // TestGetAllBatches tests that the endpoint that returns all living
