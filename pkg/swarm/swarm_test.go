@@ -112,7 +112,7 @@ func TestCloser(t *testing.T) {
 	}
 }
 
-func TestBatchID(t *testing.T) {
+func TestBatchID_HexToBatchID(t *testing.T) {
 	tests := []struct {
 		hex   string
 		valid bool
