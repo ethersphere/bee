@@ -72,6 +72,9 @@ func (s *Store) Count(key storageV2.Key) (int, error) {
 }
 
 func (s *Store) Put(item storageV2.Item) error {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
 	value, err := item.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed serializing: %w", err)
@@ -82,6 +85,9 @@ func (s *Store) Put(item storageV2.Item) error {
 }
 
 func (s *Store) Get(item storageV2.Item) error {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
 	key := []byte(item.Namespace() + "/" + item.ID())
 
 	val, err := s.DB.Get(key, nil)
@@ -102,12 +108,18 @@ func (s *Store) Get(item storageV2.Item) error {
 }
 
 func (s *Store) Has(sKey storageV2.Key) (bool, error) {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
 	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	return s.DB.Has(key, nil)
 }
 
 func (s *Store) GetSize(sKey storageV2.Key) (int, error) {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
 	key := []byte(sKey.Namespace() + "/" + sKey.ID())
 
 	val, err := s.DB.Get(key, nil)
@@ -124,6 +136,9 @@ func (s *Store) GetSize(sKey storageV2.Key) (int, error) {
 }
 
 func (s *Store) Delete(item storageV2.Key) error {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
 	key := []byte(item.Namespace() + "/" + item.ID())
 
 	return s.DB.Delete(key, &opt.WriteOptions{Sync: true})
