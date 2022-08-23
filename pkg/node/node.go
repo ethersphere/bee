@@ -263,6 +263,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var unreserveFn func([]byte, uint8) (uint64, error)
 
+	post, err := postage.NewService(stateStore, batchStore, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("postage service load: %w", err)
+	}
+
 	if chainEnabled {
 		var evictFn = func(b []byte) error {
 			_, err := unreserveFn(b, swarm.MaxPO+1)
@@ -272,6 +277,8 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
+
+		batchStore.SetBatchExpiryHandler(post.HandleStampExpiry)
 	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
@@ -601,10 +608,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	unreserveFn = storer.UnreserveBatch
 
 	validStamp := postage.ValidStamp(batchStore)
-	post, err := postage.NewService(stateStore, batchStore, chainID)
-	if err != nil {
-		return nil, fmt.Errorf("postage service load: %w", err)
-	}
+
 	b.postageServiceCloser = post
 
 	var (

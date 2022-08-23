@@ -43,15 +43,7 @@ type StampIssuer struct {
 // upload.
 //
 // BucketDepth must always be smaller than batchDepth otherwise inc() panics.
-func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool, batchStore Storer) *StampIssuer {
-	var isExpired bool
-	exists, err := batchStore.Exists(batchID)
-	if err != nil {
-		return nil
-	}
-	if !exists {
-		isExpired = true
-	}
+func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
 	return &StampIssuer{
 		data: stampIssuerData{
 			Label:         label,
@@ -63,7 +55,6 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 			Buckets:       make([]uint32, 1<<bucketDepth),
 			BlockNumber:   blockNumber,
 			ImmutableFlag: immutableFlag,
-			Expired:       isExpired,
 		},
 	}
 }
@@ -183,4 +174,9 @@ func (si *StampIssuer) Buckets() []uint32 {
 // Expired returns the expired property of stamp
 func (si *StampIssuer) Expired() bool {
 	return si.data.Expired
+}
+
+// SetExpired is setter for Expired property
+func (si *StampIssuer) SetExpired() {
+	si.data.Expired = true
 }

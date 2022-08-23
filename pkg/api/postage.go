@@ -351,6 +351,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		resp.BucketDepth = issuer.BucketDepth()
 		resp.BlockNumber = issuer.BlockNumber()
 		resp.ImmutableFlag = issuer.ImmutableFlag()
+		resp.Expired = issuer.Expired()
 	}
 
 	jsonhttp.OK(w, &resp)

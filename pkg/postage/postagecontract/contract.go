@@ -251,21 +251,6 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			}
 
 			batchID := createdEvent.BatchId[:]
-
-			batch := &postage.Batch{
-				ID:          batchID,
-				Value:       nil,
-				Start:       0,
-				Owner:       c.owner.Bytes(),
-				Depth:       createdEvent.Depth,
-				BucketDepth: createdEvent.BucketDepth,
-				Immutable:   immutable,
-				Expired:     false,
-			}
-			err := c.postageStorer.Save(batch)
-			if err != nil {
-				return nil, err
-			}
 			err = c.postageService.Add(postage.NewStampIssuer(
 				label,
 				c.owner.Hex(),
@@ -275,7 +260,6 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 				createdEvent.BucketDepth,
 				ev.BlockNumber,
 				createdEvent.ImmutableFlag,
-				c.postageStorer,
 			))
 
 			if err != nil {

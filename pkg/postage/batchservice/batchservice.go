@@ -99,10 +99,6 @@ func New(
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchStore.
 func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error {
-	batch, err := svc.storer.Get(id)
-	if err != nil {
-		return fmt.Errorf("get: %w", err)
-	}
 
 	// don't add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks
@@ -112,7 +108,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("batch service: batch %x: %w", id, ErrZeroValueBatch)
 	}
 
-	batchFromEvent := &postage.Batch{
+	batch := &postage.Batch{
 		ID:          id,
 		Owner:       owner,
 		Value:       normalisedBalance,
@@ -120,11 +116,9 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		Depth:       depth,
 		BucketDepth: bucketDepth,
 		Immutable:   immutable,
-		Expired:     false,
 	}
 
-	batch = batchFromEvent
-	err = svc.storer.Save(batch)
+	err := svc.storer.Save(batch)
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}

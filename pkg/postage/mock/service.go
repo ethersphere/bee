@@ -52,6 +52,17 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
+func (m *mockPostage) HandleStampExpiry(id []byte) {
+	m.issuerLock.Lock()
+	defer m.issuerLock.Unlock()
+
+	for _, v := range m.issuersMap {
+		if bytes.Equal(id, v.ID()) {
+			v.SetExpired()
+		}
+	}
+}
+
 func (m *mockPostage) Add(s *postage.StampIssuer) error {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
@@ -73,7 +84,7 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 
 func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
 	if m.acceptAll {
-		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true, nil), nil
+		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true), nil
 	}
 
 	m.issuerLock.Lock()

@@ -118,7 +118,6 @@ func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 		b.BucketDepth,
 		b.Start,
 		b.Immutable,
-		ps.postageStore,
 	))
 }
 
@@ -203,4 +202,16 @@ func (ps *service) keyForIndex(i int) string {
 // to disambiguate batches on different chains, chainID is part of the key
 func (ps *service) key() string {
 	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
+}
+
+func (ps *service) HandleStampExpiry(id []byte) {
+
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	for _, v := range ps.issuers {
+		if bytes.Equal(id, v.ID()) {
+			v.data.Expired = true
+		}
+	}
 }

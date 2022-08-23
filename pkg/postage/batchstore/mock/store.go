@@ -31,6 +31,8 @@ type BatchStore struct {
 	existsFn func([]byte) (bool, error)
 }
 
+func (bs *BatchStore) SetBatchExpiryHandler(fn postage.ExpiredFn) {}
+
 // Option is an option passed to New.
 type Option func(*BatchStore)
 
