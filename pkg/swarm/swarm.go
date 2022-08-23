@@ -166,7 +166,7 @@ type BatchID []byte
 
 // String implements fmt.Stringer.
 func (b BatchID) String() string {
-	return fmt.Sprintf("%x", b.Bytes())
+	return hex.EncodeToString(b.Bytes())
 }
 
 // Bytes returns raw []bytes value for this BatchID.
