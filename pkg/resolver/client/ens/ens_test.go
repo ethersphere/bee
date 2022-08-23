@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	goens "github.com/wealdtech/go-ens/v3"
 
+	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -145,21 +146,21 @@ func TestResolve(t *testing.T) {
 			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
 				return "", nil
 			},
-			wantErr: ens.ErrInvalidContentHash,
+			wantErr: resolver.ErrInvalidContentHash,
 		},
 		{
 			desc: "resolve does not prefix address with /swarm",
 			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
 				return testSwarmAddr.String(), nil
 			},
-			wantErr: ens.ErrInvalidContentHash,
+			wantErr: resolver.ErrInvalidContentHash,
 		},
 		{
 			desc: "resolve returns prefixed address",
 			resolveFn: func(*goens.Registry, common.Address, string) (string, error) {
 				return ens.SwarmContentHashPrefix + testSwarmAddr.String(), nil
 			},
-			wantErr: ens.ErrInvalidContentHash,
+			wantErr: resolver.ErrInvalidContentHash,
 		},
 		{
 			desc: "expect properly set contract address",
