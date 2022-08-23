@@ -79,11 +79,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	opts := o.libp2pOpts
 	opts.Transaction = trx
 
-	senderMatcher := &MockSenderMatcher{
-		BlockHash: blockHash,
-	}
-
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, senderMatcher, o.Logger, nil, opts)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,12 +164,4 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 		t.Fatal(err)
 	}
 	return addrs[0]
-}
-
-type MockSenderMatcher struct {
-	BlockHash []byte
-}
-
-func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
-	return m.BlockHash, nil
 }

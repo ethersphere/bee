@@ -64,7 +64,6 @@ type AdvertisableAddressResolver interface {
 type Service struct {
 	signer                crypto.Signer
 	advertisableAddresser AdvertisableAddressResolver
-	senderMatcher         p2p.SenderMatcher
 	overlay               swarm.Address
 	fullNode              bool
 	transaction           []byte
@@ -92,7 +91,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, isSender p2p.SenderMatcher, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -105,7 +104,6 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		fullNode:              fullNode,
 		validateOverlay:       validateOverlay,
 		transaction:           transaction,
-		senderMatcher:         isSender,
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
@@ -178,18 +176,11 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
-	overlay := swarm.NewAddress(resp.Ack.Address.Overlay)
-
 	if resp.Ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	blockHash, err := s.senderMatcher.Matches(ctx, resp.Ack.Transaction, s.networkID, overlay, false)
-	if err != nil {
-		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
-	}
-
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, blockHash)
+	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, resp.Ack.Transaction)
 	if err != nil {
 		return nil, err
 	}
@@ -310,12 +301,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		}
 	}
 
-	blockHash, err := s.senderMatcher.Matches(ctx, ack.Transaction, s.networkID, overlay, false)
-	if err != nil {
-		return nil, fmt.Errorf("overlay %v verification failed: %w", overlay, err)
-	}
-
-	remoteBzzAddress, err := s.parseCheckAck(&ack, blockHash)
+	remoteBzzAddress, err := s.parseCheckAck(&ack, ack.Transaction)
 	if err != nil {
 		return nil, err
 	}
