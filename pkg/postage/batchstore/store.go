@@ -198,9 +198,9 @@ func (s *store) Save(batch *postage.Batch) error {
 		}
 		return nil
 	case err == nil:
-		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
+		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", batch.ID, batch.Depth, batch.Value.Int64())
 	case err != nil:
-		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
+		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", batch.ID, batch.Depth, batch.Value.Int64(), err)
 	}
 
 	s.logger.Debug("batch saved", "batch_id", batch.ID, "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
@@ -223,7 +223,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 	case errors.Is(err, storage.ErrNotFound):
 		return ErrNotFound
 	case err != nil:
-		return fmt.Errorf("get batch %s: %w", hex.EncodeToString(batch.ID), err)
+		return fmt.Errorf("get batch %s: %w", batch.ID, err)
 	}
 
 	if err := s.store.Delete(valueKey(batch.Value, batch.ID)); err != nil {

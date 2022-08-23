@@ -135,7 +135,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
+	svc.logger.Debug("batch created", "batch_id", batch.ID, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
@@ -163,7 +163,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("topped up batch", "batch_id", hex.EncodeToString(b.ID), "old_value", b.Value, "new_value", normalisedBalance, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
+	svc.logger.Debug("topped up batch", "batch_id", b.ID, "old_value", b.Value, "new_value", normalisedBalance, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
@@ -188,7 +188,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("updated depth of batch", "batch_id", hex.EncodeToString(b.ID), "old_depth", b.Depth, "new_depth", depth, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
+	svc.logger.Debug("updated depth of batch", "batch_id", b.ID, "old_depth", b.Depth, "new_depth", depth, "tx", txHash, "tx_checksum", fmt.Sprintf("%x", cs))
 	return nil
 }
 
