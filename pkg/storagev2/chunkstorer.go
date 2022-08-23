@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -36,6 +37,8 @@ type ChunkStore interface {
 	Has(context.Context, swarm.Address) (bool, error)
 	// Delete a chunk from the store.
 	Delete(context.Context, swarm.Address) error
+
+	io.Closer
 }
 
 type SizeReporter interface {
