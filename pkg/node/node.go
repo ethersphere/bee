@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	//	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -241,7 +240,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	// due to a migration or it's a fresh install.
 	batchStoreExists, err := batchStoreExists(stateStore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("batchstore: exists: %w", err)
 	}
 
 	addressbook := addressbook.New(stateStore)
@@ -459,18 +458,21 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
 	// get old overlay
 	// mine nonce that gives similar new overlay
-
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
-	previousOverlay := false
-	existingOverlay, err := GetExistingOverlay(stateStore)
-	if err == nil {
-		previousOverlay = true
+	if err != nil {
+		return nil, fmt.Errorf("check presence of nonce: %w", err)
+	}
+	if !nonceExists {
+		nonce = make([]byte, 32)
 	}
 
-	if err == nil && previousOverlay && o.FullNodeMode && !nonceExists {
+	existingOverlay, err := GetExistingOverlay(stateStore)
+	if err != nil {
+		logger.Warning("existing overlay", "error", err)
+	}
 
+	if err == nil && o.FullNodeMode && !nonceExists {
 		newOverlayCandidate := swarm.ZeroAddress
-
 		j := uint64(0)
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
