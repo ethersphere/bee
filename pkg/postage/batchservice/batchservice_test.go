@@ -48,7 +48,7 @@ type mockBatchListener struct {
 }
 
 func (m *mockBatchListener) HandleStampExpiry(id []byte) {
-	
+
 }
 
 func (m *mockBatchListener) HandleCreate(b *postage.Batch, topUpAmount *big.Int) error {
