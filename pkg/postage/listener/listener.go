@@ -132,7 +132,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.Depth,
 			c.BucketDepth,
 			c.ImmutableFlag,
-			e.TxHash.Bytes(),
+			e.TxHash,
 		)
 	case batchTopupTopic:
 		c := &batchTopUpEvent{}
@@ -145,7 +145,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.BatchId[:],
 			c.TopupAmount,
 			c.NormalisedBalance,
-			e.TxHash.Bytes(),
+			e.TxHash,
 		)
 	case batchDepthIncreaseTopic:
 		c := &batchDepthIncreaseEvent{}
@@ -158,7 +158,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.BatchId[:],
 			c.NewDepth,
 			c.NormalisedBalance,
-			e.TxHash.Bytes(),
+			e.TxHash,
 		)
 	case priceUpdateTopic:
 		c := &priceUpdateEvent{}
@@ -169,7 +169,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		l.metrics.PriceCounter.Inc()
 		return updater.UpdatePrice(
 			c.Price,
-			e.TxHash.Bytes(),
+			e.TxHash,
 		)
 	default:
 		l.metrics.EventErrors.Inc()
