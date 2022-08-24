@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
@@ -58,7 +57,6 @@ type postageContract struct {
 	transactionService     transaction.Service
 	postageService         postage.Service
 	postageStorer          postage.Storer
-	batchService           batchservice.Interface
 }
 
 func New(
@@ -68,7 +66,6 @@ func New(
 	transactionService transaction.Service,
 	postageService postage.Service,
 	postageStorer postage.Storer,
-
 
 	chainEnabled bool,
 ) Interface {

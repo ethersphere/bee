@@ -39,12 +39,11 @@ type store struct {
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	rs          *reserveState     // the reserve state
-	evictFn     evictFn           // evict function
-	expiredFn   postage.ExpiredFn // expiry function
-	metrics     metrics           // metrics
-	logger      log.Logger
-	postService *postage.Service
+	rs        *reserveState     // the reserve state
+	evictFn   evictFn           // evict function
+	expiredFn postage.ExpiredFn // expiry function
+	metrics   metrics           // metrics
+	logger    log.Logger
 
 	radiusSetter postage.RadiusSetter // setter for radius notifications
 }

@@ -64,7 +64,7 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		}
 		exists, err := s.postageStore.Exists(st.ID())
 		if err != nil {
-			//TODO
+			return false, err
 		}
 		if !exists {
 			st.data.Expired = true
