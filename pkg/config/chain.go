@@ -19,8 +19,8 @@ var (
 	xdaiFactoryAddress         = common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420")
 	goerliLegacyFactoryAddress = common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474")
 	// postage stamp
-	goerliPostageStampContractAddress = common.HexToAddress("0x3a235fd10563fDD954C3199c08f4DA132284287D")
-	xdaiPostageStampContractAddress   = common.HexToAddress("0x6a1a21eca3ab28be85c7ba22b2d6eae5907c900e")
+	goerliPostageStampContractAddress = common.HexToAddress("0x07456430a9878626ba42d4A26D5AfDa0A0Ca9D26")
+	xdaiPostageStampContractAddress   = common.HexToAddress("0x52102F54CdfA1cC9386E34957FD14A80680e9Ba3")
 )
 
 type ChainConfig struct {
