@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net/http"
@@ -405,7 +404,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Debug("auth handler: read request body failed", "error", err)
 		s.logger.Error(nil, "auth handler: read request body failed")
@@ -456,7 +455,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	authToken := keys[1]
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Debug("auth handler: read request body failed", "error", err)
 		s.logger.Error(nil, "auth handler: read request body failed")
