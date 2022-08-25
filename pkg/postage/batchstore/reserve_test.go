@@ -408,7 +408,7 @@ func TestBatchExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if esi.Expired() != true {
+	if !esi.Expired() {
 		t.Fatalf("Want %v, got %v", true, esi.Expired())
 	}
 }
