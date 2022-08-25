@@ -47,10 +47,6 @@ type mockBatchListener struct {
 	diluteCount int
 }
 
-func (m *mockBatchListener) HandleStampExpiry(id []byte) {
-
-}
-
 func (m *mockBatchListener) HandleCreate(b *postage.Batch, topUpAmount *big.Int) error {
 	m.createCount++
 	return nil
