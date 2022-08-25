@@ -278,7 +278,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("postage service load: %w", err)
 	}
 	batchStore.SetBatchExpiryHandler(post)
-	
+
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 		p2pCtx,
 		logger,
