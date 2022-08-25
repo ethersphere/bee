@@ -2,13 +2,13 @@
 
 Thank you for investing your time in contributing to our project!
 
-Before you start contributing please go through this file and also our [coding guidelines](../CODING.md) and [style guide](../CODINGSTYLE.md).
+Before you start contributing please go through this file and also our [coding guidelines](./CODING.md) and [style guide](./CODINGSTYLE.md).
 
 ## Getting started
 
-To get an overview of the project go through the [README](../README.md) file. Bee client is the go implementation of the Swarm decentralized storage layer as described in [The Book of Swarm](). It is important to understand the concepts in this book before you work with the codebase.
+To get an overview of the project go through the [README](./README.md) file. Bee client is the go implementation of the Swarm decentralized storage layer as described in [The Book of Swarm](https://www.ethswarm.org/The-Book-of-Swarm.pdf). It is important to understand the concepts in this book before you work with the codebase.
 
-For any questions you can reach out to us in [discord]().
+For any questions you can reach out to us in [discord](https://discord.com/invite/GU22h2utj6).
 
 ## Issues
 
