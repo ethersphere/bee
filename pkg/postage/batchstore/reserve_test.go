@@ -383,46 +383,33 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 }
 
 func TestBatchExpiry(t *testing.T) {
-
-	batchstore.Capacity = 1
-
-	type chainUpdate struct {
-		block  uint64
-		amount *big.Int
-		radius uint8
-	}
-
-	type testCase struct {
-		name  string
-		add   testBatch
-		chain chainUpdate
-	}
-
-	tc := testCase{
-		name: "Expire Batch",
-		add: testBatch{
-			depth:         50,
-			reserveRadius: 0,
-		},
-		chain: chainUpdate{
-			block:  1,
-			amount: big.NewInt(5),
-			radius: 0,
-		},
-	}
 	store := setupBatchStore(t)
 
-	_ = addBatch(t, store, tc.add.depth, tc.add.value)
-	checkState(t, tc.name, store, tc.add.reserveRadius)
+	batch := postagetest.MustNewBatch(
+		postagetest.WithValue(int64(4)),
+		postagetest.WithDepth(0),
+		postagetest.WithStart(111),
+	)
+	if err := store.Save(batch); err != nil {
+		t.Fatal(err)
+	}
+
+	esi := postage.NewStampIssuer("", "", batch.ID, big.NewInt(3), 11, 10, 1000, true)
+	emp := mockpost.New(mockpost.WithIssuer(esi))
+	store.SetBatchExpiryHandler(emp)
 
 	// update chain state
 	err := store.PutChainState(&postage.ChainState{
-		Block:        tc.chain.block,
-		TotalAmount:  tc.chain.amount,
-		CurrentPrice: big.NewInt(1),
+		Block:        0,
+		TotalAmount:  big.NewInt(10),
+		CurrentPrice: big.NewInt(10),
 	})
 	if err != nil {
-		t.Fatalf("test case: %s, %v", tc.name, err)
+		t.Fatal(err)
+	}
+
+	if esi.Expired() != true {
+		t.Fatalf("Want %v, got %v", true, esi.Expired())
 	}
 }
 
@@ -447,10 +434,6 @@ func setupBatchStore(t *testing.T) postage.Storer {
 
 	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
-
-	esi := postage.NewStampIssuer("", "", postagetest.MustNewID(), big.NewInt(3), 11, 10, 1000, true)
-	emp := mockpost.New(mockpost.WithIssuer(esi))
-	bStore.SetBatchExpiryHandler(emp)
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,
