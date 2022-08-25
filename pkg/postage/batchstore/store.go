@@ -39,13 +39,13 @@ type store struct {
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	rs        *reserveState     // the reserve state
-	evictFn   evictFn           // evict function
-	expiredFn postage.ExpiredFn // expiry function
-	metrics   metrics           // metrics
-	logger    log.Logger
+	rs      *reserveState // the reserve state
+	evictFn evictFn       // evict function
+	metrics metrics       // metrics
+	logger  log.Logger
 
-	radiusSetter postage.RadiusSetter // setter for radius notifications
+	batchExpiry  postage.BatchExpiryHandler // setter for expiring batch
+	radiusSetter postage.RadiusSetter       // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
@@ -83,7 +83,6 @@ func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer,
 		metrics: newMetrics(),
 		logger:  logger.WithName(loggerName).Register(),
 	}
-
 	return s, nil
 }
 
@@ -332,6 +331,6 @@ func valueKeyToID(key []byte) []byte {
 	return key[l-32 : l]
 }
 
-func (s *store) SetBatchExpiryHandler(fn postage.ExpiredFn) {
-	s.expiredFn = fn
+func (s *store) SetBatchExpiryHandler(be postage.BatchExpiryHandler) {
+	s.batchExpiry = be
 }

@@ -36,6 +36,7 @@ type Service interface {
 	GetStampIssuer([]byte) (*StampIssuer, error)
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
+	BatchExpiryHandler
 	io.Closer
 }
 
@@ -56,7 +57,6 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		postageStore: postageStore,
 		chainID:      chainID,
 	}
-
 	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
 		st := &StampIssuer{}
 		if err := st.UnmarshalBinary(value); err != nil {
@@ -67,7 +67,7 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 			return false, err
 		}
 		if !exists {
-			st.data.Expired = true
+			st.SetExpired()
 		}
 		_ = s.add(st)
 		return false, nil
@@ -211,7 +211,7 @@ func (ps *service) HandleStampExpiry(id []byte) {
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(id, v.ID()) {
-			v.data.Expired = true
+			v.SetExpired()
 		}
 	}
 }
