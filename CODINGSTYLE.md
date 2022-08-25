@@ -42,7 +42,11 @@
     - [Specifying Map Capacity Hints](#specifying-map-capacity-hints)
     - [Specifying Slice Capacity](#specifying-slice-capacity)
 
-## Consistent Spelling
+## Consistent Spelling & Naming
+
+Naming is difficult, but prefer the consistency of naming throughout the code base.
+If a naming pattern is already established in the codebase, follow it. If you are unsure, look in the Golang standard library for inspiration.
+It's similar to the gofmt tool, the formatting isn't to everyone's liking, but it is consistent.
 
 Prefer american spellings over British spellings, avoid Latin abbreviations.
 
