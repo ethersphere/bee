@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 )
@@ -381,6 +382,50 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 	}
 }
 
+func TestBatchExpiry(t *testing.T) {
+
+	batchstore.Capacity = 1
+
+	type chainUpdate struct {
+		block  uint64
+		amount *big.Int
+		radius uint8
+	}
+
+	type testCase struct {
+		name  string
+		add   testBatch
+		chain chainUpdate
+	}
+
+	tc := testCase{
+		name: "Expire Batch",
+		add: testBatch{
+			depth:         50,
+			reserveRadius: 0,
+		},
+		chain: chainUpdate{
+			block:  1,
+			amount: big.NewInt(5),
+			radius: 0,
+		},
+	}
+	store := setupBatchStore(t)
+
+	_ = addBatch(t, store, tc.add.depth, tc.add.value)
+	checkState(t, tc.name, store, tc.add.reserveRadius)
+
+	// update chain state
+	err := store.PutChainState(&postage.ChainState{
+		Block:        tc.chain.block,
+		TotalAmount:  tc.chain.amount,
+		CurrentPrice: big.NewInt(1),
+	})
+	if err != nil {
+		t.Fatalf("test case: %s, %v", tc.name, err)
+	}
+}
+
 func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
@@ -402,6 +447,10 @@ func setupBatchStore(t *testing.T) postage.Storer {
 
 	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop)
 	bStore.SetRadiusSetter(noopRadiusSetter{})
+
+	esi := postage.NewStampIssuer("", "", postagetest.MustNewID(), big.NewInt(3), 11, 10, 1000, true)
+	emp := mockpost.New(mockpost.WithIssuer(esi))
+	bStore.SetBatchExpiryHandler(emp)
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,

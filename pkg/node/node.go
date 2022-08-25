@@ -273,11 +273,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
 	}
-	post, err := postage.NewService(stateStore, batchStore, chainID)
-	if err != nil {
-		return nil, fmt.Errorf("postage service load: %w", err)
-	}
-	batchStore.SetBatchExpiryHandler(post)
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
 		p2pCtx,
@@ -606,8 +601,12 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	unreserveFn = storer.UnreserveBatch
 
 	validStamp := postage.ValidStamp(batchStore)
-
+	post, err := postage.NewService(stateStore, batchStore, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("postage service load: %w", err)
+	}
 	b.postageServiceCloser = post
+	batchStore.SetBatchExpiryHandler(post)
 
 	var (
 		postageContractService postagecontract.Interface

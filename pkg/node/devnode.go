@@ -115,7 +115,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	post := mockPost.New()
 
 	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
-	batchStore.SetBatchExpiryHandler(post)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}

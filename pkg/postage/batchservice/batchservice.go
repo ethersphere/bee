@@ -106,7 +106,6 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		// don't do anything
 		return fmt.Errorf("batch service: batch %x: %w", id, ErrZeroValueBatch)
 	}
-
 	batch := &postage.Batch{
 		ID:          id,
 		Owner:       owner,
