@@ -537,11 +537,11 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 					return
 				}
 				if contentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(int64(contentLength))), r.Method).Observe(time.Since(now).Seconds())
+					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(int64(contentLength)), 10), r.Method).Observe(time.Since(now).Seconds())
 				}
 			case http.MethodPost:
 				if r.ContentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(r.ContentLength)), r.Method).Observe(time.Since(now).Seconds())
+					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(r.ContentLength), 10), r.Method).Observe(time.Since(now).Seconds())
 				}
 			}
 		})
