@@ -93,8 +93,8 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	}
 }
 
-// TestStorage  provides correctness testsuite for Storage interface.
-func TestStorage(t *testing.T, s storage.Store) {
+// TestStore provides correctness testsuite for Store interface.
+func TestStore(t *testing.T, s storage.Store) {
 	t.Helper()
 
 	testObjs := []storage.Item{

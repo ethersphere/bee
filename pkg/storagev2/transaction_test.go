@@ -6,10 +6,11 @@ package storage_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 )
 
 func TestTxState(t *testing.T) {
@@ -18,12 +19,12 @@ func TestTxState(t *testing.T) {
 		t.Cleanup(cancel)
 
 		var (
-			txs     = storage.NewTxStatus(ctx)
+			txs     = storage.NewTxState(ctx)
 			timeout = 100 * time.Millisecond
 		)
 
-		if have, want := txs.IsDone(), false; have != want {
-			t.Fatalf("IsDone(): have %t; want %t", have, want)
+		if err := txs.IsDone(); err != nil {
+			t.Fatalf("IsDone(): unexpected error: %v", err)
 		}
 
 		time.AfterFunc(timeout, func() {
@@ -48,8 +49,8 @@ func TestTxState(t *testing.T) {
 			}
 		}
 
-		if have, want := txs.IsDone(), true; have != want {
-			t.Errorf("IsDone(): have %t; want %t", have, want)
+		if err := txs.IsDone(); !errors.Is(err, storage.ErrTxDone) {
+			t.Fatalf("IsDone(): want error %v; have %v", storage.ErrTxDone, err)
 		}
 
 		select {
@@ -64,12 +65,12 @@ func TestTxState(t *testing.T) {
 		t.Cleanup(cancel)
 
 		var (
-			txs     = storage.NewTxStatus(ctx)
+			txs     = storage.NewTxState(ctx)
 			timeout = 100 * time.Millisecond
 		)
 
-		if have, want := txs.IsDone(), false; have != want {
-			t.Fatalf("IsDone(): have %t; want %t", have, want)
+		if err := txs.IsDone(); err != nil {
+			t.Fatalf("IsDone(): unexpected error: %v", err)
 		}
 
 		time.AfterFunc(timeout, func() {
@@ -94,8 +95,8 @@ func TestTxState(t *testing.T) {
 			}
 		}
 
-		if have, want := txs.IsDone(), true; have != want {
-			t.Errorf("IsDone(): have %t; want %t", have, want)
+		if err := txs.IsDone(); !errors.Is(err, context.Canceled) {
+			t.Fatalf("IsDone(): want error %v; have %v", context.Canceled, err)
 		}
 
 		select {
@@ -105,3 +106,5 @@ func TestTxState(t *testing.T) {
 		}
 	})
 }
+
+// TODO: test TxStoreBase and TxChunkStoreBase.

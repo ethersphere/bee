@@ -11,6 +11,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
 
-func TestStoreTestSuite(t *testing.T) {
+func TestChunkStore(t *testing.T) {
 	storagetest.TestChunkStore(t, inmem.New())
 }
