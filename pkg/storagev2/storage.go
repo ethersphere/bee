@@ -144,6 +144,6 @@ type Store interface {
 	// Put inserts or updates the the given Item identified by its Key.ID.
 	Put(Item) error
 
-	// Delete removes the Item with the given Key.ID form the store.
+	// Delete removes the given Item form the store.
 	Delete(Item) error
 }
