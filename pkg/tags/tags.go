@@ -165,7 +165,7 @@ func (ts *Tags) MarshalJSON() (out []byte, err error) {
 
 		// don't persist tags which were already done
 		if !val.Done(StateSynced) {
-			key := strconv.Itoa(int(k.(uint32)))
+			key := strconv.FormatInt(int64(k.(uint32)), 10)
 			m[key] = val
 		}
 		return true
@@ -300,5 +300,5 @@ func (ts *Tags) Close() (err error) {
 }
 
 func tagKey(uid uint32) string {
-	return tagKeyPrefix + strconv.Itoa(int(uid))
+	return tagKeyPrefix + strconv.FormatInt(int64(uid), 10)
 }
