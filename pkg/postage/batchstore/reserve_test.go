@@ -413,6 +413,37 @@ func TestBatchExpiry(t *testing.T) {
 	}
 }
 
+func TestUnexpiredBatch(t *testing.T) {
+	store := setupBatchStore(t)
+
+	batch := postagetest.MustNewBatch(
+		postagetest.WithValue(int64(14)),
+		postagetest.WithDepth(0),
+		postagetest.WithStart(111),
+	)
+	if err := store.Save(batch); err != nil {
+		t.Fatal(err)
+	}
+
+	esi := postage.NewStampIssuer("", "", batch.ID, big.NewInt(15), 11, 10, 1000, true)
+	emp := mockpost.New(mockpost.WithIssuer(esi))
+	store.SetBatchExpiryHandler(emp)
+
+	// update chain state
+	err := store.PutChainState(&postage.ChainState{
+		Block:        0,
+		TotalAmount:  big.NewInt(10),
+		CurrentPrice: big.NewInt(10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if esi.Expired() {
+		t.Fatalf("Want %v, got %v", false, esi.Expired())
+	}
+}
+
 func setupBatchStore(t *testing.T) postage.Storer {
 	t.Helper()
 	dir := t.TempDir()
