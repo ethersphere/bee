@@ -117,6 +117,9 @@ func (s *store) cleanup() error {
 		if err != nil {
 			return fmt.Errorf("delete batch %x: %w", b.ID, err)
 		}
+		if s.batchExpiry != nil {
+			s.batchExpiry.HandleStampExpiry(b.ID)
+		}
 	}
 
 	return nil
