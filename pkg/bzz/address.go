@@ -61,14 +61,14 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 	}, nil
 }
 
-func ParseAddress(underlay, overlay, signature, trxHash, blockHash []byte, validateOverlay bool, networkID uint64) (*Address, error) {
+func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bool, networkID uint64) (*Address, error) {
 	recoveredPK, err := crypto.Recover(signature, generateSignData(underlay, overlay, networkID))
 	if err != nil {
 		return nil, ErrInvalidAddress
 	}
 
 	if validateOverlay {
-		recoveredOverlay, err := crypto.NewOverlayAddress(*recoveredPK, networkID, blockHash)
+		recoveredOverlay, err := crypto.NewOverlayAddress(*recoveredPK, networkID, nonce)
 		if err != nil {
 			return nil, ErrInvalidAddress
 		}
@@ -91,7 +91,7 @@ func ParseAddress(underlay, overlay, signature, trxHash, blockHash []byte, valid
 		Underlay:        multiUnderlay,
 		Overlay:         swarm.NewAddress(overlay),
 		Signature:       signature,
-		Transaction:     trxHash,
+		Transaction:     nonce,
 		EthereumAddress: ethAddress,
 	}, nil
 }

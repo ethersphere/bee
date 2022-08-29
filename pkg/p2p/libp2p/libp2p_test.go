@@ -43,10 +43,9 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		t.Fatal(err)
 	}
 
-	trx := common.HexToHash("0x1").Bytes()
-	blockHash := common.HexToHash("0x2").Bytes()
+	nonce := common.HexToHash("0x1").Bytes()
 
-	overlay, err = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID, blockHash)
+	overlay, err = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,13 +76,9 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		o.lightNodes = lightnode.NewContainer(overlay)
 	}
 	opts := o.libp2pOpts
-	opts.Transaction = trx
+	opts.Nonce = nonce
 
-	senderMatcher := &MockSenderMatcher{
-		BlockHash: blockHash,
-	}
-
-	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, senderMatcher, o.Logger, nil, opts)
+	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,12 +163,4 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr
 		t.Fatal(err)
 	}
 	return addrs[0]
-}
-
-type MockSenderMatcher struct {
-	BlockHash []byte
-}
-
-func (m MockSenderMatcher) Matches(context.Context, []byte, uint64, swarm.Address, bool) ([]byte, error) {
-	return m.BlockHash, nil
 }

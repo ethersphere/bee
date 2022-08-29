@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/netstore"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
@@ -65,13 +64,12 @@ const (
 func bootstrapNode(
 	addr string,
 	swarmAddress swarm.Address,
-	txHash []byte,
+	nonce []byte,
 	chainID int64,
 	overlayEthAddress common.Address,
 	addressbook addressbook.Interface,
 	bootnodes []ma.Multiaddr,
 	lightNodes *lightnode.Container,
-	senderMatcher p2p.SenderMatcher,
 	chequebookService chequebook.Service,
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
@@ -104,13 +102,13 @@ func bootstrapNode(
 		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown()).ErrorOrNil()
 	}()
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       false,
-		Transaction:    txHash,
+		Nonce:          nonce,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
