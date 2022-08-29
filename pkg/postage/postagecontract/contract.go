@@ -246,7 +246,6 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			}
 
 			batchID := createdEvent.BatchId[:]
-
 			err = c.postageService.Add(postage.NewStampIssuer(
 				label,
 				c.owner.Hex(),

@@ -80,6 +80,8 @@ type Storer interface {
 
 	// Reset resets chain state and reserve state of the storage.
 	Reset() error
+
+	SetBatchExpiryHandler(BatchExpiryHandler)
 }
 
 // RadiusSetter is used as a callback when the radius of a node changes.
@@ -97,4 +99,8 @@ type BatchEventListener interface {
 	HandleCreate(*Batch, *big.Int) error
 	HandleTopUp(id []byte, newBalance *big.Int)
 	HandleDepthIncrease(id []byte, newDepth uint8)
+}
+
+type BatchExpiryHandler interface {
+	HandleStampExpiry([]byte)
 }

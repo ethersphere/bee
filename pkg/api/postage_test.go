@@ -255,6 +255,7 @@ func TestPostageGetStamps(t *testing.T) {
 						ImmutableFlag: si.ImmutableFlag(),
 						Exists:        true,
 						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+						Expired:       false,
 					},
 				},
 			}),
@@ -290,6 +291,67 @@ func TestPostageGetStamps(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("expired Stamp", func(t *testing.T) {
+		eb := postagetesting.MustNewBatch(postagetesting.WithValue(20))
+
+		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
+		emp := mockpost.New(mockpost.WithIssuer(esi))
+		emp.HandleStampExpiry(eb.ID)
+		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
+		ebs := mock.New(mock.WithChainState(ecs))
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: big.NewInt(2)})
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
+				Stamps: []api.PostageStampResponse{
+					{
+						BatchID:       eb.ID,
+						Utilization:   esi.Utilization(),
+						Usable:        false,
+						Label:         esi.Label(),
+						Depth:         esi.Depth(),
+						Amount:        bigint.Wrap(si.Amount()),
+						BucketDepth:   esi.BucketDepth(),
+						BlockNumber:   esi.BlockNumber(),
+						ImmutableFlag: esi.ImmutableFlag(),
+						Exists:        false,
+						BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+						Expired:       true,
+					},
+				},
+			}),
+		)
+	})
+
+	t.Run("single expired Stamp", func(t *testing.T) {
+		eb := postagetesting.MustNewBatch(postagetesting.WithValue(20))
+
+		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
+		emp := mockpost.New(mockpost.WithIssuer(esi))
+		emp.HandleStampExpiry(eb.ID)
+		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
+		ebs := mock.New(mock.WithChainState(ecs))
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: big.NewInt(2)})
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(eb.ID), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
+				BatchID:       eb.ID,
+				Utilization:   esi.Utilization(),
+				Usable:        false,
+				Label:         esi.Label(),
+				Depth:         esi.Depth(),
+				Amount:        bigint.Wrap(esi.Amount()),
+				BucketDepth:   esi.BucketDepth(),
+				BlockNumber:   esi.BlockNumber(),
+				ImmutableFlag: esi.ImmutableFlag(),
+				Exists:        false,
+				BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				Expired:       true,
+			}),
+		)
+	})
+
 }
 
 // TestGetAllBatches tests that the endpoint that returns all living

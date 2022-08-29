@@ -606,6 +606,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("postage service load: %w", err)
 	}
 	b.postageServiceCloser = post
+	batchStore.SetBatchExpiryHandler(post)
 
 	var (
 		postageContractService postagecontract.Interface
