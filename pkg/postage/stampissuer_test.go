@@ -40,28 +40,3 @@ func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	}
 	return postage.NewStampIssuer("label", "keyID", id, big.NewInt(3), 16, 8, block, true)
 }
-
-func TestGetUnexpiredStampIssuer(t *testing.T) {
-	id := make([]byte, 32)
-	_, err := io.ReadFull(crand.Reader, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	si := postage.NewStampIssuer("label", "keyID", id, big.NewInt(3), 16, 8, 1, true)
-	if si.Expired() != false {
-		t.Fatalf(" stampIssuer.Expired() != false , required %v, is %v \n", false, si.Expired())
-	}
-}
-
-func TestGetExpiredStampIssuer(t *testing.T) {
-	id := make([]byte, 32)
-	_, err := io.ReadFull(crand.Reader, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	si := postage.NewStampIssuer("label", "keyID", id, big.NewInt(3), 16, 8, 1, true)
-	si.SetExpired()
-	if si.Expired() != true {
-		t.Fatalf(" stampIssuer.Expired() != true , required %v, is %v \n", true, si.Expired())
-	}
-}
