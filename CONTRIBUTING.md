@@ -74,6 +74,8 @@ Once you have achieved the said consensus on the tasks you can start working on 
 - Get review comments.
 - Resolve all the comments and make sure CI is green.
 
+Congratulations :tada::tada: The Bee team thanks you :sparkles:.
+
 ## Code of conduct
 
 - Please be kind and courteous in code-review comments. There’s no need to be mean or rude.
@@ -82,4 +84,3 @@ Once you have achieved the said consensus on the tasks you can start working on 
 - Keep in mind that the Bee team is responsible for maintaining the codebase and therefore has the right to make final decisions.
 - Likewise any [brilliant jerks](https://www.brendangregg.com/blog/2017-11-13/brilliant-jerks.html), spamming, trolling, flaming, baiting or other attention-stealing behavior is not welcome.
 
-Congratulations :tada::tada: The Bee team thanks you :sparkles:.
