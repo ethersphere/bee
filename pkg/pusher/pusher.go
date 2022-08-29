@@ -295,7 +295,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 		return fmt.Errorf("pusher: receipt recover: %w", err)
 	}
 
-	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.BlockHash)
+	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.Nonce)
 	if err != nil {
 		return fmt.Errorf("pusher: receipt storer address: %w", err)
 	}

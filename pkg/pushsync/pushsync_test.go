@@ -683,7 +683,7 @@ func TestSignsReceipt(t *testing.T) {
 		t.Fatal("receipt signature is not present")
 	}
 
-	if !bytes.Equal(blockHash.Bytes(), receipt.BlockHash) {
+	if !bytes.Equal(blockHash.Bytes(), receipt.Nonce) {
 		t.Fatal("receipt block hash do not match")
 	}
 }
