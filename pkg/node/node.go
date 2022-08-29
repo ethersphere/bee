@@ -594,7 +594,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		EnableWS:        o.EnableWS,
 		WelcomeMessage:  o.WelcomeMessage,
 		FullNode:        o.FullNodeMode,
-		Transaction:     nonce,
+		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
 	})
 	if err != nil {

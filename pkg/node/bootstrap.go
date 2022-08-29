@@ -64,7 +64,7 @@ const (
 func bootstrapNode(
 	addr string,
 	swarmAddress swarm.Address,
-	txHash []byte,
+	nonce []byte,
 	chainID int64,
 	overlayEthAddress common.Address,
 	addressbook addressbook.Interface,
@@ -108,7 +108,7 @@ func bootstrapNode(
 		EnableWS:       o.EnableWS,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       false,
-		Transaction:    txHash,
+		Nonce:          nonce,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)

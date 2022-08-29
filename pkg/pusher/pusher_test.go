@@ -90,7 +90,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
 			Signature: signature,
-			BlockHash: block,
+			Nonce:     block,
 		}
 		return receipt, nil
 	})
@@ -147,7 +147,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
 			Signature: signature,
-			BlockHash: block,
+			Nonce:     block,
 		}
 		return receipt, nil
 	})
@@ -192,7 +192,7 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
 			Signature: signature,
-			BlockHash: block,
+			Nonce:     block,
 		}
 		return receipt, nil
 	})
@@ -312,7 +312,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
 			Signature: signature,
-			BlockHash: block,
+			Nonce:     block,
 		}
 		return receipt, nil
 	})
@@ -362,7 +362,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
 			Signature: signature,
-			BlockHash: block,
+			Nonce:     block,
 		}
 		return receipt, nil
 	})
@@ -411,7 +411,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
 			Signature: signature,
-			BlockHash: block,
+			Nonce:     block,
 		}
 		return receipt, nil
 	})

@@ -120,7 +120,7 @@ type Options struct {
 	FullNode        bool
 	LightNodeLimit  int
 	WelcomeMessage  string
-	Transaction     []byte
+	Nonce           []byte
 	ValidateOverlay bool
 	hostFactory     func(...libp2p.Option) (host.Host, error)
 }
@@ -249,7 +249,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Transaction, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}

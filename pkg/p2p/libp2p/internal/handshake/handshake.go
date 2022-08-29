@@ -66,7 +66,7 @@ type Service struct {
 	advertisableAddresser AdvertisableAddressResolver
 	overlay               swarm.Address
 	fullNode              bool
-	transaction           []byte
+	nonce                 []byte
 	networkID             uint64
 	validateOverlay       bool
 	welcomeMessage        atomic.Value
@@ -91,7 +91,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, transaction []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -103,7 +103,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		networkID:             networkID,
 		fullNode:              fullNode,
 		validateOverlay:       validateOverlay,
-		transaction:           transaction,
+		nonce:                 nonce,
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
@@ -166,7 +166,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.transaction)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, resp.Ack.Transaction)
+	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, resp.Ack.Nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		},
 		NetworkID:      s.networkID,
 		FullNode:       s.fullNode,
-		Transaction:    s.transaction,
+		Nonce:          s.nonce,
 		WelcomeMessage: welcomeMessage,
 	}
 
@@ -249,7 +249,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.transaction)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 			},
 			NetworkID:      s.networkID,
 			FullNode:       s.fullNode,
-			Transaction:    s.transaction,
+			Nonce:          s.nonce,
 			WelcomeMessage: welcomeMessage,
 		},
 	}); err != nil {
@@ -301,7 +301,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		}
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(&ack, ack.Transaction)
+	remoteBzzAddress, err := s.parseCheckAck(&ack, ack.Nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Transaction, blockHash, s.validateOverlay, s.networkID)
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, blockHash, s.validateOverlay, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
 	}

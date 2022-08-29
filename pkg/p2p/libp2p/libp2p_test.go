@@ -43,7 +43,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		t.Fatal(err)
 	}
 
-	trx := common.HexToHash("0x1").Bytes()
+	nonce := common.HexToHash("0x1").Bytes()
 	blockHash := common.HexToHash("0x2").Bytes()
 
 	overlay, err = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID, blockHash)
@@ -77,7 +77,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		o.lightNodes = lightnode.NewContainer(overlay)
 	}
 	opts := o.libp2pOpts
-	opts.Transaction = trx
+	opts.Nonce = nonce
 
 	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
 	if err != nil {
