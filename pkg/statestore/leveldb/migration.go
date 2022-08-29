@@ -42,6 +42,7 @@ const (
 	dbSchemaSwapAddr        = "swapaddr"
 	dBSchemaKademliaMetrics = "kademlia-metrics"
 	dBSchemaBatchStore      = "batchstore"
+	dBSchemaBatchStoreV2    = "batchstoreV2"
 )
 
 var (
@@ -64,6 +65,7 @@ var schemaMigrations = []migration{
 	{name: dbSchemaSwapAddr, fn: migrateSwap},
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
 	{name: dBSchemaBatchStore, fn: migrateBatchstore},
+	{name: dBSchemaBatchStoreV2, fn: migrateBatchstoreV2},
 }
 
 func migrateFB(s *Store) error {
@@ -72,6 +74,20 @@ func migrateFB(s *Store) error {
 		return err
 	}
 	return deleteKeys(s, collectedKeys)
+}
+
+func migrateBatchstoreV2(s *Store) error {
+	for _, pfx := range []string{"batchstore_", "verified_overlay_"} {
+		collectedKeys, err := collectKeys(s, pfx)
+		if err != nil {
+			return err
+		}
+		if err := deleteKeys(s, collectedKeys); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func migrateBatchstore(s *Store) error {
