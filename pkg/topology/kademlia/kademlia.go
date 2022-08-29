@@ -1369,7 +1369,7 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	if status == p2p.ReachabilityStatusUnknown {
 		return
 	}
-	k.logger.Info("reachability updated", "reachability", status)
+	k.logger.Debug("reachability updated", "reachability", status)
 	k.reachability = status
 	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
@@ -1447,7 +1447,7 @@ func (k *Kad) SetStorageRadius(d uint8) {
 
 	k.storageRadius = d
 	k.metrics.CurrentStorageDepth.Set(float64(k.storageRadius))
-	k.logger.Tracef("kademlia: set storage radius %d", k.storageRadius)
+	k.logger.Debug("kademlia set storage radius", "radius", k.storageRadius)
 
 	oldDepth := k.depth
 	k.recalcDepth()

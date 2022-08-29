@@ -10,12 +10,10 @@ package puller
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"sync"
 	"time"
 
-	"github.com/aws/smithy-go/logging"
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -57,7 +55,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger logging.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)

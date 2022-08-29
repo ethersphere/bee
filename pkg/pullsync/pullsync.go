@@ -44,7 +44,6 @@ const (
 	rateWindowSize = 5 * time.Minute // rate tracker window size
 )
 
-const logMore = false // enable this for more logging
 const MaxCursor = math.MaxUint64
 
 var (

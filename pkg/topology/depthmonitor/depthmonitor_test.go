@@ -5,12 +5,11 @@
 package depthmonitor_test
 
 import (
-	"io"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -48,7 +47,7 @@ func newTestSvc(
 		batchStore = bs
 	}
 
-	return depthmonitor.New(topo, syncer, reserve, batchStore, logging.New(io.Discard, 5), warmupTime)
+	return depthmonitor.New(topo, syncer, reserve, batchStore, log.Noop, warmupTime)
 }
 
 func TestDepthMonitorService(t *testing.T) {

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	topologyDriver "github.com/ethersphere/bee/pkg/topology"
 )
+
+const loggerName = "depthmonitor"
 
 var (
 	manageWait          = 5 * time.Minute
@@ -47,7 +49,7 @@ type Service struct {
 	topology Topology
 	syncer   SyncReporter
 	reserve  ReserveReporter
-	logger   logging.Logger
+	logger   log.Logger
 	bs       postage.Storer
 	quit     chan struct{} // to request service to stop
 	stopped  chan struct{} // to signal stopping of bg worker
@@ -59,7 +61,7 @@ func New(
 	syncer SyncReporter,
 	reserve ReserveReporter,
 	bs postage.Storer,
-	logger logging.Logger,
+	logger log.Logger,
 	warmupTime time.Duration,
 ) *Service {
 
@@ -68,7 +70,7 @@ func New(
 		syncer:   syncer,
 		reserve:  reserve,
 		bs:       bs,
-		logger:   logger,
+		logger:   logger.WithName(loggerName).Register(),
 		quit:     make(chan struct{}),
 		stopped:  make(chan struct{}),
 	}
@@ -90,11 +92,11 @@ func (s *Service) manage(warmupTime time.Duration) {
 		if radius == 0 {
 			radius = reserveRadius
 		}
-		s.logger.Infof("depthmonitor: warmup period complete, starting worker with initial depth %d", radius)
+		s.logger.Info("depthmonitor: warmup period complete, starting worker", "initial depth", radius)
 		return radius
 	})
 	if err != nil {
-		s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
+		s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 	}
 
 	// wait for warmup
@@ -115,12 +117,12 @@ func (s *Service) manage(warmupTime time.Duration) {
 
 		currentSize, err := s.reserve.ReserveSize()
 		if err != nil {
-			s.logger.Errorf("depthmonitor: failed reading reserve size %v", err)
+			s.logger.Error(err, "depthmonitor: failed reading reserve size")
 			continue
 		}
 
 		rate := s.syncer.Rate()
-		s.logger.Tracef("depthmonitor: current size %d, %.1f chunks/sec rate", currentSize, rate)
+		s.logger.Debug("depthmonitor size and rate", "current size", currentSize, "chunks/sec rate", rate)
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
@@ -132,12 +134,12 @@ func (s *Service) manage(warmupTime time.Duration) {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > minimumRadius {
 					radius--
-					s.logger.Infof("depthmonitor: reducing storage depth to %d", radius)
+					s.logger.Info("depthmonitor: reducing storage depth", "depth", radius)
 				}
 				return radius
 			})
 			if err != nil {
-				s.logger.Errorf("depthmonitor: batchstore set storage radius: %v", err)
+				s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 			}
 		}
 	}

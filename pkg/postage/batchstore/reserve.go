@@ -164,7 +164,7 @@ func (s *store) computeRadius() error {
 	if s.rs.Radius < s.rs.StorageRadius {
 		s.rs.StorageRadius = s.rs.Radius
 		if err := s.lowerBatchStorageRadius(); err != nil {
-			s.logger.Errorf("batchstore: lower batch storage radius: %v", err)
+			s.logger.Error(err, "batchstore: lower batch storage radius")
 		}
 	}
 

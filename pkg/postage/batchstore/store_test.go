@@ -6,12 +6,10 @@ package batchstore_test
 
 import (
 	"errors"
-	"io"
 	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/logging"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
@@ -195,7 +193,7 @@ func TestBatchStore_SetStorageRadius(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
-	batchStore, _ := batchstore.New(stateStore, nil, logging.New(io.Discard, 0))
+	batchStore, _ := batchstore.New(stateStore, nil, log.Noop)
 
 	_ = batchStore.SetStorageRadius(func(uint8) uint8 {
 		return oldStorageRadius
