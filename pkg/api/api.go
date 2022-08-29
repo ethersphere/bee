@@ -54,6 +54,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
@@ -173,6 +174,8 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
+
+	validator *validator.Validate
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -232,7 +235,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.transaction = transaction
 	s.batchStore = batchStore
 	s.metricsRegistry = newDebugMetrics()
-
+	s.validator = validator.New()
 	return s
 }
 
