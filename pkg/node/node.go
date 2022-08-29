@@ -468,6 +468,9 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	existingOverlay, err := GetExistingOverlay(stateStore)
 	if err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("get existing overlay: %w", err)
+		}
 		logger.Warning("existing overlay", "error", err)
 	}
 
