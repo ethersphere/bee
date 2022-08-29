@@ -66,7 +66,6 @@ func New(
 	transactionService transaction.Service,
 	postageService postage.Service,
 	postageStorer postage.Storer,
-
 	chainEnabled bool,
 ) Interface {
 	if !chainEnabled {

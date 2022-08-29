@@ -112,8 +112,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.stateStoreCloser = stateStore
 
-	post := mockPost.New()
-
 	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
@@ -239,6 +237,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	traversalService := traversal.New(storer)
 
+	post := mockPost.New()
 	postageContract := mockPostContract.New(
 		mockPostContract.WithCreateBatchFunc(
 			func(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
