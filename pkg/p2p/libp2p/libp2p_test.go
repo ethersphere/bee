@@ -44,9 +44,8 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 
 	nonce := common.HexToHash("0x1").Bytes()
-	blockHash := common.HexToHash("0x2").Bytes()
 
-	overlay, err = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID, blockHash)
+	overlay, err = crypto.NewOverlayAddress(swarmKey.PublicKey, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}

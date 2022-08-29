@@ -180,7 +180,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack, resp.Ack.Nonce)
+	remoteBzzAddress, err := s.parseCheckAck(resp.Ack)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +301,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		}
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(&ack, ack.Nonce)
+	remoteBzzAddress, err := s.parseCheckAck(&ack)
 	if err != nil {
 		return nil, err
 	}
@@ -335,8 +335,8 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.Pretty()))
 }
 
-func (s *Service) parseCheckAck(ack *pb.Ack, blockHash []byte) (*bzz.Address, error) {
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, blockHash, s.validateOverlay, s.networkID)
+func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
 	}
