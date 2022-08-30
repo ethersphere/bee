@@ -7,16 +7,15 @@ package leveldbstore_test
 import (
 	"testing"
 
-	ldb "github.com/ethersphere/bee/pkg/storagev2/leveldb"
-	storetesting "github.com/ethersphere/bee/pkg/storagev2/testsuite"
+	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
+	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 func TestStoreTestSuite(t *testing.T) {
-	dir := t.TempDir()
-	st, err := ldb.New(dir, new(opt.Options))
+	store, err := leveldbstore.New(t.TempDir(), new(opt.Options))
 	if err != nil {
 		t.Fatal(err)
 	}
-	storetesting.RunCorrectnessTests(t, st)
+	storagetest.TestStore(t, store)
 }

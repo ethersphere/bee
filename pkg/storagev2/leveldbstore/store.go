@@ -20,18 +20,32 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
+const separator = "/"
+
+// filters is a decorator for a slice of storage.Filters
+// that helps with its evaluation.
+type filters []storage.Filter
+
+// matchAny returns true if any of the filters match the item.
+func (f filters) matchAny(k string, v []byte) bool {
+	for _, filter := range f {
+		if filter(k, v) {
+			return true
+		}
+	}
+	return false
+}
+
+var _ storage.Store = (*store)(nil)
+
 type store struct {
 	db      *leveldb.DB
 	path    string
 	closeLk sync.RWMutex
 }
 
-const separator = "/"
-
-var _ storage.Store = (*store)(nil)
-
-// NewDatastore returns a new datastore backed by leveldb
-// for path == "", an in memory backend will be chosen (TODO)
+// New returns a new storage.Store backed by leveldb.
+// If path == "", the leveldb will run with in memory backend storage.
 func New(path string, opts *opt.Options) (storage.Store, error) {
 	var err error
 	var db *leveldb.DB
@@ -57,36 +71,14 @@ func New(path string, opts *opt.Options) (storage.Store, error) {
 	return &ds, nil
 }
 
-func (s *store) Count(key storage.Key) (int, error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
-	keys := util.BytesPrefix([]byte(key.Namespace() + separator))
-	iter := s.db.NewIterator(keys, nil)
-
-	var c int
-	for iter.Next() {
-		c++
-	}
-
-	iter.Release()
-
-	return c, iter.Error()
+// Close implements the storage.Store interface.
+func (s *store) Close() (err error) {
+	s.closeLk.Lock()
+	defer s.closeLk.Unlock()
+	return s.db.Close()
 }
 
-func (s *store) Put(item storage.Item) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
-	value, err := item.Marshal()
-	if err != nil {
-		return fmt.Errorf("failed serializing: %w", err)
-	}
-
-	key := []byte(item.Namespace() + separator + item.ID())
-	return s.db.Put(key, value, &opt.WriteOptions{Sync: true})
-}
-
+// Get implements the storage.Store interface.
 func (s *store) Get(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
@@ -110,6 +102,7 @@ func (s *store) Get(item storage.Item) error {
 	return nil
 }
 
+// Has implements the storage.Store interface.
 func (s *store) Has(sKey storage.Key) (bool, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
@@ -119,6 +112,7 @@ func (s *store) Has(sKey storage.Key) (bool, error) {
 	return s.db.Has(key, nil)
 }
 
+// GetSize implements the storage.Store interface.
 func (s *store) GetSize(sKey storage.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
@@ -138,15 +132,7 @@ func (s *store) GetSize(sKey storage.Key) (int, error) {
 	return len(val), nil
 }
 
-func (s *store) Delete(item storage.Key) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
-	key := []byte(item.Namespace() + separator + item.ID())
-
-	return s.db.Delete(key, &opt.WriteOptions{Sync: true})
-}
-
+// Iterate implements the storage.Store interface.
 func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
@@ -222,20 +208,44 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	return retErr.ErrorOrNil()
 }
 
-func (s *store) Close() (err error) {
-	s.closeLk.Lock()
-	defer s.closeLk.Unlock()
-	return s.db.Close()
-}
+// Count implements the storage.Store interface.
+func (s *store) Count(key storage.Key) (int, error) {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
 
-type filters []storage.Filter
+	keys := util.BytesPrefix([]byte(key.Namespace() + separator))
+	iter := s.db.NewIterator(keys, nil)
 
-func (f filters) matchAny(k string, v []byte) bool {
-	for _, filter := range f {
-		if filter(k, v) {
-			return true
-		}
+	var c int
+	for iter.Next() {
+		c++
 	}
 
-	return false
+	iter.Release()
+
+	return c, iter.Error()
+}
+
+// Put implements the storage.Store interface.
+func (s *store) Put(item storage.Item) error {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
+	value, err := item.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed serializing: %w", err)
+	}
+
+	key := []byte(item.Namespace() + separator + item.ID())
+	return s.db.Put(key, value, &opt.WriteOptions{Sync: true})
+}
+
+// Delete implements the storage.Store interface.
+func (s *store) Delete(item storage.Item) error {
+	s.closeLk.RLock()
+	defer s.closeLk.RUnlock()
+
+	key := []byte(item.Namespace() + separator + item.ID())
+
+	return s.db.Delete(key, &opt.WriteOptions{Sync: true})
 }
