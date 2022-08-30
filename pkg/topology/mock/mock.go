@@ -161,7 +161,7 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Filter,
 	return peerAddr, nil
 }
 
-func (d *mock) SubscribePeersChange() (c <-chan struct{}, unsubscribe func()) {
+func (d *mock) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }
 

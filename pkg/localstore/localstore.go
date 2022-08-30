@@ -666,6 +666,14 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	return db, nil
 }
 
+func (db *DB) ReserveSize() (uint64, error) {
+	return db.reserveSize.Get()
+}
+
+func (db *DB) ReserveCapacity() uint64 {
+	return db.reserveCapacity
+}
+
 // Close closes the underlying database.
 func (db *DB) Close() error {
 	close(db.close)

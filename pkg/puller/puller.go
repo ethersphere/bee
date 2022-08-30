@@ -16,6 +16,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -34,9 +35,10 @@ type Options struct {
 }
 
 type Puller struct {
-	topology   topology.Driver
-	statestore storage.StateStorer
-	syncer     pullsync.Interface
+	topology     topology.Driver
+	reserveState postage.ReserveStateGetter
+	statestore   storage.StateStorer
+	syncer       pullsync.Interface
 
 	metrics metrics
 	logger  log.Logger
@@ -53,7 +55,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -62,12 +64,13 @@ func New(stateStore storage.StateStorer, topology topology.Driver, pullSync pull
 	}
 
 	p := &Puller{
-		statestore: stateStore,
-		topology:   topology,
-		syncer:     pullSync,
-		metrics:    newMetrics(),
-		logger:     logger.WithName(loggerName).Register(),
-		cursors:    make(map[string]peerCursors),
+		statestore:   stateStore,
+		topology:     topology,
+		reserveState: reserveState,
+		syncer:       pullSync,
+		metrics:      newMetrics(),
+		logger:       logger.WithName(loggerName).Register(),
+		cursors:      make(map[string]peerCursors),
 
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),
@@ -91,7 +94,7 @@ type peer struct {
 
 func (p *Puller) manage(warmupTime time.Duration) {
 	defer p.wg.Done()
-	c, unsubscribe := p.topology.SubscribePeersChange()
+	c, unsubscribe := p.topology.SubscribeTopologyChange()
 	defer unsubscribe()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -120,7 +123,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 			// if we're already syncing with this peer, make sure
 			// that we're syncing the correct bins according to depth
-			depth := p.topology.NeighborhoodDepth()
+			neighborhoodDepth := p.topology.NeighborhoodDepth()
+			syncRadius := p.reserveState.GetReserveState().StorageRadius
 
 			// we defer the actual start of syncing to get out of the iterator first
 			var (
@@ -137,8 +141,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// should be removed from the syncPeer bin.
 			for po, bin := range p.syncPeers {
 				for peerAddr, v := range bin {
-					pe := peer{addr: v.address, po: uint8(po)}
-					peersDisconnected[peerAddr] = pe
+					peersDisconnected[peerAddr] = peer{addr: v.address, po: uint8(po)}
 				}
 			}
 
@@ -146,8 +149,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// never returns an error. In case in the future changes are made to the callback in a
 			// way that it returns an error - the value must be checked.
 			_ = p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-				bp := p.syncPeers[po]
-				if po >= depth {
+				if po >= neighborhoodDepth {
+					bp := p.syncPeers[po]
 					// delete from peersDisconnected since we'd like to sync
 					// with this peer
 					delete(peersDisconnected, peerAddr.ByteString())
@@ -156,12 +159,10 @@ func (p *Puller) manage(warmupTime time.Duration) {
 					if _, ok := bp[peerAddr.ByteString()]; !ok {
 						// we're not syncing with this peer yet, start doing so
 						bp[peerAddr.ByteString()] = newSyncPeer(peerAddr, p.bins)
-						peerEntry := peer{addr: peerAddr, po: po}
-						peersToSync = append(peersToSync, peerEntry)
+						peersToSync = append(peersToSync, peer{addr: peerAddr, po: po})
 					} else {
 						// already syncing, recalc
-						peerEntry := peer{addr: peerAddr, po: po}
-						peersToRecalc = append(peersToRecalc, peerEntry)
+						peersToRecalc = append(peersToRecalc, peer{addr: peerAddr, po: po})
 					}
 				}
 
@@ -175,11 +176,11 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			p.syncPeersMtx.Unlock()
 
 			for _, v := range peersToSync {
-				p.syncPeer(ctx, v.addr, v.po, depth)
+				p.syncPeer(ctx, v.addr, v.po, syncRadius)
 			}
 
 			for _, v := range peersToRecalc {
-				dontSync := p.recalcPeer(ctx, v.addr, v.po, depth)
+				dontSync := p.recalcPeer(ctx, v.addr, v.po, syncRadius)
 				// stopgap solution for peers that dont return the correct
 				// amount of cursors we expect
 				if dontSync {
@@ -404,7 +405,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		default:
 		}
-		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, math.MaxUint64)
+		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
 		if err != nil {
 			loggerV2.Debug("liveSyncWorker exit on sync error", "peer_address", peer, "bin", bin, "from", from, "error", err)
 			if ruid == 0 {

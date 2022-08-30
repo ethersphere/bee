@@ -70,6 +70,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -115,6 +116,7 @@ type Bee struct {
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
+	depthMonitorCloser       io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *util.Signaler
@@ -733,7 +735,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
-	batchStore.SetRadiusSetter(kad)
 
 	var (
 		syncErr    atomic.Value
@@ -876,7 +877,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
@@ -901,6 +902,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	}
+
+	if o.FullNodeMode {
+		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime)
+		b.depthMonitorCloser = depthMonitor
 	}
 
 	multiResolver := multiresolver.NewMultiResolver(
@@ -1199,6 +1205,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.nsCloser, "netstore")
+	tryClose(b.depthMonitorCloser, "depthmonitor service")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")

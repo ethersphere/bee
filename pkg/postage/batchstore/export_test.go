@@ -8,8 +8,9 @@ package batchstore
 const StateKey = chainStateKey
 
 var (
-	BatchKey = batchKey
-	ValueKey = valueKey
+	BatchKey        = batchKey
+	ValueKey        = valueKey
+	ReserveStateKey = reserveStateKey
 )
 
 var Exp2 = exp2
