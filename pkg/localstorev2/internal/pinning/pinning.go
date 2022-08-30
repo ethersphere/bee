@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -21,6 +20,8 @@ const (
 	hashSize = 32
 	uuidSize = 36
 )
+
+var batchSize = 100
 
 type CollectionStat struct {
 	Total           uint64
@@ -63,7 +64,7 @@ type pinChunk struct {
 
 func (p *pinChunk) Namespace() string { return p.UUID }
 
-func (p *pinChunk) ID() string { return strings.Join([]string{p.UUID, p.Addr.ByteString()}, "/") }
+func (p *pinChunk) ID() string { return p.Addr.ByteString() }
 
 func (p *pinChunk) Marshal() ([]byte, error) {
 	return []byte{}, nil
@@ -185,25 +186,40 @@ func DeletePin(st storage.Store, chSt storage.ChunkStore, root swarm.Address) er
 		return fmt.Errorf("pin store: failed getting collection: %w", err)
 	}
 
-	err = st.Iterate(storage.Query{
-		Factory:       func() storage.Item { return &pinChunk{UUID: collection.UUID} },
-		ItemAttribute: storage.QueryItemID,
-	}, func(r storage.Result) (bool, error) {
-		addr := swarm.NewAddress([]byte(r.ID))
+	var offset uint64
+	total := collection.Stat.Total - collection.Stat.DupInCollection
+	for ; offset < total; offset += uint64(batchSize) {
+		addrsToDelete := make([]swarm.Address, 0, batchSize)
+		countInBatch := 0
 
-		chunk := &pinChunk{UUID: collection.UUID, Addr: addr}
-		err := st.Delete(chunk)
+		err = st.Iterate(storage.Query{
+			Factory:       func() storage.Item { return &pinChunk{UUID: collection.UUID} },
+			ItemAttribute: storage.QueryItemID,
+		}, func(r storage.Result) (bool, error) {
+			addr := swarm.NewAddress([]byte(r.ID))
+			addrsToDelete = append(addrsToDelete, addr)
+			countInBatch++
+			if countInBatch == batchSize {
+				return true, nil
+			}
+			return false, nil
+
+		})
 		if err != nil {
-			return true, err
+			return fmt.Errorf("pin store: failed in iteration: %w", err)
 		}
-		err = chSt.Delete(context.TODO(), chunk.Addr)
-		if err != nil {
-			return true, err
+
+		for _, addr := range addrsToDelete {
+			chunk := &pinChunk{UUID: collection.UUID, Addr: addr}
+			err := st.Delete(chunk)
+			if err != nil {
+				return fmt.Errorf("pin store: failed in batch deletion: %w", err)
+			}
+			err = chSt.Delete(context.TODO(), chunk.Addr)
+			if err != nil {
+				return fmt.Errorf("pin store: failed in batch chunk deletion: %w", err)
+			}
 		}
-		return false, nil
-	})
-	if err != nil {
-		return fmt.Errorf("pin store: failed in iteration: %w", err)
 	}
 
 	err = chSt.Delete(context.TODO(), collection.Addr)
