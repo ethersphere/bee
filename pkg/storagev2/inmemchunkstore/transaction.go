@@ -113,8 +113,7 @@ func (s *TxChunkStore) Rollback() error {
 	return opErrors.ErrorOrNil()
 }
 
-// NewTxChunkStore returns an implementation of in-memory ChunkStore
-// where all Store operations are done in a transaction.
-func NewTxChunkStore(base *storage.TxChunkStoreBase) *TxChunkStore {
+// NewTx implements the TxStore interface.
+func (s *TxChunkStore) NewTx(base *storage.TxChunkStoreBase) storage.TxChunkStore {
 	return &TxChunkStore{TxChunkStoreBase: base}
 }

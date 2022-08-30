@@ -18,7 +18,7 @@ func TestTxStore(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	store := inmem.NewTxStore(&storage.TxStoreBase{
+	store := new(inmem.TxStore).NewTx(&storage.TxStoreBase{
 		TxState: storage.NewTxState(ctx),
 		Store:   inmem.New(),
 	})

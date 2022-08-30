@@ -41,17 +41,17 @@ func (f filters) matchAny(k string, v []byte) bool {
 	return false
 }
 
-var _ storage.Store = (*store)(nil)
+var _ storage.Store = (*Store)(nil)
 
-type store struct {
+type Store struct {
 	db      *leveldb.DB
 	path    string
 	closeLk sync.RWMutex
 }
 
-// New returns a new storage.Store backed by leveldb.
+// New returns a new store the backed by leveldb.
 // If path == "", the leveldb will run with in memory backend storage.
-func New(path string, opts *opt.Options) (storage.Store, error) {
+func New(path string, opts *opt.Options) (*Store, error) {
 	var err error
 	var db *leveldb.DB
 
@@ -68,7 +68,7 @@ func New(path string, opts *opt.Options) (storage.Store, error) {
 		return nil, err
 	}
 
-	ds := store{
+	ds := Store{
 		db:   db,
 		path: path,
 	}
@@ -77,14 +77,14 @@ func New(path string, opts *opt.Options) (storage.Store, error) {
 }
 
 // Close implements the storage.Store interface.
-func (s *store) Close() (err error) {
+func (s *Store) Close() (err error) {
 	s.closeLk.Lock()
 	defer s.closeLk.Unlock()
 	return s.db.Close()
 }
 
 // Get implements the storage.Store interface.
-func (s *store) Get(item storage.Item) error {
+func (s *Store) Get(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -106,7 +106,7 @@ func (s *store) Get(item storage.Item) error {
 }
 
 // Has implements the storage.Store interface.
-func (s *store) Has(sKey storage.Key) (bool, error) {
+func (s *Store) Has(sKey storage.Key) (bool, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -116,7 +116,7 @@ func (s *store) Has(sKey storage.Key) (bool, error) {
 }
 
 // GetSize implements the storage.Store interface.
-func (s *store) GetSize(sKey storage.Key) (int, error) {
+func (s *Store) GetSize(sKey storage.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -136,7 +136,7 @@ func (s *store) GetSize(sKey storage.Key) (int, error) {
 }
 
 // Iterate implements the storage.Store interface.
-func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
+func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -212,7 +212,7 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 }
 
 // Count implements the storage.Store interface.
-func (s *store) Count(key storage.Key) (int, error) {
+func (s *Store) Count(key storage.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -230,7 +230,7 @@ func (s *store) Count(key storage.Key) (int, error) {
 }
 
 // Put implements the storage.Store interface.
-func (s *store) Put(item storage.Item) error {
+func (s *Store) Put(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
@@ -243,7 +243,7 @@ func (s *store) Put(item storage.Item) error {
 }
 
 // Delete implements the storage.Store interface.
-func (s *store) Delete(item storage.Item) error {
+func (s *Store) Delete(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 

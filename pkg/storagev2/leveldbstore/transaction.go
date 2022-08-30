@@ -70,15 +70,14 @@ func (s *TxStore) Rollback() error {
 
 	s.batchMu.Lock()
 	defer s.batchMu.Unlock()
-	db := s.TxStoreBase.Store.(*store).db
+	db := s.TxStoreBase.Store.(*Store).db
 	if err := db.Write(s.batch, &opt.WriteOptions{Sync: true}); err != nil {
 		return fmt.Errorf("failed to write batch: %w", err)
 	}
 	return nil
 }
 
-// NewTxStore returns an implementation of in-memory Store
-// where all Store operations are done in a transaction.
-func NewTxStore(base *storage.TxStoreBase) *TxStore {
+// NewTx implements the TxStore interface.
+func (s *TxStore) NewTx(base *storage.TxStoreBase) storage.TxStore {
 	return &TxStore{TxStoreBase: base, batch: new(leveldb.Batch)}
 }

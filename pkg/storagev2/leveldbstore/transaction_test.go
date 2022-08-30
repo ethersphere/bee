@@ -23,7 +23,7 @@ func TestTxStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := leveldbstore.NewTxStore(&storage.TxStoreBase{
+	store := new(leveldbstore.TxStore).NewTx(&storage.TxStoreBase{
 		TxState: storage.NewTxState(ctx),
 		Store:   ldbStore,
 	})
