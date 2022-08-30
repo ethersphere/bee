@@ -86,6 +86,10 @@ func (s *TxStore) Rollback() error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
+	defer s.TxState.Done()
+
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
 	var opErrors *multierror.Error
 	for _, op := range s.ops {
 		if err := op.fn(); err != nil {
@@ -99,7 +103,6 @@ func (s *TxStore) Rollback() error {
 			opErrors = multierror.Append(opErrors, err)
 		}
 	}
-	s.TxState.Done()
 	return opErrors.ErrorOrNil()
 }
 
