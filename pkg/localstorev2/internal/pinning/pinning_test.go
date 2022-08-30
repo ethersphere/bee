@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
-	"github.com/ethersphere/bee/pkg/storage"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -42,7 +42,7 @@ func TestPinStore(t *testing.T) {
 		},
 		{
 			dupChunks:    15,
-			uniqueChunks: 30,
+			uniqueChunks: 130,
 		},
 	} {
 		var c pinningCollection
@@ -208,7 +208,7 @@ func TestPinStore(t *testing.T) {
 			if exists {
 				t.Fatal("chunk should not exist")
 			}
-			rch, err := chSt.Get(context.TODO(), ch.Address())
+			_, err = chSt.Get(context.TODO(), ch.Address())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}
