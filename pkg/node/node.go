@@ -175,14 +175,15 @@ type Options struct {
 }
 
 const (
-	refreshRate                   = int64(4500000)
-	lightRefreshRate              = int64(450000)
-	basePrice                     = 10000
-	postageSyncingStallingTimeout = 10 * time.Minute
-	postageSyncingBackoffTimeout  = 5 * time.Second
-	minPaymentThreshold           = 2 * refreshRate
-	maxPaymentThreshold           = 24 * refreshRate
-	mainnetNetworkID              = uint64(1)
+	refreshRate                   = int64(4500000)            // accounting units refreshed per second
+	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
+	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
+	basePrice                     = 10000                     // minimal price for retrieval and pushsync requests of maximum proximity
+	postageSyncingStallingTimeout = 10 * time.Minute          //
+	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
+	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
+	mainnetNetworkID              = uint64(1)                 //
 )
 
 func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
@@ -773,9 +774,26 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
+	minThreshold := big.NewInt(2 * refreshRate)
+	maxThreshold := big.NewInt(24 * refreshRate)
+
+	if !o.FullNodeMode {
+		minThreshold = big.NewInt(2 * lightRefreshRate)
+	}
+
+	lightPaymentThreshold := new(big.Int).Div(paymentThreshold, big.NewInt(lightFactor))
+
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
+
+	if paymentThreshold.Cmp(maxThreshold) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
+	}
+
+	pricing := pricing.New(p2ps, logger, paymentThreshold, lightPaymentThreshold, minThreshold)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
@@ -790,21 +808,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		logger.Debug("p2p address", "address", addr)
 	}
 
-	acc, err := accounting.NewAccounting(
-		paymentThreshold,
-		o.PaymentTolerance,
-		o.PaymentEarly,
-		logger,
-		stateStore,
-		pricing,
-		big.NewInt(refreshRate),
-		p2ps,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("accounting: %w", err)
-	}
-	b.accountingCloser = acc
-
 	var enforcedRefreshRate *big.Int
 
 	if o.FullNodeMode {
@@ -813,7 +816,23 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
 	}
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
+	acc, err := accounting.NewAccounting(
+		paymentThreshold,
+		o.PaymentTolerance,
+		o.PaymentEarly,
+		logger,
+		stateStore,
+		pricing,
+		new(big.Int).Set(enforcedRefreshRate),
+		lightFactor,
+		p2ps,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("accounting: %w", err)
+	}
+	b.accountingCloser = acc
+
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, new(big.Int).Set(enforcedRefreshRate), big.NewInt(lightRefreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
