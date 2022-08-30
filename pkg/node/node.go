@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -484,13 +485,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			binary.LittleEndian.PutUint64(nonce, j)
 			if (j/1000000)*1000000 == j {
-				logger.Info("finding new overlay corresponding to previous overlay with nonce", "nonce", nonce)
+				logger.Info("finding new overlay corresponding to previous overlay with nonce", "nonce", hex.EncodeToString(nonce))
 			}
 			newOverlayCandidate, err = crypto.NewOverlayAddress(*pubKey, networkID, nonce)
 			if err == nil {
 				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
 			} else {
-				logger.Info("error finding new overlay", "error", err, "nonce", nonce)
+				logger.Info("error finding new overlay", "nonce", hex.EncodeToString(nonce), "error", err)
 			}
 		}
 
