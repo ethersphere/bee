@@ -22,6 +22,11 @@ import (
 
 const separator = "/"
 
+// key returns the Item key identifier for the leveldb storage.
+func key(item storage.Item) []byte {
+	return []byte(item.Namespace() + separator + item.ID())
+}
+
 // filters is a decorator for a slice of storage.Filters
 // that helps with its evaluation.
 type filters []storage.Filter
@@ -83,9 +88,7 @@ func (s *store) Get(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(item.Namespace() + separator + item.ID())
-
-	val, err := s.db.Get(key, nil)
+	val, err := s.db.Get(key(item), nil)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
 		return storage.ErrNotFound
@@ -236,8 +239,7 @@ func (s *store) Put(item storage.Item) error {
 		return fmt.Errorf("failed serializing: %w", err)
 	}
 
-	key := []byte(item.Namespace() + separator + item.ID())
-	return s.db.Put(key, value, &opt.WriteOptions{Sync: true})
+	return s.db.Put(key(item), value, &opt.WriteOptions{Sync: true})
 }
 
 // Delete implements the storage.Store interface.
@@ -245,7 +247,5 @@ func (s *store) Delete(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(item.Namespace() + separator + item.ID())
-
-	return s.db.Delete(key, &opt.WriteOptions{Sync: true})
+	return s.db.Delete(key(item), &opt.WriteOptions{Sync: true})
 }

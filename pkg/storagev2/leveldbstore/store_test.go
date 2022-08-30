@@ -9,11 +9,10 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 func TestStoreTestSuite(t *testing.T) {
-	store, err := leveldbstore.New(t.TempDir(), new(opt.Options))
+	store, err := leveldbstore.New(t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
