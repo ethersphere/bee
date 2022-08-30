@@ -112,7 +112,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 		s.peers[p.Address.String()] = peerData
 	}
 
-	go s.accounting.Connect(p.Address)
+	go s.accounting.Connect(p.Address, p.FullNode)
 	return nil
 }
 
@@ -252,13 +252,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
 	s.metrics.ReceivedPseudoSettlements.Inc()
-	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount)
+	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount, timestamp)
 }
 
 // Pay initiates a payment to the given peer
-func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllowance *big.Int) (*big.Int, int64, error) {
+func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) {
 	loggerV1 := s.logger.V(1).Register()
-
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -274,24 +273,17 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 	err = s.store.Get(totalKey(peer, SettlementSentPrefix), &lastTime)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, 0, err
+			s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
+			return
 		}
 		lastTime.Total = big.NewInt(0)
 		lastTime.Timestamp = 0
 	}
 
-	// check whether at least 1 second have passed since last refresh according to own timestamp and peers timestamp
-	currentTime := s.timeNow().Unix()
-	if currentTime <= lastTime.CheckTimestamp || currentTime <= lastTime.Timestamp {
-		// if not, return error too soon
-		// this is to avoid the peer receiving 2 refresh attempts from our node in the same second
-		// of which the second one would be refused and would lead to a disconnect from our node's enforcement of refreshments
-		return nil, 0, ErrSettlementTooSoon
-	}
-
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, 0, err
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
+		return
 	}
 	defer func() {
 		if err != nil {
@@ -301,10 +293,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		}
 	}()
 
-	if checkAllowance.Cmp(amount) > 0 {
-		checkAllowance.Set(amount)
-	}
-
 	loggerV1.Debug("pseudosettle sending payment message to peer", "peer_address", peer, "amount", amount)
 	w, r := protobuf.NewWriterAndReader(stream)
 
@@ -312,68 +300,62 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount, checkAllo
 		Amount: amount.Bytes(),
 	})
 	if err != nil {
-		return nil, 0, err
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
+		return
 	}
 
 	var paymentAck pb.PaymentAck
 	err = r.ReadMsgWithContext(ctx, &paymentAck)
 	if err != nil {
-		return nil, 0, err
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
+		return
 	}
 
-	checkTime := s.timeNow().Unix()
+	checkTime := s.timeNow().UnixMilli()
 
 	acceptedAmount := new(big.Int).SetBytes(paymentAck.Amount)
 	if acceptedAmount.Cmp(amount) > 0 {
 		err = fmt.Errorf("pseudosettle: peer %v: %w", peer, ErrRefreshmentAboveExpected)
-		return nil, 0, err
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
+		return
 	}
 
-	experiencedInterval := checkTime - lastTime.CheckTimestamp
+	experiencedInterval := checkTime/1000 - lastTime.CheckTimestamp
 	allegedInterval := paymentAck.Timestamp - lastTime.Timestamp
 
 	if allegedInterval < 0 {
-		return nil, 0, ErrTimeOutOfSyncAlleged
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, ErrTimeOutOfSyncAlleged)
+		return
 	}
 
-	experienceDifferenceRecent := paymentAck.Timestamp - checkTime
+	experienceDifferenceRecent := paymentAck.Timestamp - checkTime/1000
 
 	if experienceDifferenceRecent < -2 || experienceDifferenceRecent > 2 {
-		return nil, 0, ErrTimeOutOfSyncRecent
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, ErrTimeOutOfSyncRecent)
+		return
 	}
 
 	experienceDifferenceInterval := experiencedInterval - allegedInterval
 	if experienceDifferenceInterval < -3 || experienceDifferenceInterval > 3 {
-		return nil, 0, ErrTimeOutOfSyncInterval
-	}
-
-	// enforce allowance
-	// check if value is appropriate
-	expectedAllowance := new(big.Int).Mul(big.NewInt(allegedInterval), s.refreshRate)
-	if expectedAllowance.Cmp(checkAllowance) > 0 {
-		expectedAllowance = new(big.Int).Set(checkAllowance)
-	}
-
-	if expectedAllowance.Cmp(acceptedAmount) > 0 {
-		// disconnect peer
-		err = fmt.Errorf("pseudosettle: peer %v: %w", peer, ErrRefreshmentBelowExpected)
-		return nil, 0, err
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, ErrTimeOutOfSyncInterval)
+		return
 	}
 
 	lastTime.Total = lastTime.Total.Add(lastTime.Total, acceptedAmount)
 	lastTime.Timestamp = paymentAck.Timestamp
-	lastTime.CheckTimestamp = checkTime
+	lastTime.CheckTimestamp = checkTime / 1000
 
 	err = s.store.Put(totalKey(peer, SettlementSentPrefix), lastTime)
 	if err != nil {
-		return nil, 0, err
+		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
+		return
 	}
 
 	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
 	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
 	s.metrics.SentPseudoSettlements.Inc()
 
-	return acceptedAmount, lastTime.CheckTimestamp, nil
+	s.accounting.NotifyRefreshmentSent(peer, amount, acceptedAmount, checkTime, allegedInterval, nil)
 }
 
 func (s *Service) SetAccounting(accounting settlement.Accounting) {
