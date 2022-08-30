@@ -106,8 +106,7 @@ func (s *TxStore) Rollback() error {
 	return opErrors.ErrorOrNil()
 }
 
-// NewTxStore returns an implementation of in-memory Store
-// where all Store operations are done in a transaction.
-func NewTxStore(base *storage.TxStoreBase) *TxStore {
+// NewTx implements the TxStore interface.
+func (s *TxStore) NewTx(base *storage.TxStoreBase) storage.TxStore {
 	return &TxStore{TxStoreBase: base}
 }

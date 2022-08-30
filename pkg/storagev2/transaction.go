@@ -32,6 +32,8 @@ type Tx interface {
 type TxStore interface {
 	Tx
 	Store
+
+	NewTx(*TxStoreBase) TxStore
 }
 
 // TxChunkStore represents a Tx ChunkStore where
@@ -39,6 +41,8 @@ type TxStore interface {
 type TxChunkStore interface {
 	Tx
 	ChunkStore
+
+	NewTx(*TxChunkStoreBase) TxChunkStore
 }
 
 // TxState is a mix-in for Tx. It provides basic
