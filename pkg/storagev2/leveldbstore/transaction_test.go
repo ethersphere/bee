@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/storagev2"
-	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
@@ -24,7 +23,7 @@ func TestTxStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := inmem.NewTxStore(&storage.TxStoreBase{
+	store := leveldbstore.NewTxStore(&storage.TxStoreBase{
 		TxState: storage.NewTxState(ctx),
 		Store:   ldbStore,
 	})

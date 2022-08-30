@@ -80,5 +80,5 @@ func (s *TxStore) Rollback() error {
 // NewTxStore returns an implementation of in-memory Store
 // where all Store operations are done in a transaction.
 func NewTxStore(base *storage.TxStoreBase) *TxStore {
-	return &TxStore{TxStoreBase: base}
+	return &TxStore{TxStoreBase: base, batch: new(leveldb.Batch)}
 }
