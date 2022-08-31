@@ -32,15 +32,17 @@ func New(r time.Duration, burst int) *Limiter {
 
 // Allow checks if the limiter that belongs to 'key' has not exceeded the limit.
 func (l *Limiter) Allow(key string, count int) bool {
-
 	l.mtx.Lock()
-	defer l.mtx.Unlock()
 
 	limiter, ok := l.limiter[key]
 	if !ok {
 		limiter = rate.NewLimiter(l.rate, l.burst)
 		l.limiter[key] = limiter
 	}
+
+	// We are intentionally not defer calling Unlock in order to reduce locking extent.
+	// Individual limiter is capable for handling concurrent calls.
+	l.mtx.Unlock()
 
 	return limiter.AllowN(time.Now(), count)
 }
