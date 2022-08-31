@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -453,8 +454,8 @@ func (s *Service) downloadHandler(w http.ResponseWriter, r *http.Request, refere
 	if etag {
 		w.Header().Set("ETag", fmt.Sprintf("%q", reference))
 	}
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
-	w.Header().Set("Decompressed-Content-Length", fmt.Sprintf("%d", l))
+	w.Header().Set("Content-Length", strconv.FormatInt(l, 10))
+	w.Header().Set("Decompressed-Content-Length", strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
 	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }

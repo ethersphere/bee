@@ -14,7 +14,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -41,7 +41,7 @@ type index struct {
 }
 
 func (i *index) String() string {
-	return fmt.Sprintf("%d", i.index)
+	return strconv.FormatUint(i.index, 10)
 }
 
 func (i *index) MarshalBinary() ([]byte, error) {
