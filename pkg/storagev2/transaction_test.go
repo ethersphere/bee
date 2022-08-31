@@ -31,23 +31,24 @@ func TestTxState(t *testing.T) {
 			txs.Done()
 		})
 
-	LOOP:
-		for timer := time.NewTimer(2 * timeout); ; {
-			select {
-			case <-txs.AwaitDone():
-				if !timer.Stop() {
-					<-timer.C
-				}
-				break LOOP
-			case <-timer.C:
+		func() {
+			for timer := time.NewTimer(2 * timeout); ; {
 				select {
-				case <-ctx.Done():
-					t.Fatalf("parent context canceled")
-				default:
-					t.Fatalf("Done() did not release AwaitDone()")
+				case <-txs.AwaitDone():
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return
+				case <-timer.C:
+					select {
+					case <-ctx.Done():
+						t.Fatalf("parent context canceled")
+					default:
+						t.Fatalf("Done() did not release AwaitDone()")
+					}
 				}
 			}
-		}
+		}()
 
 		if err := txs.IsDone(); !errors.Is(err, storage.ErrTxDone) {
 			t.Fatalf("IsDone(): want error %v; have %v", storage.ErrTxDone, err)
@@ -77,23 +78,24 @@ func TestTxState(t *testing.T) {
 			cancel()
 		})
 
-	LOOP:
-		for timer := time.NewTimer(2 * timeout); ; {
-			select {
-			case <-txs.AwaitDone():
-				if !timer.Stop() {
-					<-timer.C
-				}
-				break LOOP
-			case <-timer.C:
+		func() {
+			for timer := time.NewTimer(2 * timeout); ; {
 				select {
-				case <-ctx.Done():
-					t.Fatalf("cancelation of parent context did not release AwaitDone()")
-				default:
-					t.Fatalf("parent context not canceled")
+				case <-txs.AwaitDone():
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return
+				case <-timer.C:
+					select {
+					case <-ctx.Done():
+						t.Fatalf("cancelation of parent context did not release AwaitDone()")
+					default:
+						t.Fatalf("parent context not canceled")
+					}
 				}
 			}
-		}
+		}()
 
 		if err := txs.IsDone(); !errors.Is(err, context.Canceled) {
 			t.Fatalf("IsDone(): want error %v; have %v", context.Canceled, err)

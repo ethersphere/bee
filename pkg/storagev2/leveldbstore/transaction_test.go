@@ -5,37 +5,16 @@
 package leveldbstore_test
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
 
 func TestTxStore(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	ldbStore, err := leveldbstore.New(t.TempDir(), nil)
+	store, err := leveldbstore.New(t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	store := new(leveldbstore.TxStore).NewTx(&storage.TxStoreBase{
-		TxState: storage.NewTxState(ctx),
-		Store:   ldbStore,
-	})
-
-	// We need to call Commit() so the store.Close() method won't block.
-	time.AfterFunc(time.Second, func() {
-		if err := store.Commit(); err != nil {
-			t.Fatalf("Commit(): unexpected error: %v", err)
-		}
-	})
-
-	storagetest.TestStore(t, store)
+	storagetest.TestTxStore(t, leveldbstore.NewTxStore(store))
 }
-
-// TODO: test the Rollback functionality.

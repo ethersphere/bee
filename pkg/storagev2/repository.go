@@ -27,16 +27,8 @@ func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit 
 	tx := NewTxState(ctx)
 
 	repository = new(Repository)
-
-	repository.indexStore = r.indexStore.NewTx(&TxStoreBase{
-		TxState: tx,
-		Store:   r.indexStore,
-	})
-
-	repository.chunkStore = r.chunkStore.NewTx(&TxChunkStoreBase{
-		TxState:    tx,
-		ChunkStore: r.chunkStore,
-	})
+	repository.indexStore = r.indexStore.NewTx(tx)
+	repository.chunkStore = r.chunkStore.NewTx(tx)
 
 	txs := []Tx{repository.indexStore, repository.chunkStore}
 

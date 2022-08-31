@@ -72,12 +72,23 @@ func (s *TxStore) Rollback() error {
 	defer s.batchMu.Unlock()
 	db := s.TxStoreBase.Store.(*Store).db
 	if err := db.Write(s.batch, &opt.WriteOptions{Sync: true}); err != nil {
-		return fmt.Errorf("failed to write batch: %w", err)
+		return fmt.Errorf("leveldbstore: failed to write batch: %w", err)
 	}
 	return nil
 }
 
 // NewTx implements the TxStore interface.
-func (s *TxStore) NewTx(base *storage.TxStoreBase) storage.TxStore {
-	return &TxStore{TxStoreBase: base, batch: new(leveldb.Batch)}
+func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
+	return &TxStore{
+		TxStoreBase: &storage.TxStoreBase{
+			TxState: state,
+			Store:   s.TxStoreBase.Store,
+		},
+		batch: new(leveldb.Batch),
+	}
+}
+
+// NewTxStore returns a new TxStore instance backed by the given store.
+func NewTxStore(store storage.Store) *TxStore {
+	return &TxStore{TxStoreBase: &storage.TxStoreBase{Store: store}}
 }

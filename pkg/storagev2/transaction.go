@@ -33,7 +33,7 @@ type TxStore interface {
 	Tx
 	Store
 
-	NewTx(*TxStoreBase) TxStore
+	NewTx(*TxState) TxStore
 }
 
 // TxChunkStore represents a Tx ChunkStore where
@@ -42,7 +42,7 @@ type TxChunkStore interface {
 	Tx
 	ChunkStore
 
-	NewTx(*TxChunkStoreBase) TxChunkStore
+	NewTx(*TxState) TxChunkStore
 }
 
 // TxState is a mix-in for Tx. It provides basic
@@ -69,6 +69,12 @@ type TxState struct {
 // AwaitDone returns a channel that blocks until the context
 // in TxState is canceled or the transaction is done.
 func (tx *TxState) AwaitDone() <-chan struct{} {
+	if tx == nil {
+		c := make(chan struct{})
+		close(c)
+		return c
+	}
+
 	// Wait for either the transaction to be committed or rolled
 	// back, or for the associated context to be closed.
 	return tx.ctx.Done()
@@ -78,6 +84,10 @@ func (tx *TxState) AwaitDone() <-chan struct{} {
 // or rolled back. If the transaction is still in progress and the context
 // is finished, it returns a context error.
 func (tx *TxState) IsDone() error {
+	if tx == nil {
+		return nil
+	}
+
 	select {
 	default:
 	case <-tx.ctx.Done():
@@ -91,6 +101,10 @@ func (tx *TxState) IsDone() error {
 
 // Done marks this transaction as complete.
 func (tx *TxState) Done() {
+	if tx == nil {
+		return
+	}
+
 	tx.once.Do(func() {
 		atomic.StoreInt32(&tx.done, 1)
 		tx.cancel()
