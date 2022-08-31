@@ -213,7 +213,7 @@ func Test_UnmarshalBinary(t *testing.T) {
 	}
 
 	tests := []struct {
-		data []byte // hex encoded binary data
+		data []byte // node binary data
 		err  error  // tells if UnmarshalBinary should return error
 	}{
 		{
