@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"strings"
-	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	leveldbstore "github.com/ethersphere/bee/pkg/storagev2/leveldb"
@@ -16,7 +15,6 @@ type LevelDB struct {
 	path  string
 	fsync bool
 	db    storage.Store
-	mu    sync.RWMutex
 }
 
 type obj1 struct {
@@ -71,9 +69,6 @@ func (db *LevelDB) init() error {
 }
 
 func (db *LevelDB) Set(key, value []byte) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	item := &obj1{
 		Id:  string(key),
 		Buf: value,
@@ -83,9 +78,6 @@ func (db *LevelDB) Set(key, value []byte) error {
 }
 
 func (db *LevelDB) Get(key []byte) ([]byte, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	item := &obj1{
 		Id: string(key),
 	}
@@ -103,9 +95,6 @@ func (db *LevelDB) Get(key []byte) ([]byte, error) {
 }
 
 func (db *LevelDB) Del(key []byte) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	item := &obj1{
 		Id: string(key),
 	}
@@ -124,8 +113,5 @@ func (db *LevelDB) Del(key []byte) error {
 }
 
 func (db *LevelDB) Close() error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	return db.db.Close()
 }
