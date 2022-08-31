@@ -1,0 +1,34 @@
+goos: linux
+goarch: amd64
+pkg: github.com/ethersphere/bee/pkg/storagev2/testsuite/benchmark
+cpu: Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz
+BenchmarkInMemory
+in-mem set rate: 118663 op/s, mean: 1053 ns, took: 60 s
+in-mem get rate: 4702136 op/s, mean: 26 ns, took: 60 s
+in-mem setmixed rate: 77562 op/s, mean: 12892 ns, took: 60 s
+in-mem getmixed rate: 666217 op/s, mean: 187 ns, took: 60 s
+in-mem del rate: 8572022 op/s, mean: 14 ns, took: 60 s
+BenchmarkInMemory-8   	       1	240002066983 ns/op	105166629720 B/op	4101185959 allocs/op
+PASS
+coverage: 51.3% of statements
+ok  	github.com/ethersphere/bee/pkg/storagev2/testsuite/benchmark	240.054s
+
+goos: linux
+goarch: amd64
+pkg: github.com/ethersphere/bee/pkg/storagev2/testsuite/benchmark
+cpu: Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz
+BenchmarkLevelDB
+levedb/nofsync set rate: 180087 op/s, mean: 694 ns, took: 60 s
+levedb/nofsync get rate: 530308 op/s, mean: 235 ns, took: 60 s
+levedb/nofsync setmixed rate: 18757 op/s, mean: 53311 ns, took: 60 s
+levedb/nofsync getmixed rate: 151136 op/s, mean: 827 ns, took: 60 s
+levedb/nofsync del rate: 87095 op/s, mean: 1435 ns, took: 60 s
+levedb/fsync set rate: 784 op/s, mean: 159385 ns, took: 60 s
+levedb/fsync get rate: 779887 op/s, mean: 160 ns, took: 60 s
+levedb/fsync setmixed rate: 163 op/s, mean: 6111446 ns, took: 60 s
+levedb/fsync getmixed rate: 709865 op/s, mean: 176 ns, took: 60 s
+levedb/fsync del rate: 184885 op/s, mean: 676 ns, took: 60 s
+BenchmarkLevelDB-8   	       1	480108811772 ns/op	154603671448 B/op	2433762300 allocs/op
+PASS
+coverage: 80.7% of statements
+ok  	github.com/ethersphere/bee/pkg/storagev2/testsuite/benchmark	480.166s
