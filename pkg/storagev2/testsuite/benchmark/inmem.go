@@ -2,7 +2,6 @@ package test
 
 import (
 	"errors"
-	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
@@ -10,7 +9,7 @@ import (
 
 type InMem struct {
 	db storage.Store
-	mu sync.RWMutex
+	// mu sync.RWMutex
 }
 
 func NewInMem() (DB, error) {
@@ -23,9 +22,6 @@ func NewInMem() (DB, error) {
 }
 
 func (db *InMem) Set(key, value []byte) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	item := &obj1{
 		Id:  string(key),
 		Buf: value,
@@ -35,9 +31,6 @@ func (db *InMem) Set(key, value []byte) error {
 }
 
 func (db *InMem) Get(key []byte) ([]byte, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	item := &obj1{
 		Id: string(key),
 	}
@@ -55,9 +48,6 @@ func (db *InMem) Get(key []byte) ([]byte, error) {
 }
 
 func (db *InMem) Del(key []byte) error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	item := &obj1{
 		Id: string(key),
 	}
@@ -76,8 +66,5 @@ func (db *InMem) Del(key []byte) error {
 }
 
 func (db *InMem) Close() error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	return db.db.Close()
 }
