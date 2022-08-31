@@ -4,8 +4,13 @@
 
 package blocklist
 
-import "time"
+import (
+	"github.com/ethersphere/bee/pkg/storage"
+)
 
-func SetTimeNow(f func() time.Time) {
-	timeNow = f
+func NewBlocklistWithCurrentTimeFn(store storage.StateStorer, currentTimeFn currentTimeFn) *Blocklist {
+	return &Blocklist{
+		store:         store,
+		currentTimeFn: currentTimeFn,
+	}
 }

@@ -4,8 +4,6 @@
 
 package breaker
 
-import "time"
-
-func SetTimeNow(f func() time.Time) {
-	timeNow = f
+func NewBreakerWithCurrentTimeFn(o Options, currentTimeFn currentTimeFn) Interface {
+	return newBreakerWithCurrentTimeFn(o, currentTimeFn)
 }
