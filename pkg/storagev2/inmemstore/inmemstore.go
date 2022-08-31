@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package inmem
+package inmemstore
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/armon/go-radix"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -18,15 +18,15 @@ const (
 	separator = "/"
 )
 
-// store implements an in-memory Store. We will use the hashicorp/go-radix implementation.
+// Store implements an in-memory Store. We will use the hashicorp/go-radix implementation.
 // This pkg provides a mutable radix which gives O(k) lookup and ordered iteration.
-type store struct {
+type Store struct {
 	st *radix.Tree
 	mu sync.RWMutex
 }
 
-func New() storage.Store {
-	return &store{st: radix.New()}
+func New() *Store {
+	return &Store{st: radix.New()}
 }
 
 func getKeyString(i storage.Key) string {
@@ -37,7 +37,7 @@ func idFromKey(pfx, key string) string {
 	return strings.TrimPrefix(key, pfx+separator)
 }
 
-func (s *store) Get(i storage.Item) error {
+func (s *Store) Get(i storage.Item) error {
 	key := getKeyString(i)
 
 	s.mu.RLock()
@@ -55,7 +55,7 @@ func (s *store) Get(i storage.Item) error {
 	return nil
 }
 
-func (s *store) Has(k storage.Key) (bool, error) {
+func (s *Store) Has(k storage.Key) (bool, error) {
 	key := getKeyString(k)
 
 	s.mu.RLock()
@@ -65,7 +65,7 @@ func (s *store) Has(k storage.Key) (bool, error) {
 	return found, nil
 }
 
-func (s *store) GetSize(k storage.Key) (int, error) {
+func (s *Store) GetSize(k storage.Key) (int, error) {
 	key := getKeyString(k)
 
 	s.mu.RLock()
@@ -78,7 +78,7 @@ func (s *store) GetSize(k storage.Key) (int, error) {
 	return len(val.([]byte)), nil
 }
 
-func (s *store) Put(i storage.Item) error {
+func (s *Store) Put(i storage.Item) error {
 	key := getKeyString(i)
 
 	val, err := i.Marshal()
@@ -93,8 +93,8 @@ func (s *store) Put(i storage.Item) error {
 	return nil
 }
 
-func (s *store) Delete(k storage.Key) error {
-	key := getKeyString(k)
+func (s *Store) Delete(i storage.Item) error {
+	key := getKeyString(i)
 
 	s.mu.Lock()
 	_, deleted := s.st.Delete(key)
@@ -105,7 +105,7 @@ func (s *store) Delete(k storage.Key) error {
 	return nil
 }
 
-func (s *store) Count(k storage.Key) (int, error) {
+func (s *Store) Count(k storage.Key) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -117,7 +117,7 @@ func (s *store) Count(k storage.Key) (int, error) {
 	return count, nil
 }
 
-func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
+func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	if err := q.Validate(); err != nil {
 		return fmt.Errorf("failed iteration: %w", err)
 	}
@@ -204,6 +204,6 @@ func (s *store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	return retErr.ErrorOrNil()
 }
 
-func (s *store) Close() error {
+func (s *Store) Close() error {
 	return nil
 }
