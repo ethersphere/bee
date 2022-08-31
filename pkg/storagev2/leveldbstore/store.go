@@ -190,7 +190,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 
 		if res == nil {
-			retErr = multierror.Append(retErr, fmt.Errorf("unknown item attribute type: %v", q.ItemAttribute))
+			retErr = multierror.Append(retErr, fmt.Errorf("unknown object attribute type: %v", q.ItemAttribute))
 			break
 		}
 

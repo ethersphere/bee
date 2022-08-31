@@ -18,10 +18,7 @@ func TestTxChunkStore(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	chunkStore := new(inmem.TxChunkStore).NewTx(&storage.TxChunkStoreBase{
-		TxState:    storage.NewTxState(ctx),
-		ChunkStore: inmem.New(),
-	})
+	chunkStore := new(inmem.TxChunkStore).NewTx(storage.NewTxState(ctx))
 
 	// We need to call Commit() so the chunkStore.Close() method won't block.
 	time.AfterFunc(100*time.Millisecond, func() {

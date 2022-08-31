@@ -114,6 +114,16 @@ func (s *TxChunkStore) Rollback() error {
 }
 
 // NewTx implements the TxStore interface.
-func (s *TxChunkStore) NewTx(base *storage.TxChunkStoreBase) storage.TxChunkStore {
-	return &TxChunkStore{TxChunkStoreBase: base}
+func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
+	return &TxChunkStore{
+		TxChunkStoreBase: &storage.TxChunkStoreBase{
+			TxState:    state,
+			ChunkStore: s.ChunkStore,
+		},
+	}
+}
+
+// NewTxChunkStore returns a new TxChunkStore instance backed by the given chunk store.
+func NewTxChunkStore(store storage.ChunkStore) *TxChunkStore {
+	return &TxChunkStore{TxChunkStoreBase: &storage.TxChunkStoreBase{ChunkStore: store}}
 }

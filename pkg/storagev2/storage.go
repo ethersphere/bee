@@ -61,7 +61,7 @@ const (
 )
 
 // ErrInvalidQuery indicates that the query is not a valid query.
-var ErrInvalidQuery = errors.New("invalid query")
+var ErrInvalidQuery = errors.New("storage: invalid query")
 
 var ErrNotFound = errors.New("storage: not found")
 

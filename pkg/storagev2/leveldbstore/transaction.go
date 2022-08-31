@@ -78,6 +78,17 @@ func (s *TxStore) Rollback() error {
 }
 
 // NewTx implements the TxStore interface.
-func (s *TxStore) NewTx(base *storage.TxStoreBase) storage.TxStore {
-	return &TxStore{TxStoreBase: base, batch: new(leveldb.Batch)}
+func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
+	return &TxStore{
+		TxStoreBase: &storage.TxStoreBase{
+			TxState: state,
+			Store:   s.TxStoreBase.Store,
+		},
+		batch: new(leveldb.Batch),
+	}
+}
+
+// NewTxStore returns a new TxStore instance backed by the given store.
+func NewTxStore(store storage.Store) *TxStore {
+	return &TxStore{TxStoreBase: &storage.TxStoreBase{Store: store}}
 }
