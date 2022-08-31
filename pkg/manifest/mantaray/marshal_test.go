@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"math/rand"
 	mrand "math/rand"
 	"reflect"
@@ -200,4 +201,25 @@ func TestMarshal(t *testing.T) {
 	// 		t.Fatalf("expected value %x, got %x", d, m)
 	// 	}
 	// }
+}
+
+func Test_InvalidOutput(t *testing.T) {
+	tests := []struct {
+		data string
+	}{
+		{"00000000000000000000000000000000000000000000000000000000000000005768b3b6a7db56d21d1abff40d41cebfc83448fed8d7e9b06ec0d3b073f28f200000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000016012f0000000000000000000000000000000000000000000000000000000000e87f95c3d081c4fede769b6c69e27b435e525cbd25c6715c607e7c531e329639005f7b22776562736974652d696e6465782d646f63756d656e74223a2233356561656538316262363338303436393965633637316265323736326465626665346662643330636461646139303232393239646131613965366134366436227d0a"},
+	}
+
+	for _, tc := range tests {
+		data, err := hex.DecodeString(tc.data)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		n := New()
+		err = n.UnmarshalBinary(data)
+		if !errors.Is(err, ErrInvalidOutput) {
+			t.Fatalf("expected error marshaling")
+		}
+	}
 }

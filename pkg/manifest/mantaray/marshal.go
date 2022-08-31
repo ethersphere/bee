@@ -83,6 +83,8 @@ var (
 	ErrInvalidInput = errors.New("input invalid")
 	// ErrInvalidVersionHash signals unknown version of hash.
 	ErrInvalidVersionHash = errors.New("invalid version hash")
+	// ErrInvalidOutput signals when malformed manifest contnet is supplied to Unmarshal function
+	ErrInvalidOutput = errors.New("malformed manifest contents")
 )
 
 var obfuscationKeyFn = rand.Read
@@ -303,6 +305,10 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 
 				nodeForkSize += nodeForkMetadataBytesSize
 				nodeForkSize += int(metadataBytesSize)
+
+				if offset+nodeForkSize >= len(data) {
+					return ErrInvalidOutput
+				}
 
 				err := f.fromBytes02(data[offset:offset+nodeForkSize], refBytesSize, int(metadataBytesSize))
 				if err != nil {
