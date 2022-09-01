@@ -17,14 +17,13 @@ import (
 // Unpinning will result in all chunks with pincounter 0 to be put in the gc index
 // so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able.
 func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error) {
-	loggerV1 := db.logger.V(1).Register()
-
 	var (
 		item = shed.Item{
 			BatchID: id,
 		}
-		batch     = new(leveldb.Batch)
-		oldRadius uint8
+		batch             = new(leveldb.Batch)
+		oldRadius         uint8
+		reserveSizeChange uint64
 	)
 
 	i, err := db.postageRadiusIndex.Get(item)
@@ -36,44 +35,14 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 	} else {
 		oldRadius = i.Radius
 	}
-	var (
-		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
-		reserveSizeChange uint64
-	)
-	unpin := func(item shed.Item) (stop bool, err error) {
-		addr := swarm.NewAddress(item.Address)
-		c, err := db.setUnpin(batch, addr)
-		if err != nil {
-			if !errors.Is(err, leveldb.ErrNotFound) {
-				return false, fmt.Errorf("unpin: %w", err)
-			} else {
-				// this is possible when we are resyncing chain data after
-				// a dirty shutdown
-				loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
-			}
-		} else {
-			// we need to do this because a user might pin a chunk on top of
-			// the reserve pinning. when we unpin due to an unreserve call, then
-			// we should logically deduct the chunk anyway from the reserve size
-			// otherwise the reserve size leaks, since c returned from setUnpin
-			// will be zero.
-			reserveSizeChange++
-		}
-
-		gcSizeChange += c
-		return false, nil
-	}
 
 	// iterate over chunk in bins
 	for bin := oldRadius; bin < radius; bin++ {
-		err := db.postageChunksIndex.Iterate(unpin, &shed.IterateOptions{Prefix: append(id, bin)})
+		rSizeChange, err := db.unpinBatchChunks(id, bin)
 		if err != nil {
 			return 0, err
 		}
-		// adjust gcSize
-		if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
-			return 0, err
-		}
+		reserveSizeChange += rSizeChange
 		item.Radius = bin
 		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
 			return 0, err
@@ -87,7 +56,6 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 			return 0, err
 		}
 		batch = new(leveldb.Batch)
-		gcSizeChange = 0
 	}
 
 	if radius != swarm.MaxPO+1 {
@@ -118,6 +86,76 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 	// trigger garbage collection if we reached the capacity
 	if gcSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()
+	}
+
+	return reserveSizeChange, nil
+}
+
+const unpinBatchSize = 10000
+
+func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
+	loggerV1 := db.logger.V(1).Register()
+	var (
+		batch             = new(leveldb.Batch)
+		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
+		reserveSizeChange uint64
+	)
+	unpin := func(item shed.Item) (stop bool, err error) {
+		addr := swarm.NewAddress(item.Address)
+		c, err := db.setUnpin(batch, addr)
+		if err != nil {
+			if !errors.Is(err, leveldb.ErrNotFound) {
+				return false, fmt.Errorf("unpin: %w", err)
+			} else {
+				// this is possible when we are resyncing chain data after
+				// a dirty shutdown
+				loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
+			}
+		} else {
+			// we need to do this because a user might pin a chunk on top of
+			// the reserve pinning. when we unpin due to an unreserve call, then
+			// we should logically deduct the chunk anyway from the reserve size
+			// otherwise the reserve size leaks, since c returned from setUnpin
+			// will be zero.
+			reserveSizeChange++
+		}
+
+		gcSizeChange += c
+		return false, nil
+	}
+
+	var startItem *shed.Item
+	for {
+		currentBatchSize := 0
+		more := false
+		err := db.postageChunksIndex.Iterate(func(item shed.Item) (bool, error) {
+			if currentBatchSize > unpinBatchSize {
+				startItem = &item
+				more = true
+				return true, nil
+			}
+			currentBatchSize++
+			return unpin(item)
+		}, &shed.IterateOptions{
+			Prefix:    append(id, bin),
+			StartFrom: startItem,
+		})
+		if err != nil {
+			return 0, err
+		}
+		// adjust gcSize
+		if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
+			return 0, err
+		}
+		if err := db.shed.WriteBatch(batch); err != nil {
+			return 0, err
+		}
+		batch = new(leveldb.Batch)
+		gcSizeChange = 0
+
+		if !more {
+			break
+		}
 	}
 
 	return reserveSizeChange, nil
