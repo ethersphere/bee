@@ -2,16 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package inmem_test
+package inmemstore_test
 
 import (
 	"testing"
 
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
-	storetesting "github.com/ethersphere/bee/pkg/storagev2/testsuite"
+	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
 
-func TestStoreTestSuite(t *testing.T) {
-	st := inmem.New()
-	storetesting.RunCorrectnessTests(t, st)
+func TestStore(t *testing.T) {
+	storagetest.TestStore(t, inmem.New())
 }
