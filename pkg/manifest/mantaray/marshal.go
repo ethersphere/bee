@@ -301,16 +301,16 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 					return fmt.Errorf("not enough bytes for node fork: %d (%d) on byte '%x': %w", (len(data) - offset), (nodeForkPreReferenceSize + refBytesSize + nodeForkMetadataBytesSize), []byte{b}, ErrInvalidManifest)
 				}
 
-				metadataBytesSize := binary.BigEndian.Uint16(data[offset+nodeForkSize : offset+nodeForkSize+nodeForkMetadataBytesSize])
+				metadataBytesSize := int(binary.BigEndian.Uint16(data[offset+nodeForkSize : offset+nodeForkSize+nodeForkMetadataBytesSize]))
 
 				nodeForkSize += nodeForkMetadataBytesSize
-				nodeForkSize += int(metadataBytesSize)
+				nodeForkSize += metadataBytesSize
 
-				if offset+nodeForkSize >= len(data) {
+				if offset+nodeForkSize > len(data) {
 					return fmt.Errorf("not enough bytes for metadata: %w", ErrInvalidManifest)
 				}
 
-				err := f.fromBytes02(data[offset:offset+nodeForkSize], refBytesSize, int(metadataBytesSize))
+				err := f.fromBytes02(data[offset:offset+nodeForkSize], refBytesSize, metadataBytesSize)
 				if err != nil {
 					return fmt.Errorf("%s on byte '%x': %w", err, []byte{b}, ErrInvalidManifest)
 				}
