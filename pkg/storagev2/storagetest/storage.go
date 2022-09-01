@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package storetesting
+package storagetest
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 )
 
 type obj1 struct {
@@ -93,7 +93,8 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	}
 }
 
-func RunCorrectnessTests(t *testing.T, s storage.Store) {
+// TestStore provides correctness testsuite for Store interface.
+func TestStore(t *testing.T, s storage.Store) {
 	t.Helper()
 
 	testObjs := []storage.Item{
@@ -510,9 +511,11 @@ func RunCorrectnessTests(t *testing.T, s storage.Store) {
 	})
 }
 
-// packages using the store would define Items and define the Serializable interface
-// on them. They could use these tests to test the serialization part.
-func RunItemSerializationTests(t *testing.T, i storage.Item, factory func() storage.Item) {
+// TestItemSerialization provides correctness testsuite for
+// serialization/deserialization of Item. Packages using the
+// store would define Items and define the Marshaler/Unmarshaler
+// interfaces on them.
+func TestItemSerialization(t *testing.T, i storage.Item, factory func() storage.Item) {
 	t.Helper()
 
 	t.Run("marshal", func(t *testing.T) {
