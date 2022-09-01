@@ -18,3 +18,12 @@ func TestStoreTestSuite(t *testing.T) {
 	}
 	storagetest.TestStore(t, store)
 }
+
+func BenchmarkLevelDB(b *testing.B) {
+	st, err := ldb.New("", new(opt.Options))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = st.Close() })
+	storetesting.RunBenchmarkTests(b, st)
+}
