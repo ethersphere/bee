@@ -251,12 +251,12 @@ func Test_UnmarshalBinary(t *testing.T) {
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("case #%d", i+1), func(t *testing.T) {
 			n := New()
-			err := n.UnmarshalBinary(tc.data)
+			haveErr := n.UnmarshalBinary(tc.data)
 
-			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
-				t.Fatalf("expected error marshaling, want %v got %v", tc.wantErr, err)
-			} else if tc.wantErr == nil && err != nil {
-				t.Fatalf("unexpected error marshaling, got %v", err)
+			if tc.wantErr != nil && !errors.Is(haveErr, tc.wantErr) {
+				t.Fatalf("expected error marshaling, want %v got %v", tc.wantErr, haveErr)
+			} else if tc.wantErr == nil && haveErr != nil {
+				t.Fatalf("unexpected error marshaling, got %v", haveErr)
 			}
 		})
 	}
