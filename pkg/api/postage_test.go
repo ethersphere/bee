@@ -563,7 +563,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid batch id", func(t *testing.T) {
+	t.Run("invalid batch Id", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/topup/abcd/2", http.StatusBadRequest,
@@ -684,7 +684,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid batch id", func(t *testing.T) {
+	t.Run("invalid batch Id", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/dilute/abcd/2", http.StatusBadRequest,
