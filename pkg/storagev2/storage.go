@@ -5,7 +5,6 @@
 package storage
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -62,7 +61,7 @@ const (
 )
 
 // ErrInvalidQuery indicates that the query is not a valid query.
-var ErrInvalidQuery = errors.New("invalid query")
+var ErrInvalidQuery = errors.New("storage: invalid query")
 
 var ErrNotFound = errors.New("storage: not found")
 
@@ -123,6 +122,8 @@ type Item interface {
 
 // Store contains the interfaces required for the Data Abstraction Layer.
 type Store interface {
+	io.Closer
+
 	// Get unmarshalls object with the given Item.Key.ID into the given Item.
 	Get(Item) error
 
@@ -143,21 +144,6 @@ type Store interface {
 	// Put inserts or updates the the given Item identified by its Key.ID.
 	Put(Item) error
 
-	// Delete removes the Item with the given Key.ID form the store.
-	Delete(Key) error
-
-	// Closes the store
-	io.Closer
-}
-
-// Tx represents an in-progress store transaction.
-// A transaction must end with a call to Commit or Rollback.
-type Tx interface {
-	Store
-
-	// Commit commits the transaction.
-	Commit(context.Context) error
-
-	// Rollback aborts the transaction.
-	Rollback(context.Context) error
+	// Delete removes the given Item form the store.
+	Delete(Item) error
 }

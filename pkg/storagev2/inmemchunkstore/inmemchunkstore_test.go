@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	storetesting "github.com/ethersphere/bee/pkg/storagev2/testsuite"
+	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
 
-func TestStoreTestSuite(t *testing.T) {
-	st := inmem.New()
-	storetesting.RunChunkStoreCorrectnessTests(t, st)
+func TestChunkStore(t *testing.T) {
+	storagetest.TestChunkStore(t, inmem.New())
 }
