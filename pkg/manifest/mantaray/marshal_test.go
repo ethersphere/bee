@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"math/rand"
 	mrand "math/rand"
 	"reflect"
@@ -248,8 +247,8 @@ func Test_UnmarshalBinary(t *testing.T) {
 		},
 	}
 
-	for i, tc := range tests {
-		t.Run(fmt.Sprintf("case #%d", i+1), func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run("", func(t *testing.T) {
 			n := New()
 			haveErr := n.UnmarshalBinary(tc.data)
 
