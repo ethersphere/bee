@@ -28,6 +28,7 @@ type Putter interface {
 type IterateChunkFn func(swarm.Chunk) (stop bool, err error)
 
 type ChunkStore interface {
+	io.Closer
 	Getter
 	Putter
 
@@ -37,8 +38,6 @@ type ChunkStore interface {
 	Has(context.Context, swarm.Address) (bool, error)
 	// Delete a chunk from the store.
 	Delete(context.Context, swarm.Address) error
-
-	io.Closer
 }
 
 type SizeReporter interface {
