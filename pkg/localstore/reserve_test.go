@@ -696,6 +696,16 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 		case <-closed:
 		}
 	}))
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		if collectedCount == 0 {
+			return
+		}
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-closed:
+		}
+	}))
 
 	stamp := postagetesting.MustNewStamp()
 
@@ -743,19 +753,24 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("eviction timeout")
 	}
+	select {
+	case <-testHookCollectGarbageChan:
+	case <-time.After(10 * time.Second):
+		t.Fatal("gc timeout")
+	}
 
 	t.Run("reserve size", reserveSizeTest(db, 0))
 
 	// chunks are still part of cache so these indexes would not be removed
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, 100))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
 
-	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 100))
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 90))
 
 	// we use the same batch for all chunks
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 1))
 
 	// all chunks would land into the gcIndex
-	t.Run("gc index count", newItemsCountTest(db.gcIndex, 100))
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 }
