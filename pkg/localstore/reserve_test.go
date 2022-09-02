@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -682,4 +683,79 @@ func TestReserveSize(t *testing.T) {
 		}
 		t.Run("reserve size", reserveSizeTest(db, 10))
 	})
+}
+
+func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
+	chunkCount := 100
+
+	var closed chan struct{}
+	testHookEvictChan := make(chan uint64)
+	t.Cleanup(setTestHookEviction(func(collectedCount uint64) {
+		select {
+		case testHookEvictChan <- collectedCount:
+		case <-closed:
+		}
+	}))
+
+	stamp := postagetesting.MustNewStamp()
+
+	unres := func(f postage.UnreserveIteratorFn) error {
+		_, err := f(stamp.BatchID(), 3)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// override the batchSize for the test and reset it when done
+	oldUnpinBatchSize := unpinBatchSize
+	unpinBatchSize = 10
+	defer func() { unpinBatchSize = oldUnpinBatchSize }()
+
+	db := newTestDB(t, &Options{
+		Capacity:        100,
+		ReserveCapacity: 100,
+		UnreserveFunc:   unres,
+	})
+	closed = db.close
+
+	// generate chunks with the same batch and depth to trigger larger eviction
+	genChunk := func() swarm.Chunk {
+		newStamp := postagetesting.MustNewBatchStamp(stamp.BatchID())
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2)
+		return ch.WithBatch(2, 3, 2, false).WithStamp(newStamp)
+	}
+
+	for i := 0; i < chunkCount; i++ {
+		ch := genChunk()
+		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	select {
+	case <-testHookEvictChan:
+	case <-time.After(10 * time.Second):
+		t.Fatal("eviction timeout")
+	}
+
+	t.Run("reserve size", reserveSizeTest(db, 0))
+
+	// chunks are still part of cache so these indexes would not be removed
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 100))
+
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 100))
+
+	// we use the same batch for all chunks
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 1))
+
+	// all chunks would land into the gcIndex
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 100))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
 }

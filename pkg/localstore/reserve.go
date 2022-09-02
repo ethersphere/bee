@@ -73,16 +73,6 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		return 0, err
 	}
 
-	if reserveSizeChange > 0 {
-		batch = new(leveldb.Batch)
-		if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
-			return 0, err
-		}
-		if err := db.shed.WriteBatch(batch); err != nil {
-			return 0, err
-		}
-	}
-
 	// trigger garbage collection if we reached the capacity
 	if gcSize >= db.cacheCapacity {
 		db.triggerGarbageCollection()
@@ -91,14 +81,15 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 	return reserveSizeChange, nil
 }
 
-const unpinBatchSize = 10000
+var unpinBatchSize = 10000
 
 func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 	loggerV1 := db.logger.V(1).Register()
 	var (
-		batch             = new(leveldb.Batch)
-		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
-		reserveSizeChange uint64
+		batch                  = new(leveldb.Batch)
+		gcSizeChange           int64 // number to add or subtract from gcSize and reserveSize
+		reserveSizeChange      uint64
+		totalReserveSizeChange uint64
 	)
 	unpin := func(item shed.Item) (stop bool, err error) {
 		addr := swarm.NewAddress(item.Address)
@@ -106,11 +97,10 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 		if err != nil {
 			if !errors.Is(err, leveldb.ErrNotFound) {
 				return false, fmt.Errorf("unpin: %w", err)
-			} else {
-				// this is possible when we are resyncing chain data after
-				// a dirty shutdown
-				loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
 			}
+			// this is possible when we are resyncing chain data after
+			// a dirty shutdown
+			loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
 		} else {
 			// we need to do this because a user might pin a chunk on top of
 			// the reserve pinning. when we unpin due to an unreserve call, then
@@ -144,21 +134,30 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 			return 0, err
 		}
 		// adjust gcSize
-		if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
-			return 0, err
+		if gcSizeChange > 0 {
+			if err := db.incGCSizeInBatch(batch, gcSizeChange); err != nil {
+				return 0, err
+			}
+		}
+		if reserveSizeChange > 0 {
+			if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
+				return 0, err
+			}
 		}
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return 0, err
 		}
 		batch = new(leveldb.Batch)
 		gcSizeChange = 0
+		totalReserveSizeChange += reserveSizeChange
+		reserveSizeChange = 0
 
 		if !more {
 			break
 		}
 	}
 
-	return reserveSizeChange, nil
+	return totalReserveSizeChange, nil
 }
 
 func withinRadius(db *DB, item shed.Item) bool {
