@@ -26,6 +26,7 @@ import (
 type Traverser interface {
 	// Traverse iterates through each address related to the supplied one, if possible.
 	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
+	Get(context.Context, swarm.Address) (ch swarm.Chunk, err error)
 }
 
 type PutGetter interface {
@@ -90,4 +91,8 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
 	}
 	return nil
+}
+
+func (s *service) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	return s.store.Get(ctx, storage.ModeGetRequest, addr)
 }

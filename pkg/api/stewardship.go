@@ -46,6 +46,23 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.NotFound(w, nil)
 		return
 	}
+
+	traverse := r.URL.Query().Get("traverse")
+	if traverse == "false" {
+		s.logger.Debugf("stewardship get: skip traversal")
+		_, err := s.traversal.Get(r.Context(), address)
+		if err != nil {
+			s.logger.Debugf("stewardship get: no traverse, is retrievable %s: %v", address, err)
+			s.logger.Error("stewardship get: no traverse, is retrievable")
+			jsonhttp.InternalServerError(w, nil)
+			return
+		}
+		jsonhttp.OK(w, isRetrievableResponse{
+			IsRetrievable: true,
+		})
+		return
+	}
+
 	res, err := s.steward.IsRetrievable(r.Context(), address)
 	if err != nil {
 		s.logger.Debugf("stewardship get: is retrievable %s: %v", address, err)
