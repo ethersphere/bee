@@ -267,8 +267,6 @@ func (w *singularDBWriter) Delete(key []byte) {
 	}
 }
 
-func (w *singularDBWriter) Done() {}
-
 func newDBWriter(db storage.Store) *singularDBWriter {
 	return &singularDBWriter{db: db}
 }
