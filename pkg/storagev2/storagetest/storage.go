@@ -24,16 +24,6 @@ import (
 
 var keyLen int
 
-func init() {
-	var b bytes.Buffer
-	keyLen, _ = fmt.Fprintf(&b, hitKeyFormat, math.MaxInt32)
-	b.Reset()
-	missingKeyLen, _ := fmt.Fprintf(&b, missingKeyFormat, math.MaxInt32)
-	if keyLen != missingKeyLen {
-		panic("len(key) != len(missingKey)")
-	}
-}
-
 type obj1 struct {
 	Id      string
 	SomeInt uint64
@@ -582,6 +572,14 @@ func TestItemSerialization(t *testing.T, i storage.Item, factory func() storage.
 }
 
 func RunBenchmarkTests(b *testing.B, s storage.Store) {
+	var buf bytes.Buffer
+	keyLen, _ = fmt.Fprintf(&buf, hitKeyFormat, math.MaxInt32)
+	buf.Reset()
+	missingKeyLen, _ := fmt.Fprintf(&buf, missingKeyFormat, math.MaxInt32)
+	if keyLen != missingKeyLen {
+		b.Fatal("len(key) != len(missingKey)")
+	}
+
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkWriteSequential(b, s)
 	})
@@ -628,12 +626,14 @@ func BenchmarkReadRandomMissing(b *testing.B, db storage.Store) {
 
 func BenchmarkReadSequential(b *testing.B, db storage.Store) {
 	g := newSequentialKeyGenerator(b.N)
+	populate(b.N, db)
 	resetBenchmark(b)
 	doRead(b, db, g, false)
 }
 
 func BenchmarkReadReverse(b *testing.B, db storage.Store) {
 	g := newReversedKeyGenerator(newSequentialKeyGenerator(b.N))
+	populate(b.N, db)
 	resetBenchmark(b)
 	doRead(b, db, g, false)
 }
@@ -681,7 +681,7 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 }
 
 func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
-	for i, n := 1, 8; i <= n; i *= 2 {
+	for i, n := 1, runtime.NumCPU(); i <= n; i *= 2 {
 		name := fmt.Sprintf("parallelism-%d", i)
 		runtime.GC()
 		parallelism := i
@@ -709,13 +709,17 @@ func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
 }
 
 func BenchmarkDeleteRandom(b *testing.B, db storage.Store) {
-	g := newRandomKeyGenerator(b.N)
+	n := b.N
+	g := newFullRandomEntryGenerator(0, n)
+	doWrite(db, n, g)
 	resetBenchmark(b)
 	doDelete(b, db, g)
 }
 
 func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
-	g := newSortedRandomKeyGenerator(b.N)
+	n := b.N
+	g := newSequentialEntryGenerator(n)
+	doWrite(db, n, g)
 	resetBenchmark(b)
 	doDelete(b, db, g)
 }
