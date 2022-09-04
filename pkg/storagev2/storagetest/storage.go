@@ -616,6 +616,9 @@ func RunBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("ReadReverse", func(b *testing.B) {
 		BenchmarkReadReverse(b, s)
 	})
+	b.Run("ReadRedHot", func(b *testing.B) {
+		BenchmarkReadHot(b, s)
+	})
 	b.Run("IterateSequential", func(b *testing.B) {
 		BenchmarkIterateSequential(b, s)
 	})
@@ -651,6 +654,14 @@ func BenchmarkReadSequential(b *testing.B, db storage.Store) {
 
 func BenchmarkReadReverse(b *testing.B, db storage.Store) {
 	g := newReversedKeyGenerator(newSequentialKeyGenerator(b.N))
+	populate(b.N, db)
+	resetBenchmark(b)
+	doRead(b, db, g, false)
+}
+
+func BenchmarkReadHot(b *testing.B, db storage.Store) {
+	k := maxInt((b.N+99)/100, 1)
+	g := newRoundKeyGenerator(newRandomKeyGenerator(k))
 	populate(b.N, db)
 	resetBenchmark(b)
 	doRead(b, db, g, false)
