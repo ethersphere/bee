@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"runtime"
-	"sort"
 	"testing"
 	"time"
 
@@ -205,14 +204,6 @@ func newRandomMissingKeyGenerator(n int) keyGenerator {
 
 func newFullRandomKeyGenerator(start, n int) keyGenerator {
 	return &predefinedKeyGenerator{keys: newFullRandomKeys(n, start, hitKeyFormat)}
-}
-
-func newSortedRandomKeyGenerator(n int) keyGenerator {
-	keys := newRandomKeys(n, hitKeyFormat)
-	sort.Slice(keys, func(i, j int) bool {
-		return bytes.Compare(keys[i], keys[j]) < 0
-	})
-	return &predefinedKeyGenerator{keys: keys}
 }
 
 func newSequentialKeyGenerator(n int) keyGenerator {

@@ -682,7 +682,7 @@ func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
 		Factory: func() storage.Item { return new(obj1) },
 		Order:   storage.KeyAscendingOrder,
 	}
-	db.Iterate(q, fn)
+	_ = db.Iterate(q, fn)
 }
 
 func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
@@ -700,7 +700,7 @@ func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
 		Factory: func() storage.Item { return new(obj1) },
 		Order:   storage.KeyDescendingOrder,
 	}
-	db.Iterate(q, fn)
+	_ = db.Iterate(q, fn)
 }
 
 func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
