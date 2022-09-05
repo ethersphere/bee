@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -590,14 +589,6 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 }
 
 func RunBenchmarkTests(b *testing.B, s storage.Store) {
-	var buf bytes.Buffer
-	keyLen, _ = fmt.Fprintf(&buf, hitKeyFormat, math.MaxInt32)
-	buf.Reset()
-	missingKeyLen, _ := fmt.Fprintf(&buf, missingKeyFormat, math.MaxInt32)
-	if keyLen != missingKeyLen {
-		b.Fatal("len(key) != len(missingKey)")
-	}
-
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkWriteSequential(b, s)
 	})

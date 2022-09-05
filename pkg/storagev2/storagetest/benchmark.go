@@ -1,10 +1,11 @@
-package storetesting
+package storagetest
 
 import (
 	"bytes"
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"runtime"
 	"testing"
@@ -12,6 +13,8 @@ import (
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
+
+var keyLen int
 
 var (
 	valueSize        = flag.Int("value_size", 100, "Size of each value")
@@ -22,6 +25,16 @@ const (
 	hitKeyFormat     = "%016d+"
 	missingKeyFormat = "%016d-"
 )
+
+func init() {
+	var buf bytes.Buffer
+	keyLen, _ = fmt.Fprintf(&buf, hitKeyFormat, math.MaxInt32)
+	buf.Reset()
+	missingKeyLen, _ := fmt.Fprintf(&buf, missingKeyFormat, math.MaxInt32)
+	if keyLen != missingKeyLen {
+		panic("len(key) != len(missingKey)")
+	}
+}
 
 func randomBytes(r *rand.Rand, n int) []byte {
 	b := make([]byte, n)

@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
+	ldb "github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 func TestStoreTestSuite(t *testing.T) {
@@ -25,7 +27,7 @@ func BenchmarkLevelDB(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { _ = st.Close() })
-	storetesting.RunBenchmarkTests(b, st)
+	storagetest.RunBenchmarkTests(b, st)
 }
 
 /* Benchmark results
