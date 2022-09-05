@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -19,10 +18,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
-
-var keyLen int
 
 type obj1 struct {
 	Id      string
@@ -572,14 +569,6 @@ func TestItemSerialization(t *testing.T, i storage.Item, factory func() storage.
 }
 
 func RunBenchmarkTests(b *testing.B, s storage.Store) {
-	var buf bytes.Buffer
-	keyLen, _ = fmt.Fprintf(&buf, hitKeyFormat, math.MaxInt32)
-	buf.Reset()
-	missingKeyLen, _ := fmt.Fprintf(&buf, missingKeyFormat, math.MaxInt32)
-	if keyLen != missingKeyLen {
-		b.Fatal("len(key) != len(missingKey)")
-	}
-
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkWriteSequential(b, s)
 	})
