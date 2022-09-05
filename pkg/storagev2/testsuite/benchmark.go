@@ -237,42 +237,40 @@ type singularDBWriter struct {
 	db storage.Store
 }
 
-func (w *singularDBWriter) Put(key, value []byte) {
+func (w *singularDBWriter) Put(key, value []byte) error {
 	item := &obj1{
 		Id:  string(key),
 		Buf: value,
 	}
-	err := w.db.Put(item)
-	if err != nil {
-		panic(err)
-	}
+	return w.db.Put(item)
 }
 
-func (w *singularDBWriter) Delete(key []byte) {
+func (w *singularDBWriter) Delete(key []byte) error {
 	item := &obj1{
 		Id: string(key),
 	}
-	err := w.db.Delete(item)
-	if err != nil {
-		panic(err)
-	}
+	return w.db.Delete(item)
 }
 
 func newDBWriter(db storage.Store) *singularDBWriter {
 	return &singularDBWriter{db: db}
 }
 
-func doWrite(db storage.Store, n int, g entryGenerator) {
+func doWrite(b *testing.B, db storage.Store, g entryGenerator) {
 	w := newDBWriter(db)
-	for i := 0; i < n; i++ {
-		w.Put(g.Key(i), g.Value(i))
+	for i := 0; i < b.N; i++ {
+		if err := w.Put(g.Key(i), g.Value(i)); err != nil {
+			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
+		}
 	}
 }
 
 func doDelete(b *testing.B, db storage.Store, g keyGenerator) {
 	w := newDBWriter(db)
 	for i := 0; i < b.N; i++ {
-		w.Delete(g.Key(i))
+		if err := w.Delete(g.Key(i)); err != nil {
+			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
+		}
 	}
 }
 
@@ -281,6 +279,6 @@ func resetBenchmark(b *testing.B) {
 	b.ResetTimer()
 }
 
-func populate(n int, db storage.Store) {
-	doWrite(db, n, newFullRandomEntryGenerator(0, n))
+func populate(b *testing.B, db storage.Store) {
+	doWrite(b, db, newFullRandomEntryGenerator(0, b.N))
 }
