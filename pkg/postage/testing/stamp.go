@@ -29,3 +29,9 @@ func MustNewSignature() []byte {
 func MustNewStamp() *postage.Stamp {
 	return postage.NewStamp(MustNewID(), MustNewID()[:8], MustNewID()[:8], MustNewSignature())
 }
+
+// MustNewBatchStamp will generate a postage stamp with the provided batch ID and assign
+// random data to other fields. Panics on error
+func MustNewBatchStamp(batch []byte) *postage.Stamp {
+	return postage.NewStamp(batch, MustNewID()[:8], MustNewID()[:8], MustNewSignature())
+}
