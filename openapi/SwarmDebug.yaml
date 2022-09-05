@@ -311,21 +311,6 @@ paths:
         default:
           description: Default response
 
-  "/health":
-    get:
-      summary: Get health of node
-      tags:
-        - Status
-      responses:
-        "200":
-          description: Health State of node
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
-        default:
-          description: Default response
-
   "/peers":
     get:
       summary: Get a list of peers
@@ -392,6 +377,21 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/health":
+    get:
+      summary: Get health of node
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Health State of node
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
         default:
           description: Default response
 

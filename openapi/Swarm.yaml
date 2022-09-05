@@ -880,7 +880,21 @@ paths:
   "/health":
     get:
       summary: Get health of node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Health State of node
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+        default:
+          description: Default response
+
+  "/readiness":
+    get:
+      summary: Get readiness state of node
       tags:
         - Status
       responses:
