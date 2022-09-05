@@ -647,14 +647,14 @@ func BenchmarkReadRandomMissing(b *testing.B, db storage.Store) {
 
 func BenchmarkReadSequential(b *testing.B, db storage.Store) {
 	g := newSequentialKeyGenerator(b.N)
-	populate(b.N, db)
+	populate(b, db)
 	resetBenchmark(b)
 	doRead(b, db, g, false)
 }
 
 func BenchmarkReadReverse(b *testing.B, db storage.Store) {
 	g := newReversedKeyGenerator(newSequentialKeyGenerator(b.N))
-	populate(b.N, db)
+	populate(b, db)
 	resetBenchmark(b)
 	doRead(b, db, g, false)
 }
@@ -662,14 +662,14 @@ func BenchmarkReadReverse(b *testing.B, db storage.Store) {
 func BenchmarkReadHot(b *testing.B, db storage.Store) {
 	k := maxInt((b.N+99)/100, 1)
 	g := newRoundKeyGenerator(newRandomKeyGenerator(k))
-	populate(b.N, db)
+	populate(b, db)
 	resetBenchmark(b)
 	doRead(b, db, g, false)
 }
 
 func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
 	resetBenchmark(b)
-	populate(b.N, db)
+	populate(b, db)
 	var counter int
 	fn := func(r storage.Result) (bool, error) {
 		counter++
@@ -687,7 +687,7 @@ func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
 
 func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
 	resetBenchmark(b)
-	populate(b.N, db)
+	populate(b, db)
 	var counter int
 	fn := func(storage.Result) (bool, error) {
 		counter++
@@ -706,7 +706,7 @@ func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
 func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 	g := newSequentialEntryGenerator(b.N)
 	resetBenchmark(b)
-	doWrite(db, b.N, g)
+	doWrite(b, db, g)
 }
 
 func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
@@ -729,7 +729,7 @@ func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
 			for _, g := range gens {
 				go func(g entryGenerator) {
 					defer wg.Done()
-					doWrite(db, b.N, g)
+					doWrite(b, db, g)
 				}(g)
 			}
 			wg.Wait()
@@ -738,17 +738,15 @@ func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
 }
 
 func BenchmarkDeleteRandom(b *testing.B, db storage.Store) {
-	n := b.N
-	g := newFullRandomEntryGenerator(0, n)
-	doWrite(db, n, g)
+	g := newFullRandomEntryGenerator(0, b.N)
+	doWrite(b, db, g)
 	resetBenchmark(b)
 	doDelete(b, db, g)
 }
 
 func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
-	n := b.N
-	g := newSequentialEntryGenerator(n)
-	doWrite(db, n, g)
+	g := newSequentialEntryGenerator(b.N)
+	doWrite(b, db, g)
 	resetBenchmark(b)
 	doDelete(b, db, g)
 }
