@@ -86,11 +86,6 @@ func (s *Service) MountAPI() {
 }
 
 func (s *Service) mountTechnicalDebug() {
-	s.router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(statusHandler),
-	))
-
 	s.router.Handle("/node", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.nodeGetHandler),
 	})
@@ -123,11 +118,6 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 
 	s.router.Handle("/debug/vars", expvar.Handler())
-
-	s.router.Handle("/health", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(statusHandler),
-	))
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
@@ -312,6 +302,16 @@ func (s *Service) mountAPI() {
 			web.FinalHandlerFunc(s.stewardshipPutHandler),
 		),
 	})
+
+	handle("/readiness", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(statusHandler),
+	))
+
+	handle("/health", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(statusHandler),
+	))
 
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
@@ -515,6 +515,16 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/accounting", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
 	})
+
+	handle("/readiness", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(statusHandler),
+	))
+
+	handle("/health", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(statusHandler),
+	))
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
