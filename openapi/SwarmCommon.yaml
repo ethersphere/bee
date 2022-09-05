@@ -416,7 +416,7 @@ components:
         status:
           type: string
           enum: [ok, nok]
-          description: > 
+          description: >
             Indicates health state of node
             * `ok` - node is healthy
             * `nok` - node is not healthy
