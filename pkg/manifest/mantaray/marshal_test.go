@@ -204,6 +204,8 @@ func TestMarshal(t *testing.T) {
 }
 
 func Test_UnmarshalBinary(t *testing.T) {
+	t.Parallel()
+
 	decode := func(s string) []byte {
 		t.Helper()
 		data, err := hex.DecodeString(s)
