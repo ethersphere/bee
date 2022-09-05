@@ -18,11 +18,20 @@ type statusResponse struct {
 	DebugAPIVersion string `json:"debugApiVersion"`
 }
 
-func statusHandler(w http.ResponseWriter, r *http.Request) {
-	jsonhttp.OK(w, statusResponse{
-		Status:          "ok",
-		Version:         bee.Version,
-		APIVersion:      Version,
-		DebugAPIVersion: Version,
-	})
+func (s *Service) healthHandler(w http.ResponseWriter, r *http.Request) {
+	if s.probe != nil && s.probe.Healthy() {
+		jsonhttp.OK(w, statusResponse{
+			Status:          "ok",
+			Version:         bee.Version,
+			APIVersion:      Version,
+			DebugAPIVersion: Version,
+		})
+	} else {
+		jsonhttp.OK(w, statusResponse{
+			Status:          "nok",
+			Version:         bee.Version,
+			APIVersion:      Version,
+			DebugAPIVersion: Version,
+		})
+	}
 }

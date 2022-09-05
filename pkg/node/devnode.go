@@ -175,6 +175,13 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
+	// Create api.Probe in healthy state and switch to ready state after all components have been constructed
+	probe := api.NewProbe()
+	probe.SetHealthy(api.ProbeStatusOK)
+	defer func(probe *api.Probe) {
+		probe.SetReady(api.ProbeStatusOK)
+	}(probe)
+
 	var debugApiService *api.Service
 
 	if o.DebugAPIAddr != "" {
@@ -192,6 +199,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}
 
 		debugApiService.MountTechnicalDebug()
+		debugApiService.SetProbe(probe)
 
 		go func() {
 			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
@@ -391,6 +399,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}, debugOpts, 1, erc20)
 
 	apiService.MountAPI()
+	apiService.SetProbe(probe)
 
 	if o.Restricted {
 		apiService.SetP2P(p2ps)
