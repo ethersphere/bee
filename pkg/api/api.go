@@ -130,6 +130,7 @@ type Service struct {
 	post            postage.Service
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
+	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	Options
 

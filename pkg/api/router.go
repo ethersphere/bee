@@ -305,12 +305,12 @@ func (s *Service) mountAPI() {
 
 	handle("/readiness", web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(statusHandler),
+		web.FinalHandlerFunc(s.readinessHandler),
 	))
 
 	handle("/health", web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(statusHandler),
+		web.FinalHandlerFunc(s.healthHandler),
 	))
 
 	if s.Restricted {
@@ -518,12 +518,12 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/readiness", web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(statusHandler),
+		web.FinalHandlerFunc(s.readinessHandler),
 	))
 
 	handle("/health", web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(statusHandler),
+		web.FinalHandlerFunc(s.healthHandler),
 	))
 }
 

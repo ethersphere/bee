@@ -868,16 +868,16 @@ paths:
 
   "/readiness":
     get:
-      summary: Get readiness state of node
+      summary: Readiness endpoint indicates if node is ready to start accepting traffic
       tags:
         - Status
       responses:
         "200":
-          description: Health State of node
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+          description: Indicates that node is ready
+          $ref: "SwarmCommon.yaml#/components/responses/200"
+        "400":
+          description: Indicates that node is not ready
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
 

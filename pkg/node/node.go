@@ -317,6 +317,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		beeNodeMode = api.UltraLightMode
 	}
 
+	// Create api.Probe in healthy state and switch to ready state after all components have been constructed
+	probe := api.NewProbe()
+	probe.SetHealthy(api.ProbeStatusOK)
+	defer func(probe *api.Probe) {
+		probe.SetReady(api.ProbeStatusOK)
+	}(probe)
+
 	var debugService *api.Service
 
 	if o.DebugAPIAddr != "" {
@@ -335,6 +342,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
+		debugService.SetProbe(probe)
 
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
@@ -360,6 +368,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	if o.Restricted {
 		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
+		apiService.SetProbe(probe)
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
@@ -981,6 +990,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	if o.APIAddr != "" {
 		if apiService == nil {
 			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+			apiService.SetProbe(probe)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
