@@ -6,10 +6,11 @@ package api
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gorilla/mux"
-	"math/big"
+	"io"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -23,9 +24,9 @@ type validateFunc func(r *http.Request, output interface{}) error
 
 // parseAndValidateErrorResponse represents the API error response
 // returned after a failed call to the parseAndValidate method.
-type parseAndValidateErrorResponse struct {
-	Errors string `json:"errors"`
-}
+//type parseAndValidateErrorResponse struct {
+//	Errors string `json:"errors"`
+//}
 
 func (s *Service) InitializeHooks() map[string]func(interface{}, string, reflect.Value) error {
 	parseHooks = make(ValidateFunc)
@@ -37,10 +38,31 @@ func (s *Service) InitializeHooks() map[string]func(interface{}, string, reflect
 // against the annotations declared in the given struct.
 func (s *Service) parseAndValidate(input *http.Request, output interface{}, validate ...validateFunc) error {
 	val := reflect.Indirect(reflect.ValueOf(output))
+	//decoder := mapstructure.Decoder{}
 	reqMapVars := mux.Vars(input)
 	reqMapHeaders := input.Header
+
+	if input.Body != nil {
+		body, err := io.ReadAll(input.Body)
+		if err != nil {
+			s.logger.Debug("done split tag: read request body failed", "error", err)
+			s.logger.Error(nil, "done split tag: read request body failed")
+			return errors.New("cannot read request")
+		}
+		if len(body) > 0 {
+			err = json.Unmarshal(body, &output)
+			if err != nil {
+				s.logger.Debug("done split tag: unmarshal tag name failed", "error", err)
+				s.logger.Error(nil, "done split tag: unmarshal tag name failed")
+				return errors.New("cannot read request")
+			}
+
+		}
+	}
 	for i := 0; i < val.NumField(); i++ {
 		tag := val.Type().Field(i).Tag.Get("parse")
+		propertyName := val.Type().Field(i).Tag.Get("name")
+		errMessage := val.Type().Field(i).Tag.Get("errMessage")
 		fmt.Println("--tag", tag)
 		var reqValue string
 		if varValue, isExist := reqMapVars[tag]; isExist {
@@ -50,26 +72,32 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}, vali
 			reqValue = headerValue
 		}
 		hook, isExist := val.Type().Field(i).Tag.Lookup("customHook")
+		fmt.Println("--hook", hook)
 		if isExist {
 			err := parseHooks[hook](reqMapVars[tag], tag, val.Field(i))
 			if err != nil {
-				return errors.New("invalid " + tag)
+				return s.GetErrorMessage(propertyName, errMessage)
 			}
 		} else {
-			switch val.Type().Field(i).Type.String() {
-			case "int64":
+			switch val.Type().Field(i).Type.Kind() {
+			case reflect.Uint32:
+				if err := s.decodeUint(reqValue, val.Field(i)); err != nil {
+					return s.GetErrorMessage(propertyName, errMessage)
+				}
+
+			case reflect.Int64:
 				int64Value, err := strconv.ParseInt(reqValue, 10, 64)
 				if err != nil {
-					return errors.New("invalid " + tag)
+					return s.GetErrorMessage(propertyName, errMessage)
 				}
 
 				val.Field(i).SetInt(int64Value)
-			case "uint8":
+			case reflect.Uint8:
 				uInt, err := strconv.ParseUint(reqValue, 10, 8)
 				if err != nil {
 					s.logger.Debug("create batch: parse depth string failed", "string", reqValue, "error", err)
 					s.logger.Error(nil, "create batch: parse depth string failed")
-					return errors.New("invalid " + tag)
+					return s.GetErrorMessage(propertyName, errMessage)
 				}
 				val.Field(i).SetUint(uInt)
 			}
@@ -80,45 +108,35 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}, vali
 	return nil
 }
 
-func (s *Service) ValidateDepth(r *http.Request, output interface{}) error {
-	depthStr := mux.Vars(r)["depth"]
-	uIntDepth, err := strconv.ParseUint(mux.Vars(r)["depth"], 10, 8)
-	if err != nil {
-		s.logger.Debug("create batch: parse depth string failed", "string", depthStr, "error", err)
-		s.logger.Error(nil, "create batch: parse depth string failed")
-		return errors.New("invalid depth")
+func (s *Service) GetErrorMessage(propertyName, customErrMesg string) error {
+	if len(customErrMesg) > 0 {
+		return errors.New(customErrMesg)
 	}
-	reflect.ValueOf(output).Elem().FieldByName("Depth").SetUint(uIntDepth)
+	return errors.New("invalid " + propertyName)
 
-	return nil
 }
-func (s *Service) ValidateAmount(r *http.Request, output interface{}) error {
-	_, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
-	if !ok {
-		s.logger.Error(nil, "create batch: invalid amount")
-		return errors.New("invalid postage amount")
-	}
-	n, err := strconv.ParseInt(mux.Vars(r)["amount"], 10, 64)
-	if err != nil {
-		return errors.New("invalid postage amount")
-	}
-
-	reflect.ValueOf(output).Elem().FieldByName("Amount").SetInt(n)
-	return nil
-}
-
 func (s *Service) parseBatchId(input interface{}, tag string, value reflect.Value) (err error) {
 	if len(input.(string)) != 64 {
-		s.logger.Error(nil, "get stamp issuer: invalid batch Id string length", "string", input, "length", len(input.(string)))
+		s.logger.Error(nil, "invalid batch Id string length", "string", input, "length", len(input.(string)))
 		return errors.New("invalid " + tag)
 	}
 	id, err := hex.DecodeString(input.(string))
 	if err != nil {
-		s.logger.Debug("get stamp issuer: decode batch Id string failed", "string", input, "error", err)
-		s.logger.Error(nil, "get stamp issuer: decode batch Id string failed")
+		s.logger.Debug("decode batch Id string failed", "string", input, "error", err)
+		s.logger.Error(nil, "decode batch Id string failed")
 		return
 	}
 	value.SetBytes(id)
-	//reflect.ValueOf(output).Elem().FieldByName("Id").SetString(mux.Vars(r)["Id"])
+	return nil
+}
+
+func (s *Service) decodeUint(input interface{}, value reflect.Value) (err error) {
+	uInt, err := strconv.ParseUint(input.(string), 10, 32)
+	if err != nil {
+		s.logger.Debug("parse depth string failed", "string", input.(string), "error", err)
+		s.logger.Error(nil, "create batch: parse depth string failed")
+		return
+	}
+	value.SetUint(uInt)
 	return nil
 }
