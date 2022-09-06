@@ -10,13 +10,49 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"reflect"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
 )
+
+var (
+	// MinAddressBytes represents bytes that can be used to represent a min. address.
+	MinAddressBytes = [swarm.HashSize]byte{swarm.HashSize - 1: 0x00}
+
+	// MaxAddressBytes represents bytes that can be used to represent a max. address.
+	MaxAddressBytes = [swarm.HashSize]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+)
+
+var _ storage.Item = (*ItemStub)(nil)
+
+// ItemStub is a stub for storage.Item.
+type ItemStub struct {
+	MarshalBuf   []byte
+	MarshalErr   error
+	UnmarshalBuf []byte
+}
+
+// ID implements the storage.Item interface.
+func (im ItemStub) ID() string { return fmt.Sprintf("%+v", im) }
+
+// Namespace implements the storage.Item interface.
+func (im ItemStub) Namespace() string { return "test" }
+
+// Marshal implements the storage.Item interface.
+func (im ItemStub) Marshal() ([]byte, error) {
+	return im.MarshalBuf, im.MarshalErr
+}
+
+// Unmarshal implements the storage.Item interface.
+func (im *ItemStub) Unmarshal(data []byte) error {
+	im.UnmarshalBuf = data
+	return nil
+}
 
 type obj1 struct {
 	Id      string
@@ -511,56 +547,41 @@ func TestStore(t *testing.T, s storage.Store) {
 	})
 }
 
-// TestItemSerialization provides correctness testsuite for
-// serialization/deserialization of Item. Packages using the
-// store would define Items and define the Marshaler/Unmarshaler
-// interfaces on them.
-func TestItemSerialization(t *testing.T, i storage.Item, factory func() storage.Item) {
+// ItemMarshalAndUnmarshalTest represents a test case
+// for the TestItemMarshalAndUnmarshal function.
+type ItemMarshalAndUnmarshalTest struct {
+	Item         storage.Item
+	Factory      func() storage.Item
+	MarshalErr   error // Expected error from Marshal.
+	UnmarshalErr error // Expected error from Unmarshal.
+}
+
+// TestItemMarshalAndUnmarshal provides correctness testsuite
+// for storage.Item serialization and deserialization.
+func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest) {
 	t.Helper()
 
-	t.Run("marshal", func(t *testing.T) {
-		buf1, err := i.Marshal()
-		if err != nil {
-			t.Fatalf("failed marshaling: %v", err)
-		}
+	buf, err := test.Item.Marshal()
+	if !errors.Is(err, test.MarshalErr) {
+		t.Fatalf("Marshal(): want error: %v; have error %v", test.MarshalErr, err)
+	}
+	if test.MarshalErr != nil {
+		return
+	}
+	if len(buf) == 0 {
+		t.Fatalf("Marshal(): empty buffer")
+	}
 
-		if buf1 == nil || len(buf1) <= 0 {
-			t.Fatal("marshaling produced nil buffer")
-		}
+	item2 := test.Factory()
+	if err := item2.Unmarshal(buf); !errors.Is(err, test.UnmarshalErr) {
+		t.Fatalf("Unmarshal(): want error: %v; have error %v", test.UnmarshalErr, err)
+	}
+	if test.UnmarshalErr != nil {
+		return
+	}
 
-		buf2, err := i.Marshal()
-		if err != nil {
-			t.Fatalf("failed marshaling: %v", err)
-		}
-
-		if !bytes.Equal(buf1, buf2) {
-			t.Fatal("marshaling twice produced different result")
-		}
-	})
-
-	t.Run("marshal then unmarshal", func(t *testing.T) {
-		buf1, err := i.Marshal()
-		if err != nil {
-			t.Fatalf("failed marshaling: %v", err)
-		}
-
-		i2 := factory()
-		err = i2.Unmarshal(buf1)
-		if err != nil {
-			t.Fatalf("failed unmarshaling: %v", err)
-		}
-
-		if !reflect.DeepEqual(i, i2) {
-			t.Fatal("new item is not equal to old one")
-		}
-
-		buf2, err := i2.Marshal()
-		if err != nil {
-			t.Fatalf("failed marshaling new item: %v", err)
-		}
-
-		if !bytes.Equal(buf1, buf2) {
-			t.Fatal("marshaling new item produced different result")
-		}
-	})
+	want, have := test.Item, item2
+	if diff := cmp.Diff(want, have); diff != "" {
+		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", diff)
+	}
 }
