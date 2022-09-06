@@ -139,7 +139,7 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("topup", func(t *testing.T) {
 		ps.HandleTopUp(ids[1], big.NewInt(10))
-		_, err = ps.GetStampIssuer(ids[1])
+		_, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -149,7 +149,7 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("dilute", func(t *testing.T) {
 		ps.HandleDepthIncrease(ids[2], 17)
-		_, err = ps.GetStampIssuer(ids[2])
+		_, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

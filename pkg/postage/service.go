@@ -143,6 +143,7 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 			if newDepth > v.data.BatchDepth {
 				v.data.BatchDepth = newDepth
 			}
+			return
 		}
 	}
 }
