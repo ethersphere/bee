@@ -322,7 +322,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	probe := api.NewProbe()
 	probe.SetHealthy(api.ProbeStatusOK)
 	defer func(probe *api.Probe) {
-		probe.SetReady(api.ProbeStatusOK)
+		if err != nil {
+			probe.SetHealthy(api.ProbeStatusNOK)
+		} else {
+			probe.SetReady(api.ProbeStatusOK)
+		}
 	}(probe)
 
 	var debugService *api.Service

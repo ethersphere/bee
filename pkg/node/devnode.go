@@ -179,7 +179,11 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	probe := api.NewProbe()
 	probe.SetHealthy(api.ProbeStatusOK)
 	defer func(probe *api.Probe) {
-		probe.SetReady(api.ProbeStatusOK)
+		if err != nil {
+			probe.SetHealthy(api.ProbeStatusNOK)
+		} else {
+			probe.SetReady(api.ProbeStatusOK)
+		}
 	}(probe)
 
 	var debugApiService *api.Service
