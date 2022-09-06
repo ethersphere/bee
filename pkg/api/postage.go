@@ -541,6 +541,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
+		if errors.Is(err, N)
 		s.logger.Debug("dilute batch: dilute failed", "batch_id", fmt.Sprintf("%x", id), "depth", depth, "error", err)
 		s.logger.Error(nil, "dilute batch: dilute failed")
 		jsonhttp.InternalServerError(w, "cannot dilute batch")

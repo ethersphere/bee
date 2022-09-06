@@ -7,6 +7,7 @@ package mock
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 
@@ -101,21 +102,17 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
 
-func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
-
-func (m *mockPostage) HandleTopUp(batchID []byte, amount *big.Int) {
-	m.issuerLock.Lock()
-	defer m.issuerLock.Unlock()
-
-	for _, v := range m.issuersMap {
-		if bytes.Equal(batchID, v.ID()) {
-			v.Amount().Add(v.Amount(), amount)
-		}
-	}
+func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error {
+	return fmt.Errorf("not implemented")
 }
 
-func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {
-	panic("not implemented")
+func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) error {
+	return fmt.Errorf("not implemented")
+
+}
+
+func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) error {
+	return fmt.Errorf("not implemented")
 }
 
 func (m *mockPostage) Close() error {

@@ -123,7 +123,7 @@ func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 
 // HandleTopUp implements the BatchEventListener interface. This is fired on receiving
 // a batch topup event from the blockchain to update stampissuer details
-func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
+func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
@@ -132,9 +132,10 @@ func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
 			v.data.BatchAmount.Add(v.data.BatchAmount, amount)
 		}
 	}
+	return nil
 }
 
-func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
+func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
@@ -143,9 +144,10 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 			if newDepth > v.data.BatchDepth {
 				v.data.BatchDepth = newDepth
 			}
-			return
+			return nil
 		}
 	}
+	return nil
 }
 
 // StampIssuers returns the currently active stamp issuers.
