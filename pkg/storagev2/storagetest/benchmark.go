@@ -1,40 +1,35 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package storagetest
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"math"
 	"math/rand"
 	"runtime"
 	"testing"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-var keyLen int
 
 var (
 	valueSize        = flag.Int("value_size", 100, "Size of each value")
 	compressionRatio = flag.Float64("compression_ratio", 0.5, "")
 )
 
-const (
-	hitKeyFormat     = "%016d+"
-	missingKeyFormat = "%016d-"
-)
+var keyLen = 16
 
-func init() {
-	var buf bytes.Buffer
-	keyLen, _ = fmt.Fprintf(&buf, hitKeyFormat, math.MaxInt32)
-	buf.Reset()
-	missingKeyLen, _ := fmt.Fprintf(&buf, missingKeyFormat, math.MaxInt32)
-	if keyLen != missingKeyLen {
-		panic("len(key) != len(missingKey)")
-	}
-}
+const (
+	hitKeyFormat     = "1%015d"
+	missingKeyFormat = "0%015d"
+)
 
 func randomBytes(r *rand.Rand, n int) []byte {
 	b := make([]byte, n)
@@ -108,10 +103,10 @@ func newSequentialKeys(n int, start int, keyFormat string) [][]byte {
 	for i := 0; i < n; i++ {
 		begin, end := i*keyLen, (i+1)*keyLen
 		key := buffer[begin:begin:end]
-		n, _ := fmt.Fprintf(bytes.NewBuffer(key), keyFormat, start+i)
-		if n != keyLen {
-			panic("n != keyLen")
-		}
+		_, _ = fmt.Fprintf(bytes.NewBuffer(key), keyFormat, start+i)
+		// if n != keyLen {
+		// 	panic("n != keyLen")
+		// }
 		keys[i] = buffer[begin:end:end]
 	}
 	return keys
@@ -124,10 +119,7 @@ func newRandomKeys(n int, format string) [][]byte {
 	for i := 0; i < n; i++ {
 		begin, end := i*keyLen, (i+1)*keyLen
 		key := buffer[begin:begin:end]
-		n, _ := fmt.Fprintf(bytes.NewBuffer(key), format, r.Intn(n))
-		if n != keyLen {
-			panic("n != keyLen")
-		}
+		_, _ = fmt.Fprintf(bytes.NewBuffer(key), format, r.Intn(n))
 		keys[i] = buffer[begin:end:end]
 	}
 	return keys
@@ -294,4 +286,37 @@ func resetBenchmark(b *testing.B) {
 
 func populate(b *testing.B, db storage.Store) {
 	doWrite(b, db, newFullRandomEntryGenerator(0, b.N))
+}
+
+// chunk
+func doDeleteChunk(b *testing.B, db storage.ChunkStore, g keyGenerator) {
+	for i := 0; i < b.N; i++ {
+		addr := swarm.MustParseHexAddress(string(g.Key(i)))
+		if err := db.Delete(context.Background(), addr); err != nil {
+			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
+		}
+	}
+}
+func doWriteChunk(b *testing.B, db storage.ChunkStore, g entryGenerator) {
+	for i := 0; i < b.N; i++ {
+		addr := swarm.MustParseHexAddress(string(g.Key(i)))
+		chunk := swarm.NewChunk(addr, g.Value(i))
+		if _, err := db.Put(context.Background(), chunk); err != nil {
+			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
+		}
+	}
+}
+
+func doReadChunk(b *testing.B, db storage.ChunkStore, g keyGenerator, allowNotFound bool) {
+	for i := 0; i < b.N; i++ {
+		key := string(g.Key(i))
+		addr := swarm.MustParseHexAddress(key)
+		_, err := db.Get(context.Background(), addr)
+		switch {
+		case err == nil:
+		case allowNotFound && errors.Is(err, storage.ErrNotFound):
+		default:
+			b.Fatalf("%d: db get key[%s] error: %s\n", b.N, key, err)
+		}
+	}
 }

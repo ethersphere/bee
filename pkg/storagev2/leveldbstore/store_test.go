@@ -21,13 +21,13 @@ func TestStoreTestSuite(t *testing.T) {
 	storagetest.TestStore(t, store)
 }
 
-func BenchmarkLevelDB(b *testing.B) {
+func BenchmarkStore(b *testing.B) {
 	st, err := ldb.New("", new(opt.Options))
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { _ = st.Close() })
-	storagetest.RunBenchmarkTests(b, st)
+	storagetest.RunStoreBenchmarkTests(b, st)
 }
 
 /* Benchmark results

@@ -588,7 +588,7 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 	}
 }
 
-func RunBenchmarkTests(b *testing.B, s storage.Store) {
+func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkWriteSequential(b, s)
 	})
@@ -616,10 +616,10 @@ func RunBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("IterateReverse", func(b *testing.B) {
 		BenchmarkIterateReverse(b, s)
 	})
-	b.Run(fmt.Sprintf("DeleteRandom: %d", b.N), func(b *testing.B) {
+	b.Run("DeleteRandom", func(b *testing.B) {
 		BenchmarkDeleteRandom(b, s)
 	})
-	b.Run(fmt.Sprintf("DeleteSequential: %d", b.N), func(b *testing.B) {
+	b.Run("DeleteSequential", func(b *testing.B) {
 		BenchmarkDeleteSequential(b, s)
 	})
 }
@@ -659,8 +659,8 @@ func BenchmarkReadHot(b *testing.B, db storage.Store) {
 }
 
 func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
-	resetBenchmark(b)
 	populate(b, db)
+	resetBenchmark(b)
 	var counter int
 	fn := func(r storage.Result) (bool, error) {
 		counter++
@@ -677,8 +677,8 @@ func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
 }
 
 func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
-	resetBenchmark(b)
 	populate(b, db)
+	resetBenchmark(b)
 	var counter int
 	fn := func(storage.Result) (bool, error) {
 		counter++

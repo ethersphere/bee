@@ -15,9 +15,9 @@ func TestStore(t *testing.T) {
 	storagetest.TestStore(t, inmem.New())
 }
 
-func BenchmarkInMem(b *testing.B) {
+func BenchmarkStore(b *testing.B) {
 	st := inmem.New()
-	storagetest.RunBenchmarkTests(b, st)
+	storagetest.RunStoreBenchmarkTests(b, st)
 }
 
 /* Benchmark results
