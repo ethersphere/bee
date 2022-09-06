@@ -22,12 +22,6 @@ var parseHooks ValidateFunc
 
 type validateFunc func(r *http.Request, output interface{}) error
 
-// parseAndValidateErrorResponse represents the API error response
-// returned after a failed call to the parseAndValidate method.
-//type parseAndValidateErrorResponse struct {
-//	Errors string `json:"errors"`
-//}
-
 func (s *Service) InitializeHooks() map[string]func(interface{}, string, reflect.Value) error {
 	parseHooks = make(ValidateFunc)
 	parseHooks["hexToString"] = s.parseBatchId
@@ -38,10 +32,10 @@ func (s *Service) InitializeHooks() map[string]func(interface{}, string, reflect
 // against the annotations declared in the given struct.
 func (s *Service) parseAndValidate(input *http.Request, output interface{}, validate ...validateFunc) error {
 	val := reflect.Indirect(reflect.ValueOf(output))
-	//decoder := mapstructure.Decoder{}
+
 	reqMapVars := mux.Vars(input)
 	reqMapHeaders := input.Header
-
+	reqMapQuery := input.URL.Query()
 	if input.Body != nil {
 		body, err := io.ReadAll(input.Body)
 		if err != nil {
@@ -70,6 +64,9 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}, vali
 		}
 		if headerValue := reqMapHeaders.Get(tag); len(headerValue) > 0 {
 			reqValue = headerValue
+		}
+		if queryValue := reqMapQuery.Get(tag); len(queryValue) > 0 {
+			reqValue = queryValue
 		}
 		hook, isExist := val.Type().Field(i).Tag.Lookup("customHook")
 		fmt.Println("--hook", hook)
@@ -120,6 +117,8 @@ func (s *Service) parseBatchId(input interface{}, tag string, value reflect.Valu
 		s.logger.Error(nil, "invalid batch Id string length", "string", input, "length", len(input.(string)))
 		return errors.New("invalid " + tag)
 	}
+	fmt.Println("--input", input)
+
 	id, err := hex.DecodeString(input.(string))
 	if err != nil {
 		s.logger.Debug("decode batch Id string failed", "string", input, "error", err)
