@@ -25,6 +25,17 @@ type Putter interface {
 	Put(context.Context, swarm.Chunk) (exists bool, err error)
 }
 
+// PutterFunc type is an adapter to allow the use of
+// ChunkStore as Putter interface. If f is a function
+// with the appropriate signature, PutterFunc(f) is a
+// Putter that calls f.
+type PutterFunc func(context.Context, swarm.Chunk) (bool, error)
+
+// Put calls f(ctx, chunk).
+func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) (bool, error) {
+	return f(ctx, chunk)
+}
+
 type IterateChunkFn func(swarm.Chunk) (stop bool, err error)
 
 type ChunkStore interface {
