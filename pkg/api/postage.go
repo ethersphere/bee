@@ -73,11 +73,11 @@ type postageCreateResponse struct {
 func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := struct {
-		Amount int64 `parse:"amount"`
-		Depth  uint8 `parse:"depth"`
+		Amount int64 `parse:"amount" name:"postage amount"`
+		Depth  uint8 `parse:"depth" name:"depth"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path, s.ValidateAmount, s.ValidateDepth); err != nil {
+	if err := s.parseAndValidate(r, &path); err != nil {
 		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
 		s.logger.Error(nil, "create batch: parse and validate url path params failed")
 		jsonhttp.BadRequest(w, err.Error())
@@ -255,7 +255,7 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := struct {
-		Id string `parse:"id" customHook:"hexToString"`
+		Id []byte `parse:"id" name:"batchID" customHook:"hexToString"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
@@ -264,17 +264,10 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	id, err := hex.DecodeString(path.Id)
-	if err != nil {
-		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", path.Id, "error", err)
-		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
-		return
-	}
 
-	issuer, err := s.post.GetStampIssuer(id)
+	issuer, err := s.post.GetStampIssuer(path.Id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
+		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", path.Id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
 		jsonhttp.BadRequest(w, "cannot get batch")
 		return
@@ -295,70 +288,40 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	jsonhttp.OK(w, resp)
 }
 
-func (s *Service) postageGetStampIssuer(w http.ResponseWriter, r *http.Request) (issuer *postage.StampIssuer, err error) {
+func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id string `parse:"id"`
+		Id []byte `parse:"id" name:"batchID" customHook:"hexToString"`
 	}{}
-
 	if err := s.parseAndValidate(r, &path); err != nil {
 		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
 		s.logger.Error(nil, "create batch: parse and validate url path params failed")
 		jsonhttp.BadRequest(w, err.Error())
-		return nil, err
-	}
-	id, err := hex.DecodeString(path.Id)
-	if err != nil {
-		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", path.Id, "error", err)
-		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-
-	issuer, err = s.post.GetStampIssuer(id)
+	issuer, err := s.post.GetStampIssuer(path.Id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
-		s.logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.BadRequest(w, "cannot get batch")
-		return nil, nil
-	}
-	return
-}
-func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
-	path := struct {
-		Id string `parse:"id"`
-	}{}
-
-	if err := s.parseAndValidate(r, &path, s.ValidateAmount, s.ValidateDepth); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
-		jsonhttp.BadRequest(w, err.Error())
-		return
-	}
-	id, err := hex.DecodeString(path.Id)
-	issuer, err := s.post.GetStampIssuer(id)
-	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
+		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", fmt.Sprintf("%x", path.Id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
 		jsonhttp.BadRequest(w, "cannot get batch")
 		return
 	}
-	exists, err := s.batchStore.Exists(id)
+	exists, err := s.batchStore.Exists(path.Id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: exist check failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
+		s.logger.Debug("get stamp issuer: exist check failed", "batch_id", fmt.Sprintf("%x", path.Id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: exist check failed")
 		jsonhttp.InternalServerError(w, "unable to check batch")
 		return
 	}
-	batchTTL, err := s.estimateBatchTTLFromID(id)
+	batchTTL, err := s.estimateBatchTTLFromID(path.Id)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", fmt.Sprintf("%x", id), "error", err)
+		s.logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", fmt.Sprintf("%x", path.Id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: estimate batch expiration failed")
 		jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 		return
 	}
 
 	resp := postageStampResponse{
-		BatchID:  id,
+		BatchID:  path.Id,
 		Exists:   exists,
 		BatchTTL: batchTTL,
 	}
@@ -468,21 +431,14 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := struct {
-		Id     string `parse:"id"`
-		Amount int64  `parse:"amount"`
+		Id     []byte `parse:"id" name:"batchID" customHook:"hexToString"`
+		Amount int64  `parse:"amount" name:"postage amount"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path, s.ValidateAmount); err != nil {
+	if err := s.parseAndValidate(r, &path); err != nil {
 		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
 		s.logger.Error(nil, "create batch: parse and validate url path params failed")
 		jsonhttp.BadRequest(w, err.Error())
-		return
-	}
-	id, err := hex.DecodeString(path.Id)
-	if err != nil {
-		s.logger.Debug("topup batch: decode batch id string failed", "string", path.Id, "error", err)
-		s.logger.Error(nil, "topup batch: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
 
@@ -497,29 +453,29 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
-	err = s.postageContract.TopUpBatch(ctx, id, big.NewInt(path.Amount))
+	err := s.postageContract.TopUpBatch(ctx, path.Id, big.NewInt(path.Amount))
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
-			s.logger.Debug("topup batch: out of funds", "batch_id", fmt.Sprintf("%x", id), "amount", big.NewInt(path.Amount), "error", err)
+			s.logger.Debug("topup batch: out of funds", "batch_id", fmt.Sprintf("%x", path.Id), "amount", big.NewInt(path.Amount), "error", err)
 			s.logger.Error(nil, "topup batch: out of funds")
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
-		s.logger.Debug("topup batch: topup failed", "batch_id", fmt.Sprintf("%x", id), "amount", big.NewInt(path.Amount), "error", err)
+		s.logger.Debug("topup batch: topup failed", "batch_id", fmt.Sprintf("%x", path.Id), "amount", big.NewInt(path.Amount), "error", err)
 		s.logger.Error(nil, "topup batch: topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
 		return
 	}
 
 	jsonhttp.Accepted(w, &postageCreateResponse{
-		BatchID: id,
+		BatchID: path.Id,
 	})
 }
 
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id    []byte `parse:"id" customHook:"hexToString"`
-		Depth uint8  `parse:"depth" validate:"gte=16"`
+		Id    []byte `parse:"id" name:"batchID" customHook:"hexToString"`
+		Depth uint8  `parse:"depth" name:"depth"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
