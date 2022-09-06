@@ -278,11 +278,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 				}
 				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
 
-				err = post.HandleTopUp(batch.ID, topUpAmount)
-				if err != nil {
-					return err
-				}
-				return nil
+				post.HandleTopUp(batch.ID, topUpAmount)
+
+				return mockPost.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
@@ -303,11 +301,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 					return err
 				}
 
-				err = post.HandleDepthIncrease(batch.ID, newDepth)
-				if err != nil {
-					return err
-				}
-				return nil
+				post.HandleDepthIncrease(batch.ID, newDepth)
+
+				return mockPost.ErrNotImplemented
 			},
 		),
 	)

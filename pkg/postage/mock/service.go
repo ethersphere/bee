@@ -107,13 +107,9 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
-func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) error {
-	return ErrNotImplemented
-}
+func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}
 
-func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) error {
-	return ErrNotImplemented
-}
+func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
 
 func (m *mockPostage) Close() error {
 	return nil
