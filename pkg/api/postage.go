@@ -16,9 +16,9 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/bigint"
+	"github.com/ethersphere/bee/pkg/encryption/mock"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"

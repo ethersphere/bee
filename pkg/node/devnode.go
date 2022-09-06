@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/encryption/mock"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
@@ -29,7 +30,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	mockPostContract "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -263,47 +263,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 		mockPostContract.WithTopUpBatchFunc(
 			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				batch, err := batchStore.Get(batchID)
-				if err != nil {
-					return err
-				}
-
-				totalAmount := big.NewInt(0).Mul(topupAmount, big.NewInt(int64(1<<batch.Depth)))
-
-				newBalance := big.NewInt(0).Add(totalAmount, batch.Value)
-
-				err = batchStore.Update(batch, newBalance, batch.Depth)
-				if err != nil {
-					return err
-				}
-				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
-
-				post.HandleTopUp(batch.ID, topUpAmount)
-
-				return mockPost.ErrNotImplemented
+				return mock.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
 			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				batch, err := batchStore.Get(batchID)
-				if err != nil {
-					return err
-				}
-
-				if newDepth < batch.Depth {
-					return postagecontract.ErrInvalidDepth
-				}
-
-				newBalance := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(newDepth-batch.Depth))))
-
-				err = batchStore.Update(batch, newBalance, newDepth)
-				if err != nil {
-					return err
-				}
-
-				post.HandleDepthIncrease(batch.ID, newDepth)
-
-				return mockPost.ErrNotImplemented
+				return mock.ErrNotImplemented
 			},
 		),
 	)

@@ -15,10 +15,6 @@ import (
 
 type optionFunc func(*mockPostage)
 
-var (
-	ErrNotImplemented = errors.New("not implemented")
-)
-
 // Option is an option passed to a mock postage Service.
 type Option interface {
 	apply(*mockPostage)
