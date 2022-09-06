@@ -7,7 +7,6 @@ package mock
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"math/big"
 	"sync"
 
@@ -15,6 +14,10 @@ import (
 )
 
 type optionFunc func(*mockPostage)
+
+var (
+	ErrNotImplemented = errors.New("not implemented")
+)
 
 // Option is an option passed to a mock postage Service.
 type Option interface {
@@ -102,17 +105,14 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
 
-func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error {
-	return fmt.Errorf("not implemented")
-}
+func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
 func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) error {
-	return fmt.Errorf("not implemented")
-
+	return ErrNotImplemented
 }
 
 func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) error {
-	return fmt.Errorf("not implemented")
+	return ErrNotImplemented
 }
 
 func (m *mockPostage) Close() error {

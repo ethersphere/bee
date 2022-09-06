@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -487,6 +488,12 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
+		if errors.Is(err, mock.ErrNotImplemented) {
+			s.logger.Debug("topup batch: not implemented", "error", err)
+			s.logger.Error(nil, "topup batch: not implemented")
+			jsonhttp.NotImplemented(w, "not implemented")
+			return
+		}
 		s.logger.Debug("topup batch: topup failed", "batch_id", fmt.Sprintf("%x", id), "amount", amount, "error", err)
 		s.logger.Error(nil, "topup batch: topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
@@ -541,7 +548,12 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
-		if errors.Is(err, N)
+		if errors.Is(err, mock.ErrNotImplemented) {
+			s.logger.Debug("dilute batch: not implemented", "error", err)
+			s.logger.Error(nil, "dilute batch: not implemented")
+			jsonhttp.NotImplemented(w, "not implemented")
+			return
+		}
 		s.logger.Debug("dilute batch: dilute failed", "batch_id", fmt.Sprintf("%x", id), "depth", depth, "error", err)
 		s.logger.Error(nil, "dilute batch: dilute failed")
 		jsonhttp.InternalServerError(w, "cannot dilute batch")
