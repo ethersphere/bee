@@ -137,6 +137,16 @@ func (s *Service) mountTechnicalDebug() {
 			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
 		),
 	})
+
+	s.router.Handle("/readiness", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.readinessHandler),
+	))
+
+	s.router.Handle("/health", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.healthHandler),
+	))
 }
 
 func (s *Service) mountAPI() {
