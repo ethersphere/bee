@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	stdlog "log"
@@ -56,6 +57,10 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
+)
+
+var (
+	errNotImplemented = errors.New("not implemented")
 )
 
 type DevBee struct {
@@ -262,12 +267,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 		mockPostContract.WithTopUpBatchFunc(
 			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				return api.ErrNotImplemented
+				return errNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
 			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				return api.ErrNotImplemented
+				return errNotImplemented
 			},
 		),
 	)

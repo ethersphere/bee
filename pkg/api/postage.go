@@ -487,7 +487,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
-		if errors.Is(err, ErrNotImplemented) {
+		if errors.As(err, &errNotImplemented) {
 			s.logger.Debug("topup batch: not implemented", "error", err)
 			s.logger.Error(nil, "topup batch: not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
@@ -547,7 +547,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
-		if errors.Is(err, ErrNotImplemented) {
+		if errors.As(err, &errNotImplemented) {
 			s.logger.Debug("dilute batch: not implemented", "error", err)
 			s.logger.Error(nil, "dilute batch: not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
