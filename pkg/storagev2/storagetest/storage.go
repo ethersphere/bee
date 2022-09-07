@@ -11,11 +11,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -584,4 +586,158 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 	if diff := cmp.Diff(want, have); diff != "" {
 		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", diff)
 	}
+}
+
+func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
+	b.Run("WriteSequential", func(b *testing.B) {
+		BenchmarkWriteSequential(b, s)
+	})
+	b.Run("WriteRandom", func(b *testing.B) {
+		BenchmarkWriteRandom(b, s)
+	})
+	b.Run("ReadSequential", func(b *testing.B) {
+		BenchmarkReadSequential(b, s)
+	})
+	b.Run("ReadRandom", func(b *testing.B) {
+		BenchmarkReadRandom(b, s)
+	})
+	b.Run("ReadRandomMissing", func(b *testing.B) {
+		BenchmarkReadRandomMissing(b, s)
+	})
+	b.Run("ReadReverse", func(b *testing.B) {
+		BenchmarkReadReverse(b, s)
+	})
+	b.Run("ReadRedHot", func(b *testing.B) {
+		BenchmarkReadHot(b, s)
+	})
+	b.Run("IterateSequential", func(b *testing.B) {
+		BenchmarkIterateSequential(b, s)
+	})
+	b.Run("IterateReverse", func(b *testing.B) {
+		BenchmarkIterateReverse(b, s)
+	})
+	b.Run("DeleteRandom", func(b *testing.B) {
+		BenchmarkDeleteRandom(b, s)
+	})
+	b.Run("DeleteSequential", func(b *testing.B) {
+		BenchmarkDeleteSequential(b, s)
+	})
+}
+
+func BenchmarkReadRandom(b *testing.B, db storage.Store) {
+	g := newRandomKeyGenerator(b.N)
+	resetBenchmark(b)
+	doRead(b, db, g, false)
+}
+
+func BenchmarkReadRandomMissing(b *testing.B, db storage.Store) {
+	g := newRandomMissingKeyGenerator(b.N)
+	resetBenchmark(b)
+	doRead(b, db, g, true)
+}
+
+func BenchmarkReadSequential(b *testing.B, db storage.Store) {
+	g := newSequentialKeyGenerator(b.N)
+	populate(b, db)
+	resetBenchmark(b)
+	doRead(b, db, g, false)
+}
+
+func BenchmarkReadReverse(b *testing.B, db storage.Store) {
+	g := newReversedKeyGenerator(newSequentialKeyGenerator(b.N))
+	populate(b, db)
+	resetBenchmark(b)
+	doRead(b, db, g, false)
+}
+
+func BenchmarkReadHot(b *testing.B, db storage.Store) {
+	k := maxInt((b.N+99)/100, 1)
+	g := newRoundKeyGenerator(newRandomKeyGenerator(k))
+	populate(b, db)
+	resetBenchmark(b)
+	doRead(b, db, g, false)
+}
+
+func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
+	populate(b, db)
+	resetBenchmark(b)
+	var counter int
+	fn := func(r storage.Result) (bool, error) {
+		counter++
+		if counter > b.N {
+			return true, nil
+		}
+		return false, nil
+	}
+	q := storage.Query{
+		Factory: func() storage.Item { return new(obj1) },
+		Order:   storage.KeyAscendingOrder,
+	}
+	_ = db.Iterate(q, fn)
+}
+
+func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
+	populate(b, db)
+	resetBenchmark(b)
+	var counter int
+	fn := func(storage.Result) (bool, error) {
+		counter++
+		if counter > b.N {
+			return true, nil
+		}
+		return false, nil
+	}
+	q := storage.Query{
+		Factory: func() storage.Item { return new(obj1) },
+		Order:   storage.KeyDescendingOrder,
+	}
+	_ = db.Iterate(q, fn)
+}
+
+func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	resetBenchmark(b)
+	doWrite(b, db, g)
+}
+
+func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
+	for i, n := 1, runtime.NumCPU(); i <= n; i *= 2 {
+		name := fmt.Sprintf("parallelism-%d", i)
+		runtime.GC()
+		parallelism := i
+		b.Run(name, func(b *testing.B) {
+			var gens []entryGenerator
+			start, step := 0, (b.N+parallelism)/parallelism
+			n := step * parallelism
+			g := newFullRandomEntryGenerator(0, n)
+			for i := 0; i < parallelism; i++ {
+				gens = append(gens, newStartAtEntryGenerator(start, g))
+				start += step
+			}
+			resetBenchmark(b)
+			var wg sync.WaitGroup
+			wg.Add(len(gens))
+			for _, g := range gens {
+				go func(g entryGenerator) {
+					defer wg.Done()
+					doWrite(b, db, g)
+				}(g)
+			}
+			wg.Wait()
+		})
+	}
+}
+
+func BenchmarkDeleteRandom(b *testing.B, db storage.Store) {
+	g := newFullRandomEntryGenerator(0, b.N)
+	doWrite(b, db, g)
+	resetBenchmark(b)
+	doDelete(b, db, g)
+}
+
+func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	doWrite(b, db, g)
+	resetBenchmark(b)
+	doDelete(b, db, g)
 }
