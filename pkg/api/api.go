@@ -278,6 +278,10 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	return s.chunkPushC
 }
 
+func (s *Service) SetProbe(probe *Probe) {
+	s.probe = probe
+}
+
 // Close hangs up running websockets on shutdown.
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")

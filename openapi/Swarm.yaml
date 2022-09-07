@@ -881,7 +881,7 @@ paths:
     get:
       summary: Get node overall health Status
       description: |
-        Health Status will indicate node healthiness (healthiness is k8s equivalent for liveness).
+        Health Status will indicate node healthiness.
 
         If node is unhealthy please check node logs for errors.
       tags:
