@@ -20,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/encryption/mock"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
@@ -263,12 +262,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 		mockPostContract.WithTopUpBatchFunc(
 			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				return mock.ErrNotImplemented
+				return api.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
 			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				return mock.ErrNotImplemented
+				return api.ErrNotImplemented
 			},
 		),
 	)

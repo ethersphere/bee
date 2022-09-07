@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/encryption/mock"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
@@ -488,7 +487,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
-		if errors.Is(err, mock.ErrNotImplemented) {
+		if errors.Is(err, ErrNotImplemented) {
 			s.logger.Debug("topup batch: not implemented", "error", err)
 			s.logger.Error(nil, "topup batch: not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
@@ -548,7 +547,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
-		if errors.Is(err, mock.ErrNotImplemented) {
+		if errors.Is(err, ErrNotImplemented) {
 			s.logger.Debug("dilute batch: not implemented", "error", err)
 			s.logger.Error(nil, "dilute batch: not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
