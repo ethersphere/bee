@@ -853,12 +853,16 @@ paths:
 
   "/health":
     get:
-      summary: Get health of node
+      summary: Get node overall health Status
+      description: |
+        Health Status will indicate node healthiness (healthiness is k8s equivalent for liveness). 
+        
+        If node is unhealthy please check node logs for errors.
       tags:
         - Status
       responses:
         "200":
-          description: Health State of node
+          description: Health Status of node
           content:
             application/json:
               schema:
