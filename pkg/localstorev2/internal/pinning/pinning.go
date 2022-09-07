@@ -272,10 +272,6 @@ func DeletePin(st Storage, root swarm.Address) error {
 		}
 	}
 
-	err = st.ChunkStore().Delete(st.Ctx(), collection.Addr)
-	if err != nil {
-		return fmt.Errorf("pin store: failed deleting root chunk: %w", err)
-	}
 	err = st.Store().Delete(collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed deleting root collection: %w", err)
