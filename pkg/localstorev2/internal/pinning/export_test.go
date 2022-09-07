@@ -11,6 +11,14 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type PinCollectionItem = pinCollectionItem
+
+var (
+	ErrInvalidPinCollectionItemAddr = errInvalidPinCollectionAddr
+	ErrInvalidPinCollectionItemUUID = errInvalidPinCollectionUUID
+	ErrInvalidPinCollectionItemSize = errInvalidPinCollectionSize
+)
+
 func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.Address) (bool, error)) error {
 	collection := &pinCollectionItem{Addr: root}
 	err := st.Get(collection)

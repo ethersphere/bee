@@ -160,7 +160,7 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) (bool, error
 	c.collection.Stat.Total++
 
 	// We will only care about duplicates within this collection. In order to
-	// guarantee that we dont accidently delete common chunks across collections,
+	// guarantee that we dont accidentally delete common chunks across collections,
 	// a separate pinCollectionItem entry will be present for each duplicate chunk.
 	collectionChunk := &pinChunkItem{UUID: c.collection.UUID, Addr: ch.Address()}
 	found, err := c.st.Store().Has(collectionChunk)
