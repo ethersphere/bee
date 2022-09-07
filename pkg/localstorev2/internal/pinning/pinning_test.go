@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
@@ -15,7 +16,9 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
+	storagetest "github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/uuid"
 )
 
 type pinningCollection struct {
@@ -227,4 +230,80 @@ func TestPinStore(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		test *storagetest.ItemMarshalAndUnmarshalTest
+	}{{
+		name: "zero values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item:       &pinstore.PinCollectionItem{},
+			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
+			MarshalErr: pinstore.ErrInvalidPinCollectionItemAddr,
+		},
+	}, {
+		name: "zero address",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &pinstore.PinCollectionItem{
+				Address: swarm.ZeroAddress,
+				UUID:    "",
+			},
+			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
+			MarshalErr: pinstore.ErrInvalidPinCollectionItemAddr,
+		},
+	}, {
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &pinstore.PinCollectionItem{
+				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				UUID:    "",
+			},
+			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
+			MarshalErr: pinstore.ErrInvalidPinCollectionItemUUID,
+		},
+	}, {
+		name: "valid values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &pinstore.PinCollectionItem{
+				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				UUID:    uuid.NewString(),
+			},
+			Factory: func() storage.Item { return new(pinstore.PinCollectionItem) },
+		},
+	}, {
+		name: "max values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &pinstore.PinCollectionItem{
+				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				UUID:    uuid.NewString(),
+				Stat: pinstore.CollectionStat{
+					Total:           math.MaxUint64,
+					DupInCollection: math.MaxUint64,
+				},
+				TagID: math.MaxUint64,
+			},
+			Factory: func() storage.Item { return new(pinstore.PinCollectionItem) },
+		},
+	}, {
+		name: "invalid size",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &storagetest.ItemStub{
+				MarshalBuf:   []byte{0xFF},
+				UnmarshalBuf: []byte{0xFF},
+			},
+			Factory:      func() storage.Item { return new(pinstore.PinCollectionItem) },
+			UnmarshalErr: pinstore.ErrPinCollectionItemInvalidSize,
+		},
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
+	}
 }
