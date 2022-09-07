@@ -12,14 +12,14 @@ import (
 )
 
 func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.Address) (bool, error)) error {
-	collection := &pinCollection{Addr: root}
+	collection := &pinCollectionItem{Addr: root}
 	err := st.Get(collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed getting collection: %w", err)
 	}
 
 	return st.Iterate(storage.Query{
-		Factory:       func() storage.Item { return &pinChunk{UUID: collection.UUID} },
+		Factory:       func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
 		ItemAttribute: storage.QueryItemID,
 	}, func(r storage.Result) (bool, error) {
 		addr := swarm.NewAddress([]byte(r.ID))
@@ -32,7 +32,7 @@ func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.
 }
 
 func GetStat(st storage.Store, root swarm.Address) (CollectionStat, error) {
-	collection := &pinCollection{Addr: root}
+	collection := &pinCollectionItem{Addr: root}
 	err := st.Get(collection)
 	if err != nil {
 		return CollectionStat{}, fmt.Errorf("pin store: failed getting collection: %w", err)
