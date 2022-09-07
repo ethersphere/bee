@@ -147,10 +147,12 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		return
 	}
 
+	if strings.HasPrefix(fileName, "/") {
+		fileName = strings.TrimLeft(fileName, "/")
+	}
 	rootMetadata := map[string]string{
 		manifest.WebsiteIndexDocumentSuffixKey: fileName,
 	}
-
 	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
 	if err != nil {
 		logger.Debug("bzz upload file: adding metadata to manifest failed", "file_name", fileName, "error", err)
