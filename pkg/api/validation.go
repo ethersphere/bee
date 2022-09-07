@@ -20,8 +20,6 @@ type ValidateFunc map[string]func(interface{}, reflect.Value) error
 
 var parseHooks ValidateFunc
 
-type validateFunc func(r *http.Request, output interface{}) error
-
 func (s *Service) InitializeHooks() ValidateFunc {
 	parseHooks = make(ValidateFunc)
 	parseHooks["hexToString"] = s.parseBatchId
