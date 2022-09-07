@@ -8,9 +8,9 @@ const (
 	ProbeStatusNOK
 )
 
-// Probe structure holds flags which indicate node healthiness (sometimes refert also as liveness) and readiness.
+// Probe structure holds flags which indicate node healthiness (k8s equivalent for liveness) and readiness.
 type Probe struct {
-	// Healthy probe indicates if node, due to any reason, needs to restarted.
+	// Healthy probe indicates node overall health.
 	healthy int32
 	// Ready probe indicates that node is ready to start accepting traffic.
 	ready int32
