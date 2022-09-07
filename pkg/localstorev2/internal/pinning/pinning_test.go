@@ -24,6 +24,17 @@ type pinningCollection struct {
 	dupChunks    []swarm.Chunk
 }
 
+type testStorage struct {
+	store   storage.Store
+	chStore storage.ChunkStore
+}
+
+func (testStorage) Ctx() context.Context { return context.TODO() }
+
+func (t *testStorage) Store() storage.Store { return t.store }
+
+func (t *testStorage) ChunkStore() storage.ChunkStore { return t.chStore }
+
 func TestPinStore(t *testing.T) {
 
 	var tests []pinningCollection
@@ -55,13 +66,15 @@ func TestPinStore(t *testing.T) {
 		tests = append(tests, c)
 	}
 
-	st := inmem.New()
-	chSt := inmemchunkstore.New()
+	st := &testStorage{
+		store:   inmem.New(),
+		chStore: inmemchunkstore.New(),
+	}
 
 	t.Run("create new collections", func(t *testing.T) {
 		for tCount, tc := range tests {
 			t.Run(fmt.Sprintf("create collection %d", tCount), func(t *testing.T) {
-				putter, err := pinstore.NewCollection(st, chSt, tc.root.Address())
+				putter, err := pinstore.NewCollection(st, tc.root.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -97,14 +110,14 @@ func TestPinStore(t *testing.T) {
 				allChunks := append(tc.uniqueChunks, tc.root)
 				allChunks = append(allChunks, tc.dupChunks...)
 				for _, ch := range allChunks {
-					exists, err := chSt.Has(context.TODO(), ch.Address())
+					exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 					if err != nil {
 						t.Fatal(err)
 					}
 					if !exists {
 						t.Fatal("chunk should exist")
 					}
-					rch, err := chSt.Get(context.TODO(), ch.Address())
+					rch, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -117,7 +130,7 @@ func TestPinStore(t *testing.T) {
 	})
 
 	t.Run("verify root pins", func(t *testing.T) {
-		pins, err := pinstore.Pins(st)
+		pins, err := pinstore.Pins(st.Store())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,7 +153,7 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("has pin", func(t *testing.T) {
 		for _, tc := range tests {
-			found, err := pinstore.HasPin(st, tc.root.Address())
+			found, err := pinstore.HasPin(st.Store(), tc.root.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +166,7 @@ func TestPinStore(t *testing.T) {
 	t.Run("verify internal state", func(t *testing.T) {
 		for _, tc := range tests {
 			count := 0
-			err := pinstore.IterateCollection(st, tc.root.Address(), func(addr swarm.Address) (bool, error) {
+			err := pinstore.IterateCollection(st.Store(), tc.root.Address(), func(addr swarm.Address) (bool, error) {
 				count++
 				return false, nil
 			})
@@ -163,7 +176,7 @@ func TestPinStore(t *testing.T) {
 			if count != len(tc.uniqueChunks)+2 {
 				t.Fatalf("incorrect no of chunks in collection, expected %d found %d", len(tc.uniqueChunks)+2, count)
 			}
-			stat, err := pinstore.GetStat(st, tc.root.Address())
+			stat, err := pinstore.GetStat(st.Store(), tc.root.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,12 +190,12 @@ func TestPinStore(t *testing.T) {
 	})
 
 	t.Run("delete collection", func(t *testing.T) {
-		err := pinstore.DeletePin(st, chSt, tests[0].root.Address())
+		err := pinstore.DeletePin(st, tests[0].root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		found, err := pinstore.HasPin(st, tests[0].root.Address())
+		found, err := pinstore.HasPin(st.Store(), tests[0].root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +203,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal("expected pin to not be found")
 		}
 
-		pins, err := pinstore.Pins(st)
+		pins, err := pinstore.Pins(st.Store())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,14 +214,14 @@ func TestPinStore(t *testing.T) {
 		allChunks := append(tests[0].uniqueChunks, tests[0].root)
 		allChunks = append(allChunks, tests[0].dupChunks...)
 		for _, ch := range allChunks {
-			exists, err := chSt.Has(context.TODO(), ch.Address())
+			exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if exists {
 				t.Fatal("chunk should not exist")
 			}
-			_, err = chSt.Get(context.TODO(), ch.Address())
+			_, err = st.ChunkStore().Get(context.TODO(), ch.Address())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}
