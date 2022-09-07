@@ -249,8 +249,8 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		name: "zero address",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
-				Address: swarm.ZeroAddress,
-				UUID:    "",
+				Addr: swarm.ZeroAddress,
+				UUID: "",
 			},
 			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
 			MarshalErr: pinstore.ErrInvalidPinCollectionItemAddr,
@@ -258,8 +258,8 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 	}, {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
-				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
-				UUID:    "",
+				Addr: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				UUID: "",
 			},
 			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
 			MarshalErr: pinstore.ErrInvalidPinCollectionItemUUID,
@@ -268,8 +268,8 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		name: "valid values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
-				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
-				UUID:    uuid.NewString(),
+				Addr: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				UUID: uuid.NewString(),
 			},
 			Factory: func() storage.Item { return new(pinstore.PinCollectionItem) },
 		},
@@ -277,13 +277,12 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
-				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				UUID:    uuid.NewString(),
+				Addr: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				UUID: uuid.NewString(),
 				Stat: pinstore.CollectionStat{
 					Total:           math.MaxUint64,
 					DupInCollection: math.MaxUint64,
 				},
-				TagID: math.MaxUint64,
 			},
 			Factory: func() storage.Item { return new(pinstore.PinCollectionItem) },
 		},
@@ -295,7 +294,7 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 				UnmarshalBuf: []byte{0xFF},
 			},
 			Factory:      func() storage.Item { return new(pinstore.PinCollectionItem) },
-			UnmarshalErr: pinstore.ErrPinCollectionItemInvalidSize,
+			UnmarshalErr: pinstore.ErrInvalidPinCollectionItemSize,
 		},
 	}}
 
