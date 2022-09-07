@@ -150,3 +150,105 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 		}
 	})
 }
+
+func RunChunkStoreBenchmarkTests(b *testing.B, s storage.ChunkStore) {
+	b.Run("WriteSequential", func(b *testing.B) {
+		BenchmarkChunkStoreWriteSequential(b, s)
+	})
+	b.Run("WriteRandom", func(b *testing.B) {
+		BenchmarkChunkStoreWriteRandom(b, s)
+	})
+	b.Run("ReadSequential", func(b *testing.B) {
+		BenchmarkChunkStoreReadSequential(b, s)
+	})
+	b.Run("ReadRandom", func(b *testing.B) {
+		BenchmarkChunkStoreReadRandom(b, s)
+	})
+	b.Run("ReadRandomMissing", func(b *testing.B) {
+		BenchmarkChunkStoreReadRandomMissing(b, s)
+	})
+	b.Run("ReadReverse", func(b *testing.B) {
+		BenchmarkChunkStoreReadReverse(b, s)
+	})
+	b.Run("ReadRedHot", func(b *testing.B) {
+		BenchmarkChunkStoreReadHot(b, s)
+	})
+	b.Run("IterateSequential", func(b *testing.B) {
+		BenchmarkChunkStoreIterateSequential(b, s)
+	})
+	b.Run("IterateReverse", func(b *testing.B) {
+		BenchmarkChunkStoreIterateReverse(b, s)
+	})
+	b.Run("DeleteRandom", func(b *testing.B) {
+		BenchmarkChunkStoreDeleteRandom(b, s)
+	})
+	b.Run("DeleteSequential", func(b *testing.B) {
+		BenchmarkChunkStoreDeleteSequential(b, s)
+	})
+}
+
+func BenchmarkChunkStoreWriteSequential(b *testing.B, s storage.ChunkStore) {
+	doWriteChunk(b, s, newSequentialEntryGenerator(b.N))
+}
+
+func BenchmarkChunkStoreWriteRandom(b *testing.B, s storage.ChunkStore) {
+	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
+}
+
+func BenchmarkChunkStoreReadSequential(b *testing.B, s storage.ChunkStore) {
+	g := newSequentialKeyGenerator(b.N)
+	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
+	resetBenchmark(b)
+	doReadChunk(b, s, g, false)
+}
+
+func BenchmarkChunkStoreReadRandom(b *testing.B, s storage.ChunkStore) {
+	g := newRandomKeyGenerator(b.N)
+	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
+	resetBenchmark(b)
+	doReadChunk(b, s, g, false)
+}
+
+func BenchmarkChunkStoreReadRandomMissing(b *testing.B, s storage.ChunkStore) {
+	g := newRandomMissingKeyGenerator(b.N)
+	resetBenchmark(b)
+	doReadChunk(b, s, g, true)
+}
+
+func BenchmarkChunkStoreReadReverse(b *testing.B, db storage.ChunkStore) {
+	g := newReversedKeyGenerator(newSequentialKeyGenerator(b.N))
+	doWriteChunk(b, db, newFullRandomEntryGenerator(0, b.N))
+	resetBenchmark(b)
+	doReadChunk(b, db, g, false)
+}
+
+func BenchmarkChunkStoreReadHot(b *testing.B, s storage.ChunkStore) {
+	k := maxInt((b.N+99)/100, 1)
+	g := newRoundKeyGenerator(newRandomKeyGenerator(k))
+	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
+	resetBenchmark(b)
+	doReadChunk(b, s, g, false)
+}
+
+func BenchmarkChunkStoreIterateSequential(b *testing.B, s storage.ChunkStore) {
+	var counter int
+	_ = s.Iterate(context.Background(), func(c swarm.Chunk) (stop bool, err error) {
+		counter++
+		if counter > b.N {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
+func BenchmarkChunkStoreIterateReverse(b *testing.B, s storage.ChunkStore) {
+	b.Skip("not implemented")
+}
+
+func BenchmarkChunkStoreDeleteRandom(b *testing.B, s storage.ChunkStore) {
+	doDeleteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
+}
+
+func BenchmarkChunkStoreDeleteSequential(b *testing.B, s storage.ChunkStore) {
+	doDeleteChunk(b, s, newSequentialEntryGenerator(b.N))
+}
