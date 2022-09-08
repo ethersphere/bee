@@ -6,7 +6,6 @@ package node
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	stdlog "log"
@@ -30,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	mockPostContract "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pss"
@@ -57,10 +57,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
-)
-
-var (
-	errNotImplemented = errors.New("not implemented")
 )
 
 type DevBee struct {
@@ -267,12 +263,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 		mockPostContract.WithTopUpBatchFunc(
 			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				return errNotImplemented
+				return postagecontract.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
 			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				return errNotImplemented
+				return postagecontract.ErrNotImplemented
 			},
 		),
 	)

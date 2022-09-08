@@ -104,7 +104,6 @@ var (
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 	errBatchUnusable        = errors.New("batch not usable")
-	errNotImplemented       = errors.New("not implemented")
 )
 
 type authenticator interface {
