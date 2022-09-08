@@ -487,6 +487,12 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
+		if errors.Is(err, postagecontract.ErrNotImplemented) {
+			s.logger.Debug("topup batch: not implemented", "error", err)
+			s.logger.Error(nil, "topup batch: not implemented")
+			jsonhttp.NotImplemented(w, nil)
+			return
+		}
 		s.logger.Debug("topup batch: topup failed", "batch_id", hex.EncodeToString(id), "amount", amount, "error", err)
 		s.logger.Error(nil, "topup batch: topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
@@ -539,6 +545,12 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			s.logger.Debug("dilute batch: invalid depth", "error", err)
 			s.logger.Error(nil, "dilute batch: invalid depth")
 			jsonhttp.BadRequest(w, "invalid depth")
+			return
+		}
+		if errors.Is(err, postagecontract.ErrNotImplemented) {
+			s.logger.Debug("dilute batch: not implemented", "error", err)
+			s.logger.Error(nil, "dilute batch: not implemented")
+			jsonhttp.NotImplemented(w, nil)
 			return
 		}
 		s.logger.Debug("dilute batch: dilute failed", "batch_id", hex.EncodeToString(id), "depth", depth, "error", err)
