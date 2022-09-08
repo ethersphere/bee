@@ -119,12 +119,12 @@ func InitChequebookFactory(
 			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
 		}
 		currentFactory = foundFactory
-		logger.Info("using default factory address", "chain_id", chainID, "factory_address", fmt.Sprintf("%x", currentFactory))
+		logger.Info("using default factory address", "chain_id", chainID, "factory_address", currentFactory)
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
 		currentFactory = common.HexToAddress(factoryAddress)
-		logger.Info("using custom factory address", "factory_address", fmt.Sprintf("%x", currentFactory))
+		logger.Info("using custom factory address", "factory_address", currentFactory)
 	}
 
 	if len(legacyFactoryAddresses) == 0 {
@@ -297,7 +297,7 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("using the provided transaction hash", "tx_hash", fmt.Sprintf("%x", txHash))
+		logger.Info("using the provided transaction hash", "tx_hash", txHashTrimmed)
 		return txHash, nil
 	}
 
@@ -310,7 +310,7 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 		return nil, err
 	}
 
-	logger.Info("using the chequebook transaction hash", "tx_hash", fmt.Sprintf("%x", txHash))
+	logger.Info("using the chequebook transaction hash", "tx_hash", txHash)
 	return txHash.Bytes(), nil
 }
 
@@ -325,7 +325,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("using the provided block hash", "block_hash", fmt.Sprintf("%x", blockHash))
+		logger.Info("using the provided block hash", "block_hash", hex.EncodeToString(blockHash))
 		return blockHash, nil
 	}
 
@@ -337,7 +337,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 	hash := block.Hash()
 	hashBytes := hash.Bytes()
 
-	logger.Info("using the next block hash from the blockchain", "block_hash", fmt.Sprintf("%x", hashBytes))
+	logger.Info("using the next block hash from the blockchain", "block_hash", hex.EncodeToString(hashBytes))
 
 	return hashBytes, nil
 }
