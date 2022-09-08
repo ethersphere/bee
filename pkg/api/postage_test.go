@@ -598,10 +598,10 @@ func TestPostageTopUpStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusInternalServerError,
+		jsonhttptest.Request(t, ts, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusNotImplemented,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusInternalServerError,
-				Message: "cannot topup batch",
+				Code:    http.StatusNotImplemented,
+				Message: "not implemented",
 			}),
 		)
 	})
@@ -719,10 +719,10 @@ func TestPostageDiluteStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusInternalServerError,
+		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusNotImplemented,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusInternalServerError,
-				Message: "cannot dilute batch",
+				Code:    http.StatusNotImplemented,
+				Message: "not implemented",
 			}),
 		)
 	})
