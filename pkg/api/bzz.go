@@ -249,7 +249,9 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		// NOTE: leave one slash if there was some
 		pathVar += "/"
 	}
-
+	if strings.HasPrefix(nameOrHex, "/") {
+		nameOrHex = strings.TrimLeft(nameOrHex, "/")
+	}
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
 		logger.Debug("bzz download: parse address string failed", "string", nameOrHex, "error", err)
