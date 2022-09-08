@@ -37,6 +37,7 @@ var (
 	ErrBatchTopUp        = errors.New("batch topUp failed")
 	ErrBatchDilute       = errors.New("batch dilute failed")
 	ErrChainDisabled     = errors.New("chain disabled")
+	ErrNotImplemented    = errors.New("not implemented")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"

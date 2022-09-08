@@ -263,45 +263,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 		mockPostContract.WithTopUpBatchFunc(
 			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				batch, err := batchStore.Get(batchID)
-				if err != nil {
-					return err
-				}
-
-				totalAmount := big.NewInt(0).Mul(topupAmount, big.NewInt(int64(1<<batch.Depth)))
-
-				newBalance := big.NewInt(0).Add(totalAmount, batch.Value)
-
-				err = batchStore.Update(batch, newBalance, batch.Depth)
-				if err != nil {
-					return err
-				}
-				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
-
-				post.HandleTopUp(batch.ID, topUpAmount)
-				return nil
+				return postagecontract.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
 			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				batch, err := batchStore.Get(batchID)
-				if err != nil {
-					return err
-				}
-
-				if newDepth < batch.Depth {
-					return postagecontract.ErrInvalidDepth
-				}
-
-				newBalance := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(newDepth-batch.Depth))))
-
-				err = batchStore.Update(batch, newBalance, newDepth)
-				if err != nil {
-					return err
-				}
-
-				post.HandleDepthIncrease(batch.ID, newDepth)
-				return nil
+				return postagecontract.ErrNotImplemented
 			},
 		),
 	)
