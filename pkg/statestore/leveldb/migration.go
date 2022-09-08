@@ -46,7 +46,7 @@ const (
 )
 
 var (
-	dbSchemaCurrent = dBSchemaBatchStore
+	dbSchemaCurrent = dBSchemaBatchStoreV2
 )
 
 type migration struct {
