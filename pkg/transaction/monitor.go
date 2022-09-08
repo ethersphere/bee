@@ -7,7 +7,6 @@ package transaction
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
 	"sync"
@@ -101,7 +100,7 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 	default:
 	}
 
-	loggerV1.Debug("starting to watch transaction", "tx", fmt.Sprintf("%x", txHash), "nonce", nonce)
+	loggerV1.Debug("starting to watch transaction", "tx", txHash, "nonce", nonce)
 
 	return receiptC, errC, nil
 }

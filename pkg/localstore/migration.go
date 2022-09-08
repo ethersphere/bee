@@ -17,6 +17,7 @@
 package localstore
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -117,7 +118,7 @@ func truncateIndex(db *DB, idx shed.Index) (n int, err error) {
 		if err = idx.DeleteInBatch(batch, item); err != nil {
 			return true, err
 		}
-		db.logger.Debug("truncateIndex: deleted", "address", fmt.Sprintf("%x", item.Address))
+		db.logger.Debug("truncateIndex: deleted", "address", hex.EncodeToString(item.Address))
 
 		if n++; n%maxBatchSize == 0 {
 			db.logger.Debug("truncateIndex: writing batch", "processed", n)

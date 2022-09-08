@@ -6,7 +6,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 	"time"
@@ -56,8 +55,8 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 	for _, txHash := range txHashes {
 		storedTransaction, err := s.transaction.StoredTransaction(txHash)
 		if err != nil {
-			s.logger.Debug("transactions get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
-			s.logger.Error(nil, "transactions get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
+			s.logger.Debug("transactions get: get stored transaction failed", "tx_hash", txHash, "error", err)
+			s.logger.Error(nil, "transactions get: get stored transaction failed", "tx_hash", txHash)
 			jsonhttp.InternalServerError(w, errCantGetTransaction)
 			return
 		}
@@ -87,8 +86,8 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 
 	storedTransaction, err := s.transaction.StoredTransaction(txHash)
 	if err != nil {
-		s.logger.Debug("transaction get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
-		s.logger.Error(nil, "transaction get: get stored transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
+		s.logger.Debug("transaction get: get stored transaction failed", "tx_hash", txHash, "error", err)
+		s.logger.Error(nil, "transaction get: get stored transaction failed", "tx_hash", txHash)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else {
@@ -120,8 +119,8 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 
 	err := s.transaction.ResendTransaction(r.Context(), txHash)
 	if err != nil {
-		s.logger.Debug("transaction post: resend transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
-		s.logger.Error(nil, "transaction post: resend transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
+		s.logger.Debug("transaction post: resend transaction failed", "tx_hash", txHash, "error", err)
+		s.logger.Error(nil, "transaction post: resend transaction failed", "tx_hash", txHash)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
@@ -154,8 +153,8 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 
 	txHash, err := s.transaction.CancelTransaction(ctx, txHash)
 	if err != nil {
-		s.logger.Debug("transactions delete: cancel transaction failed", "tx_hash", fmt.Sprintf("%x", txHash), "error", err)
-		s.logger.Error(nil, "transactions delete: cancel transaction failed", "tx_hash", fmt.Sprintf("%x", txHash))
+		s.logger.Debug("transactions delete: cancel transaction failed", "tx_hash", txHash, "error", err)
+		s.logger.Error(nil, "transactions delete: cancel transaction failed", "tx_hash", txHash)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {

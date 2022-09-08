@@ -8,16 +8,17 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
-	Create(id []byte, owner []byte, totalAmount, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
-	TopUp(id []byte, topUpAmount, normalisedBalance *big.Int, txHash []byte) error
-	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
-	UpdatePrice(price *big.Int, txHash []byte) error
+	Create(id []byte, owner []byte, totalAmount, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error
+	TopUp(id []byte, topUpAmount, normalisedBalance *big.Int, txHash common.Hash) error
+	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error
+	UpdatePrice(price *big.Int, txHash common.Hash) error
 	UpdateBlockNumber(blockNumber uint64) error
 	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan struct{}) error
 

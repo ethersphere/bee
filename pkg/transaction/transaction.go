@@ -161,7 +161,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
-	loggerV1.Debug("sending transaction", "tx", fmt.Sprintf("%x", signedTx.Hash()), "nonce", nonce)
+	loggerV1.Debug("sending transaction", "tx", signedTx.Hash(), "nonce", nonce)
 
 	err = t.backend.SendTransaction(ctx, signedTx)
 	if err != nil {
@@ -208,18 +208,18 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 		_, err := t.WaitForReceipt(t.ctx, txHash)
 		if err != nil {
 			if !errors.Is(err, ErrTransactionCancelled) {
-				t.logger.Error(err, "error while waiting for pending transaction", "tx", fmt.Sprintf("%x", txHash))
+				t.logger.Error(err, "error while waiting for pending transaction", "tx", txHash)
 				return
 			} else {
-				t.logger.Warning("pending transaction cancelled", "tx", fmt.Sprintf("%x", txHash))
+				t.logger.Warning("pending transaction cancelled", "tx", txHash)
 			}
 		} else {
-			loggerV1.Debug("pending transaction confirmed", "tx", fmt.Sprintf("%x", txHash))
+			loggerV1.Debug("pending transaction confirmed", "tx", txHash)
 		}
 
 		err = t.store.Delete(pendingTransactionKey(txHash))
 		if err != nil {
-			t.logger.Error(err, "error while unregistering transaction as pending", "tx", fmt.Sprintf("%x", txHash))
+			t.logger.Error(err, "error while unregistering transaction as pending", "tx", txHash)
 		}
 	}()
 }
