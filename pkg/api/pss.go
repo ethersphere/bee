@@ -103,7 +103,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.pss.Send(r.Context(), topic, payload, stamper, recipient, targets)
 	if err != nil {
-		s.logger.Debug("pss post: send payload failed", "topic", targetsVar, "error", err)
+		s.logger.Debug("pss post: send payload failed", "topic", topicVar, "error", err)
 		s.logger.Error(nil, "pss post: send payload failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
