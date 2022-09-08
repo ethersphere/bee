@@ -98,8 +98,12 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
       requestBody:
         content:
           application/octet-stream:
@@ -670,6 +674,11 @@ paths:
           required: true
           description: Signature
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
       responses:
         "201":
           description: Created
