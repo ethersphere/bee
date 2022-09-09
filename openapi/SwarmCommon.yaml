@@ -9,7 +9,7 @@ externalDocs:
   description: Browse the documentation @ the Swarm Docs
   url: "https://docs.swarm.eth"
 
-paths: {}
+paths: { }
 components:
   schemas:
     Address:
@@ -397,7 +397,7 @@ components:
       properties:
         beeMode:
           type: string
-          enum: [light, full, dev]
+          enum: [ light, full, dev ]
           description: >
             Gives back in what mode the Bee client has been started. The modes are mutually exclusive
             * `light` - light node; does not participate in forwarding or storing chunks
@@ -405,6 +405,7 @@ components:
             * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
         gatewayMode:
           type: boolean
+          deprecated: true
         chequebookEnabled:
           type: boolean
         swapEnabled:
@@ -660,9 +661,9 @@ components:
         xDai:
           $ref: "#/components/schemas/BigInt"
         chainID:
-            type: integer
+          type: integer
         contractAddress:
-            $ref: "#/components/schemas/EthereumAddress"
+          $ref: "#/components/schemas/EthereumAddress"
 
     PendingTransactionsResponse:
       type: object
@@ -732,7 +733,7 @@ components:
     LoggerTreeNode:
       type: object
       additionalProperties:
-          $ref: "#/components/schemas/LoggerTreeData"
+        $ref: "#/components/schemas/LoggerTreeData"
 
     Logger:
       type: object
@@ -750,7 +751,7 @@ components:
       type: object
       properties:
         tree:
-            $ref: "#/components/schemas/LoggerTreeNode"
+          $ref: "#/components/schemas/LoggerTreeNode"
         loggers:
           type: array
           items:
@@ -817,8 +818,6 @@ components:
       description: >
         Represents if the uploaded data should be also locally pinned on the node.
 
-        Warning! Not available for nodes that run in Gateway mode!
-
     SwarmEncryptParameter:
       in: header
       name: swarm-encrypt
@@ -827,8 +826,6 @@ components:
       required: false
       description: >
         Represents the encrypting state of the file
-
-        Warning! Not available for nodes that run in Gateway mode!
 
     ContentTypePreserved:
       in: header
@@ -926,4 +923,4 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: "#/components/schemas/ProblemDetails"
+            deprecated: true
