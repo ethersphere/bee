@@ -360,9 +360,10 @@ FETCH:
 					u.Path += "/"
 					redirectURL := u.String()
 
-					logger.Debug("bzz download: redirecting failed", "url", redirectURL, "error", err)
+					s.logger.Debug("bzz download: redirecting failed: not found", "url", redirectURL, "error", err)
+					s.logger.Error(nil, "bzz download: redirecting failed: not found")
 
-					http.Redirect(w, r, redirectURL, http.StatusPermanentRedirect)
+					jsonhttp.NotFound(w, "bzz download: redirecting failed: not found")
 					return
 				}
 			}
