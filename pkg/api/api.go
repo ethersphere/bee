@@ -215,7 +215,7 @@ type ExtraOptions struct {
 	SyncStatus       func() (bool, error)
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
@@ -230,13 +230,14 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.ethereumAddress = ethereumAddress
 	s.transaction = transaction
 	s.batchStore = batchStore
+	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
 
 	return s
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) <-chan *pusher.Op {
+func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
 	s.auth = auth
 	s.chunkPushC = make(chan *pusher.Op)
 	s.signer = signer
@@ -271,7 +272,6 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 
 	s.chainID = chainID
 	s.erc20Service = erc20
-	s.chainBackend = chainBackend
 	s.syncStatus = e.SyncStatus
 
 	return s.chunkPushC
