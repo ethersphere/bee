@@ -305,16 +305,16 @@ func TestDirs(t *testing.T) {
 				)
 			}
 
-			validateIsPermanentRedirect := func(t *testing.T, fromPath, toPath string) {
+			validateIsNotFound := func(t *testing.T, fromPath, toPath string) {
 				t.Helper()
-
-				expectedResponse := fmt.Sprintf("<a href=\"%s\">Permanent Redirect</a>.\n\n",
-					bzzDownloadResource(resp.Reference.String(), toPath))
 
 				jsonhttptest.Request(t, client, http.MethodGet,
 					bzzDownloadResource(resp.Reference.String(), fromPath),
-					http.StatusPermanentRedirect,
-					jsonhttptest.WithExpectedResponse([]byte(expectedResponse)),
+					http.StatusNotFound,
+					jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+						Message: "bzz download: not found",
+						Code:    http.StatusNotFound,
+					}),
 				)
 			}
 
@@ -355,7 +355,7 @@ func TestDirs(t *testing.T) {
 				// check index suffix for each dir
 				for _, file := range tc.files {
 					if file.dir != "" {
-						validateIsPermanentRedirect(t, file.dir, file.dir+"/")
+						validateIsNotFound(t, file.dir, file.dir+"/")
 						validateAltPath(t, file.dir+"/", path.Join(file.dir, indexDocumentSuffixPath))
 					}
 				}
