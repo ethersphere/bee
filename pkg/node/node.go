@@ -147,7 +147,6 @@ type Options struct {
 	PaymentEarly               int64
 	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
 	RetrievalCaching           bool
-	GatewayMode                bool
 	BootnodeMode               bool
 	SwapEndpoint               string
 	SwapFactoryAddress         string
@@ -333,7 +332,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -358,7 +357,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -980,12 +979,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
 		}, extraOpts, chainID, chainBackend, erc20Service)
@@ -1076,7 +1074,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 		debugService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
 		}, extraOpts, chainID, chainBackend, erc20Service)

@@ -84,7 +84,6 @@ type testServerOptions struct {
 	Pinning            pinning.Interface
 	WsPath             string
 	Tags               *tags.Tags
-	GatewayMode        bool
 	WsPingPeriod       time.Duration
 	Logger             log.Logger
 	PreventRedirect    bool
@@ -188,7 +187,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:       o.SyncStatus,
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, o.CORSAllowedOrigins)
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, api.FullMode, true, true, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
@@ -201,7 +200,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
 	}, extraOpts, 1, backend, erc20)
@@ -359,7 +357,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, false, 1, false, false, []string{"*"})
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, []string{"*"})
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
 		s.MountAPI()
 

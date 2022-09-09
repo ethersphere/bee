@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -80,7 +79,6 @@ func (s *Service) MountAPI() {
 		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
 		s.corsHandler,
-		s.gatewayModeForbidHeadersHandler,
 		web.FinalHandler(s.router),
 	)
 }
@@ -154,7 +152,6 @@ func (s *Service) mountAPI() {
 
 	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			s.gatewayModeForbidEndpointHandler,
 			web.FinalHandlerFunc(s.subdomainHandler),
 		),
 	})
@@ -249,7 +246,6 @@ func (s *Service) mountAPI() {
 	})
 
 	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
 				jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
@@ -259,12 +255,10 @@ func (s *Service) mountAPI() {
 	)
 
 	handle("/pss/subscribe/{topic}", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandlerFunc(s.pssWsHandler),
 	))
 
 	handle("/tags", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.listTagsHandler),
 			"POST": web.ChainHandlers(
@@ -275,7 +269,6 @@ func (s *Service) mountAPI() {
 	)
 
 	handle("/tags/{id}", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getTagHandler),
 			"DELETE": http.HandlerFunc(s.deleteTagHandler),
@@ -287,14 +280,12 @@ func (s *Service) mountAPI() {
 	)
 
 	handle("/pins", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.listPinnedRootHashes),
 		})),
 	)
 
 	handle("/pins/{reference}", web.ChainHandlers(
-		s.gatewayModeForbidEndpointHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getPinnedRootHash),
 			"POST":   http.HandlerFunc(s.pinRootHash),
@@ -304,11 +295,9 @@ func (s *Service) mountAPI() {
 
 	handle("/stewardship/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			s.gatewayModeForbidEndpointHandler,
 			web.FinalHandlerFunc(s.stewardshipGetHandler),
 		),
 		"PUT": web.ChainHandlers(
-			s.gatewayModeForbidEndpointHandler,
 			web.FinalHandlerFunc(s.stewardshipPutHandler),
 		),
 	})
@@ -514,34 +503,5 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/accounting", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
-	})
-}
-
-func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.GatewayMode {
-			s.loggerV1.Debug("gateway mode: forbidden", "url", r.URL)
-			jsonhttp.Forbidden(w, nil)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
-func (s *Service) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.GatewayMode {
-			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
-				s.loggerV1.Debug("gateway mode: forbidden pinning", "url", r.URL)
-				jsonhttp.Forbidden(w, "pinning is disabled")
-				return
-			}
-			if strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true" {
-				s.loggerV1.Debug("gateway mode: forbidden encryption", "url", r.URL)
-				jsonhttp.Forbidden(w, "encryption is disabled")
-				return
-			}
-		}
-		h.ServeHTTP(w, r)
 	})
 }

@@ -167,7 +167,6 @@ type Service struct {
 	postageSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
 	beeMode          BeeNodeMode
-	gatewayMode      bool
 
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
@@ -188,7 +187,6 @@ func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 
 type Options struct {
 	CORSAllowedOrigins []string
-	GatewayMode        bool
 	WsPingPeriod       time.Duration
 	Restricted         bool
 }
@@ -215,12 +213,11 @@ type ExtraOptions struct {
 	SyncStatus       func() (bool, error)
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
 	s.beeMode = beeMode
-	s.gatewayMode = gatewayMode
 	s.logger = logger.WithName(loggerName).Register()
 	s.loggerV1 = s.logger.V(1).Register()
 	s.chequebookEnabled = chequebookEnabled
