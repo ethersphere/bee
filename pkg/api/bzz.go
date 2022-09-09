@@ -363,7 +363,7 @@ FETCH:
 					s.logger.Debug("bzz download: redirecting failed: not found", "url", redirectURL, "error", err)
 					s.logger.Error(nil, "bzz download: redirecting failed: not found")
 
-					jsonhttp.NotFound(w, "bzz download: redirecting failed: not found")
+					jsonhttp.NotFound(w, "bzz download: not found")
 					return
 				}
 			}
