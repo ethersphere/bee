@@ -255,7 +255,7 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := struct {
-		Id []byte `parse:"id" name:"batchID" customHook:"hexToString"`
+		Id []byte `parse:"id,hexToString" name:"batchID"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
@@ -290,7 +290,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id []byte `parse:"id" name:"batchID" customHook:"hexToString"`
+		Id []byte `parse:"id,hexToString" name:"batchID"`
 	}{}
 	if err := s.parseAndValidate(r, &path); err != nil {
 		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
@@ -431,7 +431,7 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := struct {
-		Id     []byte `parse:"id" name:"batchID" customHook:"hexToString"`
+		Id     []byte `parse:"id,hexToString" name:"batchID"`
 		Amount int64  `parse:"amount" name:"postage amount"`
 	}{}
 
@@ -474,7 +474,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id    []byte `parse:"id" name:"batchID" customHook:"hexToString"`
+		Id    []byte `parse:"id,hexToString" name:"batchID"`
 		Depth uint8  `parse:"depth" name:"depth"`
 	}{}
 

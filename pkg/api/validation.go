@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 )
 
 type ValidateFunc map[string]func(interface{}, reflect.Value) error
@@ -37,42 +38,56 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 	reqMapQuery := input.URL.Query()
 
 	for i := 0; i < val.NumField(); i++ {
-		tag := val.Type().Field(i).Tag.Get("parse")
+		parseProperty := val.Type().Field(i).Tag.Get("parse")
+		res := strings.FieldsFunc(parseProperty, func(r rune) bool {
+			return r == ',' || r == ' '
+		})
+		if len(res) == 0 {
+			return errors.New("invalid parse tag")
+		}
+		reqName := res[0]
+		customHook := ""
+		if len(res) == 2 {
+			customHook = res[1]
+		}
+		fmt.Println("---res", res)
 		propertyName := val.Type().Field(i).Tag.Get("name")
 		errMessage := val.Type().Field(i).Tag.Get("errMessage")
+		fmt.Println("---input.Body ", input.Body)
 		if val.Type().Field(i).Name == "RequestData" && input.Body != nil {
 			body, err := io.ReadAll(input.Body)
 			if err != nil {
-				s.logger.Debug("done split tag: read request body failed", "error", err)
-				s.logger.Error(nil, "done split tag: read request body failed")
+				s.logger.Debug("done split parseProperty: read request body failed", "error", err)
+				s.logger.Error(nil, "done split parseProperty: read request body failed")
 				return s.GetErrorMessage(propertyName, errMessage)
 			}
 			if len(body) > 0 {
 				err = json.Unmarshal(body, &output)
 				if err != nil {
-					s.logger.Debug("unmarshal tag name failed", "error", err)
-					s.logger.Error(nil, "unmarshal tag name failed")
+					s.logger.Debug("unmarshal parseProperty name failed", "error", err)
+					s.logger.Error(nil, "unmarshal parseProperty name failed")
 					return s.GetErrorMessage(propertyName, errMessage)
 				}
 
 			}
 		}
-		fmt.Println("--tag", tag)
-		fmt.Println("--val.Type().Field(i).Name", val.Type().Field(i).Name)
+
 		var reqValue string
-		if varValue, isExist := reqMapVars[tag]; isExist {
+		if varValue, isExist := reqMapVars[reqName]; isExist {
 			reqValue = varValue
 		}
-		if headerValue := reqMapHeaders.Get(tag); len(headerValue) > 0 {
+		if headerValue := reqMapHeaders.Get(reqName); len(headerValue) > 0 {
 			reqValue = headerValue
 		}
-		if queryValue := reqMapQuery.Get(tag); len(queryValue) > 0 {
+		if queryValue := reqMapQuery.Get(reqName); len(queryValue) > 0 {
 			reqValue = queryValue
 		}
-		hook, isExist := val.Type().Field(i).Tag.Lookup("customHook")
-		fmt.Println("--hook", hook)
-		if isExist {
-			err = parseHooks[hook](reqMapVars[tag], val.Field(i))
+		fmt.Println("--parseProperty", reqName)
+		fmt.Println("--val.Type().Field(i).Name", val.Type().Field(i).Name)
+		fmt.Println("--reqValue", reqValue)
+		fmt.Println("--hook", customHook)
+		if len(customHook) > 0 {
+			err = parseHooks[customHook](reqValue, val.Field(i))
 			if err != nil {
 				return s.GetErrorMessage(propertyName, errMessage)
 			}

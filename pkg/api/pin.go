@@ -16,7 +16,7 @@ import (
 // pinRootHash pins root hash of given reference. This method is idempotent.
 func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Reference []byte `parse:"reference" name:"reference" customHook:"addressToString" errMessage:"parse reference string failed"`
+		Reference []byte `parse:"reference,addressToString" name:"reference" errMessage:"parse reference string failed"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
@@ -62,7 +62,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 // unpinRootHash unpin's an already pinned root hash. This method is idempotent.
 func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Reference []byte `parse:"reference" name:"reference" customHook:"addressToString" errMessage:"parse reference string failed"`
+		Reference []byte `parse:"reference,addressToString" name:"reference" errMessage:"parse reference string failed"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
@@ -97,7 +97,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 // getPinnedRootHash returns back the given reference if its root hash is pinned.
 func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Reference []byte `parse:"reference" name:"reference" customHook:"addressToString" errMessage:"parse reference string failed"`
+		Reference []byte `parse:"reference,addressToString" name:"reference" errMessage:"parse reference string failed"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {

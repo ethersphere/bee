@@ -12,14 +12,13 @@ import (
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
 )
 
 var (
 	errCantBalances   = "Cannot get balances"
 	errCantBalance    = "Cannot get balance"
 	errNoBalance      = "No balance for peer"
-	errInvalidAddress = "Invalid address"
+	errInvalidAddress = "invalid address"
 )
 
 type balanceResponse struct {
@@ -54,14 +53,17 @@ func (s *Service) balancesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("balances peer: parse address string failed", "string", addr, "error", err)
-		s.logger.Error(nil, "balances peer: parse address string failed", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	path := struct {
+		Peer []byte `parse:"peer,addressToString" name:"address"`
+	}{}
+
+	if err := s.parseAndValidate(r, &path); err != nil {
+		s.logger.Debug("soc upload: parse owner string failed", "string", "", "error", err)
+		s.logger.Error(nil, "soc upload: parse owner string failed")
+		jsonhttp.NotFound(w, err.Error())
 		return
 	}
+	peer := swarm.NewAddress(path.Peer)
 
 	balance, err := s.accounting.Balance(peer)
 	if err != nil {
@@ -104,14 +106,17 @@ func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("compensated balances peer: parse address string failed", "string", addr, "error", err)
-		s.logger.Error(nil, "compensated balances peer: parse address string failed", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	path := struct {
+		Peer []byte `parse:"peer,addressToString" name:"address"`
+	}{}
+
+	if err := s.parseAndValidate(r, &path); err != nil {
+		s.logger.Debug("soc upload: parse owner string failed", "string", "", "error", err)
+		s.logger.Error(nil, "soc upload: parse owner string failed")
+		jsonhttp.NotFound(w, err.Error())
 		return
 	}
+	peer := swarm.NewAddress(path.Peer)
 
 	balance, err := s.accounting.CompensatedBalance(peer)
 	if err != nil {
