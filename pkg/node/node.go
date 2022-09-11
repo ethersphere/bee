@@ -789,7 +789,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if err != nil {
 		return nil, fmt.Errorf("postage service expiry setter: %w", err)
 	}
-	
+
 	minThreshold := big.NewInt(2 * refreshRate)
 	maxThreshold := big.NewInt(24 * refreshRate)
 
