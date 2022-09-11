@@ -744,8 +744,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 
-	var statusStampsSynced bool
-
 	var (
 		syncErr    atomic.Value
 		syncStatus atomic.Value
@@ -756,13 +754,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 				err = iErr.(error)
 			}
 			isDone = syncStatus.Load() != nil
-			if isDone && !statusStampsSynced {
-				err = post.AddStampsToService()
-				if err != nil {
-					return isDone, fmt.Errorf("postage service load: %w", err)
-				}
-				statusStampsSynced = true
-			}
 			return isDone, err
 		}
 	)
@@ -786,10 +777,19 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
 				}
+				err = post.ExpirySetter()
+				if err != nil {
+					logger.Error(err, "unable to set expirations")
+				}
 			}()
 		}
 	}
 
+	err = post.ExpirySetter()
+	if err != nil {
+		return nil, fmt.Errorf("postage service expiry setter: %w", err)
+	}
+	
 	minThreshold := big.NewInt(2 * refreshRate)
 	maxThreshold := big.NewInt(24 * refreshRate)
 

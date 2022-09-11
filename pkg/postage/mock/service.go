@@ -52,7 +52,7 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
-func (m *mockPostage) AddStampsToService() error {
+func (m *mockPostage) ExpirySetter() error {
 	return nil
 }
 

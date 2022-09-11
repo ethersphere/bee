@@ -37,7 +37,6 @@ type Service interface {
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
 	BatchExpiryHandler
-	StampsSyncHandler
 	io.Closer
 }
 
@@ -58,6 +57,17 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		postageStore: postageStore,
 		chainID:      chainID,
 	}
+	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
+		st := &StampIssuer{}
+		if err := st.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+		_ = s.add(st)
+		return false, nil
+	}); err != nil {
+		return nil, err
+	}
+
 	return s, nil
 }
 
@@ -199,23 +209,18 @@ func (ps *service) HandleStampExpiry(id []byte) {
 	}
 }
 
-func (ps *service) AddStampsToService() error {
-	if err := ps.store.Iterate(ps.key(), func(_, value []byte) (bool, error) {
-		st := &StampIssuer{}
-		if err := st.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-		exists, err := ps.postageStore.Exists(st.ID())
+func (ps *service) ExpirySetter() error {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	for _, v := range ps.issuers {
+		exists, err := ps.postageStore.Exists(v.ID())
 		if err != nil {
-			return false, err
+			return err
 		}
 		if !exists {
-			st.SetExpired()
+			v.SetExpired()
 		}
-		_ = ps.add(st)
-		return false, nil
-	}); err != nil {
-		return err
 	}
 	return nil
 }
