@@ -39,7 +39,6 @@ BEE_CLEF_SIGNER_ENABLE=true
 # BEE_DEBUG_API_ADDR=:1635
 ## enable debug HTTP API
 # BEE_DEBUG_API_ENABLE=false
-## disable a set of sensitive features in the api
 ## enable global pinning
 ## cause the node to start in full mode
 # BEE_FULL_NODE=false

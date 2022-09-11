@@ -32,7 +32,6 @@ data-dir: /var/lib/bee
 debug-api-addr: 127.0.0.1:1635
 ## enable debug HTTP API
 debug-api-enable: true
-## disable a set of sensitive features in the api
 ## cause the node to start in full mode
 # full-node: false
 ## NAT exposed address
