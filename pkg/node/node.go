@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -186,7 +187,7 @@ const (
 	mainnetNetworkID              = uint64(1)                 //
 )
 
-func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -332,7 +333,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -357,7 +358,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -482,6 +483,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		j := uint64(0)
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
+			select {
+			case <-sysInterrupt:
+				return nil, errors.New("interrupted while finding new overlay")
+			default:
+			}
 			binary.LittleEndian.PutUint64(nonce, j)
 			if (j/1000000)*1000000 == j {
 				logger.Debug("finding new overlay corresponding to previous overlay with nonce", "nonce", hex.EncodeToString(nonce))
@@ -979,14 +985,14 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, extraOpts, chainID, chainBackend, erc20Service)
+		}, extraOpts, chainID, erc20Service)
 
 		pusherService.AddFeed(chunkC)
 
@@ -1076,7 +1082,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, extraOpts, chainID, chainBackend, erc20Service)
+		}, extraOpts, chainID, erc20Service)
 
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
