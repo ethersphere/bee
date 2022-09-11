@@ -744,6 +744,8 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 
+	var statusStampsSynced bool
+
 	var (
 		syncErr    atomic.Value
 		syncStatus atomic.Value
@@ -754,6 +756,13 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 				err = iErr.(error)
 			}
 			isDone = syncStatus.Load() != nil
+			if isDone && !statusStampsSynced {
+				err = post.HandleStamps()
+				if err != nil {
+					return isDone, fmt.Errorf("postage service load: %w", err)
+				}
+				statusStampsSynced = true
+			}
 			return isDone, err
 		}
 	)

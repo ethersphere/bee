@@ -57,24 +57,6 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		postageStore: postageStore,
 		chainID:      chainID,
 	}
-	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
-		st := &StampIssuer{}
-		if err := st.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-		exists, err := s.postageStore.Exists(st.ID())
-		if err != nil {
-			return false, err
-		}
-		if !exists {
-			st.SetExpired()
-		}
-		_ = s.add(st)
-		return false, nil
-	}); err != nil {
-		return nil, err
-	}
-
 	return s, nil
 }
 
@@ -214,4 +196,25 @@ func (ps *service) HandleStampExpiry(id []byte) {
 			v.SetExpired()
 		}
 	}
+}
+
+func (ps *service) HandleStamps() error {
+	if err := ps.store.Iterate(ps.key(), func(_, value []byte) (bool, error) {
+		st := &StampIssuer{}
+		if err := st.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+		exists, err := ps.postageStore.Exists(st.ID())
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			st.SetExpired()
+		}
+		_ = ps.add(st)
+		return false, nil
+	}); err != nil {
+		return err
+	}
+	return nil
 }
