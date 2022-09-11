@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -169,7 +170,7 @@ func (c *command) initStartCmd() (err error) {
 
 			interruptChannel := make(chan struct{})
 
-			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			b, err := node.NewBee(interruptChannel, sysInterruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                    c.config.GetString(optionNameDataDir),
 				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -414,7 +415,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		publicKey = &swarmPrivateKey.PublicKey
 	}
 
-	logger.Info("swarm public key", "public_key", fmt.Sprintf("%x", crypto.EncodeSecp256k1PublicKey(publicKey)))
+	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
 	libp2pPrivateKey, created, err := keystore.Key("libp2p", password)
 	if err != nil {
@@ -436,14 +437,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		logger.Debug("using existing pss key")
 	}
 
-	logger.Info("pss public key", "public_key", fmt.Sprintf("%x", crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)))
+	logger.Info("pss public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)))
 
 	// postinst and post scripts inside packaging/{deb,rpm} depend and parse on this log output
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("using ethereum address", "address", fmt.Sprintf("%x", overlayEthAddress))
+	logger.Info("using ethereum address", "address", overlayEthAddress)
 
 	return &signerConfig{
 		signer:           signer,

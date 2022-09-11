@@ -37,7 +37,7 @@ var (
 // various write length combinations.
 func TestChunkPipe(t *testing.T) {
 	for i := range dataWrites {
-		t.Run(fmt.Sprintf("%d", i), testChunkPipe)
+		t.Run(strconv.Itoa(i), testChunkPipe)
 	}
 }
 

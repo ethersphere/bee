@@ -10,13 +10,17 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	stdlog "log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -24,7 +28,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
@@ -69,6 +72,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -114,6 +118,7 @@ type Bee struct {
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
+	depthMonitorCloser       io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *util.Signaler
@@ -172,17 +177,18 @@ type Options struct {
 }
 
 const (
-	refreshRate                   = int64(4500000)
-	lightRefreshRate              = int64(450000)
-	basePrice                     = 10000
-	postageSyncingStallingTimeout = 10 * time.Minute
-	postageSyncingBackoffTimeout  = 5 * time.Second
-	minPaymentThreshold           = 2 * refreshRate
-	maxPaymentThreshold           = 24 * refreshRate
-	mainnetNetworkID              = uint64(1)
+	refreshRate                   = int64(4500000)            // accounting units refreshed per second
+	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
+	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
+	basePrice                     = 10000                     // minimal price for retrieval and pushsync requests of maximum proximity
+	postageSyncingStallingTimeout = 10 * time.Minute          //
+	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
+	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
+	mainnetNetworkID              = uint64(1)                 //
 )
 
-func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -239,7 +245,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	// due to a migration or it's a fresh install.
 	batchStoreExists, err := batchStoreExists(stateStore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("batchstore: exists: %w", err)
 	}
 
 	addressbook := addressbook.New(stateStore)
@@ -328,7 +334,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
 
 		debugAPIServer := &http.Server{
@@ -353,7 +359,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
@@ -454,26 +460,70 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, err
 	}
 
-	var (
-		blockHash []byte
-		txHash    []byte
-	)
-
-	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
+	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
+	// get old overlay
+	// mine nonce that gives similar new overlay
+	nonce, nonceExists, err := overlayNonceExists(stateStore)
 	if err != nil {
-		return nil, fmt.Errorf("invalid transaction hash: %w", err)
+		return nil, fmt.Errorf("check presence of nonce: %w", err)
+	}
+	if !nonceExists {
+		nonce = make([]byte, 32)
 	}
 
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
+	existingOverlay, err := GetExistingOverlay(stateStore)
 	if err != nil {
-		return nil, fmt.Errorf("invalid block hash: %w", err)
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("get existing overlay: %w", err)
+		}
+		logger.Warning("existing overlay", "error", err)
 	}
 
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+	if err == nil && o.FullNodeMode && !nonceExists {
+		newOverlayCandidate := swarm.ZeroAddress
+		j := uint64(0)
+		limit := math.Pow(2, 34)
+		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
+			select {
+			case <-sysInterrupt:
+				return nil, errors.New("interrupted while finding new overlay")
+			default:
+			}
+			binary.LittleEndian.PutUint64(nonce, j)
+			if (j/1000000)*1000000 == j {
+				logger.Debug("finding new overlay corresponding to previous overlay with nonce", "nonce", hex.EncodeToString(nonce))
+			}
+			newOverlayCandidate, err = crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+			if err == nil {
+				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
+			} else {
+				logger.Debug("error finding new overlay", "nonce", hex.EncodeToString(nonce), "error", err)
+			}
+		}
+
+		foundProximity := swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
+		if foundProximity < swarm.MaxPO {
+			return nil, fmt.Errorf("mining new overlay address failed")
+		}
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 	logger.Info("using overlay address", "address", swarmAddress)
+
+	if !nonceExists {
+		err := setOverlayNonce(stateStore, nonce)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+		}
+
+		err = SetOverlayInStore(swarmAddress, stateStore)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+		}
+	}
 
 	apiService.SetSwarmAddress(&swarmAddress)
 
@@ -482,12 +532,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
-
-	senderMatcher := transaction.NewMatcher(chainBackend, types.NewLondonSigner(big.NewInt(chainID)), stateStore, chainEnabled)
-	_, err = senderMatcher.Matches(p2pCtx, txHash, networkID, swarmAddress, true)
-	if err != nil {
-		return nil, fmt.Errorf("identity transaction verification failed: %w", err)
-	}
 
 	var bootnodes []ma.Multiaddr
 
@@ -534,13 +578,12 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		initBatchState, err = bootstrapNode(
 			addr,
 			swarmAddress,
-			txHash,
+			nonce,
 			chainID,
 			overlayEthAddress,
 			addressbook,
 			bootnodes,
 			lightNodes,
-			senderMatcher,
 			chequebookService,
 			chequeStore,
 			cashoutService,
@@ -558,13 +601,13 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, senderMatcher, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
 		EnableWS:        o.EnableWS,
 		WelcomeMessage:  o.WelcomeMessage,
 		FullNode:        o.FullNodeMode,
-		Transaction:     txHash,
+		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
 	})
 	if err != nil {
@@ -606,6 +649,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		return nil, fmt.Errorf("postage service load: %w", err)
 	}
 	b.postageServiceCloser = post
+	batchStore.SetBatchExpiryHandler(post)
 
 	var (
 		postageContractService postagecontract.Interface
@@ -699,7 +743,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
-	batchStore.SetRadiusSetter(kad)
 
 	var (
 		syncErr    atomic.Value
@@ -738,9 +781,26 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		}
 	}
 
+	minThreshold := big.NewInt(2 * refreshRate)
+	maxThreshold := big.NewInt(24 * refreshRate)
+
+	if !o.FullNodeMode {
+		minThreshold = big.NewInt(2 * lightRefreshRate)
+	}
+
+	lightPaymentThreshold := new(big.Int).Div(paymentThreshold, big.NewInt(lightFactor))
+
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
 
-	pricing := pricing.New(p2ps, logger, paymentThreshold, big.NewInt(minPaymentThreshold))
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
+
+	if paymentThreshold.Cmp(maxThreshold) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
+	}
+
+	pricing := pricing.New(p2ps, logger, paymentThreshold, lightPaymentThreshold, minThreshold)
 
 	if err = p2ps.AddProtocol(pricing.Protocol()); err != nil {
 		return nil, fmt.Errorf("pricing service: %w", err)
@@ -755,21 +815,6 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		logger.Debug("p2p address", "address", addr)
 	}
 
-	acc, err := accounting.NewAccounting(
-		paymentThreshold,
-		o.PaymentTolerance,
-		o.PaymentEarly,
-		logger,
-		stateStore,
-		pricing,
-		big.NewInt(refreshRate),
-		p2ps,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("accounting: %w", err)
-	}
-	b.accountingCloser = acc
-
 	var enforcedRefreshRate *big.Int
 
 	if o.FullNodeMode {
@@ -778,7 +823,23 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
 	}
 
-	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, big.NewInt(lightRefreshRate), p2ps)
+	acc, err := accounting.NewAccounting(
+		paymentThreshold,
+		o.PaymentTolerance,
+		o.PaymentEarly,
+		logger,
+		stateStore,
+		pricing,
+		new(big.Int).Set(enforcedRefreshRate),
+		lightFactor,
+		p2ps,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("accounting: %w", err)
+	}
+	b.accountingCloser = acc
+
+	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, new(big.Int).Set(enforcedRefreshRate), big.NewInt(lightRefreshRate), p2ps)
 	if err = p2ps.AddProtocol(pseudosettleService.Protocol()); err != nil {
 		return nil, fmt.Errorf("pseudosettle service: %w", err)
 	}
@@ -827,7 +888,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, blockHash, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -842,7 +903,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
@@ -867,6 +928,11 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 	}
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	}
+
+	if o.FullNodeMode {
+		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime)
+		b.depthMonitorCloser = depthMonitor
 	}
 
 	multiResolver := multiresolver.NewMultiResolver(
@@ -920,7 +986,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
@@ -928,7 +994,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, extraOpts, chainID, chainBackend, erc20Service)
+		}, extraOpts, chainID, erc20Service)
 
 		pusherService.AddFeed(chunkC)
 
@@ -1019,7 +1085,7 @@ func NewBee(interrupt chan struct{}, addr string, publicKey *ecdsa.PublicKey, si
 			GatewayMode:        o.GatewayMode,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, extraOpts, chainID, chainBackend, erc20Service)
+		}, extraOpts, chainID, erc20Service)
 
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
@@ -1165,6 +1231,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.nsCloser, "netstore")
+	tryClose(b.depthMonitorCloser, "depthmonitor service")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")

@@ -16,6 +16,8 @@ var ErrChainDisabled = errors.New("chain disabled")
 // NoOpBatchStore is a placeholder implementation for postage.Storer
 type NoOpBatchStore struct{}
 
+func (b *NoOpBatchStore) SetBatchExpiryHandler(BatchExpiryHandler) {}
+
 func (b *NoOpBatchStore) Get([]byte) (*Batch, error) { return nil, ErrChainDisabled }
 
 func (b *NoOpBatchStore) Exists([]byte) (bool, error) { return false, nil }
@@ -37,7 +39,9 @@ func (b *NoOpBatchStore) PutChainState(*ChainState) error { return nil }
 
 func (b *NoOpBatchStore) GetReserveState() *ReserveState { return nil }
 
-func (b *NoOpBatchStore) SetRadiusSetter(RadiusSetter) {}
+func (b *NoOpBatchStore) SetStorageRadius(func(uint8) uint8) error { return nil }
+
+func (b *NoOpBatchStore) SetStorageRadiusSetter(StorageRadiusSetter) {}
 
 func (b *NoOpBatchStore) Unreserve(UnreserveIteratorFn) error { return nil }
 

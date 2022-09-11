@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net/http"
@@ -217,7 +216,7 @@ type ExtraOptions struct {
 	SyncStatus       func() (bool, error)
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, cors []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
@@ -232,13 +231,14 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.ethereumAddress = ethereumAddress
 	s.transaction = transaction
 	s.batchStore = batchStore
+	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
 	s.parseHooks = s.InitializeHooks()
 	return s
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, chainBackend transaction.Backend, erc20 erc20.Service) <-chan *pusher.Op {
+func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
 	s.auth = auth
 	s.chunkPushC = make(chan *pusher.Op)
 	s.signer = signer
@@ -273,7 +273,6 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 
 	s.chainID = chainID
 	s.erc20Service = erc20
-	s.chainBackend = chainBackend
 	s.syncStatus = e.SyncStatus
 
 	return s.chunkPushC
@@ -343,7 +342,7 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 		return addr, nil
 	}
 
-	return swarm.ZeroAddress, fmt.Errorf("%w: %v", errInvalidNameOrAddress, err)
+	return swarm.ZeroAddress, fmt.Errorf("%v: %w", errInvalidNameOrAddress, err)
 }
 
 // requestModePut returns the desired storage.ModePut for this request based on the request headers.
@@ -406,7 +405,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Debug("auth handler: read request body failed", "error", err)
 		s.logger.Error(nil, "auth handler: read request body failed")
@@ -457,7 +456,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	authToken := keys[1]
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Debug("auth handler: read request body failed", "error", err)
 		s.logger.Error(nil, "auth handler: read request body failed")
@@ -538,11 +537,11 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 					return
 				}
 				if contentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(int64(contentLength))), r.Method).Observe(time.Since(now).Seconds())
+					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(int64(contentLength)), 10), r.Method).Observe(time.Since(now).Seconds())
 				}
 			case http.MethodPost:
 				if r.ContentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(fmt.Sprintf("%d", toFileSizeBucket(r.ContentLength)), r.Method).Observe(time.Since(now).Seconds())
+					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(r.ContentLength), 10), r.Method).Observe(time.Since(now).Seconds())
 				}
 			}
 		})

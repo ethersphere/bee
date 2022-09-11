@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 )
@@ -299,7 +300,7 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		radiusAfterFirstBatches  = 5 // radius after three batches
 		radiusAfterSecondBatches = 6 // radius after two more batches
 		radiusAfterChainUpdate   = 5 // radius after expiring two batches with the chain update
-		storageRadiusAfterUpdate = 4 // storage radius after chain update
+		storageRadiusAfterUpdate = 5 // storage radius after chain update
 	)
 
 	store := setupBatchStore(t)
@@ -333,11 +334,15 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		}
 
 		_ = store.Unreserve(cb)
+		_ = store.Unreserve(cb)
 	}
 
 	// add some batches to increase the radius by one
 	_ = addBatch(t, store, initDepth, expiredValue+1)
 	_ = addBatch(t, store, initDepth, expiredValue+1)
+
+	// increase storage radius to be the same as reverse radius
+	_ = store.Unreserve(cb)
 
 	state = store.GetReserveState()
 
@@ -369,15 +374,77 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		t.Fatalf("got storage radius %d, want %d", state.StorageRadius, storageRadiusAfterUpdate)
 	}
 
-	// the radius of every batch must not exceed the current storage radius after a storage radius decrease.
+	// the radius of every batch must not exceed the current storage radius +1
 	err = store.Iterate(func(b *postage.Batch) (bool, error) {
-		if b.StorageRadius > state.StorageRadius {
+		if b.StorageRadius > state.StorageRadius+1 {
 			t.Fatalf("batch radius %d should not exceed storate radius %d", b.StorageRadius, state.StorageRadius)
 		}
 		return false, nil
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBatchExpiry(t *testing.T) {
+	store := setupBatchStore(t)
+
+	batch := postagetest.MustNewBatch(
+		postagetest.WithValue(int64(4)),
+		postagetest.WithDepth(0),
+		postagetest.WithStart(111),
+	)
+	if err := store.Save(batch); err != nil {
+		t.Fatal(err)
+	}
+
+	esi := postage.NewStampIssuer("", "", batch.ID, big.NewInt(3), 11, 10, 1000, true)
+	emp := mockpost.New(mockpost.WithIssuer(esi))
+	store.SetBatchExpiryHandler(emp)
+
+	// update chain state
+	err := store.PutChainState(&postage.ChainState{
+		Block:        0,
+		TotalAmount:  big.NewInt(10),
+		CurrentPrice: big.NewInt(10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !esi.Expired() {
+		t.Fatalf("Want %v, got %v", true, esi.Expired())
+	}
+}
+
+func TestUnexpiredBatch(t *testing.T) {
+	store := setupBatchStore(t)
+
+	batch := postagetest.MustNewBatch(
+		postagetest.WithValue(int64(14)),
+		postagetest.WithDepth(0),
+		postagetest.WithStart(111),
+	)
+	if err := store.Save(batch); err != nil {
+		t.Fatal(err)
+	}
+
+	esi := postage.NewStampIssuer("", "", batch.ID, big.NewInt(15), 11, 10, 1000, true)
+	emp := mockpost.New(mockpost.WithIssuer(esi))
+	store.SetBatchExpiryHandler(emp)
+
+	// update chain state
+	err := store.PutChainState(&postage.ChainState{
+		Block:        0,
+		TotalAmount:  big.NewInt(10),
+		CurrentPrice: big.NewInt(10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if esi.Expired() {
+		t.Fatalf("Want %v, got %v", false, esi.Expired())
 	}
 }
 
@@ -401,7 +468,6 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	}
 
 	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop)
-	bStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,

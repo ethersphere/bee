@@ -188,7 +188,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:       o.SyncStatus,
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, o.CORSAllowedOrigins)
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.GatewayMode, api.FullMode, true, true, backend, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
@@ -204,7 +204,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		GatewayMode:        o.GatewayMode,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
-	}, extraOpts, 1, backend, erc20)
+	}, extraOpts, 1, erc20)
 
 	if o.DebugAPI {
 		s.MountTechnicalDebug()
@@ -337,7 +337,7 @@ func TestParseName(t *testing.T) {
 			name: "not.good",
 			res: resolverMock.NewResolver(
 				resolverMock.WithResolveFunc(func(string) (swarm.Address, error) {
-					return swarm.ZeroAddress, errors.New("failed to resolve")
+					return swarm.ZeroAddress, api.ErrInvalidNameOrAddress
 				}),
 			),
 			wantErr: api.ErrInvalidNameOrAddress,
@@ -359,8 +359,8 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, false, 1, false, false, []string{"*"})
-		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil, nil)
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, false, 1, false, false, nil, []string{"*"})
+		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
 		t.Run(tC.desc, func(t *testing.T) {
@@ -480,10 +480,6 @@ func TestOptions(t *testing.T) {
 		{
 			endpoint:        "bzz",
 			expectedMethods: "POST",
-		},
-		{
-			endpoint:        "bzz/0101011",
-			expectedMethods: "GET, PATCH",
 		},
 		{
 			endpoint:        "chunks",

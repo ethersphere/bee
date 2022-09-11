@@ -29,6 +29,7 @@ const (
 
 // ErrNotFound signals that the element was not found.
 var ErrNotFound = errors.New("batchstore: not found")
+var ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
 
 type evictFn func(batchID []byte) error
 
@@ -44,7 +45,8 @@ type store struct {
 	metrics metrics       // metrics
 	logger  log.Logger
 
-	radiusSetter postage.RadiusSetter // setter for radius notifications
+	batchExpiry         postage.BatchExpiryHandler
+	storageRadiusSetter postage.StorageRadiusSetter // setter for radius notifications
 }
 
 // New constructs a new postage batch store.
@@ -82,7 +84,6 @@ func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer,
 		metrics: newMetrics(),
 		logger:  logger.WithName(loggerName).Register(),
 	}
-
 	return s, nil
 }
 
@@ -95,6 +96,34 @@ func (s *store) GetReserveState() *postage.ReserveState {
 		Radius:        s.rs.Radius,
 		StorageRadius: s.rs.StorageRadius,
 	}
+}
+
+func (s *store) SetStorageRadius(f func(uint8) uint8) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	oldRadius := s.rs.StorageRadius
+	newRadius := f(oldRadius)
+
+	if newRadius > s.rs.Radius {
+		return ErrStorageRadiusExceeds
+	}
+
+	s.rs.StorageRadius = newRadius
+
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(newRadius)
+	}
+
+	s.metrics.StorageRadius.Set(float64(newRadius))
+
+	if newRadius < oldRadius {
+		if err := s.lowerBatchStorageRadius(); err != nil {
+			s.logger.Error(err, "batchstore: lower batch storage radius")
+		}
+	}
+
+	return s.store.Put(reserveStateKey, s.rs)
 }
 
 func (s *store) GetChainState() *postage.ChainState {
@@ -193,9 +222,13 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		if s.radiusSetter != nil {
-			s.radiusSetter.SetRadius(s.rs.Radius)
+		if s.storageRadiusSetter != nil {
+			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 		}
+
+		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+		s.metrics.Radius.Set(float64(s.rs.Radius))
+
 		return nil
 	case err == nil:
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
@@ -203,7 +236,7 @@ func (s *store) Save(batch *postage.Batch) error {
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
 	}
 
-	s.logger.Debug("batch saved", "batch_id", fmt.Sprintf("%x", batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
+	s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
 
 	return nil
 }
@@ -217,7 +250,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	oldBatch := &postage.Batch{}
 
-	s.logger.Debug("update batch", "batch_id", fmt.Sprintf("%x", batch.ID), "new_batch_depth", depth, "new_batch_value", value.Int64())
+	s.logger.Debug("update batch", "batch_id", hex.EncodeToString(batch.ID), "new_batch_depth", depth, "new_batch_value", value.Int64())
 
 	switch err := s.store.Get(batchKey(batch.ID), oldBatch); {
 	case errors.Is(err, storage.ErrNotFound):
@@ -244,9 +277,12 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return err
 	}
 
-	if s.radiusSetter != nil {
-		s.radiusSetter.SetRadius(s.rs.Radius)
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
+
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	s.metrics.Radius.Set(float64(s.rs.Radius))
 
 	return nil
 }
@@ -273,18 +309,19 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
-	// this needs to be improved, since we can miss some calls on
-	// startup. the same goes for the other call to radiusSetter
-	if s.radiusSetter != nil {
-		s.radiusSetter.SetRadius(s.rs.Radius)
+	if s.storageRadiusSetter != nil {
+		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
 	}
+
+	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
+	s.metrics.Radius.Set(float64(s.rs.Radius))
 
 	return s.store.Put(chainStateKey, cs)
 }
 
 // SetRadiusSetter is implementation of postage.Storer interface SetRadiusSetter method.
-func (s *store) SetRadiusSetter(r postage.RadiusSetter) {
-	s.radiusSetter = r
+func (s *store) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
+	s.storageRadiusSetter = r
 }
 
 // Reset is implementation of postage.Storer interface Reset method.
@@ -329,4 +366,8 @@ func valueKey(val *big.Int, batchID []byte) string {
 func valueKeyToID(key []byte) []byte {
 	l := len(key)
 	return key[l-32 : l]
+}
+
+func (s *store) SetBatchExpiryHandler(be postage.BatchExpiryHandler) {
+	s.batchExpiry = be
 }

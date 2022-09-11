@@ -1,7 +1,7 @@
 # Go Style Guide
 
 - [Go Style Guide](#go-style-guide)
-  - [Consistent Spelling](#consistent-spelling)
+  - [Consistent Spelling and Naming](#consistent-spelling-and-naming)
   - [Code Formatting](#code-formatting)
   - [Unused Names](#unused-names)
   - [Naked returns and Named Parameters](#naked-returns-and-named-parameters)
@@ -42,7 +42,11 @@
     - [Specifying Map Capacity Hints](#specifying-map-capacity-hints)
     - [Specifying Slice Capacity](#specifying-slice-capacity)
 
-## Consistent Spelling
+## Consistent Spelling and Naming
+
+Naming is difficult, but prefer the consistency of naming throughout the code base.
+If a naming pattern is already established in the codebase, follow it. If you are unsure, look in the Golang standard library for inspiration.
+It's similar to the `gofmt` tool, the formatting isn't to everyone's liking, but it is consistent.
 
 Prefer american spellings over British spellings, avoid Latin abbreviations.
 
@@ -152,6 +156,8 @@ func getID() (id int, err error) {
 }
 ```
 ## Testing
+
+Use the Golang [testing package](https://pkg.go.dev/testing) from the standard library for writing tests.
 
 ### Parallel Test Execution
 

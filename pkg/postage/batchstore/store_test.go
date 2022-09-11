@@ -114,7 +114,6 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, log.Noop)
-	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	if err := batchStore.Save(testBatch); err != nil {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
@@ -163,7 +162,6 @@ func TestBatchStore_GetChainState(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, log.Noop)
-	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	err := batchStore.PutChainState(testChainState)
 	if err != nil {
@@ -178,12 +176,40 @@ func TestBatchStore_PutChainState(t *testing.T) {
 
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, log.Noop)
-	batchStore.SetRadiusSetter(noopRadiusSetter{})
 
 	batchStorePutChainState(t, batchStore, testChainState)
 	var got postage.ChainState
 	stateStoreGet(t, stateStore, batchstore.StateKey, &got)
 	postagetest.CompareChainState(t, testChainState, &got)
+}
+
+func TestBatchStore_SetStorageRadius(t *testing.T) {
+
+	var (
+		radius           uint8 = 5
+		oldStorageRadius uint8 = 5
+		newStorageRadius uint8 = 3
+	)
+
+	stateStore := mock.NewStateStore()
+	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
+	batchStore, _ := batchstore.New(stateStore, nil, log.Noop)
+
+	_ = batchStore.SetStorageRadius(func(uint8) uint8 {
+		return oldStorageRadius
+	})
+
+	_ = batchStore.SetStorageRadius(func(radius uint8) uint8 {
+		if radius != oldStorageRadius {
+			t.Fatalf("got old radius %d, want %d", radius, oldStorageRadius)
+		}
+		return newStorageRadius
+	})
+
+	got := batchStore.GetReserveState().StorageRadius
+	if got != newStorageRadius {
+		t.Fatalf("got old radius %d, want %d", got, newStorageRadius)
+	}
 }
 
 func TestBatchStore_Reset(t *testing.T) {
@@ -206,7 +232,6 @@ func TestBatchStore_Reset(t *testing.T) {
 	defer stateStore.Close()
 
 	batchStore, _ := batchstore.New(stateStore, noopEvictFn, log.Noop)
-	batchStore.SetRadiusSetter(noopRadiusSetter{})
 	err = batchStore.Save(testBatch)
 	if err != nil {
 		t.Fatal(err)
@@ -265,7 +290,3 @@ func batchStorePutChainState(t *testing.T, st postage.Storer, cs *postage.ChainS
 		t.Fatalf("postage storer put chain state: %v", err)
 	}
 }
-
-type noopRadiusSetter struct{}
-
-func (n noopRadiusSetter) SetRadius(_ uint8) {}

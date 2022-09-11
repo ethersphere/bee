@@ -10,6 +10,7 @@ package pusher
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -185,7 +186,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			// since other nodes would reject the chunk, so the chunk is marked as
 			// synced which makes it available to the node but not to the network
 			if err := s.valid(ch); err != nil {
-				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", fmt.Sprintf("%x", ch.Stamp().BatchID()), "chunk_address", ch.Address(), "error", err)
+				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(ch.Stamp().BatchID()), "chunk_address", ch.Address(), "error", err)
 
 				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
 
@@ -295,7 +296,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 		return fmt.Errorf("pusher: receipt recover: %w", err)
 	}
 
-	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.BlockHash)
+	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.Nonce)
 	if err != nil {
 		return fmt.Errorf("pusher: receipt storer address: %w", err)
 	}

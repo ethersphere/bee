@@ -241,7 +241,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
-	cmd.Flags().String(optionNamePaymentThreshold, "100000000", "threshold in BZZ where you expect to get paid from your peers")
+	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Int64(optionNamePaymentTolerance, 25, "excess debt above payment threshold in percentages where you disconnect from your peer")
 	cmd.Flags().Int64(optionNamePaymentEarly, 50, "percentage below the peers payment threshold when we initiate settlement")
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
@@ -295,7 +295,7 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 	case "4", "debug":
 		vLevel = log.VerbosityDebug
 	case "5", "trace":
-		vLevel = log.VerbosityAll
+		vLevel = log.VerbosityDebug + 1 // For backwards compatibility, just enable v1 debugging as trace.
 	default:
 		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
 	}

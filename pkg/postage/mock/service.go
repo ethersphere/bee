@@ -52,6 +52,17 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
+func (m *mockPostage) HandleStampExpiry(id []byte) {
+	m.issuerLock.Lock()
+	defer m.issuerLock.Unlock()
+
+	for _, v := range m.issuersMap {
+		if bytes.Equal(id, v.ID()) {
+			v.SetExpired()
+		}
+	}
+}
+
 func (m *mockPostage) Add(s *postage.StampIssuer) error {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
@@ -92,16 +103,7 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
-func (m *mockPostage) HandleTopUp(batchID []byte, amount *big.Int) {
-	m.issuerLock.Lock()
-	defer m.issuerLock.Unlock()
-
-	for _, v := range m.issuersMap {
-		if bytes.Equal(batchID, v.ID()) {
-			v.Amount().Add(v.Amount(), amount)
-		}
-	}
-}
+func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}
 
 func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
 

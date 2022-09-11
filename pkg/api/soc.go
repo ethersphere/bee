@@ -6,7 +6,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -149,7 +148,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
-		s.logger.Debug("soc upload: get postage batch issuer failed", "batch_id", fmt.Sprintf("%x", batch), "error", err)
+		s.logger.Debug("soc upload: get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
 		s.logger.Error(nil, "soc upload: get postage batch issue")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):

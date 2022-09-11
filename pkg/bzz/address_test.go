@@ -20,26 +20,25 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	trxHash := common.HexToHash("0x1").Bytes()
-	blockHash := common.HexToHash("0x2").Bytes()
+	nonce := common.HexToHash("0x2").Bytes()
 
 	privateKey1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	overlay, err := crypto.NewOverlayAddress(privateKey1.PublicKey, 3, blockHash)
+	overlay, err := crypto.NewOverlayAddress(privateKey1.PublicKey, 3, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 
-	bzzAddress, err := bzz.NewAddress(signer1, node1ma, overlay, 3, trxHash)
+	bzzAddress, err := bzz.NewAddress(signer1, node1ma, overlay, 3, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, trxHash, blockHash, true, 3)
+	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, nonce, true, 3)
 	if err != nil {
 		t.Fatal(err)
 	}

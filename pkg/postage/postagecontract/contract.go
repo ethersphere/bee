@@ -37,6 +37,7 @@ var (
 	ErrBatchTopUp        = errors.New("batch topUp failed")
 	ErrBatchDilute       = errors.New("batch dilute failed")
 	ErrChainDisabled     = errors.New("chain disabled")
+	ErrNotImplemented    = errors.New("not implemented")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"
@@ -117,7 +118,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    160000,
+		GasLimit:    1600000,
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
@@ -246,7 +247,6 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			}
 
 			batchID := createdEvent.BatchId[:]
-
 			err = c.postageService.Add(postage.NewStampIssuer(
 				label,
 				c.owner.Hex(),

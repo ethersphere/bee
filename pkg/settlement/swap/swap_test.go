@@ -69,7 +69,10 @@ func (t *testObserver) NotifyPaymentReceived(peer swarm.Address, amount *big.Int
 	return nil
 }
 
-func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int) error {
+func (t *testObserver) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, amount *big.Int, timestamp int64, allegedInterval int64, receivedError error) {
+}
+
+func (t *testObserver) NotifyRefreshmentReceived(peer swarm.Address, amount *big.Int, time int64) error {
 	return nil
 }
 
@@ -81,7 +84,7 @@ func (t *testObserver) NotifyPaymentSent(peer swarm.Address, amount *big.Int, er
 	}
 }
 
-func (t *testObserver) Connect(peer swarm.Address) {
+func (t *testObserver) Connect(peer swarm.Address, full bool) {
 
 }
 
@@ -538,7 +541,11 @@ func TestHandshake(t *testing.T) {
 	networkID := uint64(1)
 	txHash := common.HexToHash("0x1")
 
-	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, txHash.Bytes())
+	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, txHash.Bytes())
+
+	if err != nil {
+		t.Fatalf("crypto.NewOverlayFromEthereumAddress(...): unexpected error: %v", err)
+	}
 
 	var putCalled bool
 	swapService := swap.New(
@@ -568,7 +575,7 @@ func TestHandshake(t *testing.T) {
 		common.Address{},
 	)
 
-	err := swapService.Handshake(peer, beneficiary)
+	err = swapService.Handshake(peer, beneficiary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +592,11 @@ func TestHandshakeNewPeer(t *testing.T) {
 	beneficiary := common.HexToAddress("0xcd")
 	trx := common.HexToHash("0x1")
 	networkID := uint64(1)
-	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+
+	if err != nil {
+		t.Fatalf("crypto.NewOverlayFromEthereumAddress(...): unexpected error: %v", err)
+	}
 
 	var putCalled bool
 	swapService := swap.New(
@@ -615,7 +626,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 		common.Address{},
 	)
 
-	err := swapService.Handshake(peer, beneficiary)
+	err = swapService.Handshake(peer, beneficiary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +643,11 @@ func TestMigratePeer(t *testing.T) {
 	beneficiary := common.HexToAddress("0xcd")
 	trx := common.HexToHash("0x1")
 	networkID := uint64(1)
-	peer := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+
+	if err != nil {
+		t.Fatalf("crypto.NewOverlayFromEthereumAddress(...): unexpected error: %v", err)
+	}
 
 	swapService := swap.New(
 		&swapProtocolMock{},
@@ -654,7 +669,7 @@ func TestMigratePeer(t *testing.T) {
 		common.Address{},
 	)
 
-	err := swapService.Handshake(peer, beneficiary)
+	err = swapService.Handshake(peer, beneficiary)
 	if err != nil {
 		t.Fatal(err)
 	}

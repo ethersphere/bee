@@ -8,16 +8,17 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
 // emitted by the postage contract on the blockchain.
 type EventUpdater interface {
-	Create(id []byte, owner []byte, totalAmount, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash []byte) error
-	TopUp(id []byte, topUpAmount, normalisedBalance *big.Int, txHash []byte) error
-	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash []byte) error
-	UpdatePrice(price *big.Int, txHash []byte) error
+	Create(id []byte, owner []byte, totalAmount, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error
+	TopUp(id []byte, topUpAmount, normalisedBalance *big.Int, txHash common.Hash) error
+	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error
+	UpdatePrice(price *big.Int, txHash common.Hash) error
 	UpdateBlockNumber(blockNumber uint64) error
 	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan struct{}) error
 
@@ -39,9 +40,16 @@ type ChainSnapshot struct {
 // UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
 type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
 
+type ReserveStateGetter interface {
+	// GetReserveState returns a copy of stored reserve state.
+	GetReserveState() *ReserveState
+}
+
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
+	ReserveStateGetter
+
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
 
@@ -67,12 +75,12 @@ type Storer interface {
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
 
-	// GetReserveState returns a copy of stored reserve state.
-	GetReserveState() *ReserveState
+	// SetStorageRadius updates the value of the storage radius atomically.
+	SetStorageRadius(func(uint8) uint8) error
 
-	// SetRadiusSetter sets the RadiusSetter to the given value.
+	// SetStorageRadiusSetter sets the RadiusSetter to the given value.
 	// The given RadiusSetter will be called when radius changes.
-	SetRadiusSetter(RadiusSetter)
+	SetStorageRadiusSetter(StorageRadiusSetter)
 
 	// Unreserve evict batches from the unreserve queue of the storage.
 	// During the eviction process, the given UnreserveIteratorFn is called.
@@ -80,11 +88,13 @@ type Storer interface {
 
 	// Reset resets chain state and reserve state of the storage.
 	Reset() error
+
+	SetBatchExpiryHandler(BatchExpiryHandler)
 }
 
-// RadiusSetter is used as a callback when the radius of a node changes.
-type RadiusSetter interface {
-	SetRadius(uint8)
+// StorageRadiusSetter is used as a callback when the radius of a node changes.
+type StorageRadiusSetter interface {
+	SetStorageRadius(uint8)
 }
 
 // Listener provides a blockchain event iterator.
@@ -97,4 +107,8 @@ type BatchEventListener interface {
 	HandleCreate(*Batch, *big.Int) error
 	HandleTopUp(id []byte, newBalance *big.Int)
 	HandleDepthIncrease(id []byte, newDepth uint8)
+}
+
+type BatchExpiryHandler interface {
+	HandleStampExpiry([]byte)
 }

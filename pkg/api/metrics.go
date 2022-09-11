@@ -5,8 +5,8 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee"
@@ -96,7 +96,7 @@ func (s *Service) responseCodeMetricsHandler(h http.Handler) http.Handler {
 		wrapper := newResponseWriter(w)
 		h.ServeHTTP(wrapper, r)
 		s.metrics.ResponseCodeCounts.WithLabelValues(
-			fmt.Sprintf("%d", wrapper.statusCode),
+			strconv.Itoa(wrapper.statusCode),
 			r.Method,
 		).Inc()
 	})

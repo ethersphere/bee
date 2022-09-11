@@ -183,7 +183,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -263,45 +263,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		),
 		mockPostContract.WithTopUpBatchFunc(
 			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				batch, err := batchStore.Get(batchID)
-				if err != nil {
-					return err
-				}
-
-				totalAmount := big.NewInt(0).Mul(topupAmount, big.NewInt(int64(1<<batch.Depth)))
-
-				newBalance := big.NewInt(0).Add(totalAmount, batch.Value)
-
-				err = batchStore.Update(batch, newBalance, batch.Depth)
-				if err != nil {
-					return err
-				}
-				topUpAmount := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(batch.Depth))))
-
-				post.HandleTopUp(batch.ID, topUpAmount)
-				return nil
+				return postagecontract.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
 			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				batch, err := batchStore.Get(batchID)
-				if err != nil {
-					return err
-				}
-
-				if newDepth < batch.Depth {
-					return postagecontract.ErrInvalidDepth
-				}
-
-				newBalance := big.NewInt(0).Div(batch.Value, big.NewInt(int64(1<<(newDepth-batch.Depth))))
-
-				err = batchStore.Update(batch, newBalance, newDepth)
-				if err != nil {
-					return err
-				}
-
-				post.HandleDepthIncrease(batch.ID, newDepth)
-				return nil
+				return postagecontract.ErrNotImplemented
 			},
 		),
 	)
@@ -415,13 +382,13 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, o.CORSAllowedOrigins)
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, false, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
 
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
-	}, debugOpts, 1, chainBackend, erc20)
+	}, debugOpts, 1, erc20)
 
 	apiService.MountAPI()
 
@@ -440,7 +407,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
-		}, debugOpts, 1, chainBackend, erc20)
+		}, debugOpts, 1, erc20)
 	}
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)

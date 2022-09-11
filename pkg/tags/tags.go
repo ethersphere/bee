@@ -22,7 +22,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -162,11 +161,11 @@ func (ts *Tags) Delete(k interface{}) {
 func (ts *Tags) MarshalJSON() (out []byte, err error) {
 	m := make(map[string]*Tag)
 	ts.Range(func(k, v interface{}) bool {
-		key := fmt.Sprintf("%d", k)
 		val := v.(*Tag)
 
 		// don't persist tags which were already done
 		if !val.Done(StateSynced) {
+			key := strconv.FormatInt(int64(k.(uint32)), 10)
 			m[key] = val
 		}
 		return true
@@ -301,5 +300,5 @@ func (ts *Tags) Close() (err error) {
 }
 
 func tagKey(uid uint32) string {
-	return tagKeyPrefix + strconv.Itoa(int(uid))
+	return tagKeyPrefix + strconv.FormatInt(int64(uid), 10)
 }
