@@ -22,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/gorilla/mux"
 )
 
 func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
