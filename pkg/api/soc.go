@@ -5,6 +5,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -29,45 +30,12 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		fmt.Printf("--parseAndValidate res %+v", path)
 		s.logger.Debug("soc upload: parse owner string failed", "string", "", "error", err)
 		s.logger.Error(nil, "soc upload: parse owner string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	fmt.Println("+++", path.Sig)
-	//str := mux.Vars(r)["owner"]
-	//owner, err := hex.DecodeString(str)
-	//if err != nil {
-	//	s.logger.Debug("soc upload: parse owner string failed", "string", str, "error", err)
-	//	s.logger.Error(nil, "soc upload: parse owner string failed")
-	//	jsonhttp.BadRequest(w, "bad owner")
-	//	return
-	//}
-	//str = mux.Vars(r)["id"]
-	//id, err := hex.DecodeString(mux.Vars(r)["id"])
-	//if err != nil {
-	//	s.logger.Debug("soc upload: parse id string failed", "string", str, "error", err)
-	//	s.logger.Error(nil, "soc upload: parse id string failed")
-	//	jsonhttp.BadRequest(w, "bad id")
-	//	return
-	//}
-	//
-	//sigStr := r.URL.Query().Get("sig")
-	//if sigStr == "" {
-	//	s.logger.Debug("soc upload: empty sig string")
-	//	s.logger.Error(nil, "soc upload: empty sig string")
-	//	jsonhttp.BadRequest(w, "empty signature")
-	//	return
-	//}
-	//
-	//sig, err := hex.DecodeString(sigStr)
-	//if err != nil {
-	//	s.logger.Debug("soc upload: decode sig string failed", "string", sigStr, "error", err)
-	//	s.logger.Error(nil, "soc upload: decode sig string failed")
-	//	jsonhttp.BadRequest(w, "bad signature")
-	//	return
-	//}
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
