@@ -52,7 +52,7 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
-func (m *mockPostage) HandleStamps() error {
+func (m *mockPostage) AddStampsToService() error {
 	return nil
 }
 

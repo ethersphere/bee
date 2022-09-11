@@ -757,7 +757,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			}
 			isDone = syncStatus.Load() != nil
 			if isDone && !statusStampsSynced {
-				err = post.HandleStamps()
+				err = post.AddStampsToService()
 				if err != nil {
 					return isDone, fmt.Errorf("postage service load: %w", err)
 				}

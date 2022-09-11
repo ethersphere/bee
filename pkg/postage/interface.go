@@ -111,5 +111,8 @@ type BatchEventListener interface {
 
 type BatchExpiryHandler interface {
 	HandleStampExpiry([]byte)
-	HandleStamps() error
+}
+
+type StampsSyncHandler interface {
+	AddStampsToService() error
 }

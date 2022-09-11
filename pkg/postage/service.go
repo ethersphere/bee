@@ -37,6 +37,7 @@ type Service interface {
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
 	BatchExpiryHandler
+	StampsSyncHandler
 	io.Closer
 }
 
@@ -198,7 +199,7 @@ func (ps *service) HandleStampExpiry(id []byte) {
 	}
 }
 
-func (ps *service) HandleStamps() error {
+func (ps *service) AddStampsToService() error {
 	if err := ps.store.Iterate(ps.key(), func(_, value []byte) (bool, error) {
 		st := &StampIssuer{}
 		if err := st.UnmarshalBinary(value); err != nil {
