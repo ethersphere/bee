@@ -355,12 +355,7 @@ FETCH:
 				dirPath := pathVar + "/"
 				exists, err := m.HasPrefix(ctx, dirPath)
 				if err == nil && exists {
-					// redirect to directory
-					u := r.URL
-					u.Path += "/"
-					redirectURL := u.String()
-
-					s.logger.Debug("bzz download: not found", "url", redirectURL, "error", err)
+					s.logger.Debug("bzz download: not found", "error", err)
 					s.logger.Error(nil, "bzz download: not found")
 
 					jsonhttp.NotFound(w, nil)

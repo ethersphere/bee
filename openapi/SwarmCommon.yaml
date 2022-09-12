@@ -49,7 +49,7 @@ components:
         commitment:
           type: integer
 
-    ChainState:
+      ChainState:
       type: object
       properties:
         chainTip:
