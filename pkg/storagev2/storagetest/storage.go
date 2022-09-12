@@ -701,7 +701,7 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 }
 
 func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
-	for i, n := 1, runtime.NumCPU(); i <= n; i *= 2 {
+	for i, n := 1, *maxConcurrency; i <= n; i *= 2 {
 		name := fmt.Sprintf("parallelism-%d", i)
 		runtime.GC()
 		parallelism := i
