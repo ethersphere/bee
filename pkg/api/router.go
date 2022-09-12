@@ -452,9 +452,11 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
 		})
 
-		handle("/wallet", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.walletHandler),
-		})
+		if s.swapEnabled {
+			handle("/wallet", jsonhttp.MethodHandler{
+				"GET": http.HandlerFunc(s.walletHandler),
+			})
+		}
 	}
 
 	handle("/stamps", web.ChainHandlers(
