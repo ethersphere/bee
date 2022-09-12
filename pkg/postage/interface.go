@@ -111,5 +111,5 @@ type BatchEventListener interface {
 
 type BatchExpiryHandler interface {
 	HandleStampExpiry([]byte)
-	ExpirySetter() error
+	SetExpired() error
 }

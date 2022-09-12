@@ -209,7 +209,7 @@ func (ps *service) HandleStampExpiry(id []byte) {
 	}
 }
 
-func (ps *service) ExpirySetter() error {
+func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 

@@ -777,7 +777,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
 				}
-				err = post.ExpirySetter()
+				err = post.SetExpired()
 				if err != nil {
 					logger.Error(err, "unable to set expirations")
 				}
@@ -785,7 +785,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		}
 	}
 
-	err = post.ExpirySetter()
 	if err != nil {
 		return nil, fmt.Errorf("postage service expiry setter: %w", err)
 	}
