@@ -147,6 +147,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		return
 	}
 
+	// filename cannot contain a "/" in prefix
 	if strings.HasPrefix(fileName, "/") {
 		fileName = strings.TrimLeft(fileName, "/")
 	}
