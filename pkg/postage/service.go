@@ -62,13 +62,6 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		if err := st.UnmarshalBinary(value); err != nil {
 			return false, err
 		}
-		exists, err := s.postageStore.Exists(st.ID())
-		if err != nil {
-			return false, err
-		}
-		if !exists {
-			st.SetExpired()
-		}
 		_ = s.add(st)
 		return false, nil
 	}); err != nil {
@@ -204,6 +197,7 @@ func (ps *service) key() string {
 	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
 }
 
+// HandleStampExpiry handles stamp expiry for a given id.
 func (ps *service) HandleStampExpiry(id []byte) {
 
 	ps.lock.Lock()
@@ -214,4 +208,21 @@ func (ps *service) HandleStampExpiry(id []byte) {
 			v.SetExpired()
 		}
 	}
+}
+
+// SetExpired sets expiry for all non-existing batches.
+func (ps *service) SetExpired() error {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	for _, v := range ps.issuers {
+		exists, err := ps.postageStore.Exists(v.ID())
+		if err != nil {
+			return err
+		}
+		if !exists {
+			v.SetExpired()
+		}
+	}
+	return nil
 }

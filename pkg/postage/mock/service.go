@@ -52,6 +52,10 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
+func (m *mockPostage) SetExpired() error {
+	return nil
+}
+
 func (m *mockPostage) HandleStampExpiry(id []byte) {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()

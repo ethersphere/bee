@@ -766,6 +766,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			if err != nil {
 				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
+			} else {
+				err = post.SetExpired()
+				if err != nil {
+					return nil, fmt.Errorf("unable to set expirations: %w", err)
+				}
 			}
 		} else {
 			go func() {
@@ -776,6 +781,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
+				} else {
+					err = post.SetExpired()
+					if err != nil {
+						logger.Error(err, "unable to set expirations")
+					}
 				}
 			}()
 		}
