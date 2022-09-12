@@ -22,6 +22,7 @@ import (
 var (
 	valueSize        = flag.Int("value_size", 100, "Size of each value")
 	compressionRatio = flag.Float64("compression_ratio", 0.5, "")
+	maxConcurrency   = flag.Int("max_concurrency", 2048, "Max concurrency in concurrent benchmark")
 )
 
 var keyLen = 16
@@ -39,14 +40,14 @@ func randomBytes(r *rand.Rand, n int) []byte {
 	return b
 }
 
-func compressibleBytes(r *rand.Rand, ratio float64, n int) []byte {
-	m := maxInt(int(float64(n)*ratio), 1)
+func compressibleBytes(r *rand.Rand, ratio float64, valueSize int) []byte {
+	m := maxInt(int(float64(valueSize)*ratio), 1)
 	p := randomBytes(r, m)
-	b := make([]byte, 0, n+n%m)
-	for len(b) < n {
+	b := make([]byte, 0, valueSize+valueSize%m)
+	for len(b) < valueSize {
 		b = append(b, p...)
 	}
-	return b[:n]
+	return b[:valueSize]
 }
 
 type randomValueGenerator struct {
@@ -97,16 +98,13 @@ func newStartAtEntryGenerator(start int, g entryGenerator) entryGenerator {
 	return &startAtEntryGenerator{start: start, entryGenerator: g}
 }
 
-func newSequentialKeys(n int, start int, keyFormat string) [][]byte {
-	keys := make([][]byte, n)
-	buffer := make([]byte, n*keyLen)
-	for i := 0; i < n; i++ {
+func newSequentialKeys(size int, start int, keyFormat string) [][]byte {
+	keys := make([][]byte, size)
+	buffer := make([]byte, size*keyLen)
+	for i := 0; i < size; i++ {
 		begin, end := i*keyLen, (i+1)*keyLen
 		key := buffer[begin:begin:end]
 		_, _ = fmt.Fprintf(bytes.NewBuffer(key), keyFormat, start+i)
-		// if n != keyLen {
-		// 	panic("n != keyLen")
-		// }
 		keys[i] = buffer[begin:end:end]
 	}
 	return keys
@@ -125,28 +123,28 @@ func newRandomKeys(n int, format string) [][]byte {
 	return keys
 }
 
-func newFullRandomKeys(n int, start int, format string) [][]byte {
-	keys := newSequentialKeys(n, start, format)
+func newFullRandomKeys(size int, start int, format string) [][]byte {
+	keys := newSequentialKeys(size, start, format)
 	r := rand.New(rand.NewSource(time.Now().Unix()))
-	for i := 0; i < n; i++ {
-		j := r.Intn(n)
+	for i := 0; i < size; i++ {
+		j := r.Intn(size)
 		keys[i], keys[j] = keys[j], keys[i]
 	}
 	return keys
 }
 
-func newFullRandomEntryGenerator(start, n int) entryGenerator {
+func newFullRandomEntryGenerator(start, size int) entryGenerator {
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 	return &pairedEntryGenerator{
-		keyGenerator:         newFullRandomKeyGenerator(start, n),
+		keyGenerator:         newFullRandomKeyGenerator(start, size),
 		randomValueGenerator: makeRandomValueGenerator(r, *compressionRatio, *valueSize),
 	}
 }
 
-func newSequentialEntryGenerator(n int) entryGenerator {
+func newSequentialEntryGenerator(size int) entryGenerator {
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 	return &pairedEntryGenerator{
-		keyGenerator:         newSequentialKeyGenerator(n),
+		keyGenerator:         newSequentialKeyGenerator(size),
 		randomValueGenerator: makeRandomValueGenerator(r, *compressionRatio, *valueSize),
 	}
 }
@@ -177,7 +175,8 @@ type roundKeyGenerator struct {
 var _ keyGenerator = (*roundKeyGenerator)(nil)
 
 func (g *roundKeyGenerator) Key(i int) []byte {
-	return g.keyGenerator.Key(i % g.NKey())
+	index := i % g.NKey()
+	return g.keyGenerator.Key(index)
 }
 
 func newRoundKeyGenerator(g keyGenerator) keyGenerator {
@@ -297,6 +296,7 @@ func doDeleteChunk(b *testing.B, db storage.ChunkStore, g keyGenerator) {
 		}
 	}
 }
+
 func doWriteChunk(b *testing.B, db storage.ChunkStore, g entryGenerator) {
 	for i := 0; i < b.N; i++ {
 		addr := swarm.MustParseHexAddress(string(g.Key(i)))
