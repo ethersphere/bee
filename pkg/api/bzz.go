@@ -147,7 +147,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		return
 	}
 
-	// filename cannot contain a "/" in prefix
+	// filename cannot contain a "/" in prefix because the specification is that we cannot start with slash but can have a slash at a later position
 	if strings.HasPrefix(fileName, "/") {
 		fileName = strings.TrimLeft(fileName, "/")
 	}
