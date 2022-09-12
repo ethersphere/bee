@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
 )
 
 const (
@@ -97,17 +96,19 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
+	path := struct {
+		Peer []byte `parse:"peer,addressToString" name:"peer"`
+	}{}
+	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("settlements peer: parse peer address string failed", "string", addr, "error", err)
-		s.logger.Error(nil, "settlements peer: parse peer address string failed", "string", addr)
+		s.logger.Debug("settlements peer: decode string failed", "struct", path, "error", err)
+		s.logger.Error(nil, "settlements peer: decode string failed")
 		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}
-
 	peerexists := false
 
+	peer := swarm.NewAddress(path.Peer)
 	received, err := s.swap.TotalReceived(peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debug("settlements peer: get total received failed", "peer_address", peer, "error", err)
