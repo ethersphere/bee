@@ -18,7 +18,6 @@ import (
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	storagetest "github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/google/uuid"
 )
 
 type pinningCollection struct {
@@ -232,11 +231,6 @@ func TestPinStore(t *testing.T) {
 	})
 }
 
-func newUUID() []byte {
-	id := uuid.New()
-	return id[:]
-}
-
 func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 	t.Parallel()
 
@@ -273,7 +267,7 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
 				Addr: swarm.NewAddress(storagetest.MinAddressBytes[:]),
-				UUID: newUUID(),
+				UUID: pinstore.NewUUID(),
 			},
 			Factory: func() storage.Item { return new(pinstore.PinCollectionItem) },
 		},
@@ -282,7 +276,7 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
 				Addr: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				UUID: newUUID(),
+				UUID: pinstore.NewUUID(),
 				Stat: pinstore.CollectionStat{
 					Total:           math.MaxUint64,
 					DupInCollection: math.MaxUint64,

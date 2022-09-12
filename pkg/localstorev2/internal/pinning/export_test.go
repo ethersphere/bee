@@ -19,6 +19,8 @@ var (
 	ErrInvalidPinCollectionItemSize = errInvalidPinCollectionSize
 )
 
+var NewUUID = newUUID
+
 func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.Address) (bool, error)) error {
 	collection := &pinCollectionItem{Addr: root}
 	err := st.Get(collection)

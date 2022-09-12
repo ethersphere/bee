@@ -37,6 +37,12 @@ var (
 // batchSize used for deletion
 var batchSize = 100
 
+// creates a new UUID and returns it as a byte slice
+func newUUID() []byte {
+	id := uuid.New()
+	return id[:]
+}
+
 // CollectionStat is used to store some basic stats about the pinning collection
 type CollectionStat struct {
 	Total           uint64
@@ -135,8 +141,7 @@ type Storage interface {
 // Putter.
 func NewCollection(st Storage, root swarm.Address) (PutterCloser, error) {
 
-	id := uuid.New()
-	collection := &pinCollectionItem{Addr: root, UUID: id[:]}
+	collection := &pinCollectionItem{Addr: root, UUID: newUUID()}
 	found, err := st.Store().Has(collection)
 	if err != nil {
 		return nil, fmt.Errorf("pin store: failed checking collection: %w", err)
