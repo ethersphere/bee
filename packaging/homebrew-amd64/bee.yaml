@@ -42,8 +42,6 @@ debug-api-enable: true
 # network-id: 1
 ## P2P listen address (default ":1634")
 # p2p-addr: :1634
-## enable P2P QUIC protocol
-# p2p-quic-enable: false
 ## enable P2P WebSocket transport
 # p2p-ws-enable: false
 ## password for decrypting keys
