@@ -24,7 +24,6 @@ import (
 
 const (
 	errChequebookBalance           = "cannot get chequebook balance"
-	errChequebookNoAmount          = "did not specify amount"
 	errChequebookNoWithdraw        = "cannot withdraw"
 	errChequebookNoDeposit         = "cannot deposit"
 	errChequebookInsufficientFunds = "insufficient funds"
