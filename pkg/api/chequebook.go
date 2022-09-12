@@ -396,19 +396,6 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	//amountStr := r.URL.Query().Get("amount")
-	//if amountStr == "" {
-	//	jsonhttp.BadRequest(w, errChequebookNoAmount)
-	//	s.logger.Error(nil, "chequebook withdraw: no withdraw amount")
-	//	return
-	//}
-	//
-	//amount, ok := big.NewInt(0).SetString(amountStr, 10)
-	//if !ok {
-	//	jsonhttp.BadRequest(w, errChequebookNoAmount)
-	//	s.logger.Error(nil, "chequebook withdraw: invalid withdraw amount")
-	//	return
-	//}
 
 	ctx := r.Context()
 	if price, ok := r.Header[gasPriceHeader]; ok {
@@ -449,19 +436,6 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	//amountStr := r.URL.Query().Get("amount")
-	//if amountStr == "" {
-	//	jsonhttp.BadRequest(w, errChequebookNoAmount)
-	//	s.logger.Error(nil, "chequebook deposit: no deposit amount")
-	//	return
-	//}
-	//
-	//amount, ok := big.NewInt(0).SetString(amountStr, 10)
-	//if !ok {
-	//	jsonhttp.BadRequest(w, errChequebookNoAmount)
-	//	s.logger.Error(nil, "chequebook deposit: invalid deposit amount")
-	//	return
-	//}
 
 	ctx := r.Context()
 	if price, ok := r.Header[gasPriceHeader]; ok {
