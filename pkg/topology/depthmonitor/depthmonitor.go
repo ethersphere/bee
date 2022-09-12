@@ -17,7 +17,7 @@ const loggerName = "depthmonitor"
 
 var (
 	manageWait          = 5 * time.Minute
-	minimumRadius uint8 = 0
+	minimumRadius uint8 = 4
 )
 
 // ReserveReporter interface defines the functionality required from the local storage
