@@ -197,6 +197,7 @@ func (ps *service) key() string {
 	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
 }
 
+// HandleStampExpiry handles stamp expiry for a given id.
 func (ps *service) HandleStampExpiry(id []byte) {
 
 	ps.lock.Lock()
@@ -209,6 +210,7 @@ func (ps *service) HandleStampExpiry(id []byte) {
 	}
 }
 
+// SetExpired sets expiry for all non-existing batches.
 func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
