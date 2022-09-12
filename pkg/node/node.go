@@ -767,6 +767,10 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
 			}
+			err = post.SetExpired()
+			if err != nil {
+				return nil, fmt.Errorf("unable to set expirations: %w", err)
+			}
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
@@ -783,10 +787,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 				}
 			}()
 		}
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("postage service expiry setter: %w", err)
 	}
 
 	minThreshold := big.NewInt(2 * refreshRate)
