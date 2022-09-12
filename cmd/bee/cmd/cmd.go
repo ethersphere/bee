@@ -97,6 +97,8 @@ type command struct {
 
 type option func(*command)
 
+var missingParams []string
+
 func newCommand(opts ...option) (c *command, err error) {
 	c = &command{
 		root: &cobra.Command{
@@ -105,7 +107,15 @@ func newCommand(opts ...option) (c *command, err error) {
 			SilenceErrors: true,
 			SilenceUsage:  true,
 			PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-				return c.initConfig()
+				if err := c.initConfig(); err != nil {
+					return err
+				}
+				for _, v := range c.config.AllKeys() {
+					if f := cmd.Flags().Lookup(v); f == nil {
+						missingParams = append(missingParams, v)
+					}
+				}
+				return nil
 			},
 		},
 	}

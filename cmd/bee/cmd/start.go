@@ -93,6 +93,9 @@ func (c *command) initStartCmd() (err error) {
 
 			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 
+			fmt.Println("WARN: unrecongnized configuration parameters:", strings.Join(missingParams, ","))
+			fmt.Println()
+
 			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
 			if !c.config.GetBool(optionNameDebugAPIEnable) {
 				debugAPIAddr = ""
