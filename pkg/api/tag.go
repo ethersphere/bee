@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/gorilla/mux"
 )
 
 type tagRequest struct {
@@ -79,26 +78,27 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
-
-	id, err := strconv.Atoi(idStr)
+	path := struct {
+		Id uint32 `parse:"id" name:"id"`
+	}{}
+	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("get tag: parse id string failed", "string", idStr, "error", err)
+		s.logger.Debug("get tag: parse id string failed", "string", path, "error", err)
 		s.logger.Error(nil, "get tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(path.Id)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("get tag: tag not found", "tag_id", id)
+			s.logger.Debug("get tag: tag not found", "tag_id", path.Id)
 			s.logger.Error(nil, "get tag: tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("get tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "get tag: get tag failed", "tag_id", id)
+		s.logger.Debug("get tag: get tag failed", "tag_id", path.Id, "error", err)
+		s.logger.Error(nil, "get tag: get tag failed", "tag_id", path.Id)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
@@ -108,26 +108,26 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
-
-	id, err := strconv.Atoi(idStr)
+	path := struct {
+		Id uint32 `parse:"id" name:"id"`
+	}{}
+	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("delete tag: parse id string failed", "string", idStr, "error", err)
+		s.logger.Debug("delete tag: parse id string failed", "string", path, "error", err)
 		s.logger.Error(nil, "delete tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(path.Id)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("delete tag: tag not found", "tag_id", id)
+			s.logger.Debug("delete tag: tag not found", "tag_id", path.Id)
 			s.logger.Error(nil, "delete tag: tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("delete tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "delete tag: get tag failed", "tag_id", id)
+		s.logger.Debug("delete tag: get tag failed", "tag_id", path.Id, "error", err)
+		s.logger.Error(nil, "delete tag: get tag failed", "tag_id", path.Id)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
@@ -137,13 +137,14 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
-
-	id, err := strconv.Atoi(idStr)
+	path := struct {
+		Id uint32 `parse:"id" name:"id"`
+	}{}
+	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("done split tag: parse id string failed", "string", idStr, "error", err)
+		s.logger.Debug("done split tag: parse id string failed", "string", path, "error", err)
 		s.logger.Error(nil, "done split tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
@@ -169,16 +170,16 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(path.Id)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("done split tag: tag not found", "tag_id", id)
+			s.logger.Debug("done split tag: tag not found", "tag_id", path.Id)
 			s.logger.Error(nil, "done split tag: tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("done split tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "done split tag: get tag failed", "tag_id", id)
+		s.logger.Debug("done split tag: get tag failed", "tag_id", path.Id, "error", err)
+		s.logger.Error(nil, "done split tag: get tag failed", "tag_id", path.Id)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
