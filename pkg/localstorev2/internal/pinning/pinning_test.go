@@ -232,6 +232,11 @@ func TestPinStore(t *testing.T) {
 	})
 }
 
+func newUUID() []byte {
+	id := uuid.New()
+	return id[:]
+}
+
 func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 	t.Parallel()
 
@@ -250,16 +255,15 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
 				Addr: swarm.ZeroAddress,
-				UUID: "",
 			},
 			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
 			MarshalErr: pinstore.ErrInvalidPinCollectionItemAddr,
 		},
 	}, {
+		name: "zero UUID",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
 				Addr: swarm.NewAddress(storagetest.MinAddressBytes[:]),
-				UUID: "",
 			},
 			Factory:    func() storage.Item { return new(pinstore.PinCollectionItem) },
 			MarshalErr: pinstore.ErrInvalidPinCollectionItemUUID,
@@ -269,7 +273,7 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
 				Addr: swarm.NewAddress(storagetest.MinAddressBytes[:]),
-				UUID: uuid.NewString(),
+				UUID: newUUID(),
 			},
 			Factory: func() storage.Item { return new(pinstore.PinCollectionItem) },
 		},
@@ -278,7 +282,7 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
 				Addr: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				UUID: uuid.NewString(),
+				UUID: newUUID(),
 				Stat: pinstore.CollectionStat{
 					Total:           math.MaxUint64,
 					DupInCollection: math.MaxUint64,
