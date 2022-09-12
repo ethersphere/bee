@@ -312,7 +312,7 @@ func TestDirs(t *testing.T) {
 					bzzDownloadResource(resp.Reference.String(), fromPath),
 					http.StatusNotFound,
 					jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-						Message: "bzz download: not found",
+						Message: "Not Found",
 						Code:    http.StatusNotFound,
 					}),
 				)
