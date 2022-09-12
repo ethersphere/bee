@@ -22,6 +22,7 @@ import (
 var (
 	valueSize        = flag.Int("value_size", 100, "Size of each value")
 	compressionRatio = flag.Float64("compression_ratio", 0.5, "")
+	maxConcurrency   = flag.Int("max_concurrency", 2048, "Max concurrency in concurrent benchmark")
 )
 
 var keyLen = 16
@@ -39,14 +40,14 @@ func randomBytes(r *rand.Rand, n int) []byte {
 	return b
 }
 
-func compressibleBytes(r *rand.Rand, ratio float64, n int) []byte {
-	m := maxInt(int(float64(n)*ratio), 1)
+func compressibleBytes(r *rand.Rand, ratio float64, valueSize int) []byte {
+	m := maxInt(int(float64(valueSize)*ratio), 1)
 	p := randomBytes(r, m)
-	b := make([]byte, 0, n+n%m)
-	for len(b) < n {
+	b := make([]byte, 0, valueSize+valueSize%m)
+	for len(b) < valueSize {
 		b = append(b, p...)
 	}
-	return b[:n]
+	return b[:valueSize]
 }
 
 type randomValueGenerator struct {

@@ -22,7 +22,9 @@ func TestStoreTestSuite(t *testing.T) {
 }
 
 func BenchmarkStore(b *testing.B) {
-	st, err := ldb.New("", new(opt.Options))
+	st, err := ldb.New("", &opt.Options{
+		Compression: opt.SnappyCompression,
+	})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -34,39 +36,55 @@ func BenchmarkStore(b *testing.B) {
 go: 1.17.12
 goos: linux
 goarch: amd64
-pkg: github.com/ethersphere/bee/pkg/storagev2/leveldb
+pkg: github.com/ethersphere/bee/pkg/storagev2/leveldbstore
 cpu: Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz
-BenchmarkLevelDB
-BenchmarkLevelDB/WriteSequential
-BenchmarkLevelDB/WriteSequential-8         	  567930	      1906 ns/op	    1052 B/op	       8 allocs/op
-BenchmarkLevelDB/WriteRandom
-BenchmarkLevelDB/WriteRandom/parallelism-1
-BenchmarkLevelDB/WriteRandom/parallelism-1-8         	  615745	      4280 ns/op	    2763 B/op	       9 allocs/op
-BenchmarkLevelDB/WriteRandom/parallelism-2
-BenchmarkLevelDB/WriteRandom/parallelism-2-8         	  218419	      7572 ns/op	    4465 B/op	      17 allocs/op
-BenchmarkLevelDB/WriteRandom/parallelism-4
-BenchmarkLevelDB/WriteRandom/parallelism-4-8         	   97946	     16256 ns/op	    5949 B/op	      31 allocs/op
-BenchmarkLevelDB/WriteRandom/parallelism-8
-BenchmarkLevelDB/WriteRandom/parallelism-8-8         	   35602	     49921 ns/op	   10198 B/op	      54 allocs/op
-BenchmarkLevelDB/ReadSequential
-BenchmarkLevelDB/ReadSequential-8                    	  369727	      3738 ns/op	    1677 B/op	      19 allocs/op
-BenchmarkLevelDB/ReadRandom
-BenchmarkLevelDB/ReadRandom-8                        	  298050	      5633 ns/op	    1190 B/op	      22 allocs/op
-BenchmarkLevelDB/ReadRandomMissing
-BenchmarkLevelDB/ReadRandomMissing-8                 	  355465	      5907 ns/op	    1187 B/op	      21 allocs/op
-BenchmarkLevelDB/ReadReverse
-BenchmarkLevelDB/ReadReverse-8                       	  596318	      4226 ns/op	    1796 B/op	      20 allocs/op
-BenchmarkLevelDB/ReadRedHot
-BenchmarkLevelDB/ReadRedHot-8                        	  920134	      3479 ns/op	    1809 B/op	      20 allocs/op
-BenchmarkLevelDB/IterateSequential
-BenchmarkLevelDB/IterateSequential-8                 	  366224	      4735 ns/op	    2782 B/op	      15 allocs/op
-BenchmarkLevelDB/IterateReverse
-BenchmarkLevelDB/IterateReverse-8                    	  343334	      3825 ns/op	    2713 B/op	      15 allocs/op
-BenchmarkLevelDB/DeleteRandom:_1
-BenchmarkLevelDB/DeleteRandom:_1-8                   	  850855	      1953 ns/op	     833 B/op	       6 allocs/op
-BenchmarkLevelDB/DeleteSequential:_1
-BenchmarkLevelDB/DeleteSequential:_1-8               	  872286	      1312 ns/op	     509 B/op	       6 allocs/op
+BenchmarkStore
+BenchmarkStore/WriteSequential
+BenchmarkStore/WriteSequential-8         	  605460	      1745 ns/op	    1034 B/op	       8 allocs/op
+BenchmarkStore/WriteRandom
+BenchmarkStore/WriteRandom/parallelism-1
+BenchmarkStore/WriteRandom/parallelism-1-8         	  629793	      4096 ns/op	    2671 B/op	       9 allocs/op
+BenchmarkStore/WriteRandom/parallelism-2
+BenchmarkStore/WriteRandom/parallelism-2-8         	  188066	      8314 ns/op	    4602 B/op	      17 allocs/op
+BenchmarkStore/WriteRandom/parallelism-4
+BenchmarkStore/WriteRandom/parallelism-4-8         	   75294	     13460 ns/op	    5764 B/op	      31 allocs/op
+BenchmarkStore/WriteRandom/parallelism-8
+BenchmarkStore/WriteRandom/parallelism-8-8         	   41826	     29072 ns/op	    9655 B/op	      57 allocs/op
+BenchmarkStore/WriteRandom/parallelism-16
+BenchmarkStore/WriteRandom/parallelism-16-8        	   19225	     62657 ns/op	   18191 B/op	     100 allocs/op
+BenchmarkStore/WriteRandom/parallelism-32
+BenchmarkStore/WriteRandom/parallelism-32-8        	   10000	    120598 ns/op	   34850 B/op	     187 allocs/op
+BenchmarkStore/WriteRandom/parallelism-64
+BenchmarkStore/WriteRandom/parallelism-64-8        	    4750	    260106 ns/op	   71143 B/op	     354 allocs/op
+BenchmarkStore/WriteRandom/parallelism-128
+BenchmarkStore/WriteRandom/parallelism-128-8       	    2029	    570119 ns/op	  112630 B/op	     677 allocs/op
+BenchmarkStore/WriteRandom/parallelism-256
+BenchmarkStore/WriteRandom/parallelism-256-8       	     987	   1221940 ns/op	  259537 B/op	    1348 allocs/op
+BenchmarkStore/WriteRandom/parallelism-512
+BenchmarkStore/WriteRandom/parallelism-512-8       	     482	   2562216 ns/op	  594146 B/op	    2685 allocs/op
+BenchmarkStore/WriteRandom/parallelism-1024
+BenchmarkStore/WriteRandom/parallelism-1024-8      	     232	   5027585 ns/op	  865239 B/op	    5422 allocs/op
+BenchmarkStore/WriteRandom/parallelism-2048
+BenchmarkStore/WriteRandom/parallelism-2048-8      	     114	  10367100 ns/op	 1669523 B/op	   11012 allocs/op
+BenchmarkStore/ReadSequential
+BenchmarkStore/ReadSequential-8                    	  849603	      4066 ns/op	    1805 B/op	      21 allocs/op
+BenchmarkStore/ReadRandom
+BenchmarkStore/ReadRandom-8                        	  335145	      6650 ns/op	    1244 B/op	      24 allocs/op
+BenchmarkStore/ReadRandomMissing
+BenchmarkStore/ReadRandomMissing-8                 	 1414250	       836.9 ns/op	     208 B/op	       7 allocs/op
+BenchmarkStore/ReadReverse
+BenchmarkStore/ReadReverse-8                       	  581599	      3798 ns/op	    1459 B/op	      20 allocs/op
+BenchmarkStore/ReadRedHot
+BenchmarkStore/ReadRedHot-8                        	  518310	      4617 ns/op	    1794 B/op	      20 allocs/op
+BenchmarkStore/IterateSequential
+BenchmarkStore/IterateSequential-8                 	 1727948	       758.8 ns/op	     511 B/op	       4 allocs/op
+BenchmarkStore/IterateReverse
+BenchmarkStore/IterateReverse-8                    	 1488330	       809.9 ns/op	     512 B/op	       5 allocs/op
+BenchmarkStore/DeleteRandom
+BenchmarkStore/DeleteRandom-8                      	  736826	      2246 ns/op	     844 B/op	       6 allocs/op
+BenchmarkStore/DeleteSequential
+BenchmarkStore/DeleteSequential-8                  	  928838	      1296 ns/op	     626 B/op	       6 allocs/op
 PASS
-coverage: 60.6% of statements
-ok  	github.com/ethersphere/bee/pkg/storagev2/leveldb	47.395s
+coverage: 59.8% of statements
+ok  	github.com/ethersphere/bee/pkg/storagev2/leveldbstore	96.105s
 */

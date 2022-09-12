@@ -18,6 +18,18 @@ var (
 	format = "100000000000000%d"
 )
 
+func TestCompressibleBytes(t *testing.T) {
+	bts := compressibleBytes(rng, cr, vs)
+	if !bytes.Equal(bts[:50], bts[50:]) {
+		t.Errorf("expected \n%s to equal \n%s", string(bts[:50]), string(bts[50:]))
+	}
+
+	bts = compressibleBytes(rng, 0.25, vs)
+	if !bytes.Equal(bts[:25], bts[25:50]) || !bytes.Equal(bts[50:75], bts[75:]) {
+		t.Errorf("expected \n%s to equal \n%s", string(bts[:50]), string(bts[50:]))
+	}
+}
+
 func TestRandomValueGenerator(t *testing.T) {
 	t.Run("generates random values", func(t *testing.T) {
 		gen := makeRandomValueGenerator(rng, cr, vs)
