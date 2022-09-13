@@ -229,6 +229,33 @@ func TestPinStore(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("error after close", func(t *testing.T) {
+		root := chunktest.GenerateTestRandomChunk()
+		putter, err := pinstore.NewCollection(st, root.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		exists, err := putter.Put(context.TODO(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if exists {
+			t.Fatalf("expected chunk to not exists %s", root.Address())
+		}
+
+		err = putter.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = putter.Put(context.TODO(), chunktest.GenerateTestRandomChunk())
+		if !errors.Is(err, pinstore.ErrPutterAlreadyClosed) {
+			t.Fatalf("unexpected error during Put, want: %v, got: %v", pinstore.ErrPutterAlreadyClosed, err)
+		}
+	})
 }
 
 func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {

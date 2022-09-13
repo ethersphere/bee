@@ -32,6 +32,8 @@ var (
 	// errInvalidPinCollectionSize is returned when trying to unmarshal a buffer of
 	// incorrect size
 	errInvalidPinCollectionSize = errors.New("unmarshal pinCollectionItem: invalid size")
+	// errPutterAlreadyClosed is returned when trying to use a Putter which is already closed
+	errPutterAlreadyClosed = errors.New("pin store: putter already closed")
 )
 
 // batchSize used for deletion
@@ -86,8 +88,8 @@ func (p *pinCollectionItem) Unmarshal(buf []byte) error {
 		return errInvalidPinCollectionSize
 	}
 	ni := new(pinCollectionItem)
-	ni.Addr = swarm.NewAddress(buf[:swarm.HashSize])
-	ni.UUID = buf[swarm.HashSize : swarm.HashSize+uuidSize]
+	ni.Addr = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
+	ni.UUID = append(make([]byte, 0, uuidSize), buf[swarm.HashSize:swarm.HashSize+uuidSize]...)
 	statBuf := buf[swarm.HashSize+uuidSize:]
 	ni.Stat.Total = binary.LittleEndian.Uint64(statBuf[:8])
 	ni.Stat.DupInCollection = binary.LittleEndian.Uint64(statBuf[8:16])
@@ -111,7 +113,7 @@ func (p *pinChunkItem) ID() string { return p.Addr.ByteString() }
 // required as the key would constitute the item. Usually these type of indexes are
 // useful for key-only iterations.
 func (p *pinChunkItem) Marshal() ([]byte, error) {
-	return []byte{}, nil
+	return nil, nil
 }
 
 func (p *pinChunkItem) Unmarshal(_ []byte) error {
@@ -157,11 +159,17 @@ type collectionPutter struct {
 	mtx        sync.Mutex
 	collection *pinCollectionItem
 	st         Storage
+	closed     bool
 }
 
 func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) (bool, error) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+
+	// do not allow any Puts after putter was closed
+	if c.closed {
+		return false, errPutterAlreadyClosed
+	}
 
 	c.collection.Stat.Total++
 
@@ -202,6 +210,8 @@ func (c *collectionPutter) Close() error {
 	if err != nil {
 		return fmt.Errorf("pin store: failed updating collection: %w", err)
 	}
+
+	c.closed = true
 	return nil
 }
 
