@@ -17,7 +17,7 @@ const loggerName = "depthmonitor"
 
 var (
 	manageWait          = 5 * time.Minute
-	minimumRadius uint8 = 4
+	minimumRadius uint8 = 5
 )
 
 // ReserveReporter interface defines the functionality required from the local storage
@@ -91,6 +91,14 @@ func (s *Service) manage(warmupTime time.Duration) {
 		// if we are starting from scratch, we can use the reserve radius.
 		if radius == 0 {
 			radius = reserveRadius
+		}
+		// storage radius >= minumum radius and <= reserve radius
+		if radius < minimumRadius {
+			if minimumRadius < reserveRadius {
+				radius = minimumRadius
+			} else {
+				radius = reserveRadius
+			}
 		}
 		s.logger.Info("depthmonitor: warmup period complete, starting worker", "initial depth", radius)
 		return radius
