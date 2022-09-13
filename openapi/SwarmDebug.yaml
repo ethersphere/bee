@@ -311,21 +311,6 @@ paths:
         default:
           description: Default response
 
-  "/health":
-    get:
-      summary: Get health of node
-      tags:
-        - Status
-      responses:
-        "200":
-          description: Health State of node
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
-        default:
-          description: Default response
-
   "/peers":
     get:
       summary: Get a list of peers
@@ -395,18 +380,37 @@ paths:
         default:
           description: Default response
 
-  "/readiness":
+  "/health":
     get:
-      summary: Get readiness state of node
+      summary: Get node overall health Status
+      description: |
+        Health Status will indicate node healthiness.
+
+        If node is unhealthy please check node logs for errors.
       tags:
         - Status
       responses:
         "200":
-          description: Health State of node
+          description: Health Status of node
           content:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Status"
+        default:
+          description: Default response
+
+  "/readiness":
+    get:
+      summary: Readiness endpoint indicates if node is ready to start accepting traffic
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Indicates that node is ready
+          $ref: "SwarmCommon.yaml#/components/responses/200"
+        "400":
+          description: Indicates that node is not ready
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
 

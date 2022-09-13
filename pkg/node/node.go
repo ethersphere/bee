@@ -318,6 +318,17 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		beeNodeMode = api.UltraLightMode
 	}
 
+	// Create api.Probe in healthy state and switch to ready state after all components have been constructed
+	probe := api.NewProbe()
+	probe.SetHealthy(api.ProbeStatusOK)
+	defer func(probe *api.Probe) {
+		if err != nil {
+			probe.SetHealthy(api.ProbeStatusNOK)
+		} else {
+			probe.SetReady(api.ProbeStatusOK)
+		}
+	}(probe)
+
 	var debugService *api.Service
 
 	if o.DebugAPIAddr != "" {
@@ -336,6 +347,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		debugService.MountTechnicalDebug()
+		debugService.SetProbe(probe)
 
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
@@ -361,6 +373,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if o.Restricted {
 		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 		apiService.MountTechnicalDebug()
+		apiService.SetProbe(probe)
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
@@ -766,6 +779,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			if err != nil {
 				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
+			} else {
+				err = post.SetExpired()
+				if err != nil {
+					return nil, fmt.Errorf("unable to set expirations: %w", err)
+				}
 			}
 		} else {
 			go func() {
@@ -776,6 +794,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
+				} else {
+					err = post.SetExpired()
+					if err != nil {
+						logger.Error(err, "unable to set expirations")
+					}
 				}
 			}()
 		}
@@ -987,6 +1010,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if o.APIAddr != "" {
 		if apiService == nil {
 			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
+			apiService.SetProbe(probe)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{

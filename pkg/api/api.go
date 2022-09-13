@@ -130,6 +130,7 @@ type Service struct {
 	post            postage.Service
 	postageContract postagecontract.Interface
 	chunkPushC      chan *pusher.Op
+	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	Options
 
@@ -276,6 +277,10 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.syncStatus = e.SyncStatus
 
 	return s.chunkPushC
+}
+
+func (s *Service) SetProbe(probe *Probe) {
+	s.probe = probe
 }
 
 // Close hangs up running websockets on shutdown.
