@@ -879,17 +879,35 @@ paths:
 
   "/health":
     get:
-      summary: Get health of node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      summary: Get node overall health Status
+      description: |
+        Health Status will indicate node healthiness.
+
+        If node is unhealthy please check node logs for errors.
       tags:
         - Status
       responses:
         "200":
-          description: Health State of node
+          description: Health Status of node
           content:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Status"
+        default:
+          description: Default response
+
+  "/readiness":
+    get:
+      summary: Readiness endpoint indicates if node is ready to start accepting traffic
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Indicates that node is ready
+          $ref: "SwarmCommon.yaml#/components/responses/200"
+        "400":
+          description: Indicates that node is not ready
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
 
