@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/gorilla/mux"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -60,8 +61,8 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("soc upload: parse owner string failed", "string", "", "error", err)
-		s.logger.Error(nil, "soc upload: parse owner string failed")
+		s.logger.Debug("balances peer: parse address string failed", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "balances peer: parse address string failed", "string", mux.Vars(r)["peer"])
 		jsonhttp.NotFound(w, err.Error())
 		return
 	}
@@ -113,8 +114,8 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("soc upload: parse owner string failed", "string", "", "error", err)
-		s.logger.Error(nil, "soc upload: parse owner string failed")
+		s.logger.Debug("compensated balances peer: parse address string failed", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "compensated balances peer: parse address string failed", "string", mux.Vars(r)["peer"])
 		jsonhttp.NotFound(w, err.Error())
 		return
 	}

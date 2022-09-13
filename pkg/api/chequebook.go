@@ -98,15 +98,18 @@ func (s *Service) chequebookAddressHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("chequebook cheque peer: invalid peer address string", "string", addr, "error", err)
-		s.logger.Error(nil, "chequebook cheque peer: invalid peer address string", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	path := struct {
+		Peer []byte `parse:"peer,addressToString" name:"peer" errMessage:"invalid address"`
+	}{}
+
+	if err := s.parseAndValidate(r, &path); err != nil {
+		s.logger.Debug("chequebook cheque peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"])
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
+	peer := swarm.NewAddress(path.Peer)
 	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.swap.LastSentCheque(peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
@@ -146,7 +149,7 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
-		Peer:         addr,
+		Peer:         mux.Vars(r)["peer"],
 		LastReceived: lastReceivedResponse,
 		LastSent:     lastSentResponse,
 	})
@@ -231,19 +234,11 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("cashout peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "cashout peer: invalid peer address string", "string", mux.Vars(r)["peer"])
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	//addr := mux.Vars(r)["peer"]
-	//peer, err := swarm.ParseHexAddress(addr)
-	//if err != nil {
-	//	s.logger.Debug("cashout peer: invalid peer address string", "string", addr, "error", err)
-	//	s.logger.Error(nil, "cashout peer: invalid peer address string", "string", addr)
-	//	jsonhttp.NotFound(w, errInvalidAddress)
-	//	return
-	//}
 	peer := swarm.NewAddress(path.Peer)
 	ctx := r.Context()
 	if price, ok := r.Header[gasPriceHeader]; ok {
@@ -312,19 +307,11 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"])
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	//addr := mux.Vars(r)["peer"]
-	//peer, err := swarm.ParseHexAddress(addr)
-	//if err != nil {
-	//	s.logger.Debug("cashout status peer: invalid peer address string", "string", addr, "error", err)
-	//	s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", addr)
-	//	jsonhttp.NotFound(w, errInvalidAddress)
-	//	return
-	//}
 	peer := swarm.NewAddress(path.Peer)
 	status, err := s.swap.CashoutStatus(r.Context(), peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
@@ -390,8 +377,7 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "parse and validate url path params failed")
+		s.logger.Error(nil, "chequebook withdraw: invalid withdraw amount")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
@@ -430,8 +416,7 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "parse and validate url path params failed")
+		s.logger.Error(nil, "chequebook deposit: invalid deposit amount")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}

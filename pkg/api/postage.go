@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gorilla/mux"
 	"math"
 	"math/big"
 	"net/http"
@@ -261,8 +262,8 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", mux.Vars(r)["id"], "length", len(mux.Vars(r)["id"]), "error", err)
+		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
@@ -295,8 +296,8 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		Id []byte `parse:"id,hexToString" name:"batchID"`
 	}{}
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", mux.Vars(r)["id"], "length", len(mux.Vars(r)["id"]), "error", err)
+		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
@@ -439,8 +440,8 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("topup batch: decode string failed", "id string", mux.Vars(r)["id"], "id length", len(mux.Vars(r)["id"]), "amount string", mux.Vars(r)["amount"], "amount length", len(mux.Vars(r)["amount"]), "error", err)
+		s.logger.Error(nil, "topup batch: decode id or amount string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
@@ -455,11 +456,11 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
-
-	err := s.postageContract.TopUpBatch(ctx, path.Id, big.NewInt(path.Amount))
+	amount := big.NewInt(path.Amount)
+	err := s.postageContract.TopUpBatch(ctx, path.Id, amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
-			s.logger.Debug("topup batch: out of funds", "batch_id", hex.EncodeToString(path.Id), "amount", big.NewInt(path.Amount), "error", err)
+			s.logger.Debug("topup batch: out of funds", "batch_id", hex.EncodeToString(path.Id), "amount", amount, "error", err)
 			s.logger.Error(nil, "topup batch: out of funds")
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
@@ -470,7 +471,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotImplemented(w, nil)
 			return
 		}
-		s.logger.Debug("topup batch: topup failed", "batch_id", hex.EncodeToString(path.Id), "amount", big.NewInt(path.Amount), "error", err)
+		s.logger.Debug("topup batch: topup failed", "batch_id", hex.EncodeToString(path.Id), "amount", amount, "error", err)
 		s.logger.Error(nil, "topup batch: topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
 		return
@@ -488,9 +489,8 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		fmt.Println("=+++", path)
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("dilute batch: invalid batch id string length", "id string", mux.Vars(r)["id"], "id length", len(mux.Vars(r)["id"]), "amount string", mux.Vars(r)["amount"], "amount length", len(mux.Vars(r)["amount"]), "error", err)
+		s.logger.Error(nil, "dilute batch: decode batch id or depth string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}

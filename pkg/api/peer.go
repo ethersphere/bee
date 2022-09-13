@@ -55,19 +55,18 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("peer disconnect: decode string failed", "struct", path, "error", err)
-		s.logger.Error(nil, "peer disconnect: decode string failed")
+		s.logger.Debug("peer disconnect: parse address string failed", "string", mux.Vars(r)["address"], "error", err)
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-
+	swarmAdr := swarm.NewAddress(path.Address)
 	if err := s.p2p.Disconnect(swarm.NewAddress(path.Address), "user requested disconnect"); err != nil {
-		s.logger.Debug("peer disconnect: p2p disconnect failed", "peer_address", string(path.Address), "error", err)
+		s.logger.Debug("peer disconnect: p2p disconnect failed", "peer_address", swarmAdr, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.BadRequest(w, "peer not found")
 			return
 		}
-		s.logger.Error(nil, "peer disconnect: p2p disconnect failed", "peer_address", string(path.Address))
+		s.logger.Error(nil, "peer disconnect: p2p disconnect failed", "peer_address", swarmAdr)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

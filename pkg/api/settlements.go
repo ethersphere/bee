@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/gorilla/mux"
 	"math/big"
 	"net/http"
 
@@ -101,8 +102,8 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("settlements peer: decode string failed", "struct", path, "error", err)
-		s.logger.Error(nil, "settlements peer: decode string failed")
+		s.logger.Debug("settlements peer: parse peer address string failed", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "settlements peer: parse peer address string failed", "string", mux.Vars(r)["peer"])
 		jsonhttp.NotFound(w, errInvalidAddress)
 		return
 	}

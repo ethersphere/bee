@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/gorilla/mux"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,7 +44,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("feed get: decode string failed", "struct", path, "error", err)
+		s.logger.Debug("feed get: decode string failed", "owner", mux.Vars(r)["owner"], "topic", mux.Vars(r)["topic"], "error", err)
 		s.logger.Error(nil, "feed get: decode string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -66,7 +67,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	f := feeds.New(path.Topic, common.BytesToAddress(path.Owner))
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		s.logger.Debug("feed get: new lookup failed", "owner", string(path.Owner), "error", err)
+		s.logger.Debug("feed get: new lookup failed", "owner", path.Owner, "error", err)
 		s.logger.Error(nil, "feed get: new lookup failed")
 		jsonhttp.InternalServerError(w, "new lookup failed")
 		return
@@ -126,7 +127,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("feed post: decode string failed", "struct", path, "error", err)
+		s.logger.Debug("feed post: decode string failed", "owner", mux.Vars(r)["owner"], "topic", mux.Vars(r)["topic"], "error", err)
 		s.logger.Error(nil, "feed post: decode string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return

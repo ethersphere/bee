@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/hex"
 	"errors"
+	"github.com/gorilla/mux"
 	"io"
 	"net/http"
 	"strings"
@@ -30,8 +31,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("soc upload: parse owner string failed", "string", "", "error", err)
-		s.logger.Error(nil, "soc upload: parse owner string failed")
+		s.logger.Debug("soc upload: parse string failed", "owner", mux.Vars(r)["owner"], "id", mux.Vars(r)["id"], "sig", mux.Vars(r)["sig"], "error", err)
+		s.logger.Error(nil, "soc upload: parse owner/id/sig string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}

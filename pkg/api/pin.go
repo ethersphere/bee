@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/gorilla/mux"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -20,22 +21,16 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("pin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
+		s.logger.Error(nil, "pin root hash: parse reference string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-	//ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
-	//if err != nil {
-	//	s.logger.Debug("pin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
-	//	s.logger.Error(nil, "pin root hash: parse reference string failed")
-	//	jsonhttp.BadRequest(w, "parse reference string failed")
-	//	return
-	//}
 
-	has, err := s.pinning.HasPin(swarm.NewAddress(path.Reference))
+	swarmAdr := swarm.NewAddress(path.Reference)
+	has, err := s.pinning.HasPin(swarmAdr)
 	if err != nil {
-		s.logger.Debug("pin root hash: has pin failed", "chunk_address", path.Reference, "error", err)
+		s.logger.Debug("pin root hash: has pin failed", "chunk_address", swarmAdr, "error", err)
 		s.logger.Error(nil, "pin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin failed")
 		return
@@ -45,12 +40,12 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err = s.pinning.CreatePin(r.Context(), swarm.NewAddress(path.Reference), true); {
+	switch err = s.pinning.CreatePin(r.Context(), swarmAdr, true); {
 	case errors.Is(err, storage.ErrNotFound):
 		jsonhttp.NotFound(w, nil)
 		return
 	case err != nil:
-		s.logger.Debug("pin root hash: create pin failed", "chunk_address", path.Reference, "error", err)
+		s.logger.Debug("pin root hash: create pin failed", "chunk_address", swarmAdr, "error", err)
 		s.logger.Error(nil, "pin root hash: create pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: creation of tracking pin failed")
 		return
@@ -66,15 +61,16 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("unpin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
+		s.logger.Error(nil, "unpin root hash: parse reference string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
-	has, err := s.pinning.HasPin(swarm.NewAddress(path.Reference))
+	swarmAdr := swarm.NewAddress(path.Reference)
+	has, err := s.pinning.HasPin(swarmAdr)
 	if err != nil {
-		s.logger.Debug("unpin root hash: has pin failed", "chunk_address", path.Reference, "error", err)
+		s.logger.Debug("unpin root hash: has pin failed", "chunk_address", swarmAdr, "error", err)
 		s.logger.Error(nil, "unpin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin")
 		return
@@ -84,8 +80,8 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.pinning.DeletePin(r.Context(), swarm.NewAddress(path.Reference)); err != nil {
-		s.logger.Debug("unpin root hash: delete pin failed", "chunk_address", path.Reference, "error", err)
+	if err := s.pinning.DeletePin(r.Context(), swarmAdr); err != nil {
+		s.logger.Debug("unpin root hash: delete pin failed", "chunk_address", swarmAdr, "error", err)
 		s.logger.Error(nil, "unpin root hash: delete pin failed")
 		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
 		return
@@ -101,15 +97,15 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {
-		s.logger.Debug("create batch: parse and validate url path params failed", "error", err)
-		s.logger.Error(nil, "create batch: parse and validate url path params failed")
+		s.logger.Debug("pinned root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
+		s.logger.Error(nil, "pinned root hash: parse reference string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-
-	has, err := s.pinning.HasPin(swarm.NewAddress(path.Reference))
+	swarnAdr := swarm.NewAddress(path.Reference)
+	has, err := s.pinning.HasPin(swarnAdr)
 	if err != nil {
-		s.logger.Debug("pinned root hash: has pin failed", "chunk_address", path.Reference, "error", err)
+		s.logger.Debug("pinned root hash: has pin failed", "chunk_address", swarnAdr, "error", err)
 		s.logger.Error(nil, "pinned root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pinned root hash: check reference failed")
 		return
@@ -123,7 +119,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, struct {
 		Reference swarm.Address `json:"reference"`
 	}{
-		Reference: swarm.NewAddress(path.Reference),
+		Reference: swarnAdr,
 	})
 }
 

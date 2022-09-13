@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"github.com/gorilla/mux"
 	"io"
 	"net/http"
 	"strconv"
@@ -83,7 +84,7 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("get tag: parse id string failed", "string", path, "error", err)
+		s.logger.Debug("get tag: parse id string failed", "string", mux.Vars(r)["id"], "error", err)
 		s.logger.Error(nil, "get tag: parse id string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -113,7 +114,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("delete tag: parse id string failed", "string", path, "error", err)
+		s.logger.Debug("delete tag: parse id string failed", "string", mux.Vars(r)["id"], "error", err)
 		s.logger.Error(nil, "delete tag: parse id string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -142,7 +143,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err := s.parseAndValidate(r, &path)
 	if err != nil {
-		s.logger.Debug("done split tag: parse id string failed", "string", path, "error", err)
+		s.logger.Debug("done split tag: parse id string failed", "string", mux.Vars(r)["id"], "error", err)
 		s.logger.Error(nil, "done split tag: parse id string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return
