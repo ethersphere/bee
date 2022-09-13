@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package internal
+package upload
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -132,8 +133,8 @@ func (i *pushItem) Unmarshal(bytes []byte) error {
 	return nil
 }
 
-// Upload returns a storage.Putter which will store the given chunk.
-func Upload(s storage.Storage, tag uint64) (storage.Putter, error) {
+// Chunk returns a storage.Putter which will store the given chunk.
+func Chunk(s internal.Storage, tag uint64) (storage.Putter, error) {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) (bool, error) {
 		ati := &tagIDAddressItem{
 			Address: chunk.Address(),

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package internal_test
+package upload_test
 
 import (
 	"math"
@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/internal"
+	"github.com/ethersphere/bee/pkg/storagev2/internal/upload"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
@@ -25,46 +25,46 @@ func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
 	}{{
 		name: "zero values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:       &internal.TagIDAddressItem{},
-			Factory:    func() storage.Item { return new(internal.TagIDAddressItem) },
-			MarshalErr: internal.ErrTagIDAddressItemMarshalAddressIsZero,
+			Item:       &upload.TagIDAddressItem{},
+			Factory:    func() storage.Item { return new(upload.TagIDAddressItem) },
+			MarshalErr: upload.ErrTagIDAddressItemMarshalAddressIsZero,
 		},
 	}, {
 		name: "zero address",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.TagIDAddressItem{
+			Item: &upload.TagIDAddressItem{
 				Address: swarm.ZeroAddress,
 				TagID:   1,
 			},
-			Factory:    func() storage.Item { return new(internal.TagIDAddressItem) },
-			MarshalErr: internal.ErrTagIDAddressItemMarshalAddressIsZero,
+			Factory:    func() storage.Item { return new(upload.TagIDAddressItem) },
+			MarshalErr: upload.ErrTagIDAddressItemMarshalAddressIsZero,
 		},
 	}, {
 		name: "min values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.TagIDAddressItem{
+			Item: &upload.TagIDAddressItem{
 				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
 				TagID:   0,
 			},
-			Factory: func() storage.Item { return new(internal.TagIDAddressItem) },
+			Factory: func() storage.Item { return new(upload.TagIDAddressItem) },
 		},
 	}, {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.TagIDAddressItem{
+			Item: &upload.TagIDAddressItem{
 				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 				TagID:   math.MaxUint64,
 			},
-			Factory: func() storage.Item { return new(internal.TagIDAddressItem) },
+			Factory: func() storage.Item { return new(upload.TagIDAddressItem) },
 		},
 	}, {
 		name: "random values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.TagIDAddressItem{
+			Item: &upload.TagIDAddressItem{
 				Address: swarmtesting.RandomAddress(),
 				TagID:   rand.Uint64(),
 			},
-			Factory: func() storage.Item { return new(internal.TagIDAddressItem) },
+			Factory: func() storage.Item { return new(upload.TagIDAddressItem) },
 		},
 	}, {
 		name: "invalid size",
@@ -73,8 +73,8 @@ func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
 				MarshalBuf:   []byte{0xFF},
 				UnmarshalBuf: []byte{0xFF},
 			},
-			Factory:      func() storage.Item { return new(internal.TagIDAddressItem) },
-			UnmarshalErr: internal.ErrTagIDAddressItemUnmarshalInvalidSize,
+			Factory:      func() storage.Item { return new(upload.TagIDAddressItem) },
+			UnmarshalErr: upload.ErrTagIDAddressItemUnmarshalInvalidSize,
 		},
 	}}
 
@@ -96,50 +96,50 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 	}{{
 		name: "zero values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:       &internal.PushItem{},
-			Factory:    func() storage.Item { return new(internal.PushItem) },
-			MarshalErr: internal.ErrPushItemMarshalAddressIsZero,
+			Item:       &upload.PushItem{},
+			Factory:    func() storage.Item { return new(upload.PushItem) },
+			MarshalErr: upload.ErrPushItemMarshalAddressIsZero,
 		},
 	}, {
 		name: "zero address",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.PushItem{
+			Item: &upload.PushItem{
 				Timestamp: 1,
 				Address:   swarm.ZeroAddress,
 				TagID:     1,
 			},
-			Factory:    func() storage.Item { return new(internal.PushItem) },
-			MarshalErr: internal.ErrPushItemMarshalAddressIsZero,
+			Factory:    func() storage.Item { return new(upload.PushItem) },
+			MarshalErr: upload.ErrPushItemMarshalAddressIsZero,
 		},
 	}, {
 		name: "min values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.PushItem{
+			Item: &upload.PushItem{
 				Timestamp: 0,
 				Address:   swarm.NewAddress(storagetest.MinAddressBytes[:]),
 				TagID:     0,
 			},
-			Factory: func() storage.Item { return new(internal.PushItem) },
+			Factory: func() storage.Item { return new(upload.PushItem) },
 		},
 	}, {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.PushItem{
+			Item: &upload.PushItem{
 				Timestamp: math.MaxUint64,
 				Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 				TagID:     math.MaxUint64,
 			},
-			Factory: func() storage.Item { return new(internal.PushItem) },
+			Factory: func() storage.Item { return new(upload.PushItem) },
 		},
 	}, {
 		name: "random values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &internal.PushItem{
+			Item: &upload.PushItem{
 				Timestamp: rand.Uint64(),
 				Address:   swarmtesting.RandomAddress(),
 				TagID:     rand.Uint64(),
 			},
-			Factory: func() storage.Item { return new(internal.PushItem) },
+			Factory: func() storage.Item { return new(upload.PushItem) },
 		},
 	}, {
 		name: "invalid size",
@@ -148,8 +148,8 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 				MarshalBuf:   []byte{0xFF},
 				UnmarshalBuf: []byte{0xFF},
 			},
-			Factory:      func() storage.Item { return new(internal.PushItem) },
-			UnmarshalErr: internal.ErrPushItemUnmarshalInvalidSize,
+			Factory:      func() storage.Item { return new(upload.PushItem) },
+			UnmarshalErr: upload.ErrPushItemUnmarshalInvalidSize,
 		},
 	}}
 

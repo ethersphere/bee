@@ -5,7 +5,6 @@
 package storage
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -147,11 +146,4 @@ type Store interface {
 
 	// Delete removes the given Item form the store.
 	Delete(Item) error
-}
-
-// Storage TODO: remove when merged to master.
-type Storage interface {
-	Ctx() context.Context
-	Storage() Store
-	ChunkStore() ChunkStore
 }
