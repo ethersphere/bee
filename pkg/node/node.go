@@ -428,6 +428,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
 				p2pCtx,
+				sysInterrupt,
 				logger,
 				stateStore,
 				signer,

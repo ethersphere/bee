@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -91,6 +92,7 @@ func (c *command) initDeployCmd() error {
 
 			_, err = node.InitChequebookService(
 				ctx,
+				make(chan os.Signal),
 				logger,
 				stateStore,
 				signer,

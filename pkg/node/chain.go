@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 
@@ -152,6 +153,7 @@ func InitChequebookFactory(
 // chequebook factory and chain backend.
 func InitChequebookService(
 	ctx context.Context,
+	interrupt chan os.Signal,
 	logger log.Logger,
 	stateStore storage.StateStorer,
 	signer crypto.Signer,
@@ -181,6 +183,7 @@ func InitChequebookService(
 
 	chequebookService, err := chequebook.Init(
 		ctx,
+		interrupt,
 		chequebookFactory,
 		stateStore,
 		logger,

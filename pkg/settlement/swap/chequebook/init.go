@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -34,6 +35,7 @@ const (
 
 func checkBalance(
 	ctx context.Context,
+	interrupt chan os.Signal,
 	logger log.Logger,
 	swapInitialDeposit *big.Int,
 	swapBackend transaction.Backend,
@@ -92,6 +94,8 @@ func checkBalance(
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 			select {
+			case <-interrupt:
+				return errors.New("interrupted by user")
 			case <-time.After(balanceCheckBackoffDuration):
 			case <-timeoutCtx.Done():
 				if insufficientERC20 {
@@ -110,6 +114,7 @@ func checkBalance(
 // Init initialises the chequebook service.
 func Init(
 	ctx context.Context,
+	interrupt chan os.Signal,
 	chequebookFactory Factory,
 	stateStore storage.StateStorer,
 	logger log.Logger,
@@ -143,7 +148,7 @@ func Init(
 		}
 		if err == storage.ErrNotFound {
 			logger.Info("no chequebook found, deploying new one.")
-			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service)
+			err = checkBalance(ctx, interrupt, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service)
 			if err != nil {
 				return nil, err
 			}
