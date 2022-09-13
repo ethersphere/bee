@@ -415,6 +415,11 @@ components:
       properties:
         status:
           type: string
+          enum: [ok, nok]
+          description: >
+            Indicates health state of node
+            * `ok` - node is healthy
+            * `nok` - node is not healthy
         version:
           type: string
         apiVersion:

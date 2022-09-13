@@ -98,6 +98,7 @@ type testServerOptions struct {
 	DebugAPI           bool
 	Restricted         bool
 	DirectUpload       bool
+	Probe              *api.Probe
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
@@ -192,6 +193,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
+
+	s.SetProbe(o.Probe)
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
