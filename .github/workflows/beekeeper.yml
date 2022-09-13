@@ -5,7 +5,7 @@ on:
     types: [trigger-beekeeper, beekeeper]
   pull_request:
     branches:
-      - '**'
+      - "**"
 
 jobs:
   beekeeper:
@@ -14,7 +14,7 @@ jobs:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
       SETUP_CONTRACT_IMAGE_TAG: "0.3.0"
-      BEEKEEPER_BRANCH: "master"
+      BEEKEEPER_BRANCH: "minimum_postage_depth"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -24,7 +24,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17'
+          go-version: "1.17"
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
@@ -138,8 +138,8 @@ jobs:
     env:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
-      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
+      SETUP_CONTRACT_IMAGE_TAG: "0.3.0"
+      BEEKEEPER_BRANCH: "minimum_postage_depth"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -149,7 +149,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17'
+          go-version: "1.17"
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
@@ -227,8 +227,8 @@ jobs:
     env:
       REPLICA: 3
       RUN_TYPE: "PR RUN"
-      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
+      SETUP_CONTRACT_IMAGE_TAG: "0.3.0"
+      BEEKEEPER_BRANCH: "minimum_postage_depth"
       BEEKEEPER_METRICS_ENABLED: false
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -238,7 +238,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17'
+          go-version: "1.17"
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
@@ -318,7 +318,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
-          go-version: '1.17'
+          go-version: "1.17"
       - name: Checkout
         uses: actions/checkout@v2
         if: github.event.action != 'beekeeper'
