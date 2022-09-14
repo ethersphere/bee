@@ -20,10 +20,10 @@ func TestBatch(t *testing.T, s storage.Store) {
 			Id: "id1",
 		}
 
-		b.Put(item1)
-		b.Put(item1)
+		_ = b.Put(item1)
+		_ = b.Put(item1)
 
-		b.Commit()
+		_ = b.Commit()
 
 		_ = s.Iterate(storage.Query{
 			Factory:       func() storage.Item { return new(obj1) },
@@ -40,18 +40,18 @@ func TestBatch(t *testing.T, s storage.Store) {
 		item1 := &obj1{
 			Id: "id1",
 		}
-		s.Put(item1)
+		_ = s.Put(item1)
 
 		b, _ := s.Batch(context.Background())
 		item2 := &obj1{
 			Id: "id2",
 		}
-		b.Put(item2)
+		_ = b.Put(item2)
 
-		b.Delete(item1)
-		b.Delete(item2)
+		_ = b.Delete(item1)
+		_ = b.Delete(item2)
 
-		b.Commit()
+		_ = b.Commit()
 
 		_ = s.Iterate(storage.Query{
 			Factory:       func() storage.Item { return new(obj1) },
@@ -64,7 +64,7 @@ func TestBatch(t *testing.T, s storage.Store) {
 
 	t.Run("batche not reusable after commit", func(t *testing.T) {
 		b, _ := s.Batch(context.Background())
-		b.Commit()
+		_ = b.Commit()
 		if err := b.Commit(); err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -77,7 +77,7 @@ func TestBatch(t *testing.T, s storage.Store) {
 		item := &obj1{
 			Id: "id2",
 		}
-		b.Put(item)
+		_ = b.Put(item)
 
 		cancel()
 
