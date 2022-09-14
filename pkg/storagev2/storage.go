@@ -124,8 +124,6 @@ type Item interface {
 type Store interface {
 	io.Closer
 
-	BatchedStore
-
 	// Get unmarshalls object with the given Item.Key.ID into the given Item.
 	Get(Item) error
 
