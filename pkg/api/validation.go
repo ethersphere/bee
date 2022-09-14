@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/gorilla/mux"
 	"io"
 	"net/http"
@@ -17,10 +16,11 @@ import (
 	"strings"
 )
 
-type ValidateFunc map[string]func(interface{}, reflect.Value) error
+type ValidateFunc map[string]func(string, reflect.Value) error
 
 var parseHooks ValidateFunc
 
+// InitializeHooks initializes the hooks for parsing the input
 func (s *Service) InitializeHooks() ValidateFunc {
 	parseHooks = make(ValidateFunc)
 	parseHooks["hexToString"] = s.parseBatchId
@@ -50,10 +50,10 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 		if len(res) == 2 {
 			customHook = res[1]
 		}
-		fmt.Println("---res", res)
+
 		propertyName := val.Type().Field(i).Tag.Get("name")
 		errMessage := val.Type().Field(i).Tag.Get("errMessage")
-		fmt.Println("---input.Body ", input.Body)
+
 		if val.Type().Field(i).Name == "RequestData" && input.Body != nil {
 			body, err := io.ReadAll(input.Body)
 			if err != nil {
@@ -82,10 +82,7 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 		if queryValue := reqMapQuery.Get(reqName); len(queryValue) > 0 {
 			reqValue = queryValue
 		}
-		fmt.Println("--parseProperty", reqName)
-		fmt.Println("--val.Type().Field(i).Name", val.Type().Field(i).Name)
-		fmt.Println("--reqValue", reqValue)
-		fmt.Println("--hook", customHook)
+
 		if len(customHook) > 0 {
 			err = parseHooks[customHook](reqValue, val.Field(i))
 			if err != nil {
@@ -110,6 +107,7 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 	return nil
 }
 
+// GetErrorMessage returns the error message for the given property name
 func (s *Service) GetErrorMessage(propertyName, customErrMesg string) error {
 	if len(customErrMesg) > 0 {
 		return errors.New(customErrMesg)
@@ -117,8 +115,10 @@ func (s *Service) GetErrorMessage(propertyName, customErrMesg string) error {
 	return errors.New("invalid " + propertyName)
 
 }
-func (s *Service) parseAddress(input interface{}, value reflect.Value) (err error) {
-	id, err := hex.DecodeString(input.(string))
+
+// parseAddress parses the given input to a string
+func (s *Service) parseAddress(input string, value reflect.Value) (err error) {
+	id, err := hex.DecodeString(input)
 	if err != nil {
 		s.logger.Debug("decode id string failed", "string", input, "error", err)
 		s.logger.Error(nil, "decode id string failed")
@@ -127,19 +127,19 @@ func (s *Service) parseAddress(input interface{}, value reflect.Value) (err erro
 	value.SetBytes(id)
 	return nil
 }
-func (s *Service) parseBatchId(input interface{}, value reflect.Value) (err error) {
-	if len(input.(string)) != 64 {
-		s.logger.Error(nil, "invalid batch Id string length", "string", input, "length", len(input.(string)))
+func (s *Service) parseBatchId(input string, value reflect.Value) (err error) {
+	if len(input) != 64 {
+		s.logger.Error(nil, "invalid batch Id string length", "string", input, "length", len(input))
 		return errors.New("invalid")
 	}
 	err = s.parseAddress(input, value)
 	return
 }
 
-func (s *Service) decodeUint(input interface{}, value reflect.Value) (err error) {
-	uInt, err := strconv.ParseUint(input.(string), 10, 32)
+func (s *Service) decodeUint(input string, value reflect.Value) (err error) {
+	uInt, err := strconv.ParseUint(input, 10, 32)
 	if err != nil {
-		s.logger.Debug("parse depth string failed", "string", input.(string), "error", err)
+		s.logger.Debug("parse depth string failed", "string", input, "error", err)
 		s.logger.Error(nil, "create batch: parse depth string failed")
 		return
 	}
@@ -147,8 +147,8 @@ func (s *Service) decodeUint(input interface{}, value reflect.Value) (err error)
 	return nil
 }
 
-func (s *Service) decodeInt64(input interface{}, value reflect.Value) (err error) {
-	int64Value, err := strconv.ParseInt(input.(string), 10, 64)
+func (s *Service) decodeInt64(input string, value reflect.Value) (err error) {
+	int64Value, err := strconv.ParseInt(input, 10, 64)
 	if err != nil {
 		return errors.New("invalid")
 	}
@@ -156,8 +156,8 @@ func (s *Service) decodeInt64(input interface{}, value reflect.Value) (err error
 	return nil
 }
 
-func (s *Service) decodeUint8(input interface{}, value reflect.Value) (err error) {
-	uInt, err := strconv.ParseUint(input.(string), 10, 8)
+func (s *Service) decodeUint8(input string, value reflect.Value) (err error) {
+	uInt, err := strconv.ParseUint(input, 10, 8)
 	if err != nil {
 		return errors.New("invalid")
 	}
