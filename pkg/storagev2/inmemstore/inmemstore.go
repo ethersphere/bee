@@ -211,22 +211,45 @@ func (s *Store) Close() error {
 
 func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
 	return &Batch{
-		ctx: ctx,
+		ctx:   ctx,
+		store: s,
 	}, nil
 }
 
 type Batch struct {
-	ctx context.Context
+	ctx   context.Context
+	items []storage.Item
+	store *Store
 }
 
-func (i *Batch) Put(storage.Item) error {
+func (i *Batch) Put(item storage.Item) error {
+	if i.ctx.Err() != nil {
+		return i.ctx.Err()
+	}
+	i.items = append(i.items, item)
 	return nil
 }
 
-func (i *Batch) Delete(storage.Key) error {
+func (i *Batch) Delete(key storage.Key) error {
+	if i.ctx.Err() != nil {
+		return i.ctx.Err()
+	}
+	for index, rem := range i.items {
+		if rem.ID() == key.ID() {
+			i.items = append(i.items[:index], i.items[index+1:]...)
+		}
+	}
+
 	return nil
 }
 
 func (i *Batch) Commit() error {
+	if i.ctx.Err() != nil {
+		return i.ctx.Err()
+	}
+	for _, item := range i.items {
+		i.store.Put(item)
+	}
+
 	return nil
 }
