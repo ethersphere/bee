@@ -1,3 +1,4 @@
+// nolint: goheader
 // Copyright 2019 The Swarm Authors
 // This file is part of the Swarm library.
 //
