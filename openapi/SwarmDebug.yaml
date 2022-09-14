@@ -407,6 +407,7 @@ paths:
       responses:
         "200":
           description: Indicates that node is ready
+          asd 
           $ref: "SwarmCommon.yaml#/components/responses/200"
         "400":
           description: Indicates that node is not ready
