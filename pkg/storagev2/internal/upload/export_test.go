@@ -4,6 +4,8 @@
 
 package upload
 
+import "time"
+
 var (
 	ErrTagIDAddressItemMarshalAddressIsZero = errTagIDAddressItemMarshalAddressIsZero
 	ErrTagIDAddressItemUnmarshalInvalidSize = errTagIDAddressItemUnmarshalInvalidSize
@@ -16,3 +18,5 @@ type (
 	TagIDAddressItem = tagIDAddressItem
 	PushItem         = pushItem
 )
+
+func ReplaceTimeNow(fn func() time.Time) { now = fn }

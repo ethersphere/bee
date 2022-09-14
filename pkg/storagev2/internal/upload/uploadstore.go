@@ -16,6 +16,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// now returns the current time.Time; used in testing.
+var now = time.Now
+
 var (
 	// errTagIDAddressItemMarshalAddressIsZero is returned when trying
 	// to marshal a tagIDAddressItem with an address that is zero.
@@ -133,25 +136,25 @@ func (i *pushItem) Unmarshal(bytes []byte) error {
 	return nil
 }
 
-// Chunk returns a storage.Putter which will store the given chunk.
-func Chunk(s internal.Storage, tag uint64) (storage.Putter, error) {
+// ChunkPutter returns a storage.Putter which will store the given chunk.
+func ChunkPutter(s internal.Storage, tag uint64) (storage.Putter, error) {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) (bool, error) {
-		ati := &tagIDAddressItem{
+		tai := &tagIDAddressItem{
 			Address: chunk.Address(),
 			TagID:   tag,
 		}
-		switch exists, err := s.Storage().Has(ati); {
+		switch exists, err := s.Storage().Has(tai); {
 		case err != nil:
 			return false, err
 		case exists:
 			return true, nil
 		}
-		if err := s.Storage().Put(ati); err != nil {
+		if err := s.Storage().Put(tai); err != nil {
 			return false, err
 		}
 
 		pi := &pushItem{
-			Timestamp: uint64(time.Now().Unix()),
+			Timestamp: uint64(now().Unix()),
 			Address:   chunk.Address(),
 			TagID:     tag,
 		}
