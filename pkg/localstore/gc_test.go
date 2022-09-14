@@ -54,6 +54,7 @@ func TestDB_collectGarbageWorker_multipleBatches(t *testing.T) {
 // testDBCollectGarbageWorker is a helper test function to test
 // garbage collection runs by uploading and syncing a number of chunks.
 func testDBCollectGarbageWorker(t *testing.T) {
+	t.Helper()
 
 	chunkCount := 150
 
@@ -672,6 +673,8 @@ func TestPinAfterMultiGC(t *testing.T) {
 }
 
 func generateAndPinAChunk(t *testing.T, db *DB) swarm.Chunk {
+	t.Helper()
+
 	// Create a chunk and pin it
 	ch := generateTestRandomChunk()
 
@@ -770,6 +773,8 @@ func TestPinSyncAndAccessPutSetChunkMultipleTimes(t *testing.T) {
 }
 
 func addRandomChunks(t *testing.T, count int, db *DB, pin bool) []swarm.Chunk {
+	t.Helper()
+
 	var chunks []swarm.Chunk
 	for i := 0; i < count; i++ {
 		ch := generateTestRandomChunk()

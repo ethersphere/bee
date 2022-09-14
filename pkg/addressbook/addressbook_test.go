@@ -21,6 +21,8 @@ type bookFunc func(t *testing.T) (book addressbook.Interface)
 
 func TestInMem(t *testing.T) {
 	run(t, func(t *testing.T) addressbook.Interface {
+		t.Helper()
+
 		store := mock.NewStateStore()
 		book := addressbook.New(store)
 		return book
@@ -28,6 +30,8 @@ func TestInMem(t *testing.T) {
 }
 
 func run(t *testing.T, f bookFunc) {
+	t.Helper()
+
 	store := f(t)
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{0, 1, 2, 4})

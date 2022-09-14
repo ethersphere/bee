@@ -21,6 +21,8 @@ func TestProofCorrectness(t *testing.T) {
 	testData = append(testData, make([]byte, 4096-len(testData))...)
 
 	verifySegments := func(t *testing.T, exp []string, found [][]byte) {
+		t.Helper()
+
 		var expSegments [][]byte
 		for _, v := range exp {
 			decoded, err := hex.DecodeString(v)

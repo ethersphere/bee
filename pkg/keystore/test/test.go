@@ -15,6 +15,8 @@ import (
 // Service is a utility testing function that can be used to test
 // implementations of the keystore.Service interface.
 func Service(t *testing.T, s keystore.Service) {
+	t.Helper()
+
 	exists, err := s.Exists("swarm")
 	if err != nil {
 		t.Fatal(err)

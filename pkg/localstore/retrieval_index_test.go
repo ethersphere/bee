@@ -60,6 +60,8 @@ func BenchmarkRetrievalIndexes(b *testing.B) {
 // to do benchmarks with a specific number of chunks and different
 // database options.
 func benchmarkRetrievalIndexes(b *testing.B, o *Options, count int) {
+	b.Helper()
+
 	b.StopTimer()
 	db := newTestDB(b, o)
 	addrs := make([]swarm.Address, count)
@@ -128,6 +130,8 @@ func BenchmarkUpload(b *testing.B) {
 // to do benchmarks with a specific number of chunks and different
 // database options.
 func benchmarkUpload(b *testing.B, o *Options, count int) {
+	b.Helper()
+
 	b.StopTimer()
 	db := newTestDB(b, o)
 	chunks := make([]swarm.Chunk, count)
