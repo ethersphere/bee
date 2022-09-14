@@ -459,6 +459,8 @@ func expectErrNotSupported(t *testing.T, err error) {
 }
 
 func expectCounter(t *testing.T, c *int, expected int, mtx *sync.Mutex) {
+	t.Helper()
+
 	for i := 0; i < 20; i++ {
 		mtx.Lock()
 		if *c == expected {

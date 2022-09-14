@@ -5,3 +5,4 @@ linters:
     - misspell
     - gofmt
     - unconvert
+    - thelper
