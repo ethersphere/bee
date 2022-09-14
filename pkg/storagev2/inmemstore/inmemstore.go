@@ -5,12 +5,13 @@
 package inmemstore
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/armon/go-radix"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -205,5 +206,27 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 }
 
 func (s *Store) Close() error {
+	return nil
+}
+
+func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+	return &Batch{
+		ctx: ctx,
+	}, nil
+}
+
+type Batch struct {
+	ctx context.Context
+}
+
+func (i *Batch) Put(storage.Item) error {
+	return nil
+}
+
+func (i *Batch) Delete(storage.Key) error {
+	return nil
+}
+
+func (i *Batch) Commit() error {
 	return nil
 }
