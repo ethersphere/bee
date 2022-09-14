@@ -5,3 +5,19 @@ linters:
     - misspell
     - gofmt
     - unconvert
+    - goheader
+
+linters-settings:
+  goheader:
+    values:
+      regexp:
+        date: "20[1-2][0-9]"
+    template: |-
+      Copyright {{date}} The Swarm Authors. All rights reserved.
+      Use of this source code is governed by a BSD-style
+      license that can be found in the LICENSE file.
+issues:
+  exclude-rules:
+    - linters:
+        - goheader
+      text: "go-ethereum Authors" ## disable check for other authors
