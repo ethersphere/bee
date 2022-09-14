@@ -46,9 +46,6 @@ jobs:
     - name: Lint
       if: matrix.os == 'ubuntu-latest'
       run: make lint
-    - name: Vet
-      if: matrix.os == 'ubuntu-latest'
-      run: make vet
     - name: Test with race detector & code coverage
       if: matrix.os == 'ubuntu-latest'
       # only generate code coverage profile on ubuntu
