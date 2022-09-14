@@ -63,6 +63,12 @@ func (i *Batch) Delete(key storage.Key) error {
 		}
 	}
 
+	for _, del := range i.delete {
+		if del.ID() == key.ID() {
+			return nil // disallow duplicates
+		}
+	}
+
 	i.delete = append(i.delete, key)
 
 	return nil
@@ -81,7 +87,15 @@ func (i *Batch) Commit() error {
 	}
 
 	for _, item := range i.put {
-		i.store.Put(item)
+		if err := i.store.put(item); err != nil {
+			return err
+		}
+	}
+
+	for _, item := range i.delete {
+		if err := i.store.delete(item); err != nil {
+			return err
+		}
 	}
 
 	i.done = true

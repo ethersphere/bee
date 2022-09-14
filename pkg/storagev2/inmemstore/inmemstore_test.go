@@ -22,5 +22,5 @@ func BenchmarkStore(b *testing.B) {
 
 func TestBatch(t *testing.T) {
 	st := inmem.New()
-	storagetest.TestBatch(st)
+	storagetest.TestBatch(t, st)
 }
