@@ -51,11 +51,13 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "putter failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.BadRequest(w, "batch not found")
+			jsonhttp.NotFound(w, "batch not found")
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable yet")
+		case errors.Is(err, errInvalidPostageBatch):
+			jsonhttp.NotFound(w, "batch id not found")
 		default:
-			jsonhttp.BadRequest(w, nil)
+			jsonhttp.InternalServerError(w, nil)
 		}
 		return
 	}
