@@ -102,10 +102,6 @@ check-whitespace:
 	TW=$$(git diff-index --cached --check --diff-filter=d "$${TREE}"); \
 	[ "$${TW}" != "" ] && echo "Trailing whitespaces found:\n $${TW}" && exit 1; exit 0
 
-.PHONY: vet
-vet:
-	$(GO) vet ./...
-
 .PHONY: test-race
 test-race:
 ifdef cover
