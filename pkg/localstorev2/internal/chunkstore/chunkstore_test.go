@@ -82,6 +82,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 
 	minAddress := swarm.NewAddress(storagetest.MinAddressBytes[:])
 	minStamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
+	chunk := chunktesting.GenerateRandomTestChunk()
 
 	tests := []struct {
 		name string
@@ -128,21 +129,16 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 				Address: minAddress,
 				Stamp:   minStamp,
 			},
-			Factory: func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			Factory: func() storage.Item { return &chunkstore.ChunkStampItem{Address: minAddress} },
 		},
 	}, {
-		name: "max values",
+		name: "valid values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &chunkstore.ChunkStampItem{
-				Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Timestamp: math.MaxUint64,
-				Location: sharky.Location{
-					Shard:  math.MaxUint8,
-					Slot:   math.MaxUint32,
-					Length: math.MaxUint16,
-				},
+				Address: chunk.Address(),
+				Stamp:   chunk.Stamp(),
 			},
-			Factory: func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			Factory: func() storage.Item { return &chunkstore.ChunkStampItem{Address: chunk.Address()} },
 		},
 	}, {
 		name: "invalid size",
