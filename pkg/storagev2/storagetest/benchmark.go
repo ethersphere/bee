@@ -343,7 +343,7 @@ func (w *batchDBWriter) Put(key, value []byte) {
 		Id:  string(key),
 		Buf: value,
 	}
-	w.batch.Put(item)
+	_ = w.batch.Put(item)
 	w.count++
 	w.commit(w.max)
 }
@@ -352,7 +352,7 @@ func (w *batchDBWriter) Delete(key []byte) {
 	item := &obj1{
 		Id: string(key),
 	}
-	w.batch.Delete(item)
+	_ = w.batch.Delete(item)
 	w.count++
 	w.commit(w.max)
 }
