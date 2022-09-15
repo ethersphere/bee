@@ -306,7 +306,12 @@ FETCH:
 	if err != nil {
 		logger.Debug("bzz download: not manifest", "address", address, "error", err)
 		logger.Error(nil, "bzz download: not manifest")
-		jsonhttp.NotFound(w, nil)
+		switch {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
+			jsonhttp.BadRequest(w, "bzz download: invalid manifest type")
+		default:
+			jsonhttp.NotFound(w, nil)
+		}
 		return
 	}
 
