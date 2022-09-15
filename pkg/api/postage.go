@@ -79,7 +79,6 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error(nil, "create batch: invalid amount")
 		jsonhttp.BadRequest(w, "invalid postage amount")
 		return
-
 	}
 
 	depth, err := strconv.ParseUint(depthStr, 10, 8)
@@ -191,7 +190,13 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			s.logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
 			s.logger.Error(nil, "get stamp issuer: check batch failed")
-			jsonhttp.InternalServerError(w, "unable to check batch")
+
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "not found")
+			default:
+				jsonhttp.InternalServerError(w, "unable to check batch")
+			}
 			return
 		}
 
@@ -279,7 +284,14 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	if err != nil {
 		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hex.EncodeToString(id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.BadRequest(w, "cannot get batch")
+		switch {
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "cannot get batch")
+		default:
+			jsonhttp.InternalServerError(w, "get issuer failed")
+		}
 		return
 	}
 
@@ -317,7 +329,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hex.EncodeToString(id), "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.BadRequest(w, "cannot get batch")
+		jsonhttp.NotFound(w, "cannot get batch")
 		return
 	}
 
