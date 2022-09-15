@@ -220,11 +220,7 @@ func (ps *service) SetExpired() error {
 		if err != nil {
 			return err
 		}
-		if !exists {
-			v.SetExpired(true)
-		} else {
-			v.SetExpired(false)
-		}
+		v.SetExpired(!exists)
 	}
 	return nil
 }
