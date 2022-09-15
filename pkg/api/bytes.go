@@ -36,9 +36,18 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
-		logger.Debug("bytes upload: get putter failed", "error", err)
-		logger.Error(nil, "bytes upload: get putter failed")
-		jsonhttp.BadRequest(w, nil)
+		logger.Debug("bytes upload: putter failed", "error", err)
+		logger.Error(nil, "bytes upload: putter failed")
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			jsonhttp.NotFound(w, "batch not found")
+		case errors.Is(err, errBatchUnusable):
+			jsonhttp.BadRequest(w, "batch not usable yet")
+		case errors.Is(err, errInvalidPostageBatch):
+			jsonhttp.NotFound(w, "invalid batch id")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 
@@ -52,7 +61,16 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("bytes upload: get or create tag failed", "error", err)
 		logger.Error(nil, "bytes upload: get or create tag failed")
-		jsonhttp.InternalServerError(w, "cannot get or create tag")
+		switch {
+		case errors.Is(err, tags.ErrExists):
+			jsonhttp.Conflict(w, "bytes upload: conflict with current state of resource")
+		case errors.Is(err, errCannotParse):
+			jsonhttp.BadRequest(w, "bytes upload: request cannot be parsed")
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "bytes upload: not found")
+		default:
+			jsonhttp.InternalServerError(w, "cannot get or create tag")
+		}
 		return
 	}
 
@@ -112,7 +130,12 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.pinning.CreatePin(ctx, address, false); err != nil {
 			logger.Debug("bytes upload: pin creation failed", "address", address, "error", err)
 			logger.Error(nil, "bytes upload: pin creation failed")
-			jsonhttp.InternalServerError(w, "bytes upload: create ping failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "bytes upload: create pin failed: not found")
+			default:
+				jsonhttp.InternalServerError(w, "bzz upload: create pin failed")
+			}
 			return
 		}
 	}
