@@ -15,8 +15,6 @@ import (
 // TestValid verifies that the validator can detect
 // valid soc chunks.
 func TestValid(t *testing.T) {
-	t.Parallel()
-
 	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
 
 	// signed soc chunk of:
@@ -34,8 +32,6 @@ func TestValid(t *testing.T) {
 // TestInvalid verifies that the validator can detect chunks
 // with invalid data and invalid address.
 func TestInvalid(t *testing.T) {
-	t.Parallel()
-
 	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
 
 	// signed soc chunk of:
@@ -109,10 +105,7 @@ func TestInvalid(t *testing.T) {
 			},
 		},
 	} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-
 			if soc.Valid(c.chunk()) {
 				t.Fatal("chunk with invalid data evaluates to valid")
 			}
