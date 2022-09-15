@@ -173,8 +173,6 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 }
 
 func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
-	t.Parallel()
-
 	streamtest.SetFullCloseTimeout(500 * time.Millisecond)
 	defer streamtest.ResetFullCloseTimeout()
 	recorder := streamtest.New(
