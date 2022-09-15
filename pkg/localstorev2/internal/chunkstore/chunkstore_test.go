@@ -81,7 +81,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 	t.Parallel()
 
 	minAddress := swarm.NewAddress(storagetest.MinAddressBytes[:])
-	minStamp := postage.NewStamp()
+	minStamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
 
 	tests := []struct {
 		name string
@@ -125,7 +125,8 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 		name: "min values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &chunkstore.ChunkStampItem{
-				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				Address: minAddress,
+				Stamp:   minStamp,
 			},
 			Factory: func() storage.Item { return new(chunkstore.ChunkStampItem) },
 		},
