@@ -51,7 +51,7 @@ func (s *Service) processUploadRequest(
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
 		switch {
-		case errors.Is(err, postage.ErrNotFound):
+		case errors.Is(err, storage.ErrNotFound):
 			return nil, nil, nil, nil, errors.New("batch not found")
 		case errors.Is(err, postage.ErrNotUsable):
 			return nil, nil, nil, nil, errors.New("batch not usable")
