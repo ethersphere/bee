@@ -33,7 +33,7 @@ LDFLAGS ?= -s -w \
 -X github.com/ethersphere/bee/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
 
 .PHONY: all
-all: build lint vet test-race binary
+all: build lint test-race binary
 
 .PHONY: binary
 binary: CGO_ENABLED=0
@@ -106,10 +106,6 @@ lint-style: linter
 .PHONY: linter
 linter:
 	test -f $(GOLANGCI_LINT) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$($(GO) env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
-
-.PHONY: vet
-vet:
-	$(GO) vet ./...
 
 .PHONY: test-race
 test-race:
