@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -438,7 +439,12 @@ func TestPostageHeaderError(t *testing.T) {
 	for _, endpoint := range endpoints {
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchEmpty)
-			expCode := http.StatusBadRequest
+			var expCode int
+			if strings.Compare(endpoint, "bzz") == 0 {
+				expCode = http.StatusNotFound
+			} else {
+				expCode = http.StatusBadRequest
+			}
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
@@ -457,7 +463,12 @@ func TestPostageHeaderError(t *testing.T) {
 		})
 		t.Run(endpoint+": bad batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
-			expCode := http.StatusBadRequest
+			var expCode int
+			if strings.Compare(endpoint, "bzz") == 0 {
+				expCode = http.StatusNotFound
+			} else {
+				expCode = http.StatusBadRequest
+			}
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
