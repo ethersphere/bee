@@ -44,5 +44,5 @@ issues:
       text: "go-ethereum Authors" ## disable check for other authors
     - linters:
         - forbidigo
-      path: cmd/bee/cmd         
+      path: cmd/bee/cmd
       text: "use of `fmt.Print"   ## allow fmt.Print in cmd directory
