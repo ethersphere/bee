@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	errExists = errors.New("already exists")
+	ErrExists = errors.New("already exists")
 	errNA     = errors.New("not available yet")
 	errNoETA  = errors.New("unable to calculate ETA")
 )

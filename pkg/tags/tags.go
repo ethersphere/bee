@@ -89,7 +89,7 @@ func (ts *Tags) Create(total int64) (*Tag, error) {
 	t := NewTag(context.Background(), uid, total, nil, ts.stateStore, ts.logger)
 
 	if _, loaded := ts.tags.LoadOrStore(t.Uid, t); loaded {
-		return nil, errExists
+		return nil, ErrExists
 	}
 
 	return t, nil

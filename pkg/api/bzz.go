@@ -88,9 +88,19 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
+
 		logger.Debug("get or create tag failed", "error", err)
 		logger.Error(nil, "get or create tag failed")
-		jsonhttp.InternalServerError(w, "get or create tag failed")
+		switch {
+		case errors.Is(err, tags.ErrExists):
+			jsonhttp.Conflict(w, "bzz upload file:: conflict with current state of resource")
+		case errors.Is(err, errCannotParse):
+			jsonhttp.BadRequest(w, "bzz upload file: request cannot be parsed")
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "bzz upload file: not found")
+		default:
+			jsonhttp.InternalServerError(w, "get or create tag failed")
+		}
 		return
 	}
 
@@ -154,9 +164,14 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
-		logger.Debug("create manifest failed", "file_name", queries.FileName, "error", err)
-		logger.Error(nil, "create manifest failed", "file_name", queries.FileName)
-		jsonhttp.InternalServerError(w, "create manifest failed")
+		logger.Debug("bzz upload file: create manifest failed", "file_name", queries.FileName, "error", err)
+		logger.Error(nil, "bzz upload file: create manifest failed", "file_name", queries.FileName)
+		switch {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
+			jsonhttp.BadRequest(w, "bzz upload file: invalid manifest type")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 
@@ -229,7 +244,12 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		if err := s.pinning.CreatePin(ctx, manifestReference, false); err != nil {
 			logger.Debug("pin creation failed", "manifest_reference", manifestReference, "error", err)
 			logger.Error(nil, "pin creation failed")
-			jsonhttp.InternalServerError(w, "create pin failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "bzz upload file: create pin failed: not found")
+			default:
+				jsonhttp.InternalServerError(w, "create pin failed")
+			}
 			return
 		}
 	}
