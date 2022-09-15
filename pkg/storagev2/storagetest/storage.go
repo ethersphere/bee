@@ -596,6 +596,9 @@ func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("WriteInBatches", func(b *testing.B) {
 		BenchmarkWriteInBatches(b, s)
 	})
+	b.Run("WriteInFixedSizeBatches", func(b *testing.B) {
+		BenchmarkWriteInFixedSizeBatches(b, s)
+	})
 	b.Run("WriteRandom", func(b *testing.B) {
 		BenchmarkWriteRandom(b, s)
 	})
@@ -626,8 +629,11 @@ func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("DeleteSequential", func(b *testing.B) {
 		BenchmarkDeleteSequential(b, s)
 	})
-	b.Run("DeleteDeleteInBatches", func(b *testing.B) {
+	b.Run("DeleteInBatches", func(b *testing.B) {
 		BenchmarkDeleteInBatches(b, s)
+	})
+	b.Run("DeleteInFixedSizeBatches", func(b *testing.B) {
+		BenchmarkDeleteInFixedSizeBatches(b, s)
 	})
 }
 
@@ -726,6 +732,15 @@ func BenchmarkWriteInBatches(b *testing.B, db storage.Store) {
 	}
 }
 
+func BenchmarkWriteInFixedSizeBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	writer := newBatchDBWriter(db)
+	resetBenchmark(b)
+	for i := 0; i < b.N; i++ {
+		writer.Put(g.Key(i), g.Value(i))
+	}
+}
+
 func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
 	for i, n := 1, *maxConcurrency; i <= n; i *= 2 {
 		name := fmt.Sprintf("parallelism-%d", i)
@@ -780,5 +795,15 @@ func BenchmarkDeleteInBatches(b *testing.B, db storage.Store) {
 		if err := batch.Delete(item); err != nil {
 			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
 		}
+	}
+}
+
+func BenchmarkDeleteInFixedSizeBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	doWrite(b, db, g)
+	resetBenchmark(b)
+	writer := newBatchDBWriter(db)
+	for i := 0; i < b.N; i++ {
+		writer.Delete(g.Key(i))
 	}
 }
