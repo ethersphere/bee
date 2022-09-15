@@ -140,7 +140,9 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	defer func() {
 		if retErr != nil {
 			for _, l := range committedLocations {
-				err := db.sharky.Release(ctx, l)
+				// the passed in context could be expired or cancelled, causing a leak by not relesing the
+				// already committed chunks, so we use an empty context
+				err := db.sharky.Release(context.Background(), l)
 				if err != nil {
 					db.logger.Warning("failed releasing sharky location on error", "error", err)
 				}
