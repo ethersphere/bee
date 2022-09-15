@@ -205,7 +205,7 @@ func (ps *service) HandleStampExpiry(id []byte) {
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(id, v.ID()) {
-			v.SetExpired()
+			v.SetExpired(true)
 		}
 	}
 }
@@ -221,7 +221,9 @@ func (ps *service) SetExpired() error {
 			return err
 		}
 		if !exists {
-			v.SetExpired()
+			v.SetExpired(true)
+		} else {
+			v.SetExpired(false)
 		}
 	}
 	return nil
