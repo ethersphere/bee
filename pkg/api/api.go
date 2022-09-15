@@ -104,6 +104,7 @@ var (
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 	errBatchUnusable        = errors.New("batch not usable")
+	errCannotParse          = errors.New("cannot parse")
 )
 
 type authenticator interface {
@@ -320,7 +321,7 @@ func (s *Service) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
-		return nil, fmt.Errorf("cannot parse taguid: %w", err)
+		return nil, fmt.Errorf("err %v: %w", errCannotParse, err)
 	}
 	return s.tags.Get(uint32(uid))
 }
