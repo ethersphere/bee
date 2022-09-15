@@ -16,16 +16,16 @@ import (
 
 func BenchmarkBMT(b *testing.B) {
 	for size := 4096; size >= 128; size /= 2 {
-		b.Run(fmt.Sprintf("%v_size_%v", "SHA3", size), func(t *testing.B) {
+		b.Run(fmt.Sprintf("%v_size_%v", "SHA3", size), func(b *testing.B) {
 			benchmarkSHA3(b, size)
 		})
-		b.Run(fmt.Sprintf("%v_size_%v", "Baseline", size), func(t *testing.B) {
+		b.Run(fmt.Sprintf("%v_size_%v", "Baseline", size), func(b *testing.B) {
 			benchmarkBMTBaseline(b, size)
 		})
-		b.Run(fmt.Sprintf("%v_size_%v", "REF", size), func(t *testing.B) {
+		b.Run(fmt.Sprintf("%v_size_%v", "REF", size), func(b *testing.B) {
 			benchmarkRefHasher(b, size)
 		})
-		b.Run(fmt.Sprintf("%v_size_%v", "BMT", size), func(t *testing.B) {
+		b.Run(fmt.Sprintf("%v_size_%v", "BMT", size), func(b *testing.B) {
 			benchmarkBMT(b, size)
 		})
 	}
@@ -33,7 +33,7 @@ func BenchmarkBMT(b *testing.B) {
 
 func BenchmarkPool(b *testing.B) {
 	for _, c := range []int{1, 8, 16, 32, 64} {
-		b.Run(fmt.Sprintf("poolsize_%v", c), func(t *testing.B) {
+		b.Run(fmt.Sprintf("poolsize_%v", c), func(b *testing.B) {
 			benchmarkPool(b, c)
 		})
 	}
