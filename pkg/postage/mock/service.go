@@ -62,7 +62,7 @@ func (m *mockPostage) HandleStampExpiry(id []byte) {
 
 	for _, v := range m.issuersMap {
 		if bytes.Equal(id, v.ID()) {
-			v.SetExpired()
+			v.SetExpired(true)
 		}
 	}
 }
