@@ -49,7 +49,7 @@ func TestReadonlyLoadSave(t *testing.T) {
 	factory := pipelineFn(store)
 	ls := loadsave.NewReadonly(store)
 	_, err := ls.Save(context.Background(), data)
-	if !errors.Is(err, loadsave.ReadonlyLoadSaveError) {
+	if !errors.Is(err, loadsave.ErrReadonlyLoadSave) {
 		t.Fatal("expected error but got none")
 	}
 
