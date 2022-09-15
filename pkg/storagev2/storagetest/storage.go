@@ -6,6 +6,7 @@ package storagetest
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -592,6 +593,9 @@ func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkWriteSequential(b, s)
 	})
+	b.Run("WriteInBatches", func(b *testing.B) {
+		BenchmarkWriteInBatches(b, s)
+	})
 	b.Run("WriteRandom", func(b *testing.B) {
 		BenchmarkWriteRandom(b, s)
 	})
@@ -698,6 +702,25 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 	g := newSequentialEntryGenerator(b.N)
 	resetBenchmark(b)
 	doWrite(b, db, g)
+}
+
+func BenchmarkWriteInBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	btch, _ := db.Batch(context.Background())
+	resetBenchmark(b)
+	for i := 0; i < b.N; i++ {
+		key := g.Key(i)
+		item := &obj1{
+			Id:  string(key),
+			Buf: g.Value(i),
+		}
+		if err := btch.Put(item); err != nil {
+			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
+		}
+	}
+	if err := btch.Commit(); err != nil {
+		b.Fatal("commit batch", err)
+	}
 }
 
 func BenchmarkWriteRandom(b *testing.B, db storage.Store) {

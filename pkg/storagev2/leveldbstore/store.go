@@ -5,7 +5,6 @@
 package leveldbstore
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -249,26 +248,4 @@ func (s *Store) Delete(item storage.Item) error {
 	defer s.closeLk.RUnlock()
 
 	return s.db.Delete(key(item), &opt.WriteOptions{Sync: true})
-}
-
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
-	return &Batch{
-		ctx: ctx,
-	}, nil
-}
-
-type Batch struct {
-	ctx context.Context
-}
-
-func (i *Batch) Put(storage.Item) error {
-	return nil
-}
-
-func (i *Batch) Delete(storage.Key) error {
-	return nil
-}
-
-func (i *Batch) Commit() error {
-	return nil
 }
