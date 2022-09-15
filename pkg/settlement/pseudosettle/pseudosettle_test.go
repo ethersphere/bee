@@ -260,6 +260,8 @@ func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, payerObserver
 }
 
 func TestPayment(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	storeRecipient := mock.NewStateStore()
@@ -294,6 +296,8 @@ func TestPayment(t *testing.T) {
 }
 
 func TestTimeLimitedPayment(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	storeRecipient := mock.NewStateStore()
@@ -348,6 +352,8 @@ func TestTimeLimitedPayment(t *testing.T) {
 }
 
 func TestTimeLimitedPaymentLight(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	storeRecipient := mock.NewStateStore()

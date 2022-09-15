@@ -13,6 +13,8 @@ import (
 )
 
 func TestExecute(t *testing.T) {
+	t.Parallel()
+
 	testErr := errors.New("test error")
 	shouldNotBeCalledErr := errors.New("should not be called")
 	failInterval := 10 * time.Minute
@@ -72,6 +74,8 @@ func TestExecute(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			ctMock := &currentTimeMock{
 				times: tc.times,
 			}
@@ -98,6 +102,8 @@ func TestExecute(t *testing.T) {
 }
 
 func TestClosedUntil(t *testing.T) {
+	t.Parallel()
+
 	timestamp := time.Now()
 	startBackoff := 1 * time.Minute
 	testError := errors.New("test error")

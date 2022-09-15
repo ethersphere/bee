@@ -26,6 +26,7 @@ var defaultOptions = reacher.Options{
 }
 
 func TestPingSuccess(t *testing.T) {
+	t.Parallel()
 
 	done := make(chan struct{})
 
@@ -60,7 +61,6 @@ func TestPingSuccess(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			mock := newMock(tc.pingFunc, tc.reachableFunc)
 
 			r := reacher.New(mock, mock, &defaultOptions)
@@ -80,6 +80,7 @@ func TestPingSuccess(t *testing.T) {
 }
 
 func TestDisconnected(t *testing.T) {
+	t.Parallel()
 
 	var (
 		disconnectedOverlay = test.RandomAddress()

@@ -39,6 +39,8 @@ func init() {
 
 // TestEncyrption tests that the encyption writer works correctly.
 func TestEncryption(t *testing.T) {
+	t.Parallel()
+
 	mockChainWriter := mock.NewChainWriter()
 	writer := encryption.NewEncryptionWriter(mockenc.NewChunkEncrypter(key), mockChainWriter)
 
@@ -58,6 +60,8 @@ func TestEncryption(t *testing.T) {
 
 // TestSum tests that calling Sum on the store writer results in Sum on the next writer in the chain.
 func TestSum(t *testing.T) {
+	t.Parallel()
+
 	mockChainWriter := mock.NewChainWriter()
 	writer := encryption.NewEncryptionWriter(nil, mockChainWriter)
 

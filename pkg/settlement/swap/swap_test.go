@@ -153,6 +153,8 @@ func (m *cashoutMock) CashoutStatus(ctx context.Context, chequebookAddress commo
 }
 
 func TestReceiveCheque(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
@@ -257,6 +259,8 @@ func TestReceiveCheque(t *testing.T) {
 }
 
 func TestReceiveChequeReject(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
@@ -320,6 +324,8 @@ func TestReceiveChequeReject(t *testing.T) {
 }
 
 func TestReceiveChequeWrongChequebook(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 	chequebookService := mockchequebook.NewChequebook()
@@ -376,6 +382,8 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 }
 
 func TestPay(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -431,6 +439,8 @@ func TestPay(t *testing.T) {
 }
 
 func TestPayIssueError(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -487,6 +497,8 @@ func TestPayIssueError(t *testing.T) {
 }
 
 func TestPayUnknownBeneficiary(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -534,6 +546,8 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 }
 
 func TestHandshake(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -586,6 +600,8 @@ func TestHandshake(t *testing.T) {
 }
 
 func TestHandshakeNewPeer(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -637,6 +653,8 @@ func TestHandshakeNewPeer(t *testing.T) {
 }
 
 func TestMigratePeer(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -676,6 +694,8 @@ func TestMigratePeer(t *testing.T) {
 }
 
 func TestCashout(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -726,6 +746,8 @@ func TestCashout(t *testing.T) {
 }
 
 func TestCashoutStatus(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mockstore.NewStateStore()
 
@@ -773,6 +795,8 @@ func TestCashoutStatus(t *testing.T) {
 }
 
 func TestStateStoreKeys(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	swarmAddress := swarm.MustParseHexAddress("deff")
 

@@ -17,6 +17,8 @@ import (
 )
 
 func TestReceiveCheque(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -121,6 +123,8 @@ func TestReceiveCheque(t *testing.T) {
 }
 
 func TestReceiveChequeInvalidBeneficiary(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -157,6 +161,8 @@ func TestReceiveChequeInvalidBeneficiary(t *testing.T) {
 }
 
 func TestReceiveChequeInvalidAmount(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -215,6 +221,8 @@ func TestReceiveChequeInvalidAmount(t *testing.T) {
 }
 
 func TestReceiveChequeInvalidChequebook(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -256,6 +264,8 @@ func TestReceiveChequeInvalidChequebook(t *testing.T) {
 }
 
 func TestReceiveChequeInvalidSignature(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -296,6 +306,8 @@ func TestReceiveChequeInvalidSignature(t *testing.T) {
 }
 
 func TestReceiveChequeInsufficientBalance(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -338,6 +350,8 @@ func TestReceiveChequeInsufficientBalance(t *testing.T) {
 }
 
 func TestReceiveChequeSufficientBalancePaidOut(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -380,6 +394,8 @@ func TestReceiveChequeSufficientBalancePaidOut(t *testing.T) {
 }
 
 func TestReceiveChequeNotEnoughValue(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")
@@ -437,6 +453,8 @@ func TestReceiveChequeNotEnoughValue(t *testing.T) {
 }
 
 func TestReceiveChequeNotEnoughValueAfterDeduction(t *testing.T) {
+	t.Parallel()
+
 	store := storemock.NewStateStore()
 	beneficiary := common.HexToAddress("0xffff")
 	issuer := common.HexToAddress("0xbeee")

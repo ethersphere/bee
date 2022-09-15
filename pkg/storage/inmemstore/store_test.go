@@ -16,6 +16,8 @@ import (
 )
 
 func TestStorePutGet(t *testing.T) {
+	t.Parallel()
+
 	s := inmemstore.New()
 
 	keyFound, err := swarm.ParseHexAddress("aabbcc")

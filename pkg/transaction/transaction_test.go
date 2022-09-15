@@ -75,6 +75,8 @@ func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender 
 }
 
 func TestTransactionSend(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	sender := common.HexToAddress("0xddff")
 	recipient := common.HexToAddress("0xabcd")
@@ -86,6 +88,8 @@ func TestTransactionSend(t *testing.T) {
 	chainID := big.NewInt(5)
 
 	t.Run("send", func(t *testing.T) {
+		t.Parallel()
+
 		signedTx := types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
 			To:       &recipient,
@@ -205,6 +209,8 @@ func TestTransactionSend(t *testing.T) {
 	})
 
 	t.Run("send_no_nonce", func(t *testing.T) {
+		t.Parallel()
+
 		signedTx := types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
 			To:       &recipient,
@@ -274,6 +280,8 @@ func TestTransactionSend(t *testing.T) {
 	})
 
 	t.Run("send_skipped_nonce", func(t *testing.T) {
+		t.Parallel()
+
 		nextNonce := nonce + 5
 		signedTx := types.NewTx(&types.LegacyTx{
 			Nonce:    nextNonce,
@@ -348,6 +356,8 @@ func TestTransactionSend(t *testing.T) {
 }
 
 func TestTransactionWaitForReceipt(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	txHash := common.HexToHash("0xabcdee")
 	chainID := big.NewInt(5)
@@ -406,6 +416,8 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 }
 
 func TestTransactionResend(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	recipient := common.HexToAddress("0xbbbddd")
 	chainID := big.NewInt(5)
@@ -465,6 +477,8 @@ func TestTransactionResend(t *testing.T) {
 }
 
 func TestTransactionCancel(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	recipient := common.HexToAddress("0xbbbddd")
 	chainID := big.NewInt(5)
@@ -498,6 +512,8 @@ func TestTransactionCancel(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		cancelTx := types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
 			To:       &recipient,
@@ -537,6 +553,8 @@ func TestTransactionCancel(t *testing.T) {
 	})
 
 	t.Run("custom gas price", func(t *testing.T) {
+		t.Parallel()
+
 		customGasPrice := big.NewInt(5)
 		cancelTx := types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
@@ -578,6 +596,8 @@ func TestTransactionCancel(t *testing.T) {
 	})
 
 	t.Run("too low gas price", func(t *testing.T) {
+		t.Parallel()
+
 		customGasPrice := big.NewInt(0)
 		cancelTx := types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,

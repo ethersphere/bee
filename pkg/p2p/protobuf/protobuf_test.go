@@ -18,6 +18,8 @@ import (
 )
 
 func TestReader_ReadMsg(t *testing.T) {
+	t.Parallel()
+
 	messages := []string{"first", "second", "third"}
 
 	for _, tc := range []struct {
@@ -42,7 +44,10 @@ func TestReader_ReadMsg(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := tc.readerFunc()
 			var msg pb.Message
 			for i := 0; i < len(messages); i++ {
@@ -67,6 +72,8 @@ func TestReader_ReadMsg(t *testing.T) {
 }
 
 func TestReader_timeout(t *testing.T) {
+	t.Parallel()
+
 	messages := []string{"first", "second", "third"}
 
 	for _, tc := range []struct {
@@ -91,8 +98,13 @@ func TestReader_timeout(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			t.Run("WithContext", func(t *testing.T) {
+				t.Parallel()
+
 				r := tc.readerFunc()
 				var msg pb.Message
 				for i := 0; i < len(messages); i++ {
@@ -107,6 +119,7 @@ func TestReader_timeout(t *testing.T) {
 					err := r.ReadMsgWithContext(ctx, &msg)
 					if i == 0 {
 						if err != nil {
+							t.Parallel()
 							t.Fatal(err)
 						}
 					} else {
@@ -127,6 +140,8 @@ func TestReader_timeout(t *testing.T) {
 }
 
 func TestWriter(t *testing.T) {
+	t.Parallel()
+
 	messages := []string{"first", "second", "third"}
 
 	for _, tc := range []struct {
@@ -149,7 +164,10 @@ func TestWriter(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			w, msgs := tc.writerFunc()
 
 			for _, m := range messages {
@@ -168,6 +186,8 @@ func TestWriter(t *testing.T) {
 }
 
 func TestWriter_timeout(t *testing.T) {
+	t.Parallel()
+
 	messages := []string{"first", "second", "third"}
 
 	for _, tc := range []struct {
@@ -190,8 +210,11 @@ func TestWriter_timeout(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("WithContext", func(t *testing.T) {
+				t.Parallel()
+
 				w, msgs := tc.writerFunc()
 
 				for i, m := range messages {
@@ -226,6 +249,8 @@ func TestWriter_timeout(t *testing.T) {
 }
 
 func TestReadMessages(t *testing.T) {
+	t.Parallel()
+
 	messages := []string{"first", "second", "third"}
 
 	r := newMessageReader(messages, 0)

@@ -28,6 +28,8 @@ var chunkStamp = postagetesting.MustNewStamp()
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
 // it is not found locally
 func TestNetstoreRetrieval(t *testing.T) {
+	t.Parallel()
+
 	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := testChunk.Address()
 	_, err := nstore.Get(context.Background(), storage.ModeGetRequest, addr)
@@ -69,6 +71,8 @@ func TestNetstoreRetrieval(t *testing.T) {
 // TestNetstoreNoRetrieval verifies that a chunk is not requested from the network
 // whenever it is found locally.
 func TestNetstoreNoRetrieval(t *testing.T) {
+	t.Parallel()
+
 	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 	addr := testChunk.Address()
 
@@ -94,6 +98,8 @@ func TestNetstoreNoRetrieval(t *testing.T) {
 }
 
 func TestInvalidChunkNetstoreRetrieval(t *testing.T) {
+	t.Parallel()
+
 	retrieve, store, nstore := newRetrievingNetstore(t, noopValidStamp)
 
 	invalidChunk := swarm.NewChunk(testChunk.Address(), []byte("deadbeef"))
@@ -140,6 +146,8 @@ func TestInvalidChunkNetstoreRetrieval(t *testing.T) {
 }
 
 func TestInvalidPostageStamp(t *testing.T) {
+	t.Parallel()
+
 	f := func(c swarm.Chunk, _ []byte) (swarm.Chunk, error) {
 		return nil, errors.New("invalid postage stamp")
 	}

@@ -43,6 +43,8 @@ const (
 )
 
 func TestAddresses(t *testing.T) {
+	t.Parallel()
+
 	s, _ := newService(t, 1, libp2pServiceOpts{})
 
 	addrs, err := s.Addresses()
@@ -55,6 +57,8 @@ func TestAddresses(t *testing.T) {
 }
 
 func TestConnectDisconnect(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -82,6 +86,8 @@ func TestConnectDisconnect(t *testing.T) {
 }
 
 func TestConnectToLightPeer(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -102,6 +108,8 @@ func TestConnectToLightPeer(t *testing.T) {
 }
 
 func TestLightPeerLimit(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -150,6 +158,8 @@ func TestLightPeerLimit(t *testing.T) {
 // concurrent streams is bellow the limit, new streams are created without
 // errors.
 func TestStreamsMaxIncomingLimit(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -266,6 +276,8 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 }
 
 func TestDoubleConnect(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -292,6 +304,8 @@ func TestDoubleConnect(t *testing.T) {
 }
 
 func TestDoubleDisconnect(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -326,6 +340,8 @@ func TestDoubleDisconnect(t *testing.T) {
 }
 
 func TestMultipleConnectDisconnect(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -369,6 +385,8 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 }
 
 func TestConnectDisconnectOnAllAddresses(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -401,6 +419,8 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 }
 
 func TestDoubleConnectOnAllAddresses(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -443,6 +463,8 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 }
 
 func TestDifferentNetworkIDs(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -460,6 +482,8 @@ func TestDifferentNetworkIDs(t *testing.T) {
 }
 
 func TestConnectWithEnabledWSTransports(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -489,6 +513,8 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 
 // TestConnectRepeatHandshake tests if handshake was attempted more then once by the same peer
 func TestConnectRepeatHandshake(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -526,6 +552,8 @@ func TestConnectRepeatHandshake(t *testing.T) {
 }
 
 func TestBlocklisting(t *testing.T) {
+	t.Parallel()
+
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
 	}})
@@ -567,6 +595,8 @@ func TestBlocklisting(t *testing.T) {
 }
 
 func TestTopologyNotifier(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -686,6 +716,8 @@ func TestTopologyNotifier(t *testing.T) {
 // TestTopologyAnnounce checks that announcement
 // works correctly for full nodes and light nodes.
 func TestTopologyAnnounce(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -802,6 +834,8 @@ func TestTopologyAnnounce(t *testing.T) {
 }
 
 func TestTopologyOverSaturated(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -860,6 +894,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 }
 
 func TestWithDisconnectStreams(t *testing.T) {
+	t.Parallel()
 
 	defer func(t time.Duration) {
 		*libp2p.SendHeadersTimeout = t
@@ -912,6 +947,8 @@ func TestWithDisconnectStreams(t *testing.T) {
 }
 
 func TestWithBlocklistStreams(t *testing.T) {
+	t.Parallel()
+
 	t.Skip("test flakes")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -963,6 +1000,7 @@ func TestWithBlocklistStreams(t *testing.T) {
 }
 
 func TestUserAgentLogging(t *testing.T) {
+	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1000,6 +1038,8 @@ func TestUserAgentLogging(t *testing.T) {
 }
 
 func TestReachabilityUpdate(t *testing.T) {
+	t.Parallel()
+
 	s1, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.WithHostFactory(
 			func(_ ...libp2pm.Option) (host.Host, error) {

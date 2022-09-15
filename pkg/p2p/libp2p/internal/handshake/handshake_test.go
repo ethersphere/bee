@@ -25,7 +25,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+//nolint:paralleltest
 func TestHandshake(t *testing.T) {
+	t.Parallel()
+
 	const (
 		testWelcomeMessage = "HelloWorld"
 	)
@@ -176,7 +179,6 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handshake - picker error", func(t *testing.T) {
-
 		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)

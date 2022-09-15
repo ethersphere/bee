@@ -12,6 +12,7 @@ import (
 )
 
 func TestRateLimit(t *testing.T) {
+	t.Parallel()
 
 	var (
 		key1  = "test1"

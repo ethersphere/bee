@@ -18,6 +18,8 @@ import (
 )
 
 func TestNewCAC(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("greaterthanspan")
 	bmtHashOfData := "27913f1bdb6e8e52cbd5a5fd4ab577c857287edf6969b41efe926b51de0f4f23"
 	address := swarm.MustParseHexAddress(bmtHashOfData)
@@ -41,6 +43,8 @@ func TestNewCAC(t *testing.T) {
 }
 
 func TestNewWithDataSpan(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("greaterthanspan")
 	bmtHashOfData := "95022e6af5c6d6a564ee55a67f8455a3e18c511b5697c932d9e44f07f2fb8c53"
 	address := swarm.MustParseHexAddress(bmtHashOfData)
@@ -60,6 +64,8 @@ func TestNewWithDataSpan(t *testing.T) {
 }
 
 func TestChunkInvariants(t *testing.T) {
+	t.Parallel()
+
 	chunkerFunc := []struct {
 		name    string
 		chunker func(data []byte) (swarm.Chunk, error)
@@ -74,6 +80,7 @@ func TestChunkInvariants(t *testing.T) {
 		},
 	}
 
+	// nolint:paralleltest
 	for _, f := range chunkerFunc {
 		for _, cc := range []struct {
 			name    string
@@ -109,6 +116,8 @@ func TestChunkInvariants(t *testing.T) {
 
 // TestValid checks whether a chunk is a valid content-addressed chunk
 func TestValid(t *testing.T) {
+	t.Parallel()
+
 	bmtHashOfFoo := "2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48"
 	address := swarm.MustParseHexAddress(bmtHashOfFoo)
 
@@ -125,6 +134,8 @@ func TestValid(t *testing.T) {
 
 /// TestInvalid checks whether a chunk is not a valid content-addressed chunk
 func TestInvalid(t *testing.T) {
+	t.Parallel()
+
 	// Generates a chunk with the given data. No validation is performed here,
 	// the chunks are create as it is.
 	chunker := func(addr string, dataBytes []byte) swarm.Chunk {
@@ -180,7 +191,10 @@ func TestInvalid(t *testing.T) {
 			data:    []byte(strings.Repeat("a", swarm.ChunkSize+swarm.SpanSize+1)),
 		},
 	} {
+		c := c
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			ch := chunker(c.address, c.data)
 			if cac.Valid(ch) {
 				t.Fatalf("data '%s' should not have validated to hash '%s'", ch.Data(), ch.Address())

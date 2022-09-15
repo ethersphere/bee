@@ -12,8 +12,13 @@ import (
 )
 
 func TestWalkEntry(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := simple.NewManifest()
 
 			// add entries
