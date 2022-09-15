@@ -10,8 +10,8 @@ var (
 	xdaiChainID   = int64(100)
 	// start block
 	// replace this with
-	goerliStartBlock = uint64(7457394)
-	xdaiStartBlock   = uint64(23862394)
+	goerliStartBlock = uint64(7590423)
+	xdaiStartBlock   = uint64(24180961)
 	// factory address
 	goerliContractAddress      = common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2")
 	xdaiContractAddress        = common.HexToAddress("0x0FDc5429C50e2a39066D8A94F3e2D2476fcc3b85")
@@ -19,8 +19,8 @@ var (
 	xdaiFactoryAddress         = common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420")
 	goerliLegacyFactoryAddress = common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474")
 	// postage stamp
-	goerliPostageStampContractAddress = common.HexToAddress("0x07456430a9878626ba42d4A26D5AfDa0A0Ca9D26")
-	xdaiPostageStampContractAddress   = common.HexToAddress("0x52102F54CdfA1cC9386E34957FD14A80680e9Ba3")
+	goerliPostageStampContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
+	xdaiPostageStampContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
 )
 
 type ChainConfig struct {
