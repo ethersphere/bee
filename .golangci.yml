@@ -46,4 +46,3 @@ issues:
         - forbidigo
       path: cmd/bee/cmd         
       text: "use of `fmt.Print"   ## allow fmt.Print in cmd directory
-      
