@@ -51,7 +51,7 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var transactionInfos []transactionInfo = make([]transactionInfo, 0)
+	transactionInfos := make([]transactionInfo, 0, len(txHashes))
 	for _, txHash := range txHashes {
 		storedTransaction, err := s.transaction.StoredTransaction(txHash)
 		if err != nil {
