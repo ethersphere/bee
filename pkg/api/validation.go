@@ -14,22 +14,18 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 type ValidateFunc map[string]func(string, reflect.Value) error
 
-var parseHooks ValidateFunc
+//var parseHooks ValidateFunc
 
 // InitializeHooks initializes the hooks for parsing the input
-func (s *Service) InitializeHooks() ValidateFunc {
-	var mu sync.Mutex
-	mu.Lock()
-	defer mu.Unlock()
-	parseHooks = make(ValidateFunc)
-	parseHooks["hexToString"] = s.parseBatchId
-	parseHooks["addressToString"] = s.parseAddress
-	return parseHooks
+func (s *Service) InitializeHooks() {
+	s.parseHooks = make(ValidateFunc)
+	s.parseHooks["hexToString"] = s.parseBatchId
+	s.parseHooks["addressToString"] = s.parseAddress
+
 }
 
 // parseAndValidate parses the input and validates it
@@ -88,7 +84,7 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 		}
 
 		if len(customHook) > 0 {
-			err = parseHooks[customHook](reqValue, val.Field(i))
+			err = s.parseHooks[customHook](reqValue, val.Field(i))
 			if err != nil {
 				return s.GetErrorMessage(propertyName, errMessage)
 			}

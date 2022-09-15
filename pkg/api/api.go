@@ -234,7 +234,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.batchStore = batchStore
 	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
-	s.parseHooks = s.InitializeHooks()
+	s.InitializeHooks()
 	return s
 }
 
