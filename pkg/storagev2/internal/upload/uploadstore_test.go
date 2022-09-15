@@ -6,11 +6,13 @@ package upload_test
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
 	"time"
 
+	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
@@ -19,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
-	"github.com/google/go-cmp/cmp"
 )
 
 var _ internal.Storage = (*testStorage)(nil)
@@ -144,7 +145,7 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &upload.PushItem{
-				Timestamp: math.MaxUint64,
+				Timestamp: math.MaxInt64,
 				Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 				TagID:     math.MaxUint64,
 			},
@@ -154,7 +155,7 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 		name: "random values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &upload.PushItem{
-				Timestamp: rand.Uint64(),
+				Timestamp: rand.Int63(),
 				Address:   swarmtesting.RandomAddress(),
 				TagID:     rand.Uint64(),
 			},
@@ -205,63 +206,67 @@ func TestChunkPutter(t *testing.T) {
 		}
 	})
 
-	tag := uint64(1)
-	putter, err := upload.ChunkPutter(ts, tag)
+	tagID := uint64(1)
+	putter, err := upload.ChunkPutter(ts, tagID)
 	if err != nil {
 		t.Fatalf("upload.ChunkPutter(...): unexpected error: %v", err)
 	}
-	chunk := swarm.NewChunk(swarm.NewAddress([]byte("1234")), []byte("data"))
 
-	t.Run("put new chunk", func(t *testing.T) {
-		exists, err := putter.Put(context.TODO(), chunk)
-		if err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-		if exists {
-			t.Fatal("Put(...): chunk should not exist")
-		}
-	})
+	for _, chunk := range chunktest.GenerateTestRandomChunks(10) {
+		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
+			t.Run("put new chunk", func(t *testing.T) {
+				exists, err := putter.Put(context.TODO(), chunk)
+				if err != nil {
+					t.Fatalf("Put(...): unexpected error: %v", err)
+				}
+				if exists {
+					t.Fatal("Put(...): chunk should not exist")
+				}
+			})
 
-	t.Run("put existing chunk", func(t *testing.T) {
-		exists, err := putter.Put(context.TODO(), chunk)
-		if err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-		if !exists {
-			t.Fatal("Put(...): chunk should exist")
-		}
-	})
+			t.Run("put existing chunk", func(t *testing.T) {
+				exists, err := putter.Put(context.TODO(), chunk)
+				if err != nil {
+					t.Fatalf("Put(...): unexpected error: %v", err)
+				}
+				if !exists {
+					t.Fatal("Put(...): chunk should exist")
+				}
+			})
 
-	t.Run("verify internal state", func(t *testing.T) {
-		has, err := ts.Storage().Has(&upload.TagIDAddressItem{
-			TagID:   tag,
-			Address: chunk.Address(),
+			t.Run("verify internal state", func(t *testing.T) {
+				has, err := ts.Storage().Has(&upload.TagIDAddressItem{
+					TagID:   tagID,
+					Address: chunk.Address(),
+				})
+				if err != nil {
+					t.Fatalf("Has(...): unexpected error: %v", err)
+				}
+				if !has {
+					t.Fatal("Has(...): item not found")
+				}
+
+				has, err = ts.Storage().Has(&upload.PushItem{
+					Timestamp: now().Unix(),
+					Address:   chunk.Address(),
+					TagID:     tagID,
+				})
+				if err != nil {
+					t.Fatalf("Has(...): unexpected error: %v", err)
+				}
+				if !has {
+					t.Fatalf("Has(...): item not found")
+				}
+
+				have, err := ts.ChunkStore().Get(context.TODO(), chunk.Address())
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				if want := chunk; !want.Equal(have) {
+					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
+				}
+			})
+
 		})
-		if err != nil {
-			t.Fatalf("Has(...): unexpected error: %v", err)
-		}
-		if !has {
-			t.Fatal("Has(...): item not found")
-		}
-
-		has, err = ts.Storage().Has(&upload.PushItem{
-			Timestamp: uint64(now().Unix()),
-			Address:   chunk.Address(),
-			TagID:     tag,
-		})
-		if err != nil {
-			t.Fatalf("Has(...): unexpected error: %v", err)
-		}
-		if !has {
-			t.Fatalf("Has(...): item not found")
-		}
-
-		have, err := ts.ChunkStore().Get(context.TODO(), chunk.Address())
-		if err != nil {
-			t.Fatalf("Get(...): unexpected error: %v", err)
-		}
-		if diff := cmp.Diff(chunk, have); diff != "" {
-			t.Fatalf("Get(...): chunk missmatch (-want +have):\n%s", diff)
-		}
-	})
+	}
 }

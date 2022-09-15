@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/storagev2"
@@ -42,12 +43,12 @@ type tagIDAddressItem struct {
 
 // ID implements the storage.Item interface.
 func (i tagIDAddressItem) ID() string {
-	return fmt.Sprintf("%d_%s", i.TagID, i.Address.ByteString())
+	return i.Address.ByteString()
 }
 
 // Namespace implements the storage.Item interface.
 func (i tagIDAddressItem) Namespace() string {
-	return "TagIDAddressItem"
+	return fmt.Sprintf("TagIDAddressItem/%d", i.TagID)
 }
 
 // Marshal implements the storage.Item interface.
@@ -75,6 +76,11 @@ func (i *tagIDAddressItem) Unmarshal(bytes []byte) error {
 	return nil
 }
 
+// String implements the fmt.Stringer interface.
+func (i tagIDAddressItem) String() string {
+	return path.Join(i.Namespace(), i.ID())
+}
+
 var (
 	// errPushItemMarshalAddressIsZero is returned when trying
 	// to marshal a pushItem with an address that is zero.
@@ -94,14 +100,14 @@ var _ storage.Item = (*pushItem)(nil)
 // The key is a combination of Timestamp and Address, where the
 // Timestamp provides an order to iterate.
 type pushItem struct {
-	Timestamp uint64
+	Timestamp int64
 	Address   swarm.Address
 	TagID     uint64
 }
 
 // ID implements the storage.Item interface.
 func (i pushItem) ID() string {
-	return fmt.Sprintf("%d_%s", i.Timestamp, i.Address.ByteString())
+	return fmt.Sprintf("%d/%s", i.Timestamp, i.Address.ByteString())
 }
 
 // Namespace implements the storage.Item interface.
@@ -116,7 +122,7 @@ func (i pushItem) Marshal() ([]byte, error) {
 		return nil, errPushItemMarshalAddressIsZero
 	}
 	buf := make([]byte, pushItemSize)
-	binary.LittleEndian.PutUint64(buf, i.Timestamp)
+	binary.LittleEndian.PutUint64(buf, uint64(i.Timestamp))
 	copy(buf[8:], i.Address.Bytes())
 	binary.LittleEndian.PutUint64(buf[8+swarm.HashSize:], i.TagID)
 	return buf, nil
@@ -129,11 +135,16 @@ func (i *pushItem) Unmarshal(bytes []byte) error {
 		return errPushItemUnmarshalInvalidSize
 	}
 	ni := new(pushItem)
-	ni.Timestamp = binary.LittleEndian.Uint64(bytes)
+	ni.Timestamp = int64(binary.LittleEndian.Uint64(bytes))
 	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), bytes[8:8+swarm.HashSize]...))
 	ni.TagID = binary.LittleEndian.Uint64(bytes[8+swarm.HashSize:])
 	*i = *ni
 	return nil
+}
+
+// String implements the fmt.Stringer interface.
+func (i pushItem) String() string {
+	return path.Join(i.Namespace(), i.ID())
 }
 
 // ChunkPutter returns a storage.Putter which will store the given chunk.
@@ -145,22 +156,26 @@ func ChunkPutter(s internal.Storage, tag uint64) (storage.Putter, error) {
 		}
 		switch exists, err := s.Storage().Has(tai); {
 		case err != nil:
-			return false, err
+			return false, fmt.Errorf("storage has item %q call failed: %w", tai, err)
 		case exists:
 			return true, nil
 		}
 		if err := s.Storage().Put(tai); err != nil {
-			return false, err
+			return false, fmt.Errorf("storage put item %q call failed: %w", tai, err)
 		}
 
 		pi := &pushItem{
-			Timestamp: uint64(now().Unix()),
+			Timestamp: now().Unix(),
 			Address:   chunk.Address(),
 			TagID:     tag,
 		}
 		if err := s.Storage().Put(pi); err != nil {
-			return false, err
+			return false, fmt.Errorf("storage put item %q call failed: %w", pi, err)
 		}
-		return s.ChunkStore().Put(ctx, chunk)
+		exists, err := s.ChunkStore().Put(ctx, chunk)
+		if err != nil {
+			return false, fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
+		}
+		return exists, nil
 	}), nil
 }
