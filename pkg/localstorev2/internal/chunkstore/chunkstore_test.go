@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
@@ -64,6 +65,93 @@ func TestRetrievalIndexItem_MarshalAndUnmarshal(t *testing.T) {
 			},
 			Factory:      func() storage.Item { return new(chunkstore.RetrievalIndexItem) },
 			UnmarshalErr: chunkstore.ErrInvalidRetrievalIndexItemSize,
+		},
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
+	}
+}
+
+func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	minAddress := swarm.NewAddress(storagetest.MinAddressBytes[:])
+	minStamp := postage.NewStamp()
+
+	tests := []struct {
+		name string
+		test *storagetest.ItemMarshalAndUnmarshalTest
+	}{{
+		name: "zero values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item:       &chunkstore.ChunkStampItem{},
+			Factory:    func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			MarshalErr: chunkstore.ErrMarshalInvalidChunkStampItemAddress,
+		},
+	}, {
+		name: "zero address",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &chunkstore.ChunkStampItem{
+				Address: swarm.ZeroAddress,
+			},
+			Factory:    func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			MarshalErr: chunkstore.ErrMarshalInvalidChunkStampItemAddress,
+		},
+	}, {
+		name: "nil stamp",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &chunkstore.ChunkStampItem{
+				Address: minAddress,
+			},
+			Factory:    func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			MarshalErr: chunkstore.ErrMarshalInvalidChunkStampItemStamp,
+		},
+	}, {
+		name: "zero stamp",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &chunkstore.ChunkStampItem{
+				Address: minAddress,
+				Stamp:   new(postage.Stamp),
+			},
+			Factory:    func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			MarshalErr: chunkstore.ErrMarshalInvalidChunkStampItemStamp,
+		},
+	}, {
+		name: "min values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &chunkstore.ChunkStampItem{
+				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+			},
+			Factory: func() storage.Item { return new(chunkstore.ChunkStampItem) },
+		},
+	}, {
+		name: "max values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &chunkstore.ChunkStampItem{
+				Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Timestamp: math.MaxUint64,
+				Location: sharky.Location{
+					Shard:  math.MaxUint8,
+					Slot:   math.MaxUint32,
+					Length: math.MaxUint16,
+				},
+			},
+			Factory: func() storage.Item { return new(chunkstore.ChunkStampItem) },
+		},
+	}, {
+		name: "invalid size",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &storagetest.ItemStub{
+				MarshalBuf:   []byte{0xFF},
+				UnmarshalBuf: []byte{0xFF},
+			},
+			Factory:      func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			UnmarshalErr: chunkstore.ErrInvalidChunkStampItemSize,
 		},
 	}}
 

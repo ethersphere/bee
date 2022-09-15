@@ -7,8 +7,10 @@ package chunkstore
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -28,14 +30,16 @@ var (
 	// errInvalidRetrievalIndexLocationBytes is returned during unmarshaling if the location buffer is invalid
 	errInvalidRetrievalIndexLocationBytes = errors.New("unmarshal retrievalIndexItem: invalid location bytes")
 
-	// errInvalidChunkStampBatchID is returned if the BatchID is invalid during marshaling
-	errInvalidChunkStampBatchID = errors.New("marshal chunkStampItem: invalid batch ID")
-	// errInvalidChunkStampBatchIndex is returned if the Index is invalid during marshaling
-	errInvalidChunkStampBatchIndex = errors.New("marshal chunkStampItem: invalid batch index")
-	// errInvalidChunkStampSignature is returned if the Signature is invalid during marshaling
-	errInvalidChunkStampSignature = errors.New("marshal chunkStampItem: invalid signature")
+	// errMarshalInvalidChunkStampAddress is returned during marshaling if the Address is zero
+	errMarshalInvalidChunkStampItemAddress = errors.New("marshal chunkStampItem: invalid address")
+	// errUnmarshalInvalidChunkStampAddress is returned during unmarshaling if the address is not set
+	errUnmarshalInvalidChunkStampItemAddress = errors.New("unmarshal chunkStampItem: invalid address")
+	// errMarshalInvalidChunkStamp is returned if the stamp is invalid during marshaling
+	errMarshalInvalidChunkStampItemStamp = errors.New("marshal chunkStampItem: invalid stamp")
+	// errUnmarshalInvalidChunkStamp is returned if the stamp is invalid during marshaling
+	errUnmarshalInvalidChunkStampItemStamp = errors.New("unmarshal chunkStampItem: invalid stamp")
 	// errInvalidChunkStampSize is returned during unmarshaling if the passed buffer is not the expected size
-	errInvalidChunkStampSize = errors.New("marshal chunkStampItem: invalid size")
+	errInvalidChunkStampItemSize = errors.New("unmarshal chunkStampItem: invalid size")
 )
 
 // retrievalIndexItem is the index which gives us the sharky location from the swarm.Address
@@ -92,11 +96,8 @@ func (r *retrievalIndexItem) Unmarshal(buf []byte) error {
 // single address. For this reason, the Address is part of the Namespace and can be used
 // to iterate on all the stamps for this Address.
 type chunkStampItem struct {
-	Address   swarm.Address
-	BatchID   []byte
-	Index     []byte
-	Timestamp []byte
-	Sig       []byte
+	Address swarm.Address
+	Stamp   swarm.Stamp
 }
 
 func (c *chunkStampItem) Namespace() string {
@@ -104,7 +105,7 @@ func (c *chunkStampItem) Namespace() string {
 }
 
 func (c *chunkStampItem) ID() string {
-	return strings.Join([]string{string(c.BatchID), string(c.Index)}, "/")
+	return strings.Join([]string{string(c.Stamp.BatchID()), string(c.Stamp.Index())}, "/")
 }
 
 // Address is not part of the payload which is stored as Address is part of the prefix
@@ -113,33 +114,38 @@ func (c *chunkStampItem) ID() string {
 // |--BatchID--|--Index--|--Timestamp--|--Signature--|
 //      32          8           8             65
 func (c *chunkStampItem) Marshal() ([]byte, error) {
-	buf := make([]byte, chunkStampItemSize)
-	if n := copy(buf, c.BatchID); n != 32 {
-		return nil, errInvalidChunkStampBatchID
+	// The address is not part of the payload, but it is used to create the namespace
+	// so it is better if we check that the address is correctly set here before it
+	// is stored in the underlying storage.
+	if c.Address.IsZero() {
+		return nil, errMarshalInvalidChunkStampItemAddress
 	}
-	if n := copy(buf[32:], c.Index); n != 8 {
-		return nil, errInvalidChunkStampBatchIndex
+	if c.Stamp == nil {
+		return nil, errMarshalInvalidChunkStampItemStamp
 	}
-	if n := copy(buf[40:], c.Timestamp); n != 8 {
-		return nil, errInvalidChunkStampBatchIndex
-	}
-	if n := copy(buf[48:], c.Sig); n != 65 {
-		return nil, errInvalidChunkStampSignature
+	buf, err := c.Stamp.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errMarshalInvalidChunkStampItemStamp, err)
 	}
 	return buf, nil
 }
 
 func (c *chunkStampItem) Unmarshal(buf []byte) error {
-	if len(buf) != chunkStampItemSize {
-		return errInvalidChunkStampSize
+	// ensure that the address is set already in the item
+	if c.Address.IsZero() {
+		return errUnmarshalInvalidChunkStampItemAddress
+	}
+	stamp := new(postage.Stamp)
+	if err := stamp.UnmarshalBinary(buf); err != nil {
+		if errors.Is(err, postage.ErrStampInvalid) {
+			return errInvalidChunkStampItemSize
+		}
+		return fmt.Errorf("%w: %w", errUnmarshalInvalidChunkStampItemStamp, err)
 	}
 
 	ni := new(chunkStampItem)
 	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), c.Address.Bytes()...))
-	ni.BatchID = append(make([]byte, 0, 32), buf[:32]...)
-	ni.Index = append(make([]byte, 0, 8), buf[32:40]...)
-	ni.Timestamp = append(make([]byte, 0, 8), buf[40:48]...)
-	ni.Sig = append(make([]byte, 0, 65), buf[48:]...)
+	ni.Stamp = stamp
 	*c = *ni
 	return nil
 }
