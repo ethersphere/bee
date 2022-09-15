@@ -287,6 +287,8 @@ func TestBroadcastPeers(t *testing.T) {
 }
 
 func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays []swarm.Address) {
+	t.Helper()
+
 	var (
 		overlays []swarm.Address
 		err      error
@@ -328,6 +330,8 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 }
 
 func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAddresses []bzz.Address) {
+	t.Helper()
+
 	var (
 		addresses []bzz.Address
 		err       error

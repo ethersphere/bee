@@ -159,6 +159,8 @@ func TestPersistence(t *testing.T) {
 func TestConcurrency(t *testing.T) {
 	datasize := 4
 	test := func(t *testing.T, workers, shards int, shardSize uint32) {
+		t.Helper()
+
 		limit := shards * int(shardSize)
 
 		dir := t.TempDir()

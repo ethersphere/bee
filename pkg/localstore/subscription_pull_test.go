@@ -521,6 +521,8 @@ func TestDB_SubscribePull_rangeOnRemovedChunks(t *testing.T) {
 // uploadRandomChunksBin uploads random chunks to database and adds them to
 // the map of addresses ber bin.
 func uploadRandomChunksBin(t *testing.T, db *DB, addrs map[uint8][]swarm.Address, addrsMu *sync.Mutex, wantedChunksCount *int, count int) {
+	t.Helper()
+
 	addrsMu.Lock()
 	defer addrsMu.Unlock()
 

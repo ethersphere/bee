@@ -1780,6 +1780,7 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 }
 
 func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64), fullNode bool, testPayThreshold *big.Int, testGrowth int64) {
+	t.Helper()
 
 	logger := log.Noop
 
@@ -1922,6 +1923,8 @@ func TestAccountingSwapGrowingThresholdsLight(t *testing.T) {
 }
 
 func debitAndRefresh(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64) {
+	t.Helper()
+
 	// Create debt
 	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, uint64(debitRefresh))
 	if err != nil {
@@ -1942,6 +1945,8 @@ func debitAndRefresh(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.A
 }
 
 func debitAndReceivePayment(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64) {
+	t.Helper()
+
 	// Create debt
 	debitAction, err := acc.PrepareDebit(context.Background(), peer1Addr, uint64(debitRefresh))
 	if err != nil {

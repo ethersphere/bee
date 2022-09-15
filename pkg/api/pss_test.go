@@ -361,6 +361,8 @@ func waitReadMessage(t *testing.T, mtx *sync.Mutex, cl *websocket.Conn, targetCo
 }
 
 func waitDone(t *testing.T, mtx *sync.Mutex, done *bool) {
+	t.Helper()
+
 	for i := 0; i < 10; i++ {
 		mtx.Lock()
 		if *done {

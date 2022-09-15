@@ -267,6 +267,8 @@ func (l *mockLookup) At(_ context.Context, at, after int64) (swarm.Chunk, feeds.
 }
 
 func toChunk(t *testing.T, at uint64, payload []byte) swarm.Chunk {
+	t.Helper()
+
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
 	content := append(ts, payload...)

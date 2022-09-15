@@ -5,6 +5,7 @@ linters:
     - misspell
     - gofmt
     - unconvert
+    - thelper
     - goheader
 
 linters-settings:

@@ -224,6 +224,8 @@ func BenchmarkSplitter(b *testing.B) {
 }
 
 func benchmarkSplitter(b *testing.B, count int) {
+	b.Helper()
+
 	b.StopTimer()
 
 	m := mock.NewStorer()

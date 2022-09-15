@@ -204,6 +204,8 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
 func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
+	t.Helper()
+
 	retrieve := &retrievalMock{}
 	store := mock.NewStorer()
 	logger := log.Noop

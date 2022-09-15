@@ -229,6 +229,8 @@ func TestCopyBuffer(t *testing.T) {
 }
 
 func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byte) {
+	t.Helper()
+
 	var buf = make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)

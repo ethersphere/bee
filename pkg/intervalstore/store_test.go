@@ -45,6 +45,8 @@ func TestDBStore(t *testing.T) {
 
 // testStore is a helper function to test various Store implementations.
 func testStore(t *testing.T, s storage.StateStorer) {
+	t.Helper()
+
 	key1 := "key1"
 	i1 := NewIntervals(0)
 	i1.Add(10, 20)

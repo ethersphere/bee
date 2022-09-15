@@ -112,6 +112,8 @@ func TestHasherReuse(t *testing.T) {
 
 // tests if bmt reuse is not corrupting result
 func testHasherReuse(t *testing.T, poolsize int) {
+	t.Helper()
+
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
 	h := pool.Get()
 	defer pool.Put(h)
@@ -273,14 +275,14 @@ func TestUseSyncAsOrdinaryHasher(t *testing.T) {
 	}
 }
 
-func randomBytes(t testing.TB, seed int64) []byte {
-	t.Helper()
+func randomBytes(tb testing.TB, seed int64) []byte {
+	tb.Helper()
 	data := make([]byte, 4096)
 	s := rand.NewSource(seed)
 	r := rand.New(s)
 	_, err := io.ReadFull(r, data)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return data
 }

@@ -41,6 +41,8 @@ func TestWalkNode(t *testing.T) {
 		ctx := context.Background()
 
 		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
+			t.Helper()
+
 			n := mantaray.New()
 
 			for i := 0; i < len(toAdd); i++ {
@@ -159,6 +161,8 @@ func TestWalk(t *testing.T) {
 		ctx := context.Background()
 
 		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
+			t.Helper()
+
 			n := mantaray.New()
 
 			for i := 0; i < len(toAdd); i++ {

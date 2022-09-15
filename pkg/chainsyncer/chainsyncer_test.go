@@ -52,6 +52,8 @@ func TestChainsyncer(t *testing.T) {
 		proofError = e
 		proofBlockHash = blockHash
 		return func(t *testing.T) {
+			t.Helper()
+
 			cs, err := chainsyncer.New(backend, p, topology, d, logger, &chainsyncer.Options{
 				FlagTimeout:     1500 * time.Millisecond,
 				PollEvery:       1100 * time.Millisecond,
@@ -67,6 +69,8 @@ func TestChainsyncer(t *testing.T) {
 	}
 
 	t.Run("prover error", newChainSyncerTest(proofError, proofBlockHash, func(t *testing.T) {
+		t.Helper()
+
 		select {
 		case <-blockC:
 		case <-time.After(5 * time.Second):
@@ -75,6 +79,8 @@ func TestChainsyncer(t *testing.T) {
 	}))
 
 	t.Run("blockhash mismatch", newChainSyncerTest(nil, proofBlockHash, func(t *testing.T) {
+		t.Helper()
+
 		select {
 		case <-blockC:
 		case <-time.After(5 * time.Second):
@@ -83,6 +89,8 @@ func TestChainsyncer(t *testing.T) {
 	}))
 
 	t.Run("all good", newChainSyncerTest(nil, expBlockHash, func(t *testing.T) {
+		t.Helper()
+
 		select {
 		case <-blockC:
 			t.Fatal("blocklisting occurred but should not have")

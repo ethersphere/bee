@@ -31,6 +31,8 @@ func TestStampMarshalling(t *testing.T) {
 }
 
 func compareStamps(t *testing.T, s1, s2 *postage.Stamp) {
+	t.Helper()
+
 	if !bytes.Equal(s1.BatchID(), s2.BatchID()) {
 		t.Fatalf("id mismatch, expected %x, got %x", s1.BatchID(), s2.BatchID())
 	}
@@ -62,7 +64,6 @@ func TestStampIndexMarshalling(t *testing.T) {
 }
 
 func TestValidStamp(t *testing.T) {
-
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)

@@ -140,6 +140,8 @@ func BenchmarkPipeline(b *testing.B) {
 }
 
 func benchmarkPipeline(b *testing.B, count int) {
+	b.Helper()
+
 	b.StopTimer()
 
 	m := mock.NewStorer()

@@ -222,12 +222,12 @@ func TestParallelPutAndGet(t *testing.T) {
 // newTestDB is a helper function that constructs a
 // temporary database and returns a cleanup function that must
 // be called to remove the data.
-func newTestDB(t testing.TB, o *Options) *DB {
-	t.Helper()
+func newTestDB(tb testing.TB, o *Options) *DB {
+	tb.Helper()
 
 	baseKey := make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	if o == nil {
 		o = &Options{}
@@ -240,12 +240,12 @@ func newTestDB(t testing.TB, o *Options) *DB {
 	logger := log.Noop
 	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		err := db.Close()
 		if err != nil {
-			t.Error(err)
+			tb.Error(err)
 		}
 	})
 	return db

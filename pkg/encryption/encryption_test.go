@@ -120,6 +120,8 @@ func TestEncryptDecryptIsIdentity(t *testing.T) {
 }
 
 func testEncryptDecryptIsIdentity(t *testing.T, initCtr uint32, padding, dataLength, keyLength int) {
+	t.Helper()
+
 	key := encryption.GenerateRandomKey(keyLength)
 	enc := encryption.New(key, padding, initCtr, hashFunc)
 

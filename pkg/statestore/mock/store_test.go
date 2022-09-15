@@ -14,6 +14,7 @@ import (
 
 func TestMockStateStore(t *testing.T) {
 	test.Run(t, func(t *testing.T) storage.StateStorer {
+		t.Helper()
 		return mock.NewStateStore()
 	})
 }

@@ -330,6 +330,8 @@ func TestWithNoResponseBody(t *testing.T) {
 }
 
 func newClient(t *testing.T, handler http.Handler) (c *http.Client, endpoint string) {
+	t.Helper()
+
 	s := httptest.NewServer(handler)
 	t.Cleanup(s.Close)
 	return s.Client(), s.URL

@@ -15,6 +15,8 @@ import (
 
 func TestPersistentStateStore(t *testing.T) {
 	test.Run(t, func(t *testing.T) storage.StateStorer {
+		t.Helper()
+
 		dir := t.TempDir()
 
 		store, err := leveldb.NewStateStore(dir, log.Noop)
@@ -31,6 +33,8 @@ func TestPersistentStateStore(t *testing.T) {
 	})
 
 	test.RunPersist(t, func(t *testing.T, dir string) storage.StateStorer {
+		t.Helper()
+
 		store, err := leveldb.NewStateStore(dir, log.Noop)
 		if err != nil {
 			t.Fatal(err)

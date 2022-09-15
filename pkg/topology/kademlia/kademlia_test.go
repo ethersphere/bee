@@ -1726,6 +1726,7 @@ func (b *boolgen) Bool() bool {
 }
 
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
+	t.Helper()
 
 	var rndAddrs = make([]swarm.Address, count)
 
@@ -1989,6 +1990,8 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 }
 
 func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
+	t.Helper()
+
 	timeout := time.After(3 * time.Second)
 	for {
 		select {

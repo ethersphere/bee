@@ -711,6 +711,8 @@ func TestRender(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			test := func(t *testing.T, formatter *formatter, want string) {
+				t.Helper()
+
 				have := string(bytes.TrimRight(formatter.render(tc.builtins, tc.args), "\n"))
 				if have != want {
 					t.Errorf("render(...):\nwant %q\nhave %q", want, have)
