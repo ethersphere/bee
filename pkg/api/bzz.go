@@ -50,9 +50,9 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
 		switch {
-		case errors.Is(err, postage.ErrNotFound):
+		case errors.Is(err, storage.ErrNotFound):
 			jsonhttp.NotFound(w, "batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
+		case errors.Is(err, errBatchUnusable):
 			jsonhttp.BadRequest(w, "batch not usable yet")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.NotFound(w, "batch id not found")
@@ -93,7 +93,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		logger.Error(nil, "get or create tag failed")
 		switch {
 		case errors.Is(err, tags.ErrExists):
-			jsonhttp.Conflict(w, "bzz upload file:: conflict with current state of resource")
+			jsonhttp.Conflict(w, "bzz upload file: conflict with current state of resource")
 		case errors.Is(err, errCannotParse):
 			jsonhttp.BadRequest(w, "bzz upload file: request cannot be parsed")
 		case errors.Is(err, tags.ErrNotFound):
