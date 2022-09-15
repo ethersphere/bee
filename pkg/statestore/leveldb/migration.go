@@ -43,10 +43,11 @@ const (
 	dBSchemaKademliaMetrics = "kademlia-metrics"
 	dBSchemaBatchStore      = "batchstore"
 	dBSchemaBatchStoreV2    = "batchstoreV2"
+	dBSchemaBatchStoreV3    = "batchstoreV3"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaBatchStoreV2
+	dbSchemaCurrent = dBSchemaBatchStoreV3
 )
 
 type migration struct {
@@ -66,6 +67,7 @@ var schemaMigrations = []migration{
 	{name: dBSchemaKademliaMetrics, fn: migrateKademliaMetrics},
 	{name: dBSchemaBatchStore, fn: migrateBatchstore},
 	{name: dBSchemaBatchStoreV2, fn: migrateBatchstoreV2},
+	{name: dBSchemaBatchStoreV3, fn: migrateBatchstore},
 }
 
 func migrateFB(s *Store) error {
