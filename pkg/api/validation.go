@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type ValidateFunc map[string]func(string, reflect.Value) error
@@ -22,6 +23,9 @@ var parseHooks ValidateFunc
 
 // InitializeHooks initializes the hooks for parsing the input
 func (s *Service) InitializeHooks() ValidateFunc {
+	var mu sync.Mutex
+	mu.Lock()
+	defer mu.Unlock()
 	parseHooks = make(ValidateFunc)
 	parseHooks["hexToString"] = s.parseBatchId
 	parseHooks["addressToString"] = s.parseAddress
