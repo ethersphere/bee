@@ -626,6 +626,9 @@ func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("DeleteSequential", func(b *testing.B) {
 		BenchmarkDeleteSequential(b, s)
 	})
+	b.Run("DeleteDeleteInBatches", func(b *testing.B) {
+		BenchmarkDeleteInBatches(b, s)
+	})
 }
 
 func BenchmarkReadRandom(b *testing.B, db storage.Store) {
@@ -763,4 +766,19 @@ func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
 	doWrite(b, db, g)
 	resetBenchmark(b)
 	doDelete(b, db, g)
+}
+
+func BenchmarkDeleteInBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	doWrite(b, db, g)
+	resetBenchmark(b)
+	batch, _ := db.Batch(context.Background())
+	for i := 0; i < b.N; i++ {
+		item := &obj1{
+			Id: string(g.Key(i)),
+		}
+		if err := batch.Delete(item); err != nil {
+			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
+		}
+	}
 }
