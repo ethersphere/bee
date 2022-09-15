@@ -12,6 +12,8 @@ import (
 )
 
 func TestNewSwarmStreamName(t *testing.T) {
+	t.Parallel()
+
 	want := "/swarm/hive/1.2.0/peers"
 	got := p2p.NewSwarmStreamName("hive", "1.2.0", "peers")
 
@@ -21,6 +23,8 @@ func TestNewSwarmStreamName(t *testing.T) {
 }
 
 func TestReachabilityStatus_String(t *testing.T) {
+	t.Parallel()
+
 	mapping := map[string]string{
 		p2p.ReachabilityStatusUnknown.String(): network.ReachabilityUnknown.String(),
 		p2p.ReachabilityStatusPrivate.String(): network.ReachabilityPrivate.String(),

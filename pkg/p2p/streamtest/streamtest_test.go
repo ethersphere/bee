@@ -22,6 +22,8 @@ import (
 )
 
 func TestRecorder(t *testing.T) {
+	t.Parallel()
+
 	var answers = map[string]string{
 		"What is your name?":                                    "Sir Lancelot of Camelot",
 		"What is your quest?":                                   "To seek the Holy Grail.",
@@ -113,6 +115,8 @@ func TestRecorder(t *testing.T) {
 }
 
 func TestRecorder_errStreamNotSupported(t *testing.T) {
+	t.Parallel()
+
 	r := streamtest.New()
 
 	_, err := r.NewStream(context.Background(), swarm.ZeroAddress, nil, "testing", "messages", "1.0.1")
@@ -122,6 +126,8 @@ func TestRecorder_errStreamNotSupported(t *testing.T) {
 }
 
 func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
+	t.Parallel()
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
@@ -167,6 +173,8 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 }
 
 func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
+	t.Parallel()
+
 	streamtest.SetFullCloseTimeout(500 * time.Millisecond)
 	defer streamtest.ResetFullCloseTimeout()
 	recorder := streamtest.New(
@@ -216,6 +224,8 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 }
 
 func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
+	t.Parallel()
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
@@ -279,6 +289,8 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 }
 
 func TestRecorder_closeAfterPartialWrite(t *testing.T) {
+	t.Parallel()
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
@@ -345,6 +357,8 @@ func TestRecorder_closeAfterPartialWrite(t *testing.T) {
 }
 
 func TestRecorder_resetAfterPartialWrite(t *testing.T) {
+	t.Parallel()
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
@@ -407,6 +421,8 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 }
 
 func TestRecorder_withMiddlewares(t *testing.T) {
+	t.Parallel()
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
@@ -522,6 +538,8 @@ func TestRecorder_withMiddlewares(t *testing.T) {
 }
 
 func TestRecorder_recordErr(t *testing.T) {
+	t.Parallel()
+
 	testErr := errors.New("test error")
 
 	recorder := streamtest.New(
@@ -580,6 +598,8 @@ func TestRecorder_recordErr(t *testing.T) {
 }
 
 func TestRecorder_withPeerProtocols(t *testing.T) {
+	t.Parallel()
+
 	peer1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	peer2 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
 	recorder := streamtest.New(
@@ -672,6 +692,8 @@ func TestRecorder_withPeerProtocols(t *testing.T) {
 }
 
 func TestRecorder_withStreamError(t *testing.T) {
+	t.Parallel()
+
 	peer1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	peer2 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
 	testErr := errors.New("dummy stream error")
@@ -759,6 +781,8 @@ func TestRecorder_withStreamError(t *testing.T) {
 }
 
 func TestRecorder_ping(t *testing.T) {
+	t.Parallel()
+
 	testAddr, _ := ma.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
 
 	rec := streamtest.New()

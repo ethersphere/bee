@@ -15,6 +15,8 @@ import (
 )
 
 func TestMockStorer(t *testing.T) {
+	t.Parallel()
+
 	s := mock.NewStorer()
 
 	keyFound, err := swarm.ParseHexAddress("aabbcc")

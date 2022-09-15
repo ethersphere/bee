@@ -18,6 +18,8 @@ import (
 )
 
 func TestPinningService(t *testing.T) {
+	t.Parallel()
+
 	const content = "Hello, Bee!"
 
 	var (

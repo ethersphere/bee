@@ -25,6 +25,8 @@ import (
 // TestStringField validates put and get operations
 // of the StringField.
 func TestStringField(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	simpleString, err := db.NewStringField("simple-string")
@@ -33,6 +35,8 @@ func TestStringField(t *testing.T) {
 	}
 
 	t.Run("get empty", func(t *testing.T) {
+		t.Parallel()
+
 		got, err := simpleString.Get()
 		if err != nil {
 			t.Fatal(err)
@@ -44,6 +48,8 @@ func TestStringField(t *testing.T) {
 	})
 
 	t.Run("put", func(t *testing.T) {
+		t.Parallel()
+
 		want := "simple string value"
 		err = simpleString.Put(want)
 		if err != nil {
@@ -58,6 +64,8 @@ func TestStringField(t *testing.T) {
 		}
 
 		t.Run("overwrite", func(t *testing.T) {
+			t.Parallel()
+
 			want := "overwritten string value"
 			err = simpleString.Put(want)
 			if err != nil {
@@ -74,6 +82,8 @@ func TestStringField(t *testing.T) {
 	})
 
 	t.Run("put in batch", func(t *testing.T) {
+		t.Parallel()
+
 		batch := new(leveldb.Batch)
 		want := "simple string batch value"
 		simpleString.PutInBatch(batch, want)
@@ -90,6 +100,8 @@ func TestStringField(t *testing.T) {
 		}
 
 		t.Run("overwrite", func(t *testing.T) {
+			t.Parallel()
+
 			batch := new(leveldb.Batch)
 			want := "overwritten string batch value"
 			simpleString.PutInBatch(batch, want)

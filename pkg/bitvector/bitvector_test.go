@@ -20,6 +20,8 @@ import "testing"
 
 // TestBitvectorNew checks that enforcements of argument length works in the constructors
 func TestBitvectorNew(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(0)
 	if err != errInvalidLength {
 		t.Errorf("expected err %v, got %v", errInvalidLength, err)
@@ -43,6 +45,8 @@ func TestBitvectorNew(t *testing.T) {
 
 // TestBitvectorGetSet tests correctness of individual Set and Get commands
 func TestBitvectorGetSet(t *testing.T) {
+	t.Parallel()
+
 	for _, length := range []int{
 		1,
 		2,
@@ -87,6 +91,8 @@ func TestBitvectorGetSet(t *testing.T) {
 
 // TestBitvectorNewFromBytesGet tests that bit vector is initialized correctly from underlying byte slice
 func TestBitvectorNewFromBytesGet(t *testing.T) {
+	t.Parallel()
+
 	bv, err := NewFromBytes([]byte{8}, 8)
 	if err != nil {
 		t.Error(err)

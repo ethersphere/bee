@@ -20,6 +20,8 @@ import (
 type bookFunc func() (book addressbook.Interface)
 
 func TestInMem(t *testing.T) {
+	t.Parallel()
+
 	run(t, func() addressbook.Interface {
 		store := mock.NewStateStore()
 		book := addressbook.New(store)

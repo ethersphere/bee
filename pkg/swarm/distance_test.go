@@ -54,6 +54,8 @@ var (
 
 // TestDistance tests the correctness of the distance calculation.
 func TestDistance(t *testing.T) {
+	t.Parallel()
+
 	for _, dt := range distanceTests {
 		distance, err := Distance(dt.x, dt.y)
 		if err != nil {
@@ -67,6 +69,8 @@ func TestDistance(t *testing.T) {
 
 // TestDistanceCmp tests the distance comparison method.
 func TestDistanceCmp(t *testing.T) {
+	t.Parallel()
+
 	for _, dt := range distanceCmpTests {
 		direction, err := DistanceCmp(dt.a, dt.x, dt.y)
 		if err != nil {

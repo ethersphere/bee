@@ -34,6 +34,8 @@ func (t *testThresholdObserver) NotifyPaymentThreshold(peerAddr swarm.Address, p
 }
 
 func TestAnnouncePaymentThreshold(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	testThreshold := big.NewInt(100000)
 	testLightThreshold := big.NewInt(10000)
@@ -101,6 +103,8 @@ func TestAnnouncePaymentThreshold(t *testing.T) {
 }
 
 func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	testThreshold := big.NewInt(100_000)
 	testLightThreshold := big.NewInt(10_000)
@@ -159,6 +163,8 @@ func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 }
 
 func TestInitialPaymentThreshold(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	testThreshold := big.NewInt(100000)
 	testLightThreshold := big.NewInt(10000)
@@ -225,6 +231,8 @@ func TestInitialPaymentThreshold(t *testing.T) {
 }
 
 func TestInitialPaymentThresholdLightNode(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	testThreshold := big.NewInt(100000)
 	testLightThreshold := big.NewInt(10000)

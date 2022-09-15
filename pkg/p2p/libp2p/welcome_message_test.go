@@ -11,10 +11,13 @@ import (
 )
 
 func TestDynamicWelcomeMessage(t *testing.T) {
+	t.Parallel()
+
 	const TestWelcomeMessage = "Hello World!"
-	svc, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{WelcomeMessage: TestWelcomeMessage}})
 
 	t.Run("Get current message - OK", func(t *testing.T) {
+		t.Parallel()
+		svc, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{WelcomeMessage: TestWelcomeMessage}})
 		got := svc.GetWelcomeMessage()
 		if got != TestWelcomeMessage {
 			t.Fatalf("expected %s, got %s", TestWelcomeMessage, got)
@@ -23,6 +26,9 @@ func TestDynamicWelcomeMessage(t *testing.T) {
 
 	t.Run("Set new message", func(t *testing.T) {
 		t.Run("OK", func(t *testing.T) {
+			t.Parallel()
+
+			svc, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{WelcomeMessage: TestWelcomeMessage}})
 			const testMessage = "I'm the new message!"
 
 			err := svc.SetWelcomeMessage(testMessage)
@@ -35,6 +41,9 @@ func TestDynamicWelcomeMessage(t *testing.T) {
 			}
 		})
 		t.Run("error - message too long", func(t *testing.T) {
+			t.Parallel()
+
+			svc, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{WelcomeMessage: TestWelcomeMessage}})
 			const testMessage = `Lorem ipsum dolor sit amet, consectetur adipiscing elit.
 			Maecenas eu aliquam enim. Nulla tincidunt arcu nec nulla condimentum nullam sodales` // 141 characters
 
