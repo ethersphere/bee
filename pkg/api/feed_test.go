@@ -172,9 +172,12 @@ func TestFeed_Post(t *testing.T) {
 	t.Run("postage", func(t *testing.T) {
 		t.Run("err - bad batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
-			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusNotFound,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
-			)
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Message: "batch id not found",
+					Code:    http.StatusNotFound,
+				}))
 		})
 
 		t.Run("ok - batch zeros", func(t *testing.T) {
@@ -186,7 +189,7 @@ func TestFeed_Post(t *testing.T) {
 		})
 		t.Run("bad request - batch empty", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchEmpty)
-			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusNotFound,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			)
 		})
