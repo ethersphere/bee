@@ -19,8 +19,11 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/manifest/mantaray"
+	"github.com/ethersphere/bee/pkg/manifest/simple"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -75,7 +78,12 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed get: new lookup failed", "owner", owner, "error", err)
 		s.logger.Error(nil, "feed get: new lookup failed")
-		jsonhttp.InternalServerError(w, "new lookup failed")
+		switch {
+		case errors.Is(err, feeds.ErrFeedTypeNotFound):
+			jsonhttp.NotFound(w, "feed get: not found")
+		default:
+			jsonhttp.InternalServerError(w, "new lookup failed")
+		}
 		return
 	}
 
@@ -150,14 +158,14 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Debug("feed post: putter failed", "error", err)
 		s.logger.Error(nil, "feed post: putter failed")
 		switch {
-		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.BadRequest(w, "batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
+		case errors.Is(err, storage.ErrNotFound):
+			jsonhttp.NotFound(w, "batch not found")
+		case errors.Is(err, errBatchUnusable):
 			jsonhttp.BadRequest(w, "batch not usable yet")
 		case errors.Is(err, errInvalidPostageBatch):
-			jsonhttp.BadRequest(w, "invalid postage batch id")
+			jsonhttp.NotFound(w, "batch id not found")
 		default:
-			jsonhttp.BadRequest(w, nil)
+			jsonhttp.InternalServerError(w, nil)
 		}
 		return
 	}
@@ -167,7 +175,12 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed post: create manifest failed", "error", err)
 		s.logger.Error(nil, "feed post: create manifest failed")
-		jsonhttp.InternalServerError(w, "create manifest failed")
+		switch {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
+			jsonhttp.BadRequest(w, "create manifest failed: invalid type")
+		default:
+			jsonhttp.InternalServerError(w, "create manifest failed")
+		}
 		return
 	}
 
@@ -184,7 +197,14 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Debug("feed post: add manifest entry failed", "error", err)
 		s.logger.Error(nil, "feed post: add manifest entry failed")
-		jsonhttp.InternalServerError(w, "feed post: add manifest entry failed")
+		switch {
+		case errors.Is(err, simple.ErrEmptyPath):
+			jsonhttp.NotFound(w, "feed post: invalid path")
+		case errors.Is(err, mantaray.ErrEmptyPath):
+			jsonhttp.NotFound(w, "feed post: invalid path")
+		default:
+			jsonhttp.InternalServerError(w, "feed post: add manifest entry failed")
+		}
 		return
 	}
 	ref, err := feedManifest.Store(r.Context())
