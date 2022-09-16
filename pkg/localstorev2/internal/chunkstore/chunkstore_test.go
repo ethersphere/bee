@@ -7,9 +7,11 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
+	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestRetrievalIndexItem_MarshalAndUnmarshal(t *testing.T) {
@@ -82,7 +84,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 
 	minAddress := swarm.NewAddress(storagetest.MinAddressBytes[:])
 	minStamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
-	chunk := chunktesting.GenerateRandomTestChunk()
+	chunk := chunktest.GenerateTestRandomChunk()
 
 	tests := []struct {
 		name string
@@ -120,7 +122,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 				Stamp:   new(postage.Stamp),
 			},
 			Factory:    func() storage.Item { return new(chunkstore.ChunkStampItem) },
-			MarshalErr: chunkstore.ErrMarshalInvalidChunkStampItemStamp,
+			MarshalErr: postage.ErrInvalidBatchID,
 		},
 	}, {
 		name: "min values",
@@ -130,6 +132,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 				Stamp:   minStamp,
 			},
 			Factory: func() storage.Item { return &chunkstore.ChunkStampItem{Address: minAddress} },
+			CmpOpts: []cmp.Option{cmp.AllowUnexported(postage.Stamp{})},
 		},
 	}, {
 		name: "valid values",
@@ -139,6 +142,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 				Stamp:   chunk.Stamp(),
 			},
 			Factory: func() storage.Item { return &chunkstore.ChunkStampItem{Address: chunk.Address()} },
+			CmpOpts: []cmp.Option{cmp.AllowUnexported(postage.Stamp{})},
 		},
 	}, {
 		name: "invalid size",
@@ -147,7 +151,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 				MarshalBuf:   []byte{0xFF},
 				UnmarshalBuf: []byte{0xFF},
 			},
-			Factory:      func() storage.Item { return new(chunkstore.ChunkStampItem) },
+			Factory:      func() storage.Item { return &chunkstore.ChunkStampItem{Address: chunk.Address()} },
 			UnmarshalErr: chunkstore.ErrInvalidChunkStampItemSize,
 		},
 	}}

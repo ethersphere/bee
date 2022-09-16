@@ -11,6 +11,5 @@ var (
 	ErrMarshalInvalidChunkStampItemAddress   = errMarshalInvalidChunkStampItemAddress
 	ErrUnmarshalInvalidChunkStampItemAddress = errUnmarshalInvalidChunkStampItemAddress
 	ErrMarshalInvalidChunkStampItemStamp     = errMarshalInvalidChunkStampItemStamp
-	ErrUnmarshalInvalidChunkStampItemStamp   = errUnmarshalInvalidChunkStampItemStamp
 	ErrInvalidChunkStampItemSize             = errInvalidChunkStampItemSize
 )

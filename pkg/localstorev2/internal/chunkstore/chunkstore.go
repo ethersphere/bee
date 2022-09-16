@@ -36,8 +36,6 @@ var (
 	errUnmarshalInvalidChunkStampItemAddress = errors.New("unmarshal chunkStampItem: invalid address")
 	// errMarshalInvalidChunkStamp is returned if the stamp is invalid during marshaling
 	errMarshalInvalidChunkStampItemStamp = errors.New("marshal chunkStampItem: invalid stamp")
-	// errUnmarshalInvalidChunkStamp is returned if the stamp is invalid during marshaling
-	errUnmarshalInvalidChunkStampItemStamp = errors.New("unmarshal chunkStampItem: invalid stamp")
 	// errInvalidChunkStampSize is returned during unmarshaling if the passed buffer is not the expected size
 	errInvalidChunkStampItemSize = errors.New("unmarshal chunkStampItem: invalid size")
 )
@@ -125,7 +123,7 @@ func (c *chunkStampItem) Marshal() ([]byte, error) {
 	}
 	buf, err := c.Stamp.MarshalBinary()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errMarshalInvalidChunkStampItemStamp, err)
+		return nil, fmt.Errorf("failed marshaling stamp: %w", err)
 	}
 	return buf, nil
 }
@@ -140,7 +138,7 @@ func (c *chunkStampItem) Unmarshal(buf []byte) error {
 		if errors.Is(err, postage.ErrStampInvalid) {
 			return errInvalidChunkStampItemSize
 		}
-		return fmt.Errorf("%w: %w", errUnmarshalInvalidChunkStampItemStamp, err)
+		return fmt.Errorf("failed unmarshaling stamp: %w", err)
 	}
 
 	ni := new(chunkStampItem)
