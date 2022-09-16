@@ -72,7 +72,12 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("create tag failed", "error", err)
 		logger.Error(nil, "create tag failed")
-		jsonhttp.InternalServerError(w, "cannot create tag")
+		switch {
+		case errors.Is(err, tags.ErrExists):
+			jsonhttp.Conflict(w, "cannot create tag")
+		default:
+			jsonhttp.InternalServerError(w, "cannot create tag")
+		}
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")

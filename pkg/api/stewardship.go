@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/storage"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/gorilla/mux"
@@ -55,7 +56,12 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		logger.Debug("is retrievable check failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "is retrievable")
-		jsonhttp.InternalServerError(w, "is retrievable check failed")
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			jsonhttp.NotFound(w, "stewardship get: cannot retrieve")
+		default:
+			jsonhttp.InternalServerError(w, "is retrievable check failed")
+		}
 		return
 	}
 	jsonhttp.OK(w, isRetrievableResponse{
