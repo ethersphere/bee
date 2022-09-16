@@ -7,6 +7,7 @@ linters:
     - deadcode
     - depguard
     - errcheck
+    - goconst
     - gofmt
     - goheader
     - gomoddirectives
@@ -41,3 +42,6 @@ issues:
     - linters:
         - goheader
       text: "go-ethereum Authors" ## disable check for other authors
+    - path: _test\.go
+      linters:
+        - goconst ## temporally disable goconst in test

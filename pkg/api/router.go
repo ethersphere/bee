@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -553,12 +552,12 @@ func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler 
 func (s *Service) gatewayModeForbidHeadersHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.GatewayMode {
-			if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+			if requestPin(r) {
 				s.loggerV1.Debug("gateway mode: forbidden pinning", "url", r.URL)
 				jsonhttp.Forbidden(w, "pinning is disabled")
 				return
 			}
-			if strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true" {
+			if requestEncrypt(r) {
 				s.loggerV1.Debug("gateway mode: forbidden encryption", "url", r.URL)
 				jsonhttp.Forbidden(w, "encryption is disabled")
 				return
