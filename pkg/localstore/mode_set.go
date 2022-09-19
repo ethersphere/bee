@@ -370,7 +370,7 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 	item.BatchID = i.BatchID
-	i, err = db.pushIndex.Get(item)
+	_, err = db.pushIndex.Get(item)
 	switch {
 	case err == nil:
 		// this is a bit odd, but we return a nil here, causing the pending batch to
