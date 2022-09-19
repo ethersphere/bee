@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	stdlog "log"
@@ -208,7 +209,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		go func() {
 			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
 
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.Debug("debug api server failed to start", "error", err)
 				logger.Error(nil, "debug api server failed to start")
 			}
@@ -438,7 +439,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	go func() {
 		logger.Info("starting api server", "address", apiListener.Addr())
 
-		if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+		if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Debug("api server failed to start", "error", err)
 			logger.Error(nil, "api server failed to start")
 		}

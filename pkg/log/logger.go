@@ -245,13 +245,13 @@ func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAn
 	if _, err = l.sink.Write(buf); err != nil {
 		merr = multierror.Append(
 			merr,
-			fmt.Errorf("log %s: failed to write message: %v\n", vl, err),
+			fmt.Errorf("log %s: failed to write message: %w", vl, err),
 		)
 	}
 	if err := l.levelHooks.fire(vl + Level(l.v)); err != nil {
 		merr = multierror.Append(
 			merr,
-			fmt.Errorf("log %s: failed to fire hooks: %v\n", vl, err),
+			fmt.Errorf("log %s: failed to fire hooks: %w", vl, err),
 		)
 	}
 	return merr.ErrorOrNil()

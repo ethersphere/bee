@@ -143,14 +143,13 @@ func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	payerErr, ok := record.Err().(*p2p.DisconnectError)
-
-	if !ok {
-		t.Fatalf("wanted %v, got %v", p2p.DisconnectError{}, record.Err())
+	disconnectErr := &p2p.DisconnectError{}
+	if !errors.As(record.Err(), &disconnectErr) {
+		t.Fatalf("wanted %v, got %v", disconnectErr, record.Err())
 	}
 
-	if !errors.Is(payerErr, pricing.ErrThresholdTooLow) {
-		t.Fatalf("wanted error %v, got %v", pricing.ErrThresholdTooLow, err)
+	if !errors.Is(record.Err(), pricing.ErrThresholdTooLow) {
+		t.Fatalf("wanted error %v, got %v", pricing.ErrThresholdTooLow, record.Err())
 	}
 
 	if observer.called {

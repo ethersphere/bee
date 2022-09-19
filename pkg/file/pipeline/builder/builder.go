@@ -6,6 +6,7 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -77,7 +78,7 @@ func FeedPipeline(ctx context.Context, pipeline pipeline.Interface, r io.Reader)
 	for {
 		c, err := r.Read(data)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				if c > 0 {
 					cc, err := pipeline.Write(data[:c])
 					if err != nil {

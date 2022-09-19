@@ -62,7 +62,7 @@ func TestEncryptor_Encrypt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := mock.New(tc.options...).Encrypt(tc.data)
-			if err != tc.wantErr {
+			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got error %v, want %v", err, tc.wantErr)
 			}
 			if !bytes.Equal(got, tc.want) {
@@ -120,7 +120,7 @@ func TestEncryptor_Decrypt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := mock.New(tc.options...).Decrypt(tc.data)
-			if err != tc.wantErr {
+			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got error %v, want %v", err, tc.wantErr)
 			}
 			if !bytes.Equal(got, tc.want) {

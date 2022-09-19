@@ -4,6 +4,7 @@
 package libp2p_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
@@ -40,7 +41,7 @@ func TestDynamicWelcomeMessage(t *testing.T) {
 
 			want := handshake.ErrWelcomeMessageLength
 			got := svc.SetWelcomeMessage(testMessage)
-			if got != want {
+			if !errors.Is(got, want) {
 				t.Fatalf("wrong error: want %v, got %v", want, got)
 			}
 		})

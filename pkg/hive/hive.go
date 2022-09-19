@@ -199,7 +199,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	for _, p := range peers {
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
-			if err == addressbook.ErrNotFound {
+			if errors.Is(err, addressbook.ErrNotFound) {
 				s.logger.Debug("broadcast peers; peer not found in the addressbook, skipping...", "peer_address", p)
 				continue
 			}

@@ -347,7 +347,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != handshake.ErrNetworkIDIncompatible {
+		if !errors.Is(err, handshake.ErrNetworkIDIncompatible) {
 			t.Fatalf("expected %s, got %s", handshake.ErrNetworkIDIncompatible, err)
 		}
 	})
@@ -384,7 +384,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != handshake.ErrInvalidAck {
+		if !errors.Is(err, handshake.ErrInvalidAck) {
 			t.Fatalf("expected %s, got %s", handshake.ErrInvalidAck, err)
 		}
 	})
@@ -420,7 +420,7 @@ func TestHandshake(t *testing.T) {
 		}
 
 		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err != testError {
+		if !errors.Is(err, testError) {
 			t.Fatalf("expected error %v got %v", testError, err)
 
 		}
@@ -598,7 +598,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("res should be nil")
 		}
 
-		if err != handshake.ErrNetworkIDIncompatible {
+		if !errors.Is(err, handshake.ErrNetworkIDIncompatible) {
 			t.Fatalf("expected %s, got %s", handshake.ErrNetworkIDIncompatible, err)
 		}
 	})
@@ -633,7 +633,7 @@ func TestHandshake(t *testing.T) {
 		}
 
 		_, err = handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err != handshake.ErrInvalidAck {
+		if !errors.Is(err, handshake.ErrInvalidAck) {
 			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
 		}
 	})
@@ -662,7 +662,7 @@ func TestHandshake(t *testing.T) {
 		}
 
 		res, err := handshakeService.Handle(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
-		if err != testError {
+		if !errors.Is(err, testError) {
 			t.Fatal("expected error")
 		}
 

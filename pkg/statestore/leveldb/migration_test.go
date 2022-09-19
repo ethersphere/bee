@@ -325,11 +325,11 @@ func TestMigrationSwap(t *testing.T) {
 		t.Fatalf("got wrong address. wanted %x, got %x", storedAddress, retrievedAddress)
 	}
 
-	if err = db.Get(legacyKey1, &retrievedAddress); err != storage.ErrNotFound {
+	if err = db.Get(legacyKey1, &retrievedAddress); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("legacyKey1 not deleted. got error %v", err)
 	}
 
-	if err = db.Get(legacyKey2, &retrievedAddress); err != storage.ErrNotFound {
+	if err = db.Get(legacyKey2, &retrievedAddress); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("legacyKey2 not deleted. got error %v", err)
 	}
 }

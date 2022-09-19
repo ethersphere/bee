@@ -16,22 +16,25 @@
 
 package bitvector
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // TestBitvectorNew checks that enforcements of argument length works in the constructors
 func TestBitvectorNew(t *testing.T) {
 	_, err := New(0)
-	if err != errInvalidLength {
+	if !errors.Is(err, errInvalidLength) {
 		t.Errorf("expected err %v, got %v", errInvalidLength, err)
 	}
 
 	_, err = NewFromBytes(nil, 0)
-	if err != errInvalidLength {
+	if !errors.Is(err, errInvalidLength) {
 		t.Errorf("expected err %v, got %v", errInvalidLength, err)
 	}
 
 	_, err = NewFromBytes([]byte{0}, 9)
-	if err != errInvalidLength {
+	if !errors.Is(err, errInvalidLength) {
 		t.Errorf("expected err %v, got %v", errInvalidLength, err)
 	}
 

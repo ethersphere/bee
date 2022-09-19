@@ -196,7 +196,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 	var cumulativePayout *big.Int
 	lastCheque, err := s.LastCheque(beneficiary)
 	if err != nil {
-		if err != ErrNoCheque {
+		if !errors.Is(err, ErrNoCheque) {
 			return nil, err
 		}
 		cumulativePayout = big.NewInt(0)
@@ -252,7 +252,7 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 func (s *service) totalIssued() (totalIssued *big.Int, err error) {
 	err = s.store.Get(totalIssuedKey, &totalIssued)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
 		return big.NewInt(0), nil
@@ -265,7 +265,7 @@ func (s *service) LastCheque(beneficiary common.Address) (*SignedCheque, error) 
 	var lastCheque *SignedCheque
 	err := s.store.Get(lastIssuedChequeKey(beneficiary), &lastCheque)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
 		return nil, ErrNoCheque

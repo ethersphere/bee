@@ -132,7 +132,7 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 
 	var lastReceivedResponse *chequebookLastChequePeerResponse
 	lastReceived, err := s.swap.LastReceivedCheque(peer)
-	if err != nil && err != chequebook.ErrNoCheque {
+	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) {
 		s.logger.Debug("chequebook cheque peer: get last received cheque failed", "peer_address", peer, "error", err)
 		s.logger.Error(nil, "chequebook cheque peer: get last received cheque failed", "peer_address", peer)
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
