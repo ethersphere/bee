@@ -8,13 +8,14 @@ import (
 	//"encoding/json"
 	// "errors"
 	// "io"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/ethersphere/bee/pkg/commitment"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 type rchash struct {
@@ -34,8 +35,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	depth, err := strconv.ParseUint(depthStr, 10, 8)
 	if err != nil {
-		s.logger.Debugf("reserve commitment hasher: parse depth: %v", err)
-		s.logger.Error("reserve commitment hasher: invalid depth")
+		s.logger.Debug("reserve commitment hasher parse depth", "error", err)
+		s.logger.Error(err, "reserve commitment hasher: invalid depth")
 		jsonhttp.BadRequest(w, "invalid depth")
 		return
 	}

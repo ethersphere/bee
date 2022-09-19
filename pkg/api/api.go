@@ -175,7 +175,7 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
-	hasher       commitment.Sampler
+	hasher       *commitment.Sampler
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -219,7 +219,7 @@ type ExtraOptions struct {
 	SyncStatus       func() (bool, error)
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string, rchasher commitment.Sampler) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, gatewayMode bool, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string, rchasher *commitment.Sampler) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors

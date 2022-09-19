@@ -330,198 +330,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		}
 	}(probe)
 
-	var debugService *api.Service
-
-	// localstore depends on batchstore
-	var path string
-
-	if o.DataDir != "" {
-		logger.Infof("using datadir in: '%s'", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-
-	var (
-		blockHash []byte
-		txHash    []byte
-	)
-
-	txHash, err = GetTxHash(stateStore, logger, o.Transaction)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction hash: %w", err)
-	}
-
-	blockHash, err = GetTxNextBlock(p2pCtx, logger, chainBackend, transactionMonitor, pollingInterval, txHash, o.BlockHash)
-	if err != nil {
-		return nil, fmt.Errorf("invalid block hash: %w", err)
-	}
-
-	pubKey, _ := signer.PublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
-	logger.Infof("using overlay address %s", swarmAddress)
-
-	lo := &localstore.Options{
-		Capacity:               o.CacheCapacity,
-		ReserveCapacity:        uint64(batchstore.Capacity),
-		UnreserveFunc:          batchStore.Unreserve,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-	}
-
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
-	unreserveFn = storer.UnreserveBatch
-
-	commitmentHasher := commitment.New(storer, logger)
-
-	if o.DebugAPIAddr != "" {
-		if o.MutexProfile {
-			_ = runtime.SetMutexProfileFraction(1)
-		}
-
-		if o.BlockProfile {
-			runtime.SetBlockProfileRate(1)
-		}
-
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, commitmentHasher)
-		debugService.MountTechnicalDebug()
-		debugService.SetProbe(probe)
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Info("starting debug server", "address", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
-				logger.Debug("debug api server failed to start", "error", err)
-				logger.Error(nil, "debug api server failed to start")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
-
-	var apiService *api.Service
-
-	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, commitmentHasher)
-		apiService.MountTechnicalDebug()
-		apiService.SetProbe(probe)
-
-		apiServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
-
-		go func() {
-			logger.Info("starting debug & api server", "address", apiListener.Addr())
-
-			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
-				logger.Debug("debug & api server failed to start", "error", err)
-				logger.Error(nil, "debug & api server failed to start")
-			}
-		}()
-
-		b.apiServer = apiServer
-		b.apiCloser = apiServer
-	}
-
-	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
-	if err != nil {
-		return nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Info("waiting to sync with the Ethereum backend")
-
-		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
-		if err != nil {
-			return nil, fmt.Errorf("waiting backend sync: %w", err)
-		}
-	}
-
-	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(
-			logger,
-			chainBackend,
-			chainID,
-			transactionService,
-			o.SwapFactoryAddress,
-			o.SwapLegacyFactoryAddresses,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Address, err := chequebookFactory.ERC20Address(p2pCtx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Service = erc20.New(transactionService, erc20Address)
-
-		if o.ChequebookEnable && chainEnabled {
-			chequebookService, err = InitChequebookService(
-				p2pCtx,
-				logger,
-				stateStore,
-				signer,
-				chainID,
-				chainBackend,
-				overlayEthAddress,
-				transactionService,
-				chequebookFactory,
-				o.SwapInitialDeposit,
-				o.DeployGasPrice,
-				erc20Service,
-			)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		chequeStore, cashoutService = initChequeStoreCashout(
-			stateStore,
-			chainBackend,
-			chequebookFactory,
-			chainID,
-			overlayEthAddress,
-			transactionService,
-		)
-	}
-
 	pubKey, _ := signer.PublicKey()
 	if err != nil {
 		return nil, err
@@ -592,10 +400,175 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		}
 	}
 
-	apiService.SetSwarmAddress(&swarmAddress)
-
 	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
 		return nil, err
+	}
+
+	// localstore depends on batchstore
+	var path string
+
+	if o.DataDir != "" {
+		logger.Info("using datadir", "path", o.DataDir)
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+	lo := &localstore.Options{
+		Capacity:               o.CacheCapacity,
+		ReserveCapacity:        uint64(batchstore.Capacity),
+		UnreserveFunc:          batchStore.Unreserve,
+		OpenFilesLimit:         o.DBOpenFilesLimit,
+		BlockCacheCapacity:     o.DBBlockCacheCapacity,
+		WriteBufferSize:        o.DBWriteBufferSize,
+		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+	}
+
+	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = storer
+	unreserveFn = storer.UnreserveBatch
+
+	commitmentHasher := commitment.New(storer, logger)
+
+	var debugService *api.Service
+
+	if o.DebugAPIAddr != "" {
+		if o.MutexProfile {
+			_ = runtime.SetMutexProfileFraction(1)
+		}
+
+		if o.BlockProfile {
+			runtime.SetBlockProfileRate(1)
+		}
+
+		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("debug api listener: %w", err)
+		}
+
+		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, commitmentHasher)
+		debugService.MountTechnicalDebug()
+		debugService.SetProbe(probe)
+
+		debugAPIServer := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           debugService,
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
+		}
+
+		go func() {
+			logger.Info("starting debug server", "address", debugAPIListener.Addr())
+
+			if err := debugAPIServer.Serve(debugAPIListener); err != nil && err != http.ErrServerClosed {
+				logger.Debug("debug api server failed to start", "error", err)
+				logger.Error(nil, "debug api server failed to start")
+			}
+		}()
+
+		b.debugAPIServer = debugAPIServer
+	}
+
+	var apiService *api.Service
+
+	if o.Restricted {
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, o.GatewayMode, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, commitmentHasher)
+		apiService.MountTechnicalDebug()
+		apiService.SetProbe(probe)
+
+		apiServer := &http.Server{
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 3 * time.Second,
+			Handler:           apiService,
+			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
+		}
+
+		apiListener, err := net.Listen("tcp", o.APIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("api listener: %w", err)
+		}
+
+		go func() {
+			logger.Info("starting debug & api server", "address", apiListener.Addr())
+
+			if err := apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
+				logger.Debug("debug & api server failed to start", "error", err)
+				logger.Error(nil, "debug & api server failed to start")
+			}
+		}()
+
+		b.apiServer = apiServer
+		b.apiCloser = apiServer
+	}
+
+	apiService.SetSwarmAddress(&swarmAddress)
+
+	// Sync the with the given Ethereum backend:
+	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
+	if err != nil {
+		return nil, fmt.Errorf("is synced: %w", err)
+	}
+	if !isSynced {
+		logger.Info("waiting to sync with the Ethereum backend")
+
+		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
+		if err != nil {
+			return nil, fmt.Errorf("waiting backend sync: %w", err)
+		}
+	}
+
+	if o.SwapEnable {
+		chequebookFactory, err = InitChequebookFactory(
+			logger,
+			chainBackend,
+			chainID,
+			transactionService,
+			o.SwapFactoryAddress,
+			o.SwapLegacyFactoryAddresses,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
+			return nil, fmt.Errorf("factory fail: %w", err)
+		}
+
+		erc20Address, err := chequebookFactory.ERC20Address(p2pCtx)
+		if err != nil {
+			return nil, fmt.Errorf("factory fail: %w", err)
+		}
+
+		erc20Service = erc20.New(transactionService, erc20Address)
+
+		if o.ChequebookEnable && chainEnabled {
+			chequebookService, err = InitChequebookService(
+				p2pCtx,
+				logger,
+				stateStore,
+				signer,
+				chainID,
+				chainBackend,
+				overlayEthAddress,
+				transactionService,
+				chequebookFactory,
+				o.SwapInitialDeposit,
+				o.DeployGasPrice,
+				erc20Service,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		chequeStore, cashoutService = initChequeStoreCashout(
+			stateStore,
+			chainBackend,
+			chequebookFactory,
+			chainID,
+			overlayEthAddress,
+			transactionService,
+		)
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
@@ -685,30 +658,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
-
-	// localstore depends on batchstore
-	var path string
-
-	if o.DataDir != "" {
-		logger.Info("using datadir", "path", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-	lo := &localstore.Options{
-		Capacity:               o.CacheCapacity,
-		ReserveCapacity:        uint64(batchstore.Capacity),
-		UnreserveFunc:          batchStore.Unreserve,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-	}
-
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
-	unreserveFn = storer.UnreserveBatch
 
 	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)

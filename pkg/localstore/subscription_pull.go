@@ -182,6 +182,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 }
 
 func (db *DB) IteratePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan storage.Descriptor, closed <-chan struct{}, stop func()) {
+	loggerV2 := db.logger.V(2).Register()
 	db.metrics.SubscribePull.Inc()
 
 	chunkDescriptors := make(chan storage.Descriptor)
@@ -238,9 +239,7 @@ func (db *DB) IteratePull(ctx context.Context, bin uint8, since, until uint64) (
 				return
 			}
 			db.metrics.SubscribePullIterationFailure.Inc()
-			if logMore {
-				db.logger.Debugf("localstore pull subscription iteration: bin: %d, since: %d, until: %d: %v", bin, since, until, err)
-			}
+			loggerV2.Debug("pull subscription iteration IteratePull failed", "bin", bin, "since", since, "until", until, "error", err)
 			return
 		}
 	}()

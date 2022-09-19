@@ -9,6 +9,7 @@ package commitment
 import (
 	"context"
 	"crypto/hmac"
+
 	// "encoding/binary"
 	"errors"
 	// "fmt"
@@ -18,7 +19,7 @@ import (
 
 	// "github.com/ethersphere/bee/pkg/bitvector"
 	// "github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/logging"
+	"github.com/ethersphere/bee/pkg/log"
 	// "github.com/ethersphere/bee/pkg/p2p"
 	// "github.com/ethersphere/bee/pkg/p2p/protobuf"
 	// "github.com/ethersphere/bee/pkg/postage"
@@ -40,7 +41,7 @@ var (
 
 type Sampler struct {
 	//	metrics    metrics
-	logger  logging.Logger
+	logger  log.Logger
 	storage storage.Storer
 	quit    chan struct{}
 	wg      sync.WaitGroup
@@ -49,8 +50,8 @@ type Sampler struct {
 	io.Closer
 }
 
-func New(storage storage.Storer, logger logging.Logger) Sampler {
-	return Sampler{
+func New(storage storage.Storer, logger log.Logger) *Sampler {
+	return &Sampler{
 		storage: storage,
 		// metrics:    newMetrics(),
 		// unwrap:     unwrap,
@@ -73,7 +74,7 @@ type ReserveCommitment struct {
 }
 
 // MakeSample tries to assemble a reserve commitment sample from the given depth.
-func (s Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uint8) (ReserveCommitment, uint64, uint64, uint64, uint64, error) {
+func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uint8) (ReserveCommitment, uint64, uint64, uint64, uint64, error) {
 
 	iterated := uint64(0)
 	errored := uint64(0)
@@ -96,7 +97,7 @@ func (s Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uin
 			chunk, err := s.storage.Get(ctx, storage.ModeGetSync, ch.Address)
 			if err != nil {
 				errored++
-				s.logger.Error("reserve sampler: skipping missing chunk")
+				s.logger.Error(err, "reserve sampler: skipping missing chunk")
 				continue
 			}
 			hmacr.Write(chunk.Data())
