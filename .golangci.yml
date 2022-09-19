@@ -8,6 +8,7 @@ linters:
     - depguard
     - errcheck
     - errname
+    - goconst
     - gofmt
     - goheader
     - gomoddirectives
@@ -19,6 +20,7 @@ linters:
     - misspell
     - nakedret
     - nilerr
+    - prealloc
     - promlinter
     - staticcheck
     - structcheck
@@ -27,6 +29,7 @@ linters:
     - unconvert
     - unused
     - varcheck
+    - wastedassign
 
 linters-settings:
   goheader:
@@ -42,3 +45,6 @@ issues:
     - linters:
         - goheader
       text: "go-ethereum Authors" ## disable check for other authors
+    - path: _test\.go
+      linters:
+        - goconst ## temporally disable goconst in test

@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
@@ -59,7 +58,7 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 		tag,
 		putter,
 		requestModePut(r),
-		strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true",
+		requestPin(r),
 		wait,
 	)
 }

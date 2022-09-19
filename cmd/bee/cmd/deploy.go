@@ -128,6 +128,9 @@ func (c *command) initDeployCmd() error {
 			}
 
 			swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
+			if err != nil {
+				return err
+			}
 
 			err = node.CheckOverlayWithStore(swarmAddress, stateStore)
 

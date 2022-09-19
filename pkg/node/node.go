@@ -546,7 +546,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
-	var bootnodes []ma.Multiaddr
+	bootnodes := make([]ma.Multiaddr, 0, len(o.Bootnodes))
 
 	for _, a := range o.Bootnodes {
 		addr, err := ma.NewMultiaddr(a)

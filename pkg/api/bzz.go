@@ -213,7 +213,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		}
 	}
 
-	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+	if requestPin(r) {
 		if err := s.pinning.CreatePin(ctx, manifestReference, false); err != nil {
 			logger.Debug("bzz upload file: pin creation failed", "manifest_reference", manifestReference, "error", err)
 			logger.Error(nil, "bzz upload file: pin creation failed")
