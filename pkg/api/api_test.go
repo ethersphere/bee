@@ -281,7 +281,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 func request(t *testing.T, client *http.Client, method, resource string, body io.Reader, responseCode int) *http.Response {
 	t.Helper()
 
-	req, err := http.NewRequest(method, resource, body)
+	req, err := http.NewRequestWithContext(context.TODO(), method, resource, body)
 	if err != nil {
 		t.Fatal(err)
 	}
