@@ -202,8 +202,6 @@ func (c *command) initStartCmd() (err error) {
 				SwapEnable:                 c.config.GetBool(optionNameSwapEnable),
 				ChequebookEnable:           c.config.GetBool(optionNameChequebookEnable),
 				FullNodeMode:               fullNode,
-				Transaction:                c.config.GetString(optionNameTransactionHash),
-				BlockHash:                  c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
 				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
 				BlockTime:                  networkConfig.blockTime,

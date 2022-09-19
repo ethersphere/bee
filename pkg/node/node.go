@@ -157,8 +157,6 @@ type Options struct {
 	SwapEnable                 bool
 	ChequebookEnable           bool
 	FullNodeMode               bool
-	Transaction                string
-	BlockHash                  string
 	PostageContractAddress     string
 	PriceOracleAddress         string
 	BlockTime                  uint64
