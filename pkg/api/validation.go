@@ -18,19 +18,23 @@ import (
 
 type ValidateFunc map[string]func(string, reflect.Value) error
 
-//var parseHooks ValidateFunc
-
-// InitializeHooks initializes the hooks for parsing the input
-func (s *Service) InitializeHooks() {
-	s.parseHooks = make(ValidateFunc)
-	s.parseHooks["hexToString"] = s.parseBatchId
-	s.parseHooks["addressToString"] = s.parseAddress
-
+var parseHooks = ValidateFunc{
+	"hexToString":     parseBatchId,
+	"addressToString": parseAddress,
 }
 
 // parseAndValidate parses the input and validates it
 // against the annotations declared in the given struct.
 func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err error) {
+	err = parse(input, output)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func parse(input *http.Request, output interface{}) (err error) {
 	val := reflect.Indirect(reflect.ValueOf(output))
 
 	reqMapVars := mux.Vars(input)
@@ -57,16 +61,12 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 		if val.Type().Field(i).Name == "RequestData" && input.Body != nil {
 			body, err := io.ReadAll(input.Body)
 			if err != nil {
-				s.logger.Debug("done split parseProperty: read request body failed", "error", err)
-				s.logger.Error(nil, "done split parseProperty: read request body failed")
-				return s.GetErrorMessage(propertyName, errMessage)
+				return GetErrorMessage(propertyName, errMessage)
 			}
 			if len(body) > 0 {
 				err = json.Unmarshal(body, &output)
 				if err != nil {
-					s.logger.Debug("unmarshal parseProperty name failed", "error", err)
-					s.logger.Error(nil, "unmarshal parseProperty name failed")
-					return s.GetErrorMessage(propertyName, errMessage)
+					return GetErrorMessage(propertyName, errMessage)
 				}
 
 			}
@@ -84,21 +84,21 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 		}
 
 		if len(customHook) > 0 {
-			err = s.parseHooks[customHook](reqValue, val.Field(i))
+			err = parseHooks[customHook](reqValue, val.Field(i))
 			if err != nil {
-				return s.GetErrorMessage(propertyName, errMessage)
+				return GetErrorMessage(propertyName, errMessage)
 			}
 		} else {
 			switch val.Type().Field(i).Type.Kind() {
 			case reflect.Uint32:
-				err = s.decodeUint(reqValue, val.Field(i))
+				err = decodeUint(reqValue, val.Field(i))
 			case reflect.Int64:
-				err = s.decodeInt64(reqValue, val.Field(i))
+				err = decodeInt64(reqValue, val.Field(i))
 			case reflect.Uint8:
-				err = s.decodeUint8(reqValue, val.Field(i))
+				err = decodeUint8(reqValue, val.Field(i))
 			}
 			if err != nil {
-				return s.GetErrorMessage(propertyName, errMessage)
+				return GetErrorMessage(propertyName, errMessage)
 			}
 		}
 
@@ -108,7 +108,7 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 }
 
 // GetErrorMessage returns the error message for the given property name
-func (s *Service) GetErrorMessage(propertyName, customErrMesg string) error {
+func GetErrorMessage(propertyName, customErrMesg string) error {
 	if len(customErrMesg) > 0 {
 		return errors.New(customErrMesg)
 	}
@@ -117,37 +117,32 @@ func (s *Service) GetErrorMessage(propertyName, customErrMesg string) error {
 }
 
 // parseAddress parses the given input to a string
-func (s *Service) parseAddress(input string, value reflect.Value) (err error) {
+func parseAddress(input string, value reflect.Value) (err error) {
 	id, err := hex.DecodeString(input)
 	if err != nil {
-		s.logger.Debug("decode id string failed", "string", input, "error", err)
-		s.logger.Error(nil, "decode id string failed")
 		return
 	}
 	value.SetBytes(id)
 	return nil
 }
-func (s *Service) parseBatchId(input string, value reflect.Value) (err error) {
+func parseBatchId(input string, value reflect.Value) (err error) {
 	if len(input) != 64 {
-		s.logger.Error(nil, "invalid batch Id string length", "string", input, "length", len(input))
 		return errors.New("invalid")
 	}
-	err = s.parseAddress(input, value)
+	err = parseAddress(input, value)
 	return
 }
 
-func (s *Service) decodeUint(input string, value reflect.Value) (err error) {
+func decodeUint(input string, value reflect.Value) (err error) {
 	uInt, err := strconv.ParseUint(input, 10, 32)
 	if err != nil {
-		s.logger.Debug("parse depth string failed", "string", input, "error", err)
-		s.logger.Error(nil, "create batch: parse depth string failed")
 		return
 	}
 	value.SetUint(uInt)
 	return nil
 }
 
-func (s *Service) decodeInt64(input string, value reflect.Value) (err error) {
+func decodeInt64(input string, value reflect.Value) (err error) {
 	int64Value, err := strconv.ParseInt(input, 10, 64)
 	if err != nil {
 		return errors.New("invalid")
@@ -156,7 +151,7 @@ func (s *Service) decodeInt64(input string, value reflect.Value) (err error) {
 	return nil
 }
 
-func (s *Service) decodeUint8(input string, value reflect.Value) (err error) {
+func decodeUint8(input string, value reflect.Value) (err error) {
 	uInt, err := strconv.ParseUint(input, 10, 8)
 	if err != nil {
 		return errors.New("invalid")
