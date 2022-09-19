@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -440,7 +439,7 @@ func TestPostageHeaderError(t *testing.T) {
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchEmpty)
 			var expCode int
-			if strings.Compare(endpoint, "chunks") != 0 {
+			if endpoint != "chunks" {
 				expCode = http.StatusNotFound
 			} else {
 				expCode = http.StatusBadRequest
@@ -464,7 +463,7 @@ func TestPostageHeaderError(t *testing.T) {
 		t.Run(endpoint+": bad batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
 			var expCode int
-			if strings.Compare(endpoint, "chunks") != 0 {
+			if endpoint != "chunks" {
 				expCode = http.StatusNotFound
 			} else {
 				expCode = http.StatusBadRequest
