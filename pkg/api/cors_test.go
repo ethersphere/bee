@@ -81,7 +81,7 @@ func TestCORSHeaders(t *testing.T) {
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
 
-			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+			req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, "/", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
