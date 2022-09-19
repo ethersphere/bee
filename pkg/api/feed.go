@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -200,7 +199,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+	if requestPin(r) {
 		if err := s.pinning.CreatePin(r.Context(), ref, false); err != nil {
 			s.logger.Debug("feed post: pin creation failed: %v", "address", ref, "error", err)
 			s.logger.Error(nil, "feed post: pin creation failed")
