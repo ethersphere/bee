@@ -431,7 +431,8 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 				continue
 			}
 			if expected == nil {
-				expected = &res
+				expected = new(result)
+				*expected = res
 			} else {
 				if res.top != expected.top || len(res.addrs) != 5 {
 					t.Fatalf("results are different expected: %v got: %v", expected, res)
