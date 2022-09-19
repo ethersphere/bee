@@ -389,9 +389,9 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 		return nil, fmt.Errorf("got %v messages, want %v", len(messages), expectedLen)
 	}
 
-	var peers []pb.Peers
-	for _, m := range messages {
-		peers = append(peers, *m.(*pb.Peers))
+	peers := make([]pb.Peers, len(messages))
+	for i := range messages {
+		peers[i] = *messages[i].(*pb.Peers)
 	}
 
 	return peers, nil

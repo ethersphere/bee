@@ -70,7 +70,7 @@ func parseConnectionString(cs string) (ConnectionConfig, error) {
 // ParseConnectionStrings will apply ParseConnectionString to each connection
 // string. Returns first error found.
 func ParseConnectionStrings(cstrs []string) ([]ConnectionConfig, error) {
-	var res []ConnectionConfig
+	res := make([]ConnectionConfig, 0, len(cstrs))
 
 	for _, cs := range cstrs {
 		cfg, err := parseConnectionString(cs)

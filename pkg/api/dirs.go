@@ -111,7 +111,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 		}
 	}
 
-	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+	if requestPin(r) {
 		if err := s.pinning.CreatePin(r.Context(), reference, false); err != nil {
 			logger.Debug("bzz upload dir: pin creation failed", "address", reference, "error", err)
 			logger.Error(nil, "bzz upload dir: pin creation failed")
