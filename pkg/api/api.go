@@ -746,8 +746,8 @@ func newStoringStamperPutter(s storage.Storer, post postage.Service, signer cryp
 
 func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
 	var (
-		ctp []swarm.Chunk
-		idx []int
+		ctp = make([]swarm.Chunk, 0, len(chs))
+		idx = make([]int, 0, len(chs))
 	)
 	exists = make([]bool, len(chs))
 
