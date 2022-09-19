@@ -4,4 +4,4 @@
 
 package loadsave
 
-var ReadonlyLoadSaveError = readonlyLoadsaveError
+var ErrReadonlyLoadSave = errReadonlyLoadSave

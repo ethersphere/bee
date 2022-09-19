@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var readonlyLoadsaveError = errors.New("readonly manifest loadsaver")
+var errReadonlyLoadSave = errors.New("readonly manifest loadsaver")
 
 type PutGetter interface {
 	storage.Putter
@@ -68,7 +68,7 @@ func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
 
 func (ls *loadSave) Save(ctx context.Context, data []byte) ([]byte, error) {
 	if ls.pipelineFn == nil {
-		return nil, readonlyLoadsaveError
+		return nil, errReadonlyLoadSave
 	}
 
 	pipe := ls.pipelineFn()
