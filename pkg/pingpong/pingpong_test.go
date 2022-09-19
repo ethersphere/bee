@@ -77,7 +77,7 @@ func TestPing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gotGreetings []string
+	gotGreetings := make([]string, 0, len(messages))
 	for _, m := range messages {
 		gotGreetings = append(gotGreetings, m.(*pb.Ping).Greeting)
 	}
@@ -86,7 +86,7 @@ func TestPing(t *testing.T) {
 	}
 
 	// validate sent pong responses by handler
-	var wantResponses []string
+	wantResponses := make([]string, 0, len(greetings))
 	for _, g := range greetings {
 		wantResponses = append(wantResponses, "{"+g+"}")
 	}
@@ -97,7 +97,7 @@ func TestPing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gotResponses []string
+	gotResponses := make([]string, 0, len(messages))
 	for _, m := range messages {
 		gotResponses = append(gotResponses, m.(*pb.Pong).Response)
 	}

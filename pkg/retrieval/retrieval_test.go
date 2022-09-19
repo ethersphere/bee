@@ -109,7 +109,7 @@ func TestDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var reqs []string
+	reqs := make([]string, 0, len(messages))
 	for _, m := range messages {
 		reqs = append(reqs, hex.EncodeToString(m.(*pb.Request).Addr))
 	}
@@ -125,7 +125,8 @@ func TestDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gotDeliveries []string
+
+	gotDeliveries := make([]string, 0, len(messages))
 	for _, m := range messages {
 		gotDeliveries = append(gotDeliveries, string(m.(*pb.Delivery).Data))
 	}
