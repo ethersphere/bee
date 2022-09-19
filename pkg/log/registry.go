@@ -96,13 +96,13 @@ func NewLogger(name string, opts ...Option) Logger {
 // of verbosity of the given logger.
 func SetVerbosity(l Logger, v Level) error {
 	bl := l.(*logger)
-	switch new, max := v.get(), Level(bl.v); {
-	case new == VerbosityAll:
+	switch newLvl, max := v.get(), Level(bl.v); {
+	case newLvl == VerbosityAll:
 		bl.setVerbosity(max)
-	case new > max:
+	case newLvl > max:
 		return fmt.Errorf("maximum verbosity %d exceeded for logger: %s", bl.v, bl.id)
 	default:
-		bl.setVerbosity(new)
+		bl.setVerbosity(newLvl)
 	}
 	return nil
 }
