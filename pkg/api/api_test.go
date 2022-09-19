@@ -460,7 +460,7 @@ func TestPostageHeaderError(t *testing.T) {
 
 			hexbatch := hex.EncodeToString(batchEmpty)
 			var expCode int
-			if strings.Compare(endpoint, "chunks") != 0 {
+			if endpoint != "chunks" {
 				expCode = http.StatusNotFound
 			} else {
 				expCode = http.StatusBadRequest
@@ -488,7 +488,7 @@ func TestPostageHeaderError(t *testing.T) {
 
 			hexbatch := hex.EncodeToString(batchInvalid)
 			var expCode int
-			if strings.Compare(endpoint, "chunks") != 0 {
+			if endpoint != "chunks" {
 				expCode = http.StatusNotFound
 			} else {
 				expCode = http.StatusBadRequest
