@@ -49,7 +49,7 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 
 	// if we are here it means we have to do at least one write
 	d := make([]byte, f.size+span)
-	sp := 0 // span of current write
+	var sp int // span of current write
 
 	//copy from existing buffer to this one
 	sp = copy(d[span:], f.buffer[:f.bufferIdx])

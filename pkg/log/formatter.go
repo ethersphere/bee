@@ -338,7 +338,7 @@ func (f *formatter) prettyWithFlags(value interface{}, flags uint32, depth int) 
 				buf.WriteByte(',')
 			}
 			// If a map key supports TextMarshaler, use it.
-			keystr := ""
+			var keystr string
 			if m, ok := it.Key().Interface().(encoding.TextMarshaler); ok {
 				txt, err := m.MarshalText()
 				if err != nil {

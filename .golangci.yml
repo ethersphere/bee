@@ -27,6 +27,7 @@ linters:
     - unconvert
     - unused
     - varcheck
+    - wastedassign
 
 linters-settings:
   goheader:

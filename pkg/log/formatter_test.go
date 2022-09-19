@@ -625,7 +625,7 @@ func TestPretty(t *testing.T) {
 	f := newFormatter(o.fmtOptions)
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			want := ""
+			var want string
 			have := f.prettyWithFlags(tc.val, 0, 0)
 
 			if tc.exp != "" {
