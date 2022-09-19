@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -80,7 +81,7 @@ func TestCORSHeaders(t *testing.T) {
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
 
-			req, err := http.NewRequest(http.MethodGet, "/", nil)
+			req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, "/", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
