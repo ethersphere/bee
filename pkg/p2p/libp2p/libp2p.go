@@ -72,6 +72,7 @@ const (
 	peerUserAgentTimeout  = time.Second
 )
 
+// nolint:gochecknoinits
 func init() {
 	goyamux.DefaultTransport.AcceptBacklog = 1024
 	goyamux.DefaultTransport.MaxIncomingStreams = 5000

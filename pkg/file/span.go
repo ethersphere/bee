@@ -12,6 +12,7 @@ import (
 
 var Spans []int64
 
+// nolint:gochecknoinits
 func init() {
 	Spans = GenerateSpanSizes(9, swarm.Branches)
 }

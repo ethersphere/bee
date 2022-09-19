@@ -60,6 +60,7 @@ var (
 	zero32             []byte
 )
 
+// nolint:gochecknoinits
 func init() {
 	initVersion(version01HashString, &version01HashBytes)
 	initVersion(version02HashString, &version02HashBytes)

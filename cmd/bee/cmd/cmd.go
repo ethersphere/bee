@@ -83,6 +83,7 @@ const (
 	optionNameUsePostageSnapshot         = "use-postage-snapshot"
 )
 
+// nolint:gochecknoinits
 func init() {
 	cobra.EnableCommandSorting = false
 }

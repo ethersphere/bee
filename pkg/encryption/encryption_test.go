@@ -33,6 +33,7 @@ var expectedTransformedHex = "352187af3a843decc63ceca6cb01ea39dbcf77caf0a8f705f5
 var hashFunc = sha3.NewLegacyKeccak256
 var testKey encryption.Key
 
+// nolint:gochecknoinits
 func init() {
 	testKey = swarm.MustParseHexAddress("8abf1502f557f15026716030fb6384792583daf39608a3cd02ff2f47e9bc6e49").Bytes()
 }

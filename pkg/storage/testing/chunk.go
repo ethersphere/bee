@@ -1,3 +1,4 @@
+// nolint:goheader
 // Copyright 2019 The Swarm Authors
 // This file is part of the Swarm library.
 //
@@ -49,6 +50,7 @@ var fixtureChunks = map[string]swarm.Chunk{
 	),
 }
 
+// nolint:gochecknoinits
 func init() {
 	// needed for GenerateTestRandomChunk
 	rand.Seed(time.Now().UnixNano())

@@ -10,6 +10,7 @@ linters:
     - errname
     - exportloopref
     - forbidigo
+    - gochecknoinits
     - goconst
     - gofmt
     - goheader
