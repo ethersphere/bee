@@ -149,7 +149,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 
 	// filename cannot contain a "/" in prefix because the specification is that we cannot start with slash but can have a slash at a later position
 	if strings.HasPrefix(fileName, "/") {
-		logger.Debug("bzz upload file: / in prefix not allowed ", "file_name", fileName, "error", err)
+		logger.Debug("bzz upload file: / in prefix not allowed", "file_name", fileName, "error", err)
 		logger.Error(nil, "bzz upload file: / in prefix not allowed", "file_name", fileName)
 		jsonhttp.BadRequest(w, "bzz upload file: / in prefix not allowed")
 		return
