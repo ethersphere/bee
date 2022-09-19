@@ -6,6 +6,7 @@ linters:
     - bidichk
     - deadcode
     - depguard
+    - dogsled
     - errcheck
     - errname
     - exportloopref
@@ -33,7 +34,6 @@ linters:
     - unused
     - varcheck
     - wastedassign
-    - dogsled
 
 linters-settings:
   goheader:
