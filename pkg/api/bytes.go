@@ -126,7 +126,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+	if requestPin(r) {
 		if err := s.pinning.CreatePin(ctx, address, false); err != nil {
 			logger.Debug("bytes upload: pin creation failed", "address", address, "error", err)
 			logger.Error(nil, "bytes upload: pin creation failed")

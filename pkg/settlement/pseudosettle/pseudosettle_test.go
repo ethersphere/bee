@@ -122,6 +122,7 @@ var testRefreshRate = int64(10000)
 var testRefreshRateLight = int64(1000)
 
 func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, payerObserver, receiverObserver *testObserver, payer, recipient *pseudosettle.Service, peerID swarm.Address, payerTime, recipientTime int64, recordsLength int, debtAmount, amount *big.Int, expectedError error) {
+	t.Helper()
 
 	payer.SetTime(payerTime)
 	recipient.SetTime(recipientTime)
@@ -156,6 +157,7 @@ func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, payerObser
 }
 
 func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, payerObserver, receiverObserver *testObserver, payer, recipient *pseudosettle.Service, peerID swarm.Address, payerTime, recipientTime int64, recordsLength, msgLength, recMsgLength int, debtAmount, amount, accepted, totalAmount *big.Int) {
+	t.Helper()
 
 	payer.SetTime(payerTime)
 	recipient.SetTime(recipientTime)

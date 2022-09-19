@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -172,7 +171,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.ToLower(r.Header.Get(SwarmPinHeader)) == "true" {
+	if requestPin(r) {
 		if err := s.pinning.CreatePin(ctx, sch.Address(), false); err != nil {
 			s.logger.Debug("soc upload: create pin failed", "chunk_address", sch.Address(), "error", err)
 			s.logger.Error(nil, "soc upload: create pin failed")

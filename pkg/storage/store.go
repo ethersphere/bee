@@ -25,6 +25,7 @@ var (
 // ModeGet enumerates different Getter modes.
 type ModeGet int
 
+//nolint:goconst
 func (m ModeGet) String() string {
 	switch m {
 	case ModeGetRequest:

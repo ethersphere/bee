@@ -24,19 +24,19 @@ import (
 // expected response code and additional options. It returns response headers if
 // the request and all validation are successful. In case of any error, testing
 // Errorf or Fatal functions will be called.
-func Request(t testing.TB, client *http.Client, method, url string, responseCode int, opts ...Option) http.Header {
-	t.Helper()
+func Request(tb testing.TB, client *http.Client, method, url string, responseCode int, opts ...Option) http.Header {
+	tb.Helper()
 
 	o := new(options)
 	for _, opt := range opts {
 		if err := opt.apply(o); err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 	}
 
 	req, err := http.NewRequest(method, url, o.requestBody)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	req.Header = o.requestHeaders
 	if o.ctx != nil {
@@ -44,67 +44,67 @@ func Request(t testing.TB, client *http.Client, method, url string, responseCode
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != responseCode {
-		t.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
+		tb.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
 	}
 
 	if o.expectedResponse != nil {
 		got, err := io.ReadAll(resp.Body)
 		if err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 
 		if !bytes.Equal(got, o.expectedResponse) {
-			t.Errorf("got response %q, want %q", string(got), string(o.expectedResponse))
+			tb.Errorf("got response %q, want %q", string(got), string(o.expectedResponse))
 		}
 		return resp.Header
 	}
 
 	if o.expectedJSONResponse != nil {
 		if v := resp.Header.Get("Content-Type"); v != jsonhttp.DefaultContentTypeHeader {
-			t.Errorf("got content type %q, want %q", v, jsonhttp.DefaultContentTypeHeader)
+			tb.Errorf("got content type %q, want %q", v, jsonhttp.DefaultContentTypeHeader)
 		}
 		got, err := io.ReadAll(resp.Body)
 		if err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 		got = bytes.TrimSpace(got)
 
 		want, err := json.Marshal(o.expectedJSONResponse)
 		if err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 
 		if !bytes.Equal(got, want) {
-			t.Errorf("got json response %q, want %q", string(got), string(want))
+			tb.Errorf("got json response %q, want %q", string(got), string(want))
 		}
 		return resp.Header
 	}
 
 	if o.unmarshalResponse != nil {
 		if err := json.NewDecoder(resp.Body).Decode(&o.unmarshalResponse); err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 		return resp.Header
 	}
 	if o.responseBody != nil {
 		got, err := io.ReadAll(resp.Body)
 		if err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 		*o.responseBody = got
 	}
 	if o.noResponseBody {
 		got, err := io.ReadAll(resp.Body)
 		if err != nil {
-			t.Fatal(err)
+			tb.Fatal(err)
 		}
 		if len(got) > 0 {
-			t.Errorf("got response body %q, want none", string(got))
+			tb.Errorf("got response body %q, want none", string(got))
 		}
 	}
 	return resp.Header

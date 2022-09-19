@@ -358,6 +358,8 @@ func TestCashoutStatusPending(t *testing.T) {
 }
 
 func verifyStatus(t *testing.T, status *chequebook.CashoutStatus, expected chequebook.CashoutStatus) {
+	t.Helper()
+
 	if expected.Last == nil {
 		if status.Last != nil {
 			t.Fatal("unexpected last cashout")

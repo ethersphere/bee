@@ -287,6 +287,8 @@ func TestBroadcastPeers(t *testing.T) {
 }
 
 func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays []swarm.Address) {
+	t.Helper()
+
 	var (
 		overlays []swarm.Address
 		err      error
@@ -328,6 +330,8 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 }
 
 func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAddresses []bzz.Address) {
+	t.Helper()
+
 	var (
 		addresses []bzz.Address
 		err       error
@@ -385,9 +389,9 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 		return nil, fmt.Errorf("got %v messages, want %v", len(messages), expectedLen)
 	}
 
-	var peers []pb.Peers
-	for _, m := range messages {
-		peers = append(peers, *m.(*pb.Peers))
+	peers := make([]pb.Peers, len(messages))
+	for i := range messages {
+		peers[i] = *messages[i].(*pb.Peers)
 	}
 
 	return peers, nil

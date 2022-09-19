@@ -17,10 +17,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type bookFunc func(t *testing.T) (book addressbook.Interface)
+type bookFunc func() (book addressbook.Interface)
 
 func TestInMem(t *testing.T) {
-	run(t, func(t *testing.T) addressbook.Interface {
+	run(t, func() addressbook.Interface {
 		store := mock.NewStateStore()
 		book := addressbook.New(store)
 		return book
@@ -28,7 +28,9 @@ func TestInMem(t *testing.T) {
 }
 
 func run(t *testing.T, f bookFunc) {
-	store := f(t)
+	t.Helper()
+
+	store := f()
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{0, 1, 2, 4})
 	trxHash := common.HexToHash("0x1").Bytes()

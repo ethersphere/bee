@@ -29,7 +29,9 @@ func nonceKey(sender common.Address) string {
 	return fmt.Sprintf("transaction_nonce_%x", sender)
 }
 
-func signerMockForTransaction(signedTx *types.Transaction, sender common.Address, signerChainID *big.Int, t *testing.T) crypto.Signer {
+func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender common.Address, signerChainID *big.Int) crypto.Signer {
+	t.Helper()
+
 	return signermock.New(
 		signermock.WithSignTxFunc(func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 			if transaction.Type() != 0 {
@@ -128,7 +130,7 @@ func TestTransactionSend(t *testing.T) {
 					return nonce - 1, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, chainID, t),
+			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
 			chainID,
 			monitormock.New(
@@ -242,7 +244,7 @@ func TestTransactionSend(t *testing.T) {
 					return nonce, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, chainID, t),
+			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
 			chainID,
 			monitormock.New(),
@@ -316,7 +318,7 @@ func TestTransactionSend(t *testing.T) {
 					return nextNonce, nil
 				}),
 			),
-			signerMockForTransaction(signedTx, sender, chainID, t),
+			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
 			chainID,
 			monitormock.New(),
@@ -446,7 +448,7 @@ func TestTransactionResend(t *testing.T) {
 				return nil
 			}),
 		),
-		signerMockForTransaction(signedTx, recipient, chainID, t),
+		signerMockForTransaction(t, signedTx, recipient, chainID),
 		store,
 		chainID,
 		monitormock.New(),
@@ -514,7 +516,7 @@ func TestTransactionCancel(t *testing.T) {
 					return nil
 				}),
 			),
-			signerMockForTransaction(cancelTx, recipient, chainID, t),
+			signerMockForTransaction(t, cancelTx, recipient, chainID),
 			store,
 			chainID,
 			monitormock.New(),
@@ -554,7 +556,7 @@ func TestTransactionCancel(t *testing.T) {
 					return nil
 				}),
 			),
-			signerMockForTransaction(cancelTx, recipient, chainID, t),
+			signerMockForTransaction(t, cancelTx, recipient, chainID),
 			store,
 			chainID,
 			monitormock.New(),
@@ -595,7 +597,7 @@ func TestTransactionCancel(t *testing.T) {
 					return nil
 				}),
 			),
-			signerMockForTransaction(cancelTx, recipient, chainID, t),
+			signerMockForTransaction(t, cancelTx, recipient, chainID),
 			store,
 			chainID,
 			monitormock.New(),

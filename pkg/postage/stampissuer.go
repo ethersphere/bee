@@ -177,6 +177,6 @@ func (si *StampIssuer) Expired() bool {
 }
 
 // SetExpired is setter for Expired property
-func (si *StampIssuer) SetExpired() {
-	si.data.Expired = true
+func (si *StampIssuer) SetExpired(e bool) {
+	si.data.Expired = e
 }

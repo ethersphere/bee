@@ -827,6 +827,8 @@ func BenchmarkPutUpload(b *testing.B) {
 // benchmarkPutUpload runs a benchmark by uploading a specific number
 // of chunks with specified max parallel uploads.
 func benchmarkPutUpload(b *testing.B, o *Options, count, maxParallelUploads int) {
+	b.Helper()
+
 	b.StopTimer()
 	db := newTestDB(b, o)
 

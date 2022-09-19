@@ -234,7 +234,7 @@ func TestReadMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var gotMessages []string
+	gotMessages := make([]string, 0, len(got))
 	for _, m := range got {
 		gotMessages = append(gotMessages, m.(*pb.Message).Text)
 	}

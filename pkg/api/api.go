@@ -90,9 +90,10 @@ const (
 )
 
 const (
-	contentTypeHeader = "Content-Type"
-	multiPartFormData = "multipart/form-data"
-	contentTypeTar    = "application/x-tar"
+	contentTypeHeader  = "Content-Type"
+	multiPartFormData  = "multipart/form-data"
+	contentTypeTar     = "application/x-tar"
+	boolHeaderSetValue = "true"
 )
 
 var (
@@ -352,14 +353,18 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 
 // requestModePut returns the desired storage.ModePut for this request based on the request headers.
 func requestModePut(r *http.Request) storage.ModePut {
-	if h := strings.ToLower(r.Header.Get(SwarmPinHeader)); h == "true" {
+	if requestPin(r) {
 		return storage.ModePutUploadPin
 	}
 	return storage.ModePutUpload
 }
 
+func requestPin(r *http.Request) bool {
+	return strings.ToLower(r.Header.Get(SwarmPinHeader)) == boolHeaderSetValue
+}
+
 func requestEncrypt(r *http.Request) bool {
-	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == "true"
+	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == boolHeaderSetValue
 }
 
 func requestDeferred(r *http.Request) (bool, error) {
@@ -742,8 +747,8 @@ func newStoringStamperPutter(s storage.Storer, post postage.Service, signer cryp
 
 func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
 	var (
-		ctp []swarm.Chunk
-		idx []int
+		ctp = make([]swarm.Chunk, 0, len(chs))
+		idx = make([]int, 0, len(chs))
 	)
 	exists = make([]bool, len(chs))
 

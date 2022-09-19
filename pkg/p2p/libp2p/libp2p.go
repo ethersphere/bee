@@ -615,7 +615,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 		return errors.New("blocklisting peer when network not available")
 	}
 
-	loggerV1.Debug("libp2p blocklisting peer", overlay.String(), "duration", duration, "reason", reason)
+	loggerV1.Debug("libp2p blocklisting peer", "peer_address", overlay.String(), "duration", duration, "reason", reason)
 	if err := s.blocklist.Add(overlay, duration); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "failed blocklisting peer")

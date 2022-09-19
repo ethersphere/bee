@@ -431,7 +431,8 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 				continue
 			}
 			if expected == nil {
-				expected = &res
+				expected = new(result)
+				*expected = res
 			} else {
 				if res.top != expected.top || len(res.addrs) != 5 {
 					t.Fatalf("results are different expected: %v got: %v", expected, res)
@@ -546,29 +547,31 @@ func waitStacks(t *testing.T, loc string, count int, timeout time.Duration) {
 }
 
 func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.MockStorer) {
+	t.Helper()
+
 	db := mock.NewStorer(o...)
 	ps := pullstorage.New(db)
 
 	return ps, db
 }
 
-func newTestDB(t testing.TB, o *localstore.Options) (baseKey []byte, db *localstore.DB) {
-	t.Helper()
+func newTestDB(tb testing.TB, o *localstore.Options) (baseKey []byte, db *localstore.DB) {
+	tb.Helper()
 
 	baseKey = make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
 	logger := log.Noop
 	db, err := localstore.New("", baseKey, nil, o, logger)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		err := db.Close()
 		if err != nil {
-			t.Error(err)
+			tb.Error(err)
 		}
 	})
 	return baseKey, db
