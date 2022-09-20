@@ -71,6 +71,9 @@ func (i *Batch) Commit() error {
 		return i.ctx.Err()
 	}
 
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
 	if i.done {
 		return errors.New("already committed")
 	}
