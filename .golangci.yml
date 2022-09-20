@@ -8,6 +8,7 @@ linters:
     - depguard
     - errcheck
     - errname
+    - errorlint
     - exportloopref
     - forbidigo
     - goconst

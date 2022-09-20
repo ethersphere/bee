@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -535,7 +536,7 @@ func TestClosestPeer(t *testing.T) {
 
 	t.Run("closest is further than base addr", func(t *testing.T) {
 		_, err := ret.ClosestPeer(srvAd, nil, false)
-		if err != topology.ErrNotFound {
+		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatal("closest peer", err)
 		}
 	})

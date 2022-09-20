@@ -9,6 +9,7 @@ package puller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -485,16 +486,16 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 	key := peerIntervalKey(peer, bin)
 	i := &intervalstore.Intervals{}
 	err := p.statestore.Get(key, i)
-	switch err {
-	case nil:
-	case storage.ErrNotFound:
-		// key interval values are ALWAYS > 0
-		i = intervalstore.NewIntervals(1)
-		if err := p.statestore.Put(key, i); err != nil {
-			return nil, err
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			// key interval values are ALWAYS > 0
+			i = intervalstore.NewIntervals(1)
+			if err := p.statestore.Put(key, i); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, fmt.Errorf("get peer interval: %w", err)
 		}
-	default:
-		return nil, fmt.Errorf("get peer interval: %w", err)
 	}
 	return i, nil
 }

@@ -97,7 +97,7 @@ func (a *addressbook) MigratePeer(oldPeer, newPeer swarm.Address) error {
 func (a *addressbook) Beneficiary(peer swarm.Address) (beneficiary common.Address, known bool, err error) {
 	err = a.store.Get(peerBeneficiaryKey(peer), &beneficiary)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return common.Address{}, false, err
 		}
 		return common.Address{}, false, nil
@@ -109,7 +109,7 @@ func (a *addressbook) Beneficiary(peer swarm.Address) (beneficiary common.Addres
 func (a *addressbook) BeneficiaryPeer(beneficiary common.Address) (peer swarm.Address, known bool, err error) {
 	err = a.store.Get(beneficiaryPeerKey(beneficiary), &peer)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return swarm.Address{}, false, err
 		}
 		return swarm.Address{}, false, nil
@@ -121,7 +121,7 @@ func (a *addressbook) BeneficiaryPeer(beneficiary common.Address) (peer swarm.Ad
 func (a *addressbook) Chequebook(peer swarm.Address) (chequebookAddress common.Address, known bool, err error) {
 	err = a.store.Get(peerKey(peer), &chequebookAddress)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return common.Address{}, false, err
 		}
 		return common.Address{}, false, nil
@@ -133,7 +133,7 @@ func (a *addressbook) Chequebook(peer swarm.Address) (chequebookAddress common.A
 func (a *addressbook) ChequebookPeer(chequebook common.Address) (peer swarm.Address, known bool, err error) {
 	err = a.store.Get(chequebookPeerKey(chequebook), &peer)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return swarm.Address{}, false, err
 		}
 		return swarm.Address{}, false, nil
@@ -171,7 +171,7 @@ func (a *addressbook) GetDeductionFor(peer swarm.Address) (bool, error) {
 	var nothing struct{}
 	err := a.store.Get(peerDeductedForKey(peer), &nothing)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return false, err
 		}
 		return false, nil
@@ -183,7 +183,7 @@ func (a *addressbook) GetDeductionBy(peer swarm.Address) (bool, error) {
 	var nothing struct{}
 	err := a.store.Get(peerDeductedByKey(peer), &nothing)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return false, err
 		}
 		return false, nil

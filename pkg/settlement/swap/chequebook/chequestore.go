@@ -88,7 +88,7 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 	var cheque *SignedCheque
 	err := s.store.Get(lastReceivedChequeKey(chequebook), &cheque)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
 		return nil, ErrNoCheque
@@ -114,7 +114,7 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 	var lastReceivedCheque *SignedCheque
 	err := s.store.Get(lastReceivedChequeKey(cheque.Chequebook), &lastReceivedCheque)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
 
@@ -227,9 +227,9 @@ func (s *chequeStore) LastCheques() (map[common.Address]*SignedCheque, error) {
 
 		if _, ok := result[addr]; !ok {
 			lastCheque, err := s.LastCheque(addr)
-			if err != nil && err != ErrNoCheque {
+			if err != nil && !errors.Is(err, ErrNoCheque) {
 				return false, err
-			} else if err == ErrNoCheque {
+			} else if errors.Is(err, ErrNoCheque) {
 				return false, nil
 			}
 

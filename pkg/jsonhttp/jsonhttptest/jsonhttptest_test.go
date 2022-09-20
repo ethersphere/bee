@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -168,7 +169,7 @@ func TestWithMultipartRequest(t *testing.T) {
 
 			p, err := mr.NextPart()
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					return
 				}
 				jsonhttp.BadRequest(w, err)

@@ -147,7 +147,7 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		streamIn.responseHeaders = streamOut.headers
 		// do not cancel it with the client stream context
 		err := handler(context.Background(), p2p.Peer{Address: r.base, FullNode: r.fullNode}, streamIn)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			record.setErr(err)
 		}
 	}()

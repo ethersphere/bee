@@ -17,6 +17,7 @@
 package intervalstore
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -79,7 +80,7 @@ func testStore(t *testing.T, s storage.StateStorer) {
 	if err := s.Delete(key1); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Get(key1, i); err != storage.ErrNotFound {
+	if err := s.Get(key1, i); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("expected error %v, got %s", storage.ErrNotFound, err)
 	}
 	if err := s.Get(key2, i); err != nil {
@@ -89,7 +90,7 @@ func testStore(t *testing.T, s storage.StateStorer) {
 	if err := s.Delete(key2); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Get(key2, i); err != storage.ErrNotFound {
+	if err := s.Get(key2, i); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("expected error %v, got %s", storage.ErrNotFound, err)
 	}
 }

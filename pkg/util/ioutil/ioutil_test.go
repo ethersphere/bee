@@ -7,6 +7,7 @@ package ioutil
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"sync/atomic"
@@ -74,7 +75,7 @@ func TestTimeoutReader(t *testing.T) {
 		}
 
 		n, err := r.Read(make([]byte, 1))
-		if want, have := io.EOF, err; want != have {
+		if want, have := io.EOF, err; !errors.Is(have, want) {
 			t.Fatalf("unexpected error: want: %v; have: %v", want, have)
 		}
 

@@ -175,7 +175,7 @@ func (s *Service) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) 
 	}
 	cheque, err := s.chequebook.LastCheque(beneficiary)
 	if err != nil {
-		if err == chequebook.ErrNoCheque {
+		if errors.Is(err, chequebook.ErrNoCheque) {
 			return nil, settlement.ErrPeerNoSettlements
 		}
 		return nil, err
@@ -195,7 +195,7 @@ func (s *Service) TotalReceived(peer swarm.Address) (totalReceived *big.Int, err
 
 	cheque, err := s.chequeStore.LastCheque(chequebookAddress)
 	if err != nil {
-		if err == chequebook.ErrNoCheque {
+		if errors.Is(err, chequebook.ErrNoCheque) {
 			return nil, settlement.ErrPeerNoSettlements
 		}
 		return nil, err

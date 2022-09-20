@@ -7,6 +7,7 @@ package splitter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -55,7 +56,7 @@ func (s *simpleSplitter) Split(ctx context.Context, r io.ReadCloser, dataLength 
 		c, err := r.Read(data)
 		total += int64(c)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				if total < dataLength {
 					return swarm.ZeroAddress, fmt.Errorf("splitter only received %d bytes of data, expected %d bytes", total+int64(c), dataLength)
 				}

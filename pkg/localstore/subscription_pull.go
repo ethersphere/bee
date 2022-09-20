@@ -135,7 +135,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 				totalTimeMetric(db.metrics.TotalTimeSubscribePullIteration, iterStart)
 
 				if err != nil {
-					if err == errStopSubscription {
+					if errors.Is(err, errStopSubscription) {
 						// stop subscription without any errors
 						// if until is reached
 						return

@@ -63,7 +63,7 @@ func (s *stream) FullClose() error {
 		_ = s.Reset()
 		return errExpectedEof
 	}
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		_ = s.Reset()
 		return err
 	}

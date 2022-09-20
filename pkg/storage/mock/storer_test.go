@@ -7,6 +7,7 @@ package mock_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -29,11 +30,11 @@ func TestMockStorer(t *testing.T) {
 	valueFound := []byte("data data data")
 
 	ctx := context.Background()
-	if _, err := s.Get(ctx, storage.ModeGetRequest, keyFound); err != storage.ErrNotFound {
+	if _, err := s.Get(ctx, storage.ModeGetRequest, keyFound); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 
-	if _, err := s.Get(ctx, storage.ModeGetRequest, keyNotFound); err != storage.ErrNotFound {
+	if _, err := s.Get(ctx, storage.ModeGetRequest, keyNotFound); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 

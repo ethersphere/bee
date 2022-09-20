@@ -20,6 +20,7 @@ import (
 	"archive/tar"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -122,7 +123,7 @@ func (db *DB) Import(ctx context.Context, r io.Reader) (count int64, err error) 
 		for {
 			hdr, err := tr.Next()
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 				select {

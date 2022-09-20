@@ -8,6 +8,7 @@ package pingpong
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -87,7 +88,7 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 		s.metrics.PingSentCount.Inc()
 
 		if err := r.ReadMsgWithContext(ctx, &pong); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return 0, fmt.Errorf("read message: %w", err)
@@ -108,7 +109,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	var ping pb.Ping
 	for {
 		if err := r.ReadMsgWithContext(ctx, &ping); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return fmt.Errorf("read message: %w", err)

@@ -37,7 +37,7 @@ func ReadMessages(r io.Reader, newMessage func() Message) (m []Message, err erro
 	for {
 		msg := newMessage()
 		if err := pr.ReadMsg(msg); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err

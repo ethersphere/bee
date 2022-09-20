@@ -68,7 +68,7 @@ func (s *store) Get(overlay swarm.Address) (*bzz.Address, error) {
 	v := &bzz.Address{}
 	err := s.store.Get(key, &v)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 

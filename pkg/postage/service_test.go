@@ -6,6 +6,7 @@ package postage_test
 
 import (
 	crand "crypto/rand"
+	"errors"
 	"io"
 	"math/big"
 	"testing"
@@ -109,14 +110,14 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("not found", func(t *testing.T) {
 		_, err := ps.GetStampIssuer(ids[0])
-		if err != postage.ErrNotFound {
+		if !errors.Is(err, postage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 	})
 	t.Run("not usable", func(t *testing.T) {
 		for _, id := range ids[4:] {
 			_, err := ps.GetStampIssuer(id)
-			if err != postage.ErrNotUsable {
+			if !errors.Is(err, postage.ErrNotUsable) {
 				t.Fatalf("expected ErrNotUsable, got %v", err)
 			}
 		}

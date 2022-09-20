@@ -61,7 +61,7 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 // It must be called with a buffer equal to the maximum chunk size.
 func (j *joiner) Read(b []byte) (n int, err error) {
 	read, err := j.ReadAt(b, j.off)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return read, err
 	}
 

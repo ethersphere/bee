@@ -6,6 +6,7 @@ package protobuf_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -47,7 +48,7 @@ func TestReader_ReadMsg(t *testing.T) {
 			for i := 0; i < len(messages); i++ {
 				err := r.ReadMsg(&msg)
 				if i == len(messages) {
-					if err != io.EOF {
+					if !errors.Is(err, io.EOF) {
 						t.Fatalf("got error %v, want %v", err, io.EOF)
 					}
 					break
@@ -109,7 +110,7 @@ func TestReader_timeout(t *testing.T) {
 							t.Fatal(err)
 						}
 					} else {
-						if err != context.DeadlineExceeded {
+						if !errors.Is(err, context.DeadlineExceeded) {
 							t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
 						}
 						break
@@ -210,7 +211,7 @@ func TestWriter_timeout(t *testing.T) {
 							t.Fatal(err)
 						}
 					} else {
-						if err != context.DeadlineExceeded {
+						if !errors.Is(err, context.DeadlineExceeded) {
 							t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
 						}
 						break
@@ -276,7 +277,7 @@ func newMessageWriter(delay time.Duration) (w io.Writer, messages <-chan string)
 		for {
 			err := r.ReadMsg(&msg)
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					return
 				}
 				panic(err)

@@ -109,6 +109,7 @@ func TestChunkUploadStream(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected failure on read")
 		}
+		// nolint:errorlint
 		if cerr, ok := err.(*websocket.CloseError); !ok {
 			t.Fatal("invalid error on read")
 		} else if cerr.Text != "invalid message" {
