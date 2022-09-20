@@ -67,7 +67,16 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if err != nil {
 		logger.Debug("bzz upload dir: get or create tag failed", "error", err)
 		logger.Error(nil, "bzz upload dir: get or create tag failed")
-		jsonhttp.InternalServerError(w, "bzz upload dir: get or create tag failed")
+		switch {
+		case errors.Is(err, tags.ErrExists):
+			jsonhttp.Conflict(w, "bzz upload dir: conflict with current state of resource")
+		case errors.Is(err, errCannotParse):
+			jsonhttp.BadRequest(w, "bzz upload dir: request cannot be parsed")
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "bzz upload dir: not found")
+		default:
+			jsonhttp.InternalServerError(w, "bzz upload dir: get or create tag failed")
+		}
 		return
 	}
 
