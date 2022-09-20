@@ -141,8 +141,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -206,8 +204,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -289,8 +285,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -393,8 +387,6 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/TagsList"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -416,8 +408,7 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/NewTagResponse"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
+
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -444,8 +435,6 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/NewTagResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -468,8 +457,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/204"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -501,8 +488,6 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Status"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -537,8 +522,6 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/Response"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -558,8 +541,6 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/Response"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -577,8 +558,6 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -598,8 +577,6 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReferencesList"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -637,8 +614,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -659,8 +634,6 @@ paths:
       responses:
         "200":
           description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -709,8 +682,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -755,8 +726,6 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
-        "403":
-          $ref: "SwarmCommon.yaml#/components/responses/GatewayForbidden"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
