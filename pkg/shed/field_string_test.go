@@ -27,15 +27,14 @@ import (
 func TestStringField(t *testing.T) {
 	t.Parallel()
 
-	db := newTestDB(t)
-
-	simpleString, err := db.NewStringField("simple-string")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("get empty", func(t *testing.T) {
 		t.Parallel()
+
+		db := newTestDB(t)
+		simpleString, err := db.NewStringField("simple-string")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		got, err := simpleString.Get()
 		if err != nil {
@@ -49,6 +48,12 @@ func TestStringField(t *testing.T) {
 
 	t.Run("put", func(t *testing.T) {
 		t.Parallel()
+
+		db := newTestDB(t)
+		simpleString, err := db.NewStringField("simple-string")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		want := "simple string value"
 		err = simpleString.Put(want)
@@ -83,6 +88,12 @@ func TestStringField(t *testing.T) {
 
 	t.Run("put in batch", func(t *testing.T) {
 		t.Parallel()
+
+		db := newTestDB(t)
+		simpleString, err := db.NewStringField("simple-string")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		batch := new(leveldb.Batch)
 		want := "simple string batch value"
