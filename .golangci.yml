@@ -6,6 +6,7 @@ linters:
     - bidichk
     - deadcode
     - depguard
+    - dogsled
     - errcheck
     - errname
     - errorlint
@@ -56,3 +57,6 @@ issues:
         - forbidigo
       path: cmd/bee/cmd
       text: "use of `fmt.Print"   ## allow fmt.Print in cmd directory
+    - linters:
+        - dogsled
+      path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
