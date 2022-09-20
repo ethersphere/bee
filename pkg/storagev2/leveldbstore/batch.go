@@ -6,83 +6,25 @@ package leveldbstore
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	ldb "github.com/syndtr/goleveldb/leveldb"
 )
 
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
-	return &Batch{
-		ctx:   ctx,
-		batch: new(ldb.Batch),
-		store: s,
-	}, nil
-}
-
-type Batch struct {
-	mu  sync.Mutex
-	ctx context.Context
-
-	batch *ldb.Batch
-
+type lvldbCommiter struct {
 	store *Store
-	done  bool
 }
 
-func (i *Batch) Put(item storage.Item) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+func (c *lvldbCommiter) Commit(ops map[string]storage.BatchOp) error {
+	batch := new(ldb.Batch)
+
+	for range ops {
+		// TODO construct batch from ops
 	}
 
-	key := []byte(item.Namespace() + separator + item.ID())
-	value, err := item.Marshal()
-	if err != nil {
-		return fmt.Errorf("failed serializing: %w", err)
-	}
-
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.batch.Put(key, value)
-
-	return nil
+	return c.store.db.Write(batch, nil)
 }
 
-func (i *Batch) Delete(key storage.Key) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
-	}
-
-	dbKey := []byte(key.Namespace() + separator + key.ID())
-
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.batch.Delete(dbKey)
-
-	return nil
-}
-
-func (i *Batch) Commit() error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
-	}
-
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	if i.done {
-		return errors.New("already committed")
-	}
-
-	if err := i.store.db.Write(i.batch, nil); err != nil {
-		return fmt.Errorf("commit batch: %w", err)
-	}
-
-	i.done = true
-
-	return nil
+func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+	return storage.NewOpBatcher(ctx, &lvldbCommiter{store: s}), nil
 }
