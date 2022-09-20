@@ -489,7 +489,7 @@ func TestTransactionCancel(t *testing.T) {
 	value := big.NewInt(0)
 
 	store := storemock.NewStateStore()
-	defer store.Close()
+	t.Cleanup(func() { store.Close() })
 
 	signedTx := types.NewTx(&types.LegacyTx{
 		Nonce:    nonce,
