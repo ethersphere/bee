@@ -21,7 +21,6 @@ import (
 
 const (
 	retrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
-	chunkStampItemSize     = 32 + 8 + 8 + 65
 )
 
 var (
