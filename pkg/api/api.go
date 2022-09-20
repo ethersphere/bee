@@ -173,7 +173,6 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
-	parseHooks   ValidateFunc
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {

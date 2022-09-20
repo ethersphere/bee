@@ -7,7 +7,6 @@ package api
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"github.com/gorilla/mux"
 	"net/http"
 	"net/url"
@@ -36,18 +35,18 @@ func (s *Service) parseAndValidate(input, output interface{}) (err error) {
 
 func parse(input, output interface{}) (err error) {
 	val := reflect.Indirect(reflect.ValueOf(output))
-	fmt.Println("val inp", input)
+
 	reqMapVars := make(map[string]string)
 	reqMapQuery := make(map[string][]string)
 
-	switch input.(type) {
+	switch v := input.(type) {
 	case map[string]string:
-		reqMapVars = input.(map[string]string)
+		reqMapVars = v
 	case url.Values:
-		reqMapQuery = input.(url.Values)
+		reqMapQuery = v
 	case *http.Request:
-		reqMapVars = mux.Vars(input.(*http.Request))
-		reqMapQuery = input.(*http.Request).URL.Query()
+		reqMapVars = mux.Vars(v)
+		reqMapQuery = v.URL.Query()
 	}
 
 	for i := 0; i < val.NumField(); i++ {
