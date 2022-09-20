@@ -41,10 +41,7 @@ func (Resolver) Resolve(name string) (swarm.Address, error) {
 		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash %v: %w", err, resolver.ErrInvalidContentHash)
 	}
 
-	addr, err := swarm.NewAddress(dh.Digest), nil
-	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("unable to parse digest hash %v: %w", err, resolver.ErrInvalidContentHash)
-	}
+	addr := swarm.NewAddress(dh.Digest)
 
 	return addr, nil
 }

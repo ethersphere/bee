@@ -230,8 +230,6 @@ func (s *store) Save(batch *postage.Batch) error {
 		s.metrics.Radius.Set(float64(s.rs.Radius))
 
 		return nil
-	case err == nil:
-		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
 	case err != nil:
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
 	}
