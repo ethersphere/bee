@@ -492,7 +492,7 @@ func (s *Service) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
-		return nil, fmt.Errorf("cannot mapStructure taguid: %w", err)
+		return nil, fmt.Errorf("cannot mapStructure taguid: %w", err, errCannotParse)
 	}
 	return s.tags.Get(uint32(uid))
 }
