@@ -6,10 +6,8 @@ package api
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"github.com/gorilla/mux"
-	"io"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -34,10 +32,20 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 	return nil
 }
 
-func parse(input *http.Request, output interface{}) (err error) {
+func parse(input, output interface{}) (err error) {
 	val := reflect.Indirect(reflect.ValueOf(output))
-	reqMapVars := mux.Vars(input)
-	reqMapQuery := input.URL.Query()
+
+	reqMapVars := make(map[string]string)
+	reqMapQuery := make(map[string][]string)
+
+	switch input.(type) {
+	case map[string]string:
+		reqMapVars = input.(map[string]string)
+		break
+	case map[string][]string:
+		reqMapQuery = input.(map[string][]string)
+		break
+	}
 
 	for i := 0; i < val.NumField(); i++ {
 		parseProperty := val.Type().Field(i).Tag.Get("parse")
@@ -48,6 +56,7 @@ func parse(input *http.Request, output interface{}) (err error) {
 			return errors.New("invalid parse tag")
 		}
 		reqName := res[0]
+		fmt.Println("reqName", reqName)
 		customHook := ""
 		if len(res) == 2 {
 			customHook = res[1]
@@ -56,28 +65,28 @@ func parse(input *http.Request, output interface{}) (err error) {
 		propertyName := val.Type().Field(i).Tag.Get("name")
 		errMessage := val.Type().Field(i).Tag.Get("errMessage")
 
-		if val.Type().Field(i).Name == "RequestData" && input.Body != nil {
-			body, err := io.ReadAll(input.Body)
-			if err != nil {
-				return GetErrorMessage(propertyName, errMessage)
-			}
-			if len(body) > 0 {
-				err = json.Unmarshal(body, &output)
-				if err != nil {
-					return GetErrorMessage(propertyName, errMessage)
-				}
-
-			}
-		}
+		//if val.Type().Field(i).Name == "RequestData" && input.Body != nil {
+		//	body, err := io.ReadAll(input.Body)
+		//	if err != nil {
+		//		return GetErrorMessage(propertyName, errMessage)
+		//	}
+		//	if len(body) > 0 {
+		//		err = json.Unmarshal(body, &output)
+		//		if err != nil {
+		//			return GetErrorMessage(propertyName, errMessage)
+		//		}
+		//
+		//	}
+		//}
 
 		var reqValue string
 		if varValue, isExist := reqMapVars[reqName]; isExist {
 			reqValue = varValue
 		}
-		if queryValue := reqMapQuery.Get(reqName); len(queryValue) > 0 {
-			reqValue = queryValue
+		if queryValue := reqMapQuery[reqName]; len(queryValue) > 0 {
+			reqValue = queryValue[0]
 		}
-
+		fmt.Println("reqValue", reqValue)
 		if len(customHook) > 0 {
 			err = parseHooks[customHook](reqValue, val.Field(i))
 			if err != nil {
@@ -133,6 +142,7 @@ func decodeUint(input string, value reflect.Value) (err error) {
 	if err != nil {
 		return
 	}
+
 	value.SetUint(uInt)
 	return nil
 }

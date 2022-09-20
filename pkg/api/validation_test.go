@@ -1,20 +1,18 @@
 package api
 
 import (
-	"net/http"
+	"fmt"
+	"github.com/google/go-cmp/cmp"
+	"reflect"
 	"testing"
 )
 
 type (
 	parseInt64Test struct {
-		_ struct{}
-
 		Int64Val int64 `parse:"int64Val"`
 	}
 
 	parseUint32Test struct {
-		_ struct{}
-
 		UintVal uint32 `parse:"uintVal"`
 	}
 )
@@ -22,39 +20,37 @@ type (
 func Test_parse(t *testing.T) {
 	tests := []struct {
 		name    string
-		input   *http.Request
+		input   interface{}
 		output  interface{}
 		wantErr error
 	}{
 		{
-			name: "uInt",
-			input: &http.Request{
-				Form: map[string][]string{
-					"uintVal": {"123"},
-				},
+			name: "uInt32",
+			input: map[string]string{
+				"uintVal": "1",
 			},
-			output:  &parseUint32Test{},
+			output:  &parseUint32Test{UintVal: 0},
 			wantErr: nil,
 		},
 		{
 			name: "int64",
-			input: &http.Request{
-				PostForm: map[string][]string{
-					"int64Val": {"123"},
-				},
+			input: map[string][]string{
+				"int64Val": {"2"},
 			},
-			output:  &parseInt64Test{},
+			output:  &parseInt64Test{Int64Val: 0},
 			wantErr: nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			have := reflect.New(reflect.TypeOf(tt.output)).Elem().Interface()
+			fmt.Println(tt.output)
 			if err := parse(tt.input, tt.output); err != tt.wantErr {
 				t.Errorf("parse() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			//if diff := cmp.Diff(tt.want, have); diff != "" {
-			//	t.Errorf("parse(...): result mismatch (-want +have):\n%s", diff)
-			//}
+			if diff := cmp.Diff(tt.output, have); diff != "" {
+				t.Errorf("parse(...): result mismatch (-want +have):\n%s", diff)
+			}
 		})
 	}
 }
