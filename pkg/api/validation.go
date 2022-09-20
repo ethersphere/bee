@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/gorilla/mux"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -23,7 +25,7 @@ var parseHooks = ValidateFunc{
 
 // parseAndValidate parses the input and validates it
 // against the annotations declared in the given struct.
-func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err error) {
+func (s *Service) parseAndValidate(input, output interface{}) (err error) {
 	err = parse(input, output)
 	if err != nil {
 		return err
@@ -34,17 +36,18 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 
 func parse(input, output interface{}) (err error) {
 	val := reflect.Indirect(reflect.ValueOf(output))
-
+	fmt.Println("val inp", input)
 	reqMapVars := make(map[string]string)
 	reqMapQuery := make(map[string][]string)
 
 	switch input.(type) {
 	case map[string]string:
 		reqMapVars = input.(map[string]string)
-		break
-	case map[string][]string:
-		reqMapQuery = input.(map[string][]string)
-		break
+	case url.Values:
+		reqMapQuery = input.(url.Values)
+	case *http.Request:
+		reqMapVars = mux.Vars(input.(*http.Request))
+		reqMapQuery = input.(*http.Request).URL.Query()
 	}
 
 	for i := 0; i < val.NumField(); i++ {
@@ -56,7 +59,6 @@ func parse(input, output interface{}) (err error) {
 			return errors.New("invalid parse tag")
 		}
 		reqName := res[0]
-		fmt.Println("reqName", reqName)
 		customHook := ""
 		if len(res) == 2 {
 			customHook = res[1]
@@ -86,7 +88,6 @@ func parse(input, output interface{}) (err error) {
 		if queryValue := reqMapQuery[reqName]; len(queryValue) > 0 {
 			reqValue = queryValue[0]
 		}
-		fmt.Println("reqValue", reqValue)
 		if len(customHook) > 0 {
 			err = parseHooks[customHook](reqValue, val.Field(i))
 			if err != nil {

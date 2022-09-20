@@ -42,7 +42,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		Owner []byte `parse:"owner,addressToString" name:"owner" errMessage:"bad owner"`
 		Topic []byte `parse:"topic,addressToString" name:"topic" errMessage:"bad topic"`
 	}{}
-	err := s.parseAndValidate(r, &path)
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
 		s.logger.Debug("feed get: decode string failed", "owner", mux.Vars(r)["owner"], "topic", mux.Vars(r)["topic"], "error", err)
 		s.logger.Error(nil, "feed get: decode string failed")
@@ -125,7 +125,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		Owner []byte `parse:"owner,addressToString" name:"owner" errMessage:"bad owner"`
 		Topic []byte `parse:"topic,addressToString" name:"topic" errMessage:"bad topic"`
 	}{}
-	err := s.parseAndValidate(r, &path)
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
 		s.logger.Debug("feed post: decode string failed", "owner", mux.Vars(r)["owner"], "topic", mux.Vars(r)["topic"], "error", err)
 		s.logger.Error(nil, "feed post: decode string failed")

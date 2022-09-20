@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/gorilla/mux"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -25,7 +26,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
 		PeerID []byte `parse:"peer-id,addressToString" name:"peer address"`
 	}{}
-	err := s.parseAndValidate(r, &path)
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
 		s.logger.Debug("pingpong:: decode string failed", "struct", path, "error", err)
 		s.logger.Error(nil, "pingpong: decode string failed")

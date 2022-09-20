@@ -60,7 +60,7 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		Peer []byte `parse:"peer,addressToString" name:"address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("balances peer: parse address string failed", "string", mux.Vars(r)["peer"], "error", err)
 		s.logger.Error(nil, "balances peer: parse address string failed", "string", mux.Vars(r)["peer"])
 		jsonhttp.NotFound(w, err.Error())
@@ -113,7 +113,7 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 		Peer []byte `parse:"peer,addressToString" name:"address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("compensated balances peer: parse address string failed", "string", mux.Vars(r)["peer"], "error", err)
 		s.logger.Error(nil, "compensated balances peer: parse address string failed", "string", mux.Vars(r)["peer"])
 		jsonhttp.NotFound(w, err.Error())

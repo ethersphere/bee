@@ -102,7 +102,7 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 		Peer []byte `parse:"peer,addressToString" name:"peer" errMessage:"invalid address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("chequebook cheque peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
 		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"])
 		jsonhttp.BadRequest(w, err.Error())
@@ -233,7 +233,7 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 		Peer []byte `parse:"peer,addressToString" name:"postage amount" errMessage:"invalid address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("cashout peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
 		s.logger.Error(nil, "cashout peer: invalid peer address string", "string", mux.Vars(r)["peer"])
 		jsonhttp.BadRequest(w, err.Error())
@@ -306,7 +306,7 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 		Peer []byte `parse:"peer,addressToString" name:"peer" errMessage:"invalid address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
 		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"])
 		jsonhttp.BadRequest(w, err.Error())
@@ -376,7 +376,7 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
 		s.logger.Error(nil, "chequebook withdraw: invalid withdraw amount")
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -415,7 +415,7 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
 		s.logger.Error(nil, "chequebook deposit: invalid deposit amount")
 		jsonhttp.BadRequest(w, err.Error())
 		return

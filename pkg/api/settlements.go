@@ -100,7 +100,7 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	path := struct {
 		Peer []byte `parse:"peer,addressToString" name:"peer"`
 	}{}
-	err := s.parseAndValidate(r, &path)
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
 		s.logger.Debug("settlements peer: parse peer address string failed", "string", mux.Vars(r)["peer"], "error", err)
 		s.logger.Error(nil, "settlements peer: parse peer address string failed", "string", mux.Vars(r)["peer"])

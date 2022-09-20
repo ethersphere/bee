@@ -18,7 +18,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 		Address []byte `parse:"address,addressToString" name:"address" errMessage:"bad address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("has chunk: parse chunk address string failed", "string", mux.Vars(r)["address"], "error", err)
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -42,7 +42,7 @@ func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 		Address []byte `parse:"address,addressToString" name:"address" errMessage:"invalid address"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("remove chunk: parse chunk address string failed", "string", mux.Vars(r)["address"], "error", err)
 		jsonhttp.BadRequest(w, err.Error())
 		return

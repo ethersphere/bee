@@ -20,7 +20,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		Reference []byte `parse:"reference,addressToString" name:"reference" errMessage:"parse reference string failed"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("pin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
 		s.logger.Error(nil, "pin root hash: parse reference string failed")
 		jsonhttp.BadRequest(w, err.Error())
@@ -60,7 +60,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 		Reference []byte `parse:"reference,addressToString" name:"reference" errMessage:"parse reference string failed"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("unpin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
 		s.logger.Error(nil, "unpin root hash: parse reference string failed")
 		jsonhttp.BadRequest(w, err.Error())
@@ -96,7 +96,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 		Reference []byte `parse:"reference,addressToString" name:"reference" errMessage:"parse reference string failed"`
 	}{}
 
-	if err := s.parseAndValidate(r, &path); err != nil {
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("pinned root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
 		s.logger.Error(nil, "pinned root hash: parse reference string failed")
 		jsonhttp.BadRequest(w, err.Error())

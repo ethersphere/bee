@@ -53,7 +53,7 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	path := struct {
 		Address []byte `parse:"address,addressToString" name:"address" errMessage:"invalid peer address"`
 	}{}
-	err := s.parseAndValidate(r, &path)
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
 		s.logger.Debug("peer disconnect: parse address string failed", "string", mux.Vars(r)["address"], "error", err)
 		jsonhttp.BadRequest(w, err.Error())
