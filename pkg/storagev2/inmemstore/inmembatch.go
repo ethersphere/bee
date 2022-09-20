@@ -6,92 +6,32 @@ package inmemstore
 
 import (
 	"context"
-	"errors"
-	"sync"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
-type batchOp struct {
-	delete bool
-	item   storage.Item
-}
-
-type Batch struct {
-	mu    sync.Mutex
-	ctx   context.Context
-	ops   map[string]batchOp
-	store *Store
-	done  bool
-}
-
 func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
-	return &Batch{
-		ctx:   ctx,
-		ops:   make(map[string]batchOp),
-		store: s,
-	}, nil
+	return storage.NewOpBatcher(ctx, &inmemCommiter{store: s}), nil
 }
 
-func (i *Batch) Put(item storage.Item) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
-	}
-
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	key := getKeyString(item)
-
-	i.ops[key] = batchOp{
-		item: item,
-	}
-
-	return nil
+type inmemCommiter struct {
+	store *Store
 }
 
-func (i *Batch) Delete(key storage.Key) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
-	}
+func (c *inmemCommiter) Commit(ops map[string]storage.BatchOp) error {
+	c.store.mu.Lock()
+	defer c.store.mu.Unlock()
 
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	sKey := getKeyString(key)
-
-	i.ops[sKey] = batchOp{
-		delete: true,
-	}
-
-	return nil
-}
-
-func (i *Batch) Commit() error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
-	}
-
-	i.store.mu.Lock()
-	defer i.store.mu.Unlock()
-
-	if i.done {
-		return errors.New("already committed")
-	}
-
-	defer func() { i.done = true }()
-
-	for key, ops := range i.ops {
-		if ops.delete {
-			if err := i.store.delete(key); err != nil {
+	for key, ops := range ops {
+		if ops.Delete {
+			if err := c.store.delete(key); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := i.store.put(ops.item); err != nil {
+		if err := c.store.put(ops.Item); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
