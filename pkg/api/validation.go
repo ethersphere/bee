@@ -36,9 +36,7 @@ func (s *Service) parseAndValidate(input *http.Request, output interface{}) (err
 
 func parse(input *http.Request, output interface{}) (err error) {
 	val := reflect.Indirect(reflect.ValueOf(output))
-
 	reqMapVars := mux.Vars(input)
-	reqMapHeaders := input.Header
 	reqMapQuery := input.URL.Query()
 
 	for i := 0; i < val.NumField(); i++ {
@@ -75,9 +73,6 @@ func parse(input *http.Request, output interface{}) (err error) {
 		var reqValue string
 		if varValue, isExist := reqMapVars[reqName]; isExist {
 			reqValue = varValue
-		}
-		if headerValue := reqMapHeaders.Get(reqName); len(headerValue) > 0 {
-			reqValue = headerValue
 		}
 		if queryValue := reqMapQuery.Get(reqName); len(queryValue) > 0 {
 			reqValue = queryValue

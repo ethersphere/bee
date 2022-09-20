@@ -39,7 +39,7 @@ func Test_parse(t *testing.T) {
 		{
 			name: "int64",
 			input: &http.Request{
-				Form: map[string][]string{
+				PostForm: map[string][]string{
 					"int64Val": {"123"},
 				},
 			},
