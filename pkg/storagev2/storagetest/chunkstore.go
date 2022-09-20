@@ -33,13 +33,16 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 	})
 
 	t.Run("put existing chunks", func(t *testing.T) {
-		for _, ch := range testChunks {
-			exists, err := st.Put(context.TODO(), ch)
-			if err != nil {
-				t.Fatalf("failed putting new chunk: %v", err)
-			}
-			if !exists {
-				t.Fatalf("expected chunk to exist: %s", ch.Address())
+		for idx, ch := range testChunks {
+			// only put duplicates for odd numbered indexes
+			if idx%2 != 0 {
+				exists, err := st.Put(context.TODO(), ch)
+				if err != nil {
+					t.Fatalf("failed putting new chunk: %v", err)
+				}
+				if !exists {
+					t.Fatalf("expected chunk to exist: %s", ch.Address())
+				}
 			}
 		}
 	})
