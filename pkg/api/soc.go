@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -138,7 +137,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
 		logger.Error(nil, "get postage batch issue")
 		switch {
-		case errors.Is(err, storage.ErrNotFound):
+		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.NotFound(w, "batch not found")
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable yet")

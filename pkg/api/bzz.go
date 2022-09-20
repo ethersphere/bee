@@ -50,8 +50,6 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
 		switch {
-		case errors.Is(err, storage.ErrNotFound):
-			jsonhttp.NotFound(w, "batch not found")
 		case errors.Is(err, errBatchUnusable):
 			jsonhttp.BadRequest(w, "batch not usable yet")
 		case errors.Is(err, errInvalidPostageBatch):
@@ -95,7 +93,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		case errors.Is(err, tags.ErrExists):
 			jsonhttp.Conflict(w, "bzz upload file: conflict with current state of resource")
 		case errors.Is(err, errCannotParse):
-			jsonhttp.BadRequest(w, "bzz upload file: request cannot be parsed")
+			jsonhttp.BadRequest(w, "bzz upload file: cannot parse")
 		case errors.Is(err, tags.ErrNotFound):
 			jsonhttp.NotFound(w, "bzz upload file: not found")
 		default:
@@ -168,7 +166,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		logger.Error(nil, "bzz upload file: create manifest failed", "file_name", queries.FileName)
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
-			jsonhttp.BadRequest(w, "bzz upload file: invalid manifest type")
+			jsonhttp.BadRequest(w, "bzz upload file: create manifest failed")
 		default:
 			jsonhttp.InternalServerError(w, nil)
 		}
@@ -246,7 +244,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 			logger.Error(nil, "pin creation failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
-				jsonhttp.NotFound(w, "bzz upload file: create pin failed: not found")
+				jsonhttp.NotFound(w, "bzz upload file: not found")
 			default:
 				jsonhttp.InternalServerError(w, "create pin failed")
 			}
@@ -304,8 +302,8 @@ FETCH:
 		ls,
 	)
 	if err != nil {
-		logger.Debug("bzz download: not manifest", "address", address, "error", err)
-		logger.Error(nil, "bzz download: not manifest")
+		logger.Debug("bzz download: invalid manifest type", "address", address, "error", err)
+		logger.Error(nil, "bzz download: invalid manifest type")
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
 			jsonhttp.BadRequest(w, "bzz download: invalid manifest type")

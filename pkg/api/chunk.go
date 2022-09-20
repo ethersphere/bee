@@ -50,12 +50,6 @@ func (s *Service) processUploadRequest(
 	if err != nil {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
-			return nil, nil, nil, nil, errors.New("batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
-			return nil, nil, nil, nil, errors.New("batch not usable")
-		}
 		return nil, nil, nil, nil, err
 	}
 
@@ -67,7 +61,12 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx, tag, putter, wait, err := s.processUploadRequest(logger, r)
 	if err != nil {
-		jsonhttp.BadRequest(w, err.Error())
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			jsonhttp.NotFound(w, err.Error())
+		default:
+			jsonhttp.BadRequest(w, err.Error())
+		}
 		return
 	}
 

@@ -187,13 +187,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
 			logger.Error(nil, "get stamp issuer: check batch failed")
-
-			switch {
-			case errors.Is(err, storage.ErrNotFound):
-				jsonhttp.NotFound(w, "not found")
-			default:
-				jsonhttp.InternalServerError(w, "unable to check batch")
-			}
+			jsonhttp.InternalServerError(w, "unable to check batch")
 			return
 		}
 
@@ -336,7 +330,14 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.NotFound(w, "cannot get batch")
+		switch {
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "cannot get batch")
+		default:
+			jsonhttp.InternalServerError(w, "get issuer failed")
+		}
 		return
 	}
 		logger.Debug("exist check failed", "batch_id", hexBatchID, "error", err)

@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -20,7 +21,6 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -234,11 +234,11 @@ func TestBytesInvalidStamp(t *testing.T) {
 	})
 
 	// throw back an error
-	retErr = storage.ErrNotFound
+	retErr = errors.New("err happened")
 
 	t.Run("upload, batch exists error", func(t *testing.T) {
 		chunkAddr := swarm.MustParseHexAddress(expHash)
-		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusInternalServerError,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),

@@ -65,11 +65,11 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "get or create tag failed")
 		switch {
 		case errors.Is(err, tags.ErrExists):
-			jsonhttp.Conflict(w, "bytes upload: conflict with current state of resource")
+			jsonhttp.Conflict(w, "conflict with current state of resource")
 		case errors.Is(err, errCannotParse):
-			jsonhttp.BadRequest(w, "bytes upload: request cannot be parsed")
+			jsonhttp.BadRequest(w, "cannot parse")
 		case errors.Is(err, tags.ErrNotFound):
-			jsonhttp.NotFound(w, "bytes upload: not found")
+			jsonhttp.NotFound(w, "not found")
 		default:
 			jsonhttp.InternalServerError(w, "cannot get or create tag")
 		}
@@ -134,7 +134,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			logger.Error(nil, "bytes upload: pin creation failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
-				jsonhttp.NotFound(w, "create pin failed: not found")
+				jsonhttp.NotFound(w, "not found")
 			default:
 				jsonhttp.InternalServerError(w, "create pin failed")
 			}
