@@ -5,6 +5,7 @@
 package blocklist
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -38,7 +39,7 @@ func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 	key := generateKey(overlay)
 	timestamp, duration, err := b.get(key)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			return false, nil
 		}
 
@@ -57,7 +58,7 @@ func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err erro
 	key := generateKey(overlay)
 	_, d, err := b.get(key)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
 	}

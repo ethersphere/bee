@@ -935,7 +935,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &failedConns, 1)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
-	if err != addressbook.ErrNotFound {
+	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
 
@@ -949,7 +949,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &failedConns, 0)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
-	if err != addressbook.ErrNotFound {
+	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
 
@@ -960,7 +960,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &failedConns, 0)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
-	if err != addressbook.ErrNotFound {
+	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
 
@@ -971,7 +971,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &failedConns, 0)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
-	if err != addressbook.ErrNotFound {
+	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
 }

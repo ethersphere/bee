@@ -7,6 +7,7 @@ package file_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -72,7 +73,7 @@ func testSplitThenJoin(t *testing.T) {
 		readData := make([]byte, swarm.ChunkSize)
 		_, err := r.Read(readData)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			t.Fatal(err)

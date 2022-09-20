@@ -5,6 +5,7 @@
 package addressbook_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -64,7 +65,7 @@ func run(t *testing.T, f bookFunc) {
 	}
 
 	notFound, err := store.Get(addr2)
-	if err != addressbook.ErrNotFound {
+	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
 

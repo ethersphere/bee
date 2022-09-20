@@ -36,7 +36,7 @@ func TestRecorder(t *testing.T) {
 				for {
 					q, err := rw.ReadString('\n')
 					if err != nil {
-						if err == io.EOF {
+						if errors.Is(err, io.EOF) {
 							break
 						}
 						return fmt.Errorf("read: %w", err)
@@ -95,7 +95,7 @@ func TestRecorder(t *testing.T) {
 	}
 
 	_, err = recorder.Records(swarm.ZeroAddress, testProtocolName, testProtocolVersion, "invalid stream name")
-	if err != streamtest.ErrRecordsNotFound {
+	if !errors.Is(err, streamtest.ErrRecordsNotFound) {
 		t.Errorf("got error %v, want %v", err, streamtest.ErrRecordsNotFound)
 	}
 
@@ -199,7 +199,7 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 	}
 
 	err := request(context.Background(), recorder, swarm.ZeroAddress)
-	if err != streamtest.ErrStreamFullcloseTimeout {
+	if !errors.Is(err, streamtest.ErrStreamFullcloseTimeout) {
 		t.Fatal(err)
 	}
 
@@ -381,7 +381,7 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 		}
 
 		// stream should be closed and read should return EOF
-		if _, err := rw.ReadString('\n'); err != io.EOF {
+		if _, err := rw.ReadString('\n'); !errors.Is(err, io.EOF) {
 			return fmt.Errorf("got error %v, want %w", err, io.EOF)
 		}
 
@@ -811,7 +811,7 @@ func testRecords(t *testing.T, records []*streamtest.Record, want [][2]string, w
 	for i := 0; i < lr; i++ {
 		record := records[i]
 
-		if err := record.Err(); err != wantErr {
+		if err := record.Err(); !errors.Is(err, wantErr) {
 			t.Fatalf("got error from record %v, want %v", err, wantErr)
 		}
 

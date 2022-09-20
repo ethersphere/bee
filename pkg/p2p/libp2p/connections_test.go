@@ -1062,7 +1062,7 @@ func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 	for {
 		line, err := logs.ReadString('\n')
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			t.Fatal(err)

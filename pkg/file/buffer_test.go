@@ -107,7 +107,7 @@ func testChunkPipe(t *testing.T) {
 			}
 		case err = <-errC:
 			if err != nil {
-				if err != io.EOF {
+				if !errors.Is(err, io.EOF) {
 					t.Fatal(err)
 				}
 			}
@@ -216,7 +216,7 @@ func TestCopyBuffer(t *testing.T) {
 					readData = append(readData, d...)
 				case err := <-errC:
 					if err != nil {
-						if err != io.EOF {
+						if !errors.Is(err, io.EOF) {
 							t.Fatal(err)
 						}
 					}
@@ -234,7 +234,7 @@ func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byt
 	var buf = make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			c <- 0
 			break
 		}

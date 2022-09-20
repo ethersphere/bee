@@ -132,16 +132,16 @@ func Init(
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)
 	if err != nil {
-		if err != storage.ErrNotFound {
+		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
 
 		var txHash common.Hash
 		err = stateStore.Get(ChequebookDeploymentKey, &txHash)
-		if err != nil && err != storage.ErrNotFound {
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Info("no chequebook found, deploying new one.")
 			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service)
 			if err != nil {

@@ -165,7 +165,7 @@ func storeDir(
 	// iterate through the files in the supplied tar
 	for {
 		fileInfo, err := reader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("read tar stream: %w", err)

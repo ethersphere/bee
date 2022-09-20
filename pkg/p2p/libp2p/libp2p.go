@@ -896,7 +896,7 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 			s.logger.Debug("stream experienced unexpected early close")
 			_ = st.Close()
 		}
-		if err == multistream.ErrNotSupported || err == multistream.ErrIncorrectVersion {
+		if errors.Is(err, multistream.ErrNotSupported) || errors.Is(err, multistream.ErrIncorrectVersion) {
 			return nil, p2p.NewIncompatibleStreamError(err)
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)

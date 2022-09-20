@@ -253,7 +253,7 @@ func TestEncryptDecrypt(t *testing.T) {
 
 			for index < tt.chunkLength {
 				n, err := reader.Read(resultBuffer)
-				if err != nil && err != io.EOF {
+				if err != nil && !errors.Is(err, io.EOF) {
 					t.Fatal(err)
 				}
 				copy(totalGot[index:], resultBuffer[:n])
@@ -410,7 +410,7 @@ func TestSeek(t *testing.T) {
 			// seek overflow for a few bytes
 			for i := int64(1); i < 5; i++ {
 				n, err := j.Seek(tc.size+i, io.SeekStart)
-				if err != io.EOF {
+				if !errors.Is(err, io.EOF) {
 					t.Errorf("seek overflow to %v: got error %v, want %v", i, err, io.EOF)
 				}
 
@@ -728,12 +728,12 @@ func TestJoinerOneLevel(t *testing.T) {
 
 	// verify EOF is returned also after first time it is returned
 	_, err = j.Read(outBuffer)
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatal("expected io.EOF")
 	}
 
 	_, err = j.Read(outBuffer)
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatal("expected io.EOF")
 	}
 }
