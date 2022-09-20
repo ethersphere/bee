@@ -37,14 +37,14 @@ func (i *Batch) Put(item storage.Item) error {
 		return i.ctx.Err()
 	}
 
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
 	key := []byte(item.Namespace() + separator + item.ID())
 	value, err := item.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed serializing: %w", err)
 	}
+
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
 	i.batch.Put(key, value)
 
@@ -56,10 +56,10 @@ func (i *Batch) Delete(key storage.Key) error {
 		return i.ctx.Err()
 	}
 
+	dbKey := []byte(key.Namespace() + separator + key.ID())
+
 	i.mu.Lock()
 	defer i.mu.Unlock()
-
-	dbKey := []byte(key.Namespace() + separator + key.ID())
 
 	i.batch.Delete(dbKey)
 

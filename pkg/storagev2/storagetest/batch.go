@@ -9,16 +9,18 @@ import (
 	"errors"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
+)
+
+var (
+	item1 = &obj1{
+		Id: "id1",
+	}
 )
 
 func TestBatch(t *testing.T, s storage.Store) {
 	t.Run("duplicates are rejected", func(t *testing.T) {
 		b, _ := s.Batch(context.Background())
-
-		item1 := &obj1{
-			Id: "id1",
-		}
 
 		if err := b.Put(item1); err != nil {
 			t.Fatal("put", err)
@@ -42,33 +44,23 @@ func TestBatch(t *testing.T, s storage.Store) {
 		if err != nil {
 			t.Fatal("iterate", err)
 		}
-
 	})
 
-	t.Run("delete first removes from batch then from store", func(t *testing.T) {
-		item1 := &obj1{
-			Id: "id1",
-		}
+	t.Run("only last ops are of interest", func(t *testing.T) {
 		if err := s.Put(item1); err != nil {
 			t.Fatal("put", err)
 		}
 
-		b, _ := s.Batch(context.Background())
-		item2 := &obj1{
-			Id: "id2",
-		}
-		if err := b.Put(item2); err != nil {
+		batch, _ := s.Batch(context.Background())
+
+		if err := batch.Put(item1); err != nil {
 			t.Fatal("put", err)
 		}
-
-		if err := b.Delete(item1); err != nil {
-			t.Fatal("delete", err)
-		}
-		if err := b.Delete(item2); err != nil {
+		if err := batch.Delete(item1); err != nil {
 			t.Fatal("delete", err)
 		}
 
-		if err := b.Commit(); err != nil {
+		if err := batch.Commit(); err != nil {
 			t.Fatal("commit", err)
 		}
 
@@ -96,17 +88,11 @@ func TestBatch(t *testing.T, s storage.Store) {
 
 	t.Run("batche not usable with expired context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-
 		b, _ := s.Batch(ctx)
-		item := &obj1{
-			Id: "id2",
-		}
-		if err := b.Put(item); err != nil {
+		if err := b.Put(item1); err != nil {
 			t.Fatal("put", err)
 		}
-
 		cancel()
-
 		if err := b.Commit(); !errors.Is(err, context.Canceled) {
 			t.Fatal("expected context cancelled, got nil", err)
 		}

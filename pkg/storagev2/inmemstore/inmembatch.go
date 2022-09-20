@@ -9,7 +9,7 @@ import (
 	"errors"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 )
 
 type batchOp struct {
@@ -41,7 +41,9 @@ func (i *Batch) Put(item storage.Item) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	i.ops[item.ID()] = batchOp{
+	key := getKeyString(item)
+
+	i.ops[key] = batchOp{
 		item: item,
 	}
 
