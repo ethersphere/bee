@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 )
 
 // now returns the current time.Time; used in testing.
@@ -147,30 +148,107 @@ func (i pushItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
 }
 
+var _ storage.ChunkGetterDeleterStore = (*getterDeleter)(nil)
+
+// getterDeleter is a storage.ChunkGetterDeleterStore
+// that restricts its operation to the specific tagID.
+type getterDeleter struct {
+	storage internal.Storage
+	tagID   uint64
+}
+
+// Close implements the io.Closer interface.
+func (gd *getterDeleter) Close() error {
+	return multierror.Append(
+		gd.storage.Store().Close(),
+		gd.storage.ChunkStore().Close(),
+	).ErrorOrNil()
+}
+
+// Get implements the storage.Getter interface.
+// The given chunk address has to refer to a chunk
+// which has TagID set to the tagID of this getterDeleter,
+// otherwise storage.ErrNotFound will be returned.
+func (gd *getterDeleter) Get(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
+	if err := gd.has(address); err != nil {
+		return nil, err
+	}
+
+	chunk, err := gd.storage.ChunkStore().Get(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("chunk store get chunk %q call failed: %w", address, err)
+	}
+	return chunk.WithTagID(uint32(gd.tagID)), nil
+}
+
+// Delete implements the storage.Deleter interface.
+// The given chunk address has to refer to a chunk
+// which has TagID set to the tagID of this getterDeleter,
+// otherwise storage.ErrNotFound will be returned.
+func (gd *getterDeleter) Delete(ctx context.Context, address swarm.Address) error {
+	if err := gd.has(address); err != nil {
+		return err
+	}
+
+	if err := gd.storage.ChunkStore().Delete(ctx, address); err != nil {
+		return fmt.Errorf("chunk store delete chunk %q call failed: %w", address, err)
+	}
+
+	tai := &tagIDAddressItem{
+		TagID:   gd.tagID,
+		Address: address,
+	}
+	if err := gd.storage.Store().Delete(tai); err != nil {
+		return fmt.Errorf("store delete item %q call failed: %w", tai, err)
+	}
+	return nil
+}
+
+// has checks if the given address has the tagID of this getterDeleter.
+func (gd *getterDeleter) has(address swarm.Address) error {
+	tai := &tagIDAddressItem{
+		Address: address,
+		TagID:   gd.tagID,
+	}
+	switch exists, err := gd.storage.Store().Has(tai); {
+	case err != nil:
+		return fmt.Errorf("store has item %q call failed: %w", tai, err)
+	case !exists:
+		return storage.ErrNotFound
+	}
+	return nil
+}
+
+// ChunkGetterDeleter returns a storage.ChunkGetterDeleterStore
+// that restricts its operation to the given tagID.
+func ChunkGetterDeleter(s internal.Storage, tagID uint64) storage.ChunkGetterDeleterStore {
+	return &getterDeleter{storage: s, tagID: tagID}
+}
+
 // ChunkPutter returns a storage.Putter which will store the given chunk.
-func ChunkPutter(s internal.Storage, tag uint64) (storage.Putter, error) {
+func ChunkPutter(s internal.Storage, tagID uint64) (storage.Putter, error) {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) (bool, error) {
 		tai := &tagIDAddressItem{
 			Address: chunk.Address(),
-			TagID:   tag,
+			TagID:   tagID,
 		}
 		switch exists, err := s.Store().Has(tai); {
 		case err != nil:
-			return false, fmt.Errorf("storage has item %q call failed: %w", tai, err)
+			return false, fmt.Errorf("store has item %q call failed: %w", tai, err)
 		case exists:
 			return true, nil
 		}
 		if err := s.Store().Put(tai); err != nil {
-			return false, fmt.Errorf("storage put item %q call failed: %w", tai, err)
+			return false, fmt.Errorf("store put item %q call failed: %w", tai, err)
 		}
 
 		pi := &pushItem{
 			Timestamp: now().Unix(),
 			Address:   chunk.Address(),
-			TagID:     tag,
+			TagID:     tagID,
 		}
 		if err := s.Store().Put(pi); err != nil {
-			return false, fmt.Errorf("storage put item %q call failed: %w", pi, err)
+			return false, fmt.Errorf("store put item %q call failed: %w", pi, err)
 		}
 		exists, err := s.ChunkStore().Put(ctx, chunk)
 		if err != nil {
