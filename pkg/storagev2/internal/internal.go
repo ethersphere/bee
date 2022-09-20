@@ -13,6 +13,6 @@ import (
 // Storage groups the storage.Store and storage.ChunkStore interfaces with context..
 type Storage interface {
 	Ctx() context.Context
-	Storage() storage.Store
+	Store() storage.Store
 	ChunkStore() storage.ChunkStore
 }

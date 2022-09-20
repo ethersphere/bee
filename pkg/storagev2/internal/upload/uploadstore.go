@@ -154,13 +154,13 @@ func ChunkPutter(s internal.Storage, tag uint64) (storage.Putter, error) {
 			Address: chunk.Address(),
 			TagID:   tag,
 		}
-		switch exists, err := s.Storage().Has(tai); {
+		switch exists, err := s.Store().Has(tai); {
 		case err != nil:
 			return false, fmt.Errorf("storage has item %q call failed: %w", tai, err)
 		case exists:
 			return true, nil
 		}
-		if err := s.Storage().Put(tai); err != nil {
+		if err := s.Store().Put(tai); err != nil {
 			return false, fmt.Errorf("storage put item %q call failed: %w", tai, err)
 		}
 
@@ -169,7 +169,7 @@ func ChunkPutter(s internal.Storage, tag uint64) (storage.Putter, error) {
 			Address:   chunk.Address(),
 			TagID:     tag,
 		}
-		if err := s.Storage().Put(pi); err != nil {
+		if err := s.Store().Put(pi); err != nil {
 			return false, fmt.Errorf("storage put item %q call failed: %w", pi, err)
 		}
 		exists, err := s.ChunkStore().Put(ctx, chunk)

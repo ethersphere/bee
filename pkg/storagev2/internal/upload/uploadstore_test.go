@@ -33,7 +33,7 @@ type testStorage struct {
 }
 
 func (t *testStorage) Ctx() context.Context           { return t.ctx }
-func (t *testStorage) Storage() storage.Store         { return t.indexStore }
+func (t *testStorage) Store() storage.Store           { return t.indexStore }
 func (t *testStorage) ChunkStore() storage.ChunkStore { return t.chunkStore }
 
 func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
@@ -99,6 +99,7 @@ func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -174,6 +175,7 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -198,7 +200,7 @@ func TestChunkPutter(t *testing.T) {
 		chunkStore: inmemchunkstore.New(),
 	}
 	t.Cleanup(func() {
-		if err := ts.Storage().Close(); err != nil {
+		if err := ts.Store().Close(); err != nil {
 			t.Errorf("Storage().Close(): unexpected error: %v", err)
 		}
 		if err := ts.ChunkStore().Close(); err != nil {
@@ -235,7 +237,7 @@ func TestChunkPutter(t *testing.T) {
 			})
 
 			t.Run("verify internal state", func(t *testing.T) {
-				has, err := ts.Storage().Has(&upload.TagIDAddressItem{
+				has, err := ts.Store().Has(&upload.TagIDAddressItem{
 					TagID:   tagID,
 					Address: chunk.Address(),
 				})
@@ -246,7 +248,7 @@ func TestChunkPutter(t *testing.T) {
 					t.Fatal("Has(...): item not found")
 				}
 
-				has, err = ts.Storage().Has(&upload.PushItem{
+				has, err = ts.Store().Has(&upload.PushItem{
 					Timestamp: now().Unix(),
 					Address:   chunk.Address(),
 					TagID:     tagID,
@@ -266,7 +268,6 @@ func TestChunkPutter(t *testing.T) {
 					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
 				}
 			})
-
 		})
 	}
 }
