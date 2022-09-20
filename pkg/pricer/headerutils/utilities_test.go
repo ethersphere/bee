@@ -174,11 +174,13 @@ func TestReadMalformedHeaders(t *testing.T) {
 		t.Fatal("Expected error from bad length of price bytes")
 	}
 
+	// nolint:dogsled
 	_, _, _, err = headerutils.ParsePricingResponseHeaders(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
 	}
 
+	// nolint:dogsled
 	_, _, err = headerutils.ParsePricingHeaders(toReadHeaders)
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
