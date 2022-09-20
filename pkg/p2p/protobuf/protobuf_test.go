@@ -186,8 +186,6 @@ func TestWriter(t *testing.T) {
 }
 
 func TestWriter_timeout(t *testing.T) {
-	t.Parallel()
-
 	messages := []string{"first", "second", "third"}
 
 	for _, tc := range []struct {

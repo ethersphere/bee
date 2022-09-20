@@ -43,8 +43,6 @@ func TestNewCAC(t *testing.T) {
 }
 
 func TestNewWithDataSpan(t *testing.T) {
-	t.Parallel()
-
 	data := []byte("greaterthanspan")
 	bmtHashOfData := "95022e6af5c6d6a564ee55a67f8455a3e18c511b5697c932d9e44f07f2fb8c53"
 	address := swarm.MustParseHexAddress(bmtHashOfData)
@@ -64,8 +62,6 @@ func TestNewWithDataSpan(t *testing.T) {
 }
 
 func TestChunkInvariants(t *testing.T) {
-	t.Parallel()
-
 	chunkerFunc := []struct {
 		name    string
 		chunker func(data []byte) (swarm.Chunk, error)
@@ -80,7 +76,6 @@ func TestChunkInvariants(t *testing.T) {
 		},
 	}
 
-	// nolint:paralleltest
 	for _, f := range chunkerFunc {
 		for _, cc := range []struct {
 			name    string

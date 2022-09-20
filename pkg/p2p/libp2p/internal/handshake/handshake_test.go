@@ -25,10 +25,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-//nolint:paralleltest
 func TestHandshake(t *testing.T) {
-	t.Parallel()
-
 	const (
 		testWelcomeMessage = "HelloWorld"
 	)
