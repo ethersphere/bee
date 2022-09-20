@@ -1,9 +1,7 @@
 package api
 
 import (
-	"fmt"
 	"github.com/google/go-cmp/cmp"
-	"reflect"
 	"testing"
 )
 
@@ -25,26 +23,25 @@ func Test_parse(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "uInt32",
-			input: map[string]string{
-				"uintVal": "1",
-			},
-			output:  &parseUint32Test{UintVal: 0},
-			wantErr: nil,
-		},
-		{
 			name: "int64",
 			input: map[string][]string{
 				"int64Val": {"2"},
 			},
-			output:  &parseInt64Test{Int64Val: 0},
+			output:  &parseInt64Test{Int64Val: 2},
+			wantErr: nil,
+		},
+		{
+			name: "uInt32",
+			input: map[string]string{
+				"uintVal": "1",
+			},
+			output:  &parseUint32Test{UintVal: 1},
 			wantErr: nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			have := reflect.New(reflect.TypeOf(tt.output)).Elem().Interface()
-			fmt.Println(tt.output)
+			have := tt.output
 			if err := parse(tt.input, tt.output); err != tt.wantErr {
 				t.Errorf("parse() error = %v, wantErr %v", err, tt.wantErr)
 			}
