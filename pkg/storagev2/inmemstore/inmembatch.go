@@ -12,21 +12,25 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
-	return &Batch{
-		mu:    new(sync.Mutex),
-		ctx:   ctx,
-		store: s,
-	}, nil
+type batchOp struct {
+	delete bool
+	item   storage.Item
 }
 
 type Batch struct {
-	mu     *sync.Mutex
-	ctx    context.Context
-	put    []storage.Item
-	delete []storage.Key
-	store  *Store
-	done   bool
+	mu    sync.Mutex
+	ctx   context.Context
+	ops   map[string]batchOp
+	store *Store
+	done  bool
+}
+
+func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+	return &Batch{
+		ctx:   ctx,
+		ops:   make(map[string]batchOp),
+		store: s,
+	}, nil
 }
 
 func (i *Batch) Put(item storage.Item) error {
@@ -37,13 +41,9 @@ func (i *Batch) Put(item storage.Item) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	for _, put := range i.put {
-		if put.ID() == item.ID() {
-			return nil // disallow duplicates
-		}
+	i.ops[item.ID()] = batchOp{
+		item: item,
 	}
-
-	i.put = append(i.put, item)
 
 	return nil
 }
@@ -56,20 +56,11 @@ func (i *Batch) Delete(key storage.Key) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	for index, put := range i.put {
-		if put.ID() == key.ID() {
-			i.put = append(i.put[:index], i.put[index+1:]...)
-			return nil
-		}
-	}
+	sKey := getKeyString(key)
 
-	for _, del := range i.delete {
-		if del.ID() == key.ID() {
-			return nil // disallow duplicates
-		}
+	i.ops[sKey] = batchOp{
+		delete: true,
 	}
-
-	i.delete = append(i.delete, key)
 
 	return nil
 }
@@ -86,19 +77,19 @@ func (i *Batch) Commit() error {
 		return errors.New("already committed")
 	}
 
-	for _, item := range i.put {
-		if err := i.store.put(item); err != nil {
+	defer func() { i.done = true }()
+
+	for key, ops := range i.ops {
+		if ops.delete {
+			if err := i.store.delete(key); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := i.store.put(ops.item); err != nil {
 			return err
 		}
 	}
-
-	for _, item := range i.delete {
-		if err := i.store.delete(item); err != nil {
-			return err
-		}
-	}
-
-	i.done = true
 
 	return nil
 }

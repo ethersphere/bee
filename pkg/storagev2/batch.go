@@ -15,5 +15,6 @@ type Batch interface {
 }
 
 type BatchedStore interface {
+	Store
 	Batch(context.Context) (Batch, error)
 }

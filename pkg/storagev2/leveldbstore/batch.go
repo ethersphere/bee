@@ -17,14 +17,13 @@ import (
 func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
 	return &Batch{
 		ctx:   ctx,
-		mu:    new(sync.Mutex),
 		batch: new(ldb.Batch),
 		store: s,
 	}, nil
 }
 
 type Batch struct {
-	mu  *sync.Mutex
+	mu  sync.Mutex
 	ctx context.Context
 
 	batch *ldb.Batch

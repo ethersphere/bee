@@ -686,7 +686,9 @@ func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
 		Factory: func() storage.Item { return new(obj1) },
 		Order:   storage.KeyAscendingOrder,
 	}
-	_ = db.Iterate(q, fn)
+	if err := db.Iterate(q, fn); err != nil {
+		b.Fatal("iterate", err)
+	}
 }
 
 func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
@@ -704,7 +706,9 @@ func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
 		Factory: func() storage.Item { return new(obj1) },
 		Order:   storage.KeyDescendingOrder,
 	}
-	_ = db.Iterate(q, fn)
+	if err := db.Iterate(q, fn); err != nil {
+		b.Fatal("iterate", err)
+	}
 }
 
 func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
@@ -715,7 +719,7 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 
 func BenchmarkWriteInBatches(b *testing.B, db storage.Store) {
 	g := newSequentialEntryGenerator(b.N)
-	btch, _ := db.Batch(context.Background())
+	batch, _ := db.Batch(context.Background())
 	resetBenchmark(b)
 	for i := 0; i < b.N; i++ {
 		key := g.Key(i)
@@ -723,11 +727,11 @@ func BenchmarkWriteInBatches(b *testing.B, db storage.Store) {
 			Id:  string(key),
 			Buf: g.Value(i),
 		}
-		if err := btch.Put(item); err != nil {
+		if err := batch.Put(item); err != nil {
 			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
 		}
 	}
-	if err := btch.Commit(); err != nil {
+	if err := batch.Commit(); err != nil {
 		b.Fatal("commit batch", err)
 	}
 }
@@ -795,6 +799,9 @@ func BenchmarkDeleteInBatches(b *testing.B, db storage.Store) {
 		if err := batch.Delete(item); err != nil {
 			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
 		}
+	}
+	if err := batch.Commit(); err != nil {
+		b.Fatal("commit batch", err)
 	}
 }
 

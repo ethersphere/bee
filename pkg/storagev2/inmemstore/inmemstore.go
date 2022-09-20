@@ -120,10 +120,8 @@ func (s *Store) Delete(i storage.Item) error {
 }
 
 // for batching purpose
-func (s *Store) delete(key storage.Key) error {
-	k := getKeyString(key)
-
-	if _, deleted := s.st.Delete(k); !deleted {
+func (s *Store) delete(key string) error {
+	if _, deleted := s.st.Delete(key); !deleted {
 		return storage.ErrNotFound
 	}
 

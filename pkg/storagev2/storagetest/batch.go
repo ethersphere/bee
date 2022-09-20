@@ -20,12 +20,17 @@ func TestBatch(t *testing.T, s storage.Store) {
 			Id: "id1",
 		}
 
-		_ = b.Put(item1)
-		_ = b.Put(item1)
+		if err := b.Put(item1); err != nil {
+			t.Fatal("put", err)
+		}
+		if err := b.Put(item1); err != nil {
+			t.Fatal("put", err)
+		}
+		if err := b.Commit(); err != nil {
+			t.Fatal("commit", err)
+		}
 
-		_ = b.Commit()
-
-		_ = s.Iterate(storage.Query{
+		err := s.Iterate(storage.Query{
 			Factory:       func() storage.Item { return new(obj1) },
 			ItemAttribute: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
@@ -34,37 +39,56 @@ func TestBatch(t *testing.T, s storage.Store) {
 			}
 			return true, nil
 		})
+		if err != nil {
+			t.Fatal("iterate", err)
+		}
+
 	})
 
 	t.Run("delete first removes from batch then from store", func(t *testing.T) {
 		item1 := &obj1{
 			Id: "id1",
 		}
-		_ = s.Put(item1)
+		if err := s.Put(item1); err != nil {
+			t.Fatal("put", err)
+		}
 
 		b, _ := s.Batch(context.Background())
 		item2 := &obj1{
 			Id: "id2",
 		}
-		_ = b.Put(item2)
+		if err := b.Put(item2); err != nil {
+			t.Fatal("put", err)
+		}
 
-		_ = b.Delete(item1)
-		_ = b.Delete(item2)
+		if err := b.Delete(item1); err != nil {
+			t.Fatal("delete", err)
+		}
+		if err := b.Delete(item2); err != nil {
+			t.Fatal("delete", err)
+		}
 
-		_ = b.Commit()
+		if err := b.Commit(); err != nil {
+			t.Fatal("commit", err)
+		}
 
-		_ = s.Iterate(storage.Query{
+		err := s.Iterate(storage.Query{
 			Factory:       func() storage.Item { return new(obj1) },
 			ItemAttribute: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
 			t.Fatalf("expected empty store, got %v", r.Entry)
 			return true, nil
 		})
+		if err != nil {
+			t.Fatal("iterate", err)
+		}
 	})
 
 	t.Run("batche not reusable after commit", func(t *testing.T) {
 		b, _ := s.Batch(context.Background())
-		_ = b.Commit()
+		if err := b.Commit(); err != nil {
+			t.Fatal("commit", err)
+		}
 		if err := b.Commit(); err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -77,7 +101,9 @@ func TestBatch(t *testing.T, s storage.Store) {
 		item := &obj1{
 			Id: "id2",
 		}
-		_ = b.Put(item)
+		if err := b.Put(item); err != nil {
+			t.Fatal("put", err)
+		}
 
 		cancel()
 
