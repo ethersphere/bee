@@ -23,6 +23,7 @@ var (
 	valueSize        = flag.Int("value_size", 100, "Size of each value")
 	compressionRatio = flag.Float64("compression_ratio", 0.5, "")
 	maxConcurrency   = flag.Int("max_concurrency", 2048, "Max concurrency in concurrent benchmark")
+	batchSize        = flag.Int("batch_size", 1000, "Max number of records that would trigger commit")
 )
 
 var keyLen = 16
@@ -318,5 +319,49 @@ func doReadChunk(b *testing.B, db storage.ChunkStore, g keyGenerator, allowNotFo
 		default:
 			b.Fatalf("%d: db get key[%s] error: %s\n", b.N, key, err)
 		}
+	}
+}
+
+// fixed size batch
+type batchDBWriter struct {
+	db    storage.Store
+	batch storage.Batch
+	max   int
+	count int
+}
+
+func (w *batchDBWriter) commit(max int) {
+	if w.count >= max {
+		_ = w.batch.Commit()
+		w.count = 0
+		w.batch, _ = w.db.Batch(context.Background())
+	}
+}
+
+func (w *batchDBWriter) Put(key, value []byte) {
+	item := &obj1{
+		Id:  string(key),
+		Buf: value,
+	}
+	_ = w.batch.Put(item)
+	w.count++
+	w.commit(w.max)
+}
+
+func (w *batchDBWriter) Delete(key []byte) {
+	item := &obj1{
+		Id: string(key),
+	}
+	_ = w.batch.Delete(item)
+	w.count++
+	w.commit(w.max)
+}
+
+func newBatchDBWriter(db storage.Store) *batchDBWriter {
+	batch, _ := db.Batch(context.Background())
+	return &batchDBWriter{
+		db:    db,
+		batch: batch,
+		max:   *batchSize,
 	}
 }

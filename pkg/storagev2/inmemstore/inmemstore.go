@@ -93,6 +93,20 @@ func (s *Store) Put(i storage.Item) error {
 	return nil
 }
 
+// for batching purpose
+func (s *Store) put(i storage.Item) error {
+	key := getKeyString(i)
+
+	val, err := i.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed marshaling item: %w", err)
+	}
+
+	s.st.Insert(key, val)
+
+	return nil
+}
+
 func (s *Store) Delete(i storage.Item) error {
 	key := getKeyString(i)
 
@@ -102,6 +116,15 @@ func (s *Store) Delete(i storage.Item) error {
 	if !deleted {
 		return storage.ErrNotFound
 	}
+	return nil
+}
+
+// for batching purpose
+func (s *Store) delete(key string) error {
+	if _, deleted := s.st.Delete(key); !deleted {
+		return storage.ErrNotFound
+	}
+
 	return nil
 }
 

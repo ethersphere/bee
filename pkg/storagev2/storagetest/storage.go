@@ -6,6 +6,7 @@ package storagetest
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -592,6 +593,12 @@ func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkWriteSequential(b, s)
 	})
+	b.Run("WriteInBatches", func(b *testing.B) {
+		BenchmarkWriteInBatches(b, s)
+	})
+	b.Run("WriteInFixedSizeBatches", func(b *testing.B) {
+		BenchmarkWriteInFixedSizeBatches(b, s)
+	})
 	b.Run("WriteRandom", func(b *testing.B) {
 		BenchmarkWriteRandom(b, s)
 	})
@@ -621,6 +628,12 @@ func RunStoreBenchmarkTests(b *testing.B, s storage.Store) {
 	})
 	b.Run("DeleteSequential", func(b *testing.B) {
 		BenchmarkDeleteSequential(b, s)
+	})
+	b.Run("DeleteInBatches", func(b *testing.B) {
+		BenchmarkDeleteInBatches(b, s)
+	})
+	b.Run("DeleteInFixedSizeBatches", func(b *testing.B) {
+		BenchmarkDeleteInFixedSizeBatches(b, s)
 	})
 }
 
@@ -673,7 +686,9 @@ func BenchmarkIterateSequential(b *testing.B, db storage.Store) {
 		Factory: func() storage.Item { return new(obj1) },
 		Order:   storage.KeyAscendingOrder,
 	}
-	_ = db.Iterate(q, fn)
+	if err := db.Iterate(q, fn); err != nil {
+		b.Fatal("iterate", err)
+	}
 }
 
 func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
@@ -691,13 +706,43 @@ func BenchmarkIterateReverse(b *testing.B, db storage.Store) {
 		Factory: func() storage.Item { return new(obj1) },
 		Order:   storage.KeyDescendingOrder,
 	}
-	_ = db.Iterate(q, fn)
+	if err := db.Iterate(q, fn); err != nil {
+		b.Fatal("iterate", err)
+	}
 }
 
 func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 	g := newSequentialEntryGenerator(b.N)
 	resetBenchmark(b)
 	doWrite(b, db, g)
+}
+
+func BenchmarkWriteInBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	batch, _ := db.Batch(context.Background())
+	resetBenchmark(b)
+	for i := 0; i < b.N; i++ {
+		key := g.Key(i)
+		item := &obj1{
+			Id:  string(key),
+			Buf: g.Value(i),
+		}
+		if err := batch.Put(item); err != nil {
+			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
+		}
+	}
+	if err := batch.Commit(); err != nil {
+		b.Fatal("commit batch", err)
+	}
+}
+
+func BenchmarkWriteInFixedSizeBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	writer := newBatchDBWriter(db)
+	resetBenchmark(b)
+	for i := 0; i < b.N; i++ {
+		writer.Put(g.Key(i), g.Value(i))
+	}
 }
 
 func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
@@ -740,4 +785,32 @@ func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
 	doWrite(b, db, g)
 	resetBenchmark(b)
 	doDelete(b, db, g)
+}
+
+func BenchmarkDeleteInBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	doWrite(b, db, g)
+	resetBenchmark(b)
+	batch, _ := db.Batch(context.Background())
+	for i := 0; i < b.N; i++ {
+		item := &obj1{
+			Id: string(g.Key(i)),
+		}
+		if err := batch.Delete(item); err != nil {
+			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
+		}
+	}
+	if err := batch.Commit(); err != nil {
+		b.Fatal("commit batch", err)
+	}
+}
+
+func BenchmarkDeleteInFixedSizeBatches(b *testing.B, db storage.Store) {
+	g := newSequentialEntryGenerator(b.N)
+	doWrite(b, db, g)
+	resetBenchmark(b)
+	writer := newBatchDBWriter(db)
+	for i := 0; i < b.N; i++ {
+		writer.Delete(g.Key(i))
+	}
 }
