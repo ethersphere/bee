@@ -30,6 +30,7 @@ linters:
     - staticcheck
     - structcheck
     - thelper
+    - tparallel
     - typecheck
     - unconvert
     - unused
