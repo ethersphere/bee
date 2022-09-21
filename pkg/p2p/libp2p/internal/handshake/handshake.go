@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/swarm"
 
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
