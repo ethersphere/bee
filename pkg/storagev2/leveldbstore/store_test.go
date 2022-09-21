@@ -18,6 +18,7 @@ func TestStoreTestSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	storagetest.TestStore(t, store)
 }
 
@@ -30,4 +31,13 @@ func BenchmarkStore(b *testing.B) {
 	}
 	b.Cleanup(func() { _ = st.Close() })
 	storagetest.RunStoreBenchmarkTests(b, st)
+}
+
+func TestBatch(t *testing.T) {
+	st, err := ldb.New("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	storagetest.TestBatch(t, st)
 }
