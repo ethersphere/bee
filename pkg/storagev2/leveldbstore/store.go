@@ -17,7 +17,7 @@ import (
 	ldbStorage "github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 )
 
 const separator = "/"
