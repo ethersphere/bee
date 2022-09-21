@@ -164,3 +164,37 @@ func withinRadius(db *DB, item shed.Item) bool {
 	po := db.po(swarm.NewAddress(item.Address))
 	return po >= item.Radius
 }
+
+func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
+
+	var count uint64
+
+	err := db.pullIndex.Iterate(func(item shed.Item) (stop bool, err error) {
+		count++
+		return false, nil
+	}, &shed.IterateOptions{
+		StartFrom: &shed.Item{
+			Address: generateAddressAt(db.baseKey, int(startPO)),
+		},
+	})
+
+	return count, err
+}
+
+func generateAddressAt(baseBytes []byte, prox int) []byte {
+
+	addr := make([]byte, 32)
+
+	for po := 0; po < prox; po++ {
+		index := po % 8
+		if baseBytes[po/8]&(1<<(7-index)) > 0 { // if baseBytes bit is 1
+			addr[po/8] |= 1 << (7 - index) // set addr bit to 1
+		}
+	}
+
+	if baseBytes[prox/8]&(1<<(7-(prox%8))) == 0 { // if baseBytes PO bit is zero
+		addr[prox/8] |= (1 << (7 - (prox % 8))) // set addr bit to 1
+	}
+
+	return addr
+}

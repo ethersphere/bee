@@ -25,7 +25,7 @@ var (
 // pledged by the node to the network.
 type ReserveReporter interface {
 	// Current size of the reserve.
-	ReserveSize() (uint64, error)
+	ComputeReserveSize(uint8) (uint64, error)
 	// Capacity of the reserve that is configured.
 	ReserveCapacity() uint64
 }
@@ -115,14 +115,16 @@ func (s *Service) manage(warmupTime time.Duration) {
 		case <-time.After(manageWait):
 		}
 
-		currentSize, err := s.reserve.ReserveSize()
+		reserveState := s.bs.GetReserveState()
+
+		currentSize, err := s.reserve.ComputeReserveSize(reserveState.StorageRadius)
 		if err != nil {
 			s.logger.Error(err, "depthmonitor: failed reading reserve size")
 			continue
 		}
 
 		rate := s.syncer.Rate()
-		s.logger.Debug("depthmonitor size and rate", "current size", currentSize, "chunks/sec rate", rate)
+		s.logger.Debug("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
