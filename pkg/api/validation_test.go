@@ -30,6 +30,7 @@ type (
 )
 
 func Test_parse(t *testing.T) {
+	t.Parallel()
 	b := postagetesting.MustNewBatch()
 	queryVal := url.Values{}
 	queryVal.Set("int64Val", "2")
@@ -80,6 +81,7 @@ func Test_parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			have := tt.output
 			if err := parse(tt.input, tt.output); err != nil && !strings.Contains(err.Error(), tt.wantErr.Error()) {
 				t.Errorf("parse() error = %v, wantErr %v", err, tt.wantErr)

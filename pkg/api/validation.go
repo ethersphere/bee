@@ -66,20 +66,6 @@ func parse(input, output interface{}) (err error) {
 		propertyName := val.Type().Field(i).Tag.Get("name")
 		errMessage := val.Type().Field(i).Tag.Get("errMessage")
 
-		//if val.Type().Field(i).Name == "RequestData" && input.Body != nil {
-		//	body, err := io.ReadAll(input.Body)
-		//	if err != nil {
-		//		return GetErrorMessage(propertyName, errMessage)
-		//	}
-		//	if len(body) > 0 {
-		//		err = json.Unmarshal(body, &output)
-		//		if err != nil {
-		//			return GetErrorMessage(propertyName, errMessage)
-		//		}
-		//
-		//	}
-		//}
-
 		var reqValue string
 		if varValue, isExist := reqMapVars[reqName]; isExist {
 			reqValue = varValue
