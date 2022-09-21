@@ -19,3 +19,8 @@ func BenchmarkStore(b *testing.B) {
 	st := inmem.New()
 	storagetest.RunStoreBenchmarkTests(b, st)
 }
+
+func TestBatch(t *testing.T) {
+	st := inmem.New()
+	storagetest.TestBatch(t, st)
+}
