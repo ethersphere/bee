@@ -150,15 +150,25 @@ func (c *chunkStampItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
-// chunkStoreWrapper implements the storage.ChunkStore interface on top of the Store and
-// the sharky blob storage. It uses the Store to maintain the retrievalIndex and also
-// stamps for the chunk. Currently we do not support multiple stamps on chunks, but
-// the chunkStoreWrapper allows for this in future.
 type chunkStoreWrapper struct {
 	st     storage.Store
 	sharky *sharky.Store
 }
 
+// New returns a chunkStoreWrapper which implements the storage.ChunkStore interface
+// on top of the Store and the sharky blob storage.
+// It uses the Store to maintain the retrievalIndex and also stamps for the chunk and
+// sharky to maintain the chunk data.
+// Currently we do not support multiple stamps on chunks, but the chunkStoreWrapper
+// allows for this in future.
+// chunkStoreWrapper uses refCnt and works slightly different to the ChunkStore API.
+// The current Put API returns true if the chunk is already found as it supports only
+// unique chunks. The chunkStoreWrapper will also maintain refCnts for all the Puts
+// for the same chunk. This allows duplicates to change state.
+// Usually this Put operation would not be used by clients directly as it will be part
+// of some component which will provide the uniqueness guarantee.
+// Due to the refCnt a Delete would only result in an actual Delete operation
+// if the refCnt goes to 0.
 func New(st storage.Store, sharky *sharky.Store) storage.ChunkStore {
 	return &chunkStoreWrapper{st: st, sharky: sharky}
 }
@@ -189,14 +199,14 @@ func (c *chunkStoreWrapper) removeStamps(addr swarm.Address) error {
 	if err != nil {
 		return err
 	}
-	var delErr *multierror.Error
+	var delErr error
 	for _, s := range stamps {
 		err := c.st.Delete(&chunkStampItem{Address: addr, Stamp: s})
 		if err != nil {
 			delErr = multierror.Append(delErr, err)
 		}
 	}
-	return delErr.ErrorOrNil()
+	return delErr
 }
 
 // helper to read chunk from retrievalIndex.
@@ -232,11 +242,6 @@ func (c *chunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, er
 	return c.st.Has(&retrievalIndexItem{Address: addr})
 }
 
-// chunkStore with refCnt works in a slightly different way. The current Put API returns
-// true if the chunk is already found as it supports only unique chunks. The chunkStoreWrapper
-// would also maintain refCnts for all the Puts for the same chunk. This allows duplicates
-// to change state. Usually this Put operation would not be used by clients directly as
-// it will be part of some component which will provide the uniqueness guarantee.
 func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) (bool, error) {
 	var (
 		rIdx  = &retrievalIndexItem{Address: ch.Address()}
