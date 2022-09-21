@@ -74,7 +74,9 @@ type ReserveCommitment struct {
 }
 
 // MakeSample tries to assemble a reserve commitment sample from the given depth.
-func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uint8) (ReserveCommitment, uint64, uint64, uint64, uint64, error) {
+func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth uint8) (commitmentHash ReserveCommitment, iter, doub, errd, rsvsize uint64, err error) {
+
+	added := false
 
 	iterated := uint64(0)
 	errored := uint64(0)
@@ -94,12 +96,15 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 		for ch := range chs {
 			iterated++
 
+			added = false
+
 			chunk, err := s.storage.Get(ctx, storage.ModeGetSync, ch.Address)
 			if err != nil {
 				errored++
 				s.logger.Error(err, "reserve sampler: skipping missing chunk")
 				continue
 			}
+
 			hmacr.Write(chunk.Data())
 			taddr := hmacr.Sum(nil)
 			hmacr.Reset()
@@ -107,16 +112,19 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 			for i, item := range buffer {
 				distance, err := swarm.DistanceCmp(zerobytes, taddr, item.TransformedChunkAddress.Bytes())
 				if err != nil {
+					added = true
 					errored++
 					break
 				}
 				if distance > 0 {
 					buffer = append(buffer[:i+1], buffer[i:]...)
 					buffer[i] = SampleItem{ChunkAddress: ch.Address, TransformedChunkAddress: swarm.NewAddress(taddr)}
+					added = true
 					break
 				}
 				if distance == 0 {
 					doubled++
+					added = true
 					break
 				}
 			}
@@ -125,7 +133,7 @@ func (s *Sampler) MakeSample(ctx context.Context, anchor []byte, storageDepth ui
 				buffer = buffer[:16]
 			}
 
-			if len(buffer) < 16 {
+			if len(buffer) < 16 && !added {
 				buffer = append(buffer, SampleItem{ChunkAddress: ch.Address, TransformedChunkAddress: swarm.NewAddress(taddr)})
 			}
 
