@@ -9,7 +9,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 type batchOp struct {
@@ -72,14 +72,17 @@ func (i *Batch) Commit() error {
 		return i.ctx.Err()
 	}
 
-	i.store.mu.Lock()
-	defer i.store.mu.Unlock()
+	i.mu.Lock()
+	defer i.mu.Unlock()
 
 	if i.done {
 		return errors.New("already committed")
 	}
 
 	defer func() { i.done = true }()
+
+	i.store.mu.Lock()
+	defer i.store.mu.Unlock()
 
 	for key, ops := range i.ops {
 		if ops.delete {

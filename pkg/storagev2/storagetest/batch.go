@@ -9,7 +9,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 var (
@@ -76,7 +76,7 @@ func TestBatch(t *testing.T, s storage.Store) {
 		}
 	})
 
-	t.Run("batche not reusable after commit", func(t *testing.T) {
+	t.Run("batch not reusable after commit", func(t *testing.T) {
 		b, _ := s.Batch(context.Background())
 		if err := b.Commit(); err != nil {
 			t.Fatal("commit", err)
@@ -86,7 +86,7 @@ func TestBatch(t *testing.T, s storage.Store) {
 		}
 	})
 
-	t.Run("batche not usable with expired context", func(t *testing.T) {
+	t.Run("batch not usable with expired context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		b, _ := s.Batch(ctx)
 		if err := b.Put(item1); err != nil {
