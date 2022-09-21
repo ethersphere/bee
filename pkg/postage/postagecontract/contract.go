@@ -118,7 +118,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    1600000,
+		GasLimit:    30000000,
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
