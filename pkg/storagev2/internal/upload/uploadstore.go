@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 // now returns the current time.Time; used in testing.
@@ -148,21 +147,13 @@ func (i pushItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
 }
 
-var _ storage.ChunkGetterDeleterStore = (*getterDeleter)(nil)
+var _ storage.ChunkGetterDeleter = (*getterDeleter)(nil)
 
-// getterDeleter is a storage.ChunkGetterDeleterStore
+// getterDeleter is a storage.ChunkGetterDeleter
 // that restricts its operation to the specific tagID.
 type getterDeleter struct {
 	storage internal.Storage
 	tagID   uint64
-}
-
-// Close implements the io.Closer interface.
-func (gd *getterDeleter) Close() error {
-	return multierror.Append(
-		gd.storage.Store().Close(),
-		gd.storage.ChunkStore().Close(),
-	).ErrorOrNil()
 }
 
 // Get implements the storage.Getter interface.
@@ -219,9 +210,9 @@ func (gd *getterDeleter) has(address swarm.Address) error {
 	return nil
 }
 
-// ChunkGetterDeleter returns a storage.ChunkGetterDeleterStore
+// ChunkGetterDeleter returns a storage.ChunkGetterDeleter
 // that restricts its operation to the given tagID.
-func ChunkGetterDeleter(s internal.Storage, tagID uint64) storage.ChunkGetterDeleterStore {
+func ChunkGetterDeleter(s internal.Storage, tagID uint64) storage.ChunkGetterDeleter {
 	return &getterDeleter{storage: s, tagID: tagID}
 }
 
@@ -254,6 +245,6 @@ func ChunkPutter(s internal.Storage, tagID uint64) (storage.Putter, error) {
 		if err != nil {
 			return false, fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
 		}
-		return exists, nil
+		return exists, nil // TODO: revisit the exists return value!
 	}), nil
 }

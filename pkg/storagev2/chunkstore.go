@@ -46,10 +46,9 @@ func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) (bool, error) {
 
 type IterateChunkFn func(swarm.Chunk) (stop bool, err error)
 
-// ChunkGetterDeleterStore is a storage that
-// provides read and delete operations for chunks.
-type ChunkGetterDeleterStore interface {
-	io.Closer
+// ChunkGetterDeleter is a storage that provides
+// only read and delete operations for chunks.
+type ChunkGetterDeleter interface {
 	Getter
 	Deleter
 }
