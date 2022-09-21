@@ -16,9 +16,9 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	libp2pm "github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
+	"github.com/libp2p/go-libp2p/core/host"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/multiformats/go-multistream"
 )
 

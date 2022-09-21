@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
-	protocol "github.com/libp2p/go-libp2p-core/protocol"
+	protocol "github.com/libp2p/go-libp2p/core/protocol"
 )
 
 // protocolSemverMatcher returns a matcher function for a given base protocol.

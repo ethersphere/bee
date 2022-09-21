@@ -25,15 +25,16 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
-	"github.com/libp2p/go-eventbus"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	goyamux "github.com/libp2p/go-libp2p/p2p/muxer/yamux"
+
 	libp2pm "github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/network"
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
-	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	goyamux "github.com/libp2p/go-libp2p-yamux"
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
