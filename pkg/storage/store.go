@@ -168,6 +168,20 @@ type PullSubscriber interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
 }
 
+type SampleItem struct {
+	Address            swarm.Address
+	TransformedAddress swarm.Address
+}
+
+type Sample struct {
+	Items []SampleItem
+	Hash  swarm.Address
+}
+
+type Sampler interface {
+	ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8) (Sample, error)
+}
+
 // StateStorer defines methods required to get, set, delete values for different keys
 // and close the underlying resources.
 type StateStorer interface {
