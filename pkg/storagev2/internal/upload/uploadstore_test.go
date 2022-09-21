@@ -6,9 +6,11 @@ package upload_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -22,6 +24,17 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 )
+
+// now is a function that returns the current time and replaces time.Now.
+var now = func() time.Time { return time.Unix(1234567890, 0) }
+
+// TestMain exists to adjust the time.Now function to a fixed value.
+func TestMain(m *testing.M) {
+	upload.ReplaceTimeNow(now)
+	code := m.Run()
+	upload.ReplaceTimeNow(time.Now)
+	os.Exit(code)
+}
 
 var _ internal.Storage = (*testStorage)(nil)
 
@@ -184,12 +197,8 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 	}
 }
 
-func TestChunkPutter(t *testing.T) {
+func TestChunkGetterDeleter(t *testing.T) {
 	t.Parallel()
-
-	now := func() time.Time { return time.Unix(1234567890, 0) }
-	upload.ReplaceTimeNow(now)
-	t.Cleanup(func() { upload.ReplaceTimeNow(time.Now) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -208,7 +217,86 @@ func TestChunkPutter(t *testing.T) {
 		}
 	})
 
-	tagID := uint64(1)
+	const tagID = 1
+	putter, err := upload.ChunkPutter(ts, tagID)
+	if err != nil {
+		t.Fatalf("upload.ChunkPutter(...): unexpected error: %v", err)
+	}
+
+	// Initialize the store before the tests.
+	chunks := chunktest.GenerateTestRandomChunks(10)
+	for _, chunk := range chunks {
+		if _, err := putter.Put(ctx, chunk.WithTagID(uint32(tagID))); err != nil {
+			t.Fatalf("putter.Put(...): unexpected error: %v", err)
+		}
+	}
+
+	store := upload.ChunkGetterDeleter(ts, tagID)
+	for i, chunk := range chunks {
+		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
+			t.Run("get existing chunk", func(t *testing.T) {
+				have, err := store.Get(context.TODO(), chunk.Address())
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				if want := chunk; !want.Equal(have) {
+					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
+				}
+			})
+
+			t.Run("delete existing chunk", func(t *testing.T) {
+				err := store.Delete(context.TODO(), chunk.Address())
+				if err != nil {
+					t.Fatalf("Put(...): unexpected error: %v", err)
+				}
+
+				cnt := 0
+				err = ts.ChunkStore().Iterate(ctx, func(chunk swarm.Chunk) (stop bool, err error) {
+					cnt++
+					return false, nil
+				})
+				if err != nil {
+					t.Fatalf("ChunkStore().Iterate(...): unexpected error: %v", err)
+				}
+				if want, have := len(chunks)-(i+1), cnt; want != have {
+					t.Fatalf("ChunkStore().Iterate(...): chunk count mismatch:\nwant: %d\nhave: %d", want, have)
+				}
+			})
+
+			t.Run("get non-existing chunk", func(t *testing.T) {
+				have, err := store.Get(context.TODO(), chunk.Address())
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				if want := swarm.Chunk(nil); want != have {
+					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
+				}
+			})
+		})
+	}
+}
+
+func TestChunkPutter(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	ts := &testStorage{
+		ctx:        ctx,
+		indexStore: inmem.New(),
+		chunkStore: inmemchunkstore.New(),
+	}
+	t.Cleanup(func() {
+		if err := ts.Store().Close(); err != nil {
+			t.Errorf("Storage().Close(): unexpected error: %v", err)
+		}
+		if err := ts.ChunkStore().Close(); err != nil {
+			t.Errorf("ChunkStore().Close(): unexpected error: %v", err)
+		}
+	})
+
+	const tagID = 1
 	putter, err := upload.ChunkPutter(ts, tagID)
 	if err != nil {
 		t.Fatalf("upload.ChunkPutter(...): unexpected error: %v", err)
