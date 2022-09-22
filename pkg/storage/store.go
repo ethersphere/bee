@@ -144,6 +144,7 @@ type Storer interface {
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	PullSubscriber
 	SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func())
+	Sampler
 	io.Closer
 }
 
@@ -173,9 +174,17 @@ type SampleItem struct {
 	TransformedAddress swarm.Address
 }
 
+func (s *SampleItem) String() string {
+	return fmt.Sprintf("TxAddr: %s Actual Addr: %s\n", s.TransformedAddress, s.Address)
+}
+
 type Sample struct {
 	Items []SampleItem
 	Hash  swarm.Address
+}
+
+func (s *Sample) String() string {
+	return fmt.Sprintf("Sample size: %d\nHash: %s\nSamples: %+q\n", len(s.Items), s.Hash, s.Items)
 }
 
 type Sampler interface {
