@@ -241,7 +241,7 @@ type mockReserveReporter struct {
 	size     uint64
 }
 
-func (m *mockReserveReporter) ReserveSize() (uint64, error) {
+func (m *mockReserveReporter) ComputeReserveSize(uint8) (uint64, error) {
 	m.Lock()
 	defer m.Unlock()
 	return m.size, nil

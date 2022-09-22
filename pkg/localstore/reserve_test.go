@@ -685,6 +685,44 @@ func TestReserveSize(t *testing.T) {
 	})
 }
 
+func TestComputeReserveSize(t *testing.T) {
+	t.Parallel()
+
+	const chunkCountPerPO = 10
+	const maxPO = 10
+	var chs []swarm.Chunk
+
+	db := newTestDB(t, &Options{
+		Capacity:        1000,
+		ReserveCapacity: 1000,
+	})
+
+	for po := 0; po < maxPO; po++ {
+		for i := 0; i < chunkCountPerPO; i++ {
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			chs = append(chs, ch)
+		}
+	}
+
+	_, err := db.Put(context.Background(), storage.ModePutSync, chs...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO))
+
+	for po := 0; po < maxPO; po++ {
+		got, err := db.ComputeReserveSize(uint8(po))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := (maxPO - po) * chunkCountPerPO
+		if got != uint64(want) {
+			t.Fatalf("compute reserve size mismatch, po %d, got %d, want %d", po, got, want)
+		}
+	}
+}
+
 func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 	chunkCount := 100
 
