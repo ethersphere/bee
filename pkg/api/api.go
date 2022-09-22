@@ -44,6 +44,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -133,6 +134,7 @@ type Service struct {
 	chunkPushC      chan *pusher.Op
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
+	stakingContract stakingcontract.Interface
 	Options
 
 	http.Handler
@@ -213,6 +215,7 @@ type ExtraOptions struct {
 	FeedFactory      feeds.Factory
 	Post             postage.Service
 	PostageContract  postagecontract.Interface
+	StakingContract  stakingcontract.Interface
 	Steward          steward.Interface
 	SyncStatus       func() (bool, error)
 }
@@ -259,6 +262,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.post = e.Post
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
+	s.stakingContract = e.StakingContract
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver

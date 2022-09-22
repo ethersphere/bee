@@ -30,13 +30,14 @@ var (
 
 	ErrInvalidStakeAmount = errors.New("invalid stake amount")
 	ErrInsufficientFunds  = errors.New("insufficient token balance")
+	ErrGetStakeFailed     = errors.New("get stake failed")
 
 	depositStakeDescription = "Deposit Stake"
 )
 
 type Interface interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay [32]byte) error
-	GetStake(ctx context.Context, overlay [32]byte) (*big.Int, error)
+	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay []byte) error
+	GetStake(ctx context.Context, overlay []byte) (*big.Int, error)
 }
 
 type stakingContract struct {
@@ -105,7 +106,7 @@ func (s *stakingContract) sendDepositStakeTransaction(ctx context.Context, owner
 	return receipt, nil
 }
 
-func (s *stakingContract) sendGetStakeTransaction(ctx context.Context, overlay [32]byte) (*big.Int, error) {
+func (s *stakingContract) sendGetStakeTransaction(ctx context.Context, overlay []byte) (*big.Int, error) {
 
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
 	if err != nil {
@@ -127,11 +128,12 @@ func (s *stakingContract) sendGetStakeTransaction(ctx context.Context, overlay [
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay [32]byte) error {
+func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay []byte) error {
 	prevStakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
 	if err != nil {
 		return err
 	}
+
 	if prevStakedAmount.Cmp(big.NewInt(0)) == -1 {
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
 			return ErrInvalidStakeAmount
@@ -176,10 +178,10 @@ func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.In
 	return nil
 }
 
-func (s *stakingContract) GetStake(ctx context.Context, overlay [32]byte) (*big.Int, error) {
+func (s *stakingContract) GetStake(ctx context.Context, overlay []byte) (*big.Int, error) {
 	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
 	}
 	return stakedAmount, nil
 }
