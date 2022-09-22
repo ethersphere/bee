@@ -15,10 +15,11 @@ import (
 
 const loggerName = "depthmonitor"
 
-var (
-	manageWait          = 5 * time.Minute
-	minimumRadius uint8 = 4
-)
+// DefaultWakeupInterval is the default value
+// for the depth monitor wake-up interval.
+const DefaultWakeupInterval = 10 * time.Second
+
+var minimumRadius uint8 = 4
 
 // ReserveReporter interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
@@ -63,6 +64,7 @@ func New(
 	bs postage.Storer,
 	logger log.Logger,
 	warmupTime time.Duration,
+	wakeupInterval time.Duration,
 ) *Service {
 
 	s := &Service{
@@ -75,12 +77,12 @@ func New(
 		stopped:  make(chan struct{}),
 	}
 
-	go s.manage(warmupTime)
+	go s.manage(warmupTime, wakeupInterval)
 
 	return s
 }
 
-func (s *Service) manage(warmupTime time.Duration) {
+func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 	defer close(s.stopped)
 
 	// wire up batchstore to start reporting storage radius to kademlia
@@ -112,7 +114,7 @@ func (s *Service) manage(warmupTime time.Duration) {
 		select {
 		case <-s.quit:
 			return
-		case <-time.After(manageWait):
+		case <-time.After(wakeupInterval):
 		}
 
 		currentSize, err := s.reserve.ReserveSize()

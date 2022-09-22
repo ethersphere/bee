@@ -954,7 +954,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	}
 
 	if o.FullNodeMode {
-		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime)
+		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 	}
 
