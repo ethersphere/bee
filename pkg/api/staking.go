@@ -11,6 +11,20 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.stakingSem.TryAcquire(1) {
+			s.logger.Debug("staking access: simultaneous on-chain operations not supported")
+			s.logger.Error(nil, "staking access: simultaneous on-chain operations not supported")
+			jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
+			return
+		}
+		defer s.stakingSem.Release(1)
+
+		h.ServeHTTP(w, r)
+	})
+}
+
 type getStakeResponse struct {
 	StakedAmount *big.Int `json:"stakedAmount"`
 }

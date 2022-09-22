@@ -169,6 +169,7 @@ type Service struct {
 	blockTime   *big.Int
 
 	postageSem       *semaphore.Weighted
+	stakingSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
 	beeMode          BeeNodeMode
 	gatewayMode      bool
