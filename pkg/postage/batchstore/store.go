@@ -229,16 +229,14 @@ func (s *store) Save(batch *postage.Batch) error {
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		s.metrics.Radius.Set(float64(s.rs.Radius))
 
+		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
+
 		return nil
-	case err == nil:
-		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
 	case err != nil:
 		return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: get batch: %w", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64(), err)
 	}
 
-	s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
-
-	return nil
+	return fmt.Errorf("batchstore: save batch %s depth %d value %d failed: already exists", hex.EncodeToString(batch.ID), batch.Depth, batch.Value.Int64())
 }
 
 // Update is implementation of postage.Storer interface Update method.
