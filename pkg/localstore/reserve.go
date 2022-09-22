@@ -165,6 +165,9 @@ func withinRadius(db *DB, item shed.Item) bool {
 	return po >= item.Radius
 }
 
+// ComputeReserveSize iterates on the pull index to count all chunks
+// starting at some proximity order with an generated address whose PO
+// is used as a starting prefix by the index.
 func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 
 	var count uint64
@@ -193,7 +196,7 @@ func generateAddressAt(baseBytes []byte, prox int) []byte {
 	}
 
 	if baseBytes[prox/8]&(1<<(7-(prox%8))) == 0 { // if baseBytes PO bit is zero
-		addr[prox/8] |= (1 << (7 - (prox % 8))) // set addr bit to 1
+		addr[prox/8] |= 1 << (7 - (prox % 8)) // set addr bit to 1
 	}
 
 	return addr
