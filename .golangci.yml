@@ -14,7 +14,6 @@ linters:
     - forbidigo
     - gochecknoinits
     - goconst
-    - gofmt
     - goheader
     - gomoddirectives
     - goprintffuncname
