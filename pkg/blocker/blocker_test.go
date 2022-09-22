@@ -36,6 +36,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mu      sync.Mutex
 		blocked = make(map[string]time.Duration)
@@ -79,6 +81,8 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 }
 
 func TestUnflagBeforeBlock(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mu      sync.Mutex
 		blocked = make(map[string]time.Duration)
@@ -115,6 +119,8 @@ func TestUnflagBeforeBlock(t *testing.T) {
 }
 
 func TestPruneBeforeBlock(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mu      sync.Mutex
 		blocked = make(map[string]time.Duration)

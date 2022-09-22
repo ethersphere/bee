@@ -53,6 +53,8 @@ func init() {
 }
 
 func TestVersion01(t *testing.T) {
+	t.Parallel()
+
 	hasher := sha3.NewLegacyKeccak256()
 
 	_, err := hasher.Write([]byte(version01String))
@@ -69,6 +71,8 @@ func TestVersion01(t *testing.T) {
 }
 
 func TestVersion02(t *testing.T) {
+	t.Parallel()
+
 	hasher := sha3.NewLegacyKeccak256()
 
 	_, err := hasher.Write([]byte(version02String))
@@ -85,6 +89,8 @@ func TestVersion02(t *testing.T) {
 }
 
 func TestUnmarshal01(t *testing.T) {
+	t.Parallel()
+
 	input, _ := hex.DecodeString(testMarshalOutput01)
 	n := &Node{}
 	err := n.UnmarshalBinary(input)
@@ -117,6 +123,8 @@ func TestUnmarshal01(t *testing.T) {
 }
 
 func TestUnmarshal02(t *testing.T) {
+	t.Parallel()
+
 	input, _ := hex.DecodeString(testMarshalOutput02)
 	n := &Node{}
 	err := n.UnmarshalBinary(input)
@@ -154,6 +162,8 @@ func TestUnmarshal02(t *testing.T) {
 }
 
 func TestMarshal(t *testing.T) {
+	t.Parallel()
+
 	rand.Seed(1)
 	ctx := context.Background()
 	n := New()
@@ -258,6 +268,7 @@ func Test_UnmarshalBinary(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
