@@ -34,11 +34,9 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/hashicorp/go-multierror"
 	libp2p "github.com/libp2p/go-libp2p"
-	autonat "github.com/libp2p/go-libp2p-autonat"
 	crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/mux"
 	"github.com/libp2p/go-libp2p-core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -46,6 +44,7 @@ import (
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	goyamux "github.com/libp2p/go-libp2p-yamux"
+	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-tcp-transport"
@@ -585,7 +584,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				if errors.Is(err, p2p.ErrUnexpected) {
 					s.metrics.UnexpectedProtocolReqCount.Inc()
 				}
-				if errors.Is(err, mux.ErrReset) {
+				if errors.Is(err, network.ErrReset) {
 					s.metrics.StreamHandlerErrResetCount.Inc()
 				}
 				logger.Debug("handle protocol failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
