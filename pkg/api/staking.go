@@ -19,7 +19,6 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.BadRequest(w, "invalid staking amount")
 		return
 	}
-
 }
 
 func (s *Service) stakingGetStakedAmount(w http.ResponseWriter, r *http.Request) {

@@ -35,8 +35,8 @@ var (
 )
 
 type Interface interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int) error
-	GetStake(ctx context.Context, overlay [32]byte)
+	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay [32]byte) error
+	GetStake(ctx context.Context, overlay [32]byte) (*big.Int, error)
 }
 
 type stakingContract struct {
@@ -105,12 +105,37 @@ func (s *stakingContract) sendDepositStakeTransaction(ctx context.Context, owner
 	return receipt, nil
 }
 
-//TODO: getStakedAmount
+func (s *stakingContract) sendGetStakeTransaction(ctx context.Context, overlay [32]byte) (*big.Int, error) {
 
-func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
+	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
+	if err != nil {
+		return nil, err
+	}
 
-	if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-		return ErrInvalidStakeAmount
+	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &s.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)
+	}
+
+	results, err := erc20ABI.Unpack("stakeOfOverlay", result)
+	if err != nil {
+		return nil, err
+	}
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
+func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay [32]byte) error {
+	prevStakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
+	if err != nil {
+		return err
+	}
+	if prevStakedAmount.Cmp(big.NewInt(0)) == -1 {
+		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
+			return ErrInvalidStakeAmount
+		}
 	}
 
 	balance, err := s.getBalance(ctx)
@@ -151,9 +176,12 @@ func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.In
 	return nil
 }
 
-func (s *stakingContract) GetStake(ctx context.Context, overlay [32]byte) {
-	//TODO implement me
-	panic("implement me")
+func (s *stakingContract) GetStake(ctx context.Context, overlay [32]byte) (*big.Int, error) {
+	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
+	if err != nil {
+		return nil, err
+	}
+	return stakedAmount, nil
 }
 
 func (s *stakingContract) getBalance(ctx context.Context) (*big.Int, error) {
