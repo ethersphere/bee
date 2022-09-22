@@ -15,6 +15,8 @@ import (
 )
 
 func TestGenerateSecp256k1Key(t *testing.T) {
+	t.Parallel()
+
 	k1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +38,8 @@ func TestGenerateSecp256k1Key(t *testing.T) {
 }
 
 func TestNewAddress(t *testing.T) {
+	t.Parallel()
+
 	k, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +59,8 @@ func TestNewAddress(t *testing.T) {
 }
 
 func TestEncodeSecp256k1PrivateKey(t *testing.T) {
+	t.Parallel()
+
 	k1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +76,8 @@ func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 }
 
 func TestSecp256k1PrivateKeyFromBytes(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("data")
 
 	k1 := crypto.Secp256k1PrivateKeyFromBytes(data)
@@ -88,6 +96,8 @@ func TestSecp256k1PrivateKeyFromBytes(t *testing.T) {
 }
 
 func TestNewEthereumAddress(t *testing.T) {
+	t.Parallel()
+
 	privKeyHex := "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
 	privKeyBytes, err := hex.DecodeString(privKeyHex)
 	if err != nil {

@@ -33,6 +33,8 @@ var (
 
 // TestTagSingleIncrements tests if Inc increments the tag state value
 func TestTagSingleIncrements(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	tg := &Tag{Total: 10, stateStore: mockStatestore, logger: logger}
@@ -68,6 +70,8 @@ func TestTagSingleIncrements(t *testing.T) {
 
 // TestTagStatus is a unit test to cover Tag.Status method functionality
 func TestTagStatus(t *testing.T) {
+	t.Parallel()
+
 	tg := &Tag{Total: 10}
 	err := tg.Inc(StateSeen)
 	if err != nil {
@@ -118,6 +122,8 @@ func TestTagStatus(t *testing.T) {
 
 // tests ETA is precise
 func TestTagETA(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	maxDiff := 100000 // 100 microsecond
 	tg := &Tag{Total: 10, StartedAt: now}
@@ -138,6 +144,8 @@ func TestTagETA(t *testing.T) {
 
 // TestTagConcurrentIncrements tests Inc calls concurrently
 func TestTagConcurrentIncrements(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	tg := &Tag{stateStore: mockStatestore, logger: logger}
@@ -168,6 +176,8 @@ func TestTagConcurrentIncrements(t *testing.T) {
 
 // TestTagsMultipleConcurrentIncrements tests Inc calls concurrently
 func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	ts := NewTags(mockStatestore, logger)
@@ -219,6 +229,8 @@ func TestTagsMultipleConcurrentIncrementsSyncMap(t *testing.T) {
 // TestMarshallingWithAddr tests that marshalling and unmarshalling is done correctly when the
 // tag Address (byte slice) contains some arbitrary value
 func TestMarshallingWithAddr(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	tg := NewTag(context.Background(), 111, 10, nil, mockStatestore, logger)
@@ -268,6 +280,8 @@ func TestMarshallingWithAddr(t *testing.T) {
 
 // TestMarshallingNoAddress tests that marshalling and unmarshalling is done correctly
 func TestMarshallingNoAddr(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	tg := NewTag(context.Background(), 111, 10, nil, mockStatestore, logger)

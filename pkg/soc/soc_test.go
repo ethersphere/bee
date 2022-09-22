@@ -19,6 +19,8 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	payload := []byte("foo")
 	ch, err := cac.New(payload)
 	if err != nil {
@@ -46,6 +48,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewSigned(t *testing.T) {
+	t.Parallel()
+
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 	// signature of hash(id + chunk address of foo)
 	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
@@ -93,6 +97,8 @@ func TestNewSigned(t *testing.T) {
 // TestChunk verifies that the chunk created from the SOC object
 // corresponds to the SOC spec.
 func TestChunk(t *testing.T) {
+	t.Parallel()
+
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
 	if err != nil {
@@ -155,6 +161,8 @@ func TestChunk(t *testing.T) {
 }
 
 func TestChunkErrorWithoutOwner(t *testing.T) {
+	t.Parallel()
+
 	payload := []byte("foo")
 	ch, err := cac.New(payload)
 	if err != nil {
@@ -173,6 +181,8 @@ func TestChunkErrorWithoutOwner(t *testing.T) {
 
 // TestSign tests whether a soc is correctly signed.
 func TestSign(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -230,6 +240,8 @@ func TestSign(t *testing.T) {
 // TestFromChunk verifies that valid chunk data deserializes to
 // a fully populated soc object.
 func TestFromChunk(t *testing.T) {
+	t.Parallel()
+
 	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
 
 	// signed soc chunk of:
@@ -283,6 +295,8 @@ func TestFromChunk(t *testing.T) {
 }
 
 func TestCreateAddress(t *testing.T) {
+	t.Parallel()
+
 	id := make([]byte, swarm.HashSize)
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
@@ -297,6 +311,8 @@ func TestCreateAddress(t *testing.T) {
 }
 
 func TestRecoverAddress(t *testing.T) {
+	t.Parallel()
+
 	owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 	id := make([]byte, swarm.HashSize)
 	chunkAddress := swarm.MustParseHexAddress("2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48")

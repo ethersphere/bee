@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/settlement/swap/headers"
+	swap "github.com/ethersphere/bee/pkg/settlement/swap/headers"
 )
 
 func TestParseSettlementResponseHeaders(t *testing.T) {
+	t.Parallel()
+
 	headers := p2p.Headers{
 		swap.ExchangeRateFieldName: []byte{10},
 		swap.DeductionFieldName:    []byte{20},
@@ -34,6 +36,7 @@ func TestParseSettlementResponseHeaders(t *testing.T) {
 }
 
 func TestMakeSettlementHeaders(t *testing.T) {
+	t.Parallel()
 
 	makeHeaders := swap.MakeSettlementHeaders(big.NewInt(906000), big.NewInt(5348))
 
@@ -48,6 +51,8 @@ func TestMakeSettlementHeaders(t *testing.T) {
 }
 
 func TestParseExchangeHeader(t *testing.T) {
+	t.Parallel()
+
 	toReadHeaders := p2p.Headers{
 		swap.ExchangeRateFieldName: []byte{13, 211, 16},
 	}
@@ -64,6 +69,8 @@ func TestParseExchangeHeader(t *testing.T) {
 }
 
 func TestParseDeductionHeader(t *testing.T) {
+	t.Parallel()
+
 	toReadHeaders := p2p.Headers{
 		swap.DeductionFieldName: []byte{20, 228},
 	}

@@ -50,7 +50,11 @@ type bookingT struct {
 }
 
 func TestMutex(t *testing.T) {
+	t.Parallel()
+
 	t.Run("locked mutex can not be locked again", func(t *testing.T) {
+		t.Parallel()
+
 		m := accounting.NewMutex()
 		m.Lock()
 
@@ -76,6 +80,8 @@ func TestMutex(t *testing.T) {
 	})
 
 	t.Run("can lock after release", func(t *testing.T) {
+		t.Parallel()
+
 		m := accounting.NewMutex()
 		m.Lock()
 
@@ -89,6 +95,8 @@ func TestMutex(t *testing.T) {
 	})
 
 	t.Run("locked mutex takes context into account", func(t *testing.T) {
+		t.Parallel()
+
 		m := accounting.NewMutex()
 		m.Lock()
 
@@ -102,6 +110,8 @@ func TestMutex(t *testing.T) {
 
 // TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
 func TestAccountingAddBalance(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -171,6 +181,8 @@ func TestAccountingAddBalance(t *testing.T) {
 
 // TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
 func TestAccountingAddOriginatedBalance(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -294,6 +306,8 @@ func TestAccountingAddOriginatedBalance(t *testing.T) {
 // It creates an accounting instance, does some accounting
 // Then it creates a new accounting instance with the same store and verifies the balances
 func TestAccountingAdd_persistentBalances(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -366,6 +380,8 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 
 // TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded
 func TestAccountingReserve(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -399,6 +415,8 @@ func TestAccountingReserve(t *testing.T) {
 // TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded,
 // but extends this limit by 'n' (max 2) seconds worth of refresh rate if last refreshment was 'n' seconds ago.
 func TestAccountingReserveAheadOfTime(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -543,6 +561,8 @@ func TestAccountingReserveAheadOfTime(t *testing.T) {
 
 // TestAccountingDisconnect tests that exceeding the disconnect threshold with Debit returns a p2p.DisconnectError
 func TestAccountingDisconnect(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -592,6 +612,8 @@ func TestAccountingDisconnect(t *testing.T) {
 
 // TestAccountingCallSettlement tests that settlement is called correctly if the payment threshold is hit
 func TestAccountingCallSettlement(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -710,6 +732,8 @@ func TestAccountingCallSettlement(t *testing.T) {
 }
 
 func TestAccountingCallSettlementMonetary(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -845,6 +869,8 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 }
 
 func TestAccountingCallSettlementTooSoon(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	store := mock.NewStateStore()
 	defer store.Close()
@@ -965,6 +991,8 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 
 // TestAccountingCallSettlementEarly tests that settlement is called correctly if the payment threshold minus early payment is hit
 func TestAccountingCallSettlementEarly(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1040,6 +1068,8 @@ func TestAccountingCallSettlementEarly(t *testing.T) {
 }
 
 func TestAccountingSurplusBalance(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1165,6 +1195,8 @@ func TestAccountingSurplusBalance(t *testing.T) {
 
 // TestAccountingNotifyPayment tests that payments adjust the balance
 func TestAccountingNotifyPaymentReceived(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1230,6 +1262,8 @@ func (p *pricingMock) AnnouncePaymentThreshold(ctx context.Context, peer swarm.A
 }
 
 func TestAccountingConnected(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1266,6 +1300,8 @@ func TestAccountingConnected(t *testing.T) {
 }
 
 func TestAccountingNotifyPaymentThreshold(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1325,6 +1361,8 @@ func TestAccountingNotifyPaymentThreshold(t *testing.T) {
 }
 
 func TestAccountingPeerDebt(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1387,6 +1425,8 @@ func TestAccountingPeerDebt(t *testing.T) {
 }
 
 func TestAccountingCallPaymentErrorRetries(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1539,6 +1579,8 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 var errInvalidReason = errors.New("invalid blocklist reason")
 
 func TestAccountingGhostOverdraft(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1615,6 +1657,8 @@ func TestAccountingGhostOverdraft(t *testing.T) {
 }
 
 func TestAccountingReconnectBeforeAllowed(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1687,6 +1731,8 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 }
 
 func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	store := mock.NewStateStore()
@@ -1893,12 +1939,14 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 }
 
 func TestAccountingRefreshGrowingThresholds(t *testing.T) {
+	t.Parallel()
 
 	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, true, testPaymentThreshold, testRefreshRate)
 
 }
 
 func TestAccountingRefreshGrowingThresholdsLight(t *testing.T) {
+	t.Parallel()
 
 	lightPaymentThresholdDefault := new(big.Int).Div(testPaymentThreshold, big.NewInt(testLightFactor))
 	lightRefreshRate := testRefreshRate / testLightFactor
@@ -1908,12 +1956,14 @@ func TestAccountingRefreshGrowingThresholdsLight(t *testing.T) {
 }
 
 func TestAccountingSwapGrowingThresholds(t *testing.T) {
+	t.Parallel()
 
 	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, true, testPaymentThreshold, testRefreshRate)
 
 }
 
 func TestAccountingSwapGrowingThresholdsLight(t *testing.T) {
+	t.Parallel()
 
 	lightPaymentThresholdDefault := new(big.Int).Div(testPaymentThreshold, big.NewInt(testLightFactor))
 	lightRefreshRate := testRefreshRate / testLightFactor

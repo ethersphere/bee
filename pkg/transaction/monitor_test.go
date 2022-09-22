@@ -17,6 +17,8 @@ import (
 )
 
 func TestMonitorWatchTransaction(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	txHash := common.HexToHash("0xabcd")
 	nonce := uint64(10)
@@ -27,6 +29,8 @@ func TestMonitorWatchTransaction(t *testing.T) {
 	testTimeout := 5 * time.Second
 
 	t.Run("single transaction confirmed", func(t *testing.T) {
+		t.Parallel()
+
 		monitor := transaction.NewMonitor(
 			logger,
 			backendsimulation.New(
@@ -76,6 +80,8 @@ func TestMonitorWatchTransaction(t *testing.T) {
 	})
 
 	t.Run("single transaction cancelled", func(t *testing.T) {
+		t.Parallel()
+
 		monitor := transaction.NewMonitor(
 			logger,
 			backendsimulation.New(
@@ -131,6 +137,8 @@ func TestMonitorWatchTransaction(t *testing.T) {
 	})
 
 	t.Run("multiple transactions mixed", func(t *testing.T) {
+		t.Parallel()
+
 		txHash2 := common.HexToHash("bbbb")
 		txHash3 := common.HexToHash("cccc")
 
@@ -253,6 +261,8 @@ func TestMonitorWatchTransaction(t *testing.T) {
 	})
 
 	t.Run("single transaction no confirm", func(t *testing.T) {
+		t.Parallel()
+
 		txHash2 := common.HexToHash("bbbb")
 		monitor := transaction.NewMonitor(
 			logger,
@@ -331,6 +341,8 @@ func TestMonitorWatchTransaction(t *testing.T) {
 	})
 
 	t.Run("shutdown while waiting", func(t *testing.T) {
+		t.Parallel()
+
 		monitor := transaction.NewMonitor(
 			logger,
 			backendsimulation.New(

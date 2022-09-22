@@ -16,6 +16,8 @@ import (
 )
 
 func TestTracing(t *testing.T) {
+	t.Parallel()
+
 	tracer1, closer1, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     true,
 		ServiceName: "bee-test",

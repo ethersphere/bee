@@ -23,6 +23,8 @@ import (
 // TestNewDB constructs a new DB
 // and validates if the schema is initialized properly.
 func TestNewDB(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	s, err := db.getSchema()
@@ -46,6 +48,8 @@ func TestNewDB(t *testing.T) {
 // TestDB_persistence creates one DB, saves a field and closes that DB.
 // Then, it constructs another DB and tries to retrieve the saved value.
 func TestDB_persistence(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	db, err := NewDB(dir, nil)

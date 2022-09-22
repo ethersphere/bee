@@ -23,6 +23,8 @@ import (
 )
 
 func TestSteward(t *testing.T) {
+	t.Parallel()
+
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
@@ -79,6 +81,8 @@ func TestSteward(t *testing.T) {
 }
 
 func TestSteward_ErrWantSelf(t *testing.T) {
+	t.Parallel()
+
 	var (
 		ctx           = context.Background()
 		chunks        = 10

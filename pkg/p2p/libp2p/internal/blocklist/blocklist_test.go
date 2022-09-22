@@ -15,6 +15,8 @@ import (
 )
 
 func TestExist(t *testing.T) {
+	t.Parallel()
+
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{4, 5, 6, 7})
 	ctMock := &currentTimeMock{}
@@ -61,6 +63,8 @@ func TestExist(t *testing.T) {
 }
 
 func TestPeers(t *testing.T) {
+	t.Parallel()
+
 	addr1 := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr2 := swarm.NewAddress([]byte{4, 5, 6, 7})
 	ctMock := &currentTimeMock{}

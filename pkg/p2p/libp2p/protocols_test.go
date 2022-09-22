@@ -22,6 +22,8 @@ import (
 )
 
 func TestNewStream(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -55,6 +57,8 @@ func TestNewStream(t *testing.T) {
 // TestNewStream_OnlyFull tests that the handler gets the full
 // node information communicated correctly.
 func TestNewStream_OnlyFull(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -93,6 +97,8 @@ func TestNewStream_OnlyFull(t *testing.T) {
 // TestNewStream_Mixed tests that the handler gets the full
 // node information communicated correctly for light node
 func TestNewStream_Mixed(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -130,6 +136,8 @@ func TestNewStream_Mixed(t *testing.T) {
 // the right handler when multiple streams are registered under
 // a single protocol.
 func TestNewStreamMulti(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -178,6 +186,8 @@ func TestNewStreamMulti(t *testing.T) {
 }
 
 func TestNewStream_errNotSupported(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -215,6 +225,8 @@ func TestNewStream_errNotSupported(t *testing.T) {
 }
 
 func TestNewStream_semanticVersioning(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -276,6 +288,8 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 }
 
 func TestDisconnectError(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -306,6 +320,8 @@ func TestDisconnectError(t *testing.T) {
 }
 
 func TestConnectDisconnectEvents(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -383,6 +399,8 @@ func TestConnectDisconnectEvents(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 

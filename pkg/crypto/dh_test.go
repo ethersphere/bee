@@ -17,6 +17,8 @@ import (
 )
 
 func TestECDHCorrect(t *testing.T) {
+	t.Parallel()
+
 	key0, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +51,8 @@ func TestECDHCorrect(t *testing.T) {
 }
 
 func TestSharedKey(t *testing.T) {
+	t.Parallel()
+
 	data, err := hex.DecodeString("c786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
 	if err != nil {
 		t.Fatal(err)

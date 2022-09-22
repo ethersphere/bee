@@ -12,6 +12,8 @@ import (
 )
 
 func TestAddOverdraft(t *testing.T) {
+	t.Parallel()
+
 	var (
 		p1 = swarm.NewAddress([]byte("0xab"))
 		p2 = swarm.NewAddress([]byte("0xbc"))

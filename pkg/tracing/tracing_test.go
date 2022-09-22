@@ -19,6 +19,8 @@ import (
 )
 
 func TestSpanFromHeaders(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -50,6 +52,8 @@ func TestSpanFromHeaders(t *testing.T) {
 }
 
 func TestSpanWithContextFromHeaders(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -82,6 +86,8 @@ func TestSpanWithContextFromHeaders(t *testing.T) {
 }
 
 func TestFromContext(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -104,6 +110,8 @@ func TestFromContext(t *testing.T) {
 }
 
 func TestWithContext(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -128,6 +136,8 @@ func TestWithContext(t *testing.T) {
 }
 
 func TestStartSpanFromContext_logger(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -160,6 +170,8 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 }
 
 func TestStartSpanFromContext_nilLogger(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -172,6 +184,8 @@ func TestStartSpanFromContext_nilLogger(t *testing.T) {
 }
 
 func TestNewLoggerWithTraceID(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 
@@ -206,6 +220,8 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 }
 
 func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
+	t.Parallel()
+
 	tracer, closer := newTracer(t)
 	defer closer.Close()
 

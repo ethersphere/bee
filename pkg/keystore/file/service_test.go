@@ -12,6 +12,8 @@ import (
 )
 
 func TestService(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	test.Service(t, file.New(dir))

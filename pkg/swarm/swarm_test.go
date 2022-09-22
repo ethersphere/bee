@@ -14,6 +14,8 @@ import (
 )
 
 func TestAddress(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name    string
 		hex     string
@@ -46,7 +48,10 @@ func TestAddress(t *testing.T) {
 			want: swarm.NewAddress([]byte{0x35, 0xa2, 0x6b, 0x7b, 0xb6, 0x45, 0x5c, 0xba, 0xbe, 0x7a, 0xe, 0x5, 0xaa, 0xfb, 0xd0, 0xb8, 0xb2, 0x6f, 0xea, 0xc8, 0x43, 0xe3, 0xb9, 0xa6, 0x49, 0x46, 0x8d, 0xe, 0xa3, 0x7a, 0x12, 0xb2}),
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			a, err := swarm.ParseHexAddress(tc.hex)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got error %v, want %v", err, tc.wantErr)
@@ -65,6 +70,8 @@ func TestAddress(t *testing.T) {
 }
 
 func TestAddress_jsonMarshalling(t *testing.T) {
+	t.Parallel()
+
 	a1 := swarm.MustParseHexAddress("24798dd5a470e927fa")
 
 	b, err := json.Marshal(a1)
@@ -83,6 +90,8 @@ func TestAddress_jsonMarshalling(t *testing.T) {
 }
 
 func TestAddress_MemberOf(t *testing.T) {
+	t.Parallel()
+
 	a1 := swarm.MustParseHexAddress("24798dd5a470e927fa")
 	a2 := swarm.MustParseHexAddress("24798dd5a470e927fa")
 	a3 := swarm.MustParseHexAddress("24798dd5a470e927fb")
@@ -101,6 +110,8 @@ func TestAddress_MemberOf(t *testing.T) {
 }
 
 func TestCloser(t *testing.T) {
+	t.Parallel()
+
 	a := swarm.MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000")
 	x := swarm.MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000")
 	y := swarm.MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000")

@@ -17,6 +17,8 @@ import (
 )
 
 func TestMethodHandler(t *testing.T) {
+	t.Parallel()
+
 	contentType := "application/swarm"
 
 	h := jsonhttp.MethodHandler{
@@ -31,6 +33,8 @@ func TestMethodHandler(t *testing.T) {
 	}
 
 	t.Run("method allowed", func(t *testing.T) {
+		t.Parallel()
+
 		body := "test body"
 
 		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
@@ -56,6 +60,8 @@ func TestMethodHandler(t *testing.T) {
 	})
 
 	t.Run("method not allowed", func(t *testing.T) {
+		t.Parallel()
+
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
@@ -87,6 +93,8 @@ func TestMethodHandler(t *testing.T) {
 }
 
 func TestNotFoundHandler(t *testing.T) {
+	t.Parallel()
+
 	w := httptest.NewRecorder()
 
 	jsonhttp.NotFoundHandler(w, nil)
@@ -116,6 +124,8 @@ func TestNotFoundHandler(t *testing.T) {
 }
 
 func TestNewMaxBodyBytesHandler(t *testing.T) {
+	t.Parallel()
+
 	var limit int64 = 10
 
 	h := jsonhttp.NewMaxBodyBytesHandler(limit)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +173,10 @@ func TestNewMaxBodyBytesHandler(t *testing.T) {
 			wantCode:             http.StatusRequestEntityTooLarge,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.body))
 			if tc.withoutContentLength {
 				r.Header.Del("Content-Length")

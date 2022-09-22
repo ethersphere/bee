@@ -12,5 +12,7 @@ import (
 )
 
 func TestService(t *testing.T) {
+	t.Parallel()
+
 	test.Service(t, mem.New())
 }

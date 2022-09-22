@@ -38,11 +38,15 @@ func newTransferLog(address, from, to common.Address, value *big.Int) *types.Log
 }
 
 func TestParseEvent(t *testing.T) {
+	t.Parallel()
+
 	from := common.HexToAddress("00")
 	to := common.HexToAddress("01")
 	value := big.NewInt(0)
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		var event transferEvent
 		err := transaction.ParseEvent(&erc20ABI, "Transfer", &event, *newTransferLog(common.Address{}, from, to, value))
 		if err != nil {
@@ -63,6 +67,8 @@ func TestParseEvent(t *testing.T) {
 	})
 
 	t.Run("no topic", func(t *testing.T) {
+		t.Parallel()
+
 		var event transferEvent
 		err := transaction.ParseEvent(&erc20ABI, "Transfer", &event, types.Log{
 			Topics: []common.Hash{},
@@ -74,12 +80,16 @@ func TestParseEvent(t *testing.T) {
 }
 
 func TestFindSingleEvent(t *testing.T) {
+	t.Parallel()
+
 	contractAddress := common.HexToAddress("abcd")
 	from := common.HexToAddress("00")
 	to := common.HexToAddress("01")
 	value := big.NewInt(0)
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		var event transferEvent
 		err := transaction.FindSingleEvent(
 			&erc20ABI,
@@ -113,6 +123,8 @@ func TestFindSingleEvent(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
 		var event transferEvent
 		err := transaction.FindSingleEvent(
 			&erc20ABI,
@@ -133,6 +145,8 @@ func TestFindSingleEvent(t *testing.T) {
 	})
 
 	t.Run("Reverted", func(t *testing.T) {
+		t.Parallel()
+
 		var event transferEvent
 		err := transaction.FindSingleEvent(
 			&erc20ABI,

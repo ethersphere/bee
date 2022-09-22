@@ -21,6 +21,8 @@ import (
 )
 
 func TestProve(t *testing.T) {
+	t.Parallel()
+
 	var (
 		expHash     = "9de2787d1d80a6164f4bc6359d9017131cbc14402ee0704bff0c6d691701c1dc"
 		mtx         sync.Mutex
@@ -71,6 +73,8 @@ func TestProve(t *testing.T) {
 }
 
 func TestProveErr(t *testing.T) {
+	t.Parallel()
+
 	headerByNum := backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 		return nil, errors.New("some error")
 	})

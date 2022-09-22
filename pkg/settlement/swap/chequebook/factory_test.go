@@ -26,6 +26,8 @@ var (
 )
 
 func TestFactoryERC20Address(t *testing.T) {
+	t.Parallel()
+
 	factoryAddress := common.HexToAddress("0xabcd")
 	erc20Address := common.HexToAddress("0xeffff")
 	factory := chequebook.NewFactory(
@@ -68,11 +70,15 @@ func backendWithCodeAt(codeMap map[common.Address]string) transaction.Backend {
 }
 
 func TestFactoryVerifySelf(t *testing.T) {
+	t.Parallel()
+
 	factoryAddress := common.HexToAddress("0xabcd")
 	legacyFactory1 := common.HexToAddress("0xbbbb")
 	legacyFactory2 := common.HexToAddress("0xcccc")
 
 	t.Run("valid", func(t *testing.T) {
+		t.Parallel()
+
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
 				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_4_0,
@@ -91,6 +97,8 @@ func TestFactoryVerifySelf(t *testing.T) {
 	})
 
 	t.Run("invalid deploy factory", func(t *testing.T) {
+		t.Parallel()
+
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
 				factoryAddress: "abcd",
@@ -110,6 +118,8 @@ func TestFactoryVerifySelf(t *testing.T) {
 	})
 
 	t.Run("invalid legacy factories", func(t *testing.T) {
+		t.Parallel()
+
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
 				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_4_0,
@@ -132,12 +142,16 @@ func TestFactoryVerifySelf(t *testing.T) {
 }
 
 func TestFactoryVerifyChequebook(t *testing.T) {
+	t.Parallel()
+
 	factoryAddress := common.HexToAddress("0xabcd")
 	chequebookAddress := common.HexToAddress("0xefff")
 	legacyFactory1 := common.HexToAddress("0xbbbb")
 	legacyFactory2 := common.HexToAddress("0xcccc")
 
 	t.Run("valid", func(t *testing.T) {
+		t.Parallel()
+
 		factory := chequebook.NewFactory(
 			backendmock.New(),
 			transactionmock.New(
@@ -159,6 +173,8 @@ func TestFactoryVerifyChequebook(t *testing.T) {
 	})
 
 	t.Run("valid legacy", func(t *testing.T) {
+		t.Parallel()
+
 		factory := chequebook.NewFactory(
 			backendmock.New(),
 			transactionmock.New(
@@ -196,6 +212,8 @@ func TestFactoryVerifyChequebook(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
+		t.Parallel()
+
 		factory := chequebook.NewFactory(
 			backendmock.New(),
 			transactionmock.New(
@@ -237,6 +255,8 @@ func TestFactoryVerifyChequebook(t *testing.T) {
 }
 
 func TestFactoryDeploy(t *testing.T) {
+	t.Parallel()
+
 	factoryAddress := common.HexToAddress("0xabcd")
 	issuerAddress := common.HexToAddress("0xefff")
 	defaultTimeout := big.NewInt(1)
@@ -295,6 +315,8 @@ func TestFactoryDeploy(t *testing.T) {
 }
 
 func TestFactoryDeployReverted(t *testing.T) {
+	t.Parallel()
+
 	factoryAddress := common.HexToAddress("0xabcd")
 	deployTransactionHash := common.HexToHash("0xffff")
 	factory := chequebook.NewFactory(

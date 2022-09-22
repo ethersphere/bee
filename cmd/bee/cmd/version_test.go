@@ -13,6 +13,8 @@ import (
 )
 
 func TestVersionCmd(t *testing.T) {
+	t.Parallel()
+
 	var outputBuf bytes.Buffer
 	if err := newCommand(t,
 		cmd.WithArgs("version"),

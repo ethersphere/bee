@@ -16,6 +16,8 @@ import (
 )
 
 func TestHeaders(t *testing.T) {
+	t.Parallel()
+
 	headers := p2p.Headers{
 		"test-header-key": []byte("header-value"),
 		"other-key":       []byte("other-value"),
@@ -70,6 +72,8 @@ func TestHeaders(t *testing.T) {
 }
 
 func TestHeaders_empty(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -119,6 +123,8 @@ func TestHeaders_empty(t *testing.T) {
 }
 
 func TestHeadler(t *testing.T) {
+	t.Parallel()
+
 	receivedHeaders := p2p.Headers{
 		"test-header-key": []byte("header-value"),
 		"other-key":       []byte("other-value"),

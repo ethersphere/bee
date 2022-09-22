@@ -17,12 +17,16 @@ import (
 )
 
 func TestIsSynced(t *testing.T) {
+	t.Parallel()
+
 	maxDelay := 10 * time.Second
 	now := time.Now().UTC()
 	ctx := context.Background()
 	blockNumber := uint64(100)
 
 	t.Run("synced", func(t *testing.T) {
+		t.Parallel()
+
 		synced, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
@@ -49,6 +53,8 @@ func TestIsSynced(t *testing.T) {
 	})
 
 	t.Run("not synced", func(t *testing.T) {
+		t.Parallel()
+
 		synced, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
@@ -75,6 +81,8 @@ func TestIsSynced(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
 		expectedErr := errors.New("err")
 		_, _, err := transaction.IsSynced(
 			ctx,

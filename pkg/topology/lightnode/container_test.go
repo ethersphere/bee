@@ -18,10 +18,13 @@ import (
 )
 
 func TestContainer(t *testing.T) {
+	t.Parallel()
 
 	base := test.RandomAddress()
 
 	t.Run("new container is empty container", func(t *testing.T) {
+		t.Parallel()
+
 		c := lightnode.NewContainer(base)
 
 		var empty topology.BinInfo
@@ -32,6 +35,8 @@ func TestContainer(t *testing.T) {
 	})
 
 	t.Run("can add peers to container", func(t *testing.T) {
+		t.Parallel()
+
 		c := lightnode.NewContainer(base)
 
 		p1 := swarm.NewAddress([]byte("123"))
@@ -77,6 +82,8 @@ func TestContainer(t *testing.T) {
 		}
 	})
 	t.Run("empty container after peer disconnect", func(t *testing.T) {
+		t.Parallel()
+
 		c := lightnode.NewContainer(base)
 
 		peer := p2p.Peer{Address: swarm.NewAddress([]byte("123"))}

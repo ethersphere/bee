@@ -23,6 +23,8 @@ import (
 )
 
 func TestRequest_statusCode(t *testing.T) {
+	t.Parallel()
+
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
@@ -37,6 +39,8 @@ func TestRequest_statusCode(t *testing.T) {
 }
 
 func TestRequest_method(t *testing.T) {
+	t.Parallel()
+
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -54,6 +58,8 @@ func TestRequest_method(t *testing.T) {
 }
 
 func TestRequest_url(t *testing.T) {
+	t.Parallel()
+
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			w.WriteHeader(http.StatusNotFound)
@@ -70,6 +76,8 @@ func TestRequest_url(t *testing.T) {
 }
 
 func TestRequest_responseHeader(t *testing.T) {
+	t.Parallel()
+
 	headerName := "Swarm-Header"
 	headerValue := "somevalue"
 	var gotValue string
@@ -87,6 +95,8 @@ func TestRequest_responseHeader(t *testing.T) {
 }
 
 func TestWithContext(t *testing.T) {
+	t.Parallel()
+
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -100,6 +110,8 @@ func TestWithContext(t *testing.T) {
 }
 
 func TestWithRequestBody(t *testing.T) {
+	t.Parallel()
+
 	wantBody := []byte("somebody")
 	var gotBody []byte
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +133,8 @@ func TestWithRequestBody(t *testing.T) {
 }
 
 func TestWithJSONRequestBody(t *testing.T) {
+	t.Parallel()
+
 	type response struct {
 		Message string `json:"message"`
 	}
@@ -153,6 +167,8 @@ func TestWithJSONRequestBody(t *testing.T) {
 }
 
 func TestWithMultipartRequest(t *testing.T) {
+	t.Parallel()
+
 	wantBody := []byte("somebody")
 	filename := "swarm.jpg"
 	contentType := "image/jpeg"
@@ -202,6 +218,8 @@ func TestWithMultipartRequest(t *testing.T) {
 }
 
 func TestWithRequestHeader(t *testing.T) {
+	t.Parallel()
+
 	headerName := "Swarm-Header"
 	headerValue := "somevalue"
 	var gotValue string
@@ -221,6 +239,8 @@ func TestWithRequestHeader(t *testing.T) {
 }
 
 func TestWithExpectedResponse(t *testing.T) {
+	t.Parallel()
+
 	body := []byte("something to want")
 
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -244,6 +264,8 @@ func TestWithExpectedResponse(t *testing.T) {
 }
 
 func TestWithExpectedJSONResponse(t *testing.T) {
+	t.Parallel()
+
 	type response struct {
 		Message string `json:"message"`
 	}
@@ -272,6 +294,8 @@ func TestWithExpectedJSONResponse(t *testing.T) {
 }
 
 func TestWithUnmarhalJSONResponse(t *testing.T) {
+	t.Parallel()
+
 	message := "text"
 
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -290,6 +314,8 @@ func TestWithUnmarhalJSONResponse(t *testing.T) {
 }
 
 func TestWithPutResponseBody(t *testing.T) {
+	t.Parallel()
+
 	wantBody := []byte("somebody")
 
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -311,6 +337,8 @@ func TestWithPutResponseBody(t *testing.T) {
 }
 
 func TestWithNoResponseBody(t *testing.T) {
+	t.Parallel()
+
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			fmt.Fprint(w, "not found")

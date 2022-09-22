@@ -19,6 +19,8 @@ import (
 )
 
 func TestSignCheque(t *testing.T) {
+	t.Parallel()
+
 	chequebookAddress := common.HexToAddress("0x8d3766440f0d7b949a5e32995d09619a7f86e632")
 	beneficiaryAddress := common.HexToAddress("0xb8d424e9662fe0837fb1d728f1ac97cebb1085fe")
 	signature := common.Hex2Bytes("abcd")
@@ -62,6 +64,8 @@ func TestSignCheque(t *testing.T) {
 }
 
 func TestSignChequeIntegration(t *testing.T) {
+	t.Parallel()
+
 	chequebookAddress := common.HexToAddress("0xfa02D396842E6e1D319E8E3D4D870338F791AA25")
 	beneficiaryAddress := common.HexToAddress("0x98E6C644aFeB94BBfB9FF60EB26fc9D83BBEcA79")
 	cumulativePayout := big.NewInt(500)

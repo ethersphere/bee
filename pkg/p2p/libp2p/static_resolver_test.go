@@ -13,6 +13,8 @@ import (
 )
 
 func TestStaticAddressResolver(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name              string
 		natAddr           string
@@ -80,7 +82,10 @@ func TestStaticAddressResolver(t *testing.T) {
 			want:              "/dns/ipv4and6.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, err := libp2p.NewStaticAddressResolver(tc.natAddr, func(host string) ([]net.IP, error) {
 				hosts := map[string][]net.IP{
 					"ipv4.com": {

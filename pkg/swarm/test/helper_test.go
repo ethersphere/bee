@@ -16,6 +16,8 @@ import (
 // at a given proximity order. It compares the number of leading equal bits in the generated
 // address to the base address.
 func TestRandomAddressAt(t *testing.T) {
+	t.Parallel()
+
 	base := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	b0 := base.Bytes()
 	hw0 := []byte{b0[0], b0[1], 0, 0} // highest words of base address

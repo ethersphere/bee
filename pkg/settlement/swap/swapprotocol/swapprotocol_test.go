@@ -27,6 +27,7 @@ import (
 )
 
 func TestEmitCheques(t *testing.T) {
+	t.Parallel()
 
 	// Test negotiating / sending cheques
 
@@ -145,6 +146,8 @@ func TestEmitCheques(t *testing.T) {
 }
 
 func TestCantEmitChequeRateMismatch(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")
@@ -208,6 +211,7 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 }
 
 func TestCantEmitChequeDeductionMismatch(t *testing.T) {
+	t.Parallel()
 
 	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
@@ -272,6 +276,8 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 }
 
 func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	commonAddr := common.HexToAddress("0xab")
 	peerID := swarm.MustParseHexAddress("9ee7add7")

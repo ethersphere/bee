@@ -29,6 +29,8 @@ import (
 )
 
 func TestAll(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	ts := NewTags(mockStatestore, logger)
@@ -64,6 +66,8 @@ func TestAll(t *testing.T) {
 }
 
 func TestListAll(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 
@@ -142,6 +146,8 @@ func TestListAll(t *testing.T) {
 }
 
 func TestPersistence(t *testing.T) {
+	t.Parallel()
+
 	mockStatestore := statestore.NewStateStore()
 	logger := log.Noop
 	ts := NewTags(mockStatestore, logger)

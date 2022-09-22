@@ -16,7 +16,11 @@ import (
 )
 
 func TestTimeoutReader(t *testing.T) {
+	t.Parallel()
+
 	t.Run("normal read", func(t *testing.T) {
+		t.Parallel()
+
 		read := uint64(0)
 		data := "0123456789"
 		timeout := 100 * time.Millisecond
@@ -44,6 +48,8 @@ func TestTimeoutReader(t *testing.T) {
 		}
 	})
 	t.Run("stuck read", func(t *testing.T) {
+		t.Parallel()
+
 		read := uint64(0)
 		data := "0123456789"
 		timeout := 100 * time.Millisecond
@@ -63,6 +69,8 @@ func TestTimeoutReader(t *testing.T) {
 		}
 	})
 	t.Run("EOF read", func(t *testing.T) {
+		t.Parallel()
+
 		read := uint64(0)
 		timeout := 100 * time.Millisecond
 		cancelFn := func(u uint64) { atomic.StoreUint64(&read, u) }

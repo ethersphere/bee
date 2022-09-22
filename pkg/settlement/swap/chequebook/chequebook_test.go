@@ -21,6 +21,8 @@ import (
 )
 
 func TestChequebookAddress(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	chequebookService, err := chequebook.New(
@@ -41,6 +43,8 @@ func TestChequebookAddress(t *testing.T) {
 }
 
 func TestChequebookBalance(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	balance := big.NewInt(10)
@@ -69,6 +73,8 @@ func TestChequebookBalance(t *testing.T) {
 }
 
 func TestChequebookDeposit(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	balance := big.NewInt(30)
@@ -113,6 +119,8 @@ func TestChequebookDeposit(t *testing.T) {
 }
 
 func TestChequebookWaitForDeposit(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	txHash := common.HexToHash("0xdddd")
@@ -144,6 +152,8 @@ func TestChequebookWaitForDeposit(t *testing.T) {
 }
 
 func TestChequebookWaitForDepositReverted(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	txHash := common.HexToHash("0xdddd")
@@ -178,6 +188,8 @@ func TestChequebookWaitForDepositReverted(t *testing.T) {
 }
 
 func TestChequebookIssue(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	beneficiary := common.HexToAddress("0xdddd")
 	ownerAdress := common.HexToAddress("0xfff")
@@ -329,6 +341,8 @@ func TestChequebookIssue(t *testing.T) {
 }
 
 func TestChequebookIssueErrorSend(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	beneficiary := common.HexToAddress("0xdddd")
 	ownerAdress := common.HexToAddress("0xfff")
@@ -368,6 +382,8 @@ func TestChequebookIssueErrorSend(t *testing.T) {
 }
 
 func TestChequebookIssueOutOfFunds(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	beneficiary := common.HexToAddress("0xdddd")
 	ownerAdress := common.HexToAddress("0xfff")
@@ -407,6 +423,8 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 }
 
 func TestChequebookWithdraw(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	balance := big.NewInt(30)
@@ -442,6 +460,8 @@ func TestChequebookWithdraw(t *testing.T) {
 }
 
 func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	ownerAdress := common.HexToAddress("0xfff")
 	withdrawAmount := big.NewInt(20)
@@ -472,6 +492,8 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 }
 
 func TestStateStoreKeys(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 
 	expected := "swap_cashout_000000000000000000000000000000000000abcd"

@@ -19,6 +19,8 @@ import (
 )
 
 func TestDefaultSigner(t *testing.T) {
+	t.Parallel()
+
 	testBytes := []byte("test string")
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
@@ -32,6 +34,8 @@ func TestDefaultSigner(t *testing.T) {
 	}
 
 	t.Run("OK - sign & recover", func(t *testing.T) {
+		t.Parallel()
+
 		pubKey, err := crypto.Recover(signature, testBytes)
 		if err != nil {
 			t.Fatal(err)
@@ -43,6 +47,8 @@ func TestDefaultSigner(t *testing.T) {
 	})
 
 	t.Run("OK - recover with invalid data", func(t *testing.T) {
+		t.Parallel()
+
 		pubKey, err := crypto.Recover(signature, []byte("invalid"))
 		if err != nil {
 			t.Fatal(err)
@@ -54,6 +60,8 @@ func TestDefaultSigner(t *testing.T) {
 	})
 
 	t.Run("OK - recover with short signature", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := crypto.Recover([]byte("invalid"), testBytes)
 		if err == nil {
 			t.Fatal("expected invalid length error but got none")
@@ -65,6 +73,8 @@ func TestDefaultSigner(t *testing.T) {
 }
 
 func TestDefaultSignerEthereumAddress(t *testing.T) {
+	t.Parallel()
+
 	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +98,8 @@ func TestDefaultSignerEthereumAddress(t *testing.T) {
 }
 
 func TestDefaultSignerSignTx(t *testing.T) {
+	t.Parallel()
+
 	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
 	if err != nil {
 		t.Fatal(err)
@@ -164,6 +176,8 @@ var testTypedData = &eip712.TypedData{
 }
 
 func TestDefaultSignerTypedData(t *testing.T) {
+	t.Parallel()
+
 	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
 	if err != nil {
 		t.Fatal(err)
@@ -192,6 +206,8 @@ func TestDefaultSignerTypedData(t *testing.T) {
 }
 
 func TestRecoverEIP712(t *testing.T) {
+	t.Parallel()
+
 	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +238,8 @@ func TestRecoverEIP712(t *testing.T) {
 }
 
 func TestDefaultSignerDeterministic(t *testing.T) {
+	t.Parallel()
+
 	data, err := hex.DecodeString("634fb5a872396d9693e5c9f9d7233cfa93f395c093371017ff44aa9ae6564cdd")
 	if err != nil {
 		t.Fatal(err)

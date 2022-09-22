@@ -45,6 +45,8 @@ func (m *mockClef) SignTx(account accounts.Account, transaction *types.Transacti
 }
 
 func TestNewClefSigner(t *testing.T) {
+	t.Parallel()
+
 	ethAddress := common.HexToAddress("0x31415b599f636129AD03c196cef9f8f8b184D5C7")
 	testSignature := make([]byte, 65)
 
@@ -103,6 +105,8 @@ func TestNewClefSigner(t *testing.T) {
 }
 
 func TestNewClefSignerSpecificAccount(t *testing.T) {
+	t.Parallel()
+
 	ethAddress := common.HexToAddress("0x31415b599f636129AD03c196cef9f8f8b184D5C7")
 	wantedAddress := common.HexToAddress("0x41415b599f636129AD03c196cef9f8f8b184D5C7")
 	testSignature := make([]byte, 65)
@@ -162,6 +166,8 @@ func TestNewClefSignerSpecificAccount(t *testing.T) {
 }
 
 func TestNewClefSignerAccountUnavailable(t *testing.T) {
+	t.Parallel()
+
 	ethAddress := common.HexToAddress("0x31415b599f636129AD03c196cef9f8f8b184D5C7")
 	wantedAddress := common.HexToAddress("0x41415b599f636129AD03c196cef9f8f8b184D5C7")
 
@@ -182,6 +188,8 @@ func TestNewClefSignerAccountUnavailable(t *testing.T) {
 }
 
 func TestClefNoAccounts(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockClef{
 		accounts: []accounts.Account{},
 	}
@@ -204,6 +212,8 @@ func (m *mockRpc) Call(result interface{}, method string, args ...interface{}) e
 }
 
 func TestClefTypedData(t *testing.T) {
+	t.Parallel()
+
 	key, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)

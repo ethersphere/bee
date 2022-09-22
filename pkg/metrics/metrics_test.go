@@ -13,6 +13,8 @@ import (
 )
 
 func TestPrometheusCollectorsFromFields(t *testing.T) {
+	t.Parallel()
+
 	s := newService()
 	collectors := metrics.PrometheusCollectorsFromFields(s)
 

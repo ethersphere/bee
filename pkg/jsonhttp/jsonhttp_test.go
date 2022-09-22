@@ -17,6 +17,8 @@ import (
 )
 
 func TestRespond_defaults(t *testing.T) {
+	t.Parallel()
+
 	w := httptest.NewRecorder()
 
 	jsonhttp.Respond(w, 0, nil)
@@ -46,6 +48,8 @@ func TestRespond_defaults(t *testing.T) {
 }
 
 func TestRespond_statusResponse(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		code int
 	}{
@@ -125,6 +129,8 @@ func TestRespond_statusResponse(t *testing.T) {
 }
 
 func TestRespond_special(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name        string
 		code        int
@@ -168,7 +174,10 @@ func TestRespond_special(t *testing.T) {
 			wantMessage: "2.4.8.16",
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			w := httptest.NewRecorder()
 
 			jsonhttp.Respond(w, tc.code, tc.response)
@@ -198,6 +207,8 @@ func TestRespond_special(t *testing.T) {
 }
 
 func TestRespond_custom(t *testing.T) {
+	t.Parallel()
+
 	w := httptest.NewRecorder()
 
 	wantCode := http.StatusTeapot
@@ -232,6 +243,8 @@ func TestRespond_custom(t *testing.T) {
 }
 
 func TestStandardHTTPResponds(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		f    func(w http.ResponseWriter, response interface{})
 		code int
@@ -304,6 +317,8 @@ func TestStandardHTTPResponds(t *testing.T) {
 }
 
 func TestPanicRespond(t *testing.T) {
+	t.Parallel()
+
 	w := httptest.NewRecorder()
 
 	defer func() {

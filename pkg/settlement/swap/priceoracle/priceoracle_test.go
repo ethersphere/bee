@@ -22,6 +22,8 @@ var (
 )
 
 func TestExchangeGetPrice(t *testing.T) {
+	t.Parallel()
+
 	priceOracleAddress := common.HexToAddress("0xabcd")
 
 	expectedPrice := big.NewInt(100)

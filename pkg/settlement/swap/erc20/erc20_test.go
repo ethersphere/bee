@@ -21,6 +21,8 @@ var (
 )
 
 func TestBalanceOf(t *testing.T) {
+	t.Parallel()
+
 	erc20Address := common.HexToAddress("00")
 	account := common.HexToAddress("01")
 	expectedBalance := big.NewInt(100)
@@ -49,6 +51,8 @@ func TestBalanceOf(t *testing.T) {
 }
 
 func TestTransfer(t *testing.T) {
+	t.Parallel()
+
 	address := common.HexToAddress("0xabcd")
 	account := common.HexToAddress("01")
 	value := big.NewInt(20)

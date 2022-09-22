@@ -23,6 +23,8 @@ import (
 )
 
 func TestPing(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	// create a pingpong server that handles the incoming stream
