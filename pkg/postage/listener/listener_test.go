@@ -379,10 +379,6 @@ func TestListenerBatchState(t *testing.T) {
 				noOfEvents++
 				switch ev := e.(type) {
 				case blockNumberCall:
-					if ev.blockNumber < 497 && ev.blockNumber > 500 {
-						errs <- fmt.Errorf("invalid blocknumber call %d", ev.blockNumber)
-						return
-					}
 					if ev.blockNumber == 500 {
 						close(done)
 						return

@@ -32,6 +32,7 @@ func TestMain(m *testing.M) {
 	}(*blocker.SequencerResolution)
 	*blocker.SequencerResolution = time.Millisecond
 
+	// nolint:gocritic // Won't be needed once golbal variable SequencerResolution is removed
 	os.Exit(m.Run())
 }
 

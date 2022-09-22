@@ -67,7 +67,8 @@ func (rh *RefHasher) hash(data []byte, length int) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		section = append(left, right...)
+		section = append(section, left...)
+		section = append(section, right...)
 	}
 	rh.hasher.Reset()
 	_, err := rh.hasher.Write(section)

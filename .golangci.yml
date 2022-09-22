@@ -38,8 +38,16 @@ linters:
     - unused
     - varcheck
     - wastedassign
+    - gocritic
 
 linters-settings:
+  gocritic:
+    disabled-checks: ## temporally disabled
+      - commentFormatting
+      - captLocal
+      - assignOp
+      - ifElseChain
+      - appendAssign
   govet:
     enable:
       - asmdecl

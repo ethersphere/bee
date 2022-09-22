@@ -271,9 +271,9 @@ func toChunk(t *testing.T, at uint64, payload []byte) swarm.Chunk {
 
 	ts := make([]byte, 8)
 	binary.BigEndian.PutUint64(ts, at)
-	content := append(ts, payload...)
+	ts = append(ts, payload...)
 
-	s := testingsoc.GenerateMockSOC(t, content)
+	s := testingsoc.GenerateMockSOC(t, ts)
 	return s.Chunk()
 }
 

@@ -134,7 +134,7 @@ func encryptData(data, password []byte) (*keyCripto, error) {
 			DKLen: scryptDKLen,
 			Salt:  hex.EncodeToString(salt),
 		},
-		MAC: hex.EncodeToString(mac[:]),
+		MAC: hex.EncodeToString(mac),
 	}, nil
 }
 
@@ -162,7 +162,7 @@ func decryptData(v keyCripto, password string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !bytes.Equal(calculatedMACEth[:], mac) {
+		if !bytes.Equal(calculatedMACEth, mac) {
 			return nil, keystore.ErrInvalidPassword
 		}
 	}

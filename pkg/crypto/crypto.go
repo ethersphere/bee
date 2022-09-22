@@ -51,7 +51,7 @@ func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64, nonce []byt
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	return swarm.NewAddress(h[:]), nil
+	return swarm.NewAddress(h), nil
 }
 
 // GenerateSecp256k1Key generates an ECDSA private key using

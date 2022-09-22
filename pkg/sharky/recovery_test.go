@@ -50,7 +50,7 @@ func TestRecovery(t *testing.T) {
 	for i := range indexes {
 		indexes[i] = uint32(i)
 	}
-	rest := indexes[:]
+	rest := indexes
 	for n := size; n > size/2; n-- {
 		i := rand.Intn(n)
 		preserved[rest[i]] = false

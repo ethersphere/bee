@@ -26,7 +26,7 @@ func New(windowsSize time.Duration) *Rate {
 	return &Rate{
 		windows:    make(map[int64]int),
 		windowSize: windowsSize.Milliseconds(),
-		now:        func() time.Time { return time.Now() },
+		now:        time.Now,
 	}
 
 }
