@@ -6,6 +6,8 @@ package stakingcontract
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -19,16 +21,22 @@ import (
 )
 
 var (
+	MinimumStakeAmount = big.NewInt(1)
+
 	erc20ABI = parseABI(sw3abi.ERC20ABIv0_3_1)
 	//TODO: get ABI for staking contract
-	stakingABI = parseABI(sw3abi.ERC20ABIv0_3_1)
+	stakingABI        = parseABI(sw3abi.ERC20ABIv0_3_1)
+	stakeUpdatedTopic = stakingABI.Events["StakeUpdated"].ID
 
-	approveDescription      = "Approve tokens for staking operations"
+	ErrInvalidStakeAmount = errors.New("invalid stake amount")
+	ErrInsufficientFunds  = errors.New("insufficient token balance")
+
 	depositStakeDescription = "Deposit Stake"
 )
 
 type Interface interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) error
+	GetStake(ctx context.Context, overlay [32]byte)
 }
 
 type stakingContract struct {
@@ -53,41 +61,6 @@ func New(
 		transactionService:     transactionService,
 		//stakingService: stakingService,
 	}
-}
-
-func (s stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s *stakingContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
-	callData, err := erc20ABI.Pack("approve", s.stakingContractAddress, amount)
-	if err != nil {
-		return nil, err
-	}
-
-	txHash, err := s.transactionService.Send(ctx, &transaction.TxRequest{
-		To:          &s.bzzTokenAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    65000,
-		Value:       big.NewInt(0),
-		Description: approveDescription,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
-	return receipt, nil
 }
 
 func (s *stakingContract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
@@ -134,10 +107,87 @@ func (s *stakingContract) sendDepositStakeTransaction(ctx context.Context, owner
 
 //TODO: getStakedAmount
 
+func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
+
+	if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
+		return ErrInvalidStakeAmount
+	}
+
+	balance, err := s.getBalance(ctx)
+	if err != nil {
+		return err
+	}
+
+	if balance.Cmp(stakedAmount) <= 0 {
+		return ErrInsufficientFunds
+	}
+
+	nonce := make([]byte, 32)
+	_, err = rand.Read(nonce)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, common.BytesToHash(nonce))
+	if err != nil {
+		return err
+	}
+	//TODO: verify if we need receipt as well as service for staking
+	//for _, ev := range receipt.Logs {
+	//	if ev.Address == s.stakingContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == stakeUpdatedTopic {
+	//		var createdEvent stakeUpdatedEvent
+	//		err = transaction.ParseEvent(&stakingABI, "StakeUpdated", &createdEvent, *ev)
+	//		if err != nil {
+	//			return err
+	//		}
+	//
+	//		overlay := createdEvent.Overlay[:]
+	//
+	//		if err != nil {
+	//			return err
+	//		}
+	//	}
+	//}
+	return nil
+}
+
+func (s *stakingContract) GetStake(ctx context.Context, overlay [32]byte) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *stakingContract) getBalance(ctx context.Context) (*big.Int, error) {
+	callData, err := erc20ABI.Pack("balanceOf", s.owner)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &s.bzzTokenAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := erc20ABI.Unpack("balanceOf", result)
+	if err != nil {
+		return nil, err
+	}
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
 func parseABI(json string) abi.ABI {
 	cabi, err := abi.JSON(strings.NewReader(json))
 	if err != nil {
 		panic(fmt.Sprintf("error creating ABI for staking contract: %v", err))
 	}
 	return cabi
+}
+
+type stakeUpdatedEvent struct {
+	Overlay          [32]byte
+	StakedAmount     *big.Int
+	Owner            common.Address
+	LastUpdatedBlock *big.Int
 }
