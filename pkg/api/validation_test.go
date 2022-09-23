@@ -109,6 +109,22 @@ func Test_parse(t *testing.T) {
 			wantErr: nil,
 		},
 		{
+			name: "uInt64 different value",
+			src: map[string]string{
+				"uint64Val": "9",
+			},
+			want:    &parseUint64Test{Uint64Val: 8},
+			wantErr: errors.New("invalid uint64Val"),
+		},
+		{
+			name: "uInt64 alphabet input",
+			src: map[string]string{
+				"uint64Val": "mimiim",
+			},
+			want:    &parseUint64Test{Uint64Val: 8},
+			wantErr: errors.New("invalid uint64Val"),
+		},
+		{
 			name: "batchId",
 			src: map[string]string{
 				"uint8Val": hex.EncodeToString(postagetesting.MustNewBatch().ID),
@@ -127,6 +143,7 @@ func Test_parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt := tt
 			indirect := reflect.Indirect(reflect.ValueOf(tt.want))
 			newIndirect := reflect.New(indirect.Type())
 
@@ -137,7 +154,8 @@ func Test_parse(t *testing.T) {
 			if (haveErr != nil && tt.wantErr != nil && !strings.Contains(haveErr.Error(), tt.wantErr.Error())) || (haveErr != nil && tt.wantErr == nil) {
 				t.Errorf("parse() error = %v, wantErr %v", haveErr, tt.wantErr)
 			}
-			if diff := cmp.Diff(tt.want, have); diff != "" {
+			diff := cmp.Diff(tt.want, have)
+			if tt.wantErr == nil && diff != "" {
 				t.Errorf("parse(...): result mismatch (-want +have):\n%s", diff)
 			}
 		})
