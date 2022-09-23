@@ -183,7 +183,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, simple.ErrEmptyPath):
 			jsonhttp.NotFound(w, "invalid or empty path")
 		case errors.Is(err, mantaray.ErrEmptyPath):
-			jsonhttp.NotFound(w, "invalid path or empty mantaray path")
+			jsonhttp.NotFound(w, "invalid path or mantaray path is empty")
 		default:
 			jsonhttp.InternalServerError(w, "add manifest entry failed")
 		}
