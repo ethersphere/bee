@@ -25,9 +25,9 @@ type socPostResponse struct {
 
 func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Owner []byte `parse:"owner,addressToBytes" name:"owner" errMessage:"bad owner"`
-		Id    []byte `parse:"id,addressToBytes" name:"id" errMessage:"bad id"`
-		Sig   []byte `parse:"sig,addressToBytes" name:"signature" errMessage:"bad signature"`
+		Owner []byte `parse:"owner,addressToBytes" errMessage:"bad owner"`
+		Id    []byte `parse:"id,addressToBytes" errMessage:"bad id"`
+		Sig   []byte `parse:"sig,addressToBytes" errMessage:"bad signature"`
 	}{}
 
 	if err := s.parseAndValidate(r, &path); err != nil {

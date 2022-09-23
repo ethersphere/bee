@@ -15,7 +15,7 @@ import (
 
 func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Address []byte `parse:"address,addressToBytes" name:"address" errMessage:"bad address"`
+		Address []byte `parse:"address,addressToBytes" errMessage:"bad address"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
@@ -39,7 +39,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Address []byte `parse:"address,addressToBytes" name:"address" errMessage:"invalid address"`
+		Address []byte `parse:"address,addressToBytes" errMessage:"invalid address"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {

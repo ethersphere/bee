@@ -97,7 +97,6 @@ func parse(input, output interface{}) (err error) {
 				err = decodeInt32(reqValue, val.Field(i))
 			case reflect.Int64:
 				err = decodeInt64(reqValue, val.Field(i))
-
 			}
 			if err != nil {
 				return GetErrorMessage(reqName, errMessage)

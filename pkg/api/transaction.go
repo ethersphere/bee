@@ -81,8 +81,17 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
-	txHash := common.HexToHash(hash)
+	path := struct {
+		Hash common.Hash `parse:"hash,hexToHash"`
+	}{}
+
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
+		s.logger.Debug("transaction get: validation failed", "tx_hash", mux.Vars(r)["hash"], "error", err)
+		s.logger.Error(nil, "transaction get: validation failed", "string", mux.Vars(r)["hash"])
+		jsonhttp.NotFound(w, err.Error())
+		return
+	}
+	txHash := path.Hash
 
 	storedTransaction, err := s.transaction.StoredTransaction(txHash)
 	if err != nil {

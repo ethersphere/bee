@@ -39,8 +39,8 @@ type feedReferenceResponse struct {
 
 func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Owner []byte `parse:"owner,addressToBytes" name:"owner" errMessage:"bad owner"`
-		Topic []byte `parse:"topic,addressToBytes" name:"topic" errMessage:"bad topic"`
+		Owner []byte `parse:"owner,addressToBytes" errMessage:"bad owner"`
+		Topic []byte `parse:"topic,addressToBytes" errMessage:"bad topic"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {

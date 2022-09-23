@@ -51,7 +51,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Address []byte `parse:"address,addressToBytes" name:"address" errMessage:"invalid peer address"`
+		Address []byte `parse:"address,addressToBytes" errMessage:"invalid peer address"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
