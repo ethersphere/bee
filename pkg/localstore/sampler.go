@@ -15,6 +15,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const sampleSize = 16
+
 type sampleStat struct {
 	TotalIterated     atomic.Int64
 	NotFound          atomic.Int64
@@ -110,7 +112,6 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 		close(sampleChan)
 	}()
 
-	const sampleSize = 16
 	samples := make([]storage.SampleItem, 0, sampleSize)
 	insert := func(item storage.SampleItem) {
 		added := false

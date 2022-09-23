@@ -10,9 +10,8 @@ import (
 )
 
 func TestReserveSampler(t *testing.T) {
-	const chunkCountPerPO = 10000
+	const chunkCountPerPO = 10
 	const maxPO = 10
-	const sampleSize = 16
 	var chs []swarm.Chunk
 
 	db := newTestDB(t, &Options{
