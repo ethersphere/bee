@@ -6,6 +6,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -44,10 +45,10 @@ type listener struct {
 	ev        BlockHeightContractFilterer
 	blockTime uint64
 
-	stakingAddress common.Address
-	quit           chan struct{}
-	wg             sync.WaitGroup
-	//metrics             metrics
+	stakingAddress  common.Address
+	quit            chan struct{}
+	wg              sync.WaitGroup
+	metrics         metrics
 	stallingTimeout time.Duration
 	backoffTime     time.Duration
 	syncingStopped  *util.Signaler
@@ -63,13 +64,13 @@ func New(
 	backoffTime time.Duration,
 ) staking.Listener {
 	return &listener{
-		syncingStopped: syncingStopped,
-		logger:         logger.WithName(loggerName).Register(),
-		ev:             ev,
-		blockTime:      blockTime,
-		stakingAddress: stakingAddress,
-		quit:           make(chan struct{}),
-		//metrics:             newMetrics(),
+		syncingStopped:  syncingStopped,
+		logger:          logger.WithName(loggerName).Register(),
+		ev:              ev,
+		blockTime:       blockTime,
+		stakingAddress:  stakingAddress,
+		quit:            make(chan struct{}),
+		metrics:         newMetrics(),
 		stallingTimeout: stallingTimeout,
 		backoffTime:     backoffTime,
 	}
@@ -115,18 +116,36 @@ func (l *listener) processEvent(e types.Log, updater staking.EventUpdater) error
 		}
 		l.metrics.SlashingCounter.Inc()
 		return updater.SlashedNotRevealed(c.Overlay[:])
+	default:
+		l.metrics.EventErrors.Inc()
+		return errors.New("unknown event")
 	}
-
 }
 
 func (l *listener) Close() error {
-	//TODO implement me
-	panic("implement me")
+	close(l.quit)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		l.wg.Wait()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		return errors.New("staking listener closed with running goroutines")
+	}
+	return nil
 }
 
 func (l *listener) Listen(from uint64, updater staking.EventUpdater, initState *staking.ChainSnapshot) <-chan error {
-	//TODO implement me
-	panic("implement me")
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-l.quit
+		cancel()
+	}()
+
 }
 
 func parseABI(json string) abi.ABI {
