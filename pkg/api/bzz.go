@@ -53,7 +53,9 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errBatchUnusable):
 			jsonhttp.BadRequest(w, "batch not usable yet")
 		case errors.Is(err, errInvalidPostageBatch):
-			jsonhttp.NotFound(w, "batch id not found")
+			jsonhttp.NotFound(w, "invalid batch id")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "invalid batch id")
 		default:
 			jsonhttp.InternalServerError(w, nil)
 		}
@@ -91,9 +93,9 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		logger.Error(nil, "get or create tag failed")
 		switch {
 		case errors.Is(err, tags.ErrExists):
-			jsonhttp.Conflict(w, "bzz upload file: conflict with current state of resource")
+			jsonhttp.Conflict(w, "conflict with current state of resource")
 		case errors.Is(err, errCannotParse):
-			jsonhttp.BadRequest(w, "bzz upload file: cannot parse")
+			jsonhttp.BadRequest(w, "cannot parse")
 		case errors.Is(err, tags.ErrNotFound):
 			jsonhttp.NotFound(w, "bzz upload file: not found")
 		default:
@@ -166,7 +168,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		logger.Error(nil, "bzz upload file: create manifest failed", "file_name", queries.FileName)
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
-			jsonhttp.BadRequest(w, "bzz upload file: create manifest failed")
+			jsonhttp.BadRequest(w, "create manifest failed")
 		default:
 			jsonhttp.InternalServerError(w, nil)
 		}
@@ -306,7 +308,7 @@ FETCH:
 		logger.Error(nil, "bzz download: invalid manifest type")
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
-			jsonhttp.BadRequest(w, "bzz download: invalid manifest type")
+			jsonhttp.BadRequest(w, "invalid manifest type")
 		default:
 			jsonhttp.NotFound(w, nil)
 		}
@@ -474,7 +476,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		}
 		logger.Debug("api download: unexpected error", "address", reference, "error", err)
 		logger.Error(nil, "api download: unexpected error")
-		jsonhttp.InternalServerError(w, "api download: joiner failed")
+		jsonhttp.InternalServerError(w, "joiner failed")
 		return
 	}
 

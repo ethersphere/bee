@@ -193,7 +193,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("done split failed", "address", tagr.Address, "error", err)
 		logger.Error(nil, "done split failed", "address", tagr.Address)
-		jsonhttp.InternalServerError(w, "done split: failed")
+		jsonhttp.InternalServerError(w, "failed")
 		return
 	}
 	jsonhttp.OK(w, "ok")

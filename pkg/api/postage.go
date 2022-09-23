@@ -474,18 +474,18 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
-			logger.Error(nil, "topup batch: out of funds")
+			logger.Error(nil, "out of funds")
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
 		if errors.Is(err, postagecontract.ErrNotImplemented) {
 			logger.Debug("topup batch: not implemented", "error", err)
-			logger.Error(nil, "topup batch: not implemented")
+			logger.Error(nil, "not implemented")
 			jsonhttp.NotImplemented(w, nil)
 			return
 		}
 		logger.Debug("topup batch: topup failed", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
-		logger.Error(nil, "topup batch: topup failed")
+		logger.Error(nil, "topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
 		return
 	}

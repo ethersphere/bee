@@ -83,7 +83,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				logger.Debug("increment tag failed", "error", err)
 				logger.Error(nil, "increment tag failed")
-				jsonhttp.InternalServerError(w, "increment tag")
+				jsonhttp.InternalServerError(w, "increment tag failed")
 				return
 			}
 		}
