@@ -72,7 +72,6 @@ func TestAddresses(t *testing.T) {
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/node", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.NodeResponse{
 			BeeMode:           api.FullMode.String(),
-			GatewayMode:       false,
 			ChequebookEnabled: true,
 			SwapEnabled:       true,
 		}),
