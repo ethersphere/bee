@@ -30,7 +30,6 @@ type StaticAddressResolver = staticAddressResolver
 
 var (
 	NewStaticAddressResolver = newStaticAddressResolver
-	SendHeadersTimeout       = &sendHeadersTimeout
 	UserAgent                = userAgent
 )
 
