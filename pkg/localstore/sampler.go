@@ -77,7 +77,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 
 			for addr := range addrChan {
 				getStart := time.Now()
-				ch, err := db.Get(ctx, storage.ModeGetSync, addr)
+				chItem, err := db.get(ctx, storage.ModeGetSync, addr)
 				stat.GetDuration.Add(time.Since(getStart).Microseconds())
 				if err != nil {
 					stat.NotFound.Inc()
@@ -85,7 +85,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 				}
 
 				hmacrStart := time.Now()
-				hmacr.Write(ch.Data())
+				hmacr.Write(chItem.Data)
 				taddr := hmacr.Sum(nil)
 				hmacr.Reset()
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Microseconds())
