@@ -22,8 +22,8 @@ import (
 
 const separator = "/"
 
-// key returns the Item key identifier for the leveldb storage.
-func key(item storage.Item) []byte {
+// key returns the Item identifier for the leveldb storage.
+func key(item storage.Key) []byte {
 	return []byte(item.Namespace() + separator + item.ID())
 }
 
@@ -106,23 +106,19 @@ func (s *Store) Get(item storage.Item) error {
 }
 
 // Has implements the storage.Store interface.
-func (s *Store) Has(sKey storage.Key) (bool, error) {
+func (s *Store) Has(k storage.Key) (bool, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(sKey.Namespace() + separator + sKey.ID())
-
-	return s.db.Has(key, nil)
+	return s.db.Has(key(k), nil)
 }
 
 // GetSize implements the storage.Store interface.
-func (s *Store) GetSize(sKey storage.Key) (int, error) {
+func (s *Store) GetSize(k storage.Key) (int, error) {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	key := []byte(sKey.Namespace() + separator + sKey.ID())
-
-	val, err := s.db.Get(key, nil)
+	val, err := s.db.Get(key(k), nil)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
 		return 0, storage.ErrNotFound
