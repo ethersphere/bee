@@ -4,7 +4,6 @@ linters:
   enable:
     - asciicheck
     - bidichk
-    - deadcode
     - depguard
     - dogsled
     - durationcheck
@@ -14,7 +13,7 @@ linters:
     - exportloopref
     - forbidigo
     - goconst
-    - gofmt
+    # - gofmt ## temporally disabled
     - goheader
     - gomoddirectives
     - goprintffuncname
@@ -30,13 +29,11 @@ linters:
     - prealloc
     - promlinter
     - staticcheck
-    - structcheck
     - thelper
     - tparallel
     - typecheck
     - unconvert
     - unused
-    - varcheck
     - wastedassign
 
 linters-settings:
