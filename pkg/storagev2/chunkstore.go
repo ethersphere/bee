@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// Getter is the interface that wraps the basic Get method.
 type Getter interface {
 	// Get a chunk by its swarm.Address. Returns the chunk associated with
 	// the address alongside with its postage stamp, or a storage.ErrNotFound
@@ -19,25 +20,49 @@ type Getter interface {
 	Get(context.Context, swarm.Address) (swarm.Chunk, error)
 }
 
+// Putter is the interface that wraps the basic Put method.
 type Putter interface {
 	// Put a chunk into the store alongside with its postage stamp. No duplicates
 	// are allowed. It returns `exists=true` In case the chunk already exists.
 	Put(context.Context, swarm.Chunk) (exists bool, err error)
 }
 
+// Deleter is the interface that wraps the basic Delete method.
+type Deleter interface {
+	// Delete a chunk by the given swarm.Address.
+	Delete(context.Context, swarm.Address) error
+}
+
+// PutterFunc type is an adapter to allow the use of
+// ChunkStore as Putter interface. If f is a function
+// with the appropriate signature, PutterFunc(f) is a
+// Putter that calls f.
+type PutterFunc func(context.Context, swarm.Chunk) (bool, error)
+
+// Put calls f(ctx, chunk).
+func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) (bool, error) {
+	return f(ctx, chunk)
+}
+
 type IterateChunkFn func(swarm.Chunk) (stop bool, err error)
+
+// ChunkGetterDeleter is a storage that provides
+// only read and delete operations for chunks.
+type ChunkGetterDeleter interface {
+	Getter
+	Deleter
+}
 
 type ChunkStore interface {
 	io.Closer
 	Getter
 	Putter
+	Deleter
 
-	// Iterate over chunks in no particular order.
-	Iterate(context.Context, IterateChunkFn) error
 	// Has checks whether a chunk exists in the store.
 	Has(context.Context, swarm.Address) (bool, error)
-	// Delete a chunk from the store.
-	Delete(context.Context, swarm.Address) error
+	// Iterate over chunks in no particular order.
+	Iterate(context.Context, IterateChunkFn) error
 }
 
 type SizeReporter interface {
