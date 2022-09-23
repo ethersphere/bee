@@ -459,10 +459,7 @@ func TestPostageHeaderError(t *testing.T) {
 			t.Parallel()
 
 			hexbatch := hex.EncodeToString(batchEmpty)
-			var expCode = http.StatusBadRequest
-			if endpoint != "chunks" {
-				expCode = http.StatusNotFound
-			}
+			var expCode = http.StatusNotFound
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
@@ -485,10 +482,7 @@ func TestPostageHeaderError(t *testing.T) {
 			t.Parallel()
 
 			hexbatch := hex.EncodeToString(batchInvalid)
-			var expCode = http.StatusBadRequest
-			if endpoint != "chunks" {
-				expCode = http.StatusNotFound
-			}
+			var expCode = http.StatusNotFound
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),

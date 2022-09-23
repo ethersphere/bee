@@ -37,7 +37,7 @@ func (s *Service) processUploadRequest(
 		if err != nil {
 			logger.Debug("get tag failed", "string", str, "error", err)
 			logger.Error(nil, "get tag failed", "string", str)
-			return nil, nil, nil, nil, errors.New("cannot get tag")
+			return nil, nil, nil, nil, err
 		}
 
 		// add the tag to the context if it exists
