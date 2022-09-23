@@ -328,6 +328,8 @@ type fileChunks struct {
 }
 
 func TestTraversalManifest(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		files                 []file
 		manifestHashes        []string
@@ -403,6 +405,8 @@ func TestTraversalManifest(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(fmt.Sprintf("%s-%d-files-%d-chunks", defaultMediaType, len(tc.files), tc.wantHashCount), func(t *testing.T) {
+			t.Parallel()
+
 			var (
 				storerMock = mock.NewStorer()
 				iter       = newAddressIterator(tc.ignoreDuplicateHashes)
@@ -471,6 +475,8 @@ func TestTraversalManifest(t *testing.T) {
 }
 
 func TestTraversalSOC(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 	iter := newAddressIterator(false)
 
