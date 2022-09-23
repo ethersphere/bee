@@ -82,7 +82,7 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, r *http.Request)
 
 func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Hash common.Hash `parse:"hash,hexToHash"`
+		Hash []byte `parse:"hash,hexToHash"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
@@ -91,7 +91,7 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		jsonhttp.NotFound(w, err.Error())
 		return
 	}
-	txHash := path.Hash
+	txHash := common.BytesToHash(path.Hash)
 
 	storedTransaction, err := s.transaction.StoredTransaction(txHash)
 	if err != nil {
