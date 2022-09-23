@@ -436,7 +436,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := struct {
 		Id     []byte `parse:"batch_id,hexStringToBytes"`
-		Amount int64  `parse:"amount" name:"postage amount"`
+		Amount int64  `parse:"amount"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
@@ -485,7 +485,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
 		Id    []byte `parse:"batch_id,hexStringToBytes"`
-		Depth uint8  `parse:"depth" name:"depth"`
+		Depth uint8  `parse:"depth"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {

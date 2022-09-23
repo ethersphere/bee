@@ -98,7 +98,7 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Peer []byte `parse:"peer,addressToBytes" name:"peer"`
+		Peer []byte `parse:"peer,addressToBytes"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {

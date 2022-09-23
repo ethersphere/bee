@@ -80,7 +80,7 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id uint32 `parse:"id" name:"id"`
+		Id uint32 `parse:"id"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
@@ -110,7 +110,7 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id uint32 `parse:"id" name:"id"`
+		Id uint32 `parse:"id"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
 
@@ -140,7 +140,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Id uint32 `parse:"id" name:"id"`
+		Id uint32 `parse:"id"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
