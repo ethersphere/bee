@@ -303,7 +303,7 @@ type swapCashoutStatusResponse struct {
 
 func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Peer []byte `parse:"peer,addressToBytes" name:"peer" errMessage:"invalid address"`
+		Peer []byte `parse:"peer,addressToBytes" errMessage:"invalid address"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
@@ -373,7 +373,7 @@ type chequebookTxResponse struct {
 
 func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
+		Amount int64 `parse:"amount" errMessage:"did not specify amount"`
 	}{}
 	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
 		s.logger.Error(nil, "chequebook withdraw: invalid withdraw amount")
@@ -411,7 +411,7 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 
 func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
+		Amount int64 `parse:"amount" errMessage:"did not specify amount"`
 	}{}
 
 	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
