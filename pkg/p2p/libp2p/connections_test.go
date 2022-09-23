@@ -896,18 +896,18 @@ func TestTopologyOverSaturated(t *testing.T) {
 func TestWithDisconnectStreams(t *testing.T) {
 	t.Parallel()
 
-	defer func(t time.Duration) {
-		*libp2p.SendHeadersTimeout = t
-	}(*libp2p.SendHeadersTimeout)
-	*libp2p.SendHeadersTimeout = 60 * time.Second
+	const headersRWTimeout = 60 * time.Second
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
+		FullNode:         true,
+		HeadersRWTimeout: headersRWTimeout,
 	}})
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		HeadersRWTimeout: headersRWTimeout,
+	}})
 
 	testSpec := p2p.ProtocolSpec{
 		Name:    testProtocolName,
@@ -926,12 +926,12 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 	_ = s1.AddProtocol(testSpec)
 
-	s1_underlay := serviceUnderlayAddress(t, s1)
+	s1Underlay := serviceUnderlayAddress(t, s1)
 
 	expectPeers(t, s1)
 	expectPeers(t, s2)
 
-	if _, err := s2.Connect(ctx, s1_underlay); err != nil {
+	if _, err := s2.Connect(ctx, s1Underlay); err != nil {
 		t.Fatal(err)
 	}
 

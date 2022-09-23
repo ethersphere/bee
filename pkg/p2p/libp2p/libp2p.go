@@ -70,6 +70,8 @@ var (
 const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
+
+	defaultHeadersRWTimeout = 10 * time.Second
 )
 
 func init() {
@@ -103,6 +105,7 @@ type Service struct {
 	protocolsmu       sync.RWMutex
 	reacher           p2p.Reacher
 	networkStatus     atomic.Int32
+	HeadersRWTimeout  time.Duration
 }
 
 type lightnodes interface {
@@ -114,15 +117,16 @@ type lightnodes interface {
 }
 
 type Options struct {
-	PrivateKey      *ecdsa.PrivateKey
-	NATAddr         string
-	EnableWS        bool
-	FullNode        bool
-	LightNodeLimit  int
-	WelcomeMessage  string
-	Nonce           []byte
-	ValidateOverlay bool
-	hostFactory     func(...libp2p.Option) (host.Host, error)
+	PrivateKey       *ecdsa.PrivateKey
+	NATAddr          string
+	EnableWS         bool
+	FullNode         bool
+	LightNodeLimit   int
+	WelcomeMessage   string
+	Nonce            []byte
+	ValidateOverlay  bool
+	hostFactory      func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout time.Duration
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -235,6 +239,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	if o.HeadersRWTimeout == 0 {
+		o.HeadersRWTimeout = defaultHeadersRWTimeout
+	}
+
 	var advertisableAddresser handshake.AdvertisableAddressResolver
 	var natAddrResolver *staticAddressResolver
 	if o.NATAddr == "" {
@@ -285,6 +293,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		ready:             make(chan struct{}),
 		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
+		HeadersRWTimeout:  o.HeadersRWTimeout,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -523,14 +532,16 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			stream := newStream(streamlibp2p)
 
 			// exchange headers
-			if err := handleHeaders(ss.Headler, stream, overlay); err != nil {
+			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
+			defer cancel()
+			if err := handleHeaders(ctx, ss.Headler, stream, overlay); err != nil {
 				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
 				_ = stream.Reset()
 				return
 			}
 			s.metrics.HeadersExchangeDuration.Observe(time.Since(start).Seconds())
 
-			ctx, cancel := context.WithCancel(s.ctx)
+			ctx, cancel = context.WithCancel(s.ctx)
 
 			s.peers.addStream(peerID, streamlibp2p, cancel)
 			defer s.peers.removeStream(peerID, streamlibp2p)
@@ -880,6 +891,8 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	}
 
 	// exchange headers
+	ctx, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
+	defer cancel()
 	if err := sendHeaders(ctx, headers, stream); err != nil {
 		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
