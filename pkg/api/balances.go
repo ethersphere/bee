@@ -116,6 +116,7 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("compensated balances peer: parse address string failed", "string", mux.Vars(r)["address"], "error", err)
 		s.logger.Error(nil, "compensated balances peer: parse address string failed", "string", mux.Vars(r)["address"])
+
 		jsonhttp.NotFound(w, err.Error())
 		return
 	}

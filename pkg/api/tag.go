@@ -113,6 +113,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		Id uint32 `parse:"id" name:"id"`
 	}{}
 	err := s.parseAndValidate(mux.Vars(r), &path)
+
 	if err != nil {
 		s.logger.Debug("delete tag: parse id string failed", "string", mux.Vars(r)["id"], "error", err)
 		s.logger.Error(nil, "delete tag: parse id string failed")
@@ -141,7 +142,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
 		Id uint32 `parse:"id" name:"id"`
 	}{}
-	err := s.parseAndValidate(mux.Vars(r), &path)
+  err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
 		s.logger.Debug("done split tag: parse id string failed", "string", mux.Vars(r)["id"], "error", err)
 		s.logger.Error(nil, "done split tag: parse id string failed")

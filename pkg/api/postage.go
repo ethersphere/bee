@@ -490,6 +490,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
 		s.logger.Debug("dilute batch: invalid batch id string length", "batch_id string", mux.Vars(r)["batch_id"], "batch_id length", len(mux.Vars(r)["batch_id"]), "amount string", mux.Vars(r)["amount"], "amount length", len(mux.Vars(r)["amount"]), "error", err)
+
 		s.logger.Error(nil, "dilute batch: decode batch id or depth string failed")
 		jsonhttp.BadRequest(w, err.Error())
 		return

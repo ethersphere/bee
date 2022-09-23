@@ -99,7 +99,7 @@ func (s *Service) chequebookAddressHandler(w http.ResponseWriter, r *http.Reques
 
 func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Request) {
 	path := struct {
-		Peer []byte `parse:"peer,addressToBytes" name:"peer" errMessage:"invalid address"`
+		Peer []byte `parse:"peer,addressToBytes" errMessage:"invalid address"`
 	}{}
 
 	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
@@ -375,7 +375,6 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 	path := struct {
 		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
 	}{}
-
 	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
 		s.logger.Error(nil, "chequebook withdraw: invalid withdraw amount")
 		jsonhttp.BadRequest(w, err.Error())
