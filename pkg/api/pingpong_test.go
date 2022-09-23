@@ -62,7 +62,7 @@ func TestPingpong(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid peer address",
+				Message: "invalid peer_id",
 			}),
 		)
 	})

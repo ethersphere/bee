@@ -114,9 +114,18 @@ type transactionHashResponse struct {
 }
 
 func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
-	txHash := common.HexToHash(hash)
+	path := struct {
+		Hash []byte `parse:"hash,hexToHash"`
+	}{}
 
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
+		s.logger.Debug("transaction post: validation failed", "tx_hash", mux.Vars(r)["hash"], "error", err)
+		s.logger.Error(nil, "transaction post: validation failed", "string", mux.Vars(r)["hash"])
+		jsonhttp.NotFound(w, err.Error())
+		return
+	}
+
+	txHash := common.BytesToHash(path.Hash)
 	err := s.transaction.ResendTransaction(r.Context(), txHash)
 	if err != nil {
 		s.logger.Debug("transaction post: resend transaction failed", "tx_hash", txHash, "error", err)
@@ -137,8 +146,18 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
-	txHash := common.HexToHash(hash)
+	path := struct {
+		Hash []byte `parse:"hash,hexToHash"`
+	}{}
+
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
+		s.logger.Debug("transaction delete: validation failed", "tx_hash", mux.Vars(r)["hash"], "error", err)
+		s.logger.Error(nil, "transaction delete: validation failed", "string", mux.Vars(r)["hash"])
+		jsonhttp.NotFound(w, err.Error())
+		return
+	}
+
+	txHash := common.BytesToHash(path.Hash)
 
 	ctx := r.Context()
 	if price, ok := r.Header[gasPriceHeader]; ok {

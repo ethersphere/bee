@@ -24,7 +24,6 @@ import (
 
 const (
 	errChequebookBalance           = "cannot get chequebook balance"
-	errChequebookNoAmount          = "did not specify amount"
 	errChequebookNoWithdraw        = "cannot withdraw"
 	errChequebookNoDeposit         = "cannot deposit"
 	errChequebookInsufficientFunds = "insufficient funds"
@@ -99,15 +98,18 @@ func (s *Service) chequebookAddressHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("chequebook cheque peer: invalid peer address string", "string", addr, "error", err)
-		s.logger.Error(nil, "chequebook cheque peer: invalid peer address string", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	path := struct {
+		Peer []byte `parse:"peer,addressToBytes" name:"peer" errMessage:"invalid address"`
+	}{}
+
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
+		s.logger.Debug("chequebook cheque peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"])
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
+	peer := swarm.NewAddress(path.Peer)
 	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.swap.LastSentCheque(peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
@@ -147,7 +149,7 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	jsonhttp.OK(w, chequebookLastChequesPeerResponse{
-		Peer:         addr,
+		Peer:         mux.Vars(r)["peer"],
 		LastReceived: lastReceivedResponse,
 		LastSent:     lastSentResponse,
 	})
@@ -227,15 +229,17 @@ type swapCashoutResponse struct {
 }
 
 func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("cashout peer: invalid peer address string", "string", addr, "error", err)
-		s.logger.Error(nil, "cashout peer: invalid peer address string", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	path := struct {
+		Peer []byte `parse:"peer,addressToBytes" name:"postage amount" errMessage:"invalid address"`
+	}{}
+
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
+		s.logger.Debug("cashout peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "cashout peer: invalid peer address string", "string", mux.Vars(r)["peer"])
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-
+	peer := swarm.NewAddress(path.Peer)
 	ctx := r.Context()
 	if price, ok := r.Header[gasPriceHeader]; ok {
 		p, ok := big.NewInt(0).SetString(price[0], 10)
@@ -298,15 +302,17 @@ type swapCashoutStatusResponse struct {
 }
 
 func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("cashout status peer: invalid peer address string", "string", addr, "error", err)
-		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	path := struct {
+		Peer []byte `parse:"peer,addressToBytes" name:"peer" errMessage:"invalid address"`
+	}{}
+
+	if err := s.parseAndValidate(mux.Vars(r), &path); err != nil {
+		s.logger.Debug("cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"], "error", err)
+		s.logger.Error(nil, "cashout status peer: invalid peer address string", "string", mux.Vars(r)["peer"])
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-
+	peer := swarm.NewAddress(path.Peer)
 	status, err := s.swap.CashoutStatus(r.Context(), peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debug("cashout status peer: get cashout status failed", "peer_address", peer, "error", err)
@@ -366,17 +372,13 @@ type chequebookTxResponse struct {
 }
 
 func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Request) {
-	amountStr := r.URL.Query().Get("amount")
-	if amountStr == "" {
-		jsonhttp.BadRequest(w, errChequebookNoAmount)
-		s.logger.Error(nil, "chequebook withdraw: no withdraw amount")
-		return
-	}
+	path := struct {
+		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
+	}{}
 
-	amount, ok := big.NewInt(0).SetString(amountStr, 10)
-	if !ok {
-		jsonhttp.BadRequest(w, errChequebookNoAmount)
+	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
 		s.logger.Error(nil, "chequebook withdraw: invalid withdraw amount")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
@@ -391,7 +393,7 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
-	txHash, err := s.chequebook.Withdraw(ctx, amount)
+	txHash, err := s.chequebook.Withdraw(ctx, big.NewInt(path.Amount))
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		s.logger.Debug("chequebook withdraw: withdraw failed", "error", err)
@@ -409,17 +411,13 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Request) {
-	amountStr := r.URL.Query().Get("amount")
-	if amountStr == "" {
-		jsonhttp.BadRequest(w, errChequebookNoAmount)
-		s.logger.Error(nil, "chequebook deposit: no deposit amount")
-		return
-	}
+	path := struct {
+		Amount int64 `parse:"amount" name:"amount" errMessage:"did not specify amount"`
+	}{}
 
-	amount, ok := big.NewInt(0).SetString(amountStr, 10)
-	if !ok {
-		jsonhttp.BadRequest(w, errChequebookNoAmount)
+	if err := s.parseAndValidate(r.URL.Query(), &path); err != nil {
 		s.logger.Error(nil, "chequebook deposit: invalid deposit amount")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
@@ -434,7 +432,7 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
-	txHash, err := s.chequebook.Deposit(ctx, amount)
+	txHash, err := s.chequebook.Deposit(ctx, big.NewInt(path.Amount))
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		s.logger.Debug("chequebook deposit: deposit failed", "error", err)

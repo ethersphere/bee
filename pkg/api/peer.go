@@ -50,21 +50,23 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["address"]
-	swarmAddr, err := swarm.ParseHexAddress(addr)
+	path := struct {
+		Address []byte `parse:"address,addressToBytes" name:"address" errMessage:"invalid peer address"`
+	}{}
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
-		s.logger.Debug("peer disconnect: parse address string failed", "string", addr, "error", err)
-		jsonhttp.BadRequest(w, "invalid peer address")
+		s.logger.Debug("peer disconnect: parse address string failed", "string", mux.Vars(r)["address"], "error", err)
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
-
-	if err := s.p2p.Disconnect(swarmAddr, "user requested disconnect"); err != nil {
-		s.logger.Debug("peer disconnect: p2p disconnect failed", "peer_address", swarmAddr, "error", err)
+	swarmAdr := swarm.NewAddress(path.Address)
+	if err := s.p2p.Disconnect(swarm.NewAddress(path.Address), "user requested disconnect"); err != nil {
+		s.logger.Debug("peer disconnect: p2p disconnect failed", "peer_address", swarmAdr, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.BadRequest(w, "peer not found")
 			return
 		}
-		s.logger.Error(nil, "peer disconnect: p2p disconnect failed", "peer_address", swarmAddr)
+		s.logger.Error(nil, "peer disconnect: p2p disconnect failed", "peer_address", swarmAdr)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

@@ -169,7 +169,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid postage amount",
+				Message: "invalid amount",
 			}),
 		)
 	})
@@ -422,7 +422,7 @@ func TestPostageGetStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
+				Message: "invalid batch_id",
 			}),
 		)
 	})
@@ -432,7 +432,7 @@ func TestPostageGetStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
+				Message: "invalid batch_id",
 			}),
 		)
 	})
@@ -463,7 +463,7 @@ func TestPostageGetBuckets(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
+				Message: "invalid batch_id",
 			}),
 		)
 	})
@@ -473,7 +473,7 @@ func TestPostageGetBuckets(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
+				Message: "invalid batch_id",
 			}),
 		)
 	})
@@ -625,13 +625,13 @@ func TestPostageTopUpStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid batch id", func(t *testing.T) {
+	t.Run("invalid batch Id", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/topup/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
+				Message: "invalid batch_id",
 			}),
 		)
 	})
@@ -644,7 +644,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPatch, wrongURL, http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid postage amount",
+				Message: "invalid amount",
 			}),
 		)
 	})
@@ -746,13 +746,13 @@ func TestPostageDiluteStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid batch id", func(t *testing.T) {
+	t.Run("invalid batch Id", func(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/dilute/abcd/2", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
+				Message: "invalid batch_id",
 			}),
 		)
 	})

@@ -1,0 +1,21 @@
+bootnode:
+  - /dnsaddr/testnet.ethswarm.org
+network-id: 10
+data-dir: /Users/umer/.bee/testnet1
+clef-signer-enable: false
+#api-addr: 127.0.0.1:3003
+#debug-api-addr: 127.0.0.1:4003
+debug-api-enable: true
+#p2p-addr: :5003
+password: 1111
+swap-enable: true
+swap-endpoint: wss://goerli.infura.io/ws/v3/ba8fe523ed594bf787d0da57c2dba412
+swap-initial-deposit: 0
+mainnet: false
+full-node: false
+use-postage-snapshot: false
+#no-chain-backend: true
+verbosity: info
+transaction:
+block-hash:
+warmup-time: 1m

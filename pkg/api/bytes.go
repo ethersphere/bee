@@ -128,7 +128,6 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
 	nameOrHex := mux.Vars(r)["address"]
-
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
 		logger.Debug("bytes: parse address string failed", nameOrHex, err)

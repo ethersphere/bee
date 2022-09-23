@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/gorilla/mux"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/gorilla/mux"
 )
 
 const (
@@ -38,21 +38,15 @@ type feedReferenceResponse struct {
 }
 
 func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["owner"]
-	owner, err := hex.DecodeString(str)
+	path := struct {
+		Owner []byte `parse:"owner,addressToBytes" name:"owner" errMessage:"bad owner"`
+		Topic []byte `parse:"topic,addressToBytes" name:"topic" errMessage:"bad topic"`
+	}{}
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
-		s.logger.Debug("feed get: decode owner string failed", "string", str, "error", err)
-		s.logger.Error(nil, "feed get: decode owner string failed")
-		jsonhttp.BadRequest(w, "bad owner")
-		return
-	}
-
-	str = mux.Vars(r)["topic"]
-	topic, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("feed get: decode topic string failed", "error", err)
-		s.logger.Error(nil, "feed get: decode topic string failed")
-		jsonhttp.BadRequest(w, "bad topic")
+		s.logger.Debug("feed get: decode string failed", "owner", mux.Vars(r)["owner"], "topic", mux.Vars(r)["topic"], "error", err)
+		s.logger.Error(nil, "feed get: decode string failed")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
@@ -70,10 +64,10 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		at = time.Now().Unix()
 	}
 
-	f := feeds.New(topic, common.BytesToAddress(owner))
+	f := feeds.New(path.Topic, common.BytesToAddress(path.Owner))
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		s.logger.Debug("feed get: new lookup failed", "owner", owner, "error", err)
+		s.logger.Debug("feed get: new lookup failed", "owner", path.Owner, "error", err)
 		s.logger.Error(nil, "feed get: new lookup failed")
 		jsonhttp.InternalServerError(w, "new lookup failed")
 		return
@@ -127,21 +121,15 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["owner"]
-	owner, err := hex.DecodeString(str)
+	path := struct {
+		Owner []byte `parse:"owner,addressToBytes" name:"owner" errMessage:"bad owner"`
+		Topic []byte `parse:"topic,addressToBytes" name:"topic" errMessage:"bad topic"`
+	}{}
+	err := s.parseAndValidate(mux.Vars(r), &path)
 	if err != nil {
-		s.logger.Debug("feed post: decode owner string failed", "string", str, "error", err)
-		s.logger.Error(nil, "feed post: decode owner string failed")
-		jsonhttp.BadRequest(w, "bad owner")
-		return
-	}
-
-	str = mux.Vars(r)["topic"]
-	topic, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("feed post: decode topic string failed", "string", str, "error", err)
-		s.logger.Error(nil, "feed post: decode topic string failed")
-		jsonhttp.BadRequest(w, "bad topic")
+		s.logger.Debug("feed post: decode string failed", "owner", mux.Vars(r)["owner"], "topic", mux.Vars(r)["topic"], "error", err)
+		s.logger.Error(nil, "feed post: decode string failed")
+		jsonhttp.BadRequest(w, err.Error())
 		return
 	}
 
@@ -172,8 +160,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := map[string]string{
-		feedMetadataEntryOwner: hex.EncodeToString(owner),
-		feedMetadataEntryTopic: hex.EncodeToString(topic),
+		feedMetadataEntryOwner: hex.EncodeToString(path.Owner),
+		feedMetadataEntryTopic: hex.EncodeToString(path.Topic),
 		feedMetadataEntryType:  feeds.Sequence.String(), // only sequence allowed for now
 	}
 
