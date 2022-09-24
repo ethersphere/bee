@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-playground/validator/v10"
 	"io"
 	"math"
 	"math/big"
@@ -173,6 +174,7 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
+	validate     *validator.Validate
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -273,7 +275,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.syncStatus = e.SyncStatus
-
+	s.validate = validator.New()
 	return s.chunkPushC
 }
 

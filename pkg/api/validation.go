@@ -31,8 +31,7 @@ func (s *Service) parseAndValidate(input, output interface{}) (err error) {
 	if err != nil {
 		return err
 	}
-
-	return nil
+	return s.validate.Struct(output)
 }
 
 func parse(input, output interface{}) (err error) {
