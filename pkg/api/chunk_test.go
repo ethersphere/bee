@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// nolint:paralleltest
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
@@ -144,6 +145,7 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 }
 
+// nolint:paralleltest
 func TestHasChunkHandler(t *testing.T) {
 	mockStorer := mock.NewStorer()
 	testServer, _, _, _ := newTestServer(t, testServerOptions{

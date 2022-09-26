@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
+// nolint:paralleltest
 func TestSOC(t *testing.T) {
 	var (
 		testData        = []byte("foo")

@@ -21,6 +21,8 @@ import (
 )
 
 func TestBalances(t *testing.T) {
+	t.Parallel()
+
 	compensatedBalancesFunc := func() (ret map[string]*big.Int, err error) {
 		ret = make(map[string]*big.Int)
 		ret["DEAD"] = big.NewInt(1000000000000000000)
@@ -63,6 +65,8 @@ func TestBalances(t *testing.T) {
 }
 
 func TestBalancesError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("ASDF")
 	compensatedBalancesFunc := func() (ret map[string]*big.Int, err error) {
 		return nil, wantErr
@@ -81,6 +85,8 @@ func TestBalancesError(t *testing.T) {
 }
 
 func TestBalancesPeers(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	compensatedBalanceFunc := func(swarm.Address) (*big.Int, error) {
 		return big.NewInt(100000000000000000), nil
@@ -99,6 +105,8 @@ func TestBalancesPeers(t *testing.T) {
 }
 
 func TestBalancesPeersError(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	wantErr := errors.New("Error")
 	compensatedBalanceFunc := func(swarm.Address) (*big.Int, error) {
@@ -118,6 +126,8 @@ func TestBalancesPeersError(t *testing.T) {
 }
 
 func TestBalancesPeersNoBalance(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	compensatedBalanceFunc := func(swarm.Address) (*big.Int, error) {
 		return nil, accounting.ErrPeerNoBalance
@@ -136,6 +146,8 @@ func TestBalancesPeersNoBalance(t *testing.T) {
 }
 
 func TestBalancesInvalidAddress(t *testing.T) {
+	t.Parallel()
+
 	peer := "bad peer address"
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
@@ -179,6 +191,8 @@ func equalBalances(a, b *api.BalancesResponse) bool {
 }
 
 func TestConsumedBalances(t *testing.T) {
+	t.Parallel()
+
 	balancesFunc := func() (ret map[string]*big.Int, err error) {
 		ret = make(map[string]*big.Int)
 		ret["DEAD"] = big.NewInt(1000000000000000000)
@@ -221,6 +235,8 @@ func TestConsumedBalances(t *testing.T) {
 }
 
 func TestConsumedError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("ASDF")
 	balancesFunc := func() (ret map[string]*big.Int, err error) {
 		return nil, wantErr
@@ -239,6 +255,8 @@ func TestConsumedError(t *testing.T) {
 }
 
 func TestConsumedPeers(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	balanceFunc := func(swarm.Address) (*big.Int, error) {
 		return big.NewInt(1000000000000000000), nil
@@ -257,6 +275,8 @@ func TestConsumedPeers(t *testing.T) {
 }
 
 func TestConsumedPeersError(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	wantErr := errors.New("Error")
 	balanceFunc := func(swarm.Address) (*big.Int, error) {
@@ -276,6 +296,8 @@ func TestConsumedPeersError(t *testing.T) {
 }
 
 func TestConsumedPeersNoBalance(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	balanceFunc := func(swarm.Address) (*big.Int, error) {
 		return nil, accounting.ErrPeerNoBalance
@@ -294,6 +316,8 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 }
 
 func TestConsumedInvalidAddress(t *testing.T) {
+	t.Parallel()
+
 	peer := "bad peer address"
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})

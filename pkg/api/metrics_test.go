@@ -11,6 +11,7 @@ import (
 )
 
 func TestToFileSizeBucket(t *testing.T) {
+	t.Parallel()
 
 	var want int64 = 300000
 	bucket := api.ToFileSizeBucket(want)

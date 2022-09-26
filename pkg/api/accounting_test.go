@@ -20,6 +20,8 @@ import (
 )
 
 func TestAccountingInfo(t *testing.T) {
+	t.Parallel()
+
 	accountingFunc := func() (map[string]accounting.PeerInfo, error) {
 		ret := make(map[string]accounting.PeerInfo)
 		ret["BEEF"] = accounting.PeerInfo{
@@ -103,6 +105,8 @@ func TestAccountingInfo(t *testing.T) {
 }
 
 func TestAccountingInfoError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("ASDF")
 	accountingFunc := func() (map[string]accounting.PeerInfo, error) {
 		return nil, wantErr
