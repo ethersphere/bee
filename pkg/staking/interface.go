@@ -1,6 +1,7 @@
 package staking
 
 import (
+	"context"
 	"io"
 	"math/big"
 
@@ -27,5 +28,9 @@ type ChainSnapshot struct {
 
 type EventUpdater interface {
 	DepositStake(overlay []byte, stakeAmount *big.Int, addr common.Address, lastUpdatedBlock *big.Int) error
-	SlashedNotRevealed(overlay []byte) error
+	GetStake(ctx context.Context, overlay []byte) (*big.Int, error)
+	UpdateBlockNumber(blockNumber uint64) error
+
+	TransactionStart() error
+	TransactionEnd() error
 }

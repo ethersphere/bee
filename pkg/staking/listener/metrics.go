@@ -13,7 +13,6 @@ type metrics struct {
 
 	// individual event counters
 	DepositedCounter prometheus.Counter
-	SlashingCounter  prometheus.Counter
 
 	// total calls to chain backend
 	BackendCalls  prometheus.Counter
@@ -56,13 +55,6 @@ func newMetrics() metrics {
 			Help:      "total deposited events processed",
 		}),
 
-		SlashingCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "slashing_events",
-			Help:      "total slashing events handled",
-		}),
-
 		// total call
 		BackendCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -94,6 +86,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *listener) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(s.metrics)
+func (l *listener) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(l.metrics)
 }
