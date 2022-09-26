@@ -21,6 +21,8 @@ import (
 )
 
 func TestAddresses(t *testing.T) {
+	t.Parallel()
+
 	privateKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +51,8 @@ func TestAddresses(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/addresses", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.AddressesResponse{
 				Overlay:      &overlay,
@@ -61,6 +65,8 @@ func TestAddresses(t *testing.T) {
 	})
 
 	t.Run("post method not allowed", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/addresses", http.StatusMethodNotAllowed,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
@@ -79,6 +85,8 @@ func TestAddresses(t *testing.T) {
 }
 
 func TestAddresses_error(t *testing.T) {
+	t.Parallel()
+
 	testErr := errors.New("test error")
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{

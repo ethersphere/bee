@@ -300,6 +300,8 @@ func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func(
 }
 
 func TestParseName(t *testing.T) {
+	t.Parallel()
+
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
 	log := log.Noop
 
@@ -364,7 +366,10 @@ func TestParseName(t *testing.T) {
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := s.ResolveNameOrAddress(tC.name)
 			if err != nil && !errors.Is(err, tC.wantErr) {
 				t.Fatalf("bad error: %v", err)
@@ -379,6 +384,8 @@ func TestParseName(t *testing.T) {
 // TestCalculateNumberOfChunks is a unit test for
 // the chunk-number-according-to-content-length calculation.
 func TestCalculateNumberOfChunks(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct{ len, chunks int64 }{
 		{len: 1000, chunks: 1},
 		{len: 5000, chunks: 3},
@@ -398,6 +405,8 @@ func TestCalculateNumberOfChunks(t *testing.T) {
 // the chunk-number-according-to-content-length calculation with encryption
 // (branching factor=64)
 func TestCalculateNumberOfChunksEncrypted(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct{ len, chunks int64 }{
 		{len: 1000, chunks: 1},
 		{len: 5000, chunks: 3},
@@ -416,6 +425,8 @@ func TestCalculateNumberOfChunksEncrypted(t *testing.T) {
 // TestPostageHeaderError tests that incorrect postage batch ids
 // provided to the api correct the appropriate error code.
 func TestPostageHeaderError(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockStorer      = mock.NewStorer()
 		mockStatestore  = statestore.NewStateStore()
@@ -434,7 +445,10 @@ func TestPostageHeaderError(t *testing.T) {
 	)
 	content := []byte{7: 0} // 8 zeros
 	for _, endpoint := range endpoints {
+		endpoint := endpoint
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
+			t.Parallel()
+
 			hexbatch := hex.EncodeToString(batchEmpty)
 			expCode := http.StatusBadRequest
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
@@ -444,6 +458,8 @@ func TestPostageHeaderError(t *testing.T) {
 			)
 		})
 		t.Run(endpoint+": ok batch", func(t *testing.T) {
+			t.Parallel()
+
 			hexbatch := hex.EncodeToString(batchOk)
 			expCode := http.StatusCreated
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
@@ -454,6 +470,8 @@ func TestPostageHeaderError(t *testing.T) {
 			)
 		})
 		t.Run(endpoint+": bad batch", func(t *testing.T) {
+			t.Parallel()
+
 			hexbatch := hex.EncodeToString(batchInvalid)
 			expCode := http.StatusBadRequest
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
@@ -467,6 +485,8 @@ func TestPostageHeaderError(t *testing.T) {
 
 // TestOptions check whether endpoint compatible with option method
 func TestOptions(t *testing.T) {
+	t.Parallel()
+
 	var (
 		client, _, _, _ = newTestServer(t, testServerOptions{})
 	)
@@ -499,7 +519,10 @@ func TestOptions(t *testing.T) {
 			expectedMethods: "GET, HEAD",
 		},
 	} {
+		tc := tc
 		t.Run(tc.endpoint+" options test", func(t *testing.T) {
+			t.Parallel()
+
 			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
 
 			allowedMethods := resultHeader.Get("Allow")
@@ -513,6 +536,8 @@ func TestOptions(t *testing.T) {
 // TestPostageDirectAndDeferred tests that incorrect postage batch ids
 // provided to the api correct the appropriate error code.
 func TestPostageDirectAndDeferred(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockStorer               = mock.NewStorer()
 		mockStatestore           = statestore.NewStateStore()
@@ -531,7 +556,10 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 		}
 	)
 	for _, endpoint := range endpoints {
+		endpoint := endpoint
 		t.Run(endpoint+": deferred", func(t *testing.T) {
+			t.Parallel()
+
 			hexbatch := hex.EncodeToString(batchOk)
 			chunk := testingc.GenerateTestRandomChunk()
 			var responseBytes []byte
@@ -556,6 +584,8 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			}
 		})
 		t.Run(endpoint+": direct upload", func(t *testing.T) {
+			t.Parallel()
+
 			hexbatch := hex.EncodeToString(batchOk)
 			chunk := testingc.GenerateTestRandomChunk()
 			var responseBytes []byte

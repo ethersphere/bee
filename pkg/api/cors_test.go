@@ -13,6 +13,8 @@ import (
 )
 
 func TestCORSHeaders(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name           string
 		origin         string
@@ -76,7 +78,10 @@ func TestCORSHeaders(t *testing.T) {
 			wantCORS:       false,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			client, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
@@ -112,6 +117,7 @@ func TestCORSHeaders(t *testing.T) {
 
 // TestCors tests whether CORs work correctly with OPTIONS method
 func TestCors(t *testing.T) {
+	t.Parallel()
 
 	const origin = "example.com"
 	for _, tc := range []struct {
@@ -146,7 +152,10 @@ func TestCors(t *testing.T) {
 			expectedMethods: "GET, HEAD",
 		},
 	} {
+		tc := tc
 		t.Run(tc.endpoint, func(t *testing.T) {
+			t.Parallel()
+
 			client, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: []string{origin},
 			})
@@ -165,7 +174,7 @@ func TestCors(t *testing.T) {
 
 // TestCorsStatus tests whether CORs returns correct allowed method if wrong method is called
 func TestCorsStatus(t *testing.T) {
-
+	t.Parallel()
 	const origin = "example.com"
 	for _, tc := range []struct {
 		endpoint          string
@@ -203,7 +212,10 @@ func TestCorsStatus(t *testing.T) {
 			allowedMethods:    "GET, HEAD",
 		},
 	} {
+		tc := tc
 		t.Run(tc.endpoint, func(t *testing.T) {
+			t.Parallel()
+
 			client, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: []string{origin},
 			})

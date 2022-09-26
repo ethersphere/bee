@@ -123,8 +123,6 @@ issues:
     - linters: paralleltest
       path: pkg/manifest
     - linters: paralleltest
-      path: pkg/api
-    - linters: paralleltest
       path: pkg/retrieval
     - linters: paralleltest
       path: pkg/feeds

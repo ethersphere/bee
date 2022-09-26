@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
+// nolint:paralleltest
 func TestBzzFiles(t *testing.T) {
 	var (
 		fileUploadResource   = "/bzz"
@@ -370,6 +371,8 @@ func TestBzzFiles(t *testing.T) {
 // TestRangeRequests validates that all endpoints are serving content with
 // respect to HTTP Range headers.
 func TestBzzFilesRangeRequests(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus dignissim tincidunt orci id aliquam. Praesent eget turpis in lectus semper consectetur et ut nibh. Nam rhoncus, augue sit amet sollicitudin lacinia, turpis tortor molestie urna, at mattis sem sapien sit amet augue. In bibendum ex vel odio dignissim interdum. Quisque hendrerit sapien et porta condimentum. Vestibulum efficitur mauris tellus, eget vestibulum sapien vulputate ac. Proin et vulputate sapien. Duis tincidunt mauris vulputate porta venenatis. Sed dictum aliquet urna, sit amet fermentum velit pellentesque vitae. Nam sed nisi ultrices, volutpat quam et, malesuada sapien. Nunc gravida non orci at rhoncus. Sed vitae dui accumsan, venenatis lectus et, mattis tellus. Proin sed mauris eu mi congue lacinia.")
 
 	uploads := []struct {
@@ -452,7 +455,10 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 	}
 
 	for _, upload := range uploads {
+		upload := upload
 		t.Run(upload.name, func(t *testing.T) {
+			t.Parallel()
+
 			mockStatestore := statestore.NewStateStore()
 			logger := log.Noop
 			client, _, _, _ := newTestServer(t, testServerOptions{
@@ -567,6 +573,8 @@ func parseRangeParts(t *testing.T, contentType string, body []byte) (parts [][]b
 }
 
 func TestFeedIndirection(t *testing.T) {
+	t.Parallel()
+
 	// first, "upload" some content for the update
 	var (
 		updateData      = []byte("<h1>Swarm Feeds Hello World!</h1>")

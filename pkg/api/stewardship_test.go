@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
+// nolint:paralleltest
 func TestStewardship(t *testing.T) {
 	var (
 		logger         = log.Noop
@@ -63,6 +64,8 @@ func TestStewardship(t *testing.T) {
 }
 
 func TestStewardshipInputValidations(t *testing.T) {
+	t.Parallel()
+
 	var (
 		logger         = log.Noop
 		statestoreMock = statestore.NewStateStore()
@@ -107,7 +110,10 @@ func TestStewardshipInputValidations(t *testing.T) {
 			expectedMessage: "invalid address",
 		},
 	} {
+		tt := tt
 		t.Run("input validation -"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+tt.reference, tt.expectedStatus,
 				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 					Message: tt.expectedMessage,

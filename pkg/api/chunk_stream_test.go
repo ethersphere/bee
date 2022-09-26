@@ -24,6 +24,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// nolint:paralleltest
 func TestChunkUploadStream(t *testing.T) {
 	wsHeaders := http.Header{}
 	wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")

@@ -36,6 +36,7 @@ type fileUploadResponse struct {
 
 func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
 
+// nolint:paralleltest
 func TestTags(t *testing.T) {
 
 	var (

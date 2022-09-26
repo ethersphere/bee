@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// nolint:paralleltest
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
@@ -145,6 +146,8 @@ func TestChunkUploadDownload(t *testing.T) {
 }
 
 func TestHasChunkHandler(t *testing.T) {
+	t.Parallel()
+
 	mockStorer := mock.NewStorer()
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockStorer,
@@ -159,21 +162,25 @@ func TestHasChunkHandler(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/"+key.String(), http.StatusOK,
 			jsonhttptest.WithNoResponseBody())
 	})
 
 	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abbbbb", http.StatusNotFound,
 			jsonhttptest.WithNoResponseBody())
 	})
 
 	t.Run("bad address", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abcd1100zz", http.StatusBadRequest,
 			jsonhttptest.WithNoResponseBody())
 	})
 
 	t.Run("remove-chunk", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: http.StatusText(http.StatusOK),
@@ -190,6 +197,7 @@ func TestHasChunkHandler(t *testing.T) {
 	})
 
 	t.Run("remove-not-present-chunk", func(t *testing.T) {
+		t.Parallel()
 		notPresentChunkAddress := "deadbeef"
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
