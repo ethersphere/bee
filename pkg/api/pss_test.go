@@ -416,7 +416,7 @@ func waitMessage(t *testing.T, data, expData []byte, mtx *sync.Mutex) {
 			return
 		}
 		mtx.Unlock()
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
