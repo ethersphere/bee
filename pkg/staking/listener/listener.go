@@ -28,6 +28,7 @@ import (
 const loggerName = "listener"
 
 var (
+	//TODO: set staking abi here
 	stakingABI = parseABI(postageabi.PostageStampABIv0_3_0)
 	// stakeUpdatedTopic is the staking contract's deposit event topic
 	stakeUpdatedTopic = stakingABI.Events["StakeUpdated"].ID
