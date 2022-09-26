@@ -365,6 +365,9 @@ func dbSampleCmd(cmd *cobra.Command) {
 				[]byte(args[1]),
 				uint8(depth),
 			)
+			if err != nil {
+				return err
+			}
 
 			logger.Info("database sampled successfully", "Sample", sample, "took", time.Since(start).String())
 

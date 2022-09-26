@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package localstore
 
 import (
@@ -18,6 +22,8 @@ import (
 
 const sampleSize = 16
 
+var errDbClosed = errors.New("database closed")
+
 type sampleStat struct {
 	TotalIterated     atomic.Int64
 	NotFound          atomic.Int64
@@ -31,12 +37,23 @@ func (s *sampleStat) String() string {
 		"Total: %d NotFound: %d Iteration Durations: %d secs GetDuration: %d secs HmacrDuration: %d",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
-		int64(s.IterationDuration.Load()/1000000),
-		int64(s.GetDuration.Load()/1000000),
-		int64(s.HmacrDuration.Load()/1000000),
+		s.IterationDuration.Load()/1000000,
+		s.GetDuration.Load()/1000000,
+		s.HmacrDuration.Load()/1000000,
 	)
 }
 
+// ReserveSample generates the sample of reserve storage of a node required for the
+// storage incentives agent to participate in the lottery round. In order to generate
+// this sample we need to iterate through all the chunks in the node's reserve and
+// calculate the transformed hashes of all the chunks using the anchor as the salt.
+// In order to generate the transformed hashes, we will use the std hmac keyed-hash
+// implementation by using the anchor as the key. Nodes need to calculate the sample
+// in the most optimal way and there are time restrictions. The lottery round is a
+// time based round, so nodes participating in the round need to perform this
+// calculation within the round limits.
+// In order to optimize this we use a simple pipeline pattern:
+// Iterate chunk addresses -> Get the chunk data and calculate transformed hash -> Assemble the sample
 func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8) (storage.Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -44,6 +61,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 	var stat sampleStat
 	logger := db.logger.WithName("sampler").V(1).Register()
 
+	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
@@ -56,7 +74,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 				case <-ctx.Done():
 					return true, ctx.Err()
 				case <-db.close:
-					return true, errors.New("sampler: db closed")
+					return true, errDbClosed
 				}
 			}, &shed.IterateOptions{
 				Prefix: []byte{bin},
@@ -70,6 +88,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 		return nil
 	})
 
+	// Phase 2: Get the chunk data and calculate transformed hash
 	sampleItemChan := make(chan swarm.Address)
 	const workers = 4
 	for i := 0; i < workers; i++ {
@@ -86,7 +105,10 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 				}
 
 				hmacrStart := time.Now()
-				hmacr.Write(chItem.Data)
+				_, err = hmacr.Write(chItem.Data)
+				if err != nil {
+					return err
+				}
 				taddr := hmacr.Sum(nil)
 				hmacr.Reset()
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Microseconds())
@@ -97,7 +119,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 				case <-ctx.Done():
 					return ctx.Err()
 				case <-db.close:
-					return errors.New("sampler: db closed")
+					return errDbClosed
 				}
 			}
 
@@ -131,6 +153,8 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 		}
 	}
 
+	// Phase 3: Assemble the sample. Here we need to assemble only the first sampleSize
+	// no of items from the results of the first 2 phases.
 	for item := range sampleItemChan {
 		currentMaxAddr := swarm.NewAddress(make([]byte, 32))
 		if len(sampleItems) > 0 {
@@ -141,11 +165,18 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 		}
 	}
 
+	if err := g.Wait(); err != nil {
+		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
+	}
+
 	hasher := bmtpool.Get()
 	defer bmtpool.Put(hasher)
 
 	for _, s := range sampleItems {
-		hasher.Write(s.Bytes())
+		_, err := hasher.Write(s.Bytes())
+		if err != nil {
+			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
+		}
 	}
 	hash := hasher.Sum(nil)
 
