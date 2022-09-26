@@ -32,8 +32,8 @@ type getStakeResponse struct {
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
 	overlayAddr, err := hex.DecodeString(mux.Vars(r)["address"])
 	if err != nil {
-		s.logger.Debug("get stake: decode overlay string failed", "string", overlayAddr, "error", err)
-		s.logger.Error(nil, "get stake: decode overlay string failed")
+		s.logger.Debug("get stake: decode overlay address failed", "string", overlayAddr, "error", err)
+		s.logger.Error(nil, "get stake: decode overlay address failed")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
 	}
@@ -85,7 +85,7 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", hex.EncodeToString(overlayAddr), "error", err)
 		s.logger.Error(nil, "get stake: get staked amount failed")
-		jsonhttp.InternalServerError(w, " get staked amount failed")
+		jsonhttp.InternalServerError(w, "get staked amount failed")
 		return
 	}
 
