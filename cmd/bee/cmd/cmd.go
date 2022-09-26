@@ -53,7 +53,8 @@ const (
 	optionNameClefSignerEnable           = "clef-signer-enable"
 	optionNameClefSignerEndpoint         = "clef-signer-endpoint"
 	optionNameClefSignerEthereumAddress  = "clef-signer-ethereum-address"
-	optionNameSwapEndpoint               = "swap-endpoint"
+	optionNameSwapEndpoint               = "swap-endpoint" // deprecated: use rpc endpoint instead
+	optionNameRpcEndpoint                = "rpc-endpoint"
 	optionNameSwapFactoryAddress         = "swap-factory-address"
 	optionNameSwapLegacyFactoryAddresses = "swap-legacy-factory-addresses"
 	optionNameSwapInitialDeposit         = "swap-initial-deposit"
@@ -248,7 +249,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
 	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "ethereum address to use from clef signer")
-	cmd.Flags().String(optionNameSwapEndpoint, "", "swap ethereum blockchain endpoint")
+	cmd.Flags().String(optionNameSwapEndpoint, "", "swap ethereum blockchain endpoint") // deprecated: use rpc endpoint instead
+	cmd.Flags().String(optionNameRpcEndpoint, "", "rpc ethereum blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().StringSlice(optionNameSwapLegacyFactoryAddresses, nil, "legacy swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "10000000000000000", "initial deposit if deploying a new chequebook")

@@ -36,9 +36,12 @@ func (c *command) initDeployCmd() error {
 			factoryAddress := c.config.GetString(optionNameSwapFactoryAddress)
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
+			rpcEndpoint := c.config.GetString(optionNameRpcEndpoint)
 			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
 			networkID := c.config.GetUint64(optionNameNetworkID)
-
+			if swapEndpoint != "" {
+				rpcEndpoint = swapEndpoint
+			}
 			stateStore, err := node.InitStateStore(logger, dataDir)
 			if err != nil {
 				return err
@@ -58,7 +61,7 @@ func (c *command) initDeployCmd() error {
 				ctx,
 				logger,
 				stateStore,
-				swapEndpoint,
+				rpcEndpoint,
 				0,
 				signer,
 				blocktime,

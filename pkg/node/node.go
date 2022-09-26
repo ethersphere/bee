@@ -149,7 +149,8 @@ type Options struct {
 	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
 	RetrievalCaching           bool
 	BootnodeMode               bool
-	SwapEndpoint               string
+	SwapEndpoint               string // deprecated: use rpc endpoint instead
+	RpcEndpoint                string
 	SwapFactoryAddress         string
 	SwapLegacyFactoryAddresses []string
 	SwapInitialDeposit         string
@@ -262,8 +263,10 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 		erc20Service       erc20.Service
 	)
-
-	chainEnabled := isChainEnabled(o, o.SwapEndpoint, logger)
+	if o.SwapEndpoint != "" {
+		o.RpcEndpoint = o.SwapEndpoint
+	}
+	chainEnabled := isChainEnabled(o, o.RpcEndpoint, logger)
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var unreserveFn func([]byte, uint8) (uint64, error)
@@ -283,7 +286,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		p2pCtx,
 		logger,
 		stateStore,
-		o.SwapEndpoint,
+		o.RpcEndpoint,
 		o.ChainID,
 		signer,
 		pollingInterval,
@@ -1262,8 +1265,8 @@ func (b *Bee) Shutdown() error {
 
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
 
-func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
-	chainDisabled := swapEndpoint == ""
+func isChainEnabled(o *Options, rpcEndpoint string, logger log.Logger) bool {
+	chainDisabled := rpcEndpoint == ""
 	lightMode := !o.FullNodeMode
 
 	if lightMode && chainDisabled { // ultra light mode is LightNode mode with chain disabled
