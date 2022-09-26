@@ -13,7 +13,7 @@ linters:
     - exportloopref
     - forbidigo
     - goconst
-    # - gofmt ## temporally disabled
+    - gofmt
     - goheader
     - gomoddirectives
     - goprintffuncname

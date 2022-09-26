@@ -418,11 +418,11 @@ func TestDB_SubscribePull_sinceAndUntil(t *testing.T) {
 }
 
 // TestDB_SubscribePull_rangeOnRemovedChunks performs a test:
-// - uploads a number of chunks
-// - removes first half of chunks for every bin
-// - subscribes to a range that is within removed chunks,
-//   but before the chunks that are left
-// - validates that no chunks are received on subscription channel
+//   - uploads a number of chunks
+//   - removes first half of chunks for every bin
+//   - subscribes to a range that is within removed chunks,
+//     but before the chunks that are left
+//   - validates that no chunks are received on subscription channel
 func TestDB_SubscribePull_rangeOnRemovedChunks(t *testing.T) {
 	db := newTestDB(t, nil)
 
