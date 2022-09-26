@@ -25,12 +25,16 @@ var (
 	// postage stamp
 	goerliPostageStampContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
 	xdaiPostageStampContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+	// staking contract
+	goerliStakingContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
+	xdaiStakingContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
 )
 
 type ChainConfig struct {
 	StartBlock         uint64
 	LegacyFactories    []common.Address
 	PostageStamp       common.Address
+	StakingContract    common.Address
 	CurrentFactory     common.Address
 	PriceOracleAddress common.Address
 }
@@ -46,6 +50,7 @@ func GetChainConfig(chainID int64) (*ChainConfig, bool) {
 			goerliLegacyFactoryAddress,
 		}
 		cfg.PriceOracleAddress = goerliContractAddress
+		cfg.StakingContract = goerliStakingContractAddress
 		return &cfg, true
 	case xdaiChainID:
 		cfg.PostageStamp = xdaiPostageStampContractAddress
@@ -53,6 +58,7 @@ func GetChainConfig(chainID int64) (*ChainConfig, bool) {
 		cfg.CurrentFactory = xdaiFactoryAddress
 		cfg.LegacyFactories = []common.Address{}
 		cfg.PriceOracleAddress = xdaiContractAddress
+		cfg.StakingContract = xdaiStakingContractAddress
 		return &cfg, true
 	default:
 		return &cfg, false

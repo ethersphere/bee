@@ -55,6 +55,11 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 			jsonhttp.BadRequest(w, "minimum 1 BZZ required for staking")
 			return
 		}
+		if errors.Is(err, stakingcontract.ErrNotImplemented) {
+			s.logger.Debug("deposit stake: not implemented", "error", err)
+			s.logger.Error(nil, "deposit stake: not implemented")
+			jsonhttp.NotImplemented(w, "not implemented")
+		}
 		if errors.Is(err, stakingcontract.ErrInsufficientFunds) {
 			s.logger.Debug("deposit stake: out of funds", "error", err)
 			s.logger.Error(nil, "deposit stake: out of funds")

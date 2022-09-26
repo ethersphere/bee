@@ -67,6 +67,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -160,6 +161,7 @@ type Options struct {
 	Transaction                string
 	BlockHash                  string
 	PostageContractAddress     string
+	StakingContractAddress     string
 	PriceOracleAddress         string
 	BlockTime                  uint64
 	DeployGasPrice             string
@@ -985,6 +987,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
+	//TODO: Add address for contract
+	stakingContract := stakingcontract.New(overlayEthAddress, chainCfg.StakingContract, erc20Address, transactionService)
+
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
 		TopologyDriver:   kad,
@@ -1003,6 +1008,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		FeedFactory:      feedFactory,
 		Post:             post,
 		PostageContract:  postageContractService,
+		StakingContract:  stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
 	}
