@@ -38,7 +38,6 @@ var (
 
 type StakingContract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay []byte) error
-	GetStake(ctx context.Context, overlay []byte) (*big.Int, error)
 }
 
 type stakingContract struct {
@@ -160,14 +159,6 @@ func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.In
 	//TODO: verify if we need receipt as well as service for staking
 	//TODO: logic for receipt would be added here
 	return nil
-}
-
-func (s *stakingContract) GetStake(ctx context.Context, overlay []byte) (*big.Int, error) {
-	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
-	if err != nil {
-		return nil, fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
-	}
-	return stakedAmount, nil
 }
 
 func (s *stakingContract) getBalance(ctx context.Context) (*big.Int, error) {

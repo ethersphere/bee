@@ -543,13 +543,6 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			"POST": http.HandlerFunc(s.stakingDepositHandler),
 		})),
 	)
-
-	handle("/staking/{address}", web.ChainHandlers(
-		s.stakingAccessHandler,
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.getStakedAmountHandler),
-		})),
-	)
 }
 
 func (s *Service) gatewayModeForbidEndpointHandler(h http.Handler) http.Handler {
