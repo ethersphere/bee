@@ -252,6 +252,50 @@ func TestBytesInvalidStamp(t *testing.T) {
 			t.Fatal("storer check root chunk address: have ont; want none")
 		}
 	})
+
+	t.Run("upload, invalid postage batch", func(t *testing.T) {
+		chunkAddr := swarm.MustParseHexAddress(expHash)
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "wrong header"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+
+		has, err := storerMock.Has(context.Background(), chunkAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if has {
+			t.Fatal("storer check root chunk address: have ont; want none")
+		}
+	})
+
+	t.Run("upload, batch not usable", func(t *testing.T) {
+		chunkAddr := swarm.MustParseHexAddress(expHash)
+
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
+			Pinning:    pinningMock,
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+
+		has, err := storerMock.Has(context.Background(), chunkAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if has {
+			t.Fatal("storer check root chunk address: have ont; want none")
+		}
+	})
 }
 
 func Test_bytesUploadHandler_invalidInputs(t *testing.T) {
