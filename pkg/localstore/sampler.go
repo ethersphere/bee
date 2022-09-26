@@ -128,7 +128,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 	}
 
 	go func() {
-		g.Wait()
+		_ = g.Wait()
 		close(sampleItemChan)
 	}()
 
