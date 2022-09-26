@@ -147,10 +147,16 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 		return
 	}
 
+	// filename cannot contain a "/" in prefix because the specification is that we cannot start with slash but can have a slash at a later position
+	if strings.HasPrefix(fileName, "/") {
+		logger.Debug("bzz upload file: / in prefix not allowed", "file_name", fileName, "error", err)
+		logger.Error(nil, "bzz upload file: / in prefix not allowed", "file_name", fileName)
+		jsonhttp.BadRequest(w, "/ in prefix not allowed")
+		return
+	}
 	rootMetadata := map[string]string{
 		manifest.WebsiteIndexDocumentSuffixKey: fileName,
 	}
-
 	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.ZeroAddress, rootMetadata))
 	if err != nil {
 		logger.Debug("bzz upload file: adding metadata to manifest failed", "file_name", fileName, "error", err)
@@ -242,12 +248,12 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	nameOrHex := mux.Vars(r)["address"]
 	pathVar := mux.Vars(r)["path"]
+
 	if strings.HasSuffix(pathVar, "/") {
 		pathVar = strings.TrimRight(pathVar, "/")
 		// NOTE: leave one slash if there was some
 		pathVar += "/"
 	}
-
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {
 		logger.Debug("bzz download: parse address string failed", "string", nameOrHex, "error", err)
