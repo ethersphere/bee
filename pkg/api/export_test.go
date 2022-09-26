@@ -128,3 +128,12 @@ var (
 
 func ReplaceLogRegistryIterateFn(fn LogRegistryIterateFn)   { logRegistryIterate = fn }
 func ReplaceLogSetVerbosityByExp(fn LogSetVerbosityByExpFn) { logSetVerbosityByExp = fn }
+
+var ErrHexLength = errHexLength
+
+type HexInvalidByteError = hexInvalidByteError
+
+func Parse(input, output interface{}) error { return parse(input, output) }
+func NewParseError(param, value string, cause error) error {
+	return newParseError(param, value, cause)
+}
