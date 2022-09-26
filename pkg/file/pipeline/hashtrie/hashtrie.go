@@ -74,12 +74,13 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 // wrapLevel wraps an existing level and writes the resulting hash to the following level
 // then truncates the current level data by shifting the cursors.
 // Steps are performed in the following order:
-//	 - take all of the data in the current level
-//	 - break down span and hash data
-//	 - sum the span size, concatenate the hash to the buffer
-//	 - call the short pipeline with the span and the buffer
-//	 - get the hash that was created, append it one level above, and if necessary, wrap that level too
-//	 - remove already hashed data from buffer
+//   - take all of the data in the current level
+//   - break down span and hash data
+//   - sum the span size, concatenate the hash to the buffer
+//   - call the short pipeline with the span and the buffer
+//   - get the hash that was created, append it one level above, and if necessary, wrap that level too
+//   - remove already hashed data from buffer
+//
 // assumes that the function has been called when refsize+span*branching has been reached
 func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
@@ -128,17 +129,18 @@ func (h *hashTrieWriter) levelSize(level int) int {
 // Sum returns the Swarm merkle-root content-addressed hash
 // of an arbitrary-length binary data.
 // The algorithm it uses is as follows:
-//	- From level 1 till maxLevel 8, iterate:
-//		-	If level data length equals 0 then continue to next level
-//		-	If level data length equals 1 reference then carry over level data to next
-//		-	If level data length is bigger than 1 reference then sum the level and
-//			write the result to the next level
-//	- Return the hash in level 8
+//   - From level 1 till maxLevel 8, iterate:
+//     -- If level data length equals 0 then continue to next level
+//     -- If level data length equals 1 reference then carry over level data to next
+//     -- If level data length is bigger than 1 reference then sum the level and
+//     write the result to the next level
+//   - Return the hash in level 8
+//
 // the cases are as follows:
-//	- one hash in a given level, in which case we _do not_ perform a hashing operation, but just move
-//		the hash to the next level, potentially resulting in a level wrap
-//	- more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
-//		the next level
+//   - one hash in a given level, in which case we _do not_ perform a hashing operation, but just move
+//     the hash to the next level, potentially resulting in a level wrap
+//   - more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
+//     the next level
 func (h *hashTrieWriter) Sum() ([]byte, error) {
 	oneRef := h.refSize + swarm.SpanSize
 	for i := 1; i < maxLevel; i++ {

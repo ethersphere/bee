@@ -36,9 +36,10 @@ func DistanceRaw(x, y []byte) ([]byte, error) {
 
 // DistanceCmp compares x and y to a in terms of the distance metric defined in the swarm specification.
 // it returns:
-// 	1 if x is closer to a than y
-// 	0 if x and y are equally far apart from a (this means that x and y are the same address)
-// 	-1 if x is farther from a than y
+//   - 1 if x is closer to a than y
+//   - 0 if x and y are equally far apart from a (this means that x and y are the same address)
+//   - -1 if x is farther from a than y
+//
 // Fails if not all addresses are of equal length.
 func DistanceCmp(a, x, y []byte) (int, error) {
 	if len(a) != len(x) || len(a) != len(y) {

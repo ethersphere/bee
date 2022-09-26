@@ -21,8 +21,7 @@ type Lookup interface {
 	At(ctx context.Context, at, after int64) (chunk swarm.Chunk, currentIndex, nextIndex Index, err error)
 }
 
-// Getter encapsulates a chunk Getter getter and a feed and provides
-//  non-concurrent lookup methods
+// Getter encapsulates a chunk Getter getter and a feed and provides non-concurrent lookup methods
 type Getter struct {
 	getter storage.Getter
 	*Feed
