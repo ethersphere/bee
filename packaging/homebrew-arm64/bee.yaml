@@ -60,8 +60,10 @@ password-file: /opt/homebrew/var/lib/swarm-bee/password
 # resolver-options: []
 ## enable swap (default true)
 # swap-enable: true
-## swap ethereum blockchain endpoint (default "")
+## swap ethereum blockchain endpoint (default "") [deprecated]
 # swap-endpoint: ""
+## ethereum blockchain endpoint (default "")
+# blockchain-rpc-endpoint: ""
 ## swap factory address
 # swap-factory-address: ""
 ## legacy swap factory addresses
