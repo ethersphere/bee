@@ -25,10 +25,6 @@ func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
 	})
 }
 
-type getStakeResponse struct {
-	StakedAmount *big.Int `json:"stakedAmount"`
-}
-
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
 	overlayAddr, err := hex.DecodeString(mux.Vars(r)["address"])
 	if err != nil {

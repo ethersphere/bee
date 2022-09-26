@@ -39,9 +39,3 @@ func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int, overlay
 		mock.depositStake = f
 	}
 }
-
-func WithGetStake(f func(ctx context.Context, overlay []byte) (*big.Int, error)) Option {
-	return func(mock *stakingContractMock) {
-		mock.getStake = f
-	}
-}

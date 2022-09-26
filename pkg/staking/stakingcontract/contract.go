@@ -31,7 +31,6 @@ var (
 
 	ErrInvalidStakeAmount = errors.New("invalid stake amount")
 	ErrInsufficientFunds  = errors.New("insufficient token balance")
-	ErrGetStakeFailed     = errors.New("get stake failed")
 
 	depositStakeDescription = "Deposit Stake"
 )
