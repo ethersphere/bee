@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -249,9 +250,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 					return nil, err
 				}
 				r.URL = u
-				transport := ts.Client().Transport
+
+				transport := ts.Client().Transport.(*http.Transport)
+				transport = transport.Clone()
 				// always dial to the server address, regardless of the url host and port
-				transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return net.Dial(network, ts.Listener.Addr().String())
 				}
 				return transport.RoundTrip(r)
@@ -614,6 +617,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 }
 
 type chanStorer struct {
+	lock   sync.Mutex
 	chunks map[string]struct{}
 	quit   chan struct{}
 }
@@ -631,7 +635,9 @@ func (c *chanStorer) drain(cc <-chan *pusher.Op) {
 	for {
 		select {
 		case op := <-cc:
+			c.lock.Lock()
 			c.chunks[op.Chunk.Address().ByteString()] = struct{}{}
+			c.lock.Unlock()
 			op.Err <- nil
 		case <-c.quit:
 			return
@@ -655,7 +661,10 @@ func (c *chanStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs .
 }
 
 func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+	c.lock.Lock()
 	_, ok := c.chunks[addr.ByteString()]
+	c.lock.Unlock()
+
 	return ok, nil
 }
 
