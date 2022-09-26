@@ -11,6 +11,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	topologyDriver "github.com/ethersphere/bee/pkg/topology"
+
+	"go.uber.org/atomic"
 )
 
 const loggerName = "depthmonitor"
@@ -54,6 +56,7 @@ type Service struct {
 	bs       postage.Storer
 	quit     chan struct{} // to request service to stop
 	stopped  chan struct{} // to signal stopping of bg worker
+	isStable *atomic.Bool
 }
 
 // New constructs a new depthmonitor service
@@ -75,6 +78,7 @@ func New(
 		logger:   logger.WithName(loggerName).Register(),
 		quit:     make(chan struct{}),
 		stopped:  make(chan struct{}),
+		isStable: atomic.NewBool(false),
 	}
 
 	go s.manage(warmupTime, wakeupInterval)
@@ -130,8 +134,11 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
+			s.isStable.Store(true)
 			continue
 		}
+
+		s.isStable.Store(false)
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
 		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
@@ -147,6 +154,10 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 			}
 		}
 	}
+}
+
+func (s *Service) IsStable() bool {
+	return s.isStable.Load()
 }
 
 func (s *Service) Close() error {
