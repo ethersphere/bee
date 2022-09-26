@@ -326,7 +326,7 @@ func (c *Collector) Flush() error {
 }
 
 // Finalize tries to log out all ongoing peer sessions.
-func (c *Collector) Finalize(t time.Time, delete bool) error {
+func (c *Collector) Finalize(t time.Time, remove bool) error {
 	c.counters.Range(func(_, val interface{}) bool {
 		cs := val.(*Counters)
 		PeerLogOut(t)(cs)
@@ -337,7 +337,7 @@ func (c *Collector) Finalize(t time.Time, delete bool) error {
 		return err
 	}
 
-	if delete {
+	if remove {
 		c.counters.Range(func(_, val interface{}) bool {
 			cs := val.(*Counters)
 			c.counters.Delete(cs.peerAddress.ByteString())
