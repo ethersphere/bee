@@ -154,11 +154,13 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 	}
 
 	// Phase 3: Assemble the sample. Here we need to assemble only the first sampleSize
-	// no of items from the results of the first 2 phases.
+	// no of items from the results of the 2nd phase.
 	for item := range sampleItemChan {
-		currentMaxAddr := swarm.NewAddress(make([]byte, 32))
+		var currentMaxAddr swarm.Address
 		if len(sampleItems) > 0 {
 			currentMaxAddr = sampleItems[len(sampleItems)-1]
+		} else {
+			currentMaxAddr = swarm.NewAddress(make([]byte, 32))
 		}
 		if le(item.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
 			insert(item)
