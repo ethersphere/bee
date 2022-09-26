@@ -92,7 +92,7 @@ func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, curre
 }
 
 // asyncFinder encapsulates a chunk store getter and a feed and provides
-//  non-concurrent lookup
+// non-concurrent lookup
 type asyncFinder struct {
 	getter *feeds.Getter
 }

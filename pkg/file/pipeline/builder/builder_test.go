@@ -120,7 +120,6 @@ BenchmarkPipeline/100000000-bytes
 BenchmarkPipeline/100000000-bytes-4    	       1	3064439098 ns/op	1751509528 B/op	11342736 allocs/op
 PASS
 ok  	github.com/ethersphere/bee/pkg/file/pipeline/builder	17.599s
-
 */
 func BenchmarkPipeline(b *testing.B) {
 	for _, count := range []int{

@@ -214,6 +214,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 	return nil
 }
 
+// nolint:gofmt
 // moveDanglingChunk concatenates the reference to the single reference
 // at the highest level of the tree in case of a balanced tree.
 //

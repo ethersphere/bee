@@ -32,7 +32,7 @@ func (p pointErr) MarshalText() ([]byte, error) {
 	return nil, fmt.Errorf("uh oh: %d, %d", p.x, p.y)
 }
 
-//nolint:errname
+// nolint:errname
 // marshalerTest expect to result in the MarshalLog() value when logged.
 type marshalerTest struct{ val string }
 
@@ -46,7 +46,7 @@ func (_ marshalerTest) Error() string {
 	return "Error(): you should not see this"
 }
 
-//nolint:errname
+// nolint:errname
 // marshalerPanicTest expect this to result in a panic when logged.
 type marshalerPanicTest struct{ val string }
 
@@ -54,7 +54,7 @@ func (_ marshalerPanicTest) MarshalLog() interface{} {
 	panic("marshalerPanicTest")
 }
 
-//nolint:errname
+// nolint:errname
 // stringerTest expect this to result in the String() value when logged.
 type stringerTest struct{ val string }
 
@@ -72,7 +72,7 @@ func (_ stringerPanicTest) String() string {
 	panic("stringerPanicTest")
 }
 
-//nolint:errname
+// nolint:errname
 // errorTest expect this to result in the Error() value when logged.
 type errorTest struct{ val string }
 
@@ -80,7 +80,7 @@ func (_ errorTest) Error() string {
 	return "I am an error"
 }
 
-//nolint:errname
+// nolint:errname
 // errorPanicTest expect this to result in a panic when logged.
 type errorPanicTest struct{ val string }
 

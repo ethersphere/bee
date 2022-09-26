@@ -38,7 +38,7 @@ func (i *BigInt) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-//Wrap wraps big.Int pointer into BigInt struct.
+// Wrap wraps big.Int pointer into BigInt struct.
 func Wrap(i *big.Int) *BigInt {
 	return &BigInt{Int: i}
 }

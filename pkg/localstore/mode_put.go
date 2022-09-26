@@ -265,8 +265,9 @@ func (db *DB) putSharky(ctx context.Context, item shed.Item) (loc sharky.Locatio
 }
 
 // putRequest adds an Item to the batch by updating required indexes:
-//  - put to indexes: retrieve, gc
-//  - it does not enter the syncpool
+//   - put to indexes: retrieve, gc
+//   - it does not enter the syncpool
+//
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putRequest(
@@ -361,7 +362,8 @@ func (db *DB) putRequest(
 }
 
 // putUpload adds an Item to the batch by updating required indexes:
-//  - put to indexes: retrieve, push, pull
+//   - put to indexes: retrieve, push, pull
+//
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putUpload(
@@ -432,7 +434,8 @@ func (db *DB) putUpload(
 }
 
 // putSync adds an Item to the batch by updating required indexes:
-//  - put to indexes: retrieve, pull, gc
+//   - put to indexes: retrieve, pull, gc
+//
 // The batch can be written to the database.
 // Provided batch and binID map are updated.
 func (db *DB) putSync(batch *leveldb.Batch, loc *releaseLocations, binIDs map[uint8]uint64, item shed.Item) (exists bool, gcSizeChange, reserveSizeChange int64, err error) {

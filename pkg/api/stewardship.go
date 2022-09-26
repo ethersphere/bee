@@ -14,8 +14,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-//  stewardshipPutHandler re-uploads root hash and all of its underlying
-// associated chunks to the network.
+// StewardshipPutHandler re-uploads root hash and all of its underlying associated chunks to the network.
 func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) {
 	nameOrHex := mux.Vars(r)["address"]
 	address, err := s.resolveNameOrAddress(nameOrHex)

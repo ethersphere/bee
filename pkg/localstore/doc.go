@@ -24,9 +24,9 @@ access and add Chunks and to manage their status.
 Modes are abstractions that do specific changes to Chunks. There are three
 mode types:
 
- - ModeGet, for Chunk access
- - ModePut, for adding Chunks to the database
- - ModeSet, for changing Chunk statuses
+  - ModeGet, for Chunk access
+  - ModePut, for adding Chunks to the database
+  - ModeSet, for changing Chunk statuses
 
 Every mode type has a corresponding type (Getter, Putter and Setter)
 that provides adequate method to perform the opperation and that type

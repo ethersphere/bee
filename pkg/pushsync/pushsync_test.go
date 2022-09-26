@@ -558,7 +558,6 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 // It also sends the chunk to the closest peer and receives a receipt.
 //
 // Chunk moves from   TriggerPeer -> PivotPeer -> ClosestPeer
-//
 func TestHandler(t *testing.T) {
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
