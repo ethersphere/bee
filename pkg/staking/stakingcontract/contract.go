@@ -24,9 +24,10 @@ var (
 	MinimumStakeAmount = big.NewInt(1)
 
 	erc20ABI = parseABI(sw3abi.ERC20ABIv0_3_1)
-	//TODO: get ABI for staking contract
-	stakingABI        = parseABI(sw3abi.ERC20ABIv0_3_1)
-	stakeUpdatedTopic = stakingABI.Events["StakeUpdated"].ID
+	//TODO: get ABI for staking contract and replace it below
+	stakingABI = parseABI(sw3abi.ERC20ABIv0_3_1)
+	//TODO: enable below mentioned topic for receiving receipts
+	//stakeUpdatedTopic = stakingABI.Events["StakeUpdated"].ID
 
 	ErrInvalidStakeAmount = errors.New("invalid stake amount")
 	ErrInsufficientFunds  = errors.New("insufficient token balance")
@@ -45,7 +46,6 @@ type stakingContract struct {
 	stakingContractAddress common.Address
 	bzzTokenAddress        common.Address
 	transactionService     transaction.Service
-	//stakingService         staking.Service
 }
 
 func New(
@@ -53,14 +53,12 @@ func New(
 	stakingContractAddress common.Address,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
-	//stakingService         staking.Service,
 ) StakingContract {
 	return &stakingContract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		bzzTokenAddress:        bzzTokenAddress,
 		transactionService:     transactionService,
-		//stakingService: stakingService,
 	}
 }
 
@@ -160,21 +158,7 @@ func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.In
 		return err
 	}
 	//TODO: verify if we need receipt as well as service for staking
-	//for _, ev := range receipt.Logs {
-	//	if ev.Address == s.stakingContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == stakeUpdatedTopic {
-	//		var createdEvent stakeUpdatedEvent
-	//		err = transaction.ParseEvent(&stakingABI, "StakeUpdated", &createdEvent, *ev)
-	//		if err != nil {
-	//			return err
-	//		}
-	//
-	//		overlay := createdEvent.Overlay[:]
-	//
-	//		if err != nil {
-	//			return err
-	//		}
-	//	}
-	//}
+	//TODO: logic for receipt would be added here
 	return nil
 }
 
@@ -213,11 +197,4 @@ func parseABI(json string) abi.ABI {
 		panic(fmt.Sprintf("error creating ABI for staking contract: %v", err))
 	}
 	return cabi
-}
-
-type stakeUpdatedEvent struct {
-	Overlay          [32]byte
-	StakedAmount     *big.Int
-	Owner            common.Address
-	LastUpdatedBlock *big.Int
 }
