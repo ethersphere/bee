@@ -97,8 +97,8 @@ func (b *builder) Build() Logger {
 
 	b.namesStr = strings.Join(b.names, "/")
 	// ~5 is the average length of an English word; 4 is the rune size.
-	len := nextPowOf2(uint64(5 * 4 * len(b.values)))
-	buf := bytes.NewBuffer(make([]byte, 0, len))
+	bufCap := nextPowOf2(uint64(5 * 4 * len(b.values)))
+	buf := bytes.NewBuffer(make([]byte, 0, bufCap))
 	b.l.formatter.flatten(buf, b.values, false, false)
 	b.valuesStr = buf.String()
 

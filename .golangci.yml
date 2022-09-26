@@ -28,6 +28,7 @@ linters:
     - noctx
     - paralleltest
     - prealloc
+    - predeclared
     - promlinter
     - staticcheck
     - structcheck
