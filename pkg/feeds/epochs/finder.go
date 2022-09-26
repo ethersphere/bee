@@ -102,8 +102,7 @@ type result struct {
 }
 
 // asyncFinder encapsulates a chunk store getter and a feed and provides
-//
-//	non-concurrent lookup methods
+// non-concurrent lookup methods
 type asyncFinder struct {
 	getter *feeds.Getter
 }
