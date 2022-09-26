@@ -98,7 +98,6 @@ type (
 	PostageStampBucketsResponse       = postageStampBucketsResponse
 	BucketData                        = bucketData
 	WalletResponse                    = walletResponse
-	GetDepositResponse                = getStakeResponse
 )
 
 var (
