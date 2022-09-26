@@ -151,7 +151,7 @@ func (s *Service) fileUploadHandler(w http.ResponseWriter, r *http.Request, stor
 	if strings.HasPrefix(fileName, "/") {
 		logger.Debug("bzz upload file: / in prefix not allowed", "file_name", fileName, "error", err)
 		logger.Error(nil, "bzz upload file: / in prefix not allowed", "file_name", fileName)
-		jsonhttp.BadRequest(w, "bzz upload file: / in prefix not allowed")
+		jsonhttp.BadRequest(w, "/ in prefix not allowed")
 		return
 	}
 	rootMetadata := map[string]string{
@@ -248,13 +248,11 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	nameOrHex := mux.Vars(r)["address"]
 	pathVar := mux.Vars(r)["path"]
+
 	if strings.HasSuffix(pathVar, "/") {
 		pathVar = strings.TrimRight(pathVar, "/")
 		// NOTE: leave one slash if there was some
 		pathVar += "/"
-	}
-	if strings.HasPrefix(nameOrHex, "/") {
-		nameOrHex = strings.TrimLeft(nameOrHex, "/")
 	}
 	address, err := s.resolveNameOrAddress(nameOrHex)
 	if err != nil {

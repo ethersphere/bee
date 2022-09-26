@@ -223,7 +223,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Message: "bzz upload file: / in prefix not allowed",
+				Message: "/ in prefix not allowed",
 				Code:    http.StatusBadRequest,
 			}))
 	})
