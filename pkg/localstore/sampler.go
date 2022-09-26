@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -69,7 +70,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 		return nil
 	})
 
-	sampleChan := make(chan storage.SampleItem)
+	sampleItemChan := make(chan swarm.Address)
 	const workers = 4
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
@@ -91,10 +92,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Microseconds())
 
 				select {
-				case sampleChan <- storage.SampleItem{
-					Address:            addr,
-					TransformedAddress: swarm.NewAddress(taddr),
-				}:
+				case sampleItemChan <- swarm.NewAddress(taddr):
 					// continue
 				case <-ctx.Done():
 					return ctx.Err()
@@ -109,48 +107,50 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 
 	go func() {
 		g.Wait()
-		close(sampleChan)
+		close(sampleItemChan)
 	}()
 
-	samples := make([]storage.SampleItem, 0, sampleSize)
-	insert := func(item storage.SampleItem) {
+	sampleItems := make([]swarm.Address, 0, sampleSize)
+	// insert function will insert the new item in its correct place. If the sample
+	// size goes beyond what we need we omit the last item.
+	insert := func(item swarm.Address) {
 		added := false
-		for i, sItem := range samples {
-			if leq(item.TransformedAddress.Bytes(), sItem.TransformedAddress.Bytes()) {
-				samples = append(samples[:i+1], samples[i:]...)
-				samples[i] = item
+		for i, sItem := range sampleItems {
+			if le(item.Bytes(), sItem.Bytes()) {
+				sampleItems = append(sampleItems[:i+1], sampleItems[i:]...)
+				sampleItems[i] = item
 				added = true
 				break
 			}
 		}
-		if len(samples) > sampleSize {
-			samples = samples[:sampleSize]
+		if len(sampleItems) > sampleSize {
+			sampleItems = sampleItems[:sampleSize]
 		}
-		if len(samples) < sampleSize && !added {
-			samples = append(samples, item)
-		}
-	}
-
-	for sample := range sampleChan {
-		lowestAddr := swarm.NewAddress(make([]byte, 32))
-		if len(samples) > 0 {
-			lowestAddr = samples[len(samples)-1].TransformedAddress
-		}
-		if leq(sample.TransformedAddress.Bytes(), lowestAddr.Bytes()) || len(samples) < sampleSize {
-			insert(sample)
+		if len(sampleItems) < sampleSize && !added {
+			sampleItems = append(sampleItems, item)
 		}
 	}
 
-	hasher := swarm.NewHasher()
-	defer hasher.Reset()
+	for item := range sampleItemChan {
+		currentMaxAddr := swarm.NewAddress(make([]byte, 32))
+		if len(sampleItems) > 0 {
+			currentMaxAddr = sampleItems[len(sampleItems)-1]
+		}
+		if le(item.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
+			insert(item)
+		}
+	}
 
-	for _, s := range samples {
-		hasher.Write(s.TransformedAddress.Bytes())
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+
+	for _, s := range sampleItems {
+		hasher.Write(s.Bytes())
 	}
 	hash := hasher.Sum(nil)
 
 	sample := storage.Sample{
-		Items: samples,
+		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
 	logger.Info("Sampler done", "Stats", stat.String(), "Sample", sample)
@@ -158,6 +158,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 	return sample, nil
 }
 
-func leq(a, b []byte) bool {
+// less function uses the byte compare to check for lexicographic ordering
+func le(a, b []byte) bool {
 	return bytes.Compare(a, b) == -1
 }

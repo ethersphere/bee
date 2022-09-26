@@ -169,17 +169,8 @@ type PullSubscriber interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
 }
 
-type SampleItem struct {
-	Address            swarm.Address
-	TransformedAddress swarm.Address
-}
-
-func (s *SampleItem) String() string {
-	return fmt.Sprintf("TxAddr: %s Actual Addr: %s\n", s.TransformedAddress, s.Address)
-}
-
 type Sample struct {
-	Items []SampleItem
+	Items []swarm.Address
 	Hash  swarm.Address
 }
 
