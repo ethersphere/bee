@@ -65,24 +65,24 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
-		for bin := storageDepth; bin <= swarm.MaxPO; bin++ {
-			err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
-				select {
-				case addrChan <- swarm.NewAddress(item.Address):
-					stat.TotalIterated.Inc()
-					return false, nil
-				case <-ctx.Done():
-					return true, ctx.Err()
-				case <-db.close:
-					return true, errDbClosed
-				}
-			}, &shed.IterateOptions{
-				Prefix: []byte{bin},
-			})
-			if err != nil {
-				logger.Error(err, "sampler: failed iteration")
-				return err
+		err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
+			select {
+			case addrChan <- swarm.NewAddress(item.Address):
+				stat.TotalIterated.Inc()
+				return false, nil
+			case <-ctx.Done():
+				return true, ctx.Err()
+			case <-db.close:
+				return true, errDbClosed
 			}
+		}, &shed.IterateOptions{
+			StartFrom: &shed.Item{
+				Address: generateAddressAt(db.baseKey, int(storageDepth)),
+			},
+		})
+		if err != nil {
+			logger.Error(err, "sampler: failed iteration")
+			return err
 		}
 		stat.IterationDuration.Add(time.Since(iterationStart).Microseconds())
 		return nil
@@ -90,7 +90,7 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 
 	// Phase 2: Get the chunk data and calculate transformed hash
 	sampleItemChan := make(chan swarm.Address)
-	const workers = 4
+	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
 			hmacr := hmac.New(swarm.NewHasher, anchor)
