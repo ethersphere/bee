@@ -130,9 +130,9 @@ func (h *hashTrieWriter) levelSize(level int) int {
 // of an arbitrary-length binary data.
 // The algorithm it uses is as follows:
 //   - From level 1 till maxLevel 8, iterate:
-//   - If level data length equals 0 then continue to next level
-//   - If level data length equals 1 reference then carry over level data to next
-//   - If level data length is bigger than 1 reference then sum the level and
+//     -- If level data length equals 0 then continue to next level
+//     -- If level data length equals 1 reference then carry over level data to next
+//     -- If level data length is bigger than 1 reference then sum the level and
 //     write the result to the next level
 //   - Return the hash in level 8
 //
