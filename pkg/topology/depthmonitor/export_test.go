@@ -4,10 +4,7 @@
 
 package depthmonitor
 
-var (
-	ManageWait    = &manageWait
-	MinimumRadius = &minimumRadius
-)
+var MinimumRadius = &minimumRadius
 
 func (s *Service) StorageDepth() uint8 {
 	return s.bs.GetReserveState().StorageRadius
