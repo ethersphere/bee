@@ -5,13 +5,11 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -35,7 +33,6 @@ func (c *command) initDBCmd() {
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
 	dbIndicesCmd(cmd)
-	dbSampleCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -315,66 +312,4 @@ func removeContent(path string) error {
 		}
 	}
 	return nil
-}
-
-func dbSampleCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "sample <depth> <anchor>",
-		Short: "Perform DB sample at <depth> using <anchor>",
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if (len(args)) != 2 {
-				return cmd.Help()
-			}
-			depth, err := strconv.ParseInt(args[0], 10, 8)
-			if err != nil {
-				return fmt.Errorf("depth incorrect: %w", err)
-			}
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
-			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
-			}
-
-			logger.Info("starting export process with data-dir", "path", dataDir)
-
-			path := filepath.Join(dataDir, "localstore")
-
-			storer, err := localstore.New(path, nil, nil, nil, logger)
-			if err != nil {
-				return fmt.Errorf("localstore: %w", err)
-			}
-
-			defer storer.Close()
-
-			start := time.Now()
-
-			sample, err := storer.ReserveSample(
-				context.Background(),
-				[]byte(args[1]),
-				uint8(depth),
-			)
-			if err != nil {
-				return err
-			}
-
-			logger.Info("database sampled successfully", "Sample", sample, "took", time.Since(start).String())
-
-			return nil
-		},
-	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	cmd.AddCommand(c)
 }

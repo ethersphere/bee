@@ -19,6 +19,10 @@ type rchash struct {
 	Time   string
 }
 
+// TODO: Remove this API before next release. This API is kept mainly for testing
+// the sampler till the storage incentives agent falls into place. As a result,
+// no documentation or tests are added here. This should be removed before next
+// breaking release.
 func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
@@ -40,7 +44,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	sample, err := s.storer.ReserveSample(r.Context(), anchor, uint8(depth))
 	if err != nil {
-		jsonhttp.BadRequest(w, "invalid")
+		s.logger.Error(err, "reserve commitment hasher: failed generating sample")
+		jsonhttp.InternalServerError(w, "failed generating sample")
 		return
 	}
 
