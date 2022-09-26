@@ -54,9 +54,8 @@ func (_ marshalerPanicTest) MarshalLog() interface{} {
 	panic("marshalerPanicTest")
 }
 
+// nolint:errname
 // stringerTest expect this to result in the String() value when logged.
-//
-//nolint:errname
 type stringerTest struct{ val string }
 
 func (_ stringerTest) String() string {
@@ -73,18 +72,16 @@ func (_ stringerPanicTest) String() string {
 	panic("stringerPanicTest")
 }
 
+// nolint:errname
 // errorTest expect this to result in the Error() value when logged.
-//
-//nolint:errname
 type errorTest struct{ val string }
 
 func (_ errorTest) Error() string {
 	return "I am an error"
 }
 
+// nolint:errname
 // errorPanicTest expect this to result in a panic when logged.
-//
-//nolint:errname
 type errorPanicTest struct{ val string }
 
 func (_ errorPanicTest) Error() string {
