@@ -12,6 +12,8 @@ import (
 )
 
 func TestTopologyOK(t *testing.T) {
+	t.Parallel()
+
 	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 
 	var body []byte

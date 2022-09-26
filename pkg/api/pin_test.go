@@ -79,6 +79,7 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 	)
 }
 
+// nolint:paralleltest
 func TestPinHandlers(t *testing.T) {
 	var (
 		logger          = log.Noop

@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+// nolint:paralleltest
 func TestGetLoggers(t *testing.T) {
 	defer func(fn api.LogRegistryIterateFn) {
 		api.ReplaceLogRegistryIterateFn(fn)
@@ -81,6 +82,7 @@ func TestGetLoggers(t *testing.T) {
 	}
 }
 
+// nolint:paralleltest
 func TestSetLoggerVerbosity(t *testing.T) {
 	defer func(fn api.LogSetVerbosityByExpFn) {
 		api.ReplaceLogSetVerbosityByExp(fn)

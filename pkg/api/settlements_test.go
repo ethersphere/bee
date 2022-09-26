@@ -21,6 +21,8 @@ import (
 )
 
 func TestSettlements(t *testing.T) {
+	t.Parallel()
+
 	settlementsSentFunc := func() (ret map[string]*big.Int, err error) {
 		ret = make(map[string]*big.Int)
 		ret["DEAD"] = big.NewInt(10000)
@@ -81,6 +83,8 @@ func TestSettlements(t *testing.T) {
 }
 
 func TestSettlementsError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("New errors")
 	settlementsSentFunc := func() (map[string]*big.Int, error) {
 		return nil, wantErr
@@ -99,6 +103,8 @@ func TestSettlementsError(t *testing.T) {
 }
 
 func TestSettlementsPeers(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	settlementSentFunc := func(swarm.Address) (*big.Int, error) {
 		return big.NewInt(1000000000000000000), nil
@@ -118,6 +124,8 @@ func TestSettlementsPeers(t *testing.T) {
 }
 
 func TestSettlementsPeersNoSettlements(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	noErrFunc := func(swarm.Address) (*big.Int, error) {
 		return big.NewInt(1000000000000000000), nil
@@ -127,6 +135,8 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 	}
 
 	t.Run("no sent", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			SwapOpts: []mock.Option{
@@ -145,6 +155,8 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 	})
 
 	t.Run("no received", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			SwapOpts: []mock.Option{
@@ -164,6 +176,8 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 }
 
 func TestSettlementsPeersError(t *testing.T) {
+	t.Parallel()
+
 	peer := "bff2c89e85e78c38bd89fca1acc996afb876c21bf5a8482ad798ce15f1c223fa"
 	wantErr := errors.New("Error")
 	settlementSentFunc := func(swarm.Address) (*big.Int, error) {
@@ -183,6 +197,7 @@ func TestSettlementsPeersError(t *testing.T) {
 }
 
 func TestSettlementsInvalidAddress(t *testing.T) {
+	t.Parallel()
 	peer := "bad peer address"
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})

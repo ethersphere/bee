@@ -20,8 +20,10 @@ import (
 )
 
 func TestWallet(t *testing.T) {
+	t.Parallel()
 
 	t.Run("Okay", func(t *testing.T) {
+		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
@@ -48,6 +50,8 @@ func TestWallet(t *testing.T) {
 	})
 
 	t.Run("500 - erc20 error", func(t *testing.T) {
+		t.Parallel()
+
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			BackendOpts: []backendmock.Option{
@@ -65,6 +69,8 @@ func TestWallet(t *testing.T) {
 	})
 
 	t.Run("500 - chain backend error", func(t *testing.T) {
+		t.Parallel()
+
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			Erc20Opts: []erc20mock.Option{

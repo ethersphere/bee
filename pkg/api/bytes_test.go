@@ -27,6 +27,7 @@ import (
 	"gitlab.com/nolash/go-mockbytes"
 )
 
+// nolint:paralleltest
 // TestBytes tests that the data upload api responds as expected when uploading,
 // downloading and requesting a resource that cannot be found.
 func TestBytes(t *testing.T) {
@@ -172,6 +173,7 @@ func TestBytes(t *testing.T) {
 	})
 }
 
+// nolint:paralleltest
 func TestBytesInvalidStamp(t *testing.T) {
 	const (
 		resource = "/bytes"

@@ -49,6 +49,8 @@ var (
 
 // creates a single websocket handler for an arbitrary topic, and receives a message
 func TestPssWebsocketSingleHandler(t *testing.T) {
+	t.Parallel()
+
 	var (
 		p, publicKey, cl, _ = newPssTest(t, opts{})
 
@@ -80,6 +82,8 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 }
 
 func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
+	t.Parallel()
+
 	// create a new pss instance, register a handle through ws, call
 	// pss.TryUnwrap with a chunk designated for this handler and expect
 	// the handler to be notified
@@ -118,6 +122,8 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 }
 
 func TestPssWebsocketMultiHandler(t *testing.T) {
+	t.Parallel()
+
 	var (
 		p, publicKey, cl, listener = newPssTest(t, opts{})
 
@@ -163,6 +169,8 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 
 // TestPssSend tests that the pss message sending over http works correctly.
 func TestPssSend(t *testing.T) {
+	t.Parallel()
+
 	var (
 		logger = log.Noop
 
@@ -206,6 +214,8 @@ func TestPssSend(t *testing.T) {
 	}
 
 	t.Run("err - bad targets", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -226,6 +236,8 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("err - bad batch", func(t *testing.T) {
+		t.Parallel()
+
 		hexbatch := hex.EncodeToString(batchInvalid)
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
@@ -238,6 +250,8 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("ok batch", func(t *testing.T) {
+		t.Parallel()
+
 		hexbatch := hex.EncodeToString(batchOk)
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
@@ -245,6 +259,8 @@ func TestPssSend(t *testing.T) {
 		)
 	})
 	t.Run("bad request - batch empty", func(t *testing.T) {
+		t.Parallel()
+
 		hexbatch := hex.EncodeToString(batchEmpty)
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
@@ -253,6 +269,8 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12?recipient="+recipient, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
@@ -274,6 +292,8 @@ func TestPssSend(t *testing.T) {
 	})
 
 	t.Run("without recipient", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/testtopic/12", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
@@ -299,6 +319,8 @@ func TestPssSend(t *testing.T) {
 // and sends ping-pong messages to keep the connection alive.
 // The test opens a websocket, keeps it alive for 500ms, then receives a pss message.
 func TestPssPingPong(t *testing.T) {
+	t.Parallel()
+
 	var (
 		p, publicKey, cl, _ = newPssTest(t, opts{pingPeriod: 90 * time.Millisecond})
 
@@ -394,7 +416,7 @@ func waitMessage(t *testing.T, data, expData []byte, mtx *sync.Mutex) {
 			return
 		}
 		mtx.Unlock()
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

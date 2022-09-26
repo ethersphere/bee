@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 )
 
+// nolint:paralleltest
 func TestAuth(t *testing.T) {
 	var (
 		resource      = "/auth"

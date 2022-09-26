@@ -20,6 +20,8 @@ import (
 )
 
 func TestPingpong(t *testing.T) {
+	t.Parallel()
+
 	rtt := time.Minute
 	peerID := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	unknownPeerID := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e")
@@ -42,6 +44,8 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+peerID.String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PingpongResponse{
 				RTT: rtt.String(),
@@ -50,6 +54,8 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("peer not found", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+unknownPeerID.String(), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
@@ -59,6 +65,8 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
@@ -68,6 +76,8 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
@@ -77,6 +87,8 @@ func TestPingpong(t *testing.T) {
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, ts, http.MethodGet, "/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,

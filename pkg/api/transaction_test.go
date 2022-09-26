@@ -23,6 +23,8 @@ import (
 )
 
 func TestTransactionStoredTransaction(t *testing.T) {
+	t.Parallel()
+
 	txHashStr := "0xabcd"
 	txHash := common.HexToHash(txHashStr)
 	dataStr := "abdd"
@@ -36,6 +38,8 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	description := "test"
 
 	t.Run("found", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -70,6 +74,8 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -87,6 +93,8 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	})
 
 	t.Run("other errors", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -105,6 +113,8 @@ func TestTransactionStoredTransaction(t *testing.T) {
 }
 
 func TestTransactionList(t *testing.T) {
+	t.Parallel()
+
 	recipient := common.HexToAddress("dfff")
 	txHash1 := common.HexToHash("abcd")
 	txHash2 := common.HexToHash("efff")
@@ -174,8 +184,12 @@ func TestTransactionList(t *testing.T) {
 }
 
 func TestTransactionListError(t *testing.T) {
+	t.Parallel()
+
 	txHash1 := common.HexToHash("abcd")
 	t.Run("pending transactions error", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -197,6 +211,8 @@ func TestTransactionListError(t *testing.T) {
 	})
 
 	t.Run("pending transactions error", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -219,8 +235,12 @@ func TestTransactionListError(t *testing.T) {
 }
 
 func TestTransactionResend(t *testing.T) {
+	t.Parallel()
+
 	txHash := common.HexToHash("abcd")
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -238,6 +258,8 @@ func TestTransactionResend(t *testing.T) {
 	})
 
 	t.Run("unknown transaction", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -256,6 +278,8 @@ func TestTransactionResend(t *testing.T) {
 	})
 
 	t.Run("already imported", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{
@@ -274,6 +298,8 @@ func TestTransactionResend(t *testing.T) {
 	})
 
 	t.Run("other error", func(t *testing.T) {
+		t.Parallel()
+
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			TransactionOpts: []mock.Option{

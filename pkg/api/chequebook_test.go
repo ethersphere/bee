@@ -26,6 +26,8 @@ import (
 )
 
 func TestChequebookBalance(t *testing.T) {
+	t.Parallel()
+
 	returnedBalance := big.NewInt(9000)
 	returnedAvailableBalance := big.NewInt(1000)
 
@@ -61,6 +63,8 @@ func TestChequebookBalance(t *testing.T) {
 }
 
 func TestChequebookBalanceError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("New errors")
 	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
 		return big.NewInt(0), wantErr
@@ -80,6 +84,8 @@ func TestChequebookBalanceError(t *testing.T) {
 }
 
 func TestChequebookAvailableBalanceError(t *testing.T) {
+	t.Parallel()
+
 	chequebookBalanceFunc := func(context.Context) (ret *big.Int, err error) {
 		return big.NewInt(0), nil
 	}
@@ -105,6 +111,8 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 }
 
 func TestChequebookAddress(t *testing.T) {
+	t.Parallel()
+
 	chequebookAddressFunc := func() common.Address {
 		return common.HexToAddress("0xfffff")
 	}
@@ -131,10 +139,13 @@ func TestChequebookAddress(t *testing.T) {
 }
 
 func TestChequebookWithdraw(t *testing.T) {
+	t.Parallel()
 
 	txHash := common.HexToHash("0xfffff")
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 			if amount.Cmp(big.NewInt(500)) == 0 {
 				return txHash, nil
@@ -160,6 +171,8 @@ func TestChequebookWithdraw(t *testing.T) {
 	})
 
 	t.Run("custom gas", func(t *testing.T) {
+		t.Parallel()
+
 		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
@@ -190,10 +203,13 @@ func TestChequebookWithdraw(t *testing.T) {
 }
 
 func TestChequebookDeposit(t *testing.T) {
+	t.Parallel()
 
 	txHash := common.HexToHash("0xfffff")
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 			if amount.Cmp(big.NewInt(700)) == 0 {
 				return txHash, nil
@@ -219,6 +235,8 @@ func TestChequebookDeposit(t *testing.T) {
 	})
 
 	t.Run("custom gas", func(t *testing.T) {
+		t.Parallel()
+
 		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
@@ -250,6 +268,8 @@ func TestChequebookDeposit(t *testing.T) {
 }
 
 func TestChequebookLastCheques(t *testing.T) {
+	t.Parallel()
+
 	addr1 := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	addr2 := swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
 	addr3 := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
@@ -411,6 +431,7 @@ func TestChequebookLastCheques(t *testing.T) {
 }
 
 func TestChequebookLastChequesPeer(t *testing.T) {
+	t.Parallel()
 
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	beneficiary0 := common.HexToAddress("0xfff5")
@@ -481,6 +502,7 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 }
 
 func TestChequebookCashout(t *testing.T) {
+	t.Parallel()
 
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	deployCashingHash := common.HexToHash("0xffff")
@@ -507,6 +529,7 @@ func TestChequebookCashout(t *testing.T) {
 }
 
 func TestChequebookCashout_CustomGas(t *testing.T) {
+	t.Parallel()
 
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	deployCashingHash := common.HexToHash("0xffff")
@@ -547,6 +570,7 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 }
 
 func TestChequebookCashoutStatus(t *testing.T) {
+	t.Parallel()
 
 	actionTxHash := common.HexToHash("0xacfe")
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
@@ -579,6 +603,8 @@ func TestChequebookCashoutStatus(t *testing.T) {
 	}
 
 	t.Run("with result", func(t *testing.T) {
+		t.Parallel()
+
 		cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 			status := &chequebook.CashoutStatus{
 				Last: &chequebook.LastCashout{
@@ -625,6 +651,8 @@ func TestChequebookCashoutStatus(t *testing.T) {
 	})
 
 	t.Run("without result", func(t *testing.T) {
+		t.Parallel()
+
 		cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 			status := &chequebook.CashoutStatus{
 				Last: &chequebook.LastCashout{
@@ -667,6 +695,8 @@ func TestChequebookCashoutStatus(t *testing.T) {
 	})
 
 	t.Run("without last", func(t *testing.T) {
+		t.Parallel()
+
 		cashoutStatusFunc := func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 			status := &chequebook.CashoutStatus{
 				Last:           nil,

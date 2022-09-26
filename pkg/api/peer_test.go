@@ -23,6 +23,8 @@ import (
 )
 
 func TestConnect(t *testing.T) {
+	t.Parallel()
+
 	underlay := "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS"
 	errorUnderlay := "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkw88cjH2orYrB6fDui4eUNdmgkwnDM8W681UbfsPgM9QY"
 	testErr := errors.New("test error")
@@ -59,6 +61,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+underlay, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PeerConnectResponse{
 				Address: overlay.String(),
@@ -67,6 +70,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
@@ -76,6 +80,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
+		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/connect"+underlay, http.StatusMethodNotAllowed,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
@@ -85,6 +90,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error - add peer", func(t *testing.T) {
+		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
 			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
@@ -105,6 +111,8 @@ func TestConnect(t *testing.T) {
 }
 
 func TestDisconnect(t *testing.T) {
+	t.Parallel()
+
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	unknownAddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59e")
 	errorAddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
@@ -130,6 +138,8 @@ func TestDisconnect(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+address.String(), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusOK,
@@ -139,6 +149,8 @@ func TestDisconnect(t *testing.T) {
 	})
 
 	t.Run("unknown", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+unknownAddress.String(), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
@@ -148,6 +160,8 @@ func TestDisconnect(t *testing.T) {
 	})
 
 	t.Run("invalid peer address", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/invalid-address", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
@@ -157,6 +171,8 @@ func TestDisconnect(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+errorAddress.String(), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
@@ -167,6 +183,8 @@ func TestDisconnect(t *testing.T) {
 }
 
 func TestPeer(t *testing.T) {
+	t.Parallel()
+
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		DebugAPI: true,
@@ -176,6 +194,8 @@ func TestPeer(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/peers", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
 				Peers: []api.Peer{{Address: overlay}},
@@ -184,6 +204,8 @@ func TestPeer(t *testing.T) {
 	})
 
 	t.Run("get method not allowed", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/peers", http.StatusMethodNotAllowed,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusMethodNotAllowed,
@@ -194,6 +216,8 @@ func TestPeer(t *testing.T) {
 }
 
 func TestBlocklistedPeers(t *testing.T) {
+	t.Parallel()
+
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		DebugAPI: true,
@@ -210,6 +234,8 @@ func TestBlocklistedPeers(t *testing.T) {
 }
 
 func TestBlocklistedPeersErr(t *testing.T) {
+	t.Parallel()
+
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		DebugAPI: true,

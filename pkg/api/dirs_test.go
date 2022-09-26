@@ -30,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
+// nolint:paralleltest
 func TestDirs(t *testing.T) {
 	var (
 		dirUploadResource   = "/bzz"
@@ -453,6 +454,8 @@ func TestDirs(t *testing.T) {
 }
 
 func TestEmtpyDir(t *testing.T) {
+	t.Parallel()
+
 	var (
 		dirUploadResource = "/bzz"
 		storer            = mock.NewStorer()

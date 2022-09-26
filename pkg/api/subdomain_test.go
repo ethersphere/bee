@@ -22,6 +22,7 @@ import (
 )
 
 func TestSubdomains(t *testing.T) {
+	t.Parallel()
 
 	for _, tc := range []struct {
 		name                string
@@ -89,7 +90,10 @@ func TestSubdomains(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var (
 				dirUploadResource = "/bzz"
 				storer            = mock.NewStorer()

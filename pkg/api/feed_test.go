@@ -36,6 +36,8 @@ const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
 var expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
 
 func TestFeed_Get(t *testing.T) {
+	t.Parallel()
+
 	var (
 		feedResource = func(owner, topic, at string) string {
 			if at != "" {
@@ -54,6 +56,8 @@ func TestFeed_Get(t *testing.T) {
 	)
 
 	t.Run("malformed owner", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource("xyz", "cc", ""), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "bad owner",
@@ -63,6 +67,8 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("malformed topic", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "xxzzyy", ""), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "bad topic",
@@ -72,6 +78,8 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("at malformed", func(t *testing.T) {
+		t.Parallel()
+
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "aabbcc", "unbekannt"), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "bad at",
@@ -81,6 +89,8 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("with at", func(t *testing.T) {
+		t.Parallel()
+
 		var (
 			timestamp       = int64(12121212)
 			ch              = toChunk(t, uint64(timestamp), expReference.Bytes())
@@ -112,6 +122,8 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("latest", func(t *testing.T) {
+		t.Parallel()
+
 		var (
 			timestamp  = int64(12121212)
 			ch         = toChunk(t, uint64(timestamp), expReference.Bytes())
@@ -144,6 +156,7 @@ func TestFeed_Get(t *testing.T) {
 	})
 }
 
+// nolint:paralleltest
 func TestFeed_Post(t *testing.T) {
 	// post to owner, tpoic, then expect a reference
 	// get the reference from the store, unmarshal to a

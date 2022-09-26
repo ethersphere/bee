@@ -18,6 +18,8 @@ import (
 )
 
 func TestGetWelcomeMessage(t *testing.T) {
+	t.Parallel()
+
 	const DefaultTestWelcomeMessage = "Hello World!"
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
@@ -33,6 +35,7 @@ func TestGetWelcomeMessage(t *testing.T) {
 	)
 }
 
+// nolint:paralleltest
 func TestSetWelcomeMessage(t *testing.T) {
 	testCases := []struct {
 		desc        string
@@ -67,15 +70,15 @@ func TestSetWelcomeMessage(t *testing.T) {
 	}
 	testURL := "/welcome-message"
 
-	mockP2P := mock.New()
-
-	srv, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
-		P2P:      mockP2P,
-	})
-
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
+			mockP2P := mock.New()
+
+			srv, _, _, _ := newTestServer(t, testServerOptions{
+				DebugAPI: true,
+				P2P:      mockP2P,
+			})
+
 			if tC.wantMessage == "" {
 				tC.wantMessage = http.StatusText(tC.wantStatus)
 			}
@@ -102,6 +105,8 @@ func TestSetWelcomeMessage(t *testing.T) {
 }
 
 func TestSetWelcomeMessageInternalServerError(t *testing.T) {
+	t.Parallel()
+
 	testMessage := "NO CHANCE BYE"
 	testError := errors.New("Could not set value")
 	testURL := "/welcome-message"
@@ -117,7 +122,10 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 		WelcomeMesssage: testMessage,
 	})
 	body := bytes.NewReader(data)
+
 	t.Run("internal server error - error on store", func(t *testing.T) {
+		t.Parallel()
+
 		wantCode := http.StatusInternalServerError
 		wantResp := jsonhttp.StatusResponse{
 			Message: testError.Error(),
