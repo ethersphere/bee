@@ -144,6 +144,7 @@ type Storer interface {
 	LastPullSubscriptionBinID(bin uint8) (id uint64, err error)
 	PullSubscriber
 	SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func())
+	Sampler
 	io.Closer
 }
 
@@ -166,6 +167,19 @@ type Hasser interface {
 
 type PullSubscriber interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
+}
+
+type Sample struct {
+	Items []swarm.Address
+	Hash  swarm.Address
+}
+
+func (s *Sample) String() string {
+	return fmt.Sprintf("Sample size: %d\nHash: %s\nSamples: %+q\n", len(s.Items), s.Hash, s.Items)
+}
+
+type Sampler interface {
+	ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8) (Sample, error)
 }
 
 // StateStorer defines methods required to get, set, delete values for different keys
