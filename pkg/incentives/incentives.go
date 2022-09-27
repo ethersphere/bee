@@ -62,10 +62,10 @@ func (p phaseType) string() string {
 }
 
 type IncentivesContract interface {
-	RandomSeedAnchor(context.Context) ([]byte, error)
-	RandomSeedNeighbourhood(context.Context) ([]byte, error)
+	ReserveSalt(context.Context) ([]byte, error)
+	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, bool, error)
-	ClaimWin(context.Context) error
+	Claim(context.Context) error
 	Commit(context.Context, []byte) error
 	Reveal(context.Context, uint8, []byte, []byte) error
 }
@@ -77,15 +77,15 @@ type Service struct {
 	backend ChainBackend
 	monitor Monitor
 
-	incentivesConract IncentivesContract
-	reserve           postage.Storer
-	sampler           Sampler
+	incentivesContract IncentivesContract
+	reserve            postage.Storer
+	sampler            Sampler
 
 	overlay swarm.Address
 
-	newRoundC chan struct{}
-	quit      chan struct{}
-	wg        sync.WaitGroup
+	cancelC chan struct{}
+	quit    chan struct{}
+	wg      sync.WaitGroup
 }
 
 func New(
@@ -99,24 +99,24 @@ func New(
 	blockTime time.Duration, startBlock, blockPerRound, blocksPerPhase uint64) *Service {
 
 	s := &Service{
-		overlay:           overlay,
-		backend:           backend,
-		logger:            logger.WithName(loggerName).Register(),
-		incentivesConract: incentives,
-		reserve:           reserve,
-		monitor:           monitor,
-		sampler:           sampler,
-		newRoundC:         make(chan struct{}),
-		quit:              make(chan struct{}),
+		overlay:            overlay,
+		backend:            backend,
+		logger:             logger.WithName(loggerName).Register(),
+		incentivesContract: incentives,
+		reserve:            reserve,
+		monitor:            monitor,
+		sampler:            sampler,
+		cancelC:            make(chan struct{}),
+		quit:               make(chan struct{}),
 	}
 
 	s.wg.Add(2)
-	go s.manage(blockTime, startBlock, blockPerRound, blocksPerPhase)
+	go s.start(blockTime, startBlock, blockPerRound, blocksPerPhase)
 
 	return s
 }
 
-func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, blocksPerPhase uint64) {
+func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blocksPerPhase uint64) {
 
 	defer s.wg.Done()
 
@@ -137,11 +137,17 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 			currentPhase phaseType
 		)
 
+		// optimization, we do not need to check the phase change at every new block
+		var checkEvery uint64 = 1
+		if blocksPerPhase > 10 {
+			checkEvery = 5
+		}
+
 		for {
 			select {
 			case <-s.quit:
 				return
-			case <-time.After(blockTime):
+			case <-time.After(blockTime * time.Duration(checkEvery)):
 			}
 
 			// skip when the depthmonitor is unstable
@@ -172,15 +178,14 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 			// write the current phase only once
 			if currentPhase != prevPhase {
 				s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
-				if currentPhase == commit {
-					select {
-					case s.newRoundC <- struct{}{}: // on commit phase, we enter a new round, cancel all previus executions
-					default:
-					}
+				select {
+				case s.cancelC <- struct{}{}: // we enter a new phase, cancel all previous executions
+				default:
 				}
 				select {
 				case phaseC <- phase{round: round, phase: currentPhase}:
-				default:
+				case <-s.quit:
+					return
 				}
 			}
 			prevPhase = currentPhase
@@ -225,14 +230,14 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 				}
 			case claim:
 				if p.round == revealRound { // to claim, previous reveal must've happened in the same round
-					err = s.attempClaim()
+					err = s.claim()
 					if err != nil {
 						s.logger.Error(err, "attempt claim")
 					} else {
 						s.logger.Debug("claim phase")
 					}
 				}
-				storageRadius, sample, err = s.attempMakeSample()
+				storageRadius, sample, err = s.play()
 				if err != nil {
 					s.logger.Error(err, "make sample")
 				} else if sample != nil {
@@ -249,15 +254,15 @@ func (s *Service) reveal(storageRadius uint8, sample, obfuscationKey []byte) err
 	ctx, cancel := s.newContext()
 	defer cancel()
 
-	return s.incentivesConract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	return s.incentivesContract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 }
 
-func (s *Service) attempClaim() error {
+func (s *Service) claim() error {
 
 	ctx, cancel := s.newContext()
 	defer cancel()
 
-	isSlashed, isWinner, err := s.incentivesConract.IsWinner(ctx)
+	isSlashed, isWinner, err := s.incentivesContract.IsWinner(ctx)
 	if err != nil {
 		return err
 	}
@@ -265,7 +270,7 @@ func (s *Service) attempClaim() error {
 		return ErrSlashed
 	}
 	if isWinner {
-		err = s.incentivesConract.ClaimWin(ctx)
+		err = s.incentivesContract.Claim(ctx)
 		if err != nil {
 			return fmt.Errorf("error claiming win: %w", err)
 		} else {
@@ -276,25 +281,21 @@ func (s *Service) attempClaim() error {
 	return nil
 }
 
-func (s *Service) attempMakeSample() (uint8, []byte, error) {
+func (s *Service) play() (uint8, []byte, error) {
 
 	ctx, cancel := s.newContext()
 	defer cancel()
 
-	neighbourhoodRnd, err := s.incentivesConract.RandomSeedNeighbourhood(ctx)
-	if err != nil {
-		return 0, nil, err
-	}
-
 	storageRadius := s.reserve.GetReserveState().StorageRadius
 
-	if swarm.Proximity(s.overlay.Bytes(), neighbourhoodRnd) < storageRadius {
-		return 0, nil, nil
+	isPlaying, err := s.incentivesContract.IsPlaying(ctx, storageRadius)
+	if !isPlaying || err != nil {
+		return 0, nil, err
 	}
 
 	s.logger.Info("neighbourhood chosen")
 
-	salt, err := s.incentivesConract.RandomSeedAnchor(ctx)
+	salt, err := s.incentivesContract.ReserveSalt(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -322,7 +323,7 @@ func (s *Service) commit(storageRadius uint8, sample []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	err = s.incentivesConract.Commit(ctx, orc)
+	err = s.incentivesContract.Commit(ctx, orc)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +339,7 @@ func (s *Service) newContext() (context.Context, context.CancelFunc) {
 		select {
 		case <-s.quit: // cancel context on quit call
 			cancel()
-		case <-s.newRoundC: // cancel context if a new round happens, terminating current call
+		case <-s.cancelC: // cancel context if a new round happens, terminating current call
 			cancel()
 		case <-ctx.Done(): // return if context is already done
 			return
