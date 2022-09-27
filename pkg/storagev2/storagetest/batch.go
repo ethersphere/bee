@@ -9,62 +9,72 @@ import (
 	"errors"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/google/go-cmp/cmp"
 )
 
-var (
-	item1 = &obj1{
-		Id: "id1",
-	}
-)
+func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
+	item := &obj1{Id: "id", SomeInt: 1, Buf: []byte("data")}
 
-func TestBatch(t *testing.T, s storage.Store) {
 	t.Run("duplicates are rejected", func(t *testing.T) {
-		b, _ := s.Batch(context.Background())
-
-		if err := b.Put(item1); err != nil {
-			t.Fatal("put", err)
-		}
-		if err := b.Put(item1); err != nil {
-			t.Fatal("put", err)
-		}
-		if err := b.Commit(); err != nil {
-			t.Fatal("commit", err)
+		batch, err := bs.Batch(context.Background())
+		if err != nil {
+			t.Fatalf("Batch(...): unexpected error: %v", err)
 		}
 
-		err := s.Iterate(storage.Query{
+		if err := batch.Put(item); err != nil {
+			t.Fatalf("Put(...): unexpected error: %v", err)
+		}
+
+		if err := batch.Put(item); err != nil {
+			t.Fatalf("Put(...): unexpected error: %v", err)
+		}
+		if err := batch.Commit(); err != nil {
+			t.Fatalf("Commit(): unexpected error: %v", err)
+		}
+
+		var cnt int
+		err = bs.Iterate(storage.Query{
 			Factory:       func() storage.Item { return new(obj1) },
 			ItemAttribute: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
-			if r.Entry.ID() != item1.ID() {
-				t.Fatalf("expected id %s, got %s", item1.ID(), r.Entry.ID())
+			if cnt++; cnt > 1 {
+				t.Fatalf("Iterate(...): duplicate detected: %v", r.Entry)
 			}
-			return true, nil
+
+			want, have := item, r.Entry
+			if diff := cmp.Diff(want, have); diff != "" {
+				t.Errorf("Iterate(...): unexpected result: (-want +have):\n%s", diff)
+			}
+			return false, nil
 		})
 		if err != nil {
-			t.Fatal("iterate", err)
+			t.Fatalf("Iterate(...): unexpected error: %v", err)
 		}
 	})
 
 	t.Run("only last ops are of interest", func(t *testing.T) {
-		if err := s.Put(item1); err != nil {
-			t.Fatal("put", err)
+		if err := bs.Put(item); err != nil {
+			t.Fatalf("Put(...): unexpected error: %v", err)
 		}
 
-		batch, _ := s.Batch(context.Background())
-
-		if err := batch.Put(item1); err != nil {
-			t.Fatal("put", err)
+		batch, err := bs.Batch(context.Background())
+		if err != nil {
+			t.Fatalf("Batch(...): unexpected error: %v", err)
 		}
-		if err := batch.Delete(item1); err != nil {
-			t.Fatal("delete", err)
+
+		if err := batch.Put(item); err != nil {
+			t.Fatalf("Put(...): unexpected error: %v", err)
+		}
+		if err := batch.Delete(item); err != nil {
+			t.Fatalf("Delete(...): unexpected error: %v", err)
 		}
 
 		if err := batch.Commit(); err != nil {
-			t.Fatal("commit", err)
+			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
 
-		err := s.Iterate(storage.Query{
+		err = bs.Iterate(storage.Query{
 			Factory:       func() storage.Item { return new(obj1) },
 			ItemAttribute: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
@@ -77,24 +87,35 @@ func TestBatch(t *testing.T, s storage.Store) {
 	})
 
 	t.Run("batch not reusable after commit", func(t *testing.T) {
-		b, _ := s.Batch(context.Background())
-		if err := b.Commit(); err != nil {
-			t.Fatal("commit", err)
+		batch, err := bs.Batch(context.Background())
+		if err != nil {
+			t.Fatalf("Batch(...): unexpected error: %v", err)
 		}
-		if err := b.Commit(); err == nil {
-			t.Fatal("expected error, got nil")
+		if err := batch.Commit(); err != nil {
+			t.Fatalf("Commit(): unexpected error: %v", err)
+		}
+		if err := batch.Commit(); err == nil { // TODO: replace with sentinel error.
+			t.Fatal("Commit(): expected error; have none")
 		}
 	})
 
 	t.Run("batch not usable with expired context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		b, _ := s.Batch(ctx)
-		if err := b.Put(item1); err != nil {
-			t.Fatal("put", err)
+
+		batch, err := bs.Batch(ctx)
+		if err != nil {
+			t.Fatalf("Batch(...): unexpected error: %v", err)
 		}
+
+		if err := batch.Put(item); err != nil {
+			t.Fatalf("Put(...): unexpected error: %v", err)
+		}
+
 		cancel()
-		if err := b.Commit(); !errors.Is(err, context.Canceled) {
-			t.Fatal("expected context cancelled, got nil", err)
+		have := batch.Commit()
+		want := context.Canceled
+		if !errors.Is(have, want) {
+			t.Fatalf("Commit(): want error: %v; have error: %v", want, have)
 		}
 	})
 }

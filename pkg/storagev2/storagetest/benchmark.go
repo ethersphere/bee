@@ -324,7 +324,7 @@ func doReadChunk(b *testing.B, db storage.ChunkStore, g keyGenerator, allowNotFo
 
 // fixed size batch
 type batchDBWriter struct {
-	db    storage.Store
+	db    storage.BatchedStore
 	batch storage.Batch
 	max   int
 	count int
@@ -357,7 +357,7 @@ func (w *batchDBWriter) Delete(key []byte) {
 	w.commit(w.max)
 }
 
-func newBatchDBWriter(db storage.Store) *batchDBWriter {
+func newBatchDBWriter(db storage.BatchedStore) *batchDBWriter {
 	batch, _ := db.Batch(context.Background())
 	return &batchDBWriter{
 		db:    db,
