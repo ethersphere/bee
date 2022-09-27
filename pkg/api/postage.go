@@ -103,6 +103,16 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
+	if limit, ok := r.Header[gasLimitHeader]; ok {
+		l, err := strconv.ParseUint(limit[0], 10, 64)
+		if err != nil {
+			s.logger.Error(err, "create batch: bad gas limit")
+			jsonhttp.BadRequest(w, errBadGasLimit)
+			return
+		}
+		ctx = sctx.SetGasLimit(ctx, l)
+	}
+
 	var immutable bool
 	if val, ok := r.Header[immutableHeader]; ok {
 		immutable, _ = strconv.ParseBool(val[0])
