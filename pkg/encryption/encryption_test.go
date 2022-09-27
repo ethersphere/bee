@@ -39,6 +39,8 @@ func init() {
 }
 
 func TestEncryptDataLongerThanPadding(t *testing.T) {
+	t.Parallel()
+
 	enc := encryption.New(testKey, 4095, uint32(0), hashFunc)
 
 	data := make([]byte, 4096)
@@ -52,6 +54,8 @@ func TestEncryptDataLongerThanPadding(t *testing.T) {
 }
 
 func TestEncryptDataZeroPadding(t *testing.T) {
+	t.Parallel()
+
 	enc := encryption.New(testKey, 0, uint32(0), hashFunc)
 
 	data := make([]byte, 2048)
@@ -66,6 +70,8 @@ func TestEncryptDataZeroPadding(t *testing.T) {
 }
 
 func TestEncryptDataLengthEqualsPadding(t *testing.T) {
+	t.Parallel()
+
 	enc := encryption.New(testKey, 4096, uint32(0), hashFunc)
 
 	data := make([]byte, 4096)
@@ -83,6 +89,8 @@ func TestEncryptDataLengthEqualsPadding(t *testing.T) {
 }
 
 func TestEncryptDataLengthSmallerThanPadding(t *testing.T) {
+	t.Parallel()
+
 	enc := encryption.New(testKey, 4096, uint32(0), hashFunc)
 
 	data := make([]byte, 4080)
@@ -97,10 +105,14 @@ func TestEncryptDataLengthSmallerThanPadding(t *testing.T) {
 }
 
 func TestEncryptDataCounterNonZero(t *testing.T) {
+	t.Parallel()
+
 	// TODO
 }
 
 func TestDecryptDataLengthNotEqualsPadding(t *testing.T) {
+	t.Parallel()
+
 	enc := encryption.New(testKey, 4096, uint32(0), hashFunc)
 
 	data := make([]byte, 4097)
@@ -114,6 +126,8 @@ func TestDecryptDataLengthNotEqualsPadding(t *testing.T) {
 }
 
 func TestEncryptDecryptIsIdentity(t *testing.T) {
+	t.Parallel()
+
 	testEncryptDecryptIsIdentity(t, 0, 2048, 2048, 32)
 	testEncryptDecryptIsIdentity(t, 0, 4096, 4096, 32)
 	testEncryptDecryptIsIdentity(t, 0, 4096, 1000, 32)
@@ -154,6 +168,8 @@ func testEncryptDecryptIsIdentity(t *testing.T, initCtr uint32, padding, dataLen
 
 // TestEncryptSectioned tests that the cipherText is the same regardless of size of data input buffer
 func TestEncryptSectioned(t *testing.T) {
+	t.Parallel()
+
 	data := make([]byte, 4096)
 	c, err := crand.Read(data)
 	if err != nil {
