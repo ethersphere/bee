@@ -107,6 +107,9 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 		phaseC    = make(chan phase)
 	)
 
+	// the goroutine polls the current block number, calculates,
+	// and writes only once the current phase and round. If a new round is detected,
+	// it writes to a new round channel to exterminate any previous makeSample execution.
 	go func() {
 
 		defer s.wg.Done()
@@ -135,8 +138,6 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 				continue
 			}
 
-			// fmt.Println("block", block)
-
 			blocks := (block - startBlock)
 
 			round = blocks / blocksPerRound
@@ -151,7 +152,7 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 				currentPhase = claim
 			}
 
-			// write the new phase only once
+			// write the current phase only once
 			if currentPhase != prevPhase {
 				if currentPhase == commit {
 					select {
@@ -159,7 +160,6 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 					default:
 					}
 				}
-				// fmt.Println("block", block, "blocks", blocks, "blocksPerRound", blocksPerRound, "phase", currentPhase, "round", round)
 				select {
 				case phaseC <- phase{round: round, phase: currentPhase}:
 				case <-s.quit:
@@ -187,8 +187,7 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 		case p := <-phaseC:
 			switch p.phase {
 			case commit:
-				if p.round-1 == sampleRound {
-					// fmt.Println("commit", sampleRound)
+				if p.round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
 					obfuscationKey, err = s.commit(storageRadius, sample)
 					if err != nil {
 						s.logger.Error(err, "commit")
@@ -197,8 +196,7 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 					}
 				}
 			case reveal:
-				if p.round == commitRound {
-					// fmt.Println("reveal", commitRound)
+				if p.round == commitRound { // reveal requires the obfuscationKey from the same round
 					err = s.incentivesConract.Reveal(storageRadius, sample, obfuscationKey)
 					if err != nil {
 						s.logger.Error(err, "reveal")
@@ -207,14 +205,12 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 					}
 				}
 			case claim:
-				if p.round == revealRound {
-					// fmt.Println("claim")
+				if p.round == revealRound { // to claim, previous reveal must've happened in the same round
 					err = s.attempClaim()
 					if err != nil {
 						s.logger.Error(err, "attempt claim")
 					}
 				}
-				// fmt.Println("sample")
 				storageRadius, sample, err = s.makeSample(newRoundC)
 				if err != nil {
 					s.logger.Error(err, "creating reserve sampler")
