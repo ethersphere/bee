@@ -367,6 +367,7 @@ func wrapCommit(storageRadius uint8, sample, overlay, obfuscater []byte) (orc []
 	if _, err = h.Write(obfuscater); err != nil {
 		return nil, err
 	}
+
 	return h.Sum(nil), nil
 }
 
