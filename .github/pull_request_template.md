@@ -2,7 +2,6 @@
 
 - [ ] I have read the [coding guide](https://github.com/ethersphere/bee/blob/master/CODING.md).
 - [ ] My change requires a documentation update, and I have done it.
-- [ ] My change requires updating the Open API specification and/or changing its version, and I've done it.
 - [ ] I have added tests to cover my changes.
 - [ ] I have filled out the description and linked the related issues.
 
