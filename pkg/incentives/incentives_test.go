@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"go.uber.org/atomic"
 )
 
 func Test(t *testing.T) {
@@ -75,16 +76,16 @@ func Test(t *testing.T) {
 
 			time.Sleep(time.Second)
 
-			if contract.commitCalls != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.commitCalls, tc.expectedCalls)
+			if int(contract.commitCalls.Load()) != tc.expectedCalls {
+				t.Fatalf("got %d, want %d", contract.commitCalls.Load(), tc.expectedCalls)
 			}
 
-			if contract.revealCalls != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.revealCalls, tc.expectedCalls)
+			if int(contract.revealCalls.Load()) != tc.expectedCalls {
+				t.Fatalf("got %d, want %d", contract.revealCalls.Load(), tc.expectedCalls)
 			}
 
-			if contract.isWinnerCalls != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.revealCalls, tc.expectedCalls)
+			if int(contract.isWinnerCalls.Load()) != tc.expectedCalls {
+				t.Fatalf("got %d, want %d", contract.revealCalls.Load(), tc.expectedCalls)
 			}
 
 			err := service.Close()
@@ -151,9 +152,9 @@ const (
 )
 
 type mockContract struct {
-	commitCalls   int
-	revealCalls   int
-	isWinnerCalls int
+	commitCalls   atomic.Int32
+	revealCalls   atomic.Int32
+	isWinnerCalls atomic.Int32
 
 	t            *testing.T
 	previousCall int
@@ -168,7 +169,7 @@ func (m *mockContract) RandomSeedNeighbourhood() ([]byte, error) {
 }
 
 func (m *mockContract) IsWinner() (bool, bool, error) {
-	m.isWinnerCalls++
+	m.isWinnerCalls.Inc()
 	if m.previousCall != revealCall {
 		m.t.Fatal("previous call must be reveal")
 	}
@@ -181,13 +182,13 @@ func (m *mockContract) ClaimWin() error {
 }
 
 func (m *mockContract) Commit([]byte) error {
-	m.commitCalls++
+	m.commitCalls.Inc()
 	m.previousCall = commitCall
 	return nil
 }
 
 func (m *mockContract) Reveal(uint8, []byte, []byte) error {
-	m.revealCalls++
+	m.revealCalls.Inc()
 	if m.previousCall != commitCall {
 		m.t.Fatal("previous call must be commit")
 	}
