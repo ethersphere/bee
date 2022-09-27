@@ -99,6 +99,26 @@ func Test(t *testing.T) {
 	}
 }
 
+func TestWrapCommit(t *testing.T) {
+
+	t.Parallel()
+
+	storageRadius := uint8(0)
+	sample := swarm.MustParseHexAddress("8151150019b8c589a8d75df5c6c9c8125e7599fcb75c1c12024c26d50bbd652d")
+	overlay := swarm.MustParseHexAddress("954b30794124057409fc3807a1f595fcd9ed94ab80a885f6d67a34b1b42e8fcd")
+	obfuscator := swarm.MustParseHexAddress("e3c8da81085b6d375174f395c6f477954758a181cfb048e67ff8869803a8d7a7")
+	wantSum := swarm.MustParseHexAddress("23195b391679a7808a7c649e68c48fe6c90d0d6d61f208c74e6cc40bf6fddca7")
+	gotSumBytes, err := incentives.WrapCommit(storageRadius, sample.Bytes(), overlay.Bytes(), obfuscator.Bytes())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !wantSum.Equal(swarm.NewAddress(gotSumBytes)) {
+		t.Fatal("sum mismatch")
+	}
+}
+
 func createService(
 	addr swarm.Address,
 	backend incentives.ChainBackend,
