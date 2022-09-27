@@ -367,7 +367,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	mockSteward := new(mockSteward.Steward)
 
 	mockStaking := stakingContractMock.New(
-		stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay []byte) error {
+		stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
 			return stakingcontract.ErrNotImplemented
 		}))
 
