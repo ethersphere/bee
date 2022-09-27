@@ -5,7 +5,6 @@
 package storage
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -147,7 +146,4 @@ type Store interface {
 
 	// Delete removes the given Item form the store.
 	Delete(Item) error
-
-	// Batch creates a new batch
-	Batch(context.Context) (Batch, error)
 }
