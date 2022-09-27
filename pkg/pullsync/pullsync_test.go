@@ -32,6 +32,7 @@ func someChunks(i ...int) (c []swarm.Chunk) {
 	return c
 }
 
+// nolint:gochecknoinits
 func init() {
 	n := 5
 	chunks = make([]swarm.Chunk, n)

@@ -38,6 +38,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+// nolint:gochecknoinits
 func init() {
 	// Some of the tests in localstore package rely on the same ordering of
 	// items uploaded or accessed compared to the ordering of items in indexes

@@ -19,6 +19,7 @@ var (
 	ZeroObfuscationKey []byte
 )
 
+// nolint:gochecknoinits
 func init() {
 	ZeroObfuscationKey = make([]byte, 32)
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 )
 
+// nolint:gochecknoinits
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }

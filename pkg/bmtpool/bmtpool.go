@@ -15,6 +15,7 @@ const Capacity = 32
 
 var instance *bmt.Pool
 
+// nolint:gochecknoinits
 func init() {
 	instance = bmt.NewPool(bmt.NewConf(swarm.NewHasher, swarm.BmtBranches, Capacity))
 }
