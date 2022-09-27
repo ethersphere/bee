@@ -114,11 +114,16 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 }
 
 func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
+	gasLimit := sctx.GetGasLimit(ctx)
+	if gasLimit == 0 {
+		// if gas limit is not set, use the default limit.
+		gasLimit = 9_000_000
+	}
 	request := &transaction.TxRequest{
 		To:          &c.postageContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    1600000,
+		GasLimit:    gasLimit,
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
