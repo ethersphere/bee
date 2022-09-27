@@ -17,6 +17,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,7 +56,9 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -170,6 +173,8 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
+
+	validate *validator.Validate
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -229,6 +234,14 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.batchStore = batchStore
 	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
+	s.validate = validator.New()
+	s.validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := strings.SplitN(fld.Tag.Get(parseTagName), ",", 2)[0]
+		if name == "-" {
+			return ""
+		}
+		return name
+	})
 
 	return s
 }
@@ -624,6 +637,36 @@ func (s *Service) checkOrigin(r *http.Request) bool {
 	}
 
 	return false
+}
+
+// parseAndValidateInputParams parses and validates the input parameters.
+// It's a helper method for the handlers, which reduces the chattiness
+// of the code.
+func (s *Service) parseAndValidateInputParams(input, output interface{}) error {
+	if err := parse(input, output); err != nil {
+		return fmt.Errorf("parsing errors: %w", err)
+	}
+
+	if err := s.validate.Struct(output); err != nil {
+		vErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
+		for _, err := range err.(validator.ValidationErrors) {
+			val := err.Value()
+			switch v := err.Value().(type) {
+			case []byte:
+				val = hex.EncodeToString(v)
+			}
+			vErrs = multierror.Append(vErrs,
+				fmt.Errorf("`%s=%v`: want %s:%s",
+					strings.ToLower(err.Field()),
+					val,
+					err.Tag(),
+					err.Param(),
+				))
+		}
+		return fmt.Errorf("validation errors: %w", vErrs.ErrorOrNil())
+	}
+
+	return nil
 }
 
 // equalASCIIFold returns true if s is equal to t with ASCII case folding as
