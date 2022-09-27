@@ -39,6 +39,8 @@ var (
 
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
+	t.Parallel()
+
 	var (
 		chunk                = testingc.FixtureChunk("0033")
 		logger               = log.Noop
@@ -148,6 +150,7 @@ func TestDelivery(t *testing.T) {
 }
 
 func TestRetrieveChunk(t *testing.T) {
+	t.Parallel()
 
 	var (
 		logger = log.Noop
@@ -156,6 +159,8 @@ func TestRetrieveChunk(t *testing.T) {
 
 	// requesting a chunk from downstream peer is expected
 	t.Run("downstream", func(t *testing.T) {
+		t.Parallel()
+
 		serverAddress := swarm.MustParseHexAddress("03")
 		clientAddress := swarm.MustParseHexAddress("01")
 		chunk := testingc.FixtureChunk("02c2")
@@ -183,6 +188,8 @@ func TestRetrieveChunk(t *testing.T) {
 	})
 
 	t.Run("forward", func(t *testing.T) {
+		t.Parallel()
+
 		chunk := testingc.FixtureChunk("0025")
 
 		serverAddress := swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
@@ -261,6 +268,8 @@ func TestRetrieveChunk(t *testing.T) {
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 
 	chunk := testingc.FixtureChunk("0025")
@@ -298,6 +307,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
 
 	t.Run("peer not reachable", func(t *testing.T) {
+		t.Parallel()
+
 		ranOnce := true
 		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
@@ -336,6 +347,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	})
 
 	t.Run("peer does not have chunk", func(t *testing.T) {
+		t.Parallel()
+
 		ranOnce := true
 		ranMux := sync.Mutex{}
 		recorder := streamtest.New(
@@ -372,6 +385,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	})
 
 	t.Run("one peer is slower", func(t *testing.T) {
+		t.Parallel()
+
 		serverStorer1 := storemock.NewStorer()
 		serverStorer2 := storemock.NewStorer()
 
@@ -461,6 +476,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	})
 
 	t.Run("peer forwards request", func(t *testing.T) {
+		t.Parallel()
+
 		// server 2 has the chunk
 		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
 
@@ -505,6 +522,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 }
 
 func TestClosestPeer(t *testing.T) {
+	t.Parallel()
 
 	srvAd := swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
 
@@ -515,6 +533,8 @@ func TestClosestPeer(t *testing.T) {
 	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), log.Noop, nil, nil, nil, false, nil)
 
 	t.Run("closest", func(t *testing.T) {
+		t.Parallel()
+
 		addr, err := ret.ClosestPeer(addr1, nil, false)
 		if err != nil {
 			t.Fatal("closest peer", err)
@@ -525,6 +545,8 @@ func TestClosestPeer(t *testing.T) {
 	})
 
 	t.Run("second closest", func(t *testing.T) {
+		t.Parallel()
+
 		addr, err := ret.ClosestPeer(addr1, []swarm.Address{addr1}, false)
 		if err != nil {
 			t.Fatal("closest peer", err)
@@ -535,6 +557,8 @@ func TestClosestPeer(t *testing.T) {
 	})
 
 	t.Run("closest is further than base addr", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := ret.ClosestPeer(srvAd, nil, false)
 		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatal("closest peer", err)

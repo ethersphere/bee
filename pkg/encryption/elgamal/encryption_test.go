@@ -16,6 +16,8 @@ import (
 )
 
 func TestElgamalCorrect(t *testing.T) {
+	t.Parallel()
+
 	plaintext := []byte("some highly confidential text")
 	key, err := crypto.GenerateSecp256k1Key()
 	if err != nil {

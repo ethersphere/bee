@@ -19,6 +19,8 @@ const (
 )
 
 func TestAuthorize(t *testing.T) {
+	t.Parallel()
+
 	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
@@ -40,7 +42,10 @@ func TestAuthorize(t *testing.T) {
 		},
 	}
 	for _, tC := range tt {
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			res := a.Authorize(tC.pass)
 			if res != tC.expected {
 				t.Error("unexpected result", res)
@@ -50,6 +55,8 @@ func TestAuthorize(t *testing.T) {
 }
 
 func TestExpiry(t *testing.T) {
+	t.Parallel()
+
 	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
@@ -73,6 +80,8 @@ func TestExpiry(t *testing.T) {
 }
 
 func TestEnforce(t *testing.T) {
+	t.Parallel()
+
 	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
@@ -117,7 +126,10 @@ func TestEnforce(t *testing.T) {
 	}
 
 	for _, tC := range tt {
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			apiKey, err := a.GenerateKey(tC.role, 1)
 
 			if err != nil {

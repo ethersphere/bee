@@ -15,6 +15,8 @@ import (
 var errTest = errors.New("test error")
 
 func TestEncryptor_Encrypt(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name    string
 		options []mock.Option
@@ -60,7 +62,10 @@ func TestEncryptor_Encrypt(t *testing.T) {
 			wantErr: mock.ErrInvalidXORKey,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := mock.New(tc.options...).Encrypt(tc.data)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got error %v, want %v", err, tc.wantErr)
@@ -73,6 +78,8 @@ func TestEncryptor_Encrypt(t *testing.T) {
 }
 
 func TestEncryptor_Decrypt(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name    string
 		options []mock.Option
@@ -118,7 +125,10 @@ func TestEncryptor_Decrypt(t *testing.T) {
 			wantErr: mock.ErrInvalidXORKey,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := mock.New(tc.options...).Decrypt(tc.data)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got error %v, want %v", err, tc.wantErr)
@@ -131,11 +141,17 @@ func TestEncryptor_Decrypt(t *testing.T) {
 }
 
 func TestEncryptor_Reset(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+
 		// should not panic
 		mock.New().Reset()
 	})
 	t.Run("func", func(t *testing.T) {
+		t.Parallel()
+
 		var called bool
 		mock.New(mock.WithResetFunc(func() {
 			called = true
@@ -147,6 +163,8 @@ func TestEncryptor_Reset(t *testing.T) {
 }
 
 func TestEncryptor_XOREncryption(t *testing.T) {
+	t.Parallel()
+
 	key := []byte("some strong key")
 
 	e := mock.New(mock.WithXOREncryption(key))

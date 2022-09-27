@@ -108,8 +108,6 @@ issues:
     - linters: paralleltest
       path: pkg/localstore
     - linters: paralleltest
-      path: pkg/encryption
-    - linters: paralleltest
       path: pkg/pricer
     - linters: paralleltest
       path: pkg/shed
@@ -123,8 +121,6 @@ issues:
       path: pkg/puller
     - linters: paralleltest
       path: pkg/manifest
-    - linters: paralleltest
-      path: pkg/retrieval
     - linters: paralleltest
       path: pkg/feeds
     - linters: paralleltest
@@ -150,13 +146,9 @@ issues:
     - linters: paralleltest
       path: pkg/soc
     - linters: paralleltest
-      path: pkg/auth
-    - linters: paralleltest
       path: pkg/pss
     - linters: paralleltest
       path: pkg/pinning
-    - linters: paralleltest
-      path: pkg/flipflop
     - linters: paralleltest
       path: pkg/chainsyncer
     - linters: paralleltest
