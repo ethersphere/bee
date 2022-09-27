@@ -70,14 +70,19 @@ func Test(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			wait := make(chan struct{})
 			addr := test.RandomAddress()
 
-			backend := &mockchainBackend{limit: tc.limit, incrementBy: tc.incrementBy, block: tc.blocksPerRound}
+			backend := &mockchainBackend{
+				limit:         tc.limit,
+				limitCallback: func() { wait <- struct{}{} },
+				incrementBy:   tc.incrementBy,
+				block:         tc.blocksPerRound}
 			contract := &mockContract{t: t, baseAddr: addr, neighbourhoodSeed: test.RandomAddressAt(addr, 1).Bytes()}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
-			time.Sleep(time.Second)
+			<-wait
 
 			if int(contract.commitCalls.Load()) != tc.expectedCalls {
 				t.Fatalf("got %d, want %d", contract.commitCalls.Load(), tc.expectedCalls)
@@ -139,9 +144,10 @@ func createService(
 }
 
 type mockchainBackend struct {
-	incrementBy float64
-	block       float64
-	limit       float64
+	incrementBy   float64
+	block         float64
+	limit         float64
+	limitCallback func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
@@ -150,7 +156,10 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 
 	if m.limit == 0 || m.block+m.incrementBy < m.limit {
 		m.block += m.incrementBy
+	} else if m.limitCallback != nil {
+		m.limitCallback()
 	}
+
 	return ret, nil
 }
 
