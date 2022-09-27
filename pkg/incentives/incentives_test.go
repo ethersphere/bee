@@ -230,25 +230,3 @@ type mockSampler struct {
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8) ([]byte, error) {
 	return test.RandomAddress().Bytes(), nil
 }
-
-// func newChainBackend(opts ...Option) *chainBackend {
-// 	mock := &chainBackend{}
-// 	for _, o := range opts {
-// 		o.apply(mock)
-// 	}
-// 	return mock
-// }
-
-// func Withlol() Option {
-// 	return optionFunc(func(s *chainBackend) {
-// 		// s.filterLogEvents = events
-// 	})
-// }
-
-// type Option interface {
-// 	apply(*chainBackend)
-// }
-
-// type optionFunc func(*chainBackend)
-
-// func (f optionFunc) apply(r *chainBackend) { f(r) }
