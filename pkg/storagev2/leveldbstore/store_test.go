@@ -8,36 +8,50 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
-	ldb "github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 func TestStoreTestSuite(t *testing.T) {
+	t.Parallel()
+
 	store, err := leveldbstore.New(t.TempDir(), nil)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create store failed: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	storagetest.TestStore(t, store)
 }
 
 func BenchmarkStore(b *testing.B) {
-	st, err := ldb.New("", &opt.Options{
+	st, err := leveldbstore.New("", &opt.Options{
 		Compression: opt.SnappyCompression,
 	})
 	if err != nil {
-		b.Fatal(err)
+		b.Fatalf("create store failed: %v", err)
 	}
 	b.Cleanup(func() { _ = st.Close() })
-	storagetest.RunStoreBenchmarkTests(b, st)
+	storagetest.BenchmarkStore(b, st)
 }
 
-func TestBatch(t *testing.T) {
-	st, err := ldb.New("", nil)
+func TestBatchedStore(t *testing.T) {
+	t.Parallel()
+
+	st, err := leveldbstore.New("", nil)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create store failed: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	storagetest.TestBatch(t, st)
+	storagetest.TestBatchedStore(t, st)
+}
+
+func BenchmarkBatchedStore(b *testing.B) {
+	st, err := leveldbstore.New("", &opt.Options{
+		Compression: opt.SnappyCompression,
+	})
+	if err != nil {
+		b.Fatalf("create store failed: %v", err)
+	}
+	b.Cleanup(func() { _ = st.Close() })
+	storagetest.BenchmarkBatchedStore(b, st)
 }
