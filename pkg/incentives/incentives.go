@@ -84,6 +84,7 @@ type Service struct {
 	overlay swarm.Address
 
 	cancelC chan struct{}
+	stopC   chan struct{}
 	quit    chan struct{}
 	wg      sync.WaitGroup
 }
@@ -108,6 +109,7 @@ func New(
 		sampler:            sampler,
 		cancelC:            make(chan struct{}),
 		quit:               make(chan struct{}),
+		stopC:              make(chan struct{}),
 	}
 
 	s.wg.Add(2)
@@ -146,6 +148,8 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 		for {
 			select {
 			case <-s.quit:
+				return
+			case <-s.stopC:
 				return
 			case <-time.After(blockTime * time.Duration(checkEvery)):
 			}
@@ -240,6 +244,11 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 				storageRadius, sample, err = s.play()
 				if err != nil {
 					s.logger.Error(err, "make sample")
+					if errors.Is(err, ErrSlashed) {
+						s.logger.Info("slashed error, quiting incentives agent")
+						close(s.stopC)
+						return
+					}
 				} else if sample != nil {
 					sampleRound = p.round
 					s.logger.Debug("made sample", "round", p.round)
