@@ -1104,3 +1104,23 @@ paths:
             $ref: "SwarmCommon.yaml#/components/responses/500"
           default:
             description: Default response
+
+  "/stake/{address}":
+            get:
+              summary: Get the staked amount.
+              description: This endpoint fetches the staked amount from the blockchain.
+              tags:
+                - Staking
+              parameters:
+                - in: path
+                  name: address
+                  schema:
+                    $ref: "SwarmCommon.yaml#/components/schemas/Addresses"
+                  description: Overlay address
+              responses:
+                "200":
+                  $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
+                "500":
+                  $ref: "SwarmCommon.yaml#/components/responses/500"
+                default:
+                  description: Default response
