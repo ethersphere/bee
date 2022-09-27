@@ -87,8 +87,6 @@ func Test(t *testing.T) {
 				t.Fatalf("got %d, want %d", contract.revealCalls, tc.expectedCalls)
 			}
 
-			// fmt.Println("commit", contract.commitCalls, "reveal", contract.revealCalls, "isWinner", contract.isWinnerCalls)
-
 			err := service.Close()
 			if err != nil {
 				t.Fatal(err)
