@@ -489,6 +489,16 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = sctx.SetGasPrice(ctx, p)
 	}
 
+	if limit, ok := r.Header[gasLimitHeader]; ok {
+		l, err := strconv.ParseUint(limit[0], 10, 64)
+		if err != nil {
+			s.logger.Error(err, "create batch: bad gas limit")
+			jsonhttp.BadRequest(w, errBadGasLimit)
+			return
+		}
+		ctx = sctx.SetGasLimit(ctx, l)
+	}
+
 	err = s.postageContract.TopUpBatch(ctx, id, amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
@@ -547,6 +557,16 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	if limit, ok := r.Header[gasLimitHeader]; ok {
+		l, err := strconv.ParseUint(limit[0], 10, 64)
+		if err != nil {
+			s.logger.Error(err, "create batch: bad gas limit")
+			jsonhttp.BadRequest(w, errBadGasLimit)
+			return
+		}
+		ctx = sctx.SetGasLimit(ctx, l)
 	}
 
 	err = s.postageContract.DiluteBatch(ctx, id, uint8(depth))
