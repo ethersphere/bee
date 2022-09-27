@@ -748,6 +748,33 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("gas limit header", func(t *testing.T) {
+		t.Parallel()
+
+		var gasLimit uint64
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
+				gasLimit = sctx.GetGasLimit(ctx)
+				return batchOk, nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:        true,
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
+			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
+				BatchID: batchOk,
+			}),
+		)
+
+		if gasLimit != 2000000 {
+			t.Fatalf("want 2000000, got %d", gasLimit)
+		}
+	})
 }
 
 func TestPostageDiluteStamp(t *testing.T) {
@@ -882,6 +909,33 @@ func TestPostageDiluteStamp(t *testing.T) {
 				Message: "invalid depth",
 			}),
 		)
+	})
+
+	t.Run("gas limit header", func(t *testing.T) {
+		t.Parallel()
+
+		var gasLimit uint64
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
+				gasLimit = sctx.GetGasLimit(ctx)
+				return batchOk, nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:        true,
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
+			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
+				BatchID: batchOk,
+			}),
+		)
+
+		if gasLimit != 2000000 {
+			t.Fatalf("want 2000000, got %d", gasLimit)
+		}
 	})
 }
 
