@@ -100,7 +100,7 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 
 	receipt, err := s.sendTransaction(ctx, callData, depositStakeDescription)
 	if err != nil {
-		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", stakedAmount, err)
+		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", &stakedAmount, err)
 	}
 
 	return receipt, nil
