@@ -22,6 +22,7 @@ var (
 	encryptedSpan, encryptedData []byte
 )
 
+// nolint:gochecknoinits
 func init() {
 	mockEncrypter := mockenc.New(mockenc.WithXOREncryption(key))
 	var err error

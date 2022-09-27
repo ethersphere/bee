@@ -48,6 +48,7 @@ type NodeEntry struct {
 	Metadata map[string]string
 }
 
+// nolint:gochecknoinits
 func init() {
 	obfuscationKeyFn = mrand.Read
 }

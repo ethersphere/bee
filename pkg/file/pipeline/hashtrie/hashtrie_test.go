@@ -26,6 +26,7 @@ var (
 	mode = storage.ModePutUpload
 )
 
+// nolint:gochecknoinits
 func init() {
 	b := make([]byte, 32)
 	b[31] = 0x01

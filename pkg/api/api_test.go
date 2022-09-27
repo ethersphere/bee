@@ -71,6 +71,7 @@ var (
 	batchEmpty   = []byte{}
 )
 
+// nolint:gochecknoinits
 func init() {
 	_, _ = rand.Read(batchOk)
 

@@ -804,6 +804,7 @@ func addressesToItems(addrs ...swarm.Address) []shed.Item {
 // optionally overridden in tests for data validation.
 var now func() int64
 
+// nolint:gochecknoinits
 func init() {
 	// set the now function
 	now = func() (t int64) {
