@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/sctx"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
@@ -32,15 +33,17 @@ var (
 	ErrInvalidStakeAmount = errors.New("invalid stake amount")
 	ErrInsufficientFunds  = errors.New("insufficient token balance")
 	ErrNotImplemented     = errors.New("not implemented")
+	ErrGetStakeFailed     = errors.New("get stake failed")
 
 	depositStakeDescription = "Deposit Stake"
 )
 
-type StakingContract interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay []byte) error
+type Contract interface {
+	DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error
+	GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error)
 }
 
-type stakingContract struct {
+type contract struct {
 	owner                  common.Address
 	stakingContractAddress common.Address
 	bzzTokenAddress        common.Address
@@ -52,8 +55,8 @@ func New(
 	stakingContractAddress common.Address,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
-) StakingContract {
-	return &stakingContract{
+) Contract {
+	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		bzzTokenAddress:        bzzTokenAddress,
@@ -61,7 +64,7 @@ func New(
 	}
 }
 
-func (s *stakingContract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
+func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
 	request := &transaction.TxRequest{
 		To:          &s.stakingContractAddress,
 		Data:        callData,
@@ -88,7 +91,7 @@ func (s *stakingContract) sendTransaction(ctx context.Context, callData []byte, 
 	return receipt, nil
 }
 
-func (s *stakingContract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
+func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount big.Int, nonce common.Hash) (*types.Receipt, error) {
 
 	callData, err := stakingABI.Pack("depositStake", owner, stakedAmount, nonce)
 	if err != nil {
@@ -103,7 +106,7 @@ func (s *stakingContract) sendDepositStakeTransaction(ctx context.Context, owner
 	return receipt, nil
 }
 
-func (s *stakingContract) sendGetStakeTransaction(ctx context.Context, overlay []byte) (*big.Int, error) {
+func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay []byte) (*big.Int, error) {
 
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
 	if err != nil {
@@ -125,8 +128,8 @@ func (s *stakingContract) sendGetStakeTransaction(ctx context.Context, overlay [
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay []byte) error {
-	prevStakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
+func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+	prevStakedAmount, err := s.sendGetStakeTransaction(ctx, overlay.Bytes())
 	if err != nil {
 		return err
 	}
@@ -142,7 +145,7 @@ func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.In
 		return err
 	}
 
-	if balance.Cmp(stakedAmount) <= 0 {
+	if balance.Cmp(&stakedAmount) <= 0 {
 		return ErrInsufficientFunds
 	}
 
@@ -161,7 +164,15 @@ func (s *stakingContract) DepositStake(ctx context.Context, stakedAmount *big.In
 	return nil
 }
 
-func (s *stakingContract) getBalance(ctx context.Context) (*big.Int, error) {
+func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error) {
+	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay.Bytes())
+	if err != nil {
+		return *big.NewInt(0), fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
+	}
+	return *stakedAmount, nil
+}
+
+func (s *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	callData, err := erc20ABI.Pack("balanceOf", s.owner)
 	if err != nil {
 		return nil, err

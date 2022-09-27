@@ -92,7 +92,7 @@ type testServerOptions struct {
 	Feeds              feeds.Factory
 	CORSAllowedOrigins []string
 	PostageContract    postagecontract.Interface
-	StakingContract    stakingcontract.StakingContract
+	StakingContract    stakingcontract.Contract
 	Post               postage.Service
 	Steward            steward.Interface
 	WsHeaders          http.Header
