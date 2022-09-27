@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -34,24 +35,39 @@ type Sampler interface {
 type Monitor interface {
 	IsStable() bool
 }
+
+type phaseType int
 type phase struct {
 	round uint64
-	phase int
+	phase phaseType
 }
 
 const (
-	commit = iota
+	commit phaseType = iota
 	reveal
 	claim
 )
 
+func (p phaseType) string() string {
+	switch p {
+	case commit:
+		return "commit"
+	case reveal:
+		return "reveal"
+	case claim:
+		return "claim"
+	default:
+		return "unknown"
+	}
+}
+
 type IncentivesContract interface {
-	RandomSeedAnchor() ([]byte, error)
-	RandomSeedNeighbourhood() ([]byte, error)
-	IsWinner() (bool, bool, error)
-	ClaimWin() error
-	Commit([]byte) error
-	Reveal(uint8, []byte, []byte) error
+	RandomSeedAnchor(context.Context) ([]byte, error)
+	RandomSeedNeighbourhood(context.Context) ([]byte, error)
+	IsWinner(context.Context) (bool, bool, error)
+	ClaimWin(context.Context) error
+	Commit(context.Context, []byte) error
+	Reveal(context.Context, uint8, []byte, []byte) error
 }
 
 const loggerName = "incentives"
@@ -67,8 +83,9 @@ type Service struct {
 
 	overlay swarm.Address
 
-	quit chan struct{}
-	wg   sync.WaitGroup
+	newRoundC chan struct{}
+	quit      chan struct{}
+	wg        sync.WaitGroup
 }
 
 func New(
@@ -89,6 +106,7 @@ func New(
 		reserve:           reserve,
 		monitor:           monitor,
 		sampler:           sampler,
+		newRoundC:         make(chan struct{}),
 		quit:              make(chan struct{}),
 	}
 
@@ -103,8 +121,7 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 	defer s.wg.Done()
 
 	var (
-		newRoundC = make(chan struct{})
-		phaseC    = make(chan phase)
+		phaseC = make(chan phase)
 	)
 
 	// the goroutine polls the current block number, calculates,
@@ -116,8 +133,8 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 
 		var (
 			round        uint64
-			prevPhase    int = -1
-			currentPhase int
+			prevPhase    phaseType = -1
+			currentPhase phaseType
 		)
 
 		for {
@@ -154,16 +171,16 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 
 			// write the current phase only once
 			if currentPhase != prevPhase {
+				s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
 				if currentPhase == commit {
 					select {
-					case newRoundC <- struct{}{}: // on commit phase, we enter a new round, cancel all previus executions
+					case s.newRoundC <- struct{}{}: // on commit phase, we enter a new round, cancel all previus executions
 					default:
 					}
 				}
 				select {
 				case phaseC <- phase{round: round, phase: currentPhase}:
-				case <-s.quit:
-					return
+				default:
 				}
 			}
 			prevPhase = currentPhase
@@ -193,15 +210,17 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 						s.logger.Error(err, "commit")
 					} else {
 						commitRound = p.round
+						s.logger.Debug("commit phase")
 					}
 				}
 			case reveal:
 				if p.round == commitRound { // reveal requires the obfuscationKey from the same round
-					err = s.incentivesConract.Reveal(storageRadius, sample, obfuscationKey)
+					err = s.reveal(storageRadius, sample, obfuscationKey)
 					if err != nil {
 						s.logger.Error(err, "reveal")
 					} else {
 						revealRound = p.round
+						s.logger.Debug("reveal phase")
 					}
 				}
 			case claim:
@@ -209,21 +228,36 @@ func (s *Service) manage(blockTime time.Duration, startBlock, blocksPerRound, bl
 					err = s.attempClaim()
 					if err != nil {
 						s.logger.Error(err, "attempt claim")
+					} else {
+						s.logger.Debug("claim phase")
 					}
 				}
-				storageRadius, sample, err = s.makeSample(newRoundC)
+				storageRadius, sample, err = s.attempMakeSample()
 				if err != nil {
-					s.logger.Error(err, "creating reserve sampler")
-				} else {
+					s.logger.Error(err, "make sample")
+				} else if sample != nil {
 					sampleRound = p.round
+					s.logger.Debug("made sample", "round", p.round)
 				}
 			}
 		}
 	}
 }
 
+func (s *Service) reveal(storageRadius uint8, sample, obfuscationKey []byte) error {
+
+	ctx, cancel := s.newContext()
+	defer cancel()
+
+	return s.incentivesConract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+}
+
 func (s *Service) attempClaim() error {
-	isSlashed, isWinner, err := s.incentivesConract.IsWinner()
+
+	ctx, cancel := s.newContext()
+	defer cancel()
+
+	isSlashed, isWinner, err := s.incentivesConract.IsWinner(ctx)
 	if err != nil {
 		return err
 	}
@@ -231,27 +265,23 @@ func (s *Service) attempClaim() error {
 		return ErrSlashed
 	}
 	if isWinner {
-		return s.incentivesConract.ClaimWin()
+		err = s.incentivesConract.ClaimWin(ctx)
+		if err != nil {
+			return fmt.Errorf("error claiming win: %w", err)
+		} else {
+			s.logger.Info("claimed win")
+		}
 	}
 
 	return nil
 }
 
-func (s *Service) makeSample(newRouncC chan struct{}) (uint8, []byte, error) {
+func (s *Service) attempMakeSample() (uint8, []byte, error) {
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := s.newContext()
 	defer cancel()
 
-	go func() {
-		select {
-		case <-newRouncC: // cancel context if a new round happens, terminating current call
-			cancel()
-		case <-ctx.Done(): // return if context is already done
-			return
-		}
-	}()
-
-	neighbourhoodRnd, err := s.incentivesConract.RandomSeedNeighbourhood()
+	neighbourhoodRnd, err := s.incentivesConract.RandomSeedNeighbourhood(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -262,7 +292,9 @@ func (s *Service) makeSample(newRouncC chan struct{}) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
-	salt, err := s.incentivesConract.RandomSeedAnchor()
+	s.logger.Info("neighbourhood chosen")
+
+	salt, err := s.incentivesConract.RandomSeedAnchor(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -277,6 +309,9 @@ func (s *Service) makeSample(newRouncC chan struct{}) (uint8, []byte, error) {
 
 func (s *Service) commit(storageRadius uint8, sample []byte) ([]byte, error) {
 
+	ctx, cancel := s.newContext()
+	defer cancel()
+
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
@@ -287,7 +322,7 @@ func (s *Service) commit(storageRadius uint8, sample []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	err = s.incentivesConract.Commit(orc)
+	err = s.incentivesConract.Commit(ctx, orc)
 	if err != nil {
 		return nil, err
 	}
@@ -295,23 +330,41 @@ func (s *Service) commit(storageRadius uint8, sample []byte) ([]byte, error) {
 	return key, nil
 }
 
+func (s *Service) newContext() (context.Context, context.CancelFunc) {
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		select {
+		case <-s.quit: // cancel context on quit call
+			cancel()
+		case <-s.newRoundC: // cancel context if a new round happens, terminating current call
+			cancel()
+		case <-ctx.Done(): // return if context is already done
+			return
+		}
+	}()
+
+	return ctx, cancel
+}
+
 // wrapCommit concatenates the byte serialisations of all the data needed to apply to
 // the lottery and obfuscates it with a nonce that is to be revealed in the subsequent phase
-// This should be a contract accessor taking `SD`, `RC` and overlay and the obfuscater nonce
-func wrapCommit(storageRadius uint8, sample, overlay, key []byte) (orc []byte, err error) {
+// This should be a contract accessor taking storage radius, and reserve sample and overlay and the obfuscater nonce
+func wrapCommit(storageRadius uint8, sample, overlay, obfuscater []byte) (orc []byte, err error) {
 	h := swarm.NewHasher()
 	if _, err = h.Write(sample); err != nil {
 		return nil, err
 	}
-	sdb := make([]byte, 8)
-	binary.BigEndian.PutUint64(sdb, uint64(storageRadius))
-	if _, err = h.Write(sdb); err != nil {
+	sr := make([]byte, 8)
+	binary.BigEndian.PutUint64(sr, uint64(storageRadius))
+	if _, err = h.Write(sr); err != nil {
 		return nil, err
 	}
 	if _, err = h.Write(overlay); err != nil {
 		return nil, err
 	}
-	if _, err = h.Write(key); err != nil {
+	if _, err = h.Write(obfuscater); err != nil {
 		return nil, err
 	}
 	return h.Sum(nil), nil
