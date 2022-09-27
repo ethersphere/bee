@@ -31,7 +31,7 @@ func TestRetrievalIndexItem_MarshalAndUnmarshal(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item:       &chunkstore.RetrievalIndexItem{},
 			Factory:    func() storage.Item { return new(chunkstore.RetrievalIndexItem) },
-			MarshalErr: chunkstore.ErrInvalidRetrievalIndexItemAddress,
+			MarshalErr: chunkstore.ErrMarshalInvalidRetrievalIndexItemAddress,
 		},
 	}, {
 		name: "zero address",
@@ -40,7 +40,7 @@ func TestRetrievalIndexItem_MarshalAndUnmarshal(t *testing.T) {
 				Address: swarm.ZeroAddress,
 			},
 			Factory:    func() storage.Item { return new(chunkstore.RetrievalIndexItem) },
-			MarshalErr: chunkstore.ErrInvalidRetrievalIndexItemAddress,
+			MarshalErr: chunkstore.ErrMarshalInvalidRetrievalIndexItemAddress,
 		},
 	}, {
 		name: "min values",
@@ -73,7 +73,7 @@ func TestRetrievalIndexItem_MarshalAndUnmarshal(t *testing.T) {
 				UnmarshalBuf: []byte{0xFF},
 			},
 			Factory:      func() storage.Item { return new(chunkstore.RetrievalIndexItem) },
-			UnmarshalErr: chunkstore.ErrInvalidRetrievalIndexItemSize,
+			UnmarshalErr: chunkstore.ErrUnmarshalInvalidRetrievalIndexItemSize,
 		},
 	}}
 
@@ -160,7 +160,7 @@ func TestChunkStampItem_MarshalAndUnmarshal(t *testing.T) {
 				UnmarshalBuf: []byte{0xFF},
 			},
 			Factory:      func() storage.Item { return &chunkstore.ChunkStampItem{Address: chunk.Address()} },
-			UnmarshalErr: chunkstore.ErrInvalidChunkStampItemSize,
+			UnmarshalErr: chunkstore.ErrUnmarshalInvalidChunkStampItemSize,
 		},
 	}}
 

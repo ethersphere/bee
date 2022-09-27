@@ -5,11 +5,11 @@ type RetrievalIndexItem = retrievalIndexItem
 type ChunkStampItem = chunkStampItem
 
 var (
-	ErrInvalidRetrievalIndexItemAddress = errInvalidRetrievalIndexAddress
-	ErrInvalidRetrievalIndexItemSize    = errInvalidRetrievalIndexSize
+	ErrMarshalInvalidRetrievalIndexItemAddress = errMarshalInvalidRetrievalIndexAddress
+	ErrUnmarshalInvalidRetrievalIndexItemSize  = errUnmarshalInvalidRetrievalIndexSize
 
 	ErrMarshalInvalidChunkStampItemAddress   = errMarshalInvalidChunkStampItemAddress
 	ErrUnmarshalInvalidChunkStampItemAddress = errUnmarshalInvalidChunkStampItemAddress
 	ErrMarshalInvalidChunkStampItemStamp     = errMarshalInvalidChunkStampItemStamp
-	ErrInvalidChunkStampItemSize             = errInvalidChunkStampItemSize
+	ErrUnmarshalInvalidChunkStampItemSize    = errUnmarshalInvalidChunkStampItemSize
 )
