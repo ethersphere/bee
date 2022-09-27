@@ -222,11 +222,13 @@ components:
       type: string
 
     GasLimit:
+      description: Gas limit refers to the maximum amount of gas you’re willing to spend on a particular transaction.
       type: integer
       minimum: 0
       maximum: 18446744073709551615
 
     GasPrice:
+      description: Gas price refers to the amount you’re willing to pay for every unit of gas.
       type: integer
 
     Hash:
