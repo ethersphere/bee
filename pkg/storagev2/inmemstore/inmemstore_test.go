@@ -12,15 +12,21 @@ import (
 )
 
 func TestStore(t *testing.T) {
+	t.Parallel()
+
 	storagetest.TestStore(t, inmem.New())
 }
 
 func BenchmarkStore(b *testing.B) {
-	st := inmem.New()
-	storagetest.RunStoreBenchmarkTests(b, st)
+	storagetest.BenchmarkStore(b, inmem.New())
 }
 
-func TestBatch(t *testing.T) {
-	st := inmem.New()
-	storagetest.TestBatch(t, st)
+func TestBatchedStore(t *testing.T) {
+	t.Parallel()
+
+	storagetest.TestBatchedStore(t, inmem.New())
+}
+
+func BenchmarkBatchedStore(b *testing.B) {
+	storagetest.BenchmarkBatchedStore(b, inmem.New())
 }
