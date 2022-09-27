@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"go.uber.org/atomic"
 )
@@ -69,10 +70,12 @@ func Test(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			backend := &mockchainBackend{limit: tc.limit, incrementBy: tc.incrementBy, block: tc.blocksPerRound}
-			contract := &mockContract{t: t}
+			addr := test.RandomAddress()
 
-			service := createService(backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
+			backend := &mockchainBackend{limit: tc.limit, incrementBy: tc.incrementBy, block: tc.blocksPerRound}
+			contract := &mockContract{t: t, baseAddr: addr, neighbourhoodSeed: test.RandomAddressAt(addr, 1).Bytes()}
+
+			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			time.Sleep(time.Second)
 
@@ -97,26 +100,19 @@ func Test(t *testing.T) {
 }
 
 func createService(
+	addr swarm.Address,
 	backend incentives.ChainBackend,
 	contract incentives.IncentivesContract,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) *incentives.Service {
 
-	if backend == nil {
-		backend = &mockchainBackend{incrementBy: 1}
-	}
-
-	if contract == nil {
-		contract = &mockContract{}
-	}
-
 	return incentives.New(
-		test.RandomAddress(),
+		addr,
 		backend,
 		log.Noop,
 		&mockMonitor{},
 		contract,
-		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3})),
+		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
 		&mockSampler{},
 		time.Millisecond, 0, blocksPerRound, blocksPerPhase,
 	)
@@ -152,23 +148,26 @@ const (
 )
 
 type mockContract struct {
+	baseAddr      swarm.Address
 	commitCalls   atomic.Int32
 	revealCalls   atomic.Int32
 	isWinnerCalls atomic.Int32
+
+	neighbourhoodSeed []byte
 
 	t            *testing.T
 	previousCall int
 }
 
-func (m *mockContract) RandomSeedAnchor() ([]byte, error) {
+func (m *mockContract) RandomSeedAnchor(context.Context) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockContract) RandomSeedNeighbourhood() ([]byte, error) {
-	return nil, nil
+func (m *mockContract) RandomSeedNeighbourhood(context.Context) ([]byte, error) {
+	return m.neighbourhoodSeed, nil
 }
 
-func (m *mockContract) IsWinner() (bool, bool, error) {
+func (m *mockContract) IsWinner(context.Context) (bool, bool, error) {
 	m.isWinnerCalls.Inc()
 	if m.previousCall != revealCall {
 		m.t.Fatal("previous call must be reveal")
@@ -177,17 +176,17 @@ func (m *mockContract) IsWinner() (bool, bool, error) {
 	return false, false, nil
 }
 
-func (m *mockContract) ClaimWin() error {
+func (m *mockContract) ClaimWin(context.Context) error {
 	return nil
 }
 
-func (m *mockContract) Commit([]byte) error {
+func (m *mockContract) Commit(context.Context, []byte) error {
 	m.commitCalls.Inc()
 	m.previousCall = commitCall
 	return nil
 }
 
-func (m *mockContract) Reveal(uint8, []byte, []byte) error {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
 	m.revealCalls.Inc()
 	if m.previousCall != commitCall {
 		m.t.Fatal("previous call must be commit")
@@ -200,7 +199,7 @@ type mockSampler struct {
 }
 
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8) ([]byte, error) {
-	return nil, nil
+	return test.RandomAddress().Bytes(), nil
 }
 
 // func newChainBackend(opts ...Option) *chainBackend {
