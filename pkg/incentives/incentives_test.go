@@ -78,7 +78,7 @@ func Test(t *testing.T) {
 				limitCallback: func() { wait <- struct{}{} },
 				incrementBy:   tc.incrementBy,
 				block:         tc.blocksPerRound}
-			contract := &mockContract{t: t, baseAddr: addr, neighbourhoodSeed: test.RandomAddressAt(addr, 1).Bytes()}
+			contract := &mockContract{t: t, baseAddr: addr}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
@@ -182,18 +182,16 @@ type mockContract struct {
 	revealCalls   atomic.Int32
 	isWinnerCalls atomic.Int32
 
-	neighbourhoodSeed []byte
-
 	t            *testing.T
 	previousCall int
 }
 
-func (m *mockContract) RandomSeedAnchor(context.Context) ([]byte, error) {
+func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockContract) RandomSeedNeighbourhood(context.Context) ([]byte, error) {
-	return m.neighbourhoodSeed, nil
+func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
+	return true, nil
 }
 
 func (m *mockContract) IsWinner(context.Context) (bool, bool, error) {
@@ -205,7 +203,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, bool, error) {
 	return false, false, nil
 }
 
-func (m *mockContract) ClaimWin(context.Context) error {
+func (m *mockContract) Claim(context.Context) error {
 	return nil
 }
 
