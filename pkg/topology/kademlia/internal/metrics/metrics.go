@@ -287,8 +287,7 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 	return snapshot
 }
 
-// Inspect allows inspecting current snapshot for the given
-// peer address by executing the inspection function.
+// IsUnreachable returns true if the peer is unreachable.
 func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 	val, ok := c.counters.Load(addr.ByteString())
 	if !ok {
