@@ -12,7 +12,9 @@ import (
 )
 
 func TestFallingEdge(t *testing.T) {
+	t.Parallel()
 	t.Skip("github actions")
+
 	ok := make(chan struct{})
 	tt := 50 * time.Millisecond
 	worst := 5 * tt
@@ -38,7 +40,9 @@ func TestFallingEdge(t *testing.T) {
 }
 
 func TestFallingEdgeBuffer(t *testing.T) {
+	t.Parallel()
 	t.Skip("needs parameter tweaking on github actions")
+
 	ok := make(chan struct{})
 	tt := 150 * time.Millisecond
 	worst := 9 * tt
@@ -78,7 +82,9 @@ func TestFallingEdgeBuffer(t *testing.T) {
 }
 
 func TestFallingEdgeWorstCase(t *testing.T) {
+	t.Parallel()
 	t.Skip("github actions")
+
 	ok := make(chan struct{})
 	tt := 100 * time.Millisecond
 	worst := 5 * tt
