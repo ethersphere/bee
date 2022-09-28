@@ -31,31 +31,6 @@ type Monitor interface {
 	IsStable() bool
 }
 
-type phaseType int
-type phase struct {
-	round uint64
-	phase phaseType
-}
-
-const (
-	commit phaseType = iota
-	reveal
-	claim
-)
-
-func (p phaseType) string() string {
-	switch p {
-	case commit:
-		return "commit"
-	case reveal:
-		return "reveal"
-	case claim:
-		return "claim"
-	default:
-		return "unknown"
-	}
-}
-
 type IncentivesContract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
@@ -68,21 +43,17 @@ type IncentivesContract interface {
 
 const loggerName = "incentives"
 
-type Service struct {
-	logger  log.Logger
-	backend ChainBackend
-	monitor Monitor
-
+type Agent struct {
+	logger   log.Logger
+	backend  ChainBackend
+	monitor  Monitor
 	contract IncentivesContract
 	reserve  postage.Storer
 	sampler  Sampler
-
-	overlay swarm.Address
-
-	cancelC chan struct{}
-	stopC   chan struct{}
-	quit    chan struct{}
-	wg      sync.WaitGroup
+	overlay  swarm.Address
+	cancelC  chan struct{}
+	quit     chan struct{}
+	wg       sync.WaitGroup
 }
 
 func New(
@@ -93,9 +64,9 @@ func New(
 	incentives IncentivesContract,
 	reserve postage.Storer,
 	sampler Sampler,
-	blockTime time.Duration, startBlock, blockPerRound, blocksPerPhase uint64) *Service {
+	blockTime time.Duration, blockPerRound, blocksPerPhase uint64) *Agent {
 
-	s := &Service{
+	s := &Agent{
 		overlay:  overlay,
 		backend:  backend,
 		logger:   logger.WithName(loggerName).Register(),
@@ -105,161 +76,194 @@ func New(
 		sampler:  sampler,
 		cancelC:  make(chan struct{}),
 		quit:     make(chan struct{}),
-		stopC:    make(chan struct{}),
 	}
 
-	s.wg.Add(2)
-	go s.start(blockTime, startBlock, blockPerRound, blocksPerPhase)
+	s.wg.Add(1)
+	go s.start(blockTime, blockPerRound, blocksPerPhase)
 
 	return s
 }
 
-func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blocksPerPhase uint64) {
+func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
 
 	defer s.wg.Done()
 
-	var phaseC = make(chan phase)
-
-	// drain the channel on shutdown
-	defer func() {
-		select {
-		case <-phaseC:
-		default:
-		}
-	}()
-
-	// the goroutine polls the current block number, calculates,
-	// and writes only once the current phase and round. If a new round is detected,
-	// it writes to a new round channel to exterminate any previous makeSample execution.
-	go func() {
-
-		defer s.wg.Done()
-
-		var (
-			round        uint64
-			prevPhase    phaseType = -1
-			currentPhase phaseType
-		)
-
-		// optimization, we do not need to check the phase change at every new block
-		var checkEvery uint64 = 1
-		if blocksPerPhase > 10 {
-			checkEvery = 5
-		}
-
-		for {
-			select {
-			case <-s.quit:
-				return
-			case <-s.stopC:
-				return
-			case <-time.After(blockTime * time.Duration(checkEvery)):
-			}
-
-			// skip when the depthmonitor is unstable
-			if !s.monitor.IsStable() {
-				continue
-			}
-
-			block, err := s.backend.BlockNumber(context.Background())
-			if err != nil {
-				s.logger.Error(err, "getting block number")
-				continue
-			}
-
-			blocks := (block - startBlock)
-
-			round = blocks / blocksPerRound
-
-			// compute the current phase
-			p := blocks % blocksPerRound
-			if p < blocksPerPhase {
-				currentPhase = commit
-			} else if p >= blocksPerPhase && p < 2*blocksPerPhase {
-				currentPhase = reveal
-			} else {
-				currentPhase = claim
-			}
-
-			// write the current phase only once
-			if currentPhase != prevPhase {
-				s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
-				select {
-				case s.cancelC <- struct{}{}: // we enter a new phase, cancel all previous executions
-				default:
-				}
-				phaseC <- phase{round: round, phase: currentPhase}
-			}
-			prevPhase = currentPhase
-		}
-	}()
-
 	var (
+		mtx            sync.Mutex
 		sampleRound    uint64 = math.MaxUint64
 		commitRound    uint64 = math.MaxUint64
 		revealRound    uint64 = math.MaxUint64
-		sample         []byte
+		round          uint64
+		reserveSample  []byte
 		obfuscationKey []byte
 		storageRadius  uint8
-		err            error
+		phases         = newphaseEvents()
 	)
 
+	// cancel all possible running phases
+	defer phases.Cancel(commit, claim, reveal, sample)
+
+	phases.On(commit, func(ctx context.Context) {
+		s.wg.Add(1)
+		defer s.wg.Done()
+
+		phases.Cancel(claim)
+
+		mtx.Lock()
+		round := round
+		sampleRound := sampleRound
+		mtx.Unlock()
+
+		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
+			obf, err := s.commit(ctx, storageRadius, reserveSample)
+			if err != nil {
+				s.logger.Error(err, "commit")
+			} else {
+				mtx.Lock()
+				obfuscationKey = obf
+				commitRound = round
+				mtx.Unlock()
+				s.logger.Debug("commit phase")
+			}
+		}
+	})
+
+	phases.On(reveal, func(ctx context.Context) {
+		s.wg.Add(1)
+		defer s.wg.Done()
+
+		phases.Cancel(commit, sample)
+
+		mtx.Lock()
+		round := round
+		commitRound := commitRound
+		mtx.Unlock()
+
+		if round == commitRound { // reveal requires the obfuscationKey from the same round
+			err := s.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
+			if err != nil {
+				s.logger.Error(err, "reveal")
+			} else {
+				mtx.Lock()
+				revealRound = round
+				mtx.Unlock()
+				s.logger.Debug("reveal phase")
+			}
+		}
+	})
+
+	phases.On(claim, func(ctx context.Context) {
+		s.wg.Add(1)
+		defer s.wg.Done()
+		phases.Cancel(reveal)
+
+		mtx.Lock()
+		round := round
+		revealRound := revealRound
+		mtx.Unlock()
+
+		if round == revealRound { // to claim, previous reveal must've happened in the same round
+			err := s.claim(ctx)
+			if err != nil {
+				s.logger.Error(err, "attempt claim")
+			} else {
+				s.logger.Debug("claim phase")
+			}
+		}
+	})
+
+	phases.On(sample, func(ctx context.Context) {
+		s.wg.Add(1)
+		defer s.wg.Done()
+
+		mtx.Lock()
+		round := round
+		mtx.Unlock()
+
+		sr, smpl, err := s.play(ctx)
+		if err != nil {
+			s.logger.Error(err, "make sample")
+		} else if smpl != nil {
+			mtx.Lock()
+			sampleRound = round
+			reserveSample = smpl
+			storageRadius = sr
+			s.logger.Debug("made sample", "round", round)
+			mtx.Unlock()
+		}
+	})
+
+	var (
+		prevPhase    phaseType = -1
+		currentPhase phaseType
+		checkEvery   uint64 = 1
+	)
+
+	// optimization, we do not need to check the phase change at every new block
+	if blocksPerPhase > 10 {
+		checkEvery = 5
+	}
+
+	// the loop polls the current block number, calculates,and publishes only once the current phase.
+	// Each round is blocksPerRound long and is divided in to three blocksPerPhase long phases: commit, reveal, claim.
+	// The sample phase is triggered upon entering the claim phase and runs until the start of the revel phase.
+	// If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
+	// the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
+	// Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 	for {
 		select {
 		case <-s.quit:
 			return
-		case p := <-phaseC:
-			ctx, cancel := s.newContext()
-			switch p.phase {
-			case commit:
-				if p.round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-					obfuscationKey, err = s.commit(ctx, storageRadius, sample)
-					if err != nil {
-						s.logger.Error(err, "commit")
-					} else {
-						commitRound = p.round
-						s.logger.Debug("commit phase")
-					}
-				}
-			case reveal:
-				if p.round == commitRound { // reveal requires the obfuscationKey from the same round
-					err = s.reveal(ctx, storageRadius, sample, obfuscationKey)
-					if err != nil {
-						s.logger.Error(err, "reveal")
-					} else {
-						revealRound = p.round
-						s.logger.Debug("reveal phase")
-					}
-				}
-			case claim:
-				if p.round == revealRound { // to claim, previous reveal must've happened in the same round
-					err = s.claim(ctx)
-					if err != nil {
-						s.logger.Error(err, "attempt claim")
-					} else {
-						s.logger.Debug("claim phase")
-					}
-				}
-				storageRadius, sample, err = s.play(ctx)
-				if err != nil {
-					s.logger.Error(err, "make sample")
-
-				} else if sample != nil {
-					sampleRound = p.round
-					s.logger.Debug("made sample", "round", p.round)
-				}
-			}
-			cancel()
+		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
-	}
 
+		// skip when the depthmonitor is unstable
+		if !s.monitor.IsStable() {
+			continue
+		}
+
+		block, err := s.backend.BlockNumber(context.Background())
+		if err != nil {
+			s.logger.Error(err, "getting block number")
+			continue
+		}
+
+		mtx.Lock()
+		round = block / blocksPerRound
+
+		// compute the current phase
+		p := block % blocksPerRound
+		if p < blocksPerPhase {
+			currentPhase = commit
+		} else if p >= blocksPerPhase && p < 2*blocksPerPhase {
+			currentPhase = reveal
+		} else {
+			currentPhase = claim
+		}
+
+		// write the current phase only once
+		if currentPhase != prevPhase {
+			s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
+
+			phases.Publish(currentPhase)
+
+			// trigger sample task along side the claim phase
+			if currentPhase == claim {
+				phases.Publish(sample)
+			}
+		}
+
+		prevPhase = currentPhase
+
+		mtx.Unlock()
+	}
 }
 
-func (s *Service) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
+func (s *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	return s.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 }
 
-func (s *Service) claim(ctx context.Context) error {
+func (s *Agent) claim(ctx context.Context) error {
 
 	isWinner, err := s.contract.IsWinner(ctx)
 	if err != nil {
@@ -277,7 +281,7 @@ func (s *Service) claim(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) play(ctx context.Context) (uint8, []byte, error) {
+func (s *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	storageRadius := s.reserve.GetReserveState().StorageRadius
 
@@ -301,7 +305,7 @@ func (s *Service) play(ctx context.Context) (uint8, []byte, error) {
 	return storageRadius, sample, nil
 }
 
-func (s *Service) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
+func (s *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
 
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -321,25 +325,7 @@ func (s *Service) commit(ctx context.Context, storageRadius uint8, sample []byte
 	return key, nil
 }
 
-func (s *Service) newContext() (context.Context, context.CancelFunc) {
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		select {
-		case <-s.quit: // cancel context on quit call
-			cancel()
-		case <-s.cancelC: // cancel context if a new round happens, terminating current call
-			cancel()
-		case <-ctx.Done(): // return if context is already done
-			return
-		}
-	}()
-
-	return ctx, cancel
-}
-
-func (s *Service) Close() error {
+func (s *Agent) Close() error {
 	close(s.quit)
 
 	stopped := make(chan struct{})
