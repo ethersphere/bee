@@ -147,7 +147,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 		return err
 	}
 
-	if balance.Cmp(&stakedAmount) <= 0 {
+	if balance.Cmp(&stakedAmount) < 0 {
 		return ErrInsufficientFunds
 	}
 
