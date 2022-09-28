@@ -44,8 +44,8 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 
 	stakedAmount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
 	if !ok {
-		s.logger.Error(nil, "deposit stake: insufficient amount")
-		jsonhttp.BadRequest(w, "insufficient staking amount")
+		s.logger.Error(nil, "deposit stake: invalid amount")
+		jsonhttp.BadRequest(w, "invalid staking amount")
 		return
 	}
 	err = s.stakingContract.DepositStake(r.Context(), *stakedAmount, overlayAddr)

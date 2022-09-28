@@ -47,7 +47,7 @@ type contract struct {
 	stakingContractAddress common.Address
 	bzzTokenAddress        common.Address
 	transactionService     transaction.Service
-	overlayNonce           []byte
+	overlayNonce           common.Hash
 }
 
 func New(
@@ -55,7 +55,7 @@ func New(
 	stakingContractAddress common.Address,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
-	nonce []byte,
+	nonce common.Hash,
 ) Contract {
 	return &contract{
 		owner:                  owner,
@@ -108,7 +108,7 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 	return receipt, nil
 }
 
-func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay []byte) (*big.Int, error) {
+func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
 	if err != nil {
@@ -151,7 +151,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 		return ErrInsufficientFunds
 	}
 
-	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, common.BytesToHash(s.overlayNonce))
+	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 }
 
 func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error) {
-	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay.Bytes())
+	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
 	if err != nil {
 		return *big.NewInt(0), fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
 	}
