@@ -557,6 +557,7 @@ type ItemMarshalAndUnmarshalTest struct {
 	Factory      func() storage.Item
 	MarshalErr   error // Expected error from Marshal.
 	UnmarshalErr error // Expected error from Unmarshal.
+	CmpOpts      []cmp.Option
 }
 
 // TestItemMarshalAndUnmarshal provides correctness testsuite
@@ -584,8 +585,8 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 	}
 
 	want, have := test.Item, item2
-	if diff := cmp.Diff(want, have); diff != "" {
-		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", diff)
+	if !cmp.Equal(want, have, test.CmpOpts...) {
+		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have))
 	}
 }
 
