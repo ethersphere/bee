@@ -97,7 +97,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		reserveSample  []byte
 		obfuscationKey []byte
 		storageRadius  uint8
-		phases         = newphaseEvents()
+		phases         = newPhaseEvents()
 	)
 
 	// cancel all possible running phases
