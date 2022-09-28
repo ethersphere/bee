@@ -7,7 +7,6 @@ package incentives
 import (
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -68,6 +67,7 @@ type IncentivesContract interface {
 	Claim(context.Context) error
 	Commit(context.Context, []byte) error
 	Reveal(context.Context, uint8, []byte, []byte) error
+	WrapCommit(uint8, []byte, []byte, []byte) ([]byte, error)
 }
 
 const loggerName = "incentives"
@@ -77,9 +77,9 @@ type Service struct {
 	backend ChainBackend
 	monitor Monitor
 
-	incentivesContract IncentivesContract
-	reserve            postage.Storer
-	sampler            Sampler
+	contract IncentivesContract
+	reserve  postage.Storer
+	sampler  Sampler
 
 	overlay swarm.Address
 
@@ -100,16 +100,16 @@ func New(
 	blockTime time.Duration, startBlock, blockPerRound, blocksPerPhase uint64) *Service {
 
 	s := &Service{
-		overlay:            overlay,
-		backend:            backend,
-		logger:             logger.WithName(loggerName).Register(),
-		incentivesContract: incentives,
-		reserve:            reserve,
-		monitor:            monitor,
-		sampler:            sampler,
-		cancelC:            make(chan struct{}),
-		quit:               make(chan struct{}),
-		stopC:              make(chan struct{}),
+		overlay:  overlay,
+		backend:  backend,
+		logger:   logger.WithName(loggerName).Register(),
+		contract: incentives,
+		reserve:  reserve,
+		monitor:  monitor,
+		sampler:  sampler,
+		cancelC:  make(chan struct{}),
+		quit:     make(chan struct{}),
+		stopC:    make(chan struct{}),
 	}
 
 	s.wg.Add(2)
@@ -122,9 +122,15 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 
 	defer s.wg.Done()
 
-	var (
-		phaseC = make(chan phase)
-	)
+	var phaseC = make(chan phase)
+
+	// drain the channel on shutdown
+	defer func() {
+		select {
+		case <-phaseC:
+		default:
+		}
+	}()
 
 	// the goroutine polls the current block number, calculates,
 	// and writes only once the current phase and round. If a new round is detected,
@@ -186,11 +192,7 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 				case s.cancelC <- struct{}{}: // we enter a new phase, cancel all previous executions
 				default:
 				}
-				select {
-				case phaseC <- phase{round: round, phase: currentPhase}:
-				case <-s.quit:
-					return
-				}
+				phaseC <- phase{round: round, phase: currentPhase}
 			}
 			prevPhase = currentPhase
 		}
@@ -211,10 +213,11 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 		case <-s.quit:
 			return
 		case p := <-phaseC:
+			ctx, cancel := s.newContext()
 			switch p.phase {
 			case commit:
 				if p.round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-					obfuscationKey, err = s.commit(storageRadius, sample)
+					obfuscationKey, err = s.commit(ctx, storageRadius, sample)
 					if err != nil {
 						s.logger.Error(err, "commit")
 					} else {
@@ -224,7 +227,7 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 				}
 			case reveal:
 				if p.round == commitRound { // reveal requires the obfuscationKey from the same round
-					err = s.reveal(storageRadius, sample, obfuscationKey)
+					err = s.reveal(ctx, storageRadius, sample, obfuscationKey)
 					if err != nil {
 						s.logger.Error(err, "reveal")
 					} else {
@@ -234,44 +237,39 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 				}
 			case claim:
 				if p.round == revealRound { // to claim, previous reveal must've happened in the same round
-					err = s.claim()
+					err = s.claim(ctx)
 					if err != nil {
 						s.logger.Error(err, "attempt claim")
+						if errors.Is(err, ErrSlashed) {
+							s.logger.Info("slashed error, quiting incentives agent")
+							close(s.stopC)
+						}
 					} else {
 						s.logger.Debug("claim phase")
 					}
 				}
-				storageRadius, sample, err = s.play()
+				storageRadius, sample, err = s.play(ctx)
 				if err != nil {
 					s.logger.Error(err, "make sample")
-					if errors.Is(err, ErrSlashed) {
-						s.logger.Info("slashed error, quiting incentives agent")
-						close(s.stopC)
-						return
-					}
+
 				} else if sample != nil {
 					sampleRound = p.round
 					s.logger.Debug("made sample", "round", p.round)
 				}
 			}
+			cancel()
 		}
 	}
+
 }
 
-func (s *Service) reveal(storageRadius uint8, sample, obfuscationKey []byte) error {
-
-	ctx, cancel := s.newContext()
-	defer cancel()
-
-	return s.incentivesContract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+func (s *Service) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
+	return s.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 }
 
-func (s *Service) claim() error {
+func (s *Service) claim(ctx context.Context) error {
 
-	ctx, cancel := s.newContext()
-	defer cancel()
-
-	isSlashed, isWinner, err := s.incentivesContract.IsWinner(ctx)
+	isSlashed, isWinner, err := s.contract.IsWinner(ctx)
 	if err != nil {
 		return err
 	}
@@ -279,7 +277,7 @@ func (s *Service) claim() error {
 		return ErrSlashed
 	}
 	if isWinner {
-		err = s.incentivesContract.Claim(ctx)
+		err = s.contract.Claim(ctx)
 		if err != nil {
 			return fmt.Errorf("error claiming win: %w", err)
 		} else {
@@ -290,21 +288,18 @@ func (s *Service) claim() error {
 	return nil
 }
 
-func (s *Service) play() (uint8, []byte, error) {
-
-	ctx, cancel := s.newContext()
-	defer cancel()
+func (s *Service) play(ctx context.Context) (uint8, []byte, error) {
 
 	storageRadius := s.reserve.GetReserveState().StorageRadius
 
-	isPlaying, err := s.incentivesContract.IsPlaying(ctx, storageRadius)
+	isPlaying, err := s.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {
 		return 0, nil, err
 	}
 
 	s.logger.Info("neighbourhood chosen")
 
-	salt, err := s.incentivesContract.ReserveSalt(ctx)
+	salt, err := s.contract.ReserveSalt(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -317,22 +312,19 @@ func (s *Service) play() (uint8, []byte, error) {
 	return storageRadius, sample, nil
 }
 
-func (s *Service) commit(storageRadius uint8, sample []byte) ([]byte, error) {
-
-	ctx, cancel := s.newContext()
-	defer cancel()
+func (s *Service) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
 
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
 	}
 
-	orc, err := wrapCommit(storageRadius, sample, s.overlay.Bytes(), key)
+	orc, err := s.contract.WrapCommit(storageRadius, sample, s.overlay.Bytes(), key)
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.incentivesContract.Commit(ctx, orc)
+	err = s.contract.Commit(ctx, orc)
 	if err != nil {
 		return nil, err
 	}
@@ -356,29 +348,6 @@ func (s *Service) newContext() (context.Context, context.CancelFunc) {
 	}()
 
 	return ctx, cancel
-}
-
-// wrapCommit concatenates the byte serialisations of all the data needed to apply to
-// the lottery and obfuscates it with a nonce that is to be revealed in the subsequent phase
-// This should be a contract accessor taking storage radius, and reserve sample and overlay and the obfuscater nonce
-func wrapCommit(storageRadius uint8, sample, overlay, obfuscater []byte) (orc []byte, err error) {
-	h := swarm.NewHasher()
-	if _, err = h.Write(sample); err != nil {
-		return nil, err
-	}
-	sr := make([]byte, 8)
-	binary.BigEndian.PutUint64(sr, uint64(storageRadius))
-	if _, err = h.Write(sr); err != nil {
-		return nil, err
-	}
-	if _, err = h.Write(overlay); err != nil {
-		return nil, err
-	}
-	if _, err = h.Write(obfuscater); err != nil {
-		return nil, err
-	}
-
-	return h.Sum(nil), nil
 }
 
 func (s *Service) Close() error {
