@@ -6,7 +6,6 @@ package stakingcontract
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
@@ -48,6 +47,7 @@ type contract struct {
 	stakingContractAddress common.Address
 	bzzTokenAddress        common.Address
 	transactionService     transaction.Service
+	overlayNonce           []byte
 }
 
 func New(
@@ -55,12 +55,14 @@ func New(
 	stakingContractAddress common.Address,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
+	nonce []byte,
 ) Contract {
 	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		bzzTokenAddress:        bzzTokenAddress,
 		transactionService:     transactionService,
+		overlayNonce:           nonce,
 	}
 }
 
@@ -149,13 +151,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 		return ErrInsufficientFunds
 	}
 
-	nonce := make([]byte, 32)
-	_, err = rand.Read(nonce)
-	if err != nil {
-		return err
-	}
-
-	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, common.BytesToHash(nonce))
+	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, common.BytesToHash(s.overlayNonce))
 	if err != nil {
 		return err
 	}
