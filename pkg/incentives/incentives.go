@@ -86,6 +86,12 @@ func New(
 	return s
 }
 
+// start polls the current block number, calculates, and publishes only once the current phase.
+// Each round is blocksPerRound long and is divided in to three blocksPerPhase long phases: commit, reveal, claim.
+// The sample phase is triggered upon entering the claim phase and may run until the end of the commit phase.
+// If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
+// the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
+// Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
 
 	defer s.wg.Done()
@@ -99,45 +105,57 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		reserveSample  []byte
 		obfuscationKey []byte
 		storageRadius  uint8
-		phases         = newPhaseEvents()
-		sampleEvents   = newPhaseEvents()
+		phaseEvents    = newEvents()
+		sampleEvents   = newEvents()
 	)
 
 	// cancel all possible running phases
-	defer phases.Close()
+	defer phaseEvents.Close()
 	defer sampleEvents.Close()
 
-	phases.On(commit, func(ctx context.Context) {
+	commitF := func(ctx context.Context) {
+		phaseEvents.Cancel(claim)
 
-		phases.Cancel(claim)
+		mtx.Lock()
+		round := round
+		sampleRound := sampleRound
+		storageRadius := storageRadius
+		reserveSample := reserveSample
+		mtx.Unlock()
 
-		sampleEvents.Once(sampleEnd, func(context.Context) {
-
-			mtx.Lock()
-			round := round
-			sampleRound := sampleRound
-			storageRadius := storageRadius
-			reserveSample := reserveSample
-			mtx.Unlock()
-
-			if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-				obf, err := s.commit(ctx, storageRadius, reserveSample)
-				if err != nil {
-					s.logger.Error(err, "commit")
-				} else {
-					mtx.Lock()
-					obfuscationKey = obf
-					commitRound = round
-					mtx.Unlock()
-					s.logger.Debug("commit phase")
-				}
+		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
+			obf, err := s.commit(ctx, storageRadius, reserveSample)
+			if err != nil {
+				s.logger.Error(err, "commit")
+			} else {
+				mtx.Lock()
+				obfuscationKey = obf
+				commitRound = round
+				mtx.Unlock()
+				s.logger.Debug("commit phase")
 			}
-		})
+		}
+	}
+
+	// when the sample finishes, if we are in the commit phase, run commit
+	sampleEvents.On(sampleEnd, func(ctx context.Context) {
+		if phaseEvents.Last() == commit {
+			commitF(ctx)
+		}
 	})
 
-	phases.On(reveal, func(ctx context.Context) {
+	// when we enter the commit phase, if the sample is already finished, run commit
+	phaseEvents.On(commit, func(ctx context.Context) {
+		if sampleEvents.Last() == sampleEnd {
+			commitF(ctx)
+		}
+	})
 
-		phases.Cancel(commit, sample)
+	phaseEvents.On(reveal, func(ctx context.Context) {
+
+		// cancel previous executions of the commit and sample phases
+		phaseEvents.Cancel(commit)
+		sampleEvents.Cancel(sample, sampleEnd)
 
 		mtx.Lock()
 		round := round
@@ -160,9 +178,9 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phases.On(claim, func(ctx context.Context) {
+	phaseEvents.On(claim, func(ctx context.Context) {
 
-		phases.Cancel(reveal)
+		phaseEvents.Cancel(reveal)
 
 		mtx.Lock()
 		round := round
@@ -183,7 +201,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phases.On(sample, func(ctx context.Context) {
+	sampleEvents.On(sample, func(ctx context.Context) {
 
 		mtx.Lock()
 		round := round
@@ -215,12 +233,6 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		checkEvery = 5
 	}
 
-	// the loop polls the current block number, calculates,and publishes only once the current phase.
-	// Each round is blocksPerRound long and is divided in to three blocksPerPhase long phases: commit, reveal, claim.
-	// The sample phase is triggered upon entering the claim phase and runs until the start of the revel phase.
-	// If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
-	// the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
-	// Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 	for {
 		select {
 		case <-s.slashedC:
@@ -258,9 +270,9 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		if currentPhase != prevPhase {
 			s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
 
-			phases.Publish(currentPhase)
+			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
-				phases.Publish(sample) // trigger sample along side the claim phase
+				sampleEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
 
