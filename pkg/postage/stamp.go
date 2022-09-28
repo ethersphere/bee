@@ -30,6 +30,14 @@ var (
 	ErrStampInvalid = errors.New("invalid stamp")
 	// ErrBucketMismatch is the error given if stamp index bucket verification fails.
 	ErrBucketMismatch = errors.New("bucket mismatch")
+	// ErrInvalidBatchID is the error returned if the batch ID is incorrect
+	ErrInvalidBatchID = errors.New("invalid batch ID")
+	// ErrInvalidBatchIndex is the error returned if the batch index is incorrect
+	ErrInvalidBatchIndex = errors.New("invalid batch index")
+	// ErrInvalidBatchTimestamp is the error returned if the batch timestamp is incorrect
+	ErrInvalidBatchTimestamp = errors.New("invalid batch timestamp")
+	// ErrInvalidBatchSignature is the error returned if the batch signature is incorrect
+	ErrInvalidBatchSignature = errors.New("invalid batch signature")
 )
 
 var _ swarm.Stamp = (*Stamp)(nil)
@@ -71,10 +79,18 @@ func (s *Stamp) Timestamp() []byte {
 // batchID[32]|index[8]|timestamp[8]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, StampSize)
-	copy(buf, s.batchID)
-	copy(buf[32:40], s.index)
-	copy(buf[40:48], s.timestamp)
-	copy(buf[48:], s.sig)
+	if n := copy(buf, s.batchID); n != 32 {
+		return nil, ErrInvalidBatchID
+	}
+	if n := copy(buf[32:40], s.index); n != 8 {
+		return nil, ErrInvalidBatchIndex
+	}
+	if n := copy(buf[40:48], s.timestamp); n != 8 {
+		return nil, ErrInvalidBatchTimestamp
+	}
+	if n := copy(buf[48:], s.sig); n != 65 {
+		return nil, ErrInvalidBatchSignature
+	}
 	return buf, nil
 }
 
