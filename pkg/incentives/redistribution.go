@@ -22,7 +22,6 @@ var (
 	ErrHasNoStake = errors.New("has no stake")
 )
 
-// current round anchor returns current neighbourhood and reserve commitment
 func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	callData, err := incentivesContractABI.Pack("isParticipatingInUpcomingRound", s.overlay, depth)
 	if err != nil {
@@ -45,15 +44,7 @@ func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	return results[0].(bool), nil
 }
 
-func (s *Service) IsWinner(ctx context.Context) (isSlashed bool, isWinner bool, err error) {
-	//TODO: Check if is Slashed,
-
-	// fetches the stake for given overlay, if stake is 0, return an error
-	stake, err := s.stakingContract.GetStake(ctx, s.overlay)
-	if len(stake.Bits()) == 0 {
-		return false, false, ErrHasNoStake
-	}
-
+func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	//winnerSeed, truthSeed, err := s.checkIsWinning(ctx)
 	//if err != nil {
 	//	return false, false, err
@@ -104,14 +95,6 @@ func (s *Service) Claim(ctx context.Context) error {
 
 	//TODO: do something with receipt
 
-	is, err := s.neighbourSelected(ctx)
-	if err != nil {
-		return err
-	}
-	if is {
-		//TODO: start sampler
-		//TODO: it also starts the revealer process if neighborhood is selected
-	}
 	return nil
 }
 
@@ -165,7 +148,7 @@ func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitm
 	return nil
 }
 
-func (s Service) ReserveSalt(ctx context.Context) ([]byte, error) {
+func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
 	callData, err := incentivesContractABI.Pack("currentRoundAnchor")
 	if err != nil {
 		return nil, err
@@ -226,28 +209,6 @@ func (s *Service) checkIsWinning(ctx context.Context) (string, string, error) {
 	}
 
 	return winnerAnchor[0].(string), truthAnchor[0].(string), nil
-}
-
-func (s *Service) neighbourSelected(ctx context.Context) (bool, error) {
-	callData, err := incentivesContractABI.Pack("isParticipatingInUpcomingRound", s.overlay)
-	if err != nil {
-		return false, err
-	}
-
-	result, err := s.txService.Call(ctx, &transaction.TxRequest{
-		To:   &s.incentivesContractAddress,
-		Data: callData,
-	})
-	if err != nil {
-		return false, err
-	}
-
-	results, err := incentivesContractABI.Unpack("isParticipatingInUpcomingRound", result)
-	if err != nil {
-		return false, err
-	}
-
-	return results[0].(bool), nil
 }
 
 func parseABI(json string) abi.ABI {
