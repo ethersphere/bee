@@ -40,7 +40,7 @@ type phaseEvents struct {
 	mtx     sync.Mutex
 }
 
-func newphaseEvents() *phaseEvents {
+func newPhaseEvents() *phaseEvents {
 	return &phaseEvents{
 		subs:    make(map[phaseType][]func(context.Context)),
 		ctx:     make(map[phaseType]context.Context),
@@ -63,10 +63,6 @@ func (ps *phaseEvents) On(phase phaseType, f func(context.Context)) {
 func (ps *phaseEvents) Publish(phase phaseType) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
-
-	if len(ps.subs[phase]) == 0 {
-		return
-	}
 
 	ctx := ps.ctx[phase]
 	for _, v := range ps.subs[phase] {
