@@ -103,7 +103,7 @@ func TestDepositStake(t *testing.T) {
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), "abc"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient staking amount"}))
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid staking amount"}))
 	})
 }
 
