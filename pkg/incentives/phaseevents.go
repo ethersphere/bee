@@ -53,6 +53,7 @@ func (ps *phaseEvents) On(phase phaseType, f func(context.Context)) {
 	defer ps.mtx.Unlock()
 
 	ps.subs[phase] = append(ps.subs[phase], f)
+
 	if _, ok := ps.ctx[phase]; !ok {
 		ctx, cancel := context.WithCancel(context.Background())
 		ps.ctx[phase] = ctx
@@ -64,9 +65,8 @@ func (ps *phaseEvents) Publish(phase phaseType) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	ctx := ps.ctx[phase]
 	for _, v := range ps.subs[phase] {
-		go v(ctx)
+		go v(ps.ctx[phase])
 	}
 }
 
@@ -75,11 +75,29 @@ func (ps *phaseEvents) Cancel(phases ...phaseType) {
 	defer ps.mtx.Unlock()
 
 	for _, phase := range phases {
-		cancel := ps.cancelF[phase]
-		cancel()
+
+		if cancel, ok := ps.cancelF[phase]; ok {
+			cancel()
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		ps.ctx[phase] = ctx
 		ps.cancelF[phase] = cancel
+	}
+}
+
+func (ps *phaseEvents) Remove(phases ...phaseType) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	for _, phase := range phases {
+
+		if cancel, ok := ps.cancelF[phase]; ok {
+			cancel()
+		}
+
+		delete(ps.ctx, phase)
+		delete(ps.subs, phase)
+		delete(ps.cancelF, phase)
 	}
 }
