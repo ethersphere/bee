@@ -30,10 +30,10 @@ var (
 	//TODO: enable below mentioned topic for receiving receipts
 	//stakeUpdatedTopic = stakingABI.Events["StakeUpdated"].ID
 
-	ErrInvalidStakeAmount = errors.New("invalid stake amount")
-	ErrInsufficientFunds  = errors.New("insufficient token balance")
-	ErrNotImplemented     = errors.New("not implemented")
-	ErrGetStakeFailed     = errors.New("get stake failed")
+	ErrInsufficentStakeAmount = errors.New("insufficient stake amount")
+	ErrInsufficientFunds      = errors.New("insufficient token balance")
+	ErrNotImplemented         = errors.New("not implemented")
+	ErrGetStakeFailed         = errors.New("get stake failed")
 
 	depositStakeDescription = "Deposit Stake"
 )
@@ -93,7 +93,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 
 func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount big.Int, nonce common.Hash) (*types.Receipt, error) {
 
-	callData, err := stakingABI.Pack("depositStake", owner, stakedAmount, nonce)
+	callData, err := stakingABI.Pack("depositStake", owner, &stakedAmount, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -129,14 +129,14 @@ func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay []byte) 
 }
 
 func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
-	prevStakedAmount, err := s.sendGetStakeTransaction(ctx, overlay.Bytes())
+	prevStakedAmount, err := s.GetStake(ctx, overlay)
 	if err != nil {
 		return err
 	}
 
-	if prevStakedAmount.Cmp(big.NewInt(0)) == -1 {
+	if len(prevStakedAmount.Bits()) == 0 {
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			return ErrInvalidStakeAmount
+			return ErrInsufficentStakeAmount
 		}
 	}
 

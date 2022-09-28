@@ -11,8 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
@@ -23,14 +22,8 @@ import (
 func TestDepositStake(t *testing.T) {
 	t.Parallel()
 
-	k, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr, err := crypto.NewOverlayAddress(k.PublicKey, 1, common.HexToHash("0x1").Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
+	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+
 	minStake := big.NewInt(1).String()
 	minStakedAmount := stakingcontract.MinimumStakeAmount
 	depositStake := func(address string, amount string) string {
@@ -43,7 +36,7 @@ func TestDepositStake(t *testing.T) {
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
 				if stakedAmount.Cmp(minStakedAmount) == -1 {
-					return stakingcontract.ErrInvalidStakeAmount
+					return stakingcontract.ErrInsufficentStakeAmount
 				}
 				return nil
 			}),
@@ -60,7 +53,7 @@ func TestDepositStake(t *testing.T) {
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
 				if stakedAmount.Cmp(invalidMinStakedAmount) == -1 {
-					return stakingcontract.ErrInvalidStakeAmount
+					return stakingcontract.ErrInsufficentStakeAmount
 				}
 				return nil
 			}),
@@ -110,21 +103,15 @@ func TestDepositStake(t *testing.T) {
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), "abc"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid staking amount"}))
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient staking amount"}))
 	})
 }
 
 func TestGetStake(t *testing.T) {
 	t.Parallel()
 
-	k, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr, err := crypto.NewOverlayAddress(k.PublicKey, 1, common.HexToHash("0x1").Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
+	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+
 	getStake := func(address string) string {
 		return fmt.Sprintf("/stake/%s", address)
 	}
@@ -138,7 +125,8 @@ func TestGetStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusOK)
+		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: big.NewInt(1)}))
 	})
 
 	t.Run("with invalid address", func(t *testing.T) {
