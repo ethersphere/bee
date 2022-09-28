@@ -37,21 +37,21 @@ func (p phaseType) string() string {
 }
 
 type phaseEvents struct {
-	on      map[phaseType][]func(context.Context)
-	once    map[phaseType][]func(context.Context)
-	ctx     map[phaseType]context.Context
-	cancelF map[phaseType]context.CancelFunc
-	mtx     sync.Mutex
-	recent  phaseType
+	on map[phaseType][]func(context.Context)
+	// once     map[phaseType][]func(context.Context)
+	ctx      map[phaseType]context.Context
+	cancelF  map[phaseType]context.CancelFunc
+	mtx      sync.Mutex
+	previous phaseType
 }
 
-func newPhaseEvents() *phaseEvents {
+func newEvents() *phaseEvents {
 	return &phaseEvents{
-		on:      make(map[phaseType][]func(context.Context)),
-		once:    make(map[phaseType][]func(context.Context)),
-		ctx:     make(map[phaseType]context.Context),
-		cancelF: make(map[phaseType]context.CancelFunc),
-		recent:  -1,
+		on: make(map[phaseType][]func(context.Context)),
+		// once:     make(map[phaseType][]func(context.Context)),
+		ctx:      make(map[phaseType]context.Context),
+		cancelF:  make(map[phaseType]context.CancelFunc),
+		previous: -1,
 	}
 }
 
@@ -68,39 +68,46 @@ func (ps *phaseEvents) On(phase phaseType, f func(context.Context)) {
 	}
 }
 
-func (ps *phaseEvents) Once(phase phaseType, f func(context.Context)) {
+// func (ps *phaseEvents) Once(phase phaseType, f func(context.Context)) {
+// 	ps.mtx.Lock()
+// 	defer ps.mtx.Unlock()
+
+// 	if _, ok := ps.ctx[phase]; !ok {
+// 		ctx, cancel := context.WithCancel(context.Background())
+// 		ps.ctx[phase] = ctx
+// 		ps.cancelF[phase] = cancel
+// 	}
+
+// 	if ps.previous == phase {
+// 		go f(ps.ctx[phase])
+// 		return
+// 	}
+
+// 	ps.once[phase] = append(ps.once[phase], f)
+// }
+
+func (ps *phaseEvents) Last() phaseType {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	if _, ok := ps.ctx[phase]; !ok {
-		ctx, cancel := context.WithCancel(context.Background())
-		ps.ctx[phase] = ctx
-		ps.cancelF[phase] = cancel
-	}
-
-	if ps.recent == phase {
-		go f(ps.ctx[phase])
-		return
-	}
-
-	ps.once[phase] = append(ps.once[phase], f)
+	return ps.previous
 }
 
 func (ps *phaseEvents) Publish(phase phaseType) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	ps.recent = phase
+	ps.previous = phase
 
 	for _, v := range ps.on[phase] {
 		go v(ps.ctx[phase])
 	}
 
-	for _, v := range ps.once[phase] {
-		go v(ps.ctx[phase])
-	}
+	// for _, v := range ps.once[phase] {
+	// 	go v(ps.ctx[phase])
+	// }
 
-	delete(ps.once, phase)
+	// delete(ps.once, phase)
 }
 
 func (ps *phaseEvents) Cancel(phases ...phaseType) {
