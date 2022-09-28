@@ -6,6 +6,7 @@ package incentives_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -76,10 +77,15 @@ func Test(t *testing.T) {
 			addr := test.RandomAddress()
 
 			backend := &mockchainBackend{
-				limit:         tc.limit,
-				limitCallback: func() { wait <- struct{}{} },
-				incrementBy:   tc.incrementBy,
-				block:         tc.blocksPerRound}
+				limit: tc.limit,
+				limitCallback: func() {
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
+				},
+				incrementBy: tc.incrementBy,
+				block:       tc.blocksPerRound}
 			contract := &mockContract{t: t, baseAddr: addr}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
@@ -142,6 +148,7 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 		m.block += m.incrementBy
 	} else if m.limitCallback != nil {
 		m.limitCallback()
+		return 0, errors.New("reached limit")
 	}
 
 	return ret, nil
