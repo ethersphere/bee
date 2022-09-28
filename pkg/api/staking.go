@@ -36,7 +36,7 @@ type getStakeResponse struct {
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
 	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.logger.Debug("get stake: decode overlay address failed", "string", overlayAddr, "error", err)
+		s.logger.Debug("get stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
 		s.logger.Error(nil, "get stake: decode overlay address failed")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
