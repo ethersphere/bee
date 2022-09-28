@@ -100,32 +100,39 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		obfuscationKey []byte
 		storageRadius  uint8
 		phases         = newPhaseEvents()
+		sampleEvents   = newPhaseEvents()
 	)
 
 	// cancel all possible running phases
-	defer phases.Remove(commit, claim, reveal, sample)
+	defer phases.Close()
+	defer sampleEvents.Close()
 
 	phases.On(commit, func(ctx context.Context) {
 
 		phases.Cancel(claim)
 
-		mtx.Lock()
-		round := round
-		sampleRound := sampleRound
-		mtx.Unlock()
+		sampleEvents.Once(sampleEnd, func(context.Context) {
 
-		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			obf, err := s.commit(ctx, storageRadius, reserveSample)
-			if err != nil {
-				s.logger.Error(err, "commit")
-			} else {
-				mtx.Lock()
-				obfuscationKey = obf
-				commitRound = round
-				mtx.Unlock()
-				s.logger.Debug("commit phase")
+			mtx.Lock()
+			round := round
+			sampleRound := sampleRound
+			storageRadius := storageRadius
+			reserveSample := reserveSample
+			mtx.Unlock()
+
+			if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
+				obf, err := s.commit(ctx, storageRadius, reserveSample)
+				if err != nil {
+					s.logger.Error(err, "commit")
+				} else {
+					mtx.Lock()
+					obfuscationKey = obf
+					commitRound = round
+					mtx.Unlock()
+					s.logger.Debug("commit phase")
+				}
 			}
-		}
+		})
 	})
 
 	phases.On(reveal, func(ctx context.Context) {
@@ -135,6 +142,9 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Lock()
 		round := round
 		commitRound := commitRound
+		storageRadius := storageRadius
+		reserveSample := reserveSample
+		obfuscationKey := obfuscationKey
 		mtx.Unlock()
 
 		if round == commitRound { // reveal requires the obfuscationKey from the same round
@@ -173,7 +183,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phases.On(sample, func(ctx context.Context) {
+	sampleEvents.On(sample, func(ctx context.Context) {
 
 		mtx.Lock()
 		round := round
@@ -190,6 +200,8 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			s.logger.Debug("made sample", "round", round)
 			mtx.Unlock()
 		}
+
+		sampleEvents.Publish(sampleEnd)
 	})
 
 	var (
@@ -247,10 +259,8 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
 
 			phases.Publish(currentPhase)
-
-			// trigger sample task along side the claim phase
 			if currentPhase == claim {
-				phases.Publish(sample)
+				sampleEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
 
