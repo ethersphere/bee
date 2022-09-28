@@ -86,6 +86,8 @@ func Test(t *testing.T) {
 
 			<-wait
 
+			time.Sleep(time.Millisecond * 500)
+
 			if int(contract.commitCalls.Load()) != tc.expectedCalls {
 				t.Fatalf("got %d, want %d", contract.commitCalls.Load(), tc.expectedCalls)
 			}
