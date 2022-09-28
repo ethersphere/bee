@@ -31,10 +31,12 @@ type Monitor interface {
 	IsStable() bool
 }
 
+var ErrSlashed = errors.New("slashed")
+
 type IncentivesContract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
-	IsWinner(context.Context) (bool, error)
+	IsWinner(context.Context) (bool, bool, error)
 	Claim(context.Context) error
 	Commit(context.Context, []byte) error
 	Reveal(context.Context, uint8, []byte, []byte) error
@@ -51,7 +53,7 @@ type Agent struct {
 	reserve  postage.Storer
 	sampler  Sampler
 	overlay  swarm.Address
-	cancelC  chan struct{}
+	slashedC chan struct{}
 	quit     chan struct{}
 	wg       sync.WaitGroup
 }
@@ -74,7 +76,7 @@ func New(
 		reserve:  reserve,
 		monitor:  monitor,
 		sampler:  sampler,
-		cancelC:  make(chan struct{}),
+		slashedC: make(chan struct{}),
 		quit:     make(chan struct{}),
 	}
 
@@ -101,11 +103,9 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	)
 
 	// cancel all possible running phases
-	defer phases.Cancel(commit, claim, reveal, sample)
+	defer phases.Remove(commit, claim, reveal, sample)
 
 	phases.On(commit, func(ctx context.Context) {
-		s.wg.Add(1)
-		defer s.wg.Done()
 
 		phases.Cancel(claim)
 
@@ -129,8 +129,6 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	phases.On(reveal, func(ctx context.Context) {
-		s.wg.Add(1)
-		defer s.wg.Done()
 
 		phases.Cancel(commit, sample)
 
@@ -153,8 +151,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	phases.On(claim, func(ctx context.Context) {
-		s.wg.Add(1)
-		defer s.wg.Done()
+
 		phases.Cancel(reveal)
 
 		mtx.Lock()
@@ -166,6 +163,10 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			err := s.claim(ctx)
 			if err != nil {
 				s.logger.Error(err, "attempt claim")
+				if errors.Is(err, ErrSlashed) {
+					s.logger.Info("slashed error returned, quiting incentives agent")
+					close(s.slashedC)
+				}
 			} else {
 				s.logger.Debug("claim phase")
 			}
@@ -173,8 +174,6 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	phases.On(sample, func(ctx context.Context) {
-		s.wg.Add(1)
-		defer s.wg.Done()
 
 		mtx.Lock()
 		round := round
@@ -212,6 +211,8 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	// Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 	for {
 		select {
+		case <-s.slashedC:
+			return
 		case <-s.quit:
 			return
 		case <-time.After(blockTime * time.Duration(checkEvery)):
@@ -265,10 +266,15 @@ func (s *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 
 func (s *Agent) claim(ctx context.Context) error {
 
-	isWinner, err := s.contract.IsWinner(ctx)
+	isSlashed, isWinner, err := s.contract.IsWinner(ctx)
 	if err != nil {
 		return err
 	}
+
+	if isSlashed {
+		return ErrSlashed
+	}
+
 	if isWinner {
 		err = s.contract.Claim(ctx)
 		if err != nil {
