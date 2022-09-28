@@ -36,36 +36,35 @@ func Test(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  10,
 		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
+	}, {
+		name:           "3 blocks per phase, block number returns every block",
+		blocksPerRound: 9,
+		blocksPerPhase: 3,
+		incrementBy:    1,
+		expectedCalls:  10,
+		limit:          108,
+	}, {
+		name:           "3 blocks per phase, block number returns every other block",
+		blocksPerRound: 9,
+		blocksPerPhase: 3,
+		incrementBy:    2,
+		expectedCalls:  10,
+		limit:          108,
+	}, {
+		name:           "no expected calls - block number returns late after each phase",
+		blocksPerRound: 9,
+		blocksPerPhase: 3,
+		incrementBy:    6,
+		expectedCalls:  0,
+		limit:          108,
+	}, {
+		name:           "4 blocks per phase, block number returns every other block",
+		blocksPerRound: 12,
+		blocksPerPhase: 4,
+		incrementBy:    2,
+		expectedCalls:  10,
+		limit:          144,
 	},
-	// {
-	// 	name:           "3 blocks per phase, block number returns every block",
-	// 	blocksPerRound: 9,
-	// 	blocksPerPhase: 3,
-	// 	incrementBy:    1,
-	// 	expectedCalls:  10,
-	// 	limit:          108,
-	// }, {
-	// 	name:           "3 blocks per phase, block number returns every other block",
-	// 	blocksPerRound: 9,
-	// 	blocksPerPhase: 3,
-	// 	incrementBy:    2,
-	// 	expectedCalls:  10,
-	// 	limit:          108,
-	// }, {
-	// 	name:           "no expected calls - block number returns late after each phase",
-	// 	blocksPerRound: 9,
-	// 	blocksPerPhase: 3,
-	// 	incrementBy:    6,
-	// 	expectedCalls:  0,
-	// 	limit:          108,
-	// }, {
-	// 	name:           "4 blocks per phase, block number returns every other block",
-	// 	blocksPerRound: 12,
-	// 	blocksPerPhase: 4,
-	// 	incrementBy:    2,
-	// 	expectedCalls:  10,
-	// 	limit:          144,
-	// }
 	}
 
 	for _, tc := range tests {
@@ -178,7 +177,7 @@ func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
 	return true, nil
 }
 
-func (m *mockContract) IsWinner(context.Context) (bool, error) {
+func (m *mockContract) IsWinner(context.Context) (bool, bool, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.isWinnerCalls.Inc()
@@ -186,7 +185,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 		m.t.Fatal("previous call must be reveal")
 	}
 	m.previousCall = isWinnerCall
-	return false, nil
+	return false, false, nil
 }
 
 func (m *mockContract) Claim(context.Context) error {
