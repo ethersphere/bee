@@ -19,10 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	ErrSlashed = errors.New("slashed")
-)
-
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
 }
@@ -63,7 +59,7 @@ func (p phaseType) string() string {
 type IncentivesContract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
-	IsWinner(context.Context) (bool, bool, error)
+	IsWinner(context.Context) (bool, error)
 	Claim(context.Context) error
 	Commit(context.Context, []byte) error
 	Reveal(context.Context, uint8, []byte, []byte) error
@@ -240,10 +236,6 @@ func (s *Service) start(blockTime time.Duration, startBlock, blocksPerRound, blo
 					err = s.claim(ctx)
 					if err != nil {
 						s.logger.Error(err, "attempt claim")
-						if errors.Is(err, ErrSlashed) {
-							s.logger.Info("slashed error, quiting incentives agent")
-							close(s.stopC)
-						}
 					} else {
 						s.logger.Debug("claim phase")
 					}
@@ -269,12 +261,9 @@ func (s *Service) reveal(ctx context.Context, storageRadius uint8, sample, obfus
 
 func (s *Service) claim(ctx context.Context) error {
 
-	isSlashed, isWinner, err := s.contract.IsWinner(ctx)
+	isWinner, err := s.contract.IsWinner(ctx)
 	if err != nil {
 		return err
-	}
-	if isSlashed {
-		return ErrSlashed
 	}
 	if isWinner {
 		err = s.contract.Claim(ctx)
