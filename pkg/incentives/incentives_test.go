@@ -95,7 +95,7 @@ func Test(t *testing.T) {
 			}
 
 			if int(contract.isWinnerCalls.Load()) != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.revealCalls.Load(), tc.expectedCalls)
+				t.Fatalf("got %d, want %d", contract.isWinnerCalls.Load(), tc.expectedCalls)
 			}
 
 			err := service.Close()
