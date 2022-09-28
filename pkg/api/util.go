@@ -8,10 +8,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
+	"mime"
 	"reflect"
 	"strconv"
 	"strings"
 
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -90,6 +93,14 @@ var flattenErrorsFormat = func(es []error) string {
 	)
 }
 
+// preParseHooks is a set of hooks that are called before the value is parsed.
+var preParseHooks = map[string]func(v string) (string, error){
+	"mimeMediaType": func(v string) (string, error) {
+		typ, _, err := mime.ParseMediaType(v)
+		return typ, err
+	},
+}
+
 // parse parses the input and sets the output values.
 // The input is on of the following:
 //   - map[string]string
@@ -105,6 +116,8 @@ var flattenErrorsFormat = func(es []error) string {
 //   - float32, float64
 //   - []byte
 //   - string
+//   - big.Int
+//   - swarm.Address
 //
 // The output struct fields can contain the
 // `parse` tag that refers to the map input key.
@@ -152,13 +165,78 @@ func parse(input, output interface{}) error {
 	}
 	outputVal = outputVal.Elem()
 
+	// set is the workhorse here, parsing and setting the values.
+	var set func(string, string, reflect.Value) error
+	set = func(param, value string, field reflect.Value) error {
+		switch fieldKind := field.Kind(); fieldKind {
+		case reflect.Bool:
+			val, err := strconv.ParseBool(value)
+			if err != nil {
+				return newParseError(param, value, err)
+			}
+			field.SetBool(val)
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			val, err := strconv.ParseUint(value, 10, numberSize(fieldKind))
+			if err != nil {
+				return newParseError(param, value, err)
+			}
+			field.SetUint(val)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			val, err := strconv.ParseInt(value, 10, numberSize(fieldKind))
+			if err != nil {
+				return newParseError(param, value, err)
+			}
+			field.SetInt(val)
+		case reflect.Float32, reflect.Float64:
+			val, err := strconv.ParseFloat(value, numberSize(fieldKind))
+			if err != nil {
+				return newParseError(param, value, err)
+			}
+			field.SetFloat(val)
+		case reflect.Slice:
+			if value == "" {
+				return nil // Nil slice.
+			}
+			val, err := hex.DecodeString(value)
+			if err != nil {
+				return newParseError(param, value, err)
+			}
+			field.SetBytes(val)
+		case reflect.String:
+			field.SetString(value)
+		case reflect.Struct:
+			switch field.Interface().(type) {
+			case big.Int:
+				val, ok := new(big.Int).SetString(value, 10)
+				if !ok {
+					return newParseError(param, value, errors.New("invalid value"))
+				}
+				field.Set(reflect.ValueOf(*val))
+			case swarm.Address:
+				addr, err := swarm.ParseHexAddress(value)
+				if err != nil {
+					return newParseError(param, value, err)
+				}
+				field.Set(reflect.ValueOf(addr))
+			}
+		default:
+			return fmt.Errorf("unsupported type %T", field.Interface())
+		}
+		return nil
+	}
+
 	// Parse input into output.
 	pErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
 	for i := 0; i < outputVal.NumField(); i++ {
+		apply := func(v string) (string, error) { return v, nil }
 		param := outputVal.Type().Field(i).Name
 		val, ok := outputVal.Type().Field(i).Tag.Lookup(parseTagName)
 		if ok {
-			param = val
+			elems := strings.SplitN(val, ",", 2)
+			param = elems[0]
+			if len(elems) > 1 {
+				apply = preParseHooks[elems[1]]
+			}
 		}
 
 		mKey := reflect.ValueOf(param)
@@ -166,51 +244,15 @@ func parse(input, output interface{}) error {
 		if !mVal.IsValid() {
 			continue
 		}
-		value := flattenValue(mVal).String()
 
-		switch fieldKind := outputVal.Field(i).Kind(); fieldKind {
-		case reflect.Bool:
-			val, err := strconv.ParseBool(value)
-			if err != nil {
-				pErrs = multierror.Append(pErrs, newParseError(param, value, err))
-				continue
-			}
-			outputVal.Field(i).SetBool(val)
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			val, err := strconv.ParseUint(value, 10, numberSize(fieldKind))
-			if err != nil {
-				pErrs = multierror.Append(pErrs, newParseError(param, value, err))
-				continue
-			}
-			outputVal.Field(i).SetUint(val)
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			val, err := strconv.ParseInt(value, 10, numberSize(fieldKind))
-			if err != nil {
-				pErrs = multierror.Append(pErrs, newParseError(param, value, err))
-				continue
-			}
-			outputVal.Field(i).SetInt(val)
-		case reflect.Float32, reflect.Float64:
-			val, err := strconv.ParseFloat(value, numberSize(fieldKind))
-			if err != nil {
-				pErrs = multierror.Append(pErrs, newParseError(param, value, err))
-				continue
-			}
-			outputVal.Field(i).SetFloat(val)
-		case reflect.Slice:
-			if value == "" {
-				continue // Nil slice.
-			}
-			val, err := hex.DecodeString(value)
-			if err != nil {
-				pErrs = multierror.Append(pErrs, newParseError(param, value, err))
-				continue
-			}
-			outputVal.Field(i).SetBytes(val)
-		case reflect.String:
-			outputVal.Field(i).SetString(value)
-		default:
-			return fmt.Errorf("unsupported type %T", outputVal.Field(i).Interface())
+		value, err := apply(flattenValue(mVal).String())
+		if err != nil {
+			pErrs = multierror.Append(pErrs, newParseError(param, value, err))
+			continue
+		}
+
+		if err := set(param, value, outputVal.Field(i)); err != nil {
+			pErrs = multierror.Append(pErrs, newParseError(param, value, err))
 		}
 	}
 	return pErrs.ErrorOrNil()
