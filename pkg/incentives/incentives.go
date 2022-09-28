@@ -190,7 +190,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		if round == revealRound { // to claim, previous reveal must've happened in the same round
 			err := s.claim(ctx)
 			if err != nil {
-				s.logger.Error(err, "attempt claim")
+				s.logger.Error(err, "claim")
 				if errors.Is(err, ErrSlashed) {
 					s.logger.Info("slashed error returned, quiting incentives agent")
 					close(s.slashedC)
@@ -215,7 +215,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			sampleRound = round
 			reserveSample = smpl
 			storageRadius = sr
-			s.logger.Debug("made sample", "round", round)
+			s.logger.Info("produced reserve sample", "round", round)
 			mtx.Unlock()
 		}
 
