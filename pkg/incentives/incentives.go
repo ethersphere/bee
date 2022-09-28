@@ -183,7 +183,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	sampleEvents.On(sample, func(ctx context.Context) {
+	phases.On(sample, func(ctx context.Context) {
 
 		mtx.Lock()
 		round := round
@@ -260,7 +260,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 			phases.Publish(currentPhase)
 			if currentPhase == claim {
-				sampleEvents.Publish(sample) // trigger sample along side the claim phase
+				phases.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
 
