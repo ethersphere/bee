@@ -67,6 +67,8 @@ jobs:
           name: temp-artifacts
           path: |
             artifacts.tar.gz
+            ~/.beekeeper
+            ~/.beekeeper.yaml
           retention-days: 5
   beekeeper:
     name: Integration tests
