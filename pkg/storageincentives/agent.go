@@ -136,20 +136,20 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	// when the sample finishes, if we are in the commit phase, run commit
-	phaseEvents.On(sampleEnd, func(ctx context.Context, previous phaseType) {
+	phaseEvents.On(sampleEnd, func(ctx context.Context, previous PhaseType) {
 		if previous == commit {
 			commitF(ctx)
 		}
 	})
 
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context, previous phaseType) {
+	phaseEvents.On(commit, func(ctx context.Context, previous PhaseType) {
 		if previous == sampleEnd {
 			commitF(ctx)
 		}
 	})
 
-	phaseEvents.On(reveal, func(ctx context.Context, _ phaseType) {
+	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
 
 		// cancel previous executions of the commit and sample phases
 		phaseEvents.Cancel(commit, sample, sampleEnd)
@@ -175,7 +175,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phaseEvents.On(claim, func(ctx context.Context, _ phaseType) {
+	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
 
 		phaseEvents.Cancel(reveal)
 
@@ -198,7 +198,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phaseEvents.On(sample, func(ctx context.Context, _ phaseType) {
+	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
 
 		mtx.Lock()
 		round := round
@@ -220,8 +220,8 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	var (
-		prevPhase    phaseType = -1
-		currentPhase phaseType
+		prevPhase    PhaseType = -1
+		currentPhase PhaseType
 		checkEvery   uint64 = 1
 	)
 
