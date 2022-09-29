@@ -26,8 +26,6 @@ var (
 	erc20ABI = parseABI(sw3abi.ERC20ABIv0_3_1)
 	//TODO: get ABI for staking contract and replace it below
 	stakingABI = parseABI(sw3abi.ERC20ABIv0_3_1)
-	//TODO: enable below mentioned topic for receiving receipts
-	//stakeUpdatedTopic = stakingABI.Events["StakeUpdated"].ID
 
 	ErrInsufficentStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds      = errors.New("insufficient token balance")
