@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package incentives_test
+package storageincentives_test
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/incentives"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"go.uber.org/atomic"
@@ -116,12 +116,12 @@ func Test(t *testing.T) {
 
 func createService(
 	addr swarm.Address,
-	backend incentives.ChainBackend,
-	contract incentives.IncentivesContract,
+	backend storageincentives.ChainBackend,
+	contract storageincentives.IncentivesContract,
 	blocksPerRound uint64,
-	blocksPerPhase uint64) *incentives.Agent {
+	blocksPerPhase uint64) *storageincentives.Agent {
 
-	return incentives.New(
+	return storageincentives.New(
 		addr,
 		backend,
 		log.Noop,
