@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package incentives
+package storageincentives
 
 import (
 	"context"
@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+const loggerName = "incentives"
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
@@ -42,8 +44,6 @@ type IncentivesContract interface {
 	Reveal(context.Context, uint8, []byte, []byte) error
 	WrapCommit(uint8, []byte, []byte, []byte) ([]byte, error)
 }
-
-const loggerName = "incentives"
 
 type Agent struct {
 	logger   log.Logger
@@ -106,12 +106,10 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		obfuscationKey []byte
 		storageRadius  uint8
 		phaseEvents    = newEvents()
-		sampleEvents   = newEvents()
 	)
 
 	// cancel all possible running phases
 	defer phaseEvents.Close()
-	defer sampleEvents.Close()
 
 	commitF := func(ctx context.Context) {
 		phaseEvents.Cancel(claim)
@@ -138,24 +136,23 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	// when the sample finishes, if we are in the commit phase, run commit
-	sampleEvents.On(sampleEnd, func(ctx context.Context) {
-		if phaseEvents.Last() == commit {
+	phaseEvents.On(sampleEnd, func(ctx context.Context, previous phaseType) {
+		if previous == commit {
 			commitF(ctx)
 		}
 	})
 
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context) {
-		if sampleEvents.Last() == sampleEnd {
+	phaseEvents.On(commit, func(ctx context.Context, previous phaseType) {
+		if previous == sampleEnd {
 			commitF(ctx)
 		}
 	})
 
-	phaseEvents.On(reveal, func(ctx context.Context) {
+	phaseEvents.On(reveal, func(ctx context.Context, _ phaseType) {
 
 		// cancel previous executions of the commit and sample phases
-		phaseEvents.Cancel(commit)
-		sampleEvents.Cancel(sample, sampleEnd)
+		phaseEvents.Cancel(commit, sample, sampleEnd)
 
 		mtx.Lock()
 		round := round
@@ -178,7 +175,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phaseEvents.On(claim, func(ctx context.Context) {
+	phaseEvents.On(claim, func(ctx context.Context, _ phaseType) {
 
 		phaseEvents.Cancel(reveal)
 
@@ -201,7 +198,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	sampleEvents.On(sample, func(ctx context.Context) {
+	phaseEvents.On(sample, func(ctx context.Context, _ phaseType) {
 
 		mtx.Lock()
 		round := round
@@ -219,7 +216,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			mtx.Unlock()
 		}
 
-		sampleEvents.Publish(sampleEnd)
+		phaseEvents.Publish(sampleEnd)
 	})
 
 	var (
@@ -268,11 +265,11 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		// write the current phase only once
 		if currentPhase != prevPhase {
-			s.logger.Info("entering phase", "phase", currentPhase.string(), "round", round, "block", block)
+			s.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
-				sampleEvents.Publish(sample) // trigger sample along side the claim phase
+				phaseEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
 
