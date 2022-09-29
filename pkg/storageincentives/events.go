@@ -9,17 +9,17 @@ import (
 	"sync"
 )
 
-type phaseType int
+type PhaseType int
 
 const (
-	commit phaseType = iota + 1
+	commit PhaseType = iota + 1
 	reveal
 	claim
 	sample
 	sampleEnd
 )
 
-func (p phaseType) String() string {
+func (p PhaseType) String() string {
 	switch p {
 	case commit:
 		return "commit"
@@ -38,23 +38,23 @@ func (p phaseType) String() string {
 
 type events struct {
 	mtx      sync.Mutex
-	previous phaseType
-	ev       map[phaseType]*event
+	previous PhaseType
+	ev       map[PhaseType]*event
 }
 
 type event struct {
-	funcs  []func(context.Context, phaseType)
+	funcs  []func(context.Context, PhaseType)
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 func newEvents() *events {
 	return &events{
-		ev: make(map[phaseType]*event),
+		ev: make(map[PhaseType]*event),
 	}
 }
 
-func (e *events) On(phase phaseType, f func(context.Context, phaseType)) {
+func (e *events) On(phase PhaseType, f func(context.Context, PhaseType)) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
@@ -62,10 +62,11 @@ func (e *events) On(phase phaseType, f func(context.Context, phaseType)) {
 		ctx, cancel := context.WithCancel(context.Background())
 		e.ev[phase] = &event{ctx: ctx, cancel: cancel}
 	}
+
 	e.ev[phase].funcs = append(e.ev[phase].funcs, f)
 }
 
-func (e *events) Publish(phase phaseType) {
+func (e *events) Publish(phase PhaseType) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
@@ -77,14 +78,14 @@ func (e *events) Publish(phase phaseType) {
 	e.previous = phase
 }
 
-func (e *events) Cancel(phases ...phaseType) {
+func (e *events) Cancel(phases ...PhaseType) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
 	for _, phase := range phases {
 		if ev, ok := e.ev[phase]; ok {
-			ctx, cancel := context.WithCancel(context.Background())
 			ev.cancel()
+			ctx, cancel := context.WithCancel(context.Background())
 			ev.ctx = ctx
 			ev.cancel = cancel
 		}
