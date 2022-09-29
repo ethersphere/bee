@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package incentives
+package contract
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
@@ -21,6 +23,40 @@ var (
 
 	ErrHasNoStake = errors.New("has no stake")
 )
+
+const loggerName = "redistributionContract"
+
+type Interface interface {
+	ReserveSalt(context.Context) ([]byte, error)
+	IsPlaying(context.Context, uint8) (bool, error)
+	IsWinner(context.Context) (bool, error)
+	Claim(context.Context) error
+	Commit(context.Context, []byte) error
+	Reveal(context.Context, uint8, []byte, []byte) error
+}
+
+type Service struct {
+	overlay                   common.Hash
+	logger                    log.Logger
+	txService                 transaction.Service
+	incentivesContractAddress common.Address
+}
+
+func New(
+	overlay common.Hash,
+	logger log.Logger,
+	txService transaction.Service,
+	incentivesContractAddress common.Address,
+) *Service {
+
+	s := &Service{
+		overlay:                   overlay,
+		logger:                    logger.WithName(loggerName).Register(),
+		txService:                 txService,
+		incentivesContractAddress: incentivesContractAddress,
+	}
+	return s
+}
 
 func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	callData, err := incentivesContractABI.Pack("isParticipatingInUpcomingRound", s.overlay, depth)
@@ -52,7 +88,7 @@ func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 
 	callData, err := incentivesContractABI.Pack("isWinner", s.overlay)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 
 	result, err := s.txService.Call(ctx, &transaction.TxRequest{
@@ -60,15 +96,15 @@ func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 		Data: callData,
 	})
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 
 	results, err := incentivesContractABI.Unpack("isWinner", result)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 
-	return false, results[0].(bool), nil
+	return results[0].(bool), nil
 }
 
 func (s *Service) Claim(ctx context.Context) error {
@@ -92,8 +128,6 @@ func (s *Service) Claim(ctx context.Context) error {
 	if receipt.Status == 0 {
 		return transaction.ErrTransactionReverted
 	}
-
-	//TODO: do something with receipt
 
 	return nil
 }

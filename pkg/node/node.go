@@ -38,6 +38,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
+	"github.com/ethersphere/bee/pkg/incentives/contract"
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
@@ -984,26 +985,29 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
+	redistributionService := contract.New(overlayEthAddress.Hash(), logger, transactionService, chainCfg.Redistribution)
+
 	extraOpts := api.ExtraOptions{
-		Pingpong:         pingPong,
-		TopologyDriver:   kad,
-		LightNodes:       lightNodes,
-		Accounting:       acc,
-		Pseudosettle:     pseudosettleService,
-		Swap:             swapService,
-		Chequebook:       chequebookService,
-		BlockTime:        big.NewInt(int64(o.BlockTime)),
-		Tags:             tagService,
-		Storer:           ns,
-		Resolver:         multiResolver,
-		Pss:              pssService,
-		TraversalService: traversalService,
-		Pinning:          pinningService,
-		FeedFactory:      feedFactory,
-		Post:             post,
-		PostageContract:  postageContractService,
-		Steward:          steward,
-		SyncStatus:       syncStatusFn,
+		Pingpong:               pingPong,
+		TopologyDriver:         kad,
+		LightNodes:             lightNodes,
+		Accounting:             acc,
+		Pseudosettle:           pseudosettleService,
+		Swap:                   swapService,
+		Chequebook:             chequebookService,
+		BlockTime:              big.NewInt(int64(o.BlockTime)),
+		Tags:                   tagService,
+		Storer:                 ns,
+		Resolver:               multiResolver,
+		Pss:                    pssService,
+		TraversalService:       traversalService,
+		Pinning:                pinningService,
+		FeedFactory:            feedFactory,
+		Post:                   post,
+		PostageContract:        postageContractService,
+		RedistributionContract: redistributionService,
+		Steward:                steward,
+		SyncStatus:             syncStatusFn,
 	}
 
 	if o.APIAddr != "" {
