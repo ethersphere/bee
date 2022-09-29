@@ -7,18 +7,25 @@ on:
     branches:
       - '**'
 
+env:
+  REPLICA: 3
+  RUN_TYPE: "PR RUN"
+  SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+  BEELOCAL_BRANCH: "faster-beekeeper"
+  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_METRICS_ENABLED: false
+  REACHABILITY_OVERRIDE_PUBLIC: true
+  BATCHFACTOR_OVERRIDE_PUBLIC: 2
+  TIMEOUT: 10m
+  BUCKET_NAME: swarm-beekeeper-artifacts
+  AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+  AWS_EC2_METADATA_DISABLED: true
+  AWS_ENDPOINT: fra1.digitaloceanspaces.com
+  VERTAG: ${GITHUB_RUN_ID}
 jobs:
-  beekeeper:
-    name: Integration tests
-    env:
-      REPLICA: 3
-      RUN_TYPE: "PR RUN"
-      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
-      BEEKEEPER_METRICS_ENABLED: false
-      REACHABILITY_OVERRIDE_PUBLIC: true
-      BATCHFACTOR_OVERRIDE_PUBLIC: 2
-      TIMEOUT: 10m
+  init:
+    name: Init
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
@@ -36,12 +43,6 @@ jobs:
         with:
           ref: ${{ github.event.client_payload.ref }}
           fetch-depth: 1
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            /tmp/k3s-v1.20.15+k3s1
-          key: k3s-v1.20.15+k3s1
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
@@ -51,18 +52,53 @@ jobs:
         run: |
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
+      - name: Install beekeeper
+        run: |
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=.
+      - name: Move bee
+        run: |
+          mv dist/bee bee
+      - uses: actions/upload-artifact@v3
+        with:
+          name: artifacts
+          path: |
+            Dockerfile.goreleaser
+            Makefile
+            bee
+            beekeeper
+          retention-days: 5
+  beekeeper:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: [init]
+    steps:
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            /tmp/k3s-v1.20.15+k3s1
+          key: k3s-v1.20.15+k3s1
+      - name: 'Download Artifact'
+        uses: actions/download-artifact@v3
+        with:
+          name: artifacts
+          path: artifacts.tar
+      - name: Unpack artifacts
+        run: |
+          tar xvzf artifacts.tar
+          sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
           printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
-          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
+          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set local cluster
         run: |
-          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
       - name: Test pingpong
         id: pingpong
@@ -105,12 +141,6 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
-          export BUCKET_NAME=swarm-beekeeper-artifacts
-          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
-          export AWS_EC2_METADATA_DISABLED=true
-          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
-          export VERTAG=${GITHUB_RUN_ID}
           bash .github/bin/beekeeper_artifacts.sh local-dns
           export FAILED='no-test'
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
@@ -136,59 +166,35 @@ jobs:
           path: dump/
   beekeeper-clef:
     name: Integration tests (clef enabled)
-    env:
-      REPLICA: 3
-      RUN_TYPE: "PR RUN"
-      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
-      BEEKEEPER_METRICS_ENABLED: false
-      REACHABILITY_OVERRIDE_PUBLIC: true
-      BATCHFACTOR_OVERRIDE_PUBLIC: 2
-      TIMEOUT: 10m
     runs-on: ubuntu-latest
+    needs: [init]
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: '1.17'
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action != 'beekeeper'
-        with:
-          fetch-depth: 1
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action == 'beekeeper'
-        with:
-          ref: ${{ github.event.client_payload.ref }}
-          fetch-depth: 1
       - name: Cache
         uses: actions/cache@v2
         with:
           path: |
             /tmp/k3s-v1.20.15+k3s1
           key: k3s-v1.20.15+k3s1
-      - name: Cache Go modules
-        uses: actions/cache@v2
+      - name: 'Download Artifact'
+        uses: actions/download-artifact@v3
         with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
-      - name: Apply patches
+          name: artifacts
+          path: artifacts.tar
+      - name: Unpack artifacts
         run: |
-          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/service.go .github/patches/postageservice.patch
+          tar xvzf artifacts.tar
+          sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
           printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
-          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
+          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set local cluster
         run: |
-          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-clef
       - name: Test pingpong
         id: pingpong
@@ -202,12 +208,6 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
-          export BUCKET_NAME=swarm-beekeeper-artifacts
-          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
-          export AWS_EC2_METADATA_DISABLED=true
-          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
-          export VERTAG=${GITHUB_RUN_ID}
           bash .github/bin/beekeeper_artifacts.sh local-clef
           export FAILED='no-test'
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
@@ -226,52 +226,27 @@ jobs:
           path: dump/
   beekeeper-si:
     name: Integration tests (storage incentives)
-    env:
-      REPLICA: 3
-      RUN_TYPE: "PR RUN"
-      SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-      BEEKEEPER_BRANCH: "master"
-      BEEKEEPER_METRICS_ENABLED: false
-      REACHABILITY_OVERRIDE_PUBLIC: true
-      BATCHFACTOR_OVERRIDE_PUBLIC: 2
-      TIMEOUT: 10m
+    needs: [init]
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: '1.17'
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action != 'beekeeper'
-        with:
-          fetch-depth: 1
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action == 'beekeeper'
-        with:
-          ref: ${{ github.event.client_payload.ref }}
-          fetch-depth: 1
       - name: Cache
         uses: actions/cache@v2
         with:
           path: |
             /tmp/k3s-v1.20.15+k3s1
           key: k3s-v1.20.15+k3s1
-      - name: Cache Go modules
-        uses: actions/cache@v2
+      - name: 'Download Artifact'
+        uses: actions/download-artifact@v3
         with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
-      - name: Apply patches
+          name: artifacts
+          path: artifacts.tar
+      - name: Unpack artifacts
         run: |
-          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/service.go .github/patches/postageservice.patch
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
+          tar xvzf artifacts.tar
+          sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
           printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
-          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin BEEKEEPER_USE_SUDO=true
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
@@ -290,12 +265,6 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
-          export BUCKET_NAME=swarm-beekeeper-artifacts
-          export AWS_ACCESS_KEY_ID=${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-          export AWS_SECRET_ACCESS_KEY=${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
-          export AWS_EC2_METADATA_DISABLED=true
-          export AWS_ENDPOINT=fra1.digitaloceanspaces.com
-          export VERTAG=${GITHUB_RUN_ID}
           bash .github/bin/beekeeper_artifacts.sh local-gc
           export FAILED='no-test'
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
@@ -318,32 +287,15 @@ jobs:
     needs: [beekeeper, beekeeper-si, beekeeper-clef]
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
+      - name: 'Download Artifact'
+        uses: actions/download-artifact@v3
         with:
-          go-version: '1.17'
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action != 'beekeeper'
-        with:
-          fetch-depth: 1
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action == 'beekeeper'
-        with:
-          ref: ${{ github.event.client_payload.ref }}
-          fetch-depth: 1
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            /tmp/k3s-v1.20.15+k3s1
-          key: k3s-v1.20.15+k3s1
-      - name: Cache Go modules
-        uses: actions/cache@v2
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
+          name: artifacts
+          path: artifacts.tar
+      - name: Unpack artifacts
+        run: |
+          tar xvzf artifacts.tar
+          sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Build image
         run: |
           printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
