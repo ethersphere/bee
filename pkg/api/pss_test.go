@@ -9,10 +9,12 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,17 +35,11 @@ import (
 )
 
 var (
-	target  = pss.Target([]byte{1})
-	targets = pss.Targets([]pss.Target{target})
-	payload = []byte("testdata")
-	topic   = pss.NewTopic("testtopic")
-	// mTimeout is used to wait for checking the message contents, whereas rTimeout
-	// is used to wait for reading the message. For the negative cases, i.e. ensuring
-	// no message is received, the rTimeout might trigger before the mTimeout
-	// (Issue #1388) causing test to fail. Hence the rTimeout should be slightly more
-	// than the mTimeout
-	mTimeout    = 10 * time.Second
-	rTimeout    = 15 * time.Second
+	target      = pss.Target([]byte{1})
+	targets     = pss.Targets([]pss.Target{target})
+	payload     = []byte("testdata")
+	topic       = pss.NewTopic("testtopic")
+	mTimeout    = 2 * time.Second
 	longTimeout = 30 * time.Second
 )
 
@@ -53,11 +49,8 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 
 	var (
 		p, publicKey, cl, _ = newPssTest(t, opts{})
-
-		msgContent = make([]byte, len(payload))
-		tc         swarm.Chunk
-		mtx        sync.Mutex
-		done       = make(chan struct{})
+		respC               = make(chan error, 1)
+		tc                  swarm.Chunk
 	)
 
 	// the long timeout is needed so that we dont time out while still mining the message with Wrap()
@@ -68,9 +61,6 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 	}
 	cl.SetReadLimit(swarm.ChunkSize)
 
-	defer close(done)
-	go waitReadMessage(t, &mtx, cl, msgContent, done)
-
 	tc, err = pss.Wrap(context.Background(), topic, payload, publicKey, targets)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +68,10 @@ func TestPssWebsocketSingleHandler(t *testing.T) {
 
 	p.TryUnwrap(tc)
 
-	waitMessage(t, msgContent, payload, &mtx)
+	go expectMessage(t, cl, respC, payload)
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
@@ -89,11 +82,8 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 	// the handler to be notified
 	var (
 		p, publicKey, cl, _ = newPssTest(t, opts{})
-
-		msgContent = make([]byte, len(payload))
-		tc         swarm.Chunk
-		mtx        sync.Mutex
-		done       = make(chan struct{})
+		respC               = make(chan error, 1)
+		tc                  swarm.Chunk
 	)
 
 	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
@@ -102,8 +92,6 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.SetReadLimit(swarm.ChunkSize)
-	defer close(done)
-	go waitReadMessage(t, &mtx, cl, msgContent, done)
 
 	tc, err = pss.Wrap(context.Background(), topic, payload, publicKey, targets)
 	if err != nil {
@@ -118,7 +106,10 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 
 	p.TryUnwrap(tc)
 
-	waitMessage(t, msgContent, nil, &mtx)
+	go expectMessage(t, cl, respC, payload)
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPssWebsocketMultiHandler(t *testing.T) {
@@ -130,11 +121,8 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 		u           = url.URL{Scheme: "ws", Host: listener, Path: "/pss/subscribe/testtopic"}
 		cl2, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 
-		msgContent  = make([]byte, len(payload))
-		msgContent2 = make([]byte, len(payload))
-		tc          swarm.Chunk
-		mtx         sync.Mutex
-		done        = make(chan struct{})
+		respC = make(chan error, 2)
+		tc    swarm.Chunk
 	)
 	if err != nil {
 		t.Fatalf("dial: %v. url %v", err, u.String())
@@ -145,10 +133,6 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.SetReadLimit(swarm.ChunkSize)
-
-	defer close(done)
-	go waitReadMessage(t, &mtx, cl, msgContent, done)
-	go waitReadMessage(t, &mtx, cl2, msgContent2, done)
 
 	tc, err = pss.Wrap(context.Background(), topic, payload, publicKey, targets)
 	if err != nil {
@@ -163,8 +147,14 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 
 	p.TryUnwrap(tc)
 
-	waitMessage(t, msgContent, nil, &mtx)
-	waitMessage(t, msgContent2, nil, &mtx)
+	go expectMessage(t, cl, respC, payload)
+	go expectMessage(t, cl2, respC, payload)
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
 }
 
 // nolint:paralleltest
@@ -311,11 +301,9 @@ func TestPssPingPong(t *testing.T) {
 	var (
 		p, publicKey, cl, _ = newPssTest(t, opts{pingPeriod: 90 * time.Millisecond})
 
-		msgContent = make([]byte, len(payload))
-		tc         swarm.Chunk
-		mtx        sync.Mutex
-		pongWait   = 1 * time.Millisecond
-		done       = make(chan struct{})
+		respC    = make(chan error, 1)
+		tc       swarm.Chunk
+		pongWait = 1 * time.Millisecond
 	)
 
 	cl.SetReadLimit(swarm.ChunkSize)
@@ -323,8 +311,6 @@ func TestPssPingPong(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer close(done)
-	go waitReadMessage(t, &mtx, cl, msgContent, done)
 
 	tc, err = pss.Wrap(context.Background(), topic, payload, publicKey, targets)
 	if err != nil {
@@ -335,37 +321,49 @@ func TestPssPingPong(t *testing.T) {
 
 	p.TryUnwrap(tc)
 
-	waitMessage(t, msgContent, nil, &mtx)
+	go expectMessage(t, cl, respC, nil)
+	if err := <-respC; err == nil || !strings.Contains(err.Error(), "i/o timeout") {
+		// note: error has *websocket.netError type so we need to check error by checking message
+		t.Fatal("want timeout error")
+	}
 }
 
-func waitReadMessage(t *testing.T, mtx *sync.Mutex, cl *websocket.Conn, targetContent []byte, done <-chan struct{}) {
+func expectMessage(t *testing.T, cl *websocket.Conn, respC chan error, expData []byte) {
 	t.Helper()
-	timeout := time.After(rTimeout)
+
+	timeout := time.NewTimer(mTimeout)
+	defer timeout.Stop()
+
 	for {
 		select {
-		case <-done:
-			return
-		case <-timeout:
-			t.Error("timed out waiting for message")
+		case <-timeout.C:
+			if expData == nil {
+				respC <- nil
+			} else {
+				respC <- errors.New("timed out waiting for message")
+			}
 			return
 		default:
-		}
+			msgType, message, err := cl.ReadMessage()
+			if err != nil {
+				respC <- err
+				return
+			}
+			if msgType == websocket.PongMessage {
+				// ignore pings
+				continue
+			}
+			if message == nil {
+				continue
+			}
 
-		msgType, message, err := cl.ReadMessage()
-		if err != nil {
+			if bytes.Equal(message, expData) {
+				respC <- nil
+			} else {
+				respC <- errors.New("unexpected message")
+			}
 			return
 		}
-		if msgType == websocket.PongMessage {
-			// ignore pings
-			continue
-		}
-
-		if message != nil {
-			mtx.Lock()
-			copy(targetContent, message)
-			mtx.Unlock()
-		}
-		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -382,29 +380,6 @@ func waitDone(t *testing.T, mtx *sync.Mutex, done *bool) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for send")
-}
-
-func waitMessage(t *testing.T, data, expData []byte, mtx *sync.Mutex) {
-	t.Helper()
-
-	ttl := time.After(mTimeout)
-	for {
-		select {
-		case <-ttl:
-			if expData == nil {
-				return
-			}
-			t.Fatal("timed out waiting for pss message")
-		default:
-		}
-		mtx.Lock()
-		if bytes.Equal(data, expData) {
-			mtx.Unlock()
-			return
-		}
-		mtx.Unlock()
-		time.Sleep(50 * time.Millisecond)
-	}
 }
 
 type opts struct {
