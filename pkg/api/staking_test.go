@@ -25,7 +25,6 @@ func TestDepositStake(t *testing.T) {
 	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 
 	minStake := big.NewInt(1).String()
-	minStakedAmount := stakingcontract.MinimumStakeAmount
 	depositStake := func(address string, amount string) string {
 		return fmt.Sprintf("/stake/deposit/%s/%s", address, amount)
 	}
@@ -35,9 +34,6 @@ func TestDepositStake(t *testing.T) {
 
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
-				if stakedAmount.Cmp(minStakedAmount) == -1 {
-					return stakingcontract.ErrInsufficentStakeAmount
-				}
 				return nil
 			}),
 		)
@@ -49,13 +45,9 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		invalidMinStake := big.NewInt(0).String()
-		invalidMinStakedAmount := big.NewInt(1)
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
-				if stakedAmount.Cmp(invalidMinStakedAmount) == -1 {
-					return stakingcontract.ErrInsufficentStakeAmount
-				}
-				return nil
+				return stakingcontract.ErrInsufficentStakeAmount
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})

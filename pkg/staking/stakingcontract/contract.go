@@ -37,7 +37,7 @@ var (
 	depositStakeDescription = "Deposit Stake"
 )
 
-type Contract interface {
+type Interface interface {
 	DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error
 	GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error)
 }
@@ -56,7 +56,7 @@ func New(
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	nonce common.Hash,
-) Contract {
+) Interface {
 	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,

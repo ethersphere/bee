@@ -29,7 +29,7 @@ func (s *stakingContractMock) GetStake(ctx context.Context, overlay swarm.Addres
 type Option func(mock *stakingContractMock)
 
 // New creates a new mock BatchStore
-func New(opts ...Option) stakingcontract.Contract {
+func New(opts ...Option) stakingcontract.Interface {
 	bs := &stakingContractMock{}
 
 	for _, o := range opts {
