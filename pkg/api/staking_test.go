@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	stakingContractMock "github.com/ethersphere/bee/pkg/staking/stakingcontract/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -97,6 +98,30 @@ func TestDepositStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), "abc"), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid staking amount"}))
 	})
+
+	t.Run("gas limit header", func(t *testing.T) {
+		t.Parallel()
+
+		var gasLimit uint64
+		contract := stakingContractMock.New(
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+				gasLimit = sctx.GetGasLimit(ctx)
+				return nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:        true,
+			StakingContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), minStake), http.StatusOK,
+			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+		)
+
+		if gasLimit != 2000000 {
+			t.Fatalf("want 2000000, got %d", gasLimit)
+		}
+	})
 }
 
 func TestGetStake(t *testing.T) {
@@ -140,5 +165,28 @@ func TestGetStake(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contractWithError})
 		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
+	})
+	t.Run("gas limit header", func(t *testing.T) {
+		t.Parallel()
+
+		var gasLimit uint64
+		contract := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (big.Int, error) {
+				gasLimit = sctx.GetGasLimit(ctx)
+				return *big.NewInt(1), nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:        true,
+			StakingContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusOK,
+			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: big.NewInt(1)}))
+
+		if gasLimit != 2000000 {
+			t.Fatalf("want 2000000, got %d", gasLimit)
+		}
 	})
 }

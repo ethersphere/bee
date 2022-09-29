@@ -8,8 +8,10 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -34,10 +36,31 @@ type getStakeResponse struct {
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if price, ok := r.Header[gasPriceHeader]; ok {
+		p, ok := big.NewInt(0).SetString(price[0], 10)
+		if !ok {
+			s.logger.Error(nil, "deposit stake: bad gas price")
+			jsonhttp.BadRequest(w, errBadGasPrice)
+			return
+		}
+		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	if limit, ok := r.Header[gasLimitHeader]; ok {
+		l, err := strconv.ParseUint(limit[0], 10, 64)
+		if err != nil {
+			s.logger.Error(err, "deposit stake: bad gas limit")
+			jsonhttp.BadRequest(w, errBadGasLimit)
+			return
+		}
+		ctx = sctx.SetGasLimit(ctx, l)
+	}
+
 	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
-		s.logger.Debug("get stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
-		s.logger.Error(nil, "get stake: decode overlay address failed")
+		s.logger.Debug("deposit stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
+		s.logger.Error(nil, "deposit stake: decode overlay address failed")
 		jsonhttp.BadRequest(w, "invalid address")
 		return
 	}
@@ -48,7 +71,7 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.BadRequest(w, "invalid staking amount")
 		return
 	}
-	err = s.stakingContract.DepositStake(r.Context(), *stakedAmount, overlayAddr)
+	err = s.stakingContract.DepositStake(ctx, *stakedAmount, overlayAddr)
 	if err != nil {
 		if errors.Is(err, stakingcontract.ErrInsufficentStakeAmount) {
 			s.logger.Debug("deposit stake: insufficient stake amount", "error", err)
@@ -77,6 +100,27 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if price, ok := r.Header[gasPriceHeader]; ok {
+		p, ok := big.NewInt(0).SetString(price[0], 10)
+		if !ok {
+			s.logger.Error(nil, "get stake: bad gas price")
+			jsonhttp.BadRequest(w, errBadGasPrice)
+			return
+		}
+		ctx = sctx.SetGasPrice(ctx, p)
+	}
+
+	if limit, ok := r.Header[gasLimitHeader]; ok {
+		l, err := strconv.ParseUint(limit[0], 10, 64)
+		if err != nil {
+			s.logger.Error(err, "get stake: bad gas limit")
+			jsonhttp.BadRequest(w, errBadGasLimit)
+			return
+		}
+		ctx = sctx.SetGasLimit(ctx, l)
+	}
+
 	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
 	if err != nil {
 		s.logger.Debug("get stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
@@ -85,7 +129,7 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	stakedAmount, err := s.stakingContract.GetStake(r.Context(), overlayAddr)
+	stakedAmount, err := s.stakingContract.GetStake(ctx, overlayAddr)
 	if err != nil {
 		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", overlayAddr, "error", err)
 		s.logger.Error(nil, "get stake: get staked amount failed")
