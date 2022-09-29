@@ -57,18 +57,16 @@ jobs:
         run: |
           export PATH=$(pwd):$PATH
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
-      - name: Build bee
+      - name: Build bee and pack artifacts
         run: |
           make binary
           mv dist/bee bee
+          tar cvzf artifacts.tar.gz Dockerfile.goreleaser Makefile bee beekeeper
       - uses: actions/upload-artifact@v3
         with:
-          name: artifacts
+          name: temp-artifacts
           path: |
-            Dockerfile.goreleaser
-            Makefile
-            bee
-            beekeeper
+            artifacts.tar.gz
           retention-days: 5
   beekeeper:
     name: Integration tests
@@ -84,11 +82,10 @@ jobs:
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
-          name: artifacts
-          path: artifacts.tar
+          name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar
+          tar xvzf artifacts.tar.gz
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
@@ -180,11 +177,10 @@ jobs:
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
-          name: artifacts
-          path: artifacts.tar
+          name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar
+          tar xvzf artifacts.tar.gz
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
@@ -240,11 +236,10 @@ jobs:
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
-          name: artifacts
-          path: artifacts.tar
+          name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar
+          tar xvzf artifacts.tar.gz
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
@@ -292,11 +287,10 @@ jobs:
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
-          name: artifacts
-          path: artifacts.tar
+          name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar
+          tar xvzf artifacts.tar.gz
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Build image
         run: |
