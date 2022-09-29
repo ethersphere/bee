@@ -117,7 +117,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 	gasLimit := sctx.GetGasLimit(ctx)
 	if gasLimit == 0 {
 		// if gas limit is not set, use the default limit.
-		gasLimit = 9_000_000
+		gasLimit = 4_500_000
 	}
 	request := &transaction.TxRequest{
 		To:          &c.postageContractAddress,
