@@ -57,8 +57,9 @@ jobs:
         run: |
           export PATH=$(pwd):$PATH
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
-      - name: Move bee
+      - name: Build bee
         run: |
+          make binary
           mv dist/bee bee
       - uses: actions/upload-artifact@v3
         with:
