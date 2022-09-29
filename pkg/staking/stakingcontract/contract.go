@@ -27,8 +27,8 @@ var (
 	//TODO: get ABI for staking contract and replace it below
 	stakingABI = parseABI(sw3abi.ERC20ABIv0_3_1)
 
-	ErrInsufficentStakeAmount = errors.New("insufficient stake amount")
-	ErrInsufficientFunds      = errors.New("insufficient token balance")
+	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
+	ErrInsufficientFunds       = errors.New("insufficient token balance")
 	ErrNotImplemented         = errors.New("not implemented")
 	ErrGetStakeFailed         = errors.New("get stake failed")
 
@@ -145,7 +145,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 
 	if len(prevStakedAmount.Bits()) == 0 {
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			return ErrInsufficentStakeAmount
+			return ErrInsufficientStakeAmount
 		}
 	}
 

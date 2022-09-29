@@ -48,7 +48,7 @@ func TestDepositStake(t *testing.T) {
 		invalidMinStake := big.NewInt(0).String()
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
-				return stakingcontract.ErrInsufficentStakeAmount
+				return stakingcontract.ErrInsufficientStakeAmount
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
