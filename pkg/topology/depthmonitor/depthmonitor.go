@@ -19,7 +19,9 @@ const loggerName = "depthmonitor"
 // for the depth monitor wake-up interval.
 const DefaultWakeupInterval = 5 * time.Minute
 
-var minimumRadius uint8 = 4
+// defaultMinimumRadius is the default value
+// for the depth monitor minimum radius.
+const defaultMinimumRadius uint8 = 4
 
 // ReserveReporter interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
@@ -47,13 +49,14 @@ type Topology interface {
 
 // Service implements the depthmonitor service
 type Service struct {
-	topology Topology
-	syncer   SyncReporter
-	reserve  ReserveReporter
-	logger   log.Logger
-	bs       postage.Storer
-	quit     chan struct{} // to request service to stop
-	stopped  chan struct{} // to signal stopping of bg worker
+	topology      Topology
+	syncer        SyncReporter
+	reserve       ReserveReporter
+	logger        log.Logger
+	bs            postage.Storer
+	quit          chan struct{} // to request service to stop
+	stopped       chan struct{} // to signal stopping of bg worker
+	minimumRadius uint8
 }
 
 // New constructs a new depthmonitor service
@@ -68,13 +71,14 @@ func New(
 ) *Service {
 
 	s := &Service{
-		topology: t,
-		syncer:   syncer,
-		reserve:  reserve,
-		bs:       bs,
-		logger:   logger.WithName(loggerName).Register(),
-		quit:     make(chan struct{}),
-		stopped:  make(chan struct{}),
+		topology:      t,
+		syncer:        syncer,
+		reserve:       reserve,
+		bs:            bs,
+		logger:        logger.WithName(loggerName).Register(),
+		quit:          make(chan struct{}),
+		stopped:       make(chan struct{}),
+		minimumRadius: defaultMinimumRadius,
 	}
 
 	go s.manage(warmupTime, wakeupInterval)
@@ -136,7 +140,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
 		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
-				if radius > minimumRadius {
+				if radius > s.minimumRadius {
 					radius--
 					s.logger.Info("depthmonitor: reducing storage depth", "depth", radius)
 				}
