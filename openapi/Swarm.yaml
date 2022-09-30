@@ -1918,6 +1918,8 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Addresses"
               description: Overlay address
+            - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+            - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
           responses:
             "200":
               description: Amount successfully staked
