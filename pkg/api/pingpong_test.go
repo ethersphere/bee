@@ -64,17 +64,6 @@ func TestPingpong(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid peer address", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid peer address",
-			}),
-		)
-	})
-
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 

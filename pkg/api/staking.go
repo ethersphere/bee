@@ -6,7 +6,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 
@@ -34,34 +33,39 @@ type getStakeResponse struct {
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
-	stakedAmount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
-	if !ok {
-		s.logger.Error(nil, "deposit stake: invalid amount")
-		jsonhttp.BadRequest(w, "invalid staking amount")
+	logger := s.logger.WithName("post_stake_deposit").Build()
+
+	paths := struct {
+		Amount *big.Int `map:"amount" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
-	err := s.stakingContract.DepositStake(r.Context(), stakedAmount)
+
+	// TODO: provide the reason in the response.
+	err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
-			s.logger.Debug("deposit stake: minimum BZZ required for staking", "minimum_stake", staking.MinimumStakeAmount, "error", err)
-			s.logger.Error(nil, fmt.Sprintf("deposit stake: minimum %d BZZ required for staking", staking.MinimumStakeAmount.Int64()))
-			jsonhttp.BadRequest(w, fmt.Sprintf("minimum %d BZZ required for staking", staking.MinimumStakeAmount.Int64()))
+			logger.Debug("insufficient stake amount", "minimum_stake", staking.MinimumStakeAmount, "error", err)
+			logger.Error(nil, "insufficient stake amount")
+			jsonhttp.BadRequest(w, "insufficient stake amount")
 			return
 		}
 		if errors.Is(err, staking.ErrNotImplemented) {
-			s.logger.Debug("deposit stake: not implemented", "error", err)
-			s.logger.Error(nil, "deposit stake: not implemented")
+			logger.Debug("not implemented", "error", err)
+			logger.Error(nil, "not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
 			return
 		}
 		if errors.Is(err, staking.ErrInsufficientFunds) {
-			s.logger.Debug("deposit stake: out of funds", "error", err)
-			s.logger.Error(nil, "deposit stake: out of funds")
+			logger.Debug("out of funds", "error", err)
+			logger.Error(nil, "out of funds")
 			jsonhttp.BadRequest(w, "out of funds")
 			return
 		}
-		s.logger.Debug("deposit stake: deposit failed", "error", err)
-		s.logger.Error(nil, "deposit stake: deposit failed")
+		logger.Debug("deposit failed", "error", err)
+		logger.Error(nil, "deposit failed")
 		jsonhttp.InternalServerError(w, "cannot stake")
 		return
 	}
@@ -69,10 +73,12 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_stake").Build()
+
 	stakedAmount, err := s.stakingContract.GetStake(r.Context())
 	if err != nil {
-		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", s.overlay, "error", err)
-		s.logger.Error(nil, "get stake: get staked amount failed")
+		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
+		logger.Error(nil, "get staked amount failed")
 		jsonhttp.InternalServerError(w, "get staked amount failed")
 		return
 	}

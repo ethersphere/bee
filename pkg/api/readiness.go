@@ -6,7 +6,7 @@ package api
 
 import "net/http"
 
-func (s *Service) readinessHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) readinessHandler(w http.ResponseWriter, _ *http.Request) {
 	if s.probe.Ready() == ProbeStatusOK {
 		w.WriteHeader(http.StatusOK)
 	} else {

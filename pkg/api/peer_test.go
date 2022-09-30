@@ -159,17 +159,6 @@ func TestDisconnect(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid peer address", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/invalid-address", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid peer address",
-			}),
-		)
-	})
-
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 

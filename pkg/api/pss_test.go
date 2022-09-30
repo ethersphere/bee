@@ -202,26 +202,6 @@ func TestPssSend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("err - bad targets", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "target is not valid hex string",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
-		// If this test needs to be modified (most probably because the max target length changed)
-		// the please verify that SwarmCommon.yaml -> components -> PssTarget also reflects the correct value
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/123456789abcdf?recipient="+recipient, http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "hex string target exceeds max length of 6",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
 	t.Run("err - bad batch", func(t *testing.T) {
 		hexbatch := hex.EncodeToString(batchInvalid)
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,

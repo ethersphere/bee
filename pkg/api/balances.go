@@ -33,12 +33,14 @@ type balancesResponse struct {
 	Balances []balanceResponse `json:"balances"`
 }
 
-func (s *Service) balancesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) balancesHandler(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithName("get_consumed").Build()
+
 	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		s.logger.Debug("balances: get balances failed", "error", err)
-		s.logger.Error(nil, "balances: get balances failed")
+		logger.Debug("balances: get balances failed", "error", err)
+		logger.Error(nil, "balances: get balances failed")
 		return
 	}
 
@@ -56,39 +58,42 @@ func (s *Service) balancesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("balances peer: parse address string failed", "string", addr, "error", err)
-		s.logger.Error(nil, "balances peer: parse address string failed", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	logger := s.logger.WithName("get_consumed_by_peer").Build()
+
+	paths := struct {
+		Peer swarm.Address `map:"peer" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	balance, err := s.accounting.Balance(peer)
+	balance, err := s.accounting.Balance(paths.Peer)
 	if err != nil {
 		if errors.Is(err, accounting.ErrPeerNoBalance) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.logger.Debug("balances peer: get peer balance failed", "peer_address", peer, "error", err)
-		s.logger.Error(nil, "balances peer: get peer balance failed", "peer_address", peer)
+		logger.Debug("get peer balance failed", "peer_address", paths.Peer, "error", err)
+		logger.Error(nil, "get peer balance failed", "peer_address", paths.Peer)
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
 
 	jsonhttp.OK(w, balanceResponse{
-		Peer:    peer.String(),
+		Peer:    paths.Peer.String(),
 		Balance: bigint.Wrap(balance),
 	})
 }
 
-func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithName("get_balances").Build()
+
 	balances, err := s.accounting.CompensatedBalances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		s.logger.Debug("compensated balances: get compensated balances failed", "error", err)
-		s.logger.Error(nil, "compensated balances: get compensated balances failed")
+		logger.Debug("get compensated balances failed", "error", err)
+		logger.Error(nil, "get compensated balances failed")
 		return
 	}
 
@@ -106,29 +111,30 @@ func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["peer"]
-	peer, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("compensated balances peer: parse address string failed", "string", addr, "error", err)
-		s.logger.Error(nil, "compensated balances peer: parse address string failed", "string", addr)
-		jsonhttp.NotFound(w, errInvalidAddress)
+	logger := s.logger.WithName("get_balances_by_peer").Build()
+
+	paths := struct {
+		Peer swarm.Address `map:"peer" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	balance, err := s.accounting.CompensatedBalance(peer)
+	balance, err := s.accounting.CompensatedBalance(paths.Peer)
 	if err != nil {
 		if errors.Is(err, accounting.ErrPeerNoBalance) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.logger.Debug("compensated balances peer: get compensated balances failed", "peer_address", peer, "error", err)
-		s.logger.Error(nil, "compensated balances peer: get compensated balances failed", "peer_address", peer)
+		s.logger.Debug("get compensated balances failed", "peer_address", paths.Peer, "error", err)
+		s.logger.Error(nil, "get compensated balances failed", "peer_address", paths.Peer)
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
 
 	jsonhttp.OK(w, balanceResponse{
-		Peer:    peer.String(),
+		Peer:    paths.Peer.String(),
 		Balance: bigint.Wrap(balance),
 	})
 }
