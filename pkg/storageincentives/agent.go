@@ -16,6 +16,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -26,7 +27,7 @@ type ChainBackend interface {
 }
 
 type Sampler interface {
-	ReserveSample(context.Context, []byte, uint8) ([]byte, error)
+	ReserveSample(context.Context, []byte, uint8) (storage.Sample, error)
 }
 
 type Monitor interface {
@@ -126,7 +127,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				obfuscationKey = obf
 				commitRound = round
 				mtx.Unlock()
-				s.logger.Debug("commit phase")
+				s.logger.Debug("commited the reserve sample and radius")
 			}
 		}
 	}
@@ -166,7 +167,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				mtx.Lock()
 				revealRound = round
 				mtx.Unlock()
-				s.logger.Debug("reveal phase")
+				s.logger.Debug("revealed the sample with the obfuscation key")
 			}
 		}
 	})
@@ -185,7 +186,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			if err != nil {
 				s.logger.Error(err, "claim")
 			} else {
-				s.logger.Debug("claim phase")
+				s.logger.Debug("claim made")
 			}
 		}
 	})
@@ -313,7 +314,7 @@ func (s *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	return storageRadius, sample, nil
+	return storageRadius, sample.Hash.Bytes(), nil
 }
 
 func (s *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
