@@ -52,6 +52,7 @@ func newTestSvc(
 }
 
 func TestDepthMonitorService(t *testing.T) {
+	t.Parallel()
 
 	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8, timeout time.Duration) {
 		t.Helper()
@@ -69,6 +70,8 @@ func TestDepthMonitorService(t *testing.T) {
 	}
 
 	t.Run("stop service within warmup time", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newTestSvc(nil, nil, nil, nil, nil, time.Second, depthmonitor.DefaultWakeupInterval)
 		err := svc.Close()
 		if err != nil {
@@ -77,6 +80,8 @@ func TestDepthMonitorService(t *testing.T) {
 	})
 
 	t.Run("start with radius", func(t *testing.T) {
+		t.Parallel()
+
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		svc := newTestSvc(nil, nil, nil, nil, bs, 100*time.Millisecond, depthmonitor.DefaultWakeupInterval)
 		waitForDepth(t, svc, 3, time.Second)
@@ -87,12 +92,9 @@ func TestDepthMonitorService(t *testing.T) {
 	})
 
 	t.Run("depth decrease due to under utilization", func(t *testing.T) {
-		const depthMonitorWakeUpInterval = 200 * time.Millisecond
+		t.Parallel()
 
-		defer func(w uint8) {
-			*depthmonitor.MinimumRadius = w
-		}(*depthmonitor.MinimumRadius)
-		*depthmonitor.MinimumRadius = 0
+		const depthMonitorWakeUpInterval = 200 * time.Millisecond
 
 		topo := &mockTopology{peers: 1}
 		// >50% utilized reserve
@@ -101,6 +103,7 @@ func TestDepthMonitorService(t *testing.T) {
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
+		svc.SetMinimumRadius(0)
 
 		waitForDepth(t, svc, 3, time.Second)
 		// simulate huge eviction to trigger manage worker
@@ -117,6 +120,8 @@ func TestDepthMonitorService(t *testing.T) {
 	})
 
 	t.Run("depth doesnt change due to non-zero pull rate", func(t *testing.T) {
+		t.Parallel()
+
 		const depthMonitorWakeUpInterval = 200 * time.Millisecond
 
 		// under utilized reserve
@@ -138,6 +143,8 @@ func TestDepthMonitorService(t *testing.T) {
 	})
 
 	t.Run("depth doesnt change for utilized reserve", func(t *testing.T) {
+		t.Parallel()
+
 		const depthMonitorWakeUpInterval = 200 * time.Millisecond
 
 		// >50% utilized reserve
@@ -158,6 +165,8 @@ func TestDepthMonitorService(t *testing.T) {
 	})
 
 	t.Run("radius setter handler", func(t *testing.T) {
+		t.Parallel()
+
 		const depthMonitorWakeUpInterval = 200 * time.Millisecond
 
 		topo := &mockTopology{connDepth: 3}
