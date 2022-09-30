@@ -204,7 +204,7 @@ func (s *contract) IsStaked(ctx context.Context, overlay swarm.Address) (bool, e
 		return false, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
 
-	if stakedAmount.Cmp(MinimumStakeAmount) > 0 {
+	if stakedAmount.Cmp(MinimumStakeAmount) >= 0 {
 		return true, nil
 	}
 
