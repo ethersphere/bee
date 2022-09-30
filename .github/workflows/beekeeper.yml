@@ -90,7 +90,7 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x bee beekeeper
+          chmod +x dist/bee beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
           mv dist/bee bee && rm -r dist
@@ -188,7 +188,7 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x bee beekeeper
+          chmod +x dist/bee beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
           mv dist/bee bee && rm -r dist
@@ -250,7 +250,7 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x bee beekeeper
+          chmod +x dist/bee beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
           mv dist/bee bee && rm -r dist
@@ -304,7 +304,7 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x bee
+          chmod +x dist/bee
           mv dist/bee bee && rm -r dist
       - name: Build image
         run: |
