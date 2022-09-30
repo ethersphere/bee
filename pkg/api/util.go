@@ -36,7 +36,7 @@ var errHexLength = errors.New("odd length hex string")
 type hexInvalidByteError byte
 
 func (e hexInvalidByteError) Error() string {
-	return fmt.Sprintf("invalid byte: %#U", rune(e))
+	return fmt.Sprintf("invalid hex byte: %#U", rune(e))
 }
 
 // parseError is returned when a parameter cannot be parsed.
