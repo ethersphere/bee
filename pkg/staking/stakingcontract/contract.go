@@ -109,7 +109,7 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 	return receipt, nil
 }
 
-func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
+func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 	gasLimit := sctx.GetGasLimit(ctx)
 	if gasLimit == 0 {
 		// if gas limit is not set, use the default limit.
@@ -165,7 +165,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, over
 }
 
 func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
+	stakedAmount, err := s.getStake(ctx, overlay)
 	if err != nil {
 		return big.NewInt(0), fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
