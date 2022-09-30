@@ -186,7 +186,7 @@ func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
 	return true, nil
 }
 
-func (m *mockContract) IsWinner(context.Context) (bool, bool, error) {
+func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.isWinnerCalls.Inc()
@@ -194,7 +194,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, bool, error) {
 		m.t.Fatal("previous call must be reveal")
 	}
 	m.previousCall = isWinnerCall
-	return false, false, nil
+	return false, nil
 }
 
 func (m *mockContract) Claim(context.Context) error {
