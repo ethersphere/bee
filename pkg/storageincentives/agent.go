@@ -14,10 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
 const loggerName = "incentives"
@@ -31,7 +33,7 @@ type Sampler interface {
 }
 
 type Monitor interface {
-	IsStable() bool
+	FullySynced() bool
 }
 
 type IncentivesContract interface {
@@ -41,7 +43,6 @@ type IncentivesContract interface {
 	Claim(context.Context) error
 	Commit(context.Context, []byte) error
 	Reveal(context.Context, uint8, []byte, []byte) error
-	WrapCommit(uint8, []byte, []byte, []byte) ([]byte, error)
 }
 
 type Agent struct {
@@ -61,6 +62,7 @@ func New(
 	overlay swarm.Address,
 	backend ChainBackend,
 	logger log.Logger,
+	depthMonitor depthmonitor.Service,
 	monitor Monitor,
 	incentives IncentivesContract,
 	reserve postage.Storer,
@@ -233,7 +235,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		// skip when the depthmonitor is unstable
-		if !s.monitor.IsStable() {
+		if !s.monitor.FullySynced() {
 			continue
 		}
 
@@ -258,6 +260,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		// write the current phase only once
+
 		if currentPhase != prevPhase {
 
 			s.metrics.CurrentPhase.Set(float64(currentPhase))
@@ -305,6 +308,12 @@ func (s *Agent) claim(ctx context.Context) error {
 
 func (s *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
+	// get depthmonitor fully synced indicator
+	ready := s.depthMonitor.FullySynced()
+	if !ready {
+		return 0, nil, nil
+	}
+
 	storageRadius := s.reserve.GetReserveState().StorageRadius
 
 	isPlaying, err := s.contract.IsPlaying(ctx, storageRadius)
@@ -339,12 +348,19 @@ func (s *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 		return nil, err
 	}
 
-	orc, err := s.contract.WrapCommit(storageRadius, sample, s.overlay.Bytes(), key)
+	storageRadiusByte := make([]byte, 1)
+	storageRadiusByte[0] = storageRadius
+
+	data := append(s.overlay.Bytes(), storageRadiusByte))
+	data = append(data, sample)
+	data = append(data, key)
+
+	obfuscatedHash, err := crypto.LegacyKeccak256(data)
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.contract.Commit(ctx, orc)
+	err = s.contract.Commit(ctx, obfuscatedHash)
 	if err != nil {
 		return nil, err
 	}

@@ -220,10 +220,6 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
 	return nil
 }
 
-func (m *mockContract) WrapCommit(uint8, []byte, []byte, []byte) ([]byte, error) {
-	return nil, nil
-}
-
 type mockSampler struct {
 }
 
