@@ -91,7 +91,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 }
 
 func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := stakingABI.Pack("depositStake", owner, stakedAmount, nonce)
+	callData, err := stakingABI.Pack("depositStake", owner, nonce, stakedAmount)
 	if err != nil {
 		return nil, err
 	}
