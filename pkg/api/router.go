@@ -488,6 +488,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
+		s.gasConfigMiddleware("create batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
@@ -496,6 +497,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
+		s.gasConfigMiddleware("topup batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
@@ -504,6 +506,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
+		s.gasConfigMiddleware("dilute batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
