@@ -570,6 +570,12 @@ components:
       pattern: "^[A-Fa-f0-9]{64}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
 
+    GetStakeResponse:
+      type: object
+      properties:
+        stakedAmount:
+           $ref: "#/components/schemas/BigInt"
+
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"

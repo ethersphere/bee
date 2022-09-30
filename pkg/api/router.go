@@ -532,4 +532,18 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+
+	handle("/stake/deposit/{address}/{amount}", web.ChainHandlers(
+		s.stakingAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.stakingDepositHandler),
+		})),
+	)
+
+	handle("/stake/{address}", web.ChainHandlers(
+		s.stakingAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.getStakedAmountHandler),
+		})),
+	)
 }
