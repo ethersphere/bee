@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -556,6 +557,37 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(r.ContentLength), 10), r.Method).Observe(time.Since(now).Seconds())
 				}
 			}
+		})
+	}
+}
+
+// gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
+// gas price and gas limit through the HTTP API headers.
+func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if price, ok := r.Header[gasPriceHeader]; ok {
+				p, ok := big.NewInt(0).SetString(price[0], 10)
+				if !ok {
+					s.logger.Error(nil, handlerName, "bad gas price")
+					jsonhttp.BadRequest(w, errBadGasPrice)
+					return
+				}
+				ctx = sctx.SetGasPrice(ctx, p)
+			}
+
+			if limit, ok := r.Header[gasLimitHeader]; ok {
+				l, err := strconv.ParseUint(limit[0], 10, 64)
+				if err != nil {
+					s.logger.Error(err, handlerName, "bad gas limit")
+					jsonhttp.BadRequest(w, errBadGasLimit)
+					return
+				}
+				ctx = sctx.SetGasLimit(ctx, l)
+			}
+
+			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

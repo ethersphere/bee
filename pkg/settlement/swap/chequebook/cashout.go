@@ -140,16 +140,11 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 	if err != nil {
 		return common.Hash{}, err
 	}
-	lim := sctx.GetGasLimit(ctx)
-	if lim == 0 {
-		// fix for out of gas errors
-		lim = 300000
-	}
 	request := &transaction.TxRequest{
 		To:          &chequebook,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    lim,
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300000),
 		Value:       big.NewInt(0),
 		Description: "cheque cashout",
 	}

@@ -8,13 +8,11 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
-	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 
@@ -236,28 +234,6 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	if price, ok := r.Header[gasPriceHeader]; ok {
-		p, ok := big.NewInt(0).SetString(price[0], 10)
-		if !ok {
-			s.logger.Error(nil, "cashout peer: bad gas price")
-			jsonhttp.BadRequest(w, errBadGasPrice)
-			return
-		}
-		ctx = sctx.SetGasPrice(ctx, p)
-	}
-
-	if limit, ok := r.Header[gasLimitHeader]; ok {
-		l, err := strconv.ParseUint(limit[0], 10, 64)
-		if err != nil {
-			s.logger.Debug("cashout peer: bad gas limit", "error", err)
-			s.logger.Error(nil, "cashout peer: bad gas limit")
-			jsonhttp.BadRequest(w, errBadGasLimit)
-			return
-		}
-		ctx = sctx.SetGasLimit(ctx, l)
-	}
-
 	if !s.cashOutChequeSem.TryAcquire(1) {
 		s.logger.Debug("simultaneous on-chain operations not supported")
 		s.logger.Error(nil, "simultaneous on-chain operations not supported")
@@ -266,7 +242,7 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.cashOutChequeSem.Release(1)
 
-	txHash, err := s.swap.CashCheque(ctx, peer)
+	txHash, err := s.swap.CashCheque(r.Context(), peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		s.logger.Debug("cashout peer: cash cheque failed", "peer_address", peer, "error", err)
 		s.logger.Error(nil, "cashout peer: cash cheque failed", "peer_address", peer)
@@ -380,18 +356,7 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	ctx := r.Context()
-	if price, ok := r.Header[gasPriceHeader]; ok {
-		p, ok := big.NewInt(0).SetString(price[0], 10)
-		if !ok {
-			s.logger.Error(nil, "chequebook withdraw: bad gas price")
-			jsonhttp.BadRequest(w, errBadGasPrice)
-			return
-		}
-		ctx = sctx.SetGasPrice(ctx, p)
-	}
-
-	txHash, err := s.chequebook.Withdraw(ctx, amount)
+	txHash, err := s.chequebook.Withdraw(r.Context(), amount)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		s.logger.Debug("chequebook withdraw: withdraw failed", "error", err)
@@ -423,18 +388,7 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ctx := r.Context()
-	if price, ok := r.Header[gasPriceHeader]; ok {
-		p, ok := big.NewInt(0).SetString(price[0], 10)
-		if !ok {
-			s.logger.Error(nil, "chequebook deposit: bad gas price")
-			jsonhttp.BadRequest(w, errBadGasPrice)
-			return
-		}
-		ctx = sctx.SetGasPrice(ctx, p)
-	}
-
-	txHash, err := s.chequebook.Deposit(ctx, amount)
+	txHash, err := s.chequebook.Deposit(r.Context(), amount)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		s.logger.Debug("chequebook deposit: deposit failed", "error", err)
