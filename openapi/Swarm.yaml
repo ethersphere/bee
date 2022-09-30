@@ -1783,6 +1783,7 @@ paths:
             type: boolean
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "201":
           description: Returns the newly created postage batch ID
@@ -1821,6 +1822,8 @@ paths:
             type: integer
           required: true
           description: Amount of BZZ per chunk to top up to an existing postage batch.
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
           description: Returns the postage batch ID that was topped up
@@ -1861,6 +1864,8 @@ paths:
             type: integer
           required: true
           description: New batch depth. Must be higher than the previous depth.
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
           description: Returns the postage batch ID that was diluted.
@@ -1913,6 +1918,8 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Addresses"
               description: Overlay address
+            - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+            - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
           responses:
             "200":
               description: Amount successfully staked

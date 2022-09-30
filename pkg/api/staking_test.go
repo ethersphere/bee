@@ -164,25 +164,4 @@ func TestGetStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
 	})
-	t.Run("gas limit header", func(t *testing.T) {
-		t.Parallel()
-
-		contract := stakingContractMock.New(
-			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
-				if gasLimit != 2000000 {
-					t.Fatalf("want 2000000, got %d", gasLimit)
-				}
-				return big.NewInt(1), nil
-			}),
-		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
-			StakingContract: contract,
-		})
-
-		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusOK,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
-			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: big.NewInt(1)}))
-	})
 }

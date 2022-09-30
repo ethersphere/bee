@@ -64,16 +64,11 @@ func New(
 }
 
 func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
-	gasLimit := sctx.GetGasLimit(ctx)
-	if gasLimit == 0 {
-		// if gas limit is not set, use the default limit.
-		gasLimit = 3_000_000
-	}
 	request := &transaction.TxRequest{
 		To:          &s.stakingContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    gasLimit,
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
@@ -110,20 +105,14 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 }
 
 func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	gasLimit := sctx.GetGasLimit(ctx)
-	if gasLimit == 0 {
-		// if gas limit is not set, use the default limit.
-		gasLimit = 3_000_000
-	}
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
 	if err != nil {
 		return nil, err
 	}
 
 	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
-		To:       &s.stakingContractAddress,
-		Data:     callData,
-		GasLimit: gasLimit,
+		To:   &s.stakingContractAddress,
+		Data: callData,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)

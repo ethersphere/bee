@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
@@ -92,23 +91,12 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	label := r.URL.Query().Get("label")
 
-	ctx := r.Context()
-	if price, ok := r.Header[gasPriceHeader]; ok {
-		p, ok := big.NewInt(0).SetString(price[0], 10)
-		if !ok {
-			s.logger.Error(nil, "create batch: bad gas price")
-			jsonhttp.BadRequest(w, errBadGasPrice)
-			return
-		}
-		ctx = sctx.SetGasPrice(ctx, p)
-	}
-
 	var immutable bool
 	if val, ok := r.Header[immutableHeader]; ok {
 		immutable, _ = strconv.ParseBool(val[0])
 	}
 
-	batchID, err := s.postageContract.CreateBatch(ctx, amount, uint8(depth), immutable, label)
+	batchID, err := s.postageContract.CreateBatch(r.Context(), amount, uint8(depth), immutable, label)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrChainDisabled) {
 			s.logger.Debug("create batch: no chain backend", "error", err)
@@ -468,18 +456,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	if price, ok := r.Header[gasPriceHeader]; ok {
-		p, ok := big.NewInt(0).SetString(price[0], 10)
-		if !ok {
-			s.logger.Error(nil, "topup batch: bad gas price")
-			jsonhttp.BadRequest(w, errBadGasPrice)
-			return
-		}
-		ctx = sctx.SetGasPrice(ctx, p)
-	}
-
-	err = s.postageContract.TopUpBatch(ctx, id, amount)
+	err = s.postageContract.TopUpBatch(r.Context(), id, amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			s.logger.Debug("topup batch: out of funds", "batch_id", hex.EncodeToString(id), "amount", amount, "error", err)
@@ -528,18 +505,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	if price, ok := r.Header[gasPriceHeader]; ok {
-		p, ok := big.NewInt(0).SetString(price[0], 10)
-		if !ok {
-			s.logger.Error(nil, "dilute batch: bad gas price")
-			jsonhttp.BadRequest(w, errBadGasPrice)
-			return
-		}
-		ctx = sctx.SetGasPrice(ctx, p)
-	}
-
-	err = s.postageContract.DiluteBatch(ctx, id, uint8(depth))
+	err = s.postageContract.DiluteBatch(r.Context(), id, uint8(depth))
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			s.logger.Debug("dilute batch: invalid depth", "error", err)
