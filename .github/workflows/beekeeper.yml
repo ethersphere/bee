@@ -88,6 +88,8 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
+          ls -la
+          ls -la temp-artifacts
           unzip temp-artifacts.zip
           ls -la
           ls -la *
