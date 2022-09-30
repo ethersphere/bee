@@ -632,6 +632,18 @@ func (s *Service) checkOrigin(r *http.Request) bool {
 	return false
 }
 
+// validationError is a custom error type for validation errors.
+type validationError struct {
+	Entry string
+	Value interface{}
+	Cause error
+}
+
+// Error implements the error interface.
+func (e *validationError) Error() string {
+	return fmt.Sprintf("`%s=%v`: %v", e.Entry, e.Value, e.Cause)
+}
+
 // mapStructure maps the input into output struct and validates the output.
 // It's a helper method for the handlers, which reduces the chattiness
 // of the code.
@@ -639,27 +651,49 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 	// response unifies the response format for parsing and validation errors.
 	response := func(err error) func(string, log.Logger, http.ResponseWriter) {
 		return func(msg string, logger log.Logger, w http.ResponseWriter) {
-			var errs *multierror.Error
-			if errors.As(err, &errs) {
-				logger.Debug(msg, "error", err)
-				logger.Error(err, msg)
-				jsonhttp.BadRequest(w, err)
+			var merr *multierror.Error
+			if !errors.As(err, &merr) {
+				logger.Debug("mapping and validation failed", "error", err)
+				logger.Error(err, "mapping and validation failed")
+				jsonhttp.InternalServerError(w, err)
 				return
 			}
-			logger.Debug("mapping and validation failed", "error", err)
-			logger.Error(err, "mapping and validation failed")
-			jsonhttp.InternalServerError(w, err)
+
+			logger.Debug(msg, "error", err)
+			logger.Error(err, msg)
+
+			resp := jsonhttp.StatusResponse{
+				Message: msg,
+				Code:    http.StatusBadRequest,
+			}
+			for _, err := range merr.Errors {
+				var perr *parseError
+				if errors.As(err, &perr) {
+					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
+						Entry: perr.Entry,
+						Error: perr.Cause.Error(),
+					})
+				}
+				var verr *validationError
+				if errors.As(err, &verr) {
+					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
+						Entry: verr.Entry,
+						Error: verr.Cause.Error(),
+					})
+				}
+			}
+			jsonhttp.BadRequest(w, resp)
 		}
 	}
 
 	if err := mapStructure(input, output); err != nil {
-		return response(fmt.Errorf("parsing errors: %w", err))
+		return response(err)
 	}
 
 	if err := s.validate.Struct(output); err != nil {
 		var errs validator.ValidationErrors
 		if !errors.As(err, &errs) {
-			return response(fmt.Errorf("validation errors: %w", err))
+			return response(err)
 		}
 
 		vErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
@@ -670,14 +704,13 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 				val = string(v)
 			}
 			vErrs = multierror.Append(vErrs,
-				fmt.Errorf("`%s=%v`: want %s:%s",
-					strings.ToLower(err.Field()),
-					val,
-					err.Tag(),
-					err.Param(),
-				))
+				&validationError{
+					Entry: strings.ToLower(err.Field()),
+					Value: val,
+					Cause: fmt.Errorf("want %s:%s", err.Tag(), err.Param()),
+				})
 		}
-		return response(fmt.Errorf("validation errors: %w", vErrs.ErrorOrNil()))
+		return response(vErrs.ErrorOrNil())
 	}
 
 	return nil
