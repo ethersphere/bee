@@ -25,7 +25,8 @@ var (
 	// postage stamp
 	goerliPostageStampContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
 	xdaiPostageStampContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
-	// staking contract
+	//TODO: add correct staking addresses here
+	//staking contract
 	goerliStakingContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
 	xdaiStakingContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
 )
