@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	stakingContractMock "github.com/ethersphere/bee/pkg/staking/stakingcontract/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDepositStake(t *testing.T) {
@@ -106,6 +107,7 @@ func TestDepositStake(t *testing.T) {
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				gasLimit = sctx.GetGasLimit(ctx)
+				assert.Equal(t, gasLimit, uint64(2000000), fmt.Sprintf("wrong gas limit"))
 				return nil
 			}),
 		)
@@ -117,10 +119,6 @@ func TestDepositStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), minStake), http.StatusOK,
 			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
 		)
-
-		if gasLimit != 2000000 {
-			t.Fatalf("want 2000000, got %d", gasLimit)
-		}
 	})
 }
 
@@ -173,6 +171,7 @@ func TestGetStake(t *testing.T) {
 		contract := stakingContractMock.New(
 			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 				gasLimit = sctx.GetGasLimit(ctx)
+				assert.Equal(t, gasLimit, uint64(2000000), fmt.Sprintf("wrong gas limit"))
 				return big.NewInt(1), nil
 			}),
 		)
@@ -184,9 +183,5 @@ func TestGetStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, getStake(addr.String()), http.StatusOK,
 			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: big.NewInt(1)}))
-
-		if gasLimit != 2000000 {
-			t.Fatalf("want 2000000, got %d", gasLimit)
-		}
 	})
 }
