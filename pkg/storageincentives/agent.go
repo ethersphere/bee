@@ -23,6 +23,11 @@ import (
 
 const loggerName = "incentives"
 
+const (
+	DefaultBlocksPerRound = 152
+	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
+)
+
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
 }
@@ -65,7 +70,7 @@ func New(
 	incentives IncentivesContract,
 	reserve postage.Storer,
 	sampler Sampler,
-	blockTime time.Duration, blockPerRound, blocksPerPhase uint64) *Agent {
+	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
 		overlay:  overlay,
@@ -80,7 +85,7 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.start(blockTime, blockPerRound, blocksPerPhase)
+	go s.start(blockTime, blocksPerRound, blocksPerPhase)
 
 	return s
 }
