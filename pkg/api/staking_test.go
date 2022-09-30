@@ -107,7 +107,7 @@ func TestDepositStake(t *testing.T) {
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				gasLimit = sctx.GetGasLimit(ctx)
-				assert.Equal(t, gasLimit, uint64(2000000), fmt.Sprintf("wrong gas limit"))
+				assert.Equal(t, gasLimit, uint64(2000000), "wrong gas limit")
 				return nil
 			}),
 		)
@@ -171,7 +171,7 @@ func TestGetStake(t *testing.T) {
 		contract := stakingContractMock.New(
 			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 				gasLimit = sctx.GetGasLimit(ctx)
-				assert.Equal(t, gasLimit, uint64(2000000), fmt.Sprintf("wrong gas limit"))
+				assert.Equal(t, gasLimit, uint64(2000000), "wrong gas limit")
 				return big.NewInt(1), nil
 			}),
 		)
