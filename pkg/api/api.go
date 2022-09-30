@@ -30,7 +30,6 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/incentives/contract"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -195,26 +194,25 @@ type Options struct {
 }
 
 type ExtraOptions struct {
-	Pingpong               pingpong.Interface
-	TopologyDriver         topology.Driver
-	LightNodes             *lightnode.Container
-	Accounting             accounting.Interface
-	Pseudosettle           settlement.Interface
-	Swap                   swap.Interface
-	Chequebook             chequebook.Service
-	BlockTime              *big.Int
-	Tags                   *tags.Tags
-	Storer                 storage.Storer
-	Resolver               resolver.Interface
-	Pss                    pss.Interface
-	TraversalService       traversal.Traverser
-	Pinning                pinning.Interface
-	FeedFactory            feeds.Factory
-	Post                   postage.Service
-	PostageContract        postagecontract.Interface
-	Steward                steward.Interface
-	SyncStatus             func() (bool, error)
-	RedistributionContract contract.Interface
+	Pingpong         pingpong.Interface
+	TopologyDriver   topology.Driver
+	LightNodes       *lightnode.Container
+	Accounting       accounting.Interface
+	Pseudosettle     settlement.Interface
+	Swap             swap.Interface
+	Chequebook       chequebook.Service
+	BlockTime        *big.Int
+	Tags             *tags.Tags
+	Storer           storage.Storer
+	Resolver         resolver.Interface
+	Pss              pss.Interface
+	TraversalService traversal.Traverser
+	Pinning          pinning.Interface
+	FeedFactory      feeds.Factory
+	Post             postage.Service
+	PostageContract  postagecontract.Interface
+	Steward          steward.Interface
+	SyncStatus       func() (bool, error)
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
