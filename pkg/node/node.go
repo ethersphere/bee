@@ -173,6 +173,7 @@ type Options struct {
 	TokenEncryptionKey         string
 	AdminPasswordHash          string
 	UsePostageSnapshot         bool
+	EnableStorageIncentives    bool
 }
 
 const (
