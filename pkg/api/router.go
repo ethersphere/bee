@@ -435,8 +435,11 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})
 
 		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": http.HandlerFunc(s.swapCashoutHandler),
+			"GET": http.HandlerFunc(s.swapCashoutStatusHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("swap cashout"),
+				web.FinalHandlerFunc(s.swapCashoutHandler),
+			),
 		})
 	}
 
@@ -450,11 +453,17 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})
 
 		handle("/chequebook/deposit", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookDepositHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("chequebook deposit"),
+				web.FinalHandlerFunc(s.chequebookDepositHandler),
+			),
 		})
 
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("chequebook withdraw"),
+				web.FinalHandlerFunc(s.chequebookWithdrawHandler),
+			),
 		})
 
 		if s.swapEnabled {
