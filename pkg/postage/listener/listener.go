@@ -63,7 +63,7 @@ type BlockHeightContractFilterer interface {
 type listener struct {
 	logger    log.Logger
 	ev        BlockHeightContractFilterer
-	blockTime uint64
+	blockTime time.Duration
 
 	postageStampAddress common.Address
 	quit                chan struct{}
@@ -79,7 +79,7 @@ func New(
 	logger log.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampAddress common.Address,
-	blockTime uint64,
+	blockTime time.Duration,
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
 ) postage.Listener {
@@ -257,7 +257,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			if lastConfirmedBlock != 0 {
 				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
-				expectedWaitTime = time.Duration(l.blockTime*remainingBlocks) * time.Second
+				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks) * time.Second
 			} else {
 				expectedWaitTime = l.backoffTime
 			}

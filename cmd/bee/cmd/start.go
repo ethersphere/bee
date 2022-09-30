@@ -140,7 +140,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			if c.config.IsSet(optionNameBlockTime) && blockTime != 0 {
-				networkConfig.blockTime = blockTime
+				networkConfig.blockTime = time.Duration(blockTime) * time.Second
 			}
 
 			tracingEndpoint := c.config.GetString(optionNameTracingEndpoint)
@@ -456,18 +456,18 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 
 type networkConfig struct {
 	bootNodes []string
-	blockTime uint64
+	blockTime time.Duration
 	chainID   int64
 }
 
-func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
+func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *networkConfig {
 	var config = networkConfig{
-		blockTime: defaultBlockTime,
+		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
 	case 1:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
-		config.blockTime = 5
+		config.blockTime = 5 * time.Second
 		config.chainID = 100
 	case 5: //staging
 		config.chainID = 5

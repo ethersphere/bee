@@ -69,6 +69,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -120,6 +121,7 @@ type Bee struct {
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
 	depthMonitorCloser       io.Closer
+	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *util.Signaler
@@ -162,7 +164,7 @@ type Options struct {
 	PostageContractAddress     string
 	StakingContractAddress     string
 	PriceOracleAddress         string
-	BlockTime                  uint64
+	BlockTime                  time.Duration
 	DeployGasPrice             string
 	WarmupTime                 time.Duration
 	ChainID                    int64
@@ -958,6 +960,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if o.FullNodeMode {
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
+
+		agent := storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, nil, batchStore, storer, o.BlockTime, 0, 0)
+		b.storageIncetivesCloser = agent
 	}
 
 	multiResolver := multiresolver.NewMultiResolver(
@@ -1007,7 +1012,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		FeedFactory:      feedFactory,
 		Post:             post,
 		PostageContract:  postageContractService,
-		StakingContract:  stakingContract,
+		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
 	}
@@ -1259,6 +1264,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.nsCloser, "netstore")
 	tryClose(b.depthMonitorCloser, "depthmonitor service")
+	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")

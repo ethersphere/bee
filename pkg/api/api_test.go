@@ -190,7 +190,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		PostageContract:  o.PostageContract,
 		Steward:          o.Steward,
 		SyncStatus:       o.SyncStatus,
-		StakingContract:  o.StakingContract,
+		Staking:          o.StakingContract,
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, api.FullMode, true, true, backend, o.CORSAllowedOrigins)
