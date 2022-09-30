@@ -20,6 +20,8 @@ import (
 )
 
 func TestDepositStake(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	owner := common.HexToAddress("abcd")
 	stakingAddress := common.HexToAddress("ffff")
@@ -30,9 +32,10 @@ func TestDepositStake(t *testing.T) {
 	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
-		//owner/nonce/amount
 		expectedCallData, err := stakingABI.Pack("depositStake", owner, nonce, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
@@ -75,9 +78,10 @@ func TestDepositStake(t *testing.T) {
 	})
 
 	t.Run("ok with addon stake", func(t *testing.T) {
+		t.Parallel()
+
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(2)
-		//owner/nonce/amount
 		expectedCallData, err := stakingABI.Pack("depositStake", owner, nonce, big.NewInt(1))
 		if err != nil {
 			t.Fatal(err)
@@ -127,6 +131,8 @@ func TestDepositStake(t *testing.T) {
 	})
 
 	t.Run("insufficient stake amount", func(t *testing.T) {
+		t.Parallel()
+
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
 
@@ -150,6 +156,8 @@ func TestDepositStake(t *testing.T) {
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
+		t.Parallel()
+
 		totalAmount := big.NewInt(0)
 		prevStake := big.NewInt(0)
 
@@ -173,7 +181,8 @@ func TestDepositStake(t *testing.T) {
 	})
 
 	t.Run("invalid call data", func(t *testing.T) {
-		//owner/nonce/amount
+		t.Parallel()
+
 		_, err := stakingABI.Pack("invalidMethod", owner, nonce, stakedAmount)
 		if err == nil {
 			t.Fatal("expected 'method 'invalidMethod' not found'")
@@ -181,6 +190,8 @@ func TestDepositStake(t *testing.T) {
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
+		t.Parallel()
+
 		totalAmount := big.NewInt(0)
 		prevStake := big.NewInt(0)
 
@@ -205,6 +216,8 @@ func TestDepositStake(t *testing.T) {
 }
 
 func TestGetStake(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	owner := common.HexToAddress("abcd")
 	stakingAddress := common.HexToAddress("ffff")
@@ -213,8 +226,9 @@ func TestGetStake(t *testing.T) {
 	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		prevStake := big.NewInt(0)
-		//owner/nonce/amount
 		var overlayAddr [32]byte
 		copy(overlayAddr[:], addr.Bytes())
 		expectedCallData, err := stakingABI.Pack("stakeOfOverlay", overlayAddr)
@@ -247,6 +261,8 @@ func TestGetStake(t *testing.T) {
 	})
 
 	t.Run("transaction error", func(t *testing.T) {
+		t.Parallel()
+
 		contract := New(owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
