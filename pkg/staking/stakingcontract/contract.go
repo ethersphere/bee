@@ -23,8 +23,7 @@ import (
 var (
 	MinimumStakeAmount = big.NewInt(1)
 
-	erc20ABI = parseABI(sw3abi.ERC20ABIv0_3_1)
-	//TODO: get ABI for staking contract and replace it below
+	erc20ABI   = parseABI(sw3abi.ERC20ABIv0_3_1)
 	stakingABI = parseABI(ABIv0_0_0)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
@@ -105,6 +104,7 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 }
 
 func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
+	//overlayAddr is the byte array of fixed size and is required for smart contract.
 	var overlayAddr [32]byte
 	copy(overlayAddr[:], overlay.Bytes())
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlayAddr)
