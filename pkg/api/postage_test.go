@@ -751,12 +751,11 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
-				if gasLimit != 2000000 {
-					t.Fatalf("want 2000000, got %d", gasLimit)
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+				if sctx.GetGasLimit(ctx) != 10000 {
+					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
 				}
-				return batchOk, nil
+				return nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -764,8 +763,8 @@ func TestPostageTopUpStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+		jsonhttptest.Request(t, ts, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusAccepted,
+			jsonhttptest.WithRequestHeader("Gas-Limit", "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchOk,
 			}),
@@ -911,12 +910,11 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
-				if gasLimit != 2000000 {
-					t.Fatalf("want 2000000, got %d", gasLimit)
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, _ []byte, _ uint8) error {
+				if sctx.GetGasLimit(ctx) != 10000 {
+					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
 				}
-				return batchOk, nil
+				return nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -924,8 +922,8 @@ func TestPostageDiluteStamp(t *testing.T) {
 			PostageContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
+			jsonhttptest.WithRequestHeader("Gas-Limit", "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchOk,
 			}),
