@@ -33,7 +33,7 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
 		//owner/nonce/amount
-		expectedCallData, err := parseABI(StakingABI).Pack("depositStake", owner, nonce, stakedAmount)
+		expectedCallData, err := stakingABI.Pack("depositStake", owner, nonce, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(2)
 		//owner/nonce/amount
-		expectedCallData, err := parseABI(StakingABI).Pack("depositStake", owner, nonce, big.NewInt(1))
+		expectedCallData, err := stakingABI.Pack("depositStake", owner, nonce, big.NewInt(1))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +174,7 @@ func TestDepositStake(t *testing.T) {
 
 	t.Run("invalid call data", func(t *testing.T) {
 		//owner/nonce/amount
-		_, err := parseABI(StakingABI).Pack("invalidMethod", owner, nonce, stakedAmount)
+		_, err := stakingABI.Pack("invalidMethod", owner, nonce, stakedAmount)
 		if err == nil {
 			t.Fatal("expected 'method 'invalidMethod' not found'")
 		}
@@ -217,7 +217,7 @@ func TestGetStake(t *testing.T) {
 		//owner/nonce/amount
 		var overlayAddr [32]byte
 		copy(overlayAddr[:], addr.Bytes())
-		expectedCallData, err := parseABI(StakingABI).Pack("stakeOfOverlay", overlayAddr)
+		expectedCallData, err := stakingABI.Pack("stakeOfOverlay", overlayAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,5 +259,4 @@ func TestGetStake(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
-
 }

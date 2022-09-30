@@ -105,11 +105,12 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 }
 
 func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
+	var overlayAddr [32]byte
+	copy(overlayAddr[:], overlay.Bytes())
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
 	if err != nil {
 		return nil, err
 	}
-
 	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
 		To:   &s.stakingContractAddress,
 		Data: callData,
