@@ -67,7 +67,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	gasLimit := sctx.GetGasLimit(ctx)
 	if gasLimit == 0 {
 		// if gas limit is not set, use the default limit.
-		gasLimit = 9_000_000
+		gasLimit = 3_000_000
 	}
 	request := &transaction.TxRequest{
 		To:          &s.stakingContractAddress,
@@ -113,7 +113,7 @@ func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay swarm.Ad
 	gasLimit := sctx.GetGasLimit(ctx)
 	if gasLimit == 0 {
 		// if gas limit is not set, use the default limit.
-		gasLimit = 9_000_000
+		gasLimit = 3_000_000
 	}
 	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
 	if err != nil {
