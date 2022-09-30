@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives"
 )
 
-func TestCancel(t *testing.T) {
+func TestClose(t *testing.T) {
 	t.Parallel()
 
 	ev := storageincentives.NewEvents()

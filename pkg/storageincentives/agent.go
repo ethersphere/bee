@@ -33,12 +33,10 @@ type Monitor interface {
 	IsStable() bool
 }
 
-var ErrSlashed = errors.New("slashed")
-
 type IncentivesContract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
-	IsWinner(context.Context) (bool, bool, error)
+	IsWinner(context.Context) (bool, error)
 	Claim(context.Context) error
 	Commit(context.Context, []byte) error
 	Reveal(context.Context, uint8, []byte, []byte) error
@@ -53,7 +51,6 @@ type Agent struct {
 	reserve  postage.Storer
 	sampler  Sampler
 	overlay  swarm.Address
-	slashedC chan struct{}
 	quit     chan struct{}
 	wg       sync.WaitGroup
 }
@@ -76,7 +73,6 @@ func New(
 		reserve:  reserve,
 		monitor:  monitor,
 		sampler:  sampler,
-		slashedC: make(chan struct{}),
 		quit:     make(chan struct{}),
 	}
 
@@ -188,10 +184,6 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			err := s.claim(ctx)
 			if err != nil {
 				s.logger.Error(err, "claim")
-				if errors.Is(err, ErrSlashed) {
-					s.logger.Info("slashed error returned, quiting incentives agent")
-					close(s.slashedC)
-				}
 			} else {
 				s.logger.Debug("claim phase")
 			}
@@ -232,8 +224,6 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	for {
 		select {
-		case <-s.slashedC:
-			return
 		case <-s.quit:
 			return
 		case <-time.After(blockTime * time.Duration(checkEvery)):
@@ -285,13 +275,9 @@ func (s *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 
 func (s *Agent) claim(ctx context.Context) error {
 
-	isSlashed, isWinner, err := s.contract.IsWinner(ctx)
+	isWinner, err := s.contract.IsWinner(ctx)
 	if err != nil {
 		return err
-	}
-
-	if isSlashed {
-		return ErrSlashed
 	}
 
 	if isWinner {
