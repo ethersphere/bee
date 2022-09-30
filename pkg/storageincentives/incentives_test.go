@@ -211,6 +211,7 @@ func (m *mockContract) Commit(context.Context, []byte) error {
 }
 
 func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
+	m.t.Helper()
 	m.revealCalls.Inc()
 	if m.previousCall != commitCall {
 		m.t.Fatal("previous call must be commit")
