@@ -24,6 +24,12 @@ var (
 	EscapeHTML = false
 )
 
+// Reason represents a reason for an invalid request entry.
+type Reason struct {
+	Entry string `json:"field"`
+	Error string `json:"error"`
+}
+
 // StatusResponse is a standardized error format for specific HTTP responses.
 // Code field corresponds with HTTP status code, and Message field is a short
 // description of that code or provides more context about the reason for such
@@ -32,8 +38,9 @@ var (
 // If response is string, error or Stringer type the string will be set as
 // value to the Message field.
 type StatusResponse struct {
-	Message string `json:"message,omitempty"`
-	Code    int    `json:"code,omitempty"`
+	Code    int      `json:"code,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Reasons []Reason `json:"reasons,omitempty"`
 }
 
 // Respond writes a JSON-encoded body to http.ResponseWriter.

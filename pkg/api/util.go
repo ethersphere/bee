@@ -35,25 +35,37 @@ var errHexLength = errors.New("odd length hex string")
 // It's a drop-in replacement for hex.InvalidByteError.
 type hexInvalidByteError byte
 
+// Error implements the error interface.
 func (e hexInvalidByteError) Error() string {
 	return fmt.Sprintf("invalid hex byte: %#U", rune(e))
 }
 
-// parseError is returned when a parameter cannot be parsed.
+// parseError is returned when an entry cannot be parsed.
 type parseError struct {
-	Param string
+	Entry string
 	Value string
 	Cause error
 }
 
 // Error implements the error interface.
-func (e parseError) Error() string {
-	return fmt.Sprintf("`%s=%v`: %v", e.Param, e.Value, e.Cause)
+func (e *parseError) Error() string {
+	return fmt.Sprintf("`%s=%v`: %v", e.Entry, e.Value, e.Cause)
 }
 
 // Unwrap implements the interface required by errors.Unwrap function.
-func (e parseError) Unwrap() error {
+func (e *parseError) Unwrap() error {
 	return e.Cause
+}
+
+// Equal returns true if the given error
+// type and fields are equal to this error.
+// It is used to compare errors in tests.
+func (e *parseError) Equal(err error) bool {
+	var p *parseError
+	if !errors.As(err, &p) {
+		return false
+	}
+	return e.Entry == p.Entry && e.Value == p.Value && errors.Is(e.Cause, p.Cause)
 }
 
 // newParseError returns a new mapStructure error.
@@ -62,7 +74,7 @@ func (e parseError) Unwrap() error {
 // used as a cause. The hex.InvalidByteError
 // and hex.ErrLength errors are replaced in
 // order to hide unnecessary information.
-func newParseError(param, value string, cause error) error {
+func newParseError(entry, value string, cause error) error {
 	var numErr *strconv.NumError
 	if errors.As(cause, &numErr) {
 		cause = numErr.Err
@@ -77,8 +89,8 @@ func newParseError(param, value string, cause error) error {
 		cause = errHexLength
 	}
 
-	return parseError{
-		Param: param,
+	return &parseError{
+		Entry: entry,
 		Value: value,
 		Cause: cause,
 	}
@@ -267,17 +279,17 @@ func mapStructure(input, output interface{}) (err error) {
 	pErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
 	for i := 0; i < outputVal.NumField(); i++ {
 		apply := func(v string) (string, error) { return v, nil }
-		param := outputVal.Type().Field(i).Name
+		entry := outputVal.Type().Field(i).Name
 		val, ok := outputVal.Type().Field(i).Tag.Lookup(mapStructureTagName)
 		if ok {
 			elems := strings.SplitN(val, ",", 2)
-			param = elems[0]
+			entry = elems[0]
 			if len(elems) > 1 {
 				apply = preMapHooks[elems[1]]
 			}
 		}
 
-		mKey := reflect.ValueOf(param)
+		mKey := reflect.ValueOf(entry)
 		mVal := inputVal.MapIndex(mKey)
 		if !mVal.IsValid() {
 			continue
@@ -286,12 +298,12 @@ func mapStructure(input, output interface{}) (err error) {
 		value := flattenValue(mVal).String()
 		trans, err := apply(value)
 		if err != nil {
-			pErrs = multierror.Append(pErrs, newParseError(param, value, err))
+			pErrs = multierror.Append(pErrs, newParseError(entry, value, err))
 			continue
 		}
 
 		if err := set(trans, outputVal.Field(i)); err != nil {
-			pErrs = multierror.Append(pErrs, newParseError(param, value, err))
+			pErrs = multierror.Append(pErrs, newParseError(entry, value, err))
 		}
 	}
 	return pErrs.ErrorOrNil()

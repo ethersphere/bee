@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -16,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 type (
@@ -497,9 +497,9 @@ func TestMapStructure(t *testing.T) {
 			t.Parallel()
 
 			have := reflect.New(reflect.TypeOf(tc.want).Elem()).Interface()
-			haveErr := api.MapStructure(tc.src, have)
-			if diff := cmp.Diff(tc.wantErr, haveErr, cmpopts.EquateErrors()); diff != "" {
-				t.Errorf("api.MapStructure(...): error mismatch (-want +have):\n%s", diff)
+			haveErr := errors.Unwrap(api.MapStructure(tc.src, have))
+			if diff := cmp.Diff(tc.wantErr, haveErr); diff != "" {
+				t.Fatalf("api.MapStructure(...): error mismatch (-want +have):\n%s", diff)
 			}
 			if diff := cmp.Diff(tc.want, have, cmp.AllowUnexported(big.Int{})); diff != "" {
 				t.Errorf("api.MapStructure(...): result mismatch (-want +have):\n%s", diff)

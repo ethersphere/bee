@@ -74,15 +74,4 @@ func TestPingpong(t *testing.T) {
 			}),
 		)
 	})
-
-	t.Run("get method not allowed", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, ts, http.MethodGet, "/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
-			}),
-		)
-	})
 }

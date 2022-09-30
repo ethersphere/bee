@@ -79,16 +79,6 @@ func TestConnect(t *testing.T) {
 		)
 	})
 
-	t.Run("get method not allowed", func(t *testing.T) {
-		t.Parallel()
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/connect"+underlay, http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
-			}),
-		)
-	})
-
 	t.Run("error - add peer", func(t *testing.T) {
 		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
@@ -188,17 +178,6 @@ func TestPeer(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/peers", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
 				Peers: []api.Peer{{Address: overlay}},
-			}),
-		)
-	})
-
-	t.Run("get method not allowed", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/peers", http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
 			}),
 		)
 	})
