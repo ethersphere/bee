@@ -57,16 +57,17 @@ jobs:
         run: |
           export PATH=$(pwd):$PATH
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
-      - name: Build bee and pack artifacts
+      - name: Build bee
         run: |
           make binary
-          mv dist/bee bee
-          tar cvzf artifacts.tar.gz Dockerfile.goreleaser Makefile bee beekeeper
       - uses: actions/upload-artifact@v3
         with:
           name: temp-artifacts
           path: |
-            artifacts.tar.gz
+            Dockerfile.goreleaser
+            Makefile
+            dist/bee
+            beekeeper
             ~/.beekeeper
             ~/.beekeeper.yaml
           retention-days: 5
@@ -87,7 +88,8 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar.gz
+          unzip artifacts.zip
+          ls -la
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
