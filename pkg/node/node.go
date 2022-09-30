@@ -264,7 +264,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		chequebookService  chequebook.Service = new(noOpChequebookService)
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
-		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 		erc20Service       erc20.Service
 	)
 
@@ -291,7 +290,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		o.SwapEndpoint,
 		o.ChainID,
 		signer,
-		pollingInterval,
+		o.BlockTime,
 		chainEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

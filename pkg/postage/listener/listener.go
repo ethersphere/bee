@@ -257,7 +257,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			if lastConfirmedBlock != 0 {
 				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
-				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks) * time.Second
+				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks)
 			} else {
 				expectedWaitTime = l.backoffTime
 			}
