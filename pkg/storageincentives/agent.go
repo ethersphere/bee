@@ -127,7 +127,7 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				obfuscationKey = obf
 				commitRound = round
 				mtx.Unlock()
-				s.logger.Debug("commited the reserve sample and radius")
+				s.logger.Debug("committed the reserve sample and radius")
 			}
 		}
 	}
