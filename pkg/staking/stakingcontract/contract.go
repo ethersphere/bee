@@ -25,7 +25,7 @@ var (
 
 	erc20ABI = parseABI(sw3abi.ERC20ABIv0_3_1)
 	//TODO: get ABI for staking contract and replace it below
-	stakingABI = parseABI(sw3abi.ERC20ABIv0_3_1)
+	stakingABI = parseABI(ABIv0_0_0)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
@@ -119,7 +119,7 @@ func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)
 	}
 
-	results, err := erc20ABI.Unpack("stakeOfOverlay", result)
+	results, err := stakingABI.Unpack("stakeOfOverlay", result)
 	if err != nil {
 		return nil, err
 	}
