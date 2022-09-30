@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/multiformats/go-multiaddr"
 )
 
 type (
@@ -91,10 +90,6 @@ type (
 
 	mapSwarmAddressTest struct {
 		SwarmAddressVal swarm.Address `map:"swarmAddressVal"`
-	}
-
-	mapMultiaddressTest struct {
-		multiaddressVal multiaddr.Multiaddr `map:"multiaddressVal"`
 	}
 )
 

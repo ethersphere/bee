@@ -32,12 +32,6 @@ const (
 	errCannotCashStatus            = "cannot get cashout status"
 	errNoCashout                   = "no prior cashout"
 	errNoCheque                    = "no prior cheque"
-	errBadGasPrice                 = "bad gas price"
-	errBadGasLimit                 = "bad gas limit"
-
-	gasPriceHeader  = "Gas-Price"
-	gasLimitHeader  = "Gas-Limit"
-	immutableHeader = "Immutable"
 )
 
 type chequebookBalanceResponse struct {
