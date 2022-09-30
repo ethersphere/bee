@@ -30,7 +30,6 @@ var (
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
 	ErrNotImplemented          = errors.New("not implemented")
-	ErrGetStakeFailed          = errors.New("get stake failed")
 
 	depositStakeDescription = "Deposit Stake"
 )
@@ -97,14 +96,14 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 }
 
 func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := stakingABI.Pack("depositStake", owner, &stakedAmount, nonce)
+	callData, err := stakingABI.Pack("depositStake", owner, stakedAmount, nonce)
 	if err != nil {
 		return nil, err
 	}
 
 	receipt, err := s.sendTransaction(ctx, callData, depositStakeDescription)
 	if err != nil {
-		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", &stakedAmount, err)
+		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", stakedAmount, err)
 	}
 
 	return receipt, nil
@@ -168,7 +167,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, over
 func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
 	if err != nil {
-		return big.NewInt(0), fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
+		return big.NewInt(0), fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
 	return stakedAmount, nil
 }

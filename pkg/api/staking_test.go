@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	stakingContractMock "github.com/ethersphere/bee/pkg/staking/stakingcontract/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestDepositStake(t *testing.T) {
@@ -103,11 +102,12 @@ func TestDepositStake(t *testing.T) {
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 
-		var gasLimit uint64
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
-				gasLimit = sctx.GetGasLimit(ctx)
-				assert.Equal(t, gasLimit, uint64(2000000), "wrong gas limit")
+				gasLimit := sctx.GetGasLimit(ctx)
+				if gasLimit != 2000000 {
+					t.Fatalf("want 2000000, got %d", gasLimit)
+				}
 				return nil
 			}),
 		)
@@ -157,7 +157,7 @@ func TestGetStake(t *testing.T) {
 
 		contractWithError := stakingContractMock.New(
 			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-				return big.NewInt(0), stakingcontract.ErrGetStakeFailed
+				return big.NewInt(0), fmt.Errorf("get stake failed")
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contractWithError})
@@ -167,11 +167,12 @@ func TestGetStake(t *testing.T) {
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 
-		var gasLimit uint64
 		contract := stakingContractMock.New(
 			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-				gasLimit = sctx.GetGasLimit(ctx)
-				assert.Equal(t, gasLimit, uint64(2000000), "wrong gas limit")
+				gasLimit := sctx.GetGasLimit(ctx)
+				if gasLimit != 2000000 {
+					t.Fatalf("want 2000000, got %d", gasLimit)
+				}
 				return big.NewInt(1), nil
 			}),
 		)
