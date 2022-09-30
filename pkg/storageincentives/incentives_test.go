@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -225,6 +226,8 @@ func (m *mockContract) WrapCommit(uint8, []byte, []byte, []byte) ([]byte, error)
 type mockSampler struct {
 }
 
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8) ([]byte, error) {
-	return test.RandomAddress().Bytes(), nil
+func (m *mockSampler) ReserveSample(context.Context, []byte, uint8) (storage.Sample, error) {
+	return storage.Sample{
+		Hash: test.RandomAddress(),
+	}, nil
 }
