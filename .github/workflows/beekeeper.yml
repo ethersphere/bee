@@ -57,6 +57,8 @@ jobs:
         run: |
           export PATH=$(pwd):$PATH
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          mv ~/.beekeeper.yaml .beekeeper.yaml
+          mv ~/.beekeeper/local.yaml local.yaml
       - name: Build bee
         run: |
           make binary
@@ -68,8 +70,8 @@ jobs:
             Makefile
             dist/bee
             beekeeper
-            ${HOME}/.beekeeper
-            ${HOME}/.beekeeper.yaml
+            local.yaml
+            .beekeeper.yaml
           retention-days: 5
   beekeeper:
     name: Integration tests
@@ -88,12 +90,9 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          ls -la
-          ls -la temp-artifacts
-          unzip temp-artifacts.zip
-          ls -la
-          ls -la *
-          ls -la */*
+          mv .beekeeper.yaml ~/.beekeeper.yaml
+          mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+          mv dist/bee bee && rm -r dist
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
@@ -188,7 +187,9 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar.gz
+          mv .beekeeper.yaml ~/.beekeeper.yaml
+          mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+          mv dist/bee bee && rm -r dist
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
@@ -247,7 +248,9 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar.gz
+          mv .beekeeper.yaml ~/.beekeeper.yaml
+          mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+          mv dist/bee bee && rm -r dist
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
@@ -298,8 +301,7 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          tar xvzf artifacts.tar.gz
-          sudo mv beekeeper /usr/local/bin/beekeeper
+          mv dist/bee bee && rm -r dist
       - name: Build image
         run: |
           printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
