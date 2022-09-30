@@ -220,10 +220,12 @@ func TestPostageCreateStamp(t *testing.T) {
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 
-		var gasLimit uint64
 		contract := contractMock.New(
 			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
-				gasLimit = sctx.GetGasLimit(ctx)
+				gasLimit := sctx.GetGasLimit(ctx)
+				if gasLimit != 2000000 {
+					t.Fatalf("want 2000000, got %d", gasLimit)
+				}
 				return batchID, nil
 			}),
 		)
@@ -238,10 +240,6 @@ func TestPostageCreateStamp(t *testing.T) {
 				BatchID: batchID,
 			}),
 		)
-
-		if gasLimit != 2000000 {
-			t.Fatalf("want 2000000, got %d", gasLimit)
-		}
 	})
 
 	t.Run("syncing in progress", func(t *testing.T) {
@@ -752,10 +750,12 @@ func TestPostageTopUpStamp(t *testing.T) {
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 
-		var gasLimit uint64
 		contract := contractMock.New(
 			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
-				gasLimit = sctx.GetGasLimit(ctx)
+				gasLimit := sctx.GetGasLimit(ctx)
+				if gasLimit != 2000000 {
+					t.Fatalf("want 2000000, got %d", gasLimit)
+				}
 				return batchOk, nil
 			}),
 		)
@@ -770,10 +770,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 				BatchID: batchOk,
 			}),
 		)
-
-		if gasLimit != 2000000 {
-			t.Fatalf("want 2000000, got %d", gasLimit)
-		}
 	})
 }
 
@@ -914,10 +910,12 @@ func TestPostageDiluteStamp(t *testing.T) {
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 
-		var gasLimit uint64
 		contract := contractMock.New(
 			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
-				gasLimit = sctx.GetGasLimit(ctx)
+				gasLimit := sctx.GetGasLimit(ctx)
+				if gasLimit != 2000000 {
+					t.Fatalf("want 2000000, got %d", gasLimit)
+				}
 				return batchOk, nil
 			}),
 		)
@@ -933,9 +931,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 			}),
 		)
 
-		if gasLimit != 2000000 {
-			t.Fatalf("want 2000000, got %d", gasLimit)
-		}
 	})
 }
 
