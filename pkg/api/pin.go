@@ -16,18 +16,20 @@ import (
 
 // pinRootHash pins root hash of given reference. This method is idempotent.
 func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
-	if err != nil {
-		s.logger.Debug("pin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
-		s.logger.Error(nil, "pin root hash: parse reference string failed")
-		jsonhttp.BadRequest(w, "parse reference string failed")
+	logger := s.logger.WithName("post_pin").Build()
+
+	paths := struct {
+		Reference swarm.Address `map:"reference" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	has, err := s.pinning.HasPin(ref)
+	has, err := s.pinning.HasPin(paths.Reference)
 	if err != nil {
-		s.logger.Debug("pin root hash: has pin failed", "chunk_address", ref, "error", err)
-		s.logger.Error(nil, "pin root hash: has pin failed")
+		logger.Debug("pin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
+		logger.Error(nil, "pin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin failed")
 		return
 	}
@@ -36,13 +38,13 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err = s.pinning.CreatePin(r.Context(), ref, true); {
+	switch err = s.pinning.CreatePin(r.Context(), paths.Reference, true); {
 	case errors.Is(err, storage.ErrNotFound):
 		jsonhttp.NotFound(w, nil)
 		return
 	case err != nil:
-		s.logger.Debug("pin root hash: create pin failed", "chunk_address", ref, "error", err)
-		s.logger.Error(nil, "pin root hash: create pin failed")
+		logger.Debug("pin root hash: create pin failed", "chunk_address", paths.Reference, "error", err)
+		logger.Error(nil, "pin root hash: create pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: creation of tracking pin failed")
 		return
 	}
@@ -52,18 +54,20 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 // unpinRootHash unpin's an already pinned root hash. This method is idempotent.
 func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
-	if err != nil {
-		s.logger.Debug("unpin root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
-		s.logger.Error(nil, "unpin root hash: parse reference string failed")
-		jsonhttp.BadRequest(w, "parse reference string failed")
+	logger := s.logger.WithName("delete_pin").Build()
+
+	paths := struct {
+		Reference swarm.Address `map:"reference" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	has, err := s.pinning.HasPin(ref)
+	has, err := s.pinning.HasPin(paths.Reference)
 	if err != nil {
-		s.logger.Debug("unpin root hash: has pin failed", "chunk_address", ref, "error", err)
-		s.logger.Error(nil, "unpin root hash: has pin failed")
+		logger.Debug("unpin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
+		logger.Error(nil, "unpin root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin")
 		return
 	}
@@ -72,9 +76,9 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.pinning.DeletePin(r.Context(), ref); err != nil {
-		s.logger.Debug("unpin root hash: delete pin failed", "chunk_address", ref, "error", err)
-		s.logger.Error(nil, "unpin root hash: delete pin failed")
+	if err := s.pinning.DeletePin(r.Context(), paths.Reference); err != nil {
+		logger.Debug("unpin root hash: delete pin failed", "chunk_address", paths.Reference, "error", err)
+		logger.Error(nil, "unpin root hash: delete pin failed")
 		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
 		return
 	}
@@ -84,18 +88,20 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 
 // getPinnedRootHash returns back the given reference if its root hash is pinned.
 func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
-	ref, err := swarm.ParseHexAddress(mux.Vars(r)["reference"])
-	if err != nil {
-		s.logger.Debug("pinned root hash: parse reference string failed", "string", mux.Vars(r)["reference"], "error", err)
-		s.logger.Error(nil, "pinned root hash: parse reference string failed")
-		jsonhttp.BadRequest(w, "parse reference string failed")
+	logger := s.logger.WithName("get_pin").Build()
+
+	paths := struct {
+		Reference swarm.Address `map:"reference" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	has, err := s.pinning.HasPin(ref)
+	has, err := s.pinning.HasPin(paths.Reference)
 	if err != nil {
-		s.logger.Debug("pinned root hash: has pin failed", "chunk_address", ref, "error", err)
-		s.logger.Error(nil, "pinned root hash: has pin failed")
+		logger.Debug("pinned root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
+		logger.Error(nil, "pinned root hash: has pin failed")
 		jsonhttp.InternalServerError(w, "pinned root hash: check reference failed")
 		return
 	}
@@ -108,16 +114,18 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, struct {
 		Reference swarm.Address `json:"reference"`
 	}{
-		Reference: ref,
+		Reference: paths.Reference,
 	})
 }
 
 // listPinnedRootHashes lists all the references of the pinned root hashes.
 func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_pins").Build()
+
 	pinned, err := s.pinning.Pins()
 	if err != nil {
-		s.logger.Debug("list pinned root references: unable to list references", "error", err)
-		s.logger.Error(nil, "list pinned root references: unable to list references")
+		logger.Debug("list pinned root references: unable to list references", "error", err)
+		logger.Error(nil, "list pinned root references: unable to list references")
 		jsonhttp.InternalServerError(w, "list pinned root references failed")
 		return
 	}

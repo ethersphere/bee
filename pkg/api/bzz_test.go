@@ -18,7 +18,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -49,18 +48,6 @@ func TestBzzFiles(t *testing.T) {
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
-
-	t.Run("invalid-content-type", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource,
-			http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.InvalidContentType.Error(),
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
 
 	t.Run("tar-file-upload", func(t *testing.T) {
 		tr := tarFiles(t, []f{
@@ -212,21 +199,6 @@ func TestBzzFiles(t *testing.T) {
 		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
 			t.Fatal("Invalid content type detected")
 		}
-	})
-
-	t.Run("check for slash in prefix in filename", func(t *testing.T) {
-		fileName := "/my-pictures.jpeg"
-
-		_ = jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Message: "/ in prefix not allowed",
-				Code:    http.StatusBadRequest,
-			}))
 	})
 
 	t.Run("filter out filename path", func(t *testing.T) {

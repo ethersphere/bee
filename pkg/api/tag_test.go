@@ -84,16 +84,7 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("get invalid tags", func(t *testing.T) {
-		// invalid tag
-		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"/foobar", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
-		// non-existent tag
+	t.Run("get non-existent tag", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
@@ -216,15 +207,7 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("delete tag error", func(t *testing.T) {
-		// try to delete invalid tag
-		jsonhttptest.Request(t, client, http.MethodDelete, tagsResource+"/foobar", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
+	t.Run("delete non-existent tag", func(t *testing.T) {
 		// try to delete non-existent tag
 		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -256,16 +239,7 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("done split error", func(t *testing.T) {
-		// invalid tag
-		jsonhttptest.Request(t, client, http.MethodPatch, tagsResource+"/foobar", http.StatusBadRequest,
-			jsonhttptest.WithJSONRequestBody(api.TagResponse{}),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
+	t.Run("done split non-existent tag", func(t *testing.T) {
 		// non-existent tag
 		jsonhttptest.Request(t, client, http.MethodPatch, tagsWithIdResource(uint32(333)), http.StatusNotFound,
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{}),

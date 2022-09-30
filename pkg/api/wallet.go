@@ -20,19 +20,20 @@ type walletResponse struct {
 }
 
 func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_wallet").Build()
 
 	xdai, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
 	if err != nil {
-		s.logger.Debug("wallet get: unable to acquire balance from the chain backend", "error", err)
-		s.logger.Error(nil, "wallet get: unable to acquire balance from the chain backend")
+		logger.Debug("unable to acquire balance from the chain backend", "error", err)
+		logger.Error(nil, "unable to acquire balance from the chain backend")
 		jsonhttp.InternalServerError(w, "unable to acquire balance from the chain backend")
 		return
 	}
 
 	bzz, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
 	if err != nil {
-		s.logger.Debug("wallet get: unable to acquire erc20 balance", "error", err)
-		s.logger.Error(nil, "wallet get: unable to acquire erc20 balance")
+		logger.Debug("unable to acquire erc20 balance", "error", err)
+		logger.Error(nil, "unable to acquire erc20 balance")
 		jsonhttp.InternalServerError(w, "unable to acquire erc20 balance")
 		return
 	}

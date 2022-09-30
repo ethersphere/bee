@@ -23,91 +23,78 @@ type socPostResponse struct {
 }
 
 func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["owner"]
-	owner, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("soc upload: parse owner string failed", "string", str, "error", err)
-		s.logger.Error(nil, "soc upload: parse owner string failed")
-		jsonhttp.BadRequest(w, "bad owner")
-		return
-	}
-	str = mux.Vars(r)["id"]
-	id, err := hex.DecodeString(mux.Vars(r)["id"])
-	if err != nil {
-		s.logger.Debug("soc upload: parse id string failed", "string", str, "error", err)
-		s.logger.Error(nil, "soc upload: parse id string failed")
-		jsonhttp.BadRequest(w, "bad id")
+	logger := s.logger.WithName("post_soc").Build()
+
+	paths := struct {
+		Owner []byte `map:"owner" validate:"required"`
+		ID    []byte `map:"id" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	sigStr := r.URL.Query().Get("sig")
-	if sigStr == "" {
-		s.logger.Debug("soc upload: empty sig string")
-		s.logger.Error(nil, "soc upload: empty sig string")
-		jsonhttp.BadRequest(w, "empty signature")
+	queries := struct {
+		Sig []byte `map:"sig" validate:"required"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
 		return
 	}
 
-	sig, err := hex.DecodeString(sigStr)
-	if err != nil {
-		s.logger.Debug("soc upload: decode sig string failed", "string", sigStr, "error", err)
-		s.logger.Error(nil, "soc upload: decode sig string failed")
-		jsonhttp.BadRequest(w, "bad signature")
-		return
-	}
-
+	// TODO: return structured error response as in validation case.
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
-		s.logger.Debug("soc upload: read body failed", "error", err)
-		s.logger.Error(nil, "soc upload: read body failed")
+		logger.Debug("read body failed", "error", err)
+		logger.Error(nil, "read body failed")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 	}
 
 	if len(data) < swarm.SpanSize {
-		s.logger.Debug("soc upload: chunk data too short")
-		s.logger.Error(nil, "soc upload: chunk data too short")
+		logger.Debug("chunk data too short")
+		logger.Error(nil, "chunk data too short")
 		jsonhttp.BadRequest(w, "short chunk data")
 		return
 	}
 
 	if len(data) > swarm.ChunkSize+swarm.SpanSize {
-		s.logger.Debug("soc upload: chunk data exceeds required length", "required_length", swarm.ChunkSize+swarm.SpanSize)
-		s.logger.Error(nil, "soc upload: chunk data exceeds required length")
+		logger.Debug("chunk data exceeds required length", "required_length", swarm.ChunkSize+swarm.SpanSize)
+		logger.Error(nil, "chunk data exceeds required length")
 		jsonhttp.RequestEntityTooLarge(w, "payload too large")
 		return
 	}
 
 	ch, err := cac.NewWithDataSpan(data)
 	if err != nil {
-		s.logger.Debug("soc upload: create content addressed chunk failed", "error", err)
-		s.logger.Error(nil, "soc upload: create content addressed chunk failed")
+		logger.Debug("create content addressed chunk failed", "error", err)
+		logger.Error(nil, "create content addressed chunk failed")
 		jsonhttp.BadRequest(w, "chunk data error")
 		return
 	}
 
-	ss, err := soc.NewSigned(id, ch, owner, sig)
+	ss, err := soc.NewSigned(paths.ID, ch, paths.Owner, queries.Sig)
 	if err != nil {
-		s.logger.Debug("soc upload: create soc failed", "id", id, "owner", owner, "error", err)
-		s.logger.Error(nil, "soc upload: create soc failed")
+		logger.Debug("create soc failed", "id", paths.ID, "owner", paths.Owner, "error", err)
+		logger.Error(nil, "create soc failed")
 		jsonhttp.Unauthorized(w, "invalid address")
 		return
 	}
 
 	sch, err := ss.Chunk()
 	if err != nil {
-		s.logger.Debug("soc upload: read chunk data failed", "error", err)
-		s.logger.Error(nil, "soc upload: read chunk data failed")
+		logger.Debug("read chunk data failed", "error", err)
+		logger.Error(nil, "read chunk data failed")
 		jsonhttp.InternalServerError(w, "cannot read chunk data")
 		return
 	}
 
 	if !soc.Valid(sch) {
-		s.logger.Debug("soc upload: invalid chunk", "error", err)
-		s.logger.Error(nil, "soc upload: invalid chunk")
+		logger.Debug("invalid chunk", "error", err)
+		logger.Error(nil, "invalid chunk")
 		jsonhttp.Unauthorized(w, "invalid chunk")
 		return
 	}
@@ -116,28 +103,28 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.Has(ctx, sch.Address())
 	if err != nil {
-		s.logger.Debug("soc upload: has check failed", "chunk_address", sch.Address(), "error", err)
-		s.logger.Error(nil, "soc upload: has check failed")
+		logger.Debug("has check failed", "chunk_address", sch.Address(), "error", err)
+		logger.Error(nil, "has check failed")
 		jsonhttp.InternalServerError(w, "storage error")
 		return
 	}
 	if has {
-		s.logger.Error(nil, "soc upload: chunk already exists")
+		logger.Error(nil, "chunk already exists")
 		jsonhttp.Conflict(w, "chunk already exists")
 		return
 	}
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
-		s.logger.Debug("soc upload: parse postage batch id failed", "error", err)
-		s.logger.Error(nil, "soc upload: parse postage batch id failed")
+		logger.Debug("mapStructure postage batch id failed", "error", err)
+		logger.Error(nil, "mapStructure postage batch id failed")
 		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
 
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
-		s.logger.Debug("soc upload: get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
-		s.logger.Error(nil, "soc upload: get postage batch issue")
+		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
+		logger.Error(nil, "get postage batch issue")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.BadRequest(w, "batch not found")
@@ -151,8 +138,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	stamper := postage.NewStamper(i, s.signer)
 	stamp, err := stamper.Stamp(sch.Address())
 	if err != nil {
-		s.logger.Debug("soc upload: stamp failed", "chunk_address", sch.Address(), "error", err)
-		s.logger.Error(nil, "soc upload: stamp failed")
+		logger.Debug("stamp failed", "chunk_address", sch.Address(), "error", err)
+		logger.Error(nil, "stamp failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -164,17 +151,17 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	sch = sch.WithStamp(stamp)
 	_, err = s.storer.Put(ctx, requestModePut(r), sch)
 	if err != nil {
-		s.logger.Debug("soc upload: write chunk failed", "chunk_address", sch.Address(), "error", err)
-		s.logger.Error(nil, "soc upload: write chunk failed")
+		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
+		logger.Error(nil, "write chunk failed")
 		jsonhttp.BadRequest(w, "chunk write error")
 		return
 	}
 
 	if requestPin(r) {
 		if err := s.pinning.CreatePin(ctx, sch.Address(), false); err != nil {
-			s.logger.Debug("soc upload: create pin failed", "chunk_address", sch.Address(), "error", err)
-			s.logger.Error(nil, "soc upload: create pin failed")
-			jsonhttp.InternalServerError(w, "soc upload: creation of pin failed")
+			logger.Debug("create pin failed", "chunk_address", sch.Address(), "error", err)
+			logger.Error(nil, "create pin failed")
+			jsonhttp.InternalServerError(w, "creation of pin failed")
 			return
 		}
 	}

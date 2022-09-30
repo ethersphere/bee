@@ -196,20 +196,6 @@ func TestSettlementsPeersError(t *testing.T) {
 	)
 }
 
-func TestSettlementsInvalidAddress(t *testing.T) {
-	t.Parallel()
-	peer := "bad peer address"
-
-	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/settlements/"+peer, http.StatusNotFound,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.ErrInvalidAddress,
-			Code:    http.StatusNotFound,
-		}),
-	)
-}
-
 func equalSettlements(a, b *api.SettlementsResponse) bool {
 	var state bool
 

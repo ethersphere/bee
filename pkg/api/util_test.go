@@ -7,78 +7,98 @@ package api_test
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"reflect"
 	"strconv"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/multiformats/go-multiaddr"
 )
 
 type (
-	parseBoolTest struct {
-		BoolVal bool `parse:"boolVal"`
+	mapBoolTest struct {
+		BoolVal bool `map:"boolVal"`
 	}
 
-	parseUintTest struct {
-		UintVal uint `parse:"uintVal"`
+	mapUintTest struct {
+		UintVal uint `map:"uintVal"`
 	}
 
-	parseUint8Test struct {
-		Uint8Val uint8 `parse:"uint8Val"`
+	mapUint8Test struct {
+		Uint8Val uint8 `map:"uint8Val"`
 	}
 
-	parseUint16Test struct {
-		Uint16Val uint16 `parse:"uint16Val"`
+	mapUint16Test struct {
+		Uint16Val uint16 `map:"uint16Val"`
 	}
 
-	parseUint32Test struct {
-		Uint32Val uint32 `parse:"uint32Val"`
+	mapUint32Test struct {
+		Uint32Val uint32 `map:"uint32Val"`
 	}
 
-	parseUint64Test struct {
-		Uint64Val uint64 `parse:"uint64Val"`
+	mapUint64Test struct {
+		Uint64Val uint64 `map:"uint64Val"`
 	}
 
-	parseIntTest struct {
-		IntVal int `parse:"intVal"`
+	mapIntTest struct {
+		IntVal int `map:"intVal"`
 	}
 
-	parseInt8Test struct {
-		Int8Val int8 `parse:"int8Val"`
+	mapInt8Test struct {
+		Int8Val int8 `map:"int8Val"`
 	}
 
-	parseInt16Test struct {
-		Int16Val int16 `parse:"int16Val"`
+	mapInt16Test struct {
+		Int16Val int16 `map:"int16Val"`
 	}
 
-	parseInt32Test struct {
-		Int32Val int32 `parse:"int32Val"`
+	mapInt32Test struct {
+		Int32Val int32 `map:"int32Val"`
 	}
 
-	parseInt64Test struct {
-		Int64Val int64 `parse:"int64Val"`
+	mapInt64Test struct {
+		Int64Val int64 `map:"int64Val"`
 	}
 
-	parseFloat32Test struct {
-		Float32Val float32 `parse:"float32Val"`
+	mapFloat32Test struct {
+		Float32Val float32 `map:"float32Val"`
 	}
 
-	parseFloat64Test struct {
-		Float64Val float64 `parse:"float64Val"`
+	mapFloat64Test struct {
+		Float64Val float64 `map:"float64Val"`
 	}
 
-	parseByteSliceTest struct {
-		ByteSliceVal []byte `parse:"byteSliceVal"`
+	mapByteSliceTest struct {
+		ByteSliceVal []byte `map:"byteSliceVal"`
 	}
 
-	parseStringTest struct {
-		StringVal string `parse:"stringVal"`
+	mapStringTest struct {
+		StringVal string `map:"stringVal"`
+	}
+
+	mapBigIntTest struct {
+		BigIntVal *big.Int `map:"bigIntVal"`
+	}
+
+	mapCommonHashTest struct {
+		CommonHashVal common.Hash `map:"commonHashVal"`
+	}
+
+	mapSwarmAddressTest struct {
+		SwarmAddressVal swarm.Address `map:"swarmAddressVal"`
+	}
+
+	mapMultiaddressTest struct {
+		multiaddressVal multiaddr.Multiaddr `map:"multiaddressVal"`
 	}
 )
 
-func TestParse(t *testing.T) {
+func TestMapStructure(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -89,379 +109,391 @@ func TestParse(t *testing.T) {
 	}{{
 		name: "bool zero value",
 		src:  map[string]string{"boolVal": "0"},
-		want: &parseBoolTest{},
+		want: &mapBoolTest{},
 	}, {
 		name: "bool false",
 		src:  map[string]string{"boolVal": "false"},
-		want: &parseBoolTest{BoolVal: false},
+		want: &mapBoolTest{BoolVal: false},
 	}, {
 		name: "bool true",
 		src:  map[string]string{"boolVal": "true"},
-		want: &parseBoolTest{BoolVal: true},
+		want: &mapBoolTest{BoolVal: true},
 	}, {
 		name:    "bool syntax error",
 		src:     map[string]string{"boolVal": "a"},
-		want:    &parseBoolTest{},
+		want:    &mapBoolTest{},
 		wantErr: api.NewParseError("boolVal", "a", strconv.ErrSyntax),
 	}, {
 		name: "uint zero value",
 		src:  map[string]string{"uintVal": "0"},
-		want: &parseUintTest{},
+		want: &mapUintTest{},
 	}, {
 		name: "uint in range value",
 		src:  map[string]string{"uintVal": "1"},
-		want: &parseUintTest{UintVal: 1},
+		want: &mapUintTest{UintVal: 1},
 	}, {
 		name: "uint max value",
 		src:  map[string]string{"uintVal": fmt.Sprintf("%d", uint(math.MaxUint))},
-		want: &parseUintTest{UintVal: math.MaxUint},
+		want: &mapUintTest{UintVal: math.MaxUint},
 	}, {
 		name:    "uint out of range value",
 		src:     map[string]string{"uintVal": "18446744073709551616"},
-		want:    &parseUintTest{},
+		want:    &mapUintTest{},
 		wantErr: api.NewParseError("uintVal", "18446744073709551616", strconv.ErrRange),
 	}, {
 		name:    "uint syntax error",
 		src:     map[string]string{"uintVal": "one"},
-		want:    &parseUintTest{},
+		want:    &mapUintTest{},
 		wantErr: api.NewParseError("uintVal", "one", strconv.ErrSyntax),
 	}, {
 		name: "uint8 zero value",
 		src:  map[string]string{"uint8Val": "0"},
-		want: &parseUint8Test{},
+		want: &mapUint8Test{},
 	}, {
 		name: "uint8 in range value",
 		src:  map[string]string{"uint8Val": "10"},
-		want: &parseUint8Test{Uint8Val: 10},
+		want: &mapUint8Test{Uint8Val: 10},
 	}, {
 		name: "uint8 max value",
 		src:  map[string]string{"uint8Val": "255"},
-		want: &parseUint8Test{Uint8Val: math.MaxUint8},
+		want: &mapUint8Test{Uint8Val: math.MaxUint8},
 	}, {
 		name:    "uint8 out of range value",
 		src:     map[string]string{"uint8Val": "256"},
-		want:    &parseUint8Test{},
+		want:    &mapUint8Test{},
 		wantErr: api.NewParseError("uint8Val", "256", strconv.ErrRange),
 	}, {
 		name:    "uint8 syntax error",
 		src:     map[string]string{"uint8Val": "ten"},
-		want:    &parseUint8Test{},
+		want:    &mapUint8Test{},
 		wantErr: api.NewParseError("uint8Val", "ten", strconv.ErrSyntax),
 	}, {
 		name: "uint16 zero value",
 		src:  map[string]string{"uint16Val": "0"},
-		want: &parseUint16Test{},
+		want: &mapUint16Test{},
 	}, {
 		name: "uint16 in range value",
 		src:  map[string]string{"uint16Val": "100"},
-		want: &parseUint16Test{Uint16Val: 100},
+		want: &mapUint16Test{Uint16Val: 100},
 	}, {
 		name: "uint16 max value",
 		src:  map[string]string{"uint16Val": "65535"},
-		want: &parseUint16Test{Uint16Val: math.MaxUint16},
+		want: &mapUint16Test{Uint16Val: math.MaxUint16},
 	}, {
 		name:    "uint16 out of range value",
 		src:     map[string]string{"uint16Val": "65536"},
-		want:    &parseUint16Test{},
+		want:    &mapUint16Test{},
 		wantErr: api.NewParseError("uint16Val", "65536", strconv.ErrRange),
 	}, {
 		name:    "uint16 syntax error",
 		src:     map[string]string{"uint16Val": "hundred"},
-		want:    &parseUint16Test{},
+		want:    &mapUint16Test{},
 		wantErr: api.NewParseError("uint16Val", "hundred", strconv.ErrSyntax),
 	}, {
 		name: "uint32 zero value",
 		src:  map[string]string{"uint32Val": "0"},
-		want: &parseUint32Test{},
+		want: &mapUint32Test{},
 	}, {
 		name: "uint32 in range value",
 		src:  map[string]string{"uint32Val": "1000"},
-		want: &parseUint32Test{Uint32Val: 1000},
+		want: &mapUint32Test{Uint32Val: 1000},
 	}, {
 		name: "uint32 max value",
 		src:  map[string]string{"uint32Val": "4294967295"},
-		want: &parseUint32Test{Uint32Val: math.MaxUint32},
+		want: &mapUint32Test{Uint32Val: math.MaxUint32},
 	}, {
 		name:    "uint32 out of range value",
 		src:     map[string]string{"uint32Val": "4294967296"},
-		want:    &parseUint32Test{},
+		want:    &mapUint32Test{},
 		wantErr: api.NewParseError("uint32Val", "4294967296", strconv.ErrRange),
 	}, {
 		name:    "uint32 syntax error",
 		src:     map[string]string{"uint32Val": "thousand"},
-		want:    &parseUint32Test{},
+		want:    &mapUint32Test{},
 		wantErr: api.NewParseError("uint32Val", "thousand", strconv.ErrSyntax),
 	}, {
 		name: "uint64 zero value",
 		src:  map[string]string{"uint64Val": "0"},
-		want: &parseUint64Test{},
+		want: &mapUint64Test{},
 	}, {
 		name: "uint64 in range value",
 		src:  map[string]string{"uint64Val": "10000"},
-		want: &parseUint64Test{Uint64Val: 10000},
+		want: &mapUint64Test{Uint64Val: 10000},
 	}, {
 		name: "uint64 max value",
 		src:  map[string]string{"uint64Val": "18446744073709551615"},
-		want: &parseUint64Test{Uint64Val: math.MaxUint64},
+		want: &mapUint64Test{Uint64Val: math.MaxUint64},
 	}, {
 		name:    "uint64 out of range value",
 		src:     map[string]string{"uint64Val": "18446744073709551616"},
-		want:    &parseUint64Test{},
+		want:    &mapUint64Test{},
 		wantErr: api.NewParseError("uint64Val", "18446744073709551616", strconv.ErrRange),
 	}, {
 		name:    "uint64 syntax error",
 		src:     map[string]string{"uint64Val": "ten thousand"},
-		want:    &parseUint64Test{},
+		want:    &mapUint64Test{},
 		wantErr: api.NewParseError("uint64Val", "ten thousand", strconv.ErrSyntax),
 	}, {
 		name: "int zero value",
 		src:  map[string]string{"intVal": "0"},
-		want: &parseIntTest{},
+		want: &mapIntTest{},
 	}, {
 		name: "int in range value",
 		src:  map[string]string{"intVal": "1"},
-		want: &parseIntTest{IntVal: 1},
+		want: &mapIntTest{IntVal: 1},
 	}, {
 		name: "int min value",
 		src:  map[string]string{"intVal": fmt.Sprintf("%d", math.MinInt)},
-		want: &parseIntTest{IntVal: math.MinInt},
+		want: &mapIntTest{IntVal: math.MinInt},
 	}, {
 		name: "int max value",
 		src:  map[string]string{"intVal": fmt.Sprintf("%d", math.MaxInt)},
-		want: &parseIntTest{IntVal: math.MaxInt},
+		want: &mapIntTest{IntVal: math.MaxInt},
 	}, {
 		name:    "int min out of range value",
 		src:     map[string]string{"intVal": "-9223372036854775809"},
-		want:    &parseIntTest{},
+		want:    &mapIntTest{},
 		wantErr: api.NewParseError("intVal", "-9223372036854775809", strconv.ErrRange),
 	}, {
 		name:    "int max out of range value",
 		src:     map[string]string{"intVal": "9223372036854775808"},
-		want:    &parseIntTest{},
+		want:    &mapIntTest{},
 		wantErr: api.NewParseError("intVal", "9223372036854775808", strconv.ErrRange),
 	}, {
 		name:    "int syntax error",
 		src:     map[string]string{"intVal": "one"},
-		want:    &parseIntTest{},
+		want:    &mapIntTest{},
 		wantErr: api.NewParseError("intVal", "one", strconv.ErrSyntax),
 	}, {
 		name: "int8 zero value",
 		src:  map[string]string{"int8Val": "0"},
-		want: &parseInt8Test{},
+		want: &mapInt8Test{},
 	}, {
 		name: "int8 in range value",
 		src:  map[string]string{"int8Val": "10"},
-		want: &parseInt8Test{Int8Val: 10},
+		want: &mapInt8Test{Int8Val: 10},
 	}, {
 		name: "int8 min value",
 		src:  map[string]string{"int8Val": "-128"},
-		want: &parseInt8Test{Int8Val: math.MinInt8},
+		want: &mapInt8Test{Int8Val: math.MinInt8},
 	}, {
 		name: "int8 max value",
 		src:  map[string]string{"int8Val": "127"},
-		want: &parseInt8Test{Int8Val: math.MaxInt8},
+		want: &mapInt8Test{Int8Val: math.MaxInt8},
 	}, {
 		name:    "int8 min out of range value",
 		src:     map[string]string{"int8Val": "-129"},
-		want:    &parseInt8Test{},
+		want:    &mapInt8Test{},
 		wantErr: api.NewParseError("int8Val", "-129", strconv.ErrRange),
 	}, {
 		name:    "int8 max out of range value",
 		src:     map[string]string{"int8Val": "128"},
-		want:    &parseInt8Test{},
+		want:    &mapInt8Test{},
 		wantErr: api.NewParseError("int8Val", "128", strconv.ErrRange),
 	}, {
 		name:    "int8 syntax error",
 		src:     map[string]string{"int8Val": "ten"},
-		want:    &parseInt8Test{},
+		want:    &mapInt8Test{},
 		wantErr: api.NewParseError("int8Val", "ten", strconv.ErrSyntax),
 	}, {
 		name: "int16 zero value",
 		src:  map[string]string{"int16Val": "0"},
-		want: &parseInt16Test{},
+		want: &mapInt16Test{},
 	}, {
 		name: "int16 in range value",
 		src:  map[string]string{"int16Val": "100"},
-		want: &parseInt16Test{Int16Val: 100},
+		want: &mapInt16Test{Int16Val: 100},
 	}, {
 		name: "int16 min value",
 		src:  map[string]string{"int16Val": "-32768"},
-		want: &parseInt16Test{Int16Val: math.MinInt16},
+		want: &mapInt16Test{Int16Val: math.MinInt16},
 	}, {
 		name: "int16 max value",
 		src:  map[string]string{"int16Val": "32767"},
-		want: &parseInt16Test{Int16Val: math.MaxInt16},
+		want: &mapInt16Test{Int16Val: math.MaxInt16},
 	}, {
 		name:    "int16 min out of range value",
 		src:     map[string]string{"int16Val": "-32769"},
-		want:    &parseInt16Test{},
+		want:    &mapInt16Test{},
 		wantErr: api.NewParseError("int16Val", "-32769", strconv.ErrRange),
 	}, {
 		name:    "int16 max out of range value",
 		src:     map[string]string{"int16Val": "32768"},
-		want:    &parseInt16Test{},
+		want:    &mapInt16Test{},
 		wantErr: api.NewParseError("int16Val", "32768", strconv.ErrRange),
 	}, {
 		name:    "int16 syntax error",
 		src:     map[string]string{"int16Val": "hundred"},
-		want:    &parseInt16Test{},
+		want:    &mapInt16Test{},
 		wantErr: api.NewParseError("int16Val", "hundred", strconv.ErrSyntax),
 	}, {
 		name: "int32 zero value",
 		src:  map[string]string{"int32Val": "0"},
-		want: &parseInt32Test{},
+		want: &mapInt32Test{},
 	}, {
 		name: "int32 in range value",
 		src:  map[string]string{"int32Val": "1000"},
-		want: &parseInt32Test{Int32Val: 1000},
+		want: &mapInt32Test{Int32Val: 1000},
 	}, {
 		name: "int32 min value",
 		src:  map[string]string{"int32Val": "-2147483648"},
-		want: &parseInt32Test{Int32Val: math.MinInt32},
+		want: &mapInt32Test{Int32Val: math.MinInt32},
 	}, {
 		name: "int32 max value",
 		src:  map[string]string{"int32Val": "2147483647"},
-		want: &parseInt32Test{Int32Val: math.MaxInt32},
+		want: &mapInt32Test{Int32Val: math.MaxInt32},
 	}, {
 		name:    "int32 min out of range value",
 		src:     map[string]string{"int32Val": "-2147483649"},
-		want:    &parseInt32Test{},
+		want:    &mapInt32Test{},
 		wantErr: api.NewParseError("int32Val", "-2147483649", strconv.ErrRange),
 	}, {
 		name:    "int32 max out of range value",
 		src:     map[string]string{"int32Val": "2147483648"},
-		want:    &parseInt32Test{},
+		want:    &mapInt32Test{},
 		wantErr: api.NewParseError("int32Val", "2147483648", strconv.ErrRange),
 	}, {
 		name:    "int32 syntax error",
 		src:     map[string]string{"int32Val": "thousand"},
-		want:    &parseInt32Test{},
+		want:    &mapInt32Test{},
 		wantErr: api.NewParseError("int32Val", "thousand", strconv.ErrSyntax),
 	}, {
 		name: "int64 zero value",
 		src:  map[string]string{"int64Val": "0"},
-		want: &parseInt64Test{},
+		want: &mapInt64Test{},
 	}, {
 		name: "int64 in range value",
 		src:  map[string]string{"int64Val": "10000"},
-		want: &parseInt64Test{Int64Val: 10000},
+		want: &mapInt64Test{Int64Val: 10000},
 	}, {
 		name: "int64 min value",
 		src:  map[string]string{"int64Val": "-9223372036854775808"},
-		want: &parseInt64Test{Int64Val: math.MinInt64},
+		want: &mapInt64Test{Int64Val: math.MinInt64},
 	}, {
 		name: "int64 max value",
 		src:  map[string]string{"int64Val": "9223372036854775807"},
-		want: &parseInt64Test{Int64Val: math.MaxInt64},
+		want: &mapInt64Test{Int64Val: math.MaxInt64},
 	}, {
 		name:    "int64 min out of range value",
 		src:     map[string]string{"int64Val": "-9223372036854775809"},
-		want:    &parseInt64Test{},
+		want:    &mapInt64Test{},
 		wantErr: api.NewParseError("int64Val", "-9223372036854775809", strconv.ErrRange),
 	}, {
 		name:    "int64 max out of range value",
 		src:     map[string]string{"int64Val": "9223372036854775808"},
-		want:    &parseInt64Test{},
+		want:    &mapInt64Test{},
 		wantErr: api.NewParseError("int64Val", "9223372036854775808", strconv.ErrRange),
 	}, {
 		name:    "int64 syntax error",
 		src:     map[string]string{"int64Val": "ten thousand"},
-		want:    &parseInt64Test{},
+		want:    &mapInt64Test{},
 		wantErr: api.NewParseError("int64Val", "ten thousand", strconv.ErrSyntax),
 	}, {
 		name: "float32 zero value",
 		src:  map[string]string{"float32Val": "0"},
-		want: &parseFloat32Test{},
+		want: &mapFloat32Test{},
 	}, {
 		name: "float32 in range value",
 		src:  map[string]string{"float32Val": "10.12345"},
-		want: &parseFloat32Test{Float32Val: 10.12345},
+		want: &mapFloat32Test{Float32Val: 10.12345},
 	}, {
 		name: "float32 min value",
 		src:  map[string]string{"float32Val": "1.401298464324817070923729583289916131280e-45"},
-		want: &parseFloat32Test{Float32Val: math.SmallestNonzeroFloat32},
+		want: &mapFloat32Test{Float32Val: math.SmallestNonzeroFloat32},
 	}, {
 		name: "float32 max value",
 		src:  map[string]string{"float32Val": "3.40282346638528859811704183484516925440e+38"},
-		want: &parseFloat32Test{Float32Val: math.MaxFloat32},
+		want: &mapFloat32Test{Float32Val: math.MaxFloat32},
 	}, {
 		name:    "float32 max out of range value",
 		src:     map[string]string{"float32Val": "3.40282346638528859811704183484516925440e+39"},
-		want:    &parseFloat32Test{},
+		want:    &mapFloat32Test{},
 		wantErr: api.NewParseError("float32Val", "3.40282346638528859811704183484516925440e+39", strconv.ErrRange),
 	}, {
 		name:    "float32 syntax error",
 		src:     map[string]string{"float32Val": "ten point one ... five"},
-		want:    &parseFloat32Test{},
+		want:    &mapFloat32Test{},
 		wantErr: api.NewParseError("float32Val", "ten point one ... five", strconv.ErrSyntax),
 	}, {
 		name: "float64 zero value",
 		src:  map[string]string{"float64Val": "0"},
-		want: &parseFloat64Test{},
+		want: &mapFloat64Test{},
 	}, {
 		name: "float64 in range value",
 		src:  map[string]string{"float64Val": "10.123456789"},
-		want: &parseFloat64Test{Float64Val: 10.123456789},
+		want: &mapFloat64Test{Float64Val: 10.123456789},
 	}, {
 		name: "float64 min value",
 		src:  map[string]string{"float64Val": "4.9406564584124654417656879286822137236505980e-324"},
-		want: &parseFloat64Test{Float64Val: math.SmallestNonzeroFloat64},
+		want: &mapFloat64Test{Float64Val: math.SmallestNonzeroFloat64},
 	}, {
 		name: "float64 max value",
 		src:  map[string]string{"float64Val": "1.79769313486231570814527423731704356798070e+308"},
-		want: &parseFloat64Test{Float64Val: math.MaxFloat64},
+		want: &mapFloat64Test{Float64Val: math.MaxFloat64},
 	}, {
 		name:    "float64 max out of range value",
 		src:     map[string]string{"float64Val": "1.79769313486231570814527423731704356798070e+309"},
-		want:    &parseFloat64Test{},
+		want:    &mapFloat64Test{},
 		wantErr: api.NewParseError("float64Val", "1.79769313486231570814527423731704356798070e+309", strconv.ErrRange),
 	}, {
 		name:    "float64 syntax error",
 		src:     map[string]string{"float64Val": "ten point one ... nine"},
-		want:    &parseFloat64Test{},
+		want:    &mapFloat64Test{},
 		wantErr: api.NewParseError("float64Val", "ten point one ... nine", strconv.ErrSyntax),
 	}, {
 		name: "byte slice zero value",
 		src:  map[string]string{"byteSliceVal": ""},
-		want: &parseByteSliceTest{},
+		want: &mapByteSliceTest{},
 	}, {
 		name: "byte slice single byte",
 		src:  map[string]string{"byteSliceVal": "66"},
-		want: &parseByteSliceTest{ByteSliceVal: []byte{'f'}},
+		want: &mapByteSliceTest{ByteSliceVal: []byte{'f'}},
 	}, {
 		name: "byte slice multiple bytes",
 		src:  map[string]string{"byteSliceVal": "000102030405060708090a0b0c0d0e0f"},
-		want: &parseByteSliceTest{ByteSliceVal: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
+		want: &mapByteSliceTest{ByteSliceVal: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
 	}, {
 		name:    "byte slice invalid byte",
 		src:     map[string]string{"byteSliceVal": "0g"},
-		want:    &parseByteSliceTest{},
+		want:    &mapByteSliceTest{},
 		wantErr: api.NewParseError("byteSliceVal", "0g", api.HexInvalidByteError('g')),
 	}, {
 		name:    "byte slice invalid length",
 		src:     map[string]string{"byteSliceVal": "fff"},
-		want:    &parseByteSliceTest{},
+		want:    &mapByteSliceTest{},
 		wantErr: api.NewParseError("byteSliceVal", "fff", api.ErrHexLength),
 	}, {
 		name: "string zero value",
 		src:  map[string]string{"stringVal": ""},
-		want: &parseStringTest{},
+		want: &mapStringTest{},
 	}, {
 		name: "string single character",
 		src:  map[string]string{"stringVal": "F"},
-		want: &parseStringTest{StringVal: "F"},
+		want: &mapStringTest{StringVal: "F"},
 	}, {
 		name: "string multiple characters",
 		src:  map[string]string{"stringVal": "Hello, World!"},
-		want: &parseStringTest{StringVal: "Hello, World!"},
+		want: &mapStringTest{StringVal: "Hello, World!"},
 	}, {
 		name: "string with multiple values",
 		src:  map[string][]string{"stringVal": {"11", "22", "33"}},
-		want: &parseStringTest{StringVal: "11"},
+		want: &mapStringTest{StringVal: "11"},
 	}, {
 		name: "string without matching field",
 		src:  map[string]string{"-": "key does not match any field"},
-		want: &parseStringTest{},
+		want: &mapStringTest{},
+	}, {
+		name: "bit.Int value",
+		src:  map[string]string{"bigIntVal": "1234567890"},
+		want: &mapBigIntTest{BigIntVal: new(big.Int).SetInt64(1234567890)},
+	}, {
+		name: "common.Hash value",
+		src:  map[string]string{"commonHashVal": "0x1234567890abcdef"},
+		want: &mapCommonHashTest{CommonHashVal: common.HexToHash("0x1234567890abcdef")},
+	}, {
+		name: "swarm.Address value",
+		src:  map[string]string{"swarmAddressVal": "1234567890abcdef"},
+		want: &mapSwarmAddressTest{SwarmAddressVal: swarm.MustParseHexAddress("1234567890abcdef")},
 	}}
 	for _, tc := range tests {
 		tc := tc
@@ -470,25 +502,25 @@ func TestParse(t *testing.T) {
 			t.Parallel()
 
 			have := reflect.New(reflect.TypeOf(tc.want).Elem()).Interface()
-			haveErr := api.Parse(tc.src, have)
+			haveErr := api.MapStructure(tc.src, have)
 			if diff := cmp.Diff(tc.wantErr, haveErr, cmpopts.EquateErrors()); diff != "" {
-				t.Errorf("api.Parse(...): error mismatch (-want +have):\n%s", diff)
+				t.Errorf("api.MapStructure(...): error mismatch (-want +have):\n%s", diff)
 			}
-			if diff := cmp.Diff(tc.want, have); diff != "" {
-				t.Errorf("api.Parse(...): result mismatch (-want +have):\n%s", diff)
+			if diff := cmp.Diff(tc.want, have, cmp.AllowUnexported(big.Int{})); diff != "" {
+				t.Errorf("api.MapStructure(...): result mismatch (-want +have):\n%s", diff)
 			}
 		})
 	}
 }
 
-func TestParse_InputOutputSanityCheck(t *testing.T) {
+func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 	t.Parallel()
 
 	t.Run("input is nil", func(t *testing.T) {
 		t.Parallel()
 
 		var input interface{}
-		err := api.Parse(input, struct{}{})
+		err := api.MapStructure(input, struct{}{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -498,7 +530,7 @@ func TestParse_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		input := "foo"
-		err := api.Parse(&input, struct{}{})
+		err := api.MapStructure(&input, struct{}{})
 		if err == nil {
 			t.Fatalf("expected error; have none")
 		}
@@ -510,10 +542,10 @@ func TestParse_InputOutputSanityCheck(t *testing.T) {
 		var (
 			input  = map[string]interface{}{"someVal": "123"}
 			output struct {
-				SomeVal string `parse:"someVal"`
+				SomeVal string `map:"someVal"`
 			}
 		)
-		err := api.Parse(&input, output)
+		err := api.MapStructure(&input, output)
 		if err == nil {
 			t.Fatalf("expected error; have none")
 		}
@@ -526,7 +558,7 @@ func TestParse_InputOutputSanityCheck(t *testing.T) {
 			input  = map[string]interface{}{"someVal": "123"}
 			output interface{}
 		)
-		err := api.Parse(&input, output)
+		err := api.MapStructure(&input, output)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -538,10 +570,10 @@ func TestParse_InputOutputSanityCheck(t *testing.T) {
 		var (
 			input  = map[string]interface{}{"someVal": "123"}
 			output = struct {
-				SomeVal string `parse:"someVal"`
+				SomeVal string `map:"someVal"`
 			}{}
 		)
-		err := api.Parse(&input, &output)
+		err := api.MapStructure(&input, &output)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -554,7 +586,7 @@ func TestParse_InputOutputSanityCheck(t *testing.T) {
 			input  = map[string]interface{}{"someVal": "123"}
 			output = "foo"
 		)
-		err := api.Parse(&input, &output)
+		err := api.MapStructure(&input, &output)
 		if err == nil {
 			t.Fatalf("expected error; have none")
 		}

@@ -14,23 +14,27 @@ import (
 )
 
 func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_subdomain").Build())
 
-	nameOrHex := mux.Vars(r)["subdomain"]
-	pathVar := mux.Vars(r)["path"]
-	if strings.HasSuffix(pathVar, "/") {
-		pathVar = strings.TrimRight(pathVar, "/")
-		// NOTE: leave one slash if there was some
-		pathVar += "/"
+	paths := struct {
+		Subdomain string `map:"subdomain" validate:"required"`
+		Path      string `map:"path"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	if strings.HasSuffix(paths.Path, "/") {
+		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	address, err := s.resolveNameOrAddress(nameOrHex)
+	address, err := s.resolveNameOrAddress(paths.Subdomain)
 	if err != nil {
-		logger.Debug("subdomain get: parse address string failed", "string", nameOrHex, "error", err)
-		logger.Error(nil, "subdomain get: parse address string failed")
+		logger.Debug("subdomain get: mapStructure address string failed", "string", paths.Subdomain, "error", err)
+		logger.Error(nil, "subdomain get: mapStructure address string failed")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
 
-	s.serveReference(address, pathVar, w, r)
+	s.serveReference(logger, address, paths.Path, w, r)
 }

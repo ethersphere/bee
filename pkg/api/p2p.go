@@ -23,7 +23,9 @@ type addressesResponse struct {
 	PSSPublicKey string                `json:"pssPublicKey"`
 }
 
-func (s *Service) addressesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) addressesHandler(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithValues("get_addresses").Build()
+
 	// initialize variable to json encode as [] instead null if p2p is nil
 	underlay := make([]multiaddr.Multiaddr, 0)
 	// addresses endpoint is exposed before p2p service is configured
@@ -31,7 +33,7 @@ func (s *Service) addressesHandler(w http.ResponseWriter, r *http.Request) {
 	if s.p2p != nil {
 		u, err := s.p2p.Addresses()
 		if err != nil {
-			s.logger.Debug("p2p addresses: get address failed", "error", err)
+			logger.Debug("get address failed", "error", err)
 			jsonhttp.InternalServerError(w, err)
 			return
 		}

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -37,83 +36,73 @@ type feedReferenceResponse struct {
 }
 
 func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["owner"]
-	owner, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("feed get: decode owner string failed", "string", str, "error", err)
-		s.logger.Error(nil, "feed get: decode owner string failed")
-		jsonhttp.BadRequest(w, "bad owner")
+	logger := s.logger.WithName("get_feed").Build()
+
+	paths := struct {
+		Owner []byte `map:"owner" validate:"required,len=20"`
+		Topic []byte `map:"topic" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	str = mux.Vars(r)["topic"]
-	topic, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("feed get: decode topic string failed", "error", err)
-		s.logger.Error(nil, "feed get: decode topic string failed")
-		jsonhttp.BadRequest(w, "bad topic")
+	queries := struct {
+		At int64 `map:"at"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
 		return
 	}
-
-	var at int64
-	atStr := r.URL.Query().Get("at")
-	if atStr != "" {
-		at, err = strconv.ParseInt(atStr, 10, 64)
-		if err != nil {
-			s.logger.Debug("feed get: decode at string failed", "string", atStr, "error", err)
-			s.logger.Error(nil, "feed get: decode at string failed")
-			jsonhttp.BadRequest(w, "bad at")
-			return
-		}
-	} else {
-		at = time.Now().Unix()
+	if queries.At == 0 {
+		queries.At = time.Now().Unix()
 	}
 
-	f := feeds.New(topic, common.BytesToAddress(owner))
+	f := feeds.New(paths.Topic, common.BytesToAddress(paths.Owner))
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		s.logger.Debug("feed get: new lookup failed", "owner", owner, "error", err)
-		s.logger.Error(nil, "feed get: new lookup failed")
+		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
+		logger.Error(nil, "new lookup failed")
 		jsonhttp.InternalServerError(w, "new lookup failed")
 		return
 	}
 
-	ch, cur, next, err := lookup.At(r.Context(), at, 0)
+	ch, cur, next, err := lookup.At(r.Context(), queries.At, 0)
 	if err != nil {
-		s.logger.Debug("feed get: lookup at failed", "at", at, "error", err)
-		s.logger.Error(nil, "feed get: lookup at failed")
+		logger.Debug("lookup at failed", "at", queries.At, "error", err)
+		logger.Error(nil, "lookup at failed")
 		jsonhttp.NotFound(w, "lookup at failed")
 		return
 	}
 
 	// KLUDGE: if a feed was never updated, the chunk will be nil
 	if ch == nil {
-		s.logger.Debug("feed get: no update found")
-		s.logger.Error(nil, "feed get: no update found")
+		logger.Debug("no update found")
+		logger.Error(nil, "no update found")
 		jsonhttp.NotFound(w, "no update found")
 		return
 	}
 
 	ref, _, err := parseFeedUpdate(ch)
 	if err != nil {
-		s.logger.Debug("feed get: parse feed update failed", "error", err)
-		s.logger.Error(nil, "feed get: parse feed update failed")
-		jsonhttp.InternalServerError(w, "parse feed update failed")
+		logger.Debug("mapStructure feed update failed", "error", err)
+		logger.Error(nil, "mapStructure feed update failed")
+		jsonhttp.InternalServerError(w, "mapStructure feed update failed")
 		return
 	}
 
 	curBytes, err := cur.MarshalBinary()
 	if err != nil {
-		s.logger.Debug("feed get: marshal current index failed", "error", err)
-		s.logger.Error(nil, "feed get: marshal current index failed")
+		logger.Debug("marshal current index failed", "error", err)
+		logger.Error(nil, "marshal current index failed")
 		jsonhttp.InternalServerError(w, "marshal current index failed")
 		return
 	}
 
 	nextBytes, err := next.MarshalBinary()
 	if err != nil {
-		s.logger.Debug("feed get: marshal next index failed", "error", err)
-		s.logger.Error(nil, "feed get: marshal next index failed")
+		logger.Debug("marshal next index failed", "error", err)
+		logger.Error(nil, "marshal next index failed")
 		jsonhttp.InternalServerError(w, "marshal next index failed")
 		return
 	}
@@ -126,28 +115,21 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["owner"]
-	owner, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("feed post: decode owner string failed", "string", str, "error", err)
-		s.logger.Error(nil, "feed post: decode owner string failed")
-		jsonhttp.BadRequest(w, "bad owner")
-		return
-	}
+	logger := s.logger.WithName("post_feed").Build()
 
-	str = mux.Vars(r)["topic"]
-	topic, err := hex.DecodeString(str)
-	if err != nil {
-		s.logger.Debug("feed post: decode topic string failed", "string", str, "error", err)
-		s.logger.Error(nil, "feed post: decode topic string failed")
-		jsonhttp.BadRequest(w, "bad topic")
+	paths := struct {
+		Owner []byte `map:"owner" validate:"required,len=20"`
+		Topic []byte `map:"topic" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
-		s.logger.Debug("feed post: putter failed", "error", err)
-		s.logger.Error(nil, "feed post: putter failed")
+		logger.Debug("putter failed", "error", err)
+		logger.Error(nil, "putter failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.BadRequest(w, "batch not found")
@@ -164,15 +146,15 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	l := loadsave.New(putter, requestPipelineFactory(r.Context(), putter, r))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
-		s.logger.Debug("feed post: create manifest failed", "error", err)
-		s.logger.Error(nil, "feed post: create manifest failed")
+		logger.Debug("create manifest failed", "error", err)
+		logger.Error(nil, "create manifest failed")
 		jsonhttp.InternalServerError(w, "create manifest failed")
 		return
 	}
 
 	meta := map[string]string{
-		feedMetadataEntryOwner: hex.EncodeToString(owner),
-		feedMetadataEntryTopic: hex.EncodeToString(topic),
+		feedMetadataEntryOwner: hex.EncodeToString(paths.Owner),
+		feedMetadataEntryTopic: hex.EncodeToString(paths.Topic),
 		feedMetadataEntryType:  feeds.Sequence.String(), // only sequence allowed for now
 	}
 
@@ -181,36 +163,36 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	// a feed manifest stores the metadata at the root "/" path
 	err = feedManifest.Add(r.Context(), "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), meta))
 	if err != nil {
-		s.logger.Debug("feed post: add manifest entry failed", "error", err)
-		s.logger.Error(nil, "feed post: add manifest entry failed")
-		jsonhttp.InternalServerError(w, "feed post: add manifest entry failed")
+		logger.Debug("add manifest entry failed", "error", err)
+		logger.Error(nil, "add manifest entry failed")
+		jsonhttp.InternalServerError(w, "add manifest entry failed")
 		return
 	}
 	ref, err := feedManifest.Store(r.Context())
 	if err != nil {
-		s.logger.Debug("feed post: store manifest failed", "error", err)
-		s.logger.Error(nil, "feed post: store manifest failed")
+		logger.Debug("store manifest failed", "error", err)
+		logger.Error(nil, "store manifest failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, "feed post: store manifest failed")
+			jsonhttp.InternalServerError(w, "store manifest failed")
 		}
 		return
 	}
 
 	if requestPin(r) {
 		if err := s.pinning.CreatePin(r.Context(), ref, false); err != nil {
-			s.logger.Debug("feed post: pin creation failed: %v", "address", ref, "error", err)
-			s.logger.Error(nil, "feed post: pin creation failed")
-			jsonhttp.InternalServerError(w, "feed post: creation of pin failed")
+			logger.Debug("pin creation failed: %v", "address", ref, "error", err)
+			logger.Error(nil, "pin creation failed")
+			jsonhttp.InternalServerError(w, "creation of pin failed")
 			return
 		}
 	}
 
 	if err = wait(); err != nil {
-		s.logger.Debug("feed post: sync chunks failed", "error", err)
-		s.logger.Error(nil, "feed post: sync chunks failed")
+		logger.Debug("sync chunks failed", "error", err)
+		logger.Error(nil, "sync chunks failed")
 		jsonhttp.InternalServerError(w, "feed upload: sync failed")
 		return
 	}

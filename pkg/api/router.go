@@ -360,7 +360,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		"GET": http.HandlerFunc(s.peersHandler),
 	})
 
-	handle("/pingpong/{peer-id}", jsonhttp.MethodHandler{
+	handle("/pingpong/{address}", jsonhttp.MethodHandler{
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
@@ -480,14 +480,14 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})),
 	)
 
-	handle("/stamps/{id}", web.ChainHandlers(
+	handle("/stamps/{batch_id}", web.ChainHandlers(
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
 		})),
 	)
 
-	handle("/stamps/{id}/buckets", web.ChainHandlers(
+	handle("/stamps/{batch_id}/buckets", web.ChainHandlers(
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
@@ -503,7 +503,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})),
 	)
 
-	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
+	handle("/stamps/topup/{batch_id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("topup batch"),
@@ -512,7 +512,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})),
 	)
 
-	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
+	handle("/stamps/dilute/{batch_id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("dilute batch"),

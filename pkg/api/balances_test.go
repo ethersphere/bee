@@ -145,21 +145,6 @@ func TestBalancesPeersNoBalance(t *testing.T) {
 	)
 }
 
-func TestBalancesInvalidAddress(t *testing.T) {
-	t.Parallel()
-
-	peer := "bad peer address"
-
-	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/balances/"+peer, http.StatusNotFound,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.ErrInvalidAddress,
-			Code:    http.StatusNotFound,
-		}),
-	)
-}
-
 func equalBalances(a, b *api.BalancesResponse) bool {
 	var state bool
 
@@ -310,21 +295,6 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrNoBalance,
-			Code:    http.StatusNotFound,
-		}),
-	)
-}
-
-func TestConsumedInvalidAddress(t *testing.T) {
-	t.Parallel()
-
-	peer := "bad peer address"
-
-	testServer, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/consumed/"+peer, http.StatusNotFound,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.ErrInvalidAddress,
 			Code:    http.StatusNotFound,
 		}),
 	)
