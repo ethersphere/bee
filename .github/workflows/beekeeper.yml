@@ -68,8 +68,8 @@ jobs:
             Makefile
             dist/bee
             beekeeper
-            ~/.beekeeper
-            ~/.beekeeper.yaml
+            ${HOME}/.beekeeper
+            ${HOME}/.beekeeper.yaml
           retention-days: 5
   beekeeper:
     name: Integration tests
@@ -88,8 +88,10 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          unzip artifacts.zip
+          unzip temp-artifacts.zip
           ls -la
+          ls -la *
+          ls -la */*
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
