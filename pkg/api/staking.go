@@ -71,7 +71,7 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.BadRequest(w, "invalid staking amount")
 		return
 	}
-	err = s.stakingContract.DepositStake(ctx, *stakedAmount, overlayAddr)
+	err = s.stakingContract.DepositStake(ctx, stakedAmount, overlayAddr)
 	if err != nil {
 		if errors.Is(err, stakingcontract.ErrInsufficientStakeAmount) {
 			s.logger.Debug("deposit stake: insufficient stake amount", "error", err)
@@ -137,5 +137,5 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	jsonhttp.OK(w, getStakeResponse{StakedAmount: &stakedAmount})
+	jsonhttp.OK(w, getStakeResponse{StakedAmount: stakedAmount})
 }

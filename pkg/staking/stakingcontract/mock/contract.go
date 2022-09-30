@@ -13,15 +13,15 @@ import (
 )
 
 type stakingContractMock struct {
-	depositStake func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error
-	getStake     func(ctx context.Context, overlay swarm.Address) (big.Int, error)
+	depositStake func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error
+	getStake     func(ctx context.Context, overlay swarm.Address) (*big.Int, error)
 }
 
-func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 	return s.depositStake(ctx, stakedAmount, overlay)
 }
 
-func (s *stakingContractMock) GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error) {
+func (s *stakingContractMock) GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 	return s.getStake(ctx, overlay)
 }
 
@@ -39,13 +39,13 @@ func New(opts ...Option) stakingcontract.Interface {
 	return bs
 }
 
-func WithDepositStake(f func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error) Option {
+func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error) Option {
 	return func(mock *stakingContractMock) {
 		mock.depositStake = f
 	}
 }
 
-func WithGetStake(f func(ctx context.Context, overlay swarm.Address) (big.Int, error)) Option {
+func WithGetStake(f func(ctx context.Context, overlay swarm.Address) (*big.Int, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.getStake = f
 	}

@@ -36,8 +36,8 @@ var (
 )
 
 type Interface interface {
-	DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error
-	GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error)
+	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error
+	GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error)
 }
 
 type contract struct {
@@ -96,7 +96,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	return receipt, nil
 }
 
-func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount big.Int, nonce common.Hash) (*types.Receipt, error) {
+func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
 	callData, err := stakingABI.Pack("depositStake", owner, &stakedAmount, nonce)
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (s *contract) sendGetStakeTransaction(ctx context.Context, overlay swarm.Ad
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 	prevStakedAmount, err := s.GetStake(ctx, overlay)
 	if err != nil {
 		return err
@@ -154,7 +154,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 		return err
 	}
 
-	if balance.Cmp(&stakedAmount) < 0 {
+	if balance.Cmp(stakedAmount) < 0 {
 		return ErrInsufficientFunds
 	}
 
@@ -165,12 +165,12 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount big.Int, overl
 	return nil
 }
 
-func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (big.Int, error) {
+func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 	stakedAmount, err := s.sendGetStakeTransaction(ctx, overlay)
 	if err != nil {
-		return *big.NewInt(0), fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
+		return big.NewInt(0), fmt.Errorf("%w:%v", ErrGetStakeFailed, err)
 	}
-	return *stakedAmount, nil
+	return stakedAmount, nil
 }
 
 func (s *contract) getBalance(ctx context.Context) (*big.Int, error) {

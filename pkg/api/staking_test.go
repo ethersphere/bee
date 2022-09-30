@@ -34,7 +34,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				return nil
 			}),
 		)
@@ -47,7 +47,7 @@ func TestDepositStake(t *testing.T) {
 
 		invalidMinStake := big.NewInt(0).String()
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				return stakingcontract.ErrInsufficientStakeAmount
 			}),
 		)
@@ -69,7 +69,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				return stakingcontract.ErrInsufficientFunds
 			}),
 		)
@@ -82,7 +82,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				return fmt.Errorf("some error")
 			}),
 		)
@@ -104,7 +104,7 @@ func TestDepositStake(t *testing.T) {
 
 		var gasLimit uint64
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount big.Int, overlay swarm.Address) error {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
 				gasLimit = sctx.GetGasLimit(ctx)
 				return nil
 			}),
@@ -137,8 +137,8 @@ func TestGetStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (big.Int, error) {
-				return *big.NewInt(1), nil
+			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
+				return big.NewInt(1), nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
@@ -158,8 +158,8 @@ func TestGetStake(t *testing.T) {
 		t.Parallel()
 
 		contractWithError := stakingContractMock.New(
-			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (big.Int, error) {
-				return *big.NewInt(0), stakingcontract.ErrGetStakeFailed
+			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
+				return big.NewInt(0), stakingcontract.ErrGetStakeFailed
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contractWithError})
@@ -171,9 +171,9 @@ func TestGetStake(t *testing.T) {
 
 		var gasLimit uint64
 		contract := stakingContractMock.New(
-			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (big.Int, error) {
+			stakingContractMock.WithGetStake(func(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 				gasLimit = sctx.GetGasLimit(ctx)
-				return *big.NewInt(1), nil
+				return big.NewInt(1), nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
