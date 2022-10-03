@@ -56,6 +56,7 @@ func New(
 	return s
 }
 
+// IsPlaying checks if the ovelray is participating in the upcoming round.
 func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(s.overlay.Bytes()), depth)
 	if err != nil {
@@ -75,6 +76,7 @@ func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	return results[0].(bool), nil
 }
 
+// IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	callData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(s.overlay.Bytes()))
 	if err != nil {
@@ -94,6 +96,7 @@ func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	return results[0].(bool), nil
 }
 
+// Claim sends a transaction to blockchain if a win is claimed.
 func (s *Service) Claim(ctx context.Context) error {
 	callData, err := redistributionContractABI.Pack("claim")
 	if err != nil {
@@ -115,6 +118,7 @@ func (s *Service) Claim(ctx context.Context) error {
 	return nil
 }
 
+// Commit submits the obfusHash hash by sending a transaction to the blockchain.
 func (s *Service) Commit(ctx context.Context, obfusHash []byte) error {
 	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(s.overlay.Bytes()))
 	if err != nil {
@@ -136,6 +140,7 @@ func (s *Service) Commit(ctx context.Context, obfusHash []byte) error {
 	return nil
 }
 
+// Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
 func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) error {
 	callData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(s.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
@@ -157,6 +162,7 @@ func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitm
 	return nil
 }
 
+// ReserveSalt provides the current round anchor by transacting on the blockchain.
 func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
 	callData, err := redistributionContractABI.Pack("currentRoundAnchor")
 	if err != nil {
@@ -176,6 +182,7 @@ func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
+// sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
 func (s *Service) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
 	txHash, err := s.txService.Send(ctx, request)
 	if err != nil {
@@ -193,6 +200,7 @@ func (s *Service) sendAndWait(ctx context.Context, request *transaction.TxReques
 	return nil
 }
 
+// callTx simulates a transaction based on tx request.
 func (s *Service) callTx(ctx context.Context, callData []byte) ([]byte, error) {
 	result, err := s.txService.Call(ctx, &transaction.TxRequest{
 		To:   &s.incentivesContractAddress,
