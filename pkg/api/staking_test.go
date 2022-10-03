@@ -53,7 +53,7 @@ func TestDepositStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), invalidMinStake), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "minimum 1 BZZ required for staking"}))
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "minimum 10 BZZ required for staking"}))
 	})
 
 	t.Run("with invalid address", func(t *testing.T) {
