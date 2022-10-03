@@ -6,12 +6,12 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/gorilla/mux"
 )
 
@@ -34,35 +34,27 @@ type getStakeResponse struct {
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
-	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
-	if err != nil {
-		s.logger.Debug("deposit stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
-		s.logger.Error(nil, "deposit stake: decode overlay address failed")
-		jsonhttp.BadRequest(w, "invalid address")
-		return
-	}
-
 	stakedAmount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
 	if !ok {
 		s.logger.Error(nil, "deposit stake: invalid amount")
 		jsonhttp.BadRequest(w, "invalid staking amount")
 		return
 	}
-	err = s.stakingContract.DepositStake(r.Context(), stakedAmount, overlayAddr)
+	err := s.stakingContract.DepositStake(r.Context(), stakedAmount)
 	if err != nil {
-		if errors.Is(err, stakingcontract.ErrInsufficientStakeAmount) {
-			s.logger.Debug("deposit stake: insufficient stake amount", "error", err)
-			s.logger.Error(nil, "deposit stake: insufficient stake amount")
-			jsonhttp.BadRequest(w, "minimum 1 BZZ required for staking")
+		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
+			s.logger.Debug("deposit stake: minimum BZZ required for staking", "minimum_stake", staking.MinimumStakeAmount, "error", err)
+			s.logger.Error(nil, fmt.Sprintf("deposit stake: minimum %d BZZ required for staking", staking.MinimumStakeAmount.Int64()))
+			jsonhttp.BadRequest(w, fmt.Sprintf("minimum %d BZZ required for staking", staking.MinimumStakeAmount.Int64()))
 			return
 		}
-		if errors.Is(err, stakingcontract.ErrNotImplemented) {
+		if errors.Is(err, staking.ErrNotImplemented) {
 			s.logger.Debug("deposit stake: not implemented", "error", err)
 			s.logger.Error(nil, "deposit stake: not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
 			return
 		}
-		if errors.Is(err, stakingcontract.ErrInsufficientFunds) {
+		if errors.Is(err, staking.ErrInsufficientFunds) {
 			s.logger.Debug("deposit stake: out of funds", "error", err)
 			s.logger.Error(nil, "deposit stake: out of funds")
 			jsonhttp.BadRequest(w, "out of funds")
@@ -77,17 +69,9 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
-	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	stakedAmount, err := s.stakingContract.GetStake(r.Context())
 	if err != nil {
-		s.logger.Debug("get stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
-		s.logger.Error(nil, "get stake: decode overlay address failed")
-		jsonhttp.BadRequest(w, "invalid address")
-		return
-	}
-
-	stakedAmount, err := s.stakingContract.GetStake(r.Context(), overlayAddr)
-	if err != nil {
-		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", overlayAddr, "error", err)
+		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		s.logger.Error(nil, "get stake: get staked amount failed")
 		jsonhttp.InternalServerError(w, "get staked amount failed")
 		return

@@ -545,7 +545,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		web.FinalHandlerFunc(s.healthHandler),
 	))
 
-	handle("/stake/deposit/{address}/{amount}", web.ChainHandlers(
+	handle("/stake/deposit/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("deposit stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
@@ -553,7 +553,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})),
 	)
 
-	handle("/stake/{address}", web.ChainHandlers(
+	handle("/stake", web.ChainHandlers(
 		s.stakingAccessHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.getStakedAmountHandler),
