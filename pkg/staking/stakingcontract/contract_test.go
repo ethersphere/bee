@@ -465,6 +465,32 @@ func TestGetStake(t *testing.T) {
 		}
 	})
 
+	t.Run("error with unpacking", func(t *testing.T) {
+		t.Parallel()
+		expectedCallData, err := stakingcontract.StakingABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := stakingcontract.New(owner, stakingAddress, bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingAddress {
+						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
+							return nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return []byte{}, nil
+					}
+					return nil, errors.New("unexpected call")
+				})),
+			nonce)
+
+		_, err = contract.GetStake(ctx, addr)
+		if err == nil {
+			t.Fatal("expected error with unpacking")
+		}
+	})
+
 	t.Run("with invalid call data", func(t *testing.T) {
 		t.Parallel()
 
