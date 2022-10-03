@@ -223,6 +223,8 @@ func maxInt(a int, b int) int {
 }
 
 func doRead(b *testing.B, db storage.Store, g keyGenerator, allowNotFound bool) {
+	b.Helper()
+
 	for i := 0; i < b.N; i++ {
 		key := g.Key(i)
 		item := &obj1{
@@ -262,6 +264,8 @@ func newDBWriter(db storage.Store) *singularDBWriter {
 }
 
 func doWrite(b *testing.B, db storage.Store, g entryGenerator) {
+	b.Helper()
+
 	w := newDBWriter(db)
 	for i := 0; i < b.N; i++ {
 		if err := w.Put(g.Key(i), g.Value(i)); err != nil {
@@ -271,6 +275,8 @@ func doWrite(b *testing.B, db storage.Store, g entryGenerator) {
 }
 
 func doDelete(b *testing.B, db storage.Store, g keyGenerator) {
+	b.Helper()
+
 	w := newDBWriter(db)
 	for i := 0; i < b.N; i++ {
 		if err := w.Delete(g.Key(i)); err != nil {
