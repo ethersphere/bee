@@ -62,7 +62,6 @@ func New(
 	overlay swarm.Address,
 	backend ChainBackend,
 	logger log.Logger,
-	depthMonitor depthmonitor.Service,
 	monitor Monitor,
 	incentives IncentivesContract,
 	reserve postage.Storer,
@@ -309,7 +308,7 @@ func (s *Agent) claim(ctx context.Context) error {
 func (s *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	// get depthmonitor fully synced indicator
-	ready := s.depthMonitor.IsFullySynced()
+	ready := s.monitor.IsFullySynced()
 	if !ready {
 		return 0, nil, nil
 	}
@@ -348,7 +347,7 @@ func (s *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 		return nil, err
 	}
 
-	obfuscatedHash, err := wrapCommit(s.overlay, storageRadius, sample, key)
+	obfuscatedHash, err := s.wrapCommit(storageRadius, sample, key)
 	if err != nil {
 		return nil, err
 	}
@@ -383,9 +382,9 @@ func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 	storageRadiusByte := make([]byte, 1)
 	storageRadiusByte[0] = storageRadius
 
-	data := append(s.overlay.Bytes(), storageRadiusByte))
-	data = append(data, sample)
-	data = append(data, key)
+	data := append(s.overlay.Bytes(), storageRadiusByte...))
+	data = append(data, sample...)
+	data = append(data, key...)
 
 	return crypto.LegacyKeccak256(data)
 }

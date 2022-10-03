@@ -158,7 +158,7 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 type mockMonitor struct {
 }
 
-func (m *mockMonitor) IsStable() bool {
+func (m *mockMonitor) IsFullySynced() bool {
 	return true
 }
 
