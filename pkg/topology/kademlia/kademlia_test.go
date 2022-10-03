@@ -1646,6 +1646,83 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 	}
 }
 
+func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
+
+	defer func(p int) {
+		*kademlia.SaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.SaturationPeers = 4
+
+	defer func(p int) {
+		*kademlia.OverSaturationPeers = p
+	}(*kademlia.SaturationPeers)
+	*kademlia.OverSaturationPeers = 4
+
+	done := make(chan struct{})
+	var neighborAddr swarm.Address
+	const broadCastSize = 18
+
+	var (
+		conns int32
+		disc  = mock.NewDiscovery(
+			mock.WithBroadcastPeers(func(ctx context.Context, p swarm.Address, addrs ...swarm.Address) error {
+				if p.Equal(neighborAddr) {
+					if len(addrs) == broadCastSize {
+						close(done)
+					} else {
+						t.Fatal("broadcasted size did not match neighborhood size", "got", len(addrs), "want", broadCastSize)
+					}
+				}
+				return nil
+			}),
+		)
+		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
+			ReachabilityFunc: func(swarm.Address) bool { return false },
+		})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// add some peers
+	for bin := 0; bin < 2; bin++ {
+		for i := 0; i < 4; i++ {
+			addr := test.RandomAddressAt(base, bin)
+			addOne(t, signer, kad, ab, addr)
+			waitCounter(t, &conns, 1)
+		}
+	}
+
+	waitPeers(t, kad, 8)
+	kDepth(t, kad, 1)
+
+	// add many more neighbors
+	for i := 0; i < 10; i++ {
+		addr := test.RandomAddressAt(base, 2)
+		addOne(t, signer, kad, ab, addr)
+		waitCounter(t, &conns, 1)
+	}
+
+	waitPeers(t, kad, broadCastSize)
+	kDepth(t, kad, 2)
+
+	// add one neighbor to track how many peers are broadcasted to it
+	neighborAddr = test.RandomAddressAt(base, 2)
+	addOne(t, signer, kad, ab, neighborAddr)
+
+	waitCounter(t, &conns, 1)
+	waitPeers(t, kad, broadCastSize+1)
+	kDepth(t, kad, 2)
+
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond * 100):
+		t.Fatal("broadcast did not fire for broadcastTo peer")
+	}
+
+}
+
 func TestIteratorOpts(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
