@@ -1655,10 +1655,13 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 
 	defer func(p int) {
 		*kademlia.OverSaturationPeers = p
-	}(*kademlia.SaturationPeers)
+	}(*kademlia.OverSaturationPeers)
 	*kademlia.OverSaturationPeers = 4
 
 	done := make(chan struct{})
+
+	mtx := sync.Mutex{}
+
 	var neighborAddr swarm.Address
 	const broadCastSize = 18
 
@@ -1666,6 +1669,8 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 		conns int32
 		disc  = mock.NewDiscovery(
 			mock.WithBroadcastPeers(func(ctx context.Context, p swarm.Address, addrs ...swarm.Address) error {
+				mtx.Lock()
+				defer mtx.Unlock()
 				if p.Equal(neighborAddr) {
 					if len(addrs) == broadCastSize {
 						close(done)
@@ -1680,6 +1685,8 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			ReachabilityFunc: func(swarm.Address) bool { return false },
 		})
 	)
+
+	neighborAddr = test.RandomAddressAt(base, 2)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1708,19 +1715,21 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	kDepth(t, kad, 2)
 
 	// add one neighbor to track how many peers are broadcasted to it
-	neighborAddr = test.RandomAddressAt(base, 2)
 	addOne(t, signer, kad, ab, neighborAddr)
 
 	waitCounter(t, &conns, 1)
 	waitPeers(t, kad, broadCastSize+1)
 	kDepth(t, kad, 2)
 
-	select {
-	case <-done:
-	case <-time.After(time.Millisecond * 100):
-		t.Fatal("broadcast did not fire for broadcastTo peer")
+	if err := kad.Close(); err != nil {
+		t.Fatal(err)
 	}
 
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("broadcast did not fire for broadcastTo peer")
+	}
 }
 
 func TestIteratorOpts(t *testing.T) {
