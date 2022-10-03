@@ -80,6 +80,10 @@ type (
 		StringVal string `map:"stringVal"`
 	}
 
+	mapStringWithOmitemptyTest struct {
+		StringVal string `map:"stringVal,omitempty"`
+	}
+
 	mapBigIntTest struct {
 		BigIntVal *big.Int `map:"bigIntVal"`
 	}
@@ -477,6 +481,10 @@ func TestMapStructure(t *testing.T) {
 		name: "string without matching field",
 		src:  map[string]string{"-": "key does not match any field"},
 		want: &mapStringTest{},
+	}, {
+		name: "string with omitempty field",
+		src:  map[string]string{"stringVal": ""},
+		want: &mapStringWithOmitemptyTest{},
 	}, {
 		name: "bit.Int value",
 		src:  map[string]string{"bigIntVal": "1234567890"},
