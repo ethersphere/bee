@@ -56,7 +56,7 @@ func New(
 	return s
 }
 
-// IsPlaying checks if the ovelray is participating in the upcoming round.
+// IsPlaying checks if the overlay is participating in the upcoming round.
 func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(s.overlay.Bytes()), depth)
 	if err != nil {
