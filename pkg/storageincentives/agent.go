@@ -377,7 +377,7 @@ func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 	storageRadiusByte := make([]byte, 1)
 	storageRadiusByte[0] = storageRadius
 
-	data := append(s.overlay.Bytes(), storageRadiusByte...))
+	data := append(s.overlay.Bytes(), storageRadiusByte...)
 	data = append(data, sample...)
 	data = append(data, key...)
 
