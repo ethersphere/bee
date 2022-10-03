@@ -25,10 +25,14 @@ var (
 	// postage stamp
 	goerliPostageStampAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
 	xdaiPostageStampAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
-	//TODO: add correct staking addresses here
+
+	//TODO: add correct staking addresses
+
 	//staking contract
-	goerliStakingAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
-	xdaiStakingAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+	goerliStakingAddress = common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614")
+	xdaiStakingAddress   = common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614")
+
+	//TODO: add correct redistribution addresses
 
 	// redistribution contract
 	goerliRedistributionAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
