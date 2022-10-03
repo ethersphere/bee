@@ -54,7 +54,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queries := struct {
-		Recipient *ecdsa.PublicKey `map:"recipient"`
+		Recipient *ecdsa.PublicKey `map:"recipient,omitempty"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)

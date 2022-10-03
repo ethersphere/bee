@@ -278,35 +278,53 @@ func mapStructure(input, output interface{}) (err error) {
 	// Map input into output.
 	pErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
 	for i := 0; i < outputVal.NumField(); i++ {
-		apply := func(v string) (string, error) { return v, nil }
-		entry := outputVal.Type().Field(i).Name
-		val, ok := outputVal.Type().Field(i).Tag.Lookup(mapStructureTagName)
-		if ok {
-			elems := strings.SplitN(val, ",", 2)
-			entry = elems[0]
-			if len(elems) > 1 {
-				apply = preMapHooks[elems[1]]
-			}
-		}
+		name, hook, omitempty := parseFieldTags(outputVal.Type().Field(i))
 
-		mKey := reflect.ValueOf(entry)
+		mKey := reflect.ValueOf(name)
 		mVal := inputVal.MapIndex(mKey)
 		if !mVal.IsValid() {
 			continue
 		}
 
 		value := flattenValue(mVal).String()
-		trans, err := apply(value)
+		if omitempty && value == "" {
+			continue
+		}
+
+		trans, err := hook(value)
 		if err != nil {
-			pErrs = multierror.Append(pErrs, newParseError(entry, value, err))
+			pErrs = multierror.Append(pErrs, newParseError(name, value, err))
 			continue
 		}
 
 		if err := set(trans, outputVal.Field(i)); err != nil {
-			pErrs = multierror.Append(pErrs, newParseError(entry, value, err))
+			pErrs = multierror.Append(pErrs, newParseError(name, value, err))
 		}
 	}
 	return pErrs.ErrorOrNil()
+}
+
+// parseFieldTags parses the given field tags into name, hook, and omitempty.
+func parseFieldTags(field reflect.StructField) (name string, hook func(v string) (string, error), omitempty bool) {
+	hook = func(v string) (string, error) { return v, nil }
+
+	val, ok := field.Tag.Lookup(mapStructureTagName)
+	if !ok {
+		return field.Name, hook, false
+	}
+
+	tags := strings.SplitN(val, ",", 3)
+	name = tags[0]
+	for _, tag := range tags[1:] {
+		switch tag {
+		case "omitempty":
+			omitempty = true
+		default:
+			hook = preMapHooks[tag]
+		}
+	}
+
+	return name, hook, omitempty
 }
 
 // numberSize returns the size of the number in bits.
