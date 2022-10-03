@@ -15,6 +15,7 @@ import (
 )
 
 func TestFinder(t *testing.T) {
+	t.Parallel()
 	t.Skip("test flakes")
 	testf := func(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 		t.Helper()
@@ -35,9 +36,11 @@ func TestFinder(t *testing.T) {
 		})
 	}
 	t.Run("sync", func(t *testing.T) {
+		t.Parallel()
 		testf(t, epochs.NewFinder, epochs.NewUpdater)
 	})
 	t.Run("async", func(t *testing.T) {
+		t.Parallel()
 		testf(t, epochs.NewAsyncFinder, epochs.NewUpdater)
 	})
 }
