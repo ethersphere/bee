@@ -436,9 +436,7 @@ func TestGetStake(t *testing.T) {
 		t.Parallel()
 
 		prevStake := big.NewInt(0)
-		var overlayAddr [32]byte
-		copy(overlayAddr[:], addr.Bytes())
-		expectedCallData, err := stakingcontract.StakingABI.Pack("stakeOfOverlay", overlayAddr)
+		expectedCallData, err := stakingcontract.StakingABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -463,7 +461,37 @@ func TestGetStake(t *testing.T) {
 			t.Fatal(err)
 		}
 		if stakedAmount.Cmp(big.NewInt(1)) == 0 {
-			t.Fatal("invalid stake amount")
+			t.Fatalf("expected %v got %v", big.NewInt(1), stakedAmount)
+		}
+	})
+
+	t.Run("with invalid call data", func(t *testing.T) {
+		t.Parallel()
+
+		prevStake := big.NewInt(0)
+		expectedCallData, err := stakingcontract.StakingABI.Pack("stakeOfOverlay", common.BytesToHash(owner.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := stakingcontract.New(owner, stakingAddress, bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingAddress {
+						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
+							return nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+					}
+					if *request.To == stakingAddress {
+						return prevStake.FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
+				})),
+			nonce)
+
+		_, err = contract.GetStake(ctx, addr)
+		if err == nil {
+			t.Fatal("expected error due to wrong call data")
 		}
 	})
 
