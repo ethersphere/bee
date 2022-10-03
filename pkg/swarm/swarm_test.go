@@ -109,6 +109,23 @@ func TestAddress_MemberOf(t *testing.T) {
 
 }
 
+func TestAddress_Clone(t *testing.T) {
+	t.Parallel()
+
+	original := swarm.MustParseHexAddress("35a26b7bb6455cbabe7a0e05aafbd0b8b26feac843e3b9a649468d0ea37a12b2")
+	clone := original.Clone()
+
+	if !original.Equal(clone) {
+		t.Fatal("original should be equal with clone")
+	}
+
+	// if we modify original address, addresses should not be equal
+	original.Bytes()[0] = 1
+	if original.Equal(clone) {
+		t.Fatal("original should not be equal with clone")
+	}
+}
+
 func TestCloser(t *testing.T) {
 	t.Parallel()
 
