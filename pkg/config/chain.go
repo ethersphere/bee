@@ -27,17 +27,22 @@ var (
 	xdaiPostageStampContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
 
 	//staking contract
-	goerliStakingContractAddress = common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614")
-	xdaiStakingContractAddress   = common.HexToAddress("0x52e86336210bb8f1fde11eb8bc664a20afc0a614")
+	goerliStakingContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
+	xdaiStakingContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+
+	// redistribution contract
+	goerliRedistributionAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
+	xdaiRedistributionAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
 )
 
 type ChainConfig struct {
-	StartBlock         uint64
-	LegacyFactories    []common.Address
-	PostageStamp       common.Address
-	StakingContract    common.Address
-	CurrentFactory     common.Address
-	PriceOracleAddress common.Address
+	StartBlock      uint64
+	LegacyFactories []common.Address
+	PostageStamp    common.Address
+	Staking         common.Address
+	CurrentFactory  common.Address
+	PriceOracle     common.Address
+	Redistribution  common.Address
 }
 
 func GetChainConfig(chainID int64) (*ChainConfig, bool) {
@@ -50,16 +55,18 @@ func GetChainConfig(chainID int64) (*ChainConfig, bool) {
 		cfg.LegacyFactories = []common.Address{
 			goerliLegacyFactoryAddress,
 		}
-		cfg.PriceOracleAddress = goerliContractAddress
-		cfg.StakingContract = goerliStakingContractAddress
+		cfg.PriceOracle = goerliContractAddress
+		cfg.Staking = goerliStakingContractAddress
+		cfg.Redistribution = goerliRedistributionAddress
 		return &cfg, true
 	case xdaiChainID:
 		cfg.PostageStamp = xdaiPostageStampContractAddress
 		cfg.StartBlock = xdaiStartBlock
 		cfg.CurrentFactory = xdaiFactoryAddress
 		cfg.LegacyFactories = []common.Address{}
-		cfg.PriceOracleAddress = xdaiContractAddress
-		cfg.StakingContract = xdaiStakingContractAddress
+		cfg.PriceOracle = xdaiContractAddress
+		cfg.Staking = xdaiStakingContractAddress
+		cfg.Redistribution = xdaiRedistributionAddress
 		return &cfg, true
 	default:
 		return &cfg, false

@@ -70,6 +70,7 @@ import (
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistributioncontract"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -128,56 +129,57 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir                    string
-	CacheCapacity              uint64
-	DBOpenFilesLimit           uint64
-	DBWriteBufferSize          uint64
-	DBBlockCacheCapacity       uint64
-	DBDisableSeeksCompaction   bool
-	APIAddr                    string
-	DebugAPIAddr               string
-	Addr                       string
-	NATAddr                    string
-	EnableWS                   bool
-	WelcomeMessage             string
-	Bootnodes                  []string
-	CORSAllowedOrigins         []string
-	Logger                     log.Logger
-	TracingEnabled             bool
-	TracingEndpoint            string
-	TracingServiceName         string
-	PaymentThreshold           string
-	PaymentTolerance           int64
-	PaymentEarly               int64
-	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
-	RetrievalCaching           bool
-	BootnodeMode               bool
-	SwapEndpoint               string
-	SwapFactoryAddress         string
-	SwapLegacyFactoryAddresses []string
-	SwapInitialDeposit         string
-	SwapEnable                 bool
-	ChequebookEnable           bool
-	FullNodeMode               bool
-	Transaction                string
-	BlockHash                  string
-	PostageContractAddress     string
-	StakingContractAddress     string
-	PriceOracleAddress         string
-	BlockTime                  time.Duration
-	DeployGasPrice             string
-	WarmupTime                 time.Duration
-	ChainID                    int64
-	Resync                     bool
-	BlockProfile               bool
-	MutexProfile               bool
-	StaticNodes                []swarm.Address
-	AllowPrivateCIDRs          bool
-	Restricted                 bool
-	TokenEncryptionKey         string
-	AdminPasswordHash          string
-	UsePostageSnapshot         bool
-	EnableStorageIncentives    bool
+	DataDir                       string
+	CacheCapacity                 uint64
+	DBOpenFilesLimit              uint64
+	DBWriteBufferSize             uint64
+	DBBlockCacheCapacity          uint64
+	DBDisableSeeksCompaction      bool
+	APIAddr                       string
+	DebugAPIAddr                  string
+	Addr                          string
+	NATAddr                       string
+	EnableWS                      bool
+	WelcomeMessage                string
+	Bootnodes                     []string
+	CORSAllowedOrigins            []string
+	Logger                        log.Logger
+	TracingEnabled                bool
+	TracingEndpoint               string
+	TracingServiceName            string
+	PaymentThreshold              string
+	PaymentTolerance              int64
+	PaymentEarly                  int64
+	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
+	RetrievalCaching              bool
+	BootnodeMode                  bool
+	SwapEndpoint                  string
+	SwapFactoryAddress            string
+	SwapLegacyFactoryAddresses    []string
+	SwapInitialDeposit            string
+	SwapEnable                    bool
+	ChequebookEnable              bool
+	FullNodeMode                  bool
+	Transaction                   string
+	BlockHash                     string
+	PostageContractAddress        string
+	StakingContractAddress        string
+	PriceOracleAddress            string
+	RedistributionContractAddress string
+	BlockTime                     time.Duration
+	DeployGasPrice                string
+	WarmupTime                    time.Duration
+	ChainID                       int64
+	Resync                        bool
+	BlockProfile                  bool
+	MutexProfile                  bool
+	StaticNodes                   []swarm.Address
+	AllowPrivateCIDRs             bool
+	Restricted                    bool
+	TokenEncryptionKey            string
+	AdminPasswordHash             string
+	UsePostageSnapshot            bool
+	EnableStorageIncentives       bool
 }
 
 const (
@@ -956,6 +958,24 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
+	stakingAddress, redistributionAddress := chainCfg.Staking, chainCfg.Redistribution
+
+	if o.StakingContractAddress != "" {
+		if !common.IsHexAddress(o.StakingContractAddress) {
+			return nil, errors.New("malformed postage stamp address")
+		}
+		stakingAddress = common.HexToAddress(o.StakingContractAddress)
+	}
+
+	if o.RedistributionContractAddress != "" {
+		if !common.IsHexAddress(o.RedistributionContractAddress) {
+			return nil, errors.New("malformed postage stamp address")
+		}
+		redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
+	}
+
+	redistributioncontract.New(swarmAddress, logger, transactionService, redistributionAddress)
+
 	if o.FullNodeMode {
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
@@ -988,7 +1008,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		b.chainSyncerCloser = chainSyncer
 	}
 
-	stakingContract := staking.New(overlayEthAddress, chainCfg.StakingContract, erc20Address, transactionService, common.BytesToHash(nonce))
+	stakingContract := staking.New(overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
