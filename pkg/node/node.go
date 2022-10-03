@@ -958,8 +958,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	stakingAddress, redistributionAddress := chainCfg.Staking, chainCfg.Redistribution
-
+	stakingAddress := chainCfg.Staking
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
 			return nil, errors.New("malformed staking contract address")
@@ -967,20 +966,23 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		stakingAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	if o.RedistributionContractAddress != "" {
-		if !common.IsHexAddress(o.RedistributionContractAddress) {
-			return nil, errors.New("malformed redistribution contract address")
-		}
-		redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
-	}
-
-	redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
+	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
 
 	var agent *storageincentives.Agent
 	if o.FullNodeMode {
+
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 
+		redistributionAddress := chainCfg.Redistribution
+		if o.RedistributionContractAddress != "" {
+			if !common.IsHexAddress(o.RedistributionContractAddress) {
+				return nil, errors.New("malformed redistribution contract address")
+			}
+			redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
+		}
+
+		redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
 		agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 		b.storageIncetivesCloser = agent
 	}
@@ -1011,8 +1013,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
-
-	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
