@@ -1,0 +1,3 @@
+package redistributioncontract
+
+var RedistributionContractABI = redistributionContractABI
