@@ -7,6 +7,7 @@ package redistributioncontract
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -63,12 +64,12 @@ func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 	result, err := s.callTx(ctx, callData)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(s.overlay.Bytes()), depth, err)
 	}
 
 	results, err := redistributionContractABI.Unpack("isParticipatingInUpcomingRound", result)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("IsPlaying: results %v: %w", results, err)
 	}
 
 	return results[0].(bool), nil
@@ -82,12 +83,12 @@ func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 
 	result, err := s.callTx(ctx, callData)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(s.overlay.Bytes()), err)
 	}
 
 	results, err := redistributionContractABI.Unpack("isWinner", result)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("IsWinner: results %v : %w", results, err)
 	}
 
 	return results[0].(bool), nil
@@ -103,12 +104,12 @@ func (s *Service) Claim(ctx context.Context) error {
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
-		Value:       nil,
+		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
 	err = s.sendAndWait(ctx, request)
 	if err != nil {
-		return err
+		return fmt.Errorf("claim: %w", err)
 	}
 
 	return nil
@@ -124,12 +125,12 @@ func (s *Service) Commit(ctx context.Context, obfusHash []byte) error {
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
-		Value:       nil,
+		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
 	err = s.sendAndWait(ctx, request)
 	if err != nil {
-		return err
+		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(s.overlay.Bytes()), err)
 	}
 
 	return nil
@@ -145,12 +146,12 @@ func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitm
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
-		Value:       nil,
+		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}
 	err = s.sendAndWait(ctx, request)
 	if err != nil {
-		return err
+		return fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
 
 	return nil
