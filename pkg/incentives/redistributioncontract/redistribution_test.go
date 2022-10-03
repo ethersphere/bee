@@ -211,7 +211,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionAddress)
 
 		err = contract.Claim(ctx)
-		if err != transaction.ErrTransactionReverted {
+		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}
 	})

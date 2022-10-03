@@ -94,7 +94,10 @@ func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 
 func (s *Service) Claim(ctx context.Context) error {
 	callData, err := redistributionContractABI.Pack("claim")
-
+	if err != nil {
+		return err
+	}
+	
 	err = s.sendAndWait(ctx, callData)
 	if err != nil {
 		return err
