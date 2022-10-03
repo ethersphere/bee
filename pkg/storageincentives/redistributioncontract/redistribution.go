@@ -171,8 +171,8 @@ func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return results[0].([]byte), nil
+	salt := results[0].([32]byte)
+	return salt[:], nil
 }
 
 func (s *Service) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {

@@ -7,6 +7,7 @@ package redistributioncontract_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
@@ -267,6 +268,27 @@ func TestRedistribution(t *testing.T) {
 			redistributionAddress)
 
 		err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("Reserve Salt", func(t *testing.T) {
+		t.Parallel()
+
+		contract := redistributioncontract2.New(owner, log.NewLogger("logger"),
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == redistributionAddress {
+						someSalt := make([]byte, 32)
+						rand.Read(someSalt)
+						return someSalt, nil
+					}
+					return nil, errors.New("unexpected call")
+				})),
+			redistributionAddress)
+
+		_, err := contract.ReserveSalt(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
