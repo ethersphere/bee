@@ -25,7 +25,7 @@ func TestDepositStake(t *testing.T) {
 
 	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 
-	minStake := big.NewInt(1).String()
+	minStake := big.NewInt(10).String()
 	depositStake := func(address string, amount string) string {
 		return fmt.Sprintf("/stake/deposit/%s/%s", address, amount)
 	}

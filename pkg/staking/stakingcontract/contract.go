@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	MinimumStakeAmount = big.NewInt(1)
+	MinimumStakeAmount = big.NewInt(10)
 
 	erc20ABI   = parseABI(sw3abi.ERC20ABIv0_3_1)
 	stakingABI = parseABI(ABIv0_0_0)
