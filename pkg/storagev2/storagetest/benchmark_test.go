@@ -23,6 +23,8 @@ var (
 )
 
 func TestCompressibleBytes(t *testing.T) {
+	t.Parallel()
+
 	bts := compressibleBytes(rng, cr, vs)
 	if !bytes.Equal(bts[:50], bts[50:]) {
 		t.Errorf("expected \n%s to equal \n%s", string(bts[:50]), string(bts[50:]))
@@ -35,6 +37,8 @@ func TestCompressibleBytes(t *testing.T) {
 }
 
 func TestRandomValueGenerator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("generates random values", func(t *testing.T) {
 		gen := makeRandomValueGenerator(rng, cr, vs)
 		if bytes.Equal(gen.Value(1), gen.Value(2)) {
@@ -51,6 +55,8 @@ func TestRandomValueGenerator(t *testing.T) {
 }
 
 func TestFullRandomEntryGenerator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("startAt is respected", func(t *testing.T) {
 		startAt, size := 10, 100
 		gen := newFullRandomEntryGenerator(startAt, size)
@@ -64,6 +70,8 @@ func TestFullRandomEntryGenerator(t *testing.T) {
 }
 
 func TestSequentialEntryGenerator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("generated values are consecutive ascending", func(t *testing.T) {
 		gen := newSequentialEntryGenerator(10)
 		for i := 0; i < gen.NKey(); i++ {
@@ -76,6 +84,8 @@ func TestSequentialEntryGenerator(t *testing.T) {
 }
 
 func TestReverseGenerator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("generated values are consecutive descending", func(t *testing.T) {
 		gen := newReversedKeyGenerator(newSequentialKeyGenerator(10))
 		for i := 0; i < gen.NKey(); i++ {
@@ -88,6 +98,8 @@ func TestReverseGenerator(t *testing.T) {
 }
 
 func TestStartAtEntryGenerator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("generated values are consecutive ascending", func(t *testing.T) {
 		startAt := 5
 		gen := newStartAtEntryGenerator(startAt, newSequentialEntryGenerator(10))
@@ -101,6 +113,8 @@ func TestStartAtEntryGenerator(t *testing.T) {
 }
 
 func TestRoundKeyGenerator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("repeating values are generated", func(t *testing.T) {
 		gen := newRoundKeyGenerator(newRandomKeyGenerator(100))
 		v := string(gen.Key(50))
