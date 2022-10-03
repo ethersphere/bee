@@ -448,8 +448,6 @@ func TestGetStake(t *testing.T) {
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
-					}
-					if *request.To == stakingAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
@@ -507,8 +505,6 @@ func TestGetStake(t *testing.T) {
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
-					}
-					if *request.To == stakingAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
