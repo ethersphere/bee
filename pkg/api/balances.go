@@ -39,8 +39,8 @@ func (s *Service) balancesHandler(w http.ResponseWriter, _ *http.Request) {
 	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		logger.Debug("balances: get balances failed", "error", err)
-		logger.Error(nil, "balances: get balances failed")
+		logger.Debug("get balances failed", "error", err)
+		logger.Error(nil, "get balances failed")
 		return
 	}
 
