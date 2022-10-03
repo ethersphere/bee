@@ -70,7 +70,7 @@ import (
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistributioncontract"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -974,13 +974,13 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
 	}
 
-	redistributioncontract.New(swarmAddress, logger, transactionService, redistributionAddress)
+	redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
 
 	if o.FullNodeMode {
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 
-		agent := storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, nil, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+		agent := storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 		b.storageIncetivesCloser = agent
 	}
 
@@ -1008,12 +1008,10 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		b.chainSyncerCloser = chainSyncer
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
-
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
-	stakingContract := staking.New(swarmAddress, overlayEthAddress, chainCfg.StakingContract, erc20Address, transactionService, common.BytesToHash(nonce))
+	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,

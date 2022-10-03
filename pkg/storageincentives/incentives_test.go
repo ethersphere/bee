@@ -16,6 +16,7 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"go.uber.org/atomic"
@@ -118,7 +119,7 @@ func Test(t *testing.T) {
 func createService(
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
-	contract storageincentives.IncentivesContract,
+	contract redistribution.Contract,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) *storageincentives.Agent {
 
