@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package stakingcontract
+package staking
 
 import (
 	"context"
@@ -21,25 +21,26 @@ import (
 )
 
 var (
-	MinimumStakeAmount = big.NewInt(1)
+	MinimumStakeAmount = big.NewInt(100000000000000000)
 
-	erc20ABI = parseABI(sw3abi.ERC20ABIv0_3_1)
-	//TODO: get ABI for staking contract and replace it below
-	stakingABI = parseABI(sw3abi.ERC20ABIv0_3_1)
+	erc20ABI   = parseABI(sw3abi.ERC20ABIv0_3_1)
+	stakingABI = parseABI(ABIv0_0_0)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
 	ErrNotImplemented          = errors.New("not implemented")
 
+	approveDescription      = "Approve tokens for stake deposit operations"
 	depositStakeDescription = "Deposit Stake"
 )
 
 type Interface interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error
-	GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error)
+	DepositStake(ctx context.Context, stakedAmount *big.Int) error
+	GetStake(ctx context.Context) (*big.Int, error)
 }
 
 type contract struct {
+	overlay                swarm.Address
 	owner                  common.Address
 	stakingContractAddress common.Address
 	bzzTokenAddress        common.Address
@@ -48,6 +49,7 @@ type contract struct {
 }
 
 func New(
+	overlay swarm.Address,
 	owner common.Address,
 	stakingContractAddress common.Address,
 	bzzTokenAddress common.Address,
@@ -55,6 +57,7 @@ func New(
 	nonce common.Hash,
 ) Interface {
 	return &contract{
+		overlay:                overlay,
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		bzzTokenAddress:        bzzTokenAddress,
@@ -63,12 +66,42 @@ func New(
 	}
 }
 
+func (s *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
+	callData, err := erc20ABI.Pack("approve", s.stakingContractAddress, amount)
+	if err != nil {
+		return nil, err
+	}
+
+	txHash, err := s.transactionService.Send(ctx, &transaction.TxRequest{
+		To:          &s.bzzTokenAddress,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    65000,
+		Value:       big.NewInt(0),
+		Description: approveDescription,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if receipt.Status == 0 {
+		return nil, transaction.ErrTransactionReverted
+	}
+
+	return receipt, nil
+}
+
 func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
 	request := &transaction.TxRequest{
 		To:          &s.stakingContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300_000),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
@@ -91,7 +124,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 }
 
 func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := stakingABI.Pack("depositStake", owner, stakedAmount, nonce)
+	callData, err := stakingABI.Pack("depositStake", owner, nonce, stakedAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -105,11 +138,10 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 }
 
 func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	callData, err := stakingABI.Pack("stakeOfOverlay", overlay)
+	callData, err := stakingABI.Pack("stakeOfOverlay", common.BytesToHash(overlay.Bytes()))
 	if err != nil {
 		return nil, err
 	}
-
 	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
 		To:   &s.stakingContractAddress,
 		Data: callData,
@@ -118,15 +150,15 @@ func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)
 	}
 
-	results, err := erc20ABI.Unpack("stakeOfOverlay", result)
+	results, err := stakingABI.Unpack("stakeOfOverlay", result)
 	if err != nil {
 		return nil, err
 	}
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
-	prevStakedAmount, err := s.GetStake(ctx, overlay)
+func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
+	prevStakedAmount, err := s.GetStake(ctx)
 	if err != nil {
 		return err
 	}
@@ -146,6 +178,11 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, over
 		return ErrInsufficientFunds
 	}
 
+	_, err = s.sendApproveTransaction(ctx, stakedAmount)
+	if err != nil {
+		return err
+	}
+
 	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
 	if err != nil {
 		return err
@@ -153,8 +190,8 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, over
 	return nil
 }
 
-func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	stakedAmount, err := s.getStake(ctx, overlay)
+func (s *contract) GetStake(ctx context.Context) (*big.Int, error) {
+	stakedAmount, err := s.getStake(ctx, s.overlay)
 	if err != nil {
 		return big.NewInt(0), fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
