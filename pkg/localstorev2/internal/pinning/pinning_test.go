@@ -39,7 +39,7 @@ func (t *testStorage) ChunkStore() storage.ChunkStore { return t.chStore }
 
 func TestPinStore(t *testing.T) {
 
-	var tests []pinningCollection
+	tests := make([]pinningCollection, 0, 3)
 
 	for _, tc := range []struct {
 		dupChunks    int
