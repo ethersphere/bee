@@ -324,6 +324,29 @@ func mapStructure(input, output interface{}, hooks map[string]func(v string) (st
 	return pErrs.ErrorOrNil()
 }
 
+// parseFieldTags parses the given field tags into name, hook, and omitempty.
+func parseFieldTags(field reflect.StructField) (name string, hook func(v string) (string, error), omitempty bool) {
+	hook = func(v string) (string, error) { return v, nil }
+
+	val, ok := field.Tag.Lookup(mapStructureTagName)
+	if !ok {
+		return field.Name, hook, false
+	}
+
+	tags := strings.SplitN(val, ",", 3)
+	name = tags[0]
+	for _, tag := range tags[1:] {
+		switch tag {
+		case "omitempty":
+			omitempty = true
+		default:
+			hook = preMapHooks[tag]
+		}
+	}
+
+	return name, hook, omitempty
+}
+
 // numberSize returns the size of the number in bits.
 func numberSize(k reflect.Kind) int {
 	switch k {
