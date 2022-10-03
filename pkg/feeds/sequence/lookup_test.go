@@ -15,6 +15,8 @@ import (
 )
 
 func TestFinder(t *testing.T) {
+	t.Parallel()
+
 	testf := func(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 		t.Helper()
 
@@ -33,10 +35,14 @@ func TestFinder(t *testing.T) {
 			feedstesting.TestFinderRandomIntervals(t, finderf, updaterf)
 		})
 	}
+
 	t.Run("sync", func(t *testing.T) {
+		t.Parallel()
 		testf(t, sequence.NewFinder, sequence.NewUpdater)
 	})
+
 	t.Run("async", func(t *testing.T) {
+		t.Parallel()
 		testf(t, sequence.NewAsyncFinder, sequence.NewUpdater)
 	})
 }

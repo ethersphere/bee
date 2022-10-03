@@ -14,6 +14,7 @@ import (
 )
 
 func TestMakePricingHeaders(t *testing.T) {
+	t.Parallel()
 
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
@@ -35,6 +36,7 @@ func TestMakePricingHeaders(t *testing.T) {
 }
 
 func TestMakePricingResponseHeaders(t *testing.T) {
+	t.Parallel()
 
 	addr := swarm.MustParseHexAddress("010101e1010101")
 
@@ -56,6 +58,7 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 }
 
 func TestParsePricingHeaders(t *testing.T) {
+	t.Parallel()
 
 	toReadHeaders := p2p.Headers{
 		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 0, 20, 228},
@@ -79,6 +82,7 @@ func TestParsePricingHeaders(t *testing.T) {
 }
 
 func TestParsePricingResponseHeaders(t *testing.T) {
+	t.Parallel()
 
 	toReadHeaders := p2p.Headers{
 		headerutils.PriceFieldName:  []byte{0, 0, 0, 0, 0, 0, 20, 228},
@@ -107,6 +111,8 @@ func TestParsePricingResponseHeaders(t *testing.T) {
 }
 
 func TestParseIndexHeader(t *testing.T) {
+	t.Parallel()
+
 	toReadHeaders := p2p.Headers{
 		headerutils.IndexFieldName: []byte{11},
 	}
@@ -123,6 +129,7 @@ func TestParseIndexHeader(t *testing.T) {
 }
 
 func TestParseTargetHeader(t *testing.T) {
+	t.Parallel()
 
 	toReadHeaders := p2p.Headers{
 		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},
@@ -142,6 +149,8 @@ func TestParseTargetHeader(t *testing.T) {
 }
 
 func TestParsePriceHeader(t *testing.T) {
+	t.Parallel()
+
 	toReadHeaders := p2p.Headers{
 		headerutils.PriceFieldName: []byte{0, 0, 0, 0, 0, 0, 20, 228},
 	}
@@ -158,6 +167,8 @@ func TestParsePriceHeader(t *testing.T) {
 }
 
 func TestReadMalformedHeaders(t *testing.T) {
+	t.Parallel()
+
 	toReadHeaders := p2p.Headers{
 		headerutils.IndexFieldName:  []byte{11, 0},
 		headerutils.TargetFieldName: []byte{1, 1, 1, 225, 1, 1, 1},

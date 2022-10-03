@@ -12,6 +12,8 @@ import (
 )
 
 func TestLocationSerialization(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []*sharky.Location{
 		{
 			Shard:  1,
@@ -29,14 +31,17 @@ func TestLocationSerialization(t *testing.T) {
 			Length: math.MaxUint16,
 		},
 	} {
-		t.Run(fmt.Sprintf("%d_%d_%d", tc.Shard, tc.Slot, tc.Length), func(st *testing.T) {
+		tc := tc
+		t.Run(fmt.Sprintf("%d_%d_%d", tc.Shard, tc.Slot, tc.Length), func(t *testing.T) {
+			t.Parallel()
+
 			buf, err := tc.MarshalBinary()
 			if err != nil {
-				st.Fatal(err)
+				t.Fatal(err)
 			}
 
 			if len(buf) != sharky.LocationSize {
-				st.Fatal("unexpected length of buffer")
+				t.Fatal("unexpected length of buffer")
 			}
 
 			l2 := &sharky.Location{}
