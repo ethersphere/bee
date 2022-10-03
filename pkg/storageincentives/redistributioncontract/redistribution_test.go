@@ -275,22 +275,25 @@ func TestRedistribution(t *testing.T) {
 
 	t.Run("Reserve Salt", func(t *testing.T) {
 		t.Parallel()
-
+		someSalt := make([]byte, 32)
+		rand.Read(someSalt)
 		contract := redistributioncontract2.New(owner, log.NewLogger("logger"),
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == redistributionAddress {
-						someSalt := make([]byte, 32)
-						rand.Read(someSalt)
+
 						return someSalt, nil
 					}
 					return nil, errors.New("unexpected call")
 				})),
 			redistributionAddress)
 
-		_, err := contract.ReserveSalt(ctx)
+		salt, err := contract.ReserveSalt(ctx)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if !bytes.Equal(salt, someSalt) {
+			t.Fatal("expected bytes to be equal")
 		}
 	})
 
