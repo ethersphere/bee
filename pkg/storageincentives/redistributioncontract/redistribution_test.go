@@ -276,7 +276,10 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Reserve Salt", func(t *testing.T) {
 		t.Parallel()
 		someSalt := make([]byte, 32)
-		rand.Read(someSalt)
+		_, err := rand.Read(someSalt)
+		if err != nil {
+			t.Fatal(err)
+		}
 		contract := redistributioncontract.New(owner, log.Noop,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
