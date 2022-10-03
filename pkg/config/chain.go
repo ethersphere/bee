@@ -25,10 +25,10 @@ var (
 	// postage stamp
 	goerliPostageStampContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
 	xdaiPostageStampContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
-	//TODO: add correct staking addresses here
+
 	//staking contract
-	goerliStakingContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
-	xdaiStakingContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+	goerliStakingContractAddress = common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614")
+	xdaiStakingContractAddress   = common.HexToAddress("0x52e86336210bb8f1fde11eb8bc664a20afc0a614")
 )
 
 type ChainConfig struct {

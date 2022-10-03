@@ -30,6 +30,7 @@ var (
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
 	ErrNotImplemented          = errors.New("not implemented")
 
+	approveDescription      = "Approve tokens for stake deposit operations"
 	depositStakeDescription = "Deposit Stake"
 )
 
@@ -62,12 +63,42 @@ func New(
 	}
 }
 
+func (s *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
+	callData, err := erc20ABI.Pack("approve", s.stakingContractAddress, amount)
+	if err != nil {
+		return nil, err
+	}
+
+	txHash, err := s.transactionService.Send(ctx, &transaction.TxRequest{
+		To:          &s.bzzTokenAddress,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    65000,
+		Value:       big.NewInt(0),
+		Description: approveDescription,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if receipt.Status == 0 {
+		return nil, transaction.ErrTransactionReverted
+	}
+
+	return receipt, nil
+}
+
 func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
 	request := &transaction.TxRequest{
 		To:          &s.stakingContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_00),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
@@ -104,10 +135,7 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 }
 
 func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	//overlayAddr is the byte array of fixed size and is required for smart contract.
-	var overlayAddr [32]byte
-	copy(overlayAddr[:], overlay.Bytes())
-	callData, err := stakingABI.Pack("stakeOfOverlay", overlayAddr)
+	callData, err := stakingABI.Pack("stakeOfOverlay", common.BytesToHash(overlay.Bytes()))
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +173,11 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, over
 
 	if balance.Cmp(stakedAmount) < 0 {
 		return ErrInsufficientFunds
+	}
+
+	_, err = s.sendApproveTransaction(ctx, stakedAmount)
+	if err != nil {
+		return err
 	}
 
 	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
