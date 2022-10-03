@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 
@@ -51,9 +52,9 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	err = s.stakingContract.DepositStake(r.Context(), stakedAmount, overlayAddr)
 	if err != nil {
 		if errors.Is(err, stakingcontract.ErrInsufficientStakeAmount) {
-			s.logger.Debug("deposit stake: minimum 10 BZZ required for staking", "error", err, "minimumStakeAmount", stakingcontract.MinimumStakeAmount)
-			s.logger.Error(nil, "deposit stake: minimum 10 BZZ required for staking")
-			jsonhttp.BadRequest(w, "minimum 10 BZZ required for staking")
+			s.logger.Debug("deposit stake: minimum BZZ required for staking", "minimum_stake", stakingcontract.MinimumStakeAmount, "error", err)
+			s.logger.Error(nil, fmt.Sprintf("deposit stake: minimum %d BZZ required for staking", stakingcontract.MinimumStakeAmount.Int64()))
+			jsonhttp.BadRequest(w, "minimum 100000000000000000 BZZ required for staking")
 			return
 		}
 		if errors.Is(err, stakingcontract.ErrNotImplemented) {

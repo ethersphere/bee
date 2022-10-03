@@ -25,7 +25,7 @@ func TestDepositStake(t *testing.T) {
 
 	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 
-	minStake := big.NewInt(10).String()
+	minStake := big.NewInt(100000000000000000).String()
 	depositStake := func(address string, amount string) string {
 		return fmt.Sprintf("/stake/deposit/%s/%s", address, amount)
 	}
@@ -53,7 +53,7 @@ func TestDepositStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(addr.String(), invalidMinStake), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "minimum 10 BZZ required for staking"}))
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "minimum 100000000000000000 BZZ required for staking"}))
 	})
 
 	t.Run("with invalid address", func(t *testing.T) {

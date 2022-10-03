@@ -29,14 +29,14 @@ func TestDepositStake(t *testing.T) {
 	bzzTokenAddress := common.HexToAddress("eeee")
 	nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
-	stakedAmount := big.NewInt(10)
+	stakedAmount := big.NewInt(100000000000000000)
 	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 	txHashApprove := common.HexToHash("abb0")
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		totalAmount := big.NewInt(102400)
+		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
 		expectedCallData, err := stakingcontract.StakingABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, stakedAmount)
 		if err != nil {
@@ -90,9 +90,9 @@ func TestDepositStake(t *testing.T) {
 	t.Run("ok with addon stake", func(t *testing.T) {
 		t.Parallel()
 
-		totalAmount := big.NewInt(102400)
+		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(2)
-		expectedCallData, err := stakingcontract.StakingABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, big.NewInt(10))
+		expectedCallData, err := stakingcontract.StakingABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, big.NewInt(100000000000000000))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,7 +192,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(10), addr)
+		err := contract.DepositStake(ctx, big.NewInt(100000000000000000), addr)
 		if !errors.Is(err, stakingcontract.ErrInsufficientFunds) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", stakingcontract.ErrInsufficientFunds, err))
 		}
@@ -217,7 +217,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(10), addr)
+		err := contract.DepositStake(ctx, big.NewInt(100000000000000000), addr)
 		if !errors.Is(err, stakingcontract.ErrInsufficientFunds) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", stakingcontract.ErrInsufficientStakeAmount, err))
 		}
@@ -299,7 +299,7 @@ func TestDepositStake(t *testing.T) {
 	t.Run("transaction reverted", func(t *testing.T) {
 		t.Parallel()
 
-		totalAmount := big.NewInt(102400)
+		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
 		expectedCallData, err := stakingcontract.Erc20ABI.Pack("approve", stakingAddress, stakedAmount)
 		if err != nil {
@@ -458,8 +458,8 @@ func TestGetStake(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if stakedAmount.Cmp(big.NewInt(1)) == 0 {
-			t.Fatalf("expected %v got %v", big.NewInt(1), stakedAmount)
+		if stakedAmount.Cmp(big.NewInt(100000000000000000)) == 0 {
+			t.Fatalf("expected %v got %v", big.NewInt(100000000000000000), stakedAmount)
 		}
 	})
 
