@@ -18,12 +18,13 @@ const (
 )
 
 var (
-	rng    = rand.New(rand.NewSource(time.Now().Unix()))
 	format = "100000000000000%d"
 )
 
 func TestCompressibleBytes(t *testing.T) {
 	t.Parallel()
+
+	rng := rand.New(rand.NewSource(time.Now().Unix()))
 
 	bts := compressibleBytes(rng, cr, vs)
 	if !bytes.Equal(bts[:50], bts[50:]) {
@@ -38,6 +39,8 @@ func TestCompressibleBytes(t *testing.T) {
 
 func TestRandomValueGenerator(t *testing.T) {
 	t.Parallel()
+
+	rng := rand.New(rand.NewSource(time.Now().Unix()))
 
 	t.Run("generates random values", func(t *testing.T) {
 		gen := makeRandomValueGenerator(rng, cr, vs)
