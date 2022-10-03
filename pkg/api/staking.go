@@ -51,8 +51,8 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	err = s.stakingContract.DepositStake(r.Context(), stakedAmount, overlayAddr)
 	if err != nil {
 		if errors.Is(err, stakingcontract.ErrInsufficientStakeAmount) {
-			s.logger.Debug("deposit stake: insufficient stake amount", "error", err)
-			s.logger.Error(nil, "deposit stake: insufficient stake amount")
+			s.logger.Debug("deposit stake: minimum 10 BZZ required for staking", "error", err, "minimumStakeAmount", stakingcontract.MinimumStakeAmount)
+			s.logger.Error(nil, "deposit stake: minimum 10 BZZ required for staking")
 			jsonhttp.BadRequest(w, "minimum 10 BZZ required for staking")
 			return
 		}
