@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
@@ -55,7 +56,7 @@ func New(
 }
 
 func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", getOverlayAddr(s.overlay), depth)
+	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(s.overlay.Bytes()), depth)
 	if err != nil {
 		return false, err
 	}
@@ -74,7 +75,7 @@ func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 }
 
 func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := redistributionContractABI.Pack("isWinner", getOverlayAddr(s.overlay))
+	callData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(s.overlay.Bytes()))
 	if err != nil {
 		return false, err
 	}
@@ -97,8 +98,15 @@ func (s *Service) Claim(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	
-	err = s.sendAndWait(ctx, callData)
+	request := &transaction.TxRequest{
+		To:          &s.incentivesContractAddress,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
+		Value:       nil,
+		Description: "claim win transaction",
+	}
+	err = s.sendAndWait(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -107,14 +115,19 @@ func (s *Service) Claim(ctx context.Context) error {
 }
 
 func (s *Service) Commit(ctx context.Context, obfusHash []byte) error {
-	var obfus [32]byte
-	copy(obfus[:], obfusHash)
-	callData, err := redistributionContractABI.Pack("commit", obfus, getOverlayAddr(s.overlay))
+	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(s.overlay.Bytes()))
 	if err != nil {
 		return err
 	}
-
-	err = s.sendAndWait(ctx, callData)
+	request := &transaction.TxRequest{
+		To:          &s.incentivesContractAddress,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
+		Value:       nil,
+		Description: "commit transaction",
+	}
+	err = s.sendAndWait(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -123,18 +136,19 @@ func (s *Service) Commit(ctx context.Context, obfusHash []byte) error {
 }
 
 func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) error {
-	var hash [32]byte
-	copy(hash[:], reserveCommitmentHash)
-
-	var randNonce [32]byte
-	copy(randNonce[:], RandomNonce)
-
-	callData, err := redistributionContractABI.Pack("reveal", getOverlayAddr(s.overlay), storageDepth, hash, randNonce)
+	callData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(s.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return err
 	}
-
-	err = s.sendAndWait(ctx, callData)
+	request := &transaction.TxRequest{
+		To:          &s.incentivesContractAddress,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
+		Value:       nil,
+		Description: "reveal transaction",
+	}
+	err = s.sendAndWait(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -161,12 +175,7 @@ func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return results[0].([]byte), nil
 }
 
-func (s *Service) sendAndWait(ctx context.Context, callData []byte) error {
-	request := &transaction.TxRequest{
-		To:   &s.incentivesContractAddress,
-		Data: callData,
-	}
-
+func (s *Service) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
 	txHash, err := s.txService.Send(ctx, request)
 	if err != nil {
 		return err
@@ -200,11 +209,4 @@ func parseABI(json string) abi.ABI {
 		panic(fmt.Sprintf("error creating ABI for redistribution redistributioncontract: %v", err))
 	}
 	return cabi
-}
-
-func getOverlayAddr(overlay swarm.Address) [32]byte {
-	//overlayAddr is the byte array of fixed size and is required for smart contract.
-	var overlayAddr [32]byte
-	copy(overlayAddr[:], overlay.Bytes())
-	return overlayAddr
 }

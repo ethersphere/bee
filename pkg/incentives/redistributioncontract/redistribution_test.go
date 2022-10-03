@@ -105,7 +105,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("IsWinner - true", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("isWinner", getOverlayAddr(owner))
+		expectedCallData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(owner.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -221,7 +221,7 @@ func TestRedistribution(t *testing.T) {
 		var obfus [32]byte
 		testobfus := common.Hex2Bytes("hash")
 		copy(obfus[:], testobfus)
-		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, getOverlayAddr(owner))
+		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,17 +256,11 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Reveal", func(t *testing.T) {
 		t.Parallel()
 
-		reserveCommitmentHash := common.Hex2Bytes("hash")
-		var hash [32]byte
-		copy(hash[:], reserveCommitmentHash)
-
-		randomNonce := common.Hex2Bytes("nonce")
-		var randNonce [32]byte
-		copy(randNonce[:], randomNonce)
-
+		reserveCommitmentHash := common.BytesToHash(common.Hex2Bytes("hash"))
+		randomNonce := common.BytesToHash(common.Hex2Bytes("nonce"))
 		depth := uint8(10)
 
-		expectedCallData, err := redistributionContractABI.Pack("reveal", getOverlayAddr(owner), depth, hash, randNonce)
+		expectedCallData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(owner.Bytes()), depth, reserveCommitmentHash, randomNonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +286,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionAddress)
 
-		err = contract.Reveal(ctx, depth, reserveCommitmentHash, randomNonce)
+		err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
 		if err != nil {
 			t.Fatal(err)
 		}
