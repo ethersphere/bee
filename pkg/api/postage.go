@@ -336,17 +336,15 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		BatchTTL: batchTTL,
 	}
 
-	if issuer != nil {
-		resp.Utilization = issuer.Utilization()
-		resp.Usable = exists && s.post.IssuerUsable(issuer)
-		resp.Label = issuer.Label()
-		resp.Depth = issuer.Depth()
-		resp.Amount = bigint.Wrap(issuer.Amount())
-		resp.BucketDepth = issuer.BucketDepth()
-		resp.BlockNumber = issuer.BlockNumber()
-		resp.ImmutableFlag = issuer.ImmutableFlag()
-		resp.Expired = issuer.Expired()
-	}
+	resp.Utilization = issuer.Utilization()
+	resp.Usable = exists && s.post.IssuerUsable(issuer)
+	resp.Label = issuer.Label()
+	resp.Depth = issuer.Depth()
+	resp.Amount = bigint.Wrap(issuer.Amount())
+	resp.BucketDepth = issuer.BucketDepth()
+	resp.BlockNumber = issuer.BlockNumber()
+	resp.ImmutableFlag = issuer.ImmutableFlag()
+	resp.Expired = issuer.Expired()
 
 	jsonhttp.OK(w, &resp)
 }
