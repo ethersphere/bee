@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
@@ -35,26 +34,18 @@ type getStakeResponse struct {
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
-	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
-	if err != nil {
-		s.logger.Debug("deposit stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
-		s.logger.Error(nil, "deposit stake: decode overlay address failed")
-		jsonhttp.BadRequest(w, "invalid address")
-		return
-	}
-
 	stakedAmount, ok := big.NewInt(0).SetString(mux.Vars(r)["amount"], 10)
 	if !ok {
 		s.logger.Error(nil, "deposit stake: invalid amount")
 		jsonhttp.BadRequest(w, "invalid staking amount")
 		return
 	}
-	err = s.stakingContract.DepositStake(r.Context(), stakedAmount, overlayAddr)
+	err := s.stakingContract.DepositStake(r.Context(), stakedAmount)
 	if err != nil {
 		if errors.Is(err, stakingcontract.ErrInsufficientStakeAmount) {
 			s.logger.Debug("deposit stake: minimum BZZ required for staking", "minimum_stake", stakingcontract.MinimumStakeAmount, "error", err)
 			s.logger.Error(nil, fmt.Sprintf("deposit stake: minimum %d BZZ required for staking", stakingcontract.MinimumStakeAmount.Int64()))
-			jsonhttp.BadRequest(w, "minimum 100000000000000000 BZZ required for staking")
+			jsonhttp.BadRequest(w, fmt.Sprintf("minimum %d BZZ required for staking", stakingcontract.MinimumStakeAmount.Int64()))
 			return
 		}
 		if errors.Is(err, stakingcontract.ErrNotImplemented) {
@@ -78,17 +69,9 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
-	overlayAddr, err := swarm.ParseHexAddress(mux.Vars(r)["address"])
+	stakedAmount, err := s.stakingContract.GetStake(r.Context())
 	if err != nil {
-		s.logger.Debug("get stake: decode overlay address failed", "overlay", overlayAddr, "error", err)
-		s.logger.Error(nil, "get stake: decode overlay address failed")
-		jsonhttp.BadRequest(w, "invalid address")
-		return
-	}
-
-	stakedAmount, err := s.stakingContract.GetStake(r.Context(), overlayAddr)
-	if err != nil {
-		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", overlayAddr, "error", err)
+		s.logger.Debug("get stake: get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		s.logger.Error(nil, "get stake: get staked amount failed")
 		jsonhttp.InternalServerError(w, "get staked amount failed")
 		return

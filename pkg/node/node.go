@@ -987,7 +987,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
-	stakingContract := stakingcontract.New(overlayEthAddress, chainCfg.StakingContract, erc20Address, transactionService, common.BytesToHash(nonce))
+	stakingContract := stakingcontract.New(swarmAddress, overlayEthAddress, chainCfg.StakingContract, erc20Address, transactionService, common.BytesToHash(nonce))
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,

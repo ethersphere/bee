@@ -35,11 +35,12 @@ var (
 )
 
 type Interface interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error
-	GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error)
+	DepositStake(ctx context.Context, stakedAmount *big.Int) error
+	GetStake(ctx context.Context) (*big.Int, error)
 }
 
 type contract struct {
+	overlay                swarm.Address
 	owner                  common.Address
 	stakingContractAddress common.Address
 	bzzTokenAddress        common.Address
@@ -48,6 +49,7 @@ type contract struct {
 }
 
 func New(
+	overlay swarm.Address,
 	owner common.Address,
 	stakingContractAddress common.Address,
 	bzzTokenAddress common.Address,
@@ -55,6 +57,7 @@ func New(
 	nonce common.Hash,
 ) Interface {
 	return &contract{
+		overlay:                overlay,
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		bzzTokenAddress:        bzzTokenAddress,
@@ -154,8 +157,8 @@ func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, overlay swarm.Address) error {
-	prevStakedAmount, err := s.GetStake(ctx, overlay)
+func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
+	prevStakedAmount, err := s.GetStake(ctx)
 	if err != nil {
 		return err
 	}
@@ -187,8 +190,8 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, over
 	return nil
 }
 
-func (s *contract) GetStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	stakedAmount, err := s.getStake(ctx, overlay)
+func (s *contract) GetStake(ctx context.Context) (*big.Int, error) {
+	stakedAmount, err := s.getStake(ctx, s.overlay)
 	if err != nil {
 		return big.NewInt(0), fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
