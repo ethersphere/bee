@@ -158,7 +158,7 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 type mockMonitor struct {
 }
 
-func (m *mockMonitor) IsStable() bool {
+func (m *mockMonitor) IsFullySynced() bool {
 	return true
 }
 
@@ -218,10 +218,6 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
 	}
 	m.previousCall = revealCall
 	return nil
-}
-
-func (m *mockContract) WrapCommit(uint8, []byte, []byte, []byte) ([]byte, error) {
-	return nil, nil
 }
 
 type mockSampler struct {
