@@ -123,7 +123,7 @@ var preMapHooks = map[string]func(v string) (string, error){
 }
 
 // mapStructure maps the input to the output values.
-// The input is on of the following:
+// The input is one of the following:
 //   - map[string]string
 //   - map[string][]string
 //
@@ -135,12 +135,14 @@ var preMapHooks = map[string]func(v string) (string, error){
 // For example:
 //
 //	type Output struct {
-//		BoolVal bool `map:"boolVal"`
+//		BoolVal bool `map:"boolVal,omitempty"`
 //	}
 //
 // If the `map` tag is not present, the field name is used.
 // If the field name or the `map` tag is not present in
-// the input map, the field is skipped.
+// the input map, the field is skipped. If the map value
+// is empty and the` omitempty` tag is present then the
+// field is skipped.
 //
 // In case of parsing error, a new parseError is returned to the caller.
 // The caller can use the Unwrap method to get the original error.

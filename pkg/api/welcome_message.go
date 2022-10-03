@@ -29,7 +29,7 @@ func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Service) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("post_wallet").Build()
+	logger := s.logger.WithName("post_welcome_message").Build()
 
 	var data welcomeMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&data)
