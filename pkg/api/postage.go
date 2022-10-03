@@ -5,6 +5,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -300,10 +301,15 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-
-	issuer, err := s.post.GetStampIssuer(id)
-	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hex.EncodeToString(id), "error", err)
+	var issuer *postage.StampIssuer
+	for _, stampIssuer := range s.post.StampIssuers() {
+		if bytes.Equal(id, stampIssuer.ID()) {
+			issuer = stampIssuer
+			break
+		}
+	}
+	if issuer == nil {
+		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hex.EncodeToString(id), "error")
 		s.logger.Error(nil, "get stamp issuer: get issuer failed")
 		jsonhttp.BadRequest(w, "cannot get batch")
 		return
