@@ -12,6 +12,8 @@ import (
 )
 
 func TestChunkStore(t *testing.T) {
+	t.Parallel()
+
 	storagetest.TestChunkStore(t, inmem.New())
 }
 
