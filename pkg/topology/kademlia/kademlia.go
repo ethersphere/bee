@@ -986,12 +986,24 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	var addrs []swarm.Address
 
+	depth := k.NeighborhoodDepth()
+	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
+
 outer:
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 
-		connectedPeers, err := randomSubset(k.binReachablePeers(bin), broadcastBinSize)
-		if err != nil {
-			return err
+		var (
+			connectedPeers []swarm.Address
+			err            error
+		)
+
+		if bin >= depth && isNeighbor {
+			connectedPeers = k.binReachablePeers(bin) // broadcast all neighborhood peers
+		} else {
+			connectedPeers, err = randomSubset(k.binReachablePeers(bin), broadcastBinSize)
+			if err != nil {
+				return err
+			}
 		}
 
 		for _, connectedPeer := range connectedPeers {
