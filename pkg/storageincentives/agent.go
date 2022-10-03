@@ -378,7 +378,7 @@ func (s *Agent) Close() error {
 	}
 }
 
-func (s *Agent) wrapCommit(storageRadius uint8, sample byte[], key byte[]) (byte[], error) {
+func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]byte, error) {
 
 	storageRadiusByte := make([]byte, 1)
 	storageRadiusByte[0] = storageRadius
