@@ -15,8 +15,8 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
-	stakingContractMock "github.com/ethersphere/bee/pkg/staking/stakingcontract/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	stakingContractMock "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 )
 
 func TestDepositStake(t *testing.T) {
@@ -45,7 +45,7 @@ func TestDepositStake(t *testing.T) {
 		invalidMinStake := big.NewInt(0).String()
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) error {
-				return stakingcontract.ErrInsufficientStakeAmount
+				return staking.ErrInsufficientStakeAmount
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
@@ -58,7 +58,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) error {
-				return stakingcontract.ErrInsufficientFunds
+				return staking.ErrInsufficientFunds
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})

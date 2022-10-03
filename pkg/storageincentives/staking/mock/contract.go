@@ -8,7 +8,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 )
 
 type stakingContractMock struct {
@@ -28,7 +28,7 @@ func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
 type Option func(mock *stakingContractMock)
 
 // New creates a new mock BatchStore
-func New(opts ...Option) stakingcontract.Interface {
+func New(opts ...Option) staking.Interface {
 	bs := &stakingContractMock{}
 
 	for _, o := range opts {

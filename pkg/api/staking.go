@@ -11,7 +11,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/gorilla/mux"
 )
 
@@ -42,19 +42,19 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	err := s.stakingContract.DepositStake(r.Context(), stakedAmount)
 	if err != nil {
-		if errors.Is(err, stakingcontract.ErrInsufficientStakeAmount) {
-			s.logger.Debug("deposit stake: minimum BZZ required for staking", "minimum_stake", stakingcontract.MinimumStakeAmount, "error", err)
-			s.logger.Error(nil, fmt.Sprintf("deposit stake: minimum %d BZZ required for staking", stakingcontract.MinimumStakeAmount.Int64()))
-			jsonhttp.BadRequest(w, fmt.Sprintf("minimum %d BZZ required for staking", stakingcontract.MinimumStakeAmount.Int64()))
+		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
+			s.logger.Debug("deposit stake: minimum BZZ required for staking", "minimum_stake", staking.MinimumStakeAmount, "error", err)
+			s.logger.Error(nil, fmt.Sprintf("deposit stake: minimum %d BZZ required for staking", staking.MinimumStakeAmount.Int64()))
+			jsonhttp.BadRequest(w, fmt.Sprintf("minimum %d BZZ required for staking", staking.MinimumStakeAmount.Int64()))
 			return
 		}
-		if errors.Is(err, stakingcontract.ErrNotImplemented) {
+		if errors.Is(err, staking.ErrNotImplemented) {
 			s.logger.Debug("deposit stake: not implemented", "error", err)
 			s.logger.Error(nil, "deposit stake: not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
 			return
 		}
-		if errors.Is(err, stakingcontract.ErrInsufficientFunds) {
+		if errors.Is(err, staking.ErrInsufficientFunds) {
 			s.logger.Debug("deposit stake: out of funds", "error", err)
 			s.logger.Error(nil, "deposit stake: out of funds")
 			jsonhttp.BadRequest(w, "out of funds")
