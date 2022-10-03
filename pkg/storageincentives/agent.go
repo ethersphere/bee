@@ -233,11 +233,6 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
-		// skip when the depthmonitor is unstable
-		if !s.monitor.IsFullySynced() {
-			continue
-		}
-
 		block, err := s.backend.BlockNumber(context.Background())
 		if err != nil {
 			s.logger.Error(err, "getting block number")
