@@ -962,25 +962,26 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
-			return nil, errors.New("malformed postage stamp address")
+			return nil, errors.New("malformed staking contract address")
 		}
 		stakingAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
 	if o.RedistributionContractAddress != "" {
 		if !common.IsHexAddress(o.RedistributionContractAddress) {
-			return nil, errors.New("malformed postage stamp address")
+			return nil, errors.New("malformed redistribution contract address")
 		}
 		redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
 	}
 
 	redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
 
+	var agent *storageincentives.Agent
 	if o.FullNodeMode {
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 
-		agent := storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+		agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 		b.storageIncetivesCloser = agent
 	}
 
@@ -1091,6 +1092,10 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		if pullerService != nil {
 			debugService.MustRegisterMetrics(pullerService.Metrics()...)
+		}
+
+		if agent != nil {
+			debugService.MustRegisterMetrics(agent.Metrics()...)
 		}
 
 		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
