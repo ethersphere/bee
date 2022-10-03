@@ -12,8 +12,8 @@ import (
 	"path"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/internal"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
