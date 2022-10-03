@@ -988,6 +988,8 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		b.chainSyncerCloser = chainSyncer
 	}
 
+	stakingContract := staking.New(overlayEthAddress, chainCfg.StakingContract, erc20Address, transactionService, common.BytesToHash(nonce))
+
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 

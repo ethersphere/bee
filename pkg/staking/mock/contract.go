@@ -25,10 +25,6 @@ func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
 }
 
-func (s *stakingContractMock) IsStaked(ctx context.Context, overlay swarm.Address) (bool, error) {
-	return false, nil
-}
-
 // Option is a an option passed to New
 type Option func(mock *stakingContractMock)
 

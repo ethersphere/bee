@@ -198,19 +198,6 @@ func (s *contract) GetStake(ctx context.Context) (*big.Int, error) {
 	return stakedAmount, nil
 }
 
-func (s *contract) IsStaked(ctx context.Context, overlay swarm.Address) (bool, error) {
-	stakedAmount, err := s.getStake(ctx, overlay)
-	if err != nil {
-		return false, fmt.Errorf("staking contract: failed to get stake: %w", err)
-	}
-
-	if stakedAmount.Cmp(MinimumStakeAmount) >= 0 {
-		return true, nil
-	}
-
-	return false, nil
-}
-
 func (s *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	callData, err := erc20ABI.Pack("balanceOf", s.owner)
 	if err != nil {

@@ -21,7 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const loggerName = "incentives"
+const loggerName = "incentives-agent"
 
 const (
 	DefaultBlocksPerRound = 152
