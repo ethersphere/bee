@@ -118,8 +118,6 @@ issues:
     - linters: paralleltest
       path: pkg/pushsync
     - linters: paralleltest
-      path: pkg/pusher
-    - linters: paralleltest
       path: pkg/log
     - linters: paralleltest
       path: pkg/resolver
