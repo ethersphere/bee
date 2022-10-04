@@ -86,15 +86,14 @@ func TestAgent(t *testing.T) {
 					default:
 					}
 				},
-				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound}
+				incrementSleep: time.Millisecond * 10,
+				incrementBy:    tc.incrementBy,
+				block:          tc.blocksPerRound}
 			contract := &mockContract{t: t, baseAddr: addr}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			<-wait
-
-			time.Sleep(time.Second)
 
 			if int(contract.commitCalls.Load()) != tc.expectedCalls {
 				t.Fatalf("got %d, want %d", contract.commitCalls.Load(), tc.expectedCalls)
@@ -136,13 +135,18 @@ func createService(
 }
 
 type mockchainBackend struct {
-	incrementBy   float64
-	block         float64
-	limit         float64
-	limitCallback func()
+	incrementSleep time.Duration
+	incrementBy    float64
+	block          float64
+	limit          float64
+	limitCallback  func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+
+	if m.incrementSleep != 0 {
+		time.Sleep(m.incrementSleep)
+	}
 
 	ret := uint64(m.block)
 
