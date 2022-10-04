@@ -288,6 +288,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 }
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_stamp_by_id").Build()
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error(nil, "get stamp issuer: invalid batch id string length", "string", idStr, "length", len(idStr))
@@ -296,9 +297,9 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := hex.DecodeString(idStr)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
-		jsonhttp.BadRequest(w, "invalid batchID")
+		logger.Debug("decode batch id string failed", "string", idStr, "error", err)
+		logger.Error(nil, "decode batch id string failed")
+		jsonhttp.BadRequest(w, "cannot find batch")
 		return
 	}
 	var issuer *postage.StampIssuer
@@ -309,9 +310,9 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if issuer == nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hex.EncodeToString(id), "error")
-		s.logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.BadRequest(w, "cannot get batch")
+		s.logger.Debug("get issuer failed", "batch_id", hex.EncodeToString(id))
+		s.logger.Error(nil, "get issuer failed")
+		jsonhttp.BadRequest(w, "cannot find batch")
 		return
 	}
 
