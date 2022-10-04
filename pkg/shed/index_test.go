@@ -50,6 +50,7 @@ var retrievalIndexFuncs = IndexFuncs{
 	},
 }
 
+// nolint:paralleltest
 // TestIndex validates put, get, fill, has and delete functions of the Index implementation.
 func TestIndex(t *testing.T) {
 	db := newTestDB(t)
@@ -362,8 +363,8 @@ func TestIndex(t *testing.T) {
 	})
 }
 
-// TestIndex_Iterate validates index Iterate
-// functions for correctness.
+// nolint:paralleltest
+// TestIndex_Iterate validates index Iterate functions for correctness.
 func TestIndex_Iterate(t *testing.T) {
 	db := newTestDB(t)
 
@@ -544,8 +545,8 @@ func TestIndex_Iterate(t *testing.T) {
 	})
 }
 
-// TestIndex_IterateReverse validates index Iterate
-// functions for correctness in reversed order.
+// nolint:paralleltest
+// TestIndex_IterateReverse validates index Iterate functions for correctness in reversed order.
 func TestIndex_IterateReverse(t *testing.T) {
 	db := newTestDB(t)
 
@@ -766,6 +767,7 @@ func TestIndex_IterateReverse(t *testing.T) {
 	})
 }
 
+// nolint:paralleltest
 // TestIndex_Iterate_withPrefix validates index Iterate
 // function for correctness.
 func TestIndex_Iterate_withPrefix(t *testing.T) {
@@ -952,6 +954,7 @@ func TestIndex_Iterate_withPrefix(t *testing.T) {
 	})
 }
 
+// nolint:paralleltest
 // TestIndex_IterateReverse_withPrefix validates index Iterate
 // functions for correctness in reversed order.
 func TestIndex_IterateReverse_withPrefix(t *testing.T) {
@@ -1148,6 +1151,7 @@ func TestIndex_IterateReverse_withPrefix(t *testing.T) {
 	})
 }
 
+// nolint:paralleltest
 // TestIndex_count tests if Index.Count and Index.CountFrom
 // returns the correct number of items.
 func TestIndex_count(t *testing.T) {
@@ -1320,6 +1324,8 @@ func checkItem(t *testing.T, got, want Item) {
 // TestIndex_firstAndLast validates that index First and Last methods
 // are returning expected results based on the provided prefix.
 func TestIndex_firstAndLast(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)
@@ -1439,6 +1445,8 @@ func TestIndex_firstAndLast(t *testing.T) {
 
 // TestIncByteSlice validates returned values of incByteSlice function.
 func TestIncByteSlice(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		b    []byte
 		want []byte
@@ -1464,6 +1472,8 @@ func TestIncByteSlice(t *testing.T) {
 // TestIndex_HasMulti validates that HasMulti returns a correct
 // slice of booleans for provided Items.
 func TestIndex_HasMulti(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	index, err := db.NewIndex("retrieval", retrievalIndexFuncs)

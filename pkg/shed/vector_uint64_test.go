@@ -25,14 +25,17 @@ import (
 // TestUint64Vector validates put and get operations
 // of the Uint64Vector.
 func TestUint64Vector(t *testing.T) {
-	db := newTestDB(t)
-
-	bins, err := db.NewUint64Vector("bins")
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
 
 	t.Run("get empty", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
+		bins, err := db.NewUint64Vector("bins")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		got, err := bins.Get(0)
 		if err != nil {
 			t.Fatal(err)
@@ -44,6 +47,14 @@ func TestUint64Vector(t *testing.T) {
 	})
 
 	t.Run("put", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
+		bins, err := db.NewUint64Vector("bins")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		for _, index := range []uint64{0, 1, 2, 5, 100} {
 			var want uint64 = 42 + index
 			err = bins.Put(index, want)
@@ -76,6 +87,14 @@ func TestUint64Vector(t *testing.T) {
 	})
 
 	t.Run("put in batch", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
+		bins, err := db.NewUint64Vector("bins")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
 			batch := new(leveldb.Batch)
 			var want uint64 = 43 + index
@@ -115,6 +134,8 @@ func TestUint64Vector(t *testing.T) {
 // TestUint64Vector_Inc validates Inc operation
 // of the Uint64Vector.
 func TestUint64Vector_Inc(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	bins, err := db.NewUint64Vector("bins")
@@ -146,6 +167,8 @@ func TestUint64Vector_Inc(t *testing.T) {
 // TestUint64Vector_IncInBatch validates IncInBatch operation
 // of the Uint64Vector.
 func TestUint64Vector_IncInBatch(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	bins, err := db.NewUint64Vector("bins")
@@ -201,6 +224,8 @@ func TestUint64Vector_IncInBatch(t *testing.T) {
 // TestUint64Vector_Dec validates Dec operation
 // of the Uint64Vector.
 func TestUint64Vector_Dec(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	bins, err := db.NewUint64Vector("bins")
@@ -239,6 +264,8 @@ func TestUint64Vector_Dec(t *testing.T) {
 // TestUint64Vector_DecInBatch validates DecInBatch operation
 // of the Uint64Vector.
 func TestUint64Vector_DecInBatch(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	bins, err := db.NewUint64Vector("bins")

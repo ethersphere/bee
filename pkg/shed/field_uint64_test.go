@@ -25,14 +25,17 @@ import (
 // TestUint64Field validates put and get operations
 // of the Uint64Field.
 func TestUint64Field(t *testing.T) {
-	db := newTestDB(t)
-
-	counter, err := db.NewUint64Field("counter")
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
 
 	t.Run("get empty", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
+		counter, err := db.NewUint64Field("counter")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		got, err := counter.Get()
 		if err != nil {
 			t.Fatal(err)
@@ -44,6 +47,14 @@ func TestUint64Field(t *testing.T) {
 	})
 
 	t.Run("put", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
+		counter, err := db.NewUint64Field("counter")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		var want uint64 = 42
 		err = counter.Put(want)
 		if err != nil {
@@ -74,6 +85,14 @@ func TestUint64Field(t *testing.T) {
 	})
 
 	t.Run("put in batch", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
+		counter, err := db.NewUint64Field("counter")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		batch := new(leveldb.Batch)
 		var want uint64 = 42
 		counter.PutInBatch(batch, want)
@@ -111,6 +130,8 @@ func TestUint64Field(t *testing.T) {
 // TestUint64Field_Inc validates Inc operation
 // of the Uint64Field.
 func TestUint64Field_Inc(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
@@ -140,6 +161,8 @@ func TestUint64Field_Inc(t *testing.T) {
 // TestUint64Field_IncInBatch validates IncInBatch operation
 // of the Uint64Field.
 func TestUint64Field_IncInBatch(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
@@ -193,6 +216,8 @@ func TestUint64Field_IncInBatch(t *testing.T) {
 // TestUint64Field_Dec validates Dec operation
 // of the Uint64Field.
 func TestUint64Field_Dec(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
@@ -229,6 +254,8 @@ func TestUint64Field_Dec(t *testing.T) {
 // TestUint64Field_DecInBatch validates DecInBatch operation
 // of the Uint64Field.
 func TestUint64Field_DecInBatch(t *testing.T) {
+	t.Parallel()
+
 	db := newTestDB(t)
 
 	counter, err := db.NewUint64Field("counter")
