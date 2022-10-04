@@ -193,6 +193,8 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 }
 
 func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
+	t.Parallel()
+
 	for j := 0; j < 3; j++ {
 		j := j
 		t.Run(fmt.Sprintf("random intervals %d", j), func(t *testing.T) {
