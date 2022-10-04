@@ -35,8 +35,8 @@ var (
 	//TODO: add correct redistribution addresses
 
 	// redistribution contract
-	goerliRedistributionAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
-	xdaiRedistributionAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+	goerliRedistributionAddress = common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F")
+	xdaiRedistributionAddress   = common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F")
 )
 
 type ChainConfig struct {
