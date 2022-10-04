@@ -5,6 +5,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -287,6 +288,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 }
 
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_stamp_by_id").Build()
 	idStr := mux.Vars(r)["id"]
 	if len(idStr) != 64 {
 		s.logger.Error(nil, "get stamp issuer: invalid batch id string length", "string", idStr, "length", len(idStr))
@@ -295,17 +297,22 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := hex.DecodeString(idStr)
 	if err != nil {
-		s.logger.Debug("get stamp issuer: decode batch id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "get stamp issuer: decode batch id string failed")
+		logger.Debug("decode batch id string failed", "string", idStr, "error", err)
+		logger.Error(nil, "decode batch id string failed")
 		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
-
-	issuer, err := s.post.GetStampIssuer(id)
-	if err != nil {
-		s.logger.Debug("get stamp issuer: get issuer failed", "batch_id", hex.EncodeToString(id), "error", err)
-		s.logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.BadRequest(w, "cannot get batch")
+	var issuer *postage.StampIssuer
+	for _, stampIssuer := range s.post.StampIssuers() {
+		if bytes.Equal(id, stampIssuer.ID()) {
+			issuer = stampIssuer
+			break
+		}
+	}
+	if issuer == nil {
+		s.logger.Debug("get issuer failed", "batch_id", hex.EncodeToString(id))
+		s.logger.Error(nil, "get issuer failed")
+		jsonhttp.BadRequest(w, "cannot find batch")
 		return
 	}
 
@@ -324,25 +331,20 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	resp := postageStampResponse{
-		BatchID:  id,
-		Exists:   exists,
-		BatchTTL: batchTTL,
-	}
-
-	if issuer != nil {
-		resp.Utilization = issuer.Utilization()
-		resp.Usable = exists && s.post.IssuerUsable(issuer)
-		resp.Label = issuer.Label()
-		resp.Depth = issuer.Depth()
-		resp.Amount = bigint.Wrap(issuer.Amount())
-		resp.BucketDepth = issuer.BucketDepth()
-		resp.BlockNumber = issuer.BlockNumber()
-		resp.ImmutableFlag = issuer.ImmutableFlag()
-		resp.Expired = issuer.Expired()
-	}
-
-	jsonhttp.OK(w, &resp)
+	jsonhttp.OK(w, &postageStampResponse{
+		BatchID:       id,
+		Depth:         issuer.Depth(),
+		BucketDepth:   issuer.BucketDepth(),
+		ImmutableFlag: issuer.ImmutableFlag(),
+		Exists:        exists,
+		BatchTTL:      batchTTL,
+		Utilization:   issuer.Utilization(),
+		Usable:        exists && s.post.IssuerUsable(issuer),
+		Label:         issuer.Label(),
+		Amount:        bigint.Wrap(issuer.Amount()),
+		BlockNumber:   issuer.BlockNumber(),
+		Expired:       issuer.Expired(),
+	})
 }
 
 type reserveStateResponse struct {
