@@ -23,7 +23,7 @@ const DefaultWakeupInterval = 5 * time.Minute
 
 // defaultMinimumRadius is the default value
 // for the depth monitor minimum radius.
-const defaultMinimumRadius uint8 = 4
+const defaultMinimumRadius uint8 = 0
 
 // ReserveReporter interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
