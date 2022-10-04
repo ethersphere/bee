@@ -106,8 +106,6 @@ issues:
     - linters: paralleltest
       path: pkg/localstore
     - linters: paralleltest
-      path: pkg/shed
-    - linters: paralleltest
       path: pkg/file
     - linters: paralleltest
       path: pkg/postage
@@ -128,14 +126,6 @@ issues:
     - linters: paralleltest
       path: pkg/pullsync
     - linters: paralleltest
-      path: pkg/hive
-    - linters: paralleltest
       path: pkg/statestore
     - linters: paralleltest
       path: pkg/p2p
-    - linters: paralleltest
-      path: pkg/intervalstore
-    - linters: paralleltest
-      path: pkg/pinning
-    - linters: paralleltest
-      path: pkg/chainsyncer

@@ -23,9 +23,12 @@ import (
 
 // TestDB_schemaFieldKey validates correctness of schemaFieldKey.
 func TestDB_schemaFieldKey(t *testing.T) {
-	db := newTestDB(t)
+	t.Parallel()
 
 	t.Run("empty name or type", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
 		_, err := db.schemaFieldKey("", "")
 		if err == nil {
 			t.Error("error not returned, but expected")
@@ -42,6 +45,9 @@ func TestDB_schemaFieldKey(t *testing.T) {
 	})
 
 	t.Run("same field", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
 		key1, err := db.schemaFieldKey("test", "undefined")
 		if err != nil {
 			t.Fatal(err)
@@ -58,6 +64,9 @@ func TestDB_schemaFieldKey(t *testing.T) {
 	})
 
 	t.Run("different fields", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
 		key1, err := db.schemaFieldKey("test1", "undefined")
 		if err != nil {
 			t.Fatal(err)
@@ -74,6 +83,9 @@ func TestDB_schemaFieldKey(t *testing.T) {
 	})
 
 	t.Run("same field name different types", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
 		_, err := db.schemaFieldKey("the-field", "one-type")
 		if err != nil {
 			t.Fatal(err)
@@ -88,9 +100,12 @@ func TestDB_schemaFieldKey(t *testing.T) {
 
 // TestDB_schemaIndexPrefix validates correctness of schemaIndexPrefix.
 func TestDB_schemaIndexPrefix(t *testing.T) {
-	db := newTestDB(t)
+	t.Parallel()
 
 	t.Run("same name", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
 		id1, err := db.schemaIndexPrefix("test")
 		if err != nil {
 			t.Fatal(err)
@@ -107,6 +122,9 @@ func TestDB_schemaIndexPrefix(t *testing.T) {
 	})
 
 	t.Run("different names", func(t *testing.T) {
+		t.Parallel()
+
+		db := newTestDB(t)
 		id1, err := db.schemaIndexPrefix("test1")
 		if err != nil {
 			t.Fatal(err)
@@ -125,8 +143,11 @@ func TestDB_schemaIndexPrefix(t *testing.T) {
 
 // TestDB_RenameIndex checks if index name is correctly changed.
 func TestDB_RenameIndex(t *testing.T) {
+	t.Parallel()
 
 	t.Run("empty names", func(t *testing.T) {
+		t.Parallel()
+
 		db := newTestDB(t)
 
 		// empty names
@@ -158,6 +179,8 @@ func TestDB_RenameIndex(t *testing.T) {
 	})
 
 	t.Run("same names", func(t *testing.T) {
+		t.Parallel()
+
 		db := newTestDB(t)
 
 		renamed, err := db.RenameIndex("index1", "index1")
@@ -170,6 +193,8 @@ func TestDB_RenameIndex(t *testing.T) {
 	})
 
 	t.Run("unknown name", func(t *testing.T) {
+		t.Parallel()
+
 		db := newTestDB(t)
 
 		renamed, err := db.RenameIndex("index1", "index1new")
@@ -182,6 +207,8 @@ func TestDB_RenameIndex(t *testing.T) {
 	})
 
 	t.Run("valid names", func(t *testing.T) {
+		t.Parallel()
+
 		db := newTestDB(t)
 
 		// initial indexes

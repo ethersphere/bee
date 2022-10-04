@@ -23,6 +23,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+// nolint:paralleltest
 // TestStructField validates put and get operations
 // of the StructField.
 func TestStructField(t *testing.T) {
