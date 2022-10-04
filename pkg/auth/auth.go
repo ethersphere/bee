@@ -25,19 +25,26 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "auth"
 
+type Authenticator interface {
+	Authorize(string) bool
+	GenerateKey(string, time.Duration) (string, error)
+	RefreshKey(string, time.Duration) (string, error)
+	Enforce(string, string, string) (bool, error)
+}
+
 type authRecord struct {
 	Role   string    `json:"r"`
 	Expiry time.Time `json:"e"`
 }
 
-type Authenticator struct {
+type authenticator struct {
 	passwordHash []byte
 	ciph         *encrypter
 	enforcer     *casbin.Enforcer
 	log          log.Logger
 }
 
-func New(encryptionKey, passwordHash string, logger log.Logger) (*Authenticator, error) {
+func New(encryptionKey, passwordHash string, logger log.Logger) (*authenticator, error) {
 	m, err := model.NewModelFromString(`
 	[request_definition]
 	r = sub, obj, act
@@ -72,7 +79,7 @@ func New(encryptionKey, passwordHash string, logger log.Logger) (*Authenticator,
 		return nil, err
 	}
 
-	auth := Authenticator{
+	auth := authenticator{
 		enforcer:     e,
 		ciph:         ciph,
 		passwordHash: []byte(passwordHash),
@@ -82,20 +89,20 @@ func New(encryptionKey, passwordHash string, logger log.Logger) (*Authenticator,
 	return &auth, nil
 }
 
-func (a *Authenticator) Authorize(password string) bool {
+func (a *authenticator) Authorize(password string) bool {
 	return nil == bcrypt.CompareHashAndPassword(a.passwordHash, []byte(password))
 }
 
 var ErrExpiry = errors.New("expiry duration must be a positive number")
 
-func (a *Authenticator) GenerateKey(role string, expiryDuration int) (string, error) {
+func (a *authenticator) GenerateKey(role string, expiryDuration time.Duration) (string, error) {
 	if expiryDuration == 0 {
 		return "", ErrExpiry
 	}
 
 	ar := authRecord{
 		Role:   role,
-		Expiry: time.Now().Add(time.Second * time.Duration(expiryDuration)),
+		Expiry: time.Now().Add(expiryDuration),
 	}
 
 	data, err := json.Marshal(ar)
@@ -115,7 +122,7 @@ func (a *Authenticator) GenerateKey(role string, expiryDuration int) (string, er
 
 var ErrTokenExpired = errors.New("token expired")
 
-func (a *Authenticator) RefreshKey(apiKey string, expiryDuration int) (string, error) {
+func (a *authenticator) RefreshKey(apiKey string, expiryDuration time.Duration) (string, error) {
 	if expiryDuration == 0 {
 		return "", ErrExpiry
 	}
@@ -139,7 +146,7 @@ func (a *Authenticator) RefreshKey(apiKey string, expiryDuration int) (string, e
 		return "", ErrTokenExpired
 	}
 
-	ar.Expiry = time.Now().Add(time.Duration(expiryDuration) * time.Second)
+	ar.Expiry = time.Now().Add(expiryDuration)
 
 	data, err := json.Marshal(ar)
 	if err != nil {
@@ -156,7 +163,7 @@ func (a *Authenticator) RefreshKey(apiKey string, expiryDuration int) (string, e
 	return apiKey, nil
 }
 
-func (a *Authenticator) Enforce(apiKey, obj, act string) (bool, error) {
+func (a *authenticator) Enforce(apiKey, obj, act string) (bool, error) {
 	decoded, err := base64.StdEncoding.DecodeString(apiKey)
 	if err != nil {
 		a.log.Error(err, "decode token failed")

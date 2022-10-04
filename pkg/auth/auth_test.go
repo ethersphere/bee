@@ -57,17 +57,19 @@ func TestAuthorize(t *testing.T) {
 func TestExpiry(t *testing.T) {
 	t.Parallel()
 
+	const expiryDuration = time.Millisecond * 10
+
 	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
 		t.Error(err)
 	}
 
-	key, err := a.GenerateKey("consumer", 1)
+	key, err := a.GenerateKey("consumer", expiryDuration)
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(expiryDuration * 2)
 
 	result, err := a.Enforce(key, "/bytes/1", "GET")
 	if !errors.Is(err, auth.ErrTokenExpired) {
@@ -81,6 +83,8 @@ func TestExpiry(t *testing.T) {
 
 func TestEnforce(t *testing.T) {
 	t.Parallel()
+
+	const expiryDuration = time.Second
 
 	a, err := auth.New(encryptionKey, passwordHash, log.Noop)
 	if err != nil {
@@ -130,7 +134,7 @@ func TestEnforce(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			apiKey, err := a.GenerateKey(tC.role, 1)
+			apiKey, err := a.GenerateKey(tC.role, expiryDuration)
 
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
