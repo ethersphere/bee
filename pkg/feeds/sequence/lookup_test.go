@@ -21,14 +21,10 @@ func TestFinder(t *testing.T) {
 		t.Helper()
 
 		t.Run("basic", func(t *testing.T) {
-			t.Parallel()
-
 			feedstesting.TestFinderBasic(t, finderf, updaterf)
 		})
 
 		t.Run("fixed", func(t *testing.T) {
-			t.Parallel()
-
 			i := 0
 			nextf := func() (bool, int64) {
 				i++
@@ -38,8 +34,6 @@ func TestFinder(t *testing.T) {
 		})
 
 		t.Run("random", func(t *testing.T) {
-			t.Parallel()
-
 			feedstesting.TestFinderRandomIntervals(t, finderf, updaterf)
 		})
 	}
