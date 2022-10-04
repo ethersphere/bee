@@ -312,7 +312,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	if issuer == nil {
 		s.logger.Debug("get issuer failed", "batch_id", hex.EncodeToString(id))
 		s.logger.Error(nil, "get issuer failed")
-		jsonhttp.BadRequest(w, "cannot find batch")
+		jsonhttp.BadRequest(w, "invalid batchID")
 		return
 	}
 
