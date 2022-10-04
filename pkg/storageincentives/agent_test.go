@@ -16,12 +16,13 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"go.uber.org/atomic"
 )
 
-func Test(t *testing.T) {
+func TestAgent(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -85,15 +86,14 @@ func Test(t *testing.T) {
 					default:
 					}
 				},
-				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound}
+				incrementSleep: time.Millisecond * 10,
+				incrementBy:    tc.incrementBy,
+				block:          tc.blocksPerRound}
 			contract := &mockContract{t: t, baseAddr: addr}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			<-wait
-
-			time.Sleep(time.Millisecond * 500)
 
 			if int(contract.commitCalls.Load()) != tc.expectedCalls {
 				t.Fatalf("got %d, want %d", contract.commitCalls.Load(), tc.expectedCalls)
@@ -118,7 +118,7 @@ func Test(t *testing.T) {
 func createService(
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
-	contract storageincentives.IncentivesContract,
+	contract redistribution.Contract,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) *storageincentives.Agent {
 
@@ -135,13 +135,18 @@ func createService(
 }
 
 type mockchainBackend struct {
-	incrementBy   float64
-	block         float64
-	limit         float64
-	limitCallback func()
+	incrementSleep time.Duration
+	incrementBy    float64
+	block          float64
+	limit          float64
+	limitCallback  func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+
+	if m.incrementSleep != 0 {
+		time.Sleep(m.incrementSleep)
+	}
 
 	ret := uint64(m.block)
 
