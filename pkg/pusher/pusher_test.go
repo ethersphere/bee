@@ -446,6 +446,8 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 }
 
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
+	t.Helper()
+
 	return createPusherWithRetryCount(t, addr, pushSyncService, validStamp, pusher.DefaultRetryCount, mockOpts...)
 }
 
