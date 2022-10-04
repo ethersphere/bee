@@ -306,7 +306,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
-	var authenticator *auth.Authenticator
+	var authenticator auth.Authenticator
 
 	if o.Restricted {
 		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {

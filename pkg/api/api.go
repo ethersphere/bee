@@ -109,15 +109,8 @@ var (
 	errBatchUnusable        = errors.New("batch not usable")
 )
 
-type authenticator interface {
-	Authorize(string) bool
-	GenerateKey(string, int) (string, error)
-	RefreshKey(string, int) (string, error)
-	Enforce(string, string, string) (bool, error)
-}
-
 type Service struct {
-	auth            authenticator
+	auth            auth.Authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
 	resolver        resolver.Interface
@@ -241,7 +234,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
+func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
 	s.auth = auth
 	s.chunkPushC = make(chan *pusher.Op)
 	s.signer = signer
@@ -398,7 +391,7 @@ type securityTokenRsp struct {
 
 type securityTokenReq struct {
 	Role   string `json:"role"`
-	Expiry int    `json:"expiry"`
+	Expiry int    `json:"expiry"` // duration in seconds
 }
 
 func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
@@ -434,7 +427,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
+	key, err := s.auth.GenerateKey(payload.Role, time.Duration(payload.Expiry)*time.Second)
 	if errors.Is(err, auth.ErrExpiry) {
 		s.logger.Debug("auth handler: generate key failed", "error", err)
 		s.logger.Error(nil, "auth handler: generate key failed")
@@ -485,7 +478,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := s.auth.RefreshKey(authToken, payload.Expiry)
+	key, err := s.auth.RefreshKey(authToken, time.Duration(payload.Expiry)*time.Second)
 	if errors.Is(err, auth.ErrTokenExpired) {
 		s.logger.Debug("auth handler: refresh key failed", "error", err)
 		s.logger.Error(nil, "auth handler: refresh key failed")

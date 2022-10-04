@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/auth"
 	mockauth "github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -97,7 +98,7 @@ type testServerOptions struct {
 	Post               postage.Service
 	Steward            steward.Interface
 	WsHeaders          http.Header
-	Authenticator      *mockauth.Auth
+	Authenticator      auth.Authenticator
 	DebugAPI           bool
 	Restricted         bool
 	DirectUpload       bool
