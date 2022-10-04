@@ -28,7 +28,7 @@ func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
 type Option func(mock *stakingContractMock)
 
 // New creates a new mock BatchStore
-func New(opts ...Option) staking.Interface {
+func New(opts ...Option) staking.Contract {
 	bs := &stakingContractMock{}
 
 	for _, o := range opts {

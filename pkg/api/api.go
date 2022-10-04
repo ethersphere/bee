@@ -135,7 +135,7 @@ type Service struct {
 	chunkPushC      chan *pusher.Op
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
-	stakingContract staking.Interface
+	stakingContract staking.Contract
 	Options
 
 	http.Handler
@@ -215,7 +215,7 @@ type ExtraOptions struct {
 	FeedFactory      feeds.Factory
 	Post             postage.Service
 	PostageContract  postagecontract.Interface
-	StakingContract  staking.Interface
+	Staking          staking.Contract
 	Steward          steward.Interface
 	SyncStatus       func() (bool, error)
 }
@@ -261,7 +261,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.post = e.Post
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
-	s.stakingContract = e.StakingContract
+	s.stakingContract = e.Staking
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver

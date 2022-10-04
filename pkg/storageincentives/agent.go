@@ -18,10 +18,16 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const loggerName = "incentives"
+const loggerName = "storageincentives"
+
+const (
+	DefaultBlocksPerRound = 152
+	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
+)
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
@@ -35,21 +41,12 @@ type Monitor interface {
 	IsFullySynced() bool
 }
 
-type IncentivesContract interface {
-	ReserveSalt(context.Context) ([]byte, error)
-	IsPlaying(context.Context, uint8) (bool, error)
-	IsWinner(context.Context) (bool, error)
-	Claim(context.Context) error
-	Commit(context.Context, []byte) error
-	Reveal(context.Context, uint8, []byte, []byte) error
-}
-
 type Agent struct {
 	logger   log.Logger
 	metrics  metrics
 	backend  ChainBackend
 	monitor  Monitor
-	contract IncentivesContract
+	contract redistribution.Contract
 	reserve  postage.Storer
 	sampler  Sampler
 	overlay  swarm.Address
@@ -62,17 +59,17 @@ func New(
 	backend ChainBackend,
 	logger log.Logger,
 	monitor Monitor,
-	incentives IncentivesContract,
+	contract redistribution.Contract,
 	reserve postage.Storer,
 	sampler Sampler,
-	blockTime time.Duration, blockPerRound, blocksPerPhase uint64) *Agent {
+	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
 		overlay:  overlay,
 		metrics:  newMetrics(),
 		backend:  backend,
 		logger:   logger.WithName(loggerName).Register(),
-		contract: incentives,
+		contract: contract,
 		reserve:  reserve,
 		monitor:  monitor,
 		sampler:  sampler,
@@ -80,7 +77,7 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.start(blockTime, blockPerRound, blocksPerPhase)
+	go s.start(blockTime, blocksPerRound, blocksPerPhase)
 
 	return s
 }
@@ -91,9 +88,9 @@ func New(
 // If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
-func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
+func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
 
-	defer s.wg.Done()
+	defer a.wg.Done()
 
 	var (
 		mtx            sync.Mutex
@@ -121,15 +118,15 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			obf, err := s.commit(ctx, storageRadius, reserveSample)
+			obf, err := a.commit(ctx, storageRadius, reserveSample)
 			if err != nil {
-				s.logger.Error(err, "commit")
+				a.logger.Error(err, "commit")
 			} else {
 				mtx.Lock()
 				obfuscationKey = obf
 				commitRound = round
 				mtx.Unlock()
-				s.logger.Debug("committed the reserve sample and radius")
+				a.logger.Debug("committed the reserve sample and radius")
 			}
 		}
 	}
@@ -162,14 +159,14 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round == commitRound { // reveal requires the obfuscationKey from the same round
-			err := s.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
+			err := a.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
 			if err != nil {
-				s.logger.Error(err, "reveal")
+				a.logger.Error(err, "reveal")
 			} else {
 				mtx.Lock()
 				revealRound = round
 				mtx.Unlock()
-				s.logger.Debug("revealed the sample with the obfuscation key")
+				a.logger.Debug("revealed the sample with the obfuscation key")
 			}
 		}
 	})
@@ -184,11 +181,11 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round == revealRound { // to claim, previous reveal must've happened in the same round
-			err := s.claim(ctx)
+			err := a.claim(ctx)
 			if err != nil {
-				s.logger.Error(err, "claim")
+				a.logger.Error(err, "claim")
 			} else {
-				s.logger.Debug("claim made")
+				a.logger.Debug("claim made")
 			}
 		}
 	})
@@ -199,15 +196,15 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		round := round
 		mtx.Unlock()
 
-		sr, smpl, err := s.play(ctx)
+		sr, smpl, err := a.play(ctx)
 		if err != nil {
-			s.logger.Error(err, "make sample")
+			a.logger.Error(err, "make sample")
 		} else if smpl != nil {
 			mtx.Lock()
 			sampleRound = round
 			reserveSample = smpl
 			storageRadius = sr
-			s.logger.Info("produced reserve sample", "round", round)
+			a.logger.Info("produced reserve sample", "round", round)
 			mtx.Unlock()
 		}
 
@@ -227,20 +224,20 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	for {
 		select {
-		case <-s.quit:
+		case <-a.quit:
 			return
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
-		block, err := s.backend.BlockNumber(context.Background())
+		block, err := a.backend.BlockNumber(context.Background())
 		if err != nil {
-			s.logger.Error(err, "getting block number")
+			a.logger.Error(err, "getting block number")
 			continue
 		}
 
 		mtx.Lock()
 		round = block / blocksPerRound
-		s.metrics.Round.Set(float64(round))
+		a.metrics.Round.Set(float64(round))
 
 		// compute the current phase
 		p := block % blocksPerRound
@@ -256,9 +253,9 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		if currentPhase != prevPhase {
 
-			s.metrics.CurrentPhase.Set(float64(currentPhase))
+			a.metrics.CurrentPhase.Set(float64(currentPhase))
 
-			s.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
+			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
@@ -272,81 +269,81 @@ func (s *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 }
 
-func (s *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
-	s.metrics.RevealPhase.Inc()
-	return s.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
+	a.metrics.RevealPhase.Inc()
+	return a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 }
 
-func (s *Agent) claim(ctx context.Context) error {
+func (a *Agent) claim(ctx context.Context) error {
 
-	s.metrics.ClaimPhase.Inc()
+	a.metrics.ClaimPhase.Inc()
 
-	isWinner, err := s.contract.IsWinner(ctx)
+	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		return err
 	}
 
 	if isWinner {
-		s.metrics.Winner.Inc()
-		err = s.contract.Claim(ctx)
+		a.metrics.Winner.Inc()
+		err = a.contract.Claim(ctx)
 		if err != nil {
 			return fmt.Errorf("error claiming win: %w", err)
 		} else {
-			s.logger.Info("claimed win")
+			a.logger.Info("claimed win")
 		}
 	}
 
 	return nil
 }
 
-func (s *Agent) play(ctx context.Context) (uint8, []byte, error) {
+func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	// get depthmonitor fully synced indicator
-	ready := s.monitor.IsFullySynced()
+	ready := a.monitor.IsFullySynced()
 	if !ready {
 		return 0, nil, nil
 	}
 
-	storageRadius := s.reserve.GetReserveState().StorageRadius
+	storageRadius := a.reserve.GetReserveState().StorageRadius
 
-	isPlaying, err := s.contract.IsPlaying(ctx, storageRadius)
+	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {
 		return 0, nil, err
 	}
 
-	s.logger.Info("neighbourhood chosen")
-	s.metrics.NeighborhoodSelected.Inc()
+	a.logger.Info("neighbourhood chosen")
+	a.metrics.NeighborhoodSelected.Inc()
 
-	salt, err := s.contract.ReserveSalt(ctx)
+	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
 
 	t := time.Now()
-	sample, err := s.sampler.ReserveSample(ctx, salt, storageRadius)
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius)
 	if err != nil {
 		return 0, nil, err
 	}
-	s.metrics.SampleDuration.Set(time.Since(t).Seconds())
+	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
 	return storageRadius, sample.Hash.Bytes(), nil
 }
 
-func (s *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
+func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
 
-	s.metrics.CommitPhase.Inc()
+	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
 	}
 
-	obfuscatedHash, err := s.wrapCommit(storageRadius, sample, key)
+	obfuscatedHash, err := a.wrapCommit(storageRadius, sample, key)
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.contract.Commit(ctx, obfuscatedHash)
+	err = a.contract.Commit(ctx, obfuscatedHash)
 	if err != nil {
 		return nil, err
 	}
@@ -354,12 +351,12 @@ func (s *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 	return key, nil
 }
 
-func (s *Agent) Close() error {
-	close(s.quit)
+func (a *Agent) Close() error {
+	close(a.quit)
 
 	stopped := make(chan struct{})
 	go func() {
-		s.wg.Wait()
+		a.wg.Wait()
 		close(stopped)
 	}()
 

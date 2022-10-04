@@ -389,7 +389,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		FeedFactory:      mockFeeds,
 		Post:             post,
 		PostageContract:  postageContract,
-		StakingContract:  mockStaking,
+		Staking:          mockStaking,
 		Steward:          mockSteward,
 		SyncStatus:       syncStatusFn,
 	}

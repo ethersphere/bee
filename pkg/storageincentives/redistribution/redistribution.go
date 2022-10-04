@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package redistributioncontract
+package redistribution
 
 import (
 	"context"
@@ -24,7 +24,7 @@ var (
 
 const loggerName = "redistributionContract"
 
-type Interface interface {
+type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
@@ -33,7 +33,7 @@ type Interface interface {
 	Reveal(context.Context, uint8, []byte, []byte) error
 }
 
-type Service struct {
+type contract struct {
 	overlay                   swarm.Address
 	logger                    log.Logger
 	txService                 transaction.Service
@@ -45,27 +45,27 @@ func New(
 	logger log.Logger,
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
-) *Service {
+) Contract {
 
-	s := &Service{
+	c := &contract{
 		overlay:                   overlay,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
 	}
-	return s
+	return c
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
-func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(s.overlay.Bytes()), depth)
+func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
+	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
 	if err != nil {
 		return false, err
 	}
 
-	result, err := s.callTx(ctx, callData)
+	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(s.overlay.Bytes()), depth, err)
+		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(c.overlay.Bytes()), depth, err)
 	}
 
 	results, err := redistributionContractABI.Unpack("isParticipatingInUpcomingRound", result)
@@ -77,15 +77,15 @@ func (s *Service) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 }
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
-func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(s.overlay.Bytes()))
+func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
+	callData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
 	if err != nil {
 		return false, err
 	}
 
-	result, err := s.callTx(ctx, callData)
+	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(s.overlay.Bytes()), err)
+		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
 	}
 
 	results, err := redistributionContractABI.Unpack("isWinner", result)
@@ -97,20 +97,20 @@ func (s *Service) IsWinner(ctx context.Context) (isWinner bool, err error) {
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
-func (s *Service) Claim(ctx context.Context) error {
+func (c *contract) Claim(ctx context.Context) error {
 	callData, err := redistributionContractABI.Pack("claim")
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &s.incentivesContractAddress,
+		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
-	err = s.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -119,42 +119,42 @@ func (s *Service) Claim(ctx context.Context) error {
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (s *Service) Commit(ctx context.Context, obfusHash []byte) error {
-	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(s.overlay.Bytes()))
+func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
+	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()))
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &s.incentivesContractAddress,
+		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
-	err = s.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request)
 	if err != nil {
-		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(s.overlay.Bytes()), err)
+		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
 
 	return nil
 }
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
-func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) error {
-	callData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(s.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
+func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) error {
+	callData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &s.incentivesContractAddress,
+		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}
-	err = s.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request)
 	if err != nil {
 		return fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -163,13 +163,13 @@ func (s *Service) Reveal(ctx context.Context, storageDepth uint8, reserveCommitm
 }
 
 // ReserveSalt provides the current round anchor by transacting on the blockchain.
-func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
+func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	callData, err := redistributionContractABI.Pack("currentRoundAnchor")
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := s.callTx(ctx, callData)
+	result, err := c.callTx(ctx, callData)
 	if err != nil {
 		return nil, err
 	}
@@ -183,13 +183,13 @@ func (s *Service) ReserveSalt(ctx context.Context) ([]byte, error) {
 }
 
 // sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
-func (s *Service) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
-	txHash, err := s.txService.Send(ctx, request)
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
+	txHash, err := c.txService.Send(ctx, request)
 	if err != nil {
 		return err
 	}
 
-	receipt, err := s.txService.WaitForReceipt(ctx, txHash)
+	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return err
 	}
@@ -201,9 +201,9 @@ func (s *Service) sendAndWait(ctx context.Context, request *transaction.TxReques
 }
 
 // callTx simulates a transaction based on tx request.
-func (s *Service) callTx(ctx context.Context, callData []byte) ([]byte, error) {
-	result, err := s.txService.Call(ctx, &transaction.TxRequest{
-		To:   &s.incentivesContractAddress,
+func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) {
+	result, err := c.txService.Call(ctx, &transaction.TxRequest{
+		To:   &c.incentivesContractAddress,
 		Data: callData,
 	})
 	if err != nil {
