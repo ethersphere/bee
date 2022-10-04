@@ -331,23 +331,20 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	resp := postageStampResponse{
-		BatchID:  id,
-		Exists:   exists,
-		BatchTTL: batchTTL,
-	}
-
-	resp.Utilization = issuer.Utilization()
-	resp.Usable = exists && s.post.IssuerUsable(issuer)
-	resp.Label = issuer.Label()
-	resp.Depth = issuer.Depth()
-	resp.Amount = bigint.Wrap(issuer.Amount())
-	resp.BucketDepth = issuer.BucketDepth()
-	resp.BlockNumber = issuer.BlockNumber()
-	resp.ImmutableFlag = issuer.ImmutableFlag()
-	resp.Expired = issuer.Expired()
-
-	jsonhttp.OK(w, &resp)
+	jsonhttp.OK(w, &postageStampResponse{
+		BatchID:       id,
+		Depth:         issuer.Depth(),
+		BucketDepth:   issuer.BucketDepth(),
+		ImmutableFlag: issuer.ImmutableFlag(),
+		Exists:        exists,
+		BatchTTL:      batchTTL,
+		Utilization:   issuer.Utilization(),
+		Usable:        exists && s.post.IssuerUsable(issuer),
+		Label:         issuer.Label(),
+		Amount:        bigint.Wrap(issuer.Amount()),
+		BlockNumber:   issuer.BlockNumber(),
+		Expired:       issuer.Expired(),
+	})
 }
 
 type reserveStateResponse struct {
