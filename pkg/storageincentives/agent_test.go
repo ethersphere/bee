@@ -86,9 +86,8 @@ func TestAgent(t *testing.T) {
 					default:
 					}
 				},
-				incrementSleep: time.Millisecond * 10,
-				incrementBy:    tc.incrementBy,
-				block:          tc.blocksPerRound}
+				incrementBy: tc.incrementBy,
+				block:       tc.blocksPerRound}
 			contract := &mockContract{t: t, baseAddr: addr}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
@@ -130,23 +129,18 @@ func createService(
 		contract,
 		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
 		&mockSampler{},
-		time.Millisecond, blocksPerRound, blocksPerPhase,
+		time.Millisecond*10, blocksPerRound, blocksPerPhase,
 	)
 }
 
 type mockchainBackend struct {
-	incrementSleep time.Duration
-	incrementBy    float64
-	block          float64
-	limit          float64
-	limitCallback  func()
+	incrementBy   float64
+	block         float64
+	limit         float64
+	limitCallback func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
-
-	if m.incrementSleep != 0 {
-		time.Sleep(m.incrementSleep)
-	}
 
 	ret := uint64(m.block)
 
