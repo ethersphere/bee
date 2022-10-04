@@ -21,7 +21,7 @@ type metrics struct {
 }
 
 func newMetrics() metrics {
-	subsystem := "incentives-agent"
+	subsystem := "storageincentives"
 
 	return metrics{
 		CurrentPhase: prometheus.NewGauge(prometheus.GaugeOpts{
