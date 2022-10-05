@@ -16,6 +16,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
     - name: Setup Go
       uses: actions/setup-go@v3
       with:
@@ -25,10 +29,6 @@ jobs:
       # make sure that line endings are not converted on windows
       # as gofmt linter will report that they need to be changed
       run: git config --global core.autocrlf false
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 1
     - name: Commit linting
       if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
