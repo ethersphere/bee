@@ -69,6 +69,7 @@ jobs:
             beekeeper
             local.yaml
             .beekeeper.yaml
+            .github/bin/beekeeper_artifacts.sh
           retention-days: 5
   beekeeper:
     name: Integration tests
@@ -87,7 +88,7 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x dist/bee beekeeper
+          chmod +x dist/bee beekeeper .github/bin/beekeeper_artifacts.sh
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
           mv dist/bee bee && rm -r dist
