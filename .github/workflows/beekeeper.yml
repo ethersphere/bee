@@ -164,7 +164,7 @@ jobs:
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com 
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - uses: actions/upload-artifact@v3
         if: failure()
         with:
@@ -230,7 +230,7 @@ jobs:
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests (clef enabled)** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com 
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - uses: actions/upload-artifact@v3
         if: failure()
         with:
@@ -292,7 +292,7 @@ jobs:
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests (storage incentives)** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com 
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - uses: actions/upload-artifact@v3
         if: failure()
         with:
