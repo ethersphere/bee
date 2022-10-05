@@ -138,7 +138,9 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 }
 
 func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	callData, err := stakingABI.Pack("stakeOfOverlay", common.BytesToHash(overlay.Bytes()))
+	var overlayAddr [32]byte
+	copy(overlayAddr[:], overlay.Bytes())
+	callData, err := stakingABI.Pack("stakeOfOverlay", overlayAddr)
 	if err != nil {
 		return nil, err
 	}
