@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/traversal"
 )
 
+// nolint:paralleltest
 func TestPinningService(t *testing.T) {
 	const content = "Hello, Bee!"
 

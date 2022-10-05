@@ -40,12 +40,14 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -107,15 +109,8 @@ var (
 	errBatchUnusable        = errors.New("batch not usable")
 )
 
-type authenticator interface {
-	Authorize(string) bool
-	GenerateKey(string, int) (string, error)
-	RefreshKey(string, int) (string, error)
-	Enforce(string, string, string) (bool, error)
-}
-
 type Service struct {
-	auth            authenticator
+	auth            auth.Authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
 	resolver        resolver.Interface
@@ -133,6 +128,7 @@ type Service struct {
 	chunkPushC      chan *pusher.Op
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
+	stakingContract staking.Contract
 	Options
 
 	http.Handler
@@ -167,6 +163,7 @@ type Service struct {
 	blockTime   *big.Int
 
 	postageSem       *semaphore.Weighted
+	stakingSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
 	beeMode          BeeNodeMode
 
@@ -211,6 +208,7 @@ type ExtraOptions struct {
 	FeedFactory      feeds.Factory
 	Post             postage.Service
 	PostageContract  postagecontract.Interface
+	Staking          staking.Contract
 	Steward          steward.Interface
 	SyncStatus       func() (bool, error)
 }
@@ -236,7 +234,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
+func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
 	s.auth = auth
 	s.chunkPushC = make(chan *pusher.Op)
 	s.signer = signer
@@ -256,6 +254,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.post = e.Post
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
+	s.stakingContract = e.Staking
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver
@@ -267,6 +266,7 @@ func (s *Service) Configure(signer crypto.Signer, auth authenticator, tracer *tr
 	s.blockTime = e.BlockTime
 
 	s.postageSem = semaphore.NewWeighted(1)
+	s.stakingSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
 
 	s.chainID = chainID
@@ -391,7 +391,7 @@ type securityTokenRsp struct {
 
 type securityTokenReq struct {
 	Role   string `json:"role"`
-	Expiry int    `json:"expiry"`
+	Expiry int    `json:"expiry"` // duration in seconds
 }
 
 func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
@@ -427,7 +427,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := s.auth.GenerateKey(payload.Role, payload.Expiry)
+	key, err := s.auth.GenerateKey(payload.Role, time.Duration(payload.Expiry)*time.Second)
 	if errors.Is(err, auth.ErrExpiry) {
 		s.logger.Debug("auth handler: generate key failed", "error", err)
 		s.logger.Error(nil, "auth handler: generate key failed")
@@ -478,7 +478,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := s.auth.RefreshKey(authToken, payload.Expiry)
+	key, err := s.auth.RefreshKey(authToken, time.Duration(payload.Expiry)*time.Second)
 	if errors.Is(err, auth.ErrTokenExpired) {
 		s.logger.Debug("auth handler: refresh key failed", "error", err)
 		s.logger.Error(nil, "auth handler: refresh key failed")
@@ -550,6 +550,37 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(r.ContentLength), 10), r.Method).Observe(time.Since(now).Seconds())
 				}
 			}
+		})
+	}
+}
+
+// gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
+// gas price and gas limit through the HTTP API headers.
+func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if price, ok := r.Header[gasPriceHeader]; ok {
+				p, ok := big.NewInt(0).SetString(price[0], 10)
+				if !ok {
+					s.logger.Error(nil, handlerName, "bad gas price")
+					jsonhttp.BadRequest(w, errBadGasPrice)
+					return
+				}
+				ctx = sctx.SetGasPrice(ctx, p)
+			}
+
+			if limit, ok := r.Header[gasLimitHeader]; ok {
+				l, err := strconv.ParseUint(limit[0], 10, 64)
+				if err != nil {
+					s.logger.Error(err, handlerName, "bad gas limit")
+					jsonhttp.BadRequest(w, errBadGasLimit)
+					return
+				}
+				ctx = sctx.SetGasLimit(ctx, l)
+			}
+
+			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

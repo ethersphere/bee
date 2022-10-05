@@ -245,7 +245,7 @@ func InitSwap(
 	var currentPriceOracleAddress common.Address
 	if priceOracleAddress == "" {
 		chainCfg, found := config.GetChainConfig(chainID)
-		currentPriceOracleAddress = chainCfg.PriceOracleAddress
+		currentPriceOracleAddress = chainCfg.PriceOracle
 		if !found {
 			return nil, nil, errors.New("no known price oracle address for this network")
 		}

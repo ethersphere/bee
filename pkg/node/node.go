@@ -69,6 +69,9 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -119,60 +122,64 @@ type Bee struct {
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
 	depthMonitorCloser       io.Closer
+	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *util.Signaler
 }
 
 type Options struct {
-	DataDir                    string
-	CacheCapacity              uint64
-	DBOpenFilesLimit           uint64
-	DBWriteBufferSize          uint64
-	DBBlockCacheCapacity       uint64
-	DBDisableSeeksCompaction   bool
-	APIAddr                    string
-	DebugAPIAddr               string
-	Addr                       string
-	NATAddr                    string
-	EnableWS                   bool
-	WelcomeMessage             string
-	Bootnodes                  []string
-	CORSAllowedOrigins         []string
-	Logger                     log.Logger
-	TracingEnabled             bool
-	TracingEndpoint            string
-	TracingServiceName         string
-	PaymentThreshold           string
-	PaymentTolerance           int64
-	PaymentEarly               int64
-	ResolverConnectionCfgs     []multiresolver.ConnectionConfig
-	RetrievalCaching           bool
-	BootnodeMode               bool
-	SwapEndpoint               string
-	SwapFactoryAddress         string
-	SwapLegacyFactoryAddresses []string
-	SwapInitialDeposit         string
-	SwapEnable                 bool
-	ChequebookEnable           bool
-	FullNodeMode               bool
-	Transaction                string
-	BlockHash                  string
-	PostageContractAddress     string
-	PriceOracleAddress         string
-	BlockTime                  uint64
-	DeployGasPrice             string
-	WarmupTime                 time.Duration
-	ChainID                    int64
-	Resync                     bool
-	BlockProfile               bool
-	MutexProfile               bool
-	StaticNodes                []swarm.Address
-	AllowPrivateCIDRs          bool
-	Restricted                 bool
-	TokenEncryptionKey         string
-	AdminPasswordHash          string
-	UsePostageSnapshot         bool
+	DataDir                       string
+	CacheCapacity                 uint64
+	DBOpenFilesLimit              uint64
+	DBWriteBufferSize             uint64
+	DBBlockCacheCapacity          uint64
+	DBDisableSeeksCompaction      bool
+	APIAddr                       string
+	DebugAPIAddr                  string
+	Addr                          string
+	NATAddr                       string
+	EnableWS                      bool
+	WelcomeMessage                string
+	Bootnodes                     []string
+	CORSAllowedOrigins            []string
+	Logger                        log.Logger
+	TracingEnabled                bool
+	TracingEndpoint               string
+	TracingServiceName            string
+	PaymentThreshold              string
+	PaymentTolerance              int64
+	PaymentEarly                  int64
+	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
+	RetrievalCaching              bool
+	BootnodeMode                  bool
+	SwapEndpoint                  string
+	SwapFactoryAddress            string
+	SwapLegacyFactoryAddresses    []string
+	SwapInitialDeposit            string
+	SwapEnable                    bool
+	ChequebookEnable              bool
+	FullNodeMode                  bool
+	Transaction                   string
+	BlockHash                     string
+	PostageContractAddress        string
+	StakingContractAddress        string
+	PriceOracleAddress            string
+	RedistributionContractAddress string
+	BlockTime                     time.Duration
+	DeployGasPrice                string
+	WarmupTime                    time.Duration
+	ChainID                       int64
+	Resync                        bool
+	BlockProfile                  bool
+	MutexProfile                  bool
+	StaticNodes                   []swarm.Address
+	AllowPrivateCIDRs             bool
+	Restricted                    bool
+	TokenEncryptionKey            string
+	AdminPasswordHash             string
+	UsePostageSnapshot            bool
+	EnableStorageIncentives       bool
 }
 
 const (
@@ -259,7 +266,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		chequebookService  chequebook.Service = new(noOpChequebookService)
 		chequeStore        chequebook.ChequeStore
 		cashoutService     chequebook.CashoutService
-		pollingInterval    = time.Duration(o.BlockTime) * time.Second
 		erc20Service       erc20.Service
 	)
 
@@ -286,7 +292,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		o.SwapEndpoint,
 		o.ChainID,
 		signer,
-		pollingInterval,
+		o.BlockTime,
 		chainEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -300,7 +306,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
-	var authenticator *auth.Authenticator
+	var authenticator auth.Authenticator
 
 	if o.Restricted {
 		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
@@ -952,9 +958,33 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
+	stakingAddress := chainCfg.Staking
+	if o.StakingContractAddress != "" {
+		if !common.IsHexAddress(o.StakingContractAddress) {
+			return nil, errors.New("malformed staking contract address")
+		}
+		stakingAddress = common.HexToAddress(o.StakingContractAddress)
+	}
+
+	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
+
+	var agent *storageincentives.Agent
 	if o.FullNodeMode {
+
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
+
+		redistributionAddress := chainCfg.Redistribution
+		if o.RedistributionContractAddress != "" {
+			if !common.IsHexAddress(o.RedistributionContractAddress) {
+				return nil, errors.New("malformed redistribution contract address")
+			}
+			redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
+		}
+
+		redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
+		agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+		b.storageIncetivesCloser = agent
 	}
 
 	multiResolver := multiresolver.NewMultiResolver(
@@ -1002,6 +1032,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		FeedFactory:      feedFactory,
 		Post:             post,
 		PostageContract:  postageContractService,
+		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
 	}
@@ -1061,6 +1092,10 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		if pullerService != nil {
 			debugService.MustRegisterMetrics(pullerService.Metrics()...)
+		}
+
+		if agent != nil {
+			debugService.MustRegisterMetrics(agent.Metrics()...)
 		}
 
 		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
@@ -1253,6 +1288,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.nsCloser, "netstore")
 	tryClose(b.depthMonitorCloser, "depthmonitor service")
+	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")

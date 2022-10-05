@@ -17,6 +17,8 @@ import (
 
 // TestShard ensures that released slots eventually become available for writes
 func TestShard(t *testing.T) {
+	t.Parallel()
+
 	shard := newShard(t)
 
 	payload := write{buf: []byte{0xff}, res: make(chan entry)}
