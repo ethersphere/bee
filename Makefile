@@ -96,12 +96,6 @@ lint: linter
 linter:
 	test -f $(GOLANGCI_LINT) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$($(GO) env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
 
-.PHONY: check-whitespace
-check-whitespace:
-	TREE=$$(git hash-object -t tree /dev/null); \
-	TW=$$(git diff-index --cached --check --diff-filter=d "$${TREE}"); \
-	[ "$${TW}" != "" ] && echo "Trailing whitespaces found:\n $${TW}" && exit 1; exit 0
-
 .PHONY: test-race
 test-race:
 ifdef cover

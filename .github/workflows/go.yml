@@ -14,39 +14,29 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        go: [1.17]
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
     - name: Setup Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
-        go-version: ${{ matrix.go }}
+        cache: true
+        go-version-file: go.mod
     - name: Set git to use LF
       # make sure that line endings are not converted on windows
       # as gofmt linter will report that they need to be changed
       run: git config --global core.autocrlf false
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
-        fetch-depth: 0
+        fetch-depth: 1
     - name: Commit linting
       if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
-    - name: Cache Go modules
-      uses: actions/cache@v1
+    - name: golangci-lint
+      if: matrix.os == 'ubuntu-latest'
+      uses: golangci/golangci-lint-action@v3
       with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.OS }}-build-${{ env.cache-name }}-
-          ${{ runner.OS }}-build-
-          ${{ runner.OS }}-
-    - name: Lint
-      if: matrix.os == 'ubuntu-latest'
-      run: make lint
-    - name: Check whitespace
-      if: matrix.os == 'ubuntu-latest'
-      run: make check-whitespace
+        version: v1.49
     - name: Build
       run: make build
     - name: Test with race detector & code coverage
@@ -61,14 +51,14 @@ jobs:
       run: make test
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v2
+      uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: true
         files: ./cover.out
     - name: Trigger Beekeeper
       if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
-      uses: peter-evans/repository-dispatch@v1
+      uses: peter-evans/repository-dispatch@v2
       with:
         token: ${{ secrets.GHA_PAT_BASIC }}
         repository: ${{ github.repository }}

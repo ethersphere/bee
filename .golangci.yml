@@ -37,6 +37,7 @@ linters:
     - unconvert
     - unused
     - wastedassign
+    - whitespace
 
 linters-settings:
   govet:
@@ -101,57 +102,81 @@ issues:
         - dogsled
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
       # temporally disable paralleltest in following packages
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/topology
-    - linters: paralleltest
-      path: pkg/topology
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/localstore
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/pricer
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/shed
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/file
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/postage
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/bmt
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/puller
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/manifest
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/feeds
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/pushsync
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/pusher
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/log
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/resolver
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/pullsync
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/hive
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/statestore
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/p2p
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/intervalstore
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/sharky
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/soc
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/pss
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/pinning
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/chainsyncer
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/cac
-    - linters: paralleltest
+    - linters:
+      - paralleltest
       path: pkg/traversal
