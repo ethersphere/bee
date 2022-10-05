@@ -13,9 +13,9 @@ const ABIv0_0_0 = `[
         "type": "address"
       },
       {
-        "internalType": "uint8",
+        "internalType": "uint64",
         "name": "_NetworkId",
-        "type": "uint8"
+        "type": "uint64"
       }
     ],
     "stateMutability": "nonpayable",
@@ -591,4 +591,4 @@ const ABIv0_0_0 = `[
     "stateMutability": "nonpayable",
     "type": "function"
   }
-] `
+]`
