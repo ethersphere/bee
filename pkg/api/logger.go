@@ -92,9 +92,14 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: return custom validation error.
 	if len(result.Loggers) == 0 && err != nil {
+		valError := &validationError{
+			Entry: "result.Loggers",
+			Value: len(result.Loggers),
+			Cause: err,
+		}
 		logger.Debug("regexp compilation failed", "error", err)
 		logger.Error(nil, "regexp compilation failed")
-		jsonhttp.BadRequest(w, err)
+		jsonhttp.BadRequest(w, valError)
 	} else {
 		jsonhttp.OK(w, result)
 	}

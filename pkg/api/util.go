@@ -23,6 +23,8 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
+var ParseError = &parseError{}
+
 // mapStructureTagName represents the name of the tag used to map values.
 const mapStructureTagName = "map"
 
@@ -120,6 +122,9 @@ var preMapHooks = map[string]func(v string) (string, error){
 		buf, err := base64.URLEncoding.DecodeString(v)
 		return string(buf), err
 	},
+	"resolve": func(v string) (string, error) {
+		return v, nil
+	},
 }
 
 // mapStructure maps the input to the output values.
@@ -146,7 +151,7 @@ var preMapHooks = map[string]func(v string) (string, error){
 //
 // In case of parsing error, a new parseError is returned to the caller.
 // The caller can use the Unwrap method to get the original error.
-func mapStructure(input, output interface{}) (err error) {
+func mapStructure(input, output interface{}, s *Service) (err error) {
 	if input == nil || output == nil {
 		return nil
 	}
@@ -248,10 +253,20 @@ func mapStructure(input, output interface{}) (err error) {
 				field.Set(reflect.ValueOf(*val))
 			case swarm.Address:
 				val, err := swarm.ParseHexAddress(value)
-				if err != nil {
-					return err
+				if err == nil {
+					field.Set(reflect.ValueOf(val))
+				} else {
+					// If no resolver is not available, return an error.
+					if s.resolver == nil {
+						return errors.New("no resolver connected")
+					}
+					val, err = s.resolver.Resolve(value)
+					if err != nil {
+						return errors.New("invalid name or bzz address")
+					}
+					field.Set(reflect.ValueOf(val))
 				}
-				field.Set(reflect.ValueOf(val))
+
 			case common.Hash:
 				val := common.HexToHash(value)
 				field.Set(reflect.ValueOf(val))

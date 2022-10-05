@@ -170,31 +170,22 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	loggerV1 := logger.V(1).Build()
 
 	paths := struct {
-		Address string `map:"address" validate:"required"`
+		Address swarm.Address `map:"address,resolve" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	// TODO: move this to the parsing phase, consider using a `resolve` tag value to indicate this.
-	address, err := s.resolveNameOrAddress(paths.Address)
-	if err != nil {
-		logger.Debug("mapStructure chunk address string failed", "string", paths.Address, "error", err)
-		logger.Error(nil, "mapStructure chunk address string failed")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	chunk, err := s.storer.Get(r.Context(), storage.ModeGetRequest, address)
+	chunk, err := s.storer.Get(r.Context(), storage.ModeGetRequest, paths.Address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk not found", "address", address)
+			loggerV1.Debug("chunk not found", "address", paths.Address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		logger.Debug("read chunk failed", "chunk_address", address, "error", err)
+		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return

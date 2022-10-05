@@ -686,7 +686,7 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 		}
 	}
 
-	if err := mapStructure(input, output); err != nil {
+	if err := mapStructure(input, output, s); err != nil {
 		return response(err)
 	}
 
