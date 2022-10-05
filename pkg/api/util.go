@@ -23,8 +23,6 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-var ParseError = &parseError{}
-
 // mapStructureTagName represents the name of the tag used to map values.
 const mapStructureTagName = "map"
 
