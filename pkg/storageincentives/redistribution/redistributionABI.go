@@ -275,7 +275,7 @@ const redistributionABIv0_0_0 = `[
     "name": "PostageContract",
     "outputs": [
       {
-        "internalType": "redistributioncontract PostageStamp",
+        "internalType": "contract PostageStamp",
         "name": "",
         "type": "address"
       }
@@ -288,7 +288,7 @@ const redistributionABIv0_0_0 = `[
     "name": "Stakes",
     "outputs": [
       {
-        "internalType": "redistributioncontract StakeRegistry",
+        "internalType": "contract StakeRegistry",
         "name": "",
         "type": "address"
       }
@@ -775,7 +775,7 @@ const redistributionABIv0_0_0 = `[
       },
       {
         "internalType": "bytes32",
-        "name": "revealNonce",
+        "name": "_revealNonce",
         "type": "bytes32"
       }
     ],
