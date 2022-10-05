@@ -39,10 +39,12 @@ jobs:
         version: v1.49
     - name: Build
       run: make build
-    - name: Test with race detector & code coverage
+    - name: Test whitespaces, race detector & code coverage
       if: matrix.os == 'ubuntu-latest'
       # only generate code coverage profile on ubuntu
-      run: make cover=1 test-race
+      run: |
+        make check-whitespace
+        make cover=1 test-race
     - name: Test with race detector (MacOS)
       if: matrix.os == 'macos-latest'
       run: make test-race
