@@ -43,8 +43,11 @@ func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64, nonce []byte) (swarm
 
 // NewOverlayFromEthereumAddress constructs a Swarm Address for an Ethereum address.
 func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64, nonce []byte) (swarm.Address, error) {
+
 	netIDBytes := make([]byte, 8)
+
 	binary.LittleEndian.PutUint64(netIDBytes, networkID)
+
 	data := append(ethAddr, netIDBytes...)
 	data = append(data, nonce...)
 	h, err := LegacyKeccak256(data)

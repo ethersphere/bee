@@ -591,4 +591,4 @@ const ABIv0_0_0 = `[
     "stateMutability": "nonpayable",
     "type": "function"
   }
-]`
+] `
