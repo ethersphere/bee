@@ -239,14 +239,15 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		round = block / blocksPerRound
 		a.metrics.Round.Set(float64(round))
 
+		// TODO: to be changed for the mainnet
 		// compute the current phase
 		p := block % blocksPerRound
 		if p < blocksPerPhase {
-			currentPhase = commit
-		} else if p >= blocksPerPhase && p < 2*blocksPerPhase {
+			currentPhase = commit // [0, 37]
+		} else if p >= blocksPerPhase && p <= 2*blocksPerPhase { // [38, 76]
 			currentPhase = reveal
-		} else {
-			currentPhase = claim
+		} else if p > 2*blocksPerPhase {
+			currentPhase = claim // (76, 152)
 		}
 
 		// write the current phase only once
