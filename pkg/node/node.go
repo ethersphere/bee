@@ -974,7 +974,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 
-		if o.EnableStorageIncentives {
+		if !o.BootnodeMode && o.EnableStorageIncentives {
 
 			redistributionAddress := chainCfg.Redistribution
 			if o.RedistributionContractAddress != "" {
