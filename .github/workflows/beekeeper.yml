@@ -34,10 +34,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 0
       - name: Checkout
         uses: actions/checkout@v3
         if: github.event.action == 'beekeeper'
         with:
+          fetch-depth: 0
           ref: ${{ github.event.client_payload.ref }}
       - name: Setup Go
         uses: actions/setup-go@v3
