@@ -1,0 +1,7 @@
+FROM cgr.dev/chainguard/busybox:latest
+
+COPY bee /bee
+
+EXPOSE 1633 1634 1635
+
+ENTRYPOINT ["/bee"]
