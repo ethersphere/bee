@@ -50,7 +50,7 @@ jobs:
       - name: Get Commit Message
         id: commit
         run: |
-          MSG=$(git log --format=%B -n 1)
+          MSG=$(git log --format=%B -n 1 ${{github.event.after}})
           echo "::set-output name=msg::${MSG}"
       - name: Apply patches
         run: |
