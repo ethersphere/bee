@@ -23,7 +23,7 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v3
       with:
-        cache: true
+        cache: false
         go-version-file: go.mod
     - name: Set git to use LF
       # make sure that line endings are not converted on windows
@@ -36,6 +36,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       uses: golangci/golangci-lint-action@v3
       with:
+        skip-cache: false
         version: v1.49
     - name: Build
       run: make build
