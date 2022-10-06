@@ -1,7 +1,13 @@
 FROM cgr.dev/chainguard/busybox:latest
 
+RUN groupadd -r bee --gid 999; \
+    useradd -r -g bee --uid 999 --no-log-init -m bee; \
+    mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
+
 COPY bee /bee
 
 EXPOSE 1633 1634 1635
+USER bee
+WORKDIR /home/bee
 
 ENTRYPOINT ["/bee"]
