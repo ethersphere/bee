@@ -78,7 +78,7 @@ func (s *Store) SubscribePush(_ context.Context, _ func([]byte) bool) (c <-chan 
 	panic("not implemented")
 }
 
-func (s *Store) ReserveSample(_ context.Context, _ []byte, _ uint8) (storage.Sample, error) {
+func (s *Store) ReserveSample(_ context.Context, _ []byte, _ uint8, _ int64) (storage.Sample, error) {
 	panic("not implemented")
 }
 
