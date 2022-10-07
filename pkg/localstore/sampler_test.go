@@ -16,7 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// nolint: paralleltest
+// nolint:paralleltest
 func TestReserveSampler(t *testing.T) {
 	t.Parallel()
 
