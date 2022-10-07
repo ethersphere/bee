@@ -30,6 +30,8 @@ import (
 )
 
 func TestJoiner_ErrReferenceLength(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 	_, _, err := joiner.New(context.Background(), store, swarm.ZeroAddress)
 
@@ -41,6 +43,8 @@ func TestJoiner_ErrReferenceLength(t *testing.T) {
 // TestJoinerSingleChunk verifies that a newly created joiner returns the data stored
 // in the store when the reference is one single chunk.
 func TestJoinerSingleChunk(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -78,6 +82,8 @@ func TestJoinerSingleChunk(t *testing.T) {
 // TestJoinerDecryptingStore_NormalChunk verifies the the mock store that uses
 // the decrypting store manages to retrieve a normal chunk which is not encrypted
 func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
+	t.Parallel()
+
 	st := mock.NewStorer()
 	store := store.New(st)
 
@@ -116,6 +122,8 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 // TestJoinerWithReference verifies that a chunk reference is correctly resolved
 // and the underlying data is returned.
 func TestJoinerWithReference(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -165,6 +173,8 @@ func TestJoinerWithReference(t *testing.T) {
 }
 
 func TestJoinerMalformed(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -210,6 +220,8 @@ func TestJoinerMalformed(t *testing.T) {
 }
 
 func TestEncryptDecrypt(t *testing.T) {
+	t.Parallel()
+
 	var tests = []struct {
 		chunkLength int
 	}{
@@ -223,7 +235,10 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(fmt.Sprintf("Encrypt %d bytes", tt.chunkLength), func(t *testing.T) {
+			t.Parallel()
+
 			store := mock.NewStorer()
 
 			g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
@@ -268,9 +283,9 @@ func TestEncryptDecrypt(t *testing.T) {
 }
 
 func TestSeek(t *testing.T) {
-	seed := time.Now().UnixNano()
+	t.Parallel()
 
-	r := mrand.New(mrand.NewSource(seed))
+	seed := time.Now().UnixNano()
 
 	for _, tc := range []struct {
 		name string
@@ -309,12 +324,16 @@ func TestSeek(t *testing.T) {
 			size: 2*swarm.ChunkSize*swarm.ChunkSize + 1000,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := context.Background()
 
 			store := mock.NewStorer()
 			defer store.Close()
 
+			r := mrand.New(mrand.NewSource(seed))
 			data, err := io.ReadAll(io.LimitReader(r, tc.size))
 			if err != nil {
 				t.Fatal(err)
@@ -424,9 +443,9 @@ func TestSeek(t *testing.T) {
 
 // TestPrefetch tests that prefetching chunks is made to fill up the read buffer
 func TestPrefetch(t *testing.T) {
-	seed := time.Now().UnixNano()
+	t.Parallel()
 
-	r := mrand.New(mrand.NewSource(seed))
+	seed := time.Now().UnixNano()
 
 	for _, tc := range []struct {
 		name       string
@@ -587,12 +606,16 @@ func TestPrefetch(t *testing.T) {
 			expRead:    100000,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := context.Background()
 
 			store := mock.NewStorer()
 			defer store.Close()
 
+			r := mrand.New(mrand.NewSource(seed))
 			data, err := io.ReadAll(io.LimitReader(r, tc.size))
 			if err != nil {
 				t.Fatal(err)
@@ -625,6 +648,8 @@ func TestPrefetch(t *testing.T) {
 }
 
 func TestJoinerReadAt(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -670,6 +695,8 @@ func TestJoinerReadAt(t *testing.T) {
 // TestJoinerOneLevel tests the retrieval of two data chunks immediately
 // below the root chunk level.
 func TestJoinerOneLevel(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -742,6 +769,8 @@ func TestJoinerOneLevel(t *testing.T) {
 // first intermediate level across two intermediate chunks.
 // Last chunk has sub-chunk length.
 func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -814,6 +843,8 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 }
 
 func TestJoinerIterateChunkAddresses(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -879,6 +910,8 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 }
 
 func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)

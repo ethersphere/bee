@@ -34,6 +34,8 @@ var (
 
 // test that adding one peer starts syncing
 func TestOneSync(t *testing.T) {
+	t.Parallel()
+
 	var (
 		addr        = test.RandomAddress()
 		cursors     = []uint64{1000, 1000, 1000}
@@ -62,6 +64,8 @@ func TestOneSync(t *testing.T) {
 }
 
 func TestNoSyncOutsideDepth(t *testing.T) {
+	t.Parallel()
+
 	var (
 		addr        = test.RandomAddress()
 		addr2       = test.RandomAddress()
@@ -94,6 +98,8 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 }
 
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
+	t.Parallel()
+
 	addr := test.RandomAddress()
 
 	for _, tc := range []struct {
@@ -117,7 +123,10 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
@@ -148,6 +157,8 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 }
 
 func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
+	t.Parallel()
+
 	addr := test.RandomAddress()
 
 	for _, tc := range []struct {
@@ -194,7 +205,10 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 			expLiveCalls: []c{call(1, 201, math.MaxUint64)},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
@@ -225,6 +239,8 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 }
 
 func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
+	t.Parallel()
+
 	addr := test.RandomAddress()
 
 	for _, tc := range []struct {
@@ -242,7 +258,10 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 			expLiveCalls: []c{call(2, 1, max), call(2, 2, max), call(3, 1, max), call(3, 2, max), call(4, 1, max), call(4, 2, max)},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
@@ -273,6 +292,8 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 }
 
 func TestPeerDisconnected(t *testing.T) {
+	t.Parallel()
+
 	cursors := []uint64{0, 0}
 	addr := test.RandomAddress()
 
@@ -320,6 +341,8 @@ func TestPeerDisconnected(t *testing.T) {
 // be done carefully and with the understanding of what each change does to
 // the tested unit.
 func TestDepthChange(t *testing.T) {
+	t.Parallel()
+
 	var (
 		addr     = test.RandomAddress()
 		interval = "[[1 1]]"
@@ -384,7 +407,10 @@ func TestDepthChange(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(

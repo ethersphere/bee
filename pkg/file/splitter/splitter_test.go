@@ -23,6 +23,8 @@ import (
 // TestSplitIncomplete tests that the Split method returns an error if
 // the amounts of bytes written does not match the data length passed to the method.
 func TestSplitIncomplete(t *testing.T) {
+	t.Parallel()
+
 	testData := make([]byte, 42)
 	store := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
@@ -37,6 +39,8 @@ func TestSplitIncomplete(t *testing.T) {
 // TestSplitSingleChunk hashes one single chunk and verifies
 // that that corresponding chunk exist in the store afterwards.
 func TestSplitSingleChunk(t *testing.T) {
+	t.Parallel()
+
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	testData, err := g.SequentialBytes(swarm.ChunkSize)
 	if err != nil {
@@ -68,6 +72,8 @@ func TestSplitSingleChunk(t *testing.T) {
 // create a full chunk of intermediate hashes.
 // It verifies that all created chunks exist in the store afterwards.
 func TestSplitThreeLevels(t *testing.T) {
+	t.Parallel()
+
 	// edge case selected from internal/job_test.go
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
 	testData, err := g.SequentialBytes(swarm.ChunkSize * 128)
@@ -114,6 +120,8 @@ func TestSplitThreeLevels(t *testing.T) {
 // TestUnalignedSplit tests that correct hash is generated regarless of
 // individual write sizes at the source of the data.
 func TestUnalignedSplit(t *testing.T) {
+	t.Parallel()
+
 	var (
 		storer    storage.Storer = mock.NewStorer()
 		chunkPipe                = file.NewChunkPipe()

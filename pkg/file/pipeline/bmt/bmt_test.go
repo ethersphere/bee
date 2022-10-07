@@ -18,6 +18,8 @@ import (
 
 // TestStoreWriter tests that store writer stores the provided data and calls the next chain writer.
 func TestBmtWriter(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name    string
 		data    []byte
@@ -44,7 +46,10 @@ func TestBmtWriter(t *testing.T) {
 			expErr: bmt.ErrInvalidData,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			mockChainWriter := mock.NewChainWriter()
 			writer := bmt.NewBmtWriter(mockChainWriter)
 
@@ -79,6 +84,8 @@ func TestBmtWriter(t *testing.T) {
 
 // TestSum tests that calling Sum on the writer calls the next writer's Sum.
 func TestSum(t *testing.T) {
+	t.Parallel()
+
 	mockChainWriter := mock.NewChainWriter()
 	writer := bmt.NewBmtWriter(mockChainWriter)
 	_, err := writer.Sum()

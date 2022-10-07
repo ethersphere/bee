@@ -37,6 +37,8 @@ func init() {
 }
 
 func TestLevels(t *testing.T) {
+	t.Parallel()
+
 	var (
 		branching = 4
 		chunkSize = 128
@@ -89,7 +91,11 @@ func TestLevels(t *testing.T) {
 			writes: 16384,
 		},
 	} {
+
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
 			s := mock.NewStorer()
 			pf := func() pipeline.ChainWriter {
 				lsw := store.NewStoreWriter(ctx, s, mode, nil)
@@ -126,6 +132,8 @@ func TestLevels(t *testing.T) {
 }
 
 func TestLevels_TrieFull(t *testing.T) {
+	t.Parallel()
+
 	var (
 		branching = 4
 		chunkSize = 128
@@ -167,6 +175,8 @@ func TestLevels_TrieFull(t *testing.T) {
 // TestRegression is a regression test for the bug
 // described in https://github.com/ethersphere/bee/issues/1175
 func TestRegression(t *testing.T) {
+	t.Parallel()
+
 	var (
 		branching = 128
 		chunkSize = 4096

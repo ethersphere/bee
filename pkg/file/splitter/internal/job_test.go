@@ -34,6 +34,8 @@ func (p putWrapper) Put(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
 // verifies the correct hash is returned, and that write after Sum/complete Write
 // returns error.
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 	putter := putWrapper{
 		putter: func(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
@@ -72,6 +74,8 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 
 // TestSplitterJobVector verifies file hasher results of legacy test vectors
 func TestSplitterJobVector(t *testing.T) {
+	t.Parallel()
+
 	for i := start; i < end-2; i++ {
 		dataLengthStr := strconv.Itoa(i)
 		t.Run(dataLengthStr, testSplitterJobVector)
@@ -79,6 +83,8 @@ func TestSplitterJobVector(t *testing.T) {
 }
 
 func testSplitterJobVector(t *testing.T) {
+	t.Parallel()
+
 	var (
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)

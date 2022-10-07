@@ -16,6 +16,7 @@ import (
 
 // TestFeeder tests that partial writes work correctly.
 func TestFeeder(t *testing.T) {
+	t.Parallel()
 	var (
 		chunkSize = 5
 		data      = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
@@ -74,7 +75,9 @@ func TestFeeder(t *testing.T) {
 			span:      5,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var results pipeline.PipeWriteArgs
 			rr := newMockResultWriter(&results)
 			cf := feeder.NewChunkFeederWriter(chunkSize, rr)
@@ -116,6 +119,7 @@ func TestFeeder(t *testing.T) {
 // TestFeederFlush tests that the feeder flushes the data in the buffer correctly
 // on Sum().
 func TestFeederFlush(t *testing.T) {
+	t.Parallel()
 	var (
 		chunkSize = 5
 		data      = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
@@ -175,7 +179,10 @@ func TestFeederFlush(t *testing.T) {
 			span:      3,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var results pipeline.PipeWriteArgs
 			rr := newMockResultWriter(&results)
 			cf := feeder.NewChunkFeederWriter(chunkSize, rr)
