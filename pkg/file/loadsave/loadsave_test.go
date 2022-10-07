@@ -25,6 +25,8 @@ var (
 )
 
 func TestLoadSave(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 	ls := loadsave.New(store, pipelineFn(store))
 	ref, err := ls.Save(context.Background(), data)
@@ -45,6 +47,8 @@ func TestLoadSave(t *testing.T) {
 }
 
 func TestReadonlyLoadSave(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 	factory := pipelineFn(store)
 	ls := loadsave.NewReadonly(store)

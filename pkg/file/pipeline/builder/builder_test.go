@@ -21,6 +21,8 @@ import (
 )
 
 func TestPartialWrites(t *testing.T) {
+	t.Parallel()
+
 	m := mock.NewStorer()
 	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 	_, _ = p.Write([]byte("hello "))
@@ -37,6 +39,8 @@ func TestPartialWrites(t *testing.T) {
 }
 
 func TestHelloWorld(t *testing.T) {
+	t.Parallel()
+
 	m := mock.NewStorer()
 	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 
@@ -58,6 +62,8 @@ func TestHelloWorld(t *testing.T) {
 
 // TestEmpty tests that a hash is generated for an empty file.
 func TestEmpty(t *testing.T) {
+	t.Parallel()
+
 	m := mock.NewStorer()
 	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 
@@ -78,9 +84,13 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestAllVectors(t *testing.T) {
+	t.Parallel()
+
 	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
+			t.Parallel()
+
 			m := mock.NewStorer()
 			p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 

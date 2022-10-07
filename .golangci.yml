@@ -106,13 +106,9 @@ issues:
     - linters: paralleltest
       path: pkg/localstore
     - linters: paralleltest
-      path: pkg/file
-    - linters: paralleltest
       path: pkg/postage
     - linters: paralleltest
       path: pkg/bmt
-    - linters: paralleltest
-      path: pkg/puller
     - linters: paralleltest
       path: pkg/pushsync
     - linters: paralleltest
