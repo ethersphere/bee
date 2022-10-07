@@ -503,14 +503,6 @@ func TestOptions(t *testing.T) {
 		expectedMethods string // expectedMethods contains HTTP methods like GET, POST, HEAD, PATCH, DELETE, OPTIONS. These are in alphabetical sorted order
 	}{
 		{
-			endpoint:        "tags",
-			expectedMethods: "GET, POST",
-		},
-		{
-			endpoint:        "bzz",
-			expectedMethods: "POST",
-		},
-		{
 			endpoint:        "chunks",
 			expectedMethods: "POST",
 		},

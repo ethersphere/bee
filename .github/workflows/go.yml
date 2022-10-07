@@ -31,11 +31,7 @@ jobs:
         fetch-depth: 0
     - name: Commit linting test1
       if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
-      steps:
-        - uses: actions/checkout@v3
-          with:
-            fetch-depth: 0
-        - uses: wagoid/commitlint-github-action@v5
+      uses: wagoid/commitlint-github-action@v5
     - name: Cache Go modules
       uses: actions/cache@v1
       with:
