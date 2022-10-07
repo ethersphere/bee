@@ -50,20 +50,18 @@ type Agent struct {
 	metrics        metrics
 	backend        ChainBackend
 	blocksPerRound uint64
-	//	ethClient transaction.Backend
-	monitor  Monitor
-	contract redistribution.Contract
-	reserve  postage.Storer
-	sampler  Sampler
-	overlay  swarm.Address
-	quit     chan struct{}
-	wg       sync.WaitGroup
+	monitor        Monitor
+	contract       redistribution.Contract
+	reserve        postage.Storer
+	sampler        Sampler
+	overlay        swarm.Address
+	quit           chan struct{}
+	wg             sync.WaitGroup
 }
 
 func New(
 	overlay swarm.Address,
 	backend ChainBackend,
-	//	client transaction.Backend,
 	logger log.Logger,
 	monitor Monitor,
 	contract redistribution.Contract,
@@ -72,10 +70,9 @@ func New(
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
-		overlay: overlay,
-		metrics: newMetrics(),
-		backend: backend,
-		//		ethClient: client,
+		overlay:        overlay,
+		metrics:        newMetrics(),
+		backend:        backend,
 		logger:         logger.WithName(loggerName).Register(),
 		contract:       contract,
 		reserve:        reserve,
@@ -342,13 +339,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	var timeLimiter int64
-
-	if timeLimiterBlock.Time < MaxInt64 {
-		timeLimiter = int64(timeLimiterBlock.Time)
-	} else {
-		return 0, nil, fmt.Errorf("overflow from block timestamp conversion")
-	}
+	timeLimiter := timeLimiterBlock.Time
 
 	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiter)
 	if err != nil {
