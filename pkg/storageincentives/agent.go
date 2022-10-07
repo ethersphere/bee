@@ -34,7 +34,7 @@ type ChainBackend interface {
 }
 
 type Sampler interface {
-	ReserveSample(context.Context, []byte, uint8) (storage.Sample, error)
+	ReserveSample(context.Context, []byte, uint8, int64) (storage.Sample, error)
 }
 
 type Monitor interface {
@@ -321,7 +321,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius)
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, time.Now().UTC().Unix())
 	if err != nil {
 		return 0, nil, err
 	}

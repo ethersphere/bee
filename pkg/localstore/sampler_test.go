@@ -8,12 +8,16 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestReserveSampler(t *testing.T) {
+	t.Parallel()
+
 	const chunkCountPerPO = 10
 	const maxPO = 10
 	var chs []swarm.Chunk
@@ -30,6 +34,8 @@ func TestReserveSampler(t *testing.T) {
 		}
 	}
 
+	setNow(func() int64 { return time.Now().Unix() - 1 })
+
 	_, err := db.Put(context.Background(), storage.ModePutSync, chs...)
 	if err != nil {
 		t.Fatal(err)
@@ -37,8 +43,11 @@ func TestReserveSampler(t *testing.T) {
 
 	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO))
 
-	t.Run("reserve sample", func(t *testing.T) {
-		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5)
+	var sample1 storage.Sample
+	sampleTime := time.Now().Unix()
+
+	t.Run("reserve sample 1", func(t *testing.T) {
+		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5, sampleTime)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,6 +58,39 @@ func TestReserveSampler(t *testing.T) {
 			if bytes.Compare(sample.Items[i].Bytes(), sample.Items[i+1].Bytes()) != -1 {
 				t.Fatalf("incorrect order of samples %+q", sample.Items)
 			}
+		}
+
+		sample1 = sample
+	})
+
+	setNow(func() int64 { return sampleTime + 1 })
+
+	// We generate another 100 chunks. With these new chunks in the reserve, statistically
+	// some of them should definitely make it to the sample based on lex ordering.
+	for po := 0; po < maxPO; po++ {
+		for i := 0; i < chunkCountPerPO; i++ {
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			chs = append(chs, ch)
+		}
+	}
+
+	_, err = db.Put(context.Background(), storage.ModePutSync, chs...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("reserve size", reserveSizeTest(db, 2*chunkCountPerPO*maxPO))
+
+	// Now we generate another sample with the older timestamp. This should give us
+	// the exact same sample, ensuring that none of the later chunks were considered.
+	t.Run("reserve sample 2", func(t *testing.T) {
+		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5, sampleTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !cmp.Equal(sample, sample1) {
+			t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample, sample1))
 		}
 	})
 }
