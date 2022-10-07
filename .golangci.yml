@@ -114,17 +114,11 @@ issues:
     - linters: paralleltest
       path: pkg/puller
     - linters: paralleltest
-      path: pkg/manifest
-    - linters: paralleltest
       path: pkg/pushsync
     - linters: paralleltest
       path: pkg/pusher
     - linters: paralleltest
       path: pkg/log
-    - linters: paralleltest
-      path: pkg/resolver
-    - linters: paralleltest
-      path: pkg/pullsync
     - linters: paralleltest
       path: pkg/statestore
     - linters: paralleltest

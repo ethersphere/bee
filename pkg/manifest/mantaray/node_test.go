@@ -15,6 +15,8 @@ import (
 )
 
 func TestNilPath(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	n := mantaray.New()
 	_, err := n.Lookup(ctx, nil, nil)
@@ -24,6 +26,8 @@ func TestNilPath(t *testing.T) {
 }
 
 func TestAddAndLookup(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	n := mantaray.New()
 	testCases := [][]byte{
@@ -59,6 +63,8 @@ func TestAddAndLookup(t *testing.T) {
 }
 
 func TestAddAndLookupNode(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name  string
 		toAdd [][]byte
@@ -130,7 +136,10 @@ func TestAddAndLookupNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {
@@ -156,7 +165,10 @@ func TestAddAndLookupNode(t *testing.T) {
 				}
 			}
 		})
+
 		t.Run(tc.name+"/with load save", func(t *testing.T) {
+			t.Parallel()
+
 			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {
@@ -194,6 +206,8 @@ func TestAddAndLookupNode(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name     string
 		toAdd    []mantaray.NodeEntry
@@ -250,7 +264,10 @@ func TestRemove(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {
@@ -294,6 +311,8 @@ func TestRemove(t *testing.T) {
 }
 
 func TestHasPrefix(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name        string
 		toAdd       [][]byte
@@ -335,7 +354,10 @@ func TestHasPrefix(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			n := mantaray.New()
 
 			for i := 0; i < len(tc.toAdd); i++ {

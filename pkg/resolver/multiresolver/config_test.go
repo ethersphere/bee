@@ -12,6 +12,8 @@ import (
 )
 
 func TestParseConnectionStrings(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		desc       string
 		conStrings []string
@@ -116,7 +118,10 @@ func TestParseConnectionStrings(t *testing.T) {
 		},
 	}
 	for _, tC := range testCases {
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := multiresolver.ParseConnectionStrings(tC.conStrings)
 			if err != nil {
 				if !errors.Is(err, tC.wantErr) {

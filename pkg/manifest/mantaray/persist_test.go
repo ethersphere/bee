@@ -15,6 +15,8 @@ import (
 )
 
 func TestPersistIdempotence(t *testing.T) {
+	t.Parallel()
+
 	n := mantaray.New()
 	paths := [][]byte{
 		[]byte("aa"),

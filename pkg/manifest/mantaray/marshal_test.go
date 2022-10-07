@@ -162,9 +162,8 @@ func TestUnmarshal02(t *testing.T) {
 	}
 }
 
+// nolint:paralleltest
 func TestMarshal(t *testing.T) {
-	t.Parallel()
-
 	rand.Seed(1)
 	ctx := context.Background()
 	n := New()
