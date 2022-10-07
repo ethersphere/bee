@@ -312,12 +312,6 @@ func (s *Service) mountAPI() {
 		web.FinalHandlerFunc(s.healthHandler),
 	))
 
-	handle("/rchash/{depth}/{anchor}", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.rchasher),
-		})),
-	)
-
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
