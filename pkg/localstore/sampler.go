@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -60,7 +61,7 @@ func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
 	storageDepth uint8,
-	consensusTime int64,
+	consensusTime uint64,
 ) (storage.Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -111,7 +112,9 @@ func (db *DB) ReserveSample(
 					continue
 				}
 
-				if chItem.StoreTimestamp > consensusTime {
+				// check if the timestamp on the postage stamp is not later than
+				// the consensus time.
+				if binary.BigEndian.Uint64(chItem.Timestamp) > consensusTime {
 					stat.NewIgnored.Inc()
 					continue
 				}
