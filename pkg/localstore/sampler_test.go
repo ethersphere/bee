@@ -18,8 +18,6 @@ import (
 
 // nolint:paralleltest
 func TestReserveSampler(t *testing.T) {
-	t.Parallel()
-
 	const chunkCountPerPO = 10
 	const maxPO = 10
 	var chs []swarm.Chunk
