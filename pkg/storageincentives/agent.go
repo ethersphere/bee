@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -27,10 +29,12 @@ const loggerName = "storageincentives"
 const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
+	MaxInt64              = 9223372036854775807
 )
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
+	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 }
 
 type Sampler interface {
@@ -42,9 +46,11 @@ type Monitor interface {
 }
 
 type Agent struct {
-	logger   log.Logger
-	metrics  metrics
-	backend  ChainBackend
+	logger         log.Logger
+	metrics        metrics
+	backend        ChainBackend
+	blocksPerRound uint64
+	//	ethClient transaction.Backend
 	monitor  Monitor
 	contract redistribution.Contract
 	reserve  postage.Storer
@@ -57,6 +63,7 @@ type Agent struct {
 func New(
 	overlay swarm.Address,
 	backend ChainBackend,
+	//	client transaction.Backend,
 	logger log.Logger,
 	monitor Monitor,
 	contract redistribution.Contract,
@@ -65,15 +72,17 @@ func New(
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
-		overlay:  overlay,
-		metrics:  newMetrics(),
-		backend:  backend,
-		logger:   logger.WithName(loggerName).Register(),
-		contract: contract,
-		reserve:  reserve,
-		monitor:  monitor,
-		sampler:  sampler,
-		quit:     make(chan struct{}),
+		overlay: overlay,
+		metrics: newMetrics(),
+		backend: backend,
+		//		ethClient: client,
+		logger:         logger.WithName(loggerName).Register(),
+		contract:       contract,
+		reserve:        reserve,
+		monitor:        monitor,
+		blocksPerRound: blocksPerRound,
+		sampler:        sampler,
+		quit:           make(chan struct{}),
 	}
 
 	s.wg.Add(1)
@@ -321,7 +330,27 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(time.Now().UTC().UnixNano()))
+	block, err := a.backend.BlockNumber(context.Background())
+	if err != nil {
+		return 0, nil, err
+	}
+
+	previousRoundNumber := (block / a.blocksPerRound) - 1
+
+	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundNumber*a.blocksPerRound))
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var timeLimiter int64
+
+	if timeLimiterBlock.Time < MaxInt64 {
+		timeLimiter = int64(timeLimiterBlock.Time)
+	} else {
+		return 0, nil, fmt.Errorf("overflow from block timestamp conversion")
+	}
+
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiter)
 	if err != nil {
 		return 0, nil, err
 	}
