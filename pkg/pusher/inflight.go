@@ -42,8 +42,9 @@ func (i *inflight) set(addr []byte) bool {
 }
 
 type attempts struct {
-	mtx      sync.Mutex
-	attempts map[string]int
+	mtx        sync.Mutex
+	retryCount int
+	attempts   map[string]int
 }
 
 // try to log a chunk sync attempt. returns false when
@@ -53,7 +54,7 @@ func (a *attempts) try(ch swarm.Address) bool {
 	defer a.mtx.Unlock()
 	key := ch.ByteString()
 	a.attempts[key]++
-	return a.attempts[key] < retryCount
+	return a.attempts[key] < a.retryCount
 }
 
 func (a *attempts) delete(ch swarm.Address) {
