@@ -23,7 +23,7 @@ const DefaultWakeupInterval = 5 * time.Minute
 
 // defaultMinimumRadius is the default value
 // for the depth monitor minimum radius.
-const defaultMinimumRadius uint8 = 4
+const defaultMinimumRadius uint8 = 0
 
 // ReserveReporter interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
@@ -59,7 +59,7 @@ type Service struct {
 	quit          chan struct{} // to request service to stop
 	stopped       chan struct{} // to signal stopping of bg worker
 	minimumRadius uint8
-	isStable      *atomic.Bool
+	lastRSize     *atomic.Uint64
 }
 
 // New constructs a new depthmonitor service
@@ -82,7 +82,7 @@ func New(
 		quit:          make(chan struct{}),
 		stopped:       make(chan struct{}),
 		minimumRadius: defaultMinimumRadius,
-		isStable:      atomic.NewBool(false),
+		lastRSize:     atomic.NewUint64(0),
 	}
 
 	go s.manage(warmupTime, wakeupInterval)
@@ -133,16 +133,16 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 			continue
 		}
 
+		// save last calculated reserve size
+		s.lastRSize.Store(currentSize)
+
 		rate := s.syncer.Rate()
 		s.logger.Debug("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
-			s.isStable.Store(true)
 			continue
 		}
-
-		s.isStable.Store(false)
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
 		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
@@ -160,8 +160,8 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 	}
 }
 
-func (s *Service) IsStable() bool {
-	return s.isStable.Load()
+func (s *Service) IsFullySynced() bool {
+	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()/2
 }
 
 func (s *Service) Close() error {

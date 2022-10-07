@@ -24,6 +24,8 @@ func newAddr(s string) Address {
 }
 
 func TestMultiresolverOpts(t *testing.T) {
+	t.Parallel()
+
 	wantLog := log.Noop
 	wantCfgs := []multiresolver.ConnectionConfig{
 		{
@@ -56,6 +58,8 @@ func TestMultiresolverOpts(t *testing.T) {
 }
 
 func TestPushResolver(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		desc    string
 		tld     string
@@ -72,7 +76,10 @@ func TestPushResolver(t *testing.T) {
 	}
 
 	for _, tC := range testCases {
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			mr := multiresolver.NewMultiResolver()
 
 			if mr.ChainCount(tC.tld) != 0 {
@@ -96,6 +103,8 @@ func TestPushResolver(t *testing.T) {
 		})
 	}
 	t.Run("pop empty chain", func(t *testing.T) {
+		t.Parallel()
+
 		mr := multiresolver.NewMultiResolver()
 		err := mr.PopResolver("")
 		if !errors.Is(err, multiresolver.ErrResolverChainEmpty) {
@@ -105,6 +114,8 @@ func TestPushResolver(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
+	t.Parallel()
+
 	addr := newAddr("aaaabbbbccccdddd")
 	addrAlt := newAddr("ddddccccbbbbaaaa")
 	errUnregisteredName := fmt.Errorf("unregistered name")
@@ -230,7 +241,10 @@ func TestResolve(t *testing.T) {
 	}
 
 	for _, tC := range testCases {
+		tC := tC
 		t.Run(tC.name, func(t *testing.T) {
+			t.Parallel()
+
 			addr, err := mr.Resolve(tC.name)
 			if err != nil {
 				if tC.wantErr == nil {

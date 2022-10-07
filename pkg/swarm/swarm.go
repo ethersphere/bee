@@ -128,6 +128,13 @@ func (x Address) Closer(a Address, y Address) (bool, error) {
 	return cmp == 1, err
 }
 
+// Clone returns deep clone of the Address.
+func (a Address) Clone() Address {
+	b := make([]byte, len(a.b))
+	copy(b, a.b)
+	return NewAddress(b)
+}
+
 // ZeroAddress is the address that has no value.
 var ZeroAddress = NewAddress(nil)
 

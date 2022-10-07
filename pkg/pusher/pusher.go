@@ -56,11 +56,10 @@ type Service struct {
 	smugler           chan OpChan
 }
 
-var (
-	retryInterval    = 5 * time.Second  // time interval between retries
-	traceDuration    = 30 * time.Second // duration for every root tracing span
-	concurrentPushes = 50               // how many chunks to push simultaneously
-	retryCount       = 6
+const (
+	traceDuration     = 30 * time.Second // duration for every root tracing span
+	concurrentPushes  = 50               // how many chunks to push simultaneously
+	DefaultRetryCount = 6
 )
 
 var (
@@ -70,7 +69,7 @@ var (
 
 const chunkStoreTimeout = 2 * time.Second
 
-func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger log.Logger, tracer *tracing.Tracer, warmupTime time.Duration) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger log.Logger, tracer *tracing.Tracer, warmupTime time.Duration, retryCount int) *Service {
 	p := &Service{
 		networkID:         networkID,
 		storer:            storer,
@@ -83,7 +82,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
-		attempts:          &attempts{attempts: make(map[string]int)},
+		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		sem:               make(chan struct{}, concurrentPushes),
 		smugler:           make(chan OpChan),
 	}

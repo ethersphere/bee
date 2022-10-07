@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/auth"
 	mockauth "github.com/ethersphere/bee/pkg/auth/mock"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -47,12 +48,12 @@ import (
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
-	"github.com/ethersphere/bee/pkg/staking/stakingcontract"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
@@ -93,11 +94,11 @@ type testServerOptions struct {
 	Feeds              feeds.Factory
 	CORSAllowedOrigins []string
 	PostageContract    postagecontract.Interface
-	StakingContract    stakingcontract.Interface
+	StakingContract    staking.Contract
 	Post               postage.Service
 	Steward            steward.Interface
 	WsHeaders          http.Header
-	Authenticator      *mockauth.Auth
+	Authenticator      auth.Authenticator
 	DebugAPI           bool
 	Restricted         bool
 	DirectUpload       bool
@@ -190,7 +191,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		PostageContract:  o.PostageContract,
 		Steward:          o.Steward,
 		SyncStatus:       o.SyncStatus,
-		StakingContract:  o.StakingContract,
+		Staking:          o.StakingContract,
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, api.FullMode, true, true, backend, o.CORSAllowedOrigins)

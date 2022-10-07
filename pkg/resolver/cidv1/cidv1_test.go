@@ -13,6 +13,8 @@ import (
 )
 
 func TestCIDResolver(t *testing.T) {
+	t.Parallel()
+
 	r := cidv1.Resolver{}
 	t.Cleanup(func() {
 		err := r.Close()
@@ -22,6 +24,8 @@ func TestCIDResolver(t *testing.T) {
 	})
 
 	t.Run("resolve manifest CID", func(t *testing.T) {
+		t.Parallel()
+
 		addr, err := r.Resolve("bah5acgzazjrvpieogf6rl3cwb7xtjzgel6hrt4a4g4vkody5u4v7u7y2im4a")
 		if err != nil {
 			t.Fatal(err)
@@ -33,6 +37,8 @@ func TestCIDResolver(t *testing.T) {
 		}
 	})
 	t.Run("resolve feed CID", func(t *testing.T) {
+		t.Parallel()
+
 		addr, err := r.Resolve("bah5qcgzazjrvpieogf6rl3cwb7xtjzgel6hrt4a4g4vkody5u4v7u7y2im4a")
 		if err != nil {
 			t.Fatal(err)
@@ -44,12 +50,16 @@ func TestCIDResolver(t *testing.T) {
 		}
 	})
 	t.Run("fail other codecs", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := r.Resolve("bafybeiekkklkqtypmqav6ytqjbdqucxfwuk5cgige4245d2qhkccuyfnly")
 		if err == nil {
 			t.Fatal("expected error")
 		}
 	})
 	t.Run("fail on invalid CID", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := r.Resolve("bafybeiekk")
 		if !errors.Is(err, resolver.ErrParse) {
 			t.Fatal("expected error", resolver.ErrParse, "got", err)

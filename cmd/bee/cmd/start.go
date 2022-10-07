@@ -140,7 +140,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			if c.config.IsSet(optionNameBlockTime) && blockTime != 0 {
-				networkConfig.blockTime = blockTime
+				networkConfig.blockTime = time.Duration(blockTime) * time.Second
 			}
 
 			tracingEndpoint := c.config.GetString(optionNameTracingEndpoint)
@@ -171,55 +171,57 @@ func (c *command) initStartCmd() (err error) {
 			interruptChannel := make(chan struct{})
 
 			b, err := node.NewBee(interruptChannel, sysInterruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
-				DataDir:                    c.config.GetString(optionNameDataDir),
-				CacheCapacity:              c.config.GetUint64(optionNameCacheCapacity),
-				DBOpenFilesLimit:           c.config.GetUint64(optionNameDBOpenFilesLimit),
-				DBBlockCacheCapacity:       c.config.GetUint64(optionNameDBBlockCacheCapacity),
-				DBWriteBufferSize:          c.config.GetUint64(optionNameDBWriteBufferSize),
-				DBDisableSeeksCompaction:   c.config.GetBool(optionNameDBDisableSeeksCompaction),
-				APIAddr:                    c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:               debugAPIAddr,
-				Addr:                       c.config.GetString(optionNameP2PAddr),
-				NATAddr:                    c.config.GetString(optionNameNATAddr),
-				EnableWS:                   c.config.GetBool(optionNameP2PWSEnable),
-				WelcomeMessage:             c.config.GetString(optionWelcomeMessage),
-				Bootnodes:                  networkConfig.bootNodes,
-				CORSAllowedOrigins:         c.config.GetStringSlice(optionCORSAllowedOrigins),
-				TracingEnabled:             c.config.GetBool(optionNameTracingEnabled),
-				TracingEndpoint:            tracingEndpoint,
-				TracingServiceName:         c.config.GetString(optionNameTracingServiceName),
-				Logger:                     logger,
-				PaymentThreshold:           c.config.GetString(optionNamePaymentThreshold),
-				PaymentTolerance:           c.config.GetInt64(optionNamePaymentTolerance),
-				PaymentEarly:               c.config.GetInt64(optionNamePaymentEarly),
-				ResolverConnectionCfgs:     resolverCfgs,
-				BootnodeMode:               bootNode,
-				SwapEndpoint:               c.config.GetString(optionNameSwapEndpoint),
-				SwapFactoryAddress:         c.config.GetString(optionNameSwapFactoryAddress),
-				SwapLegacyFactoryAddresses: c.config.GetStringSlice(optionNameSwapLegacyFactoryAddresses),
-				SwapInitialDeposit:         c.config.GetString(optionNameSwapInitialDeposit),
-				SwapEnable:                 c.config.GetBool(optionNameSwapEnable),
-				ChequebookEnable:           c.config.GetBool(optionNameChequebookEnable),
-				FullNodeMode:               fullNode,
-				Transaction:                c.config.GetString(optionNameTransactionHash),
-				BlockHash:                  c.config.GetString(optionNameBlockHash),
-				PostageContractAddress:     c.config.GetString(optionNamePostageContractAddress),
-				PriceOracleAddress:         c.config.GetString(optionNamePriceOracleAddress),
-				BlockTime:                  networkConfig.blockTime,
-				DeployGasPrice:             c.config.GetString(optionNameSwapDeploymentGasPrice),
-				WarmupTime:                 c.config.GetDuration(optionWarmUpTime),
-				ChainID:                    networkConfig.chainID,
-				RetrievalCaching:           c.config.GetBool(optionNameRetrievalCaching),
-				Resync:                     c.config.GetBool(optionNameResync),
-				BlockProfile:               c.config.GetBool(optionNamePProfBlock),
-				MutexProfile:               c.config.GetBool(optionNamePProfMutex),
-				StaticNodes:                staticNodes,
-				AllowPrivateCIDRs:          c.config.GetBool(optionNameAllowPrivateCIDRs),
-				Restricted:                 c.config.GetBool(optionNameRestrictedAPI),
-				TokenEncryptionKey:         c.config.GetString(optionNameTokenEncryptionKey),
-				AdminPasswordHash:          c.config.GetString(optionNameAdminPasswordHash),
-				UsePostageSnapshot:         c.config.GetBool(optionNameUsePostageSnapshot),
-				EnableStorageIncentives:    c.config.GetBool(optionNameUsePostageSnapshot),
+				DataDir:                       c.config.GetString(optionNameDataDir),
+				CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
+				DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
+				DBBlockCacheCapacity:          c.config.GetUint64(optionNameDBBlockCacheCapacity),
+				DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
+				DBDisableSeeksCompaction:      c.config.GetBool(optionNameDBDisableSeeksCompaction),
+				APIAddr:                       c.config.GetString(optionNameAPIAddr),
+				DebugAPIAddr:                  debugAPIAddr,
+				Addr:                          c.config.GetString(optionNameP2PAddr),
+				NATAddr:                       c.config.GetString(optionNameNATAddr),
+				EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
+				WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
+				Bootnodes:                     networkConfig.bootNodes,
+				CORSAllowedOrigins:            c.config.GetStringSlice(optionCORSAllowedOrigins),
+				TracingEnabled:                c.config.GetBool(optionNameTracingEnabled),
+				TracingEndpoint:               tracingEndpoint,
+				TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
+				Logger:                        logger,
+				PaymentThreshold:              c.config.GetString(optionNamePaymentThreshold),
+				PaymentTolerance:              c.config.GetInt64(optionNamePaymentTolerance),
+				PaymentEarly:                  c.config.GetInt64(optionNamePaymentEarly),
+				ResolverConnectionCfgs:        resolverCfgs,
+				BootnodeMode:                  bootNode,
+				SwapEndpoint:                  c.config.GetString(optionNameSwapEndpoint),
+				SwapFactoryAddress:            c.config.GetString(optionNameSwapFactoryAddress),
+				SwapLegacyFactoryAddresses:    c.config.GetStringSlice(optionNameSwapLegacyFactoryAddresses),
+				SwapInitialDeposit:            c.config.GetString(optionNameSwapInitialDeposit),
+				SwapEnable:                    c.config.GetBool(optionNameSwapEnable),
+				ChequebookEnable:              c.config.GetBool(optionNameChequebookEnable),
+				FullNodeMode:                  fullNode,
+				Transaction:                   c.config.GetString(optionNameTransactionHash),
+				BlockHash:                     c.config.GetString(optionNameBlockHash),
+				PostageContractAddress:        c.config.GetString(optionNamePostageContractAddress),
+				PriceOracleAddress:            c.config.GetString(optionNamePriceOracleAddress),
+				RedistributionContractAddress: c.config.GetString(optionNameRedistributionAddress),
+				StakingContractAddress:        c.config.GetString(optionNameStakingAddress),
+				BlockTime:                     networkConfig.blockTime,
+				DeployGasPrice:                c.config.GetString(optionNameSwapDeploymentGasPrice),
+				WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
+				ChainID:                       networkConfig.chainID,
+				RetrievalCaching:              c.config.GetBool(optionNameRetrievalCaching),
+				Resync:                        c.config.GetBool(optionNameResync),
+				BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
+				MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
+				StaticNodes:                   staticNodes,
+				AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
+				Restricted:                    c.config.GetBool(optionNameRestrictedAPI),
+				TokenEncryptionKey:            c.config.GetString(optionNameTokenEncryptionKey),
+				AdminPasswordHash:             c.config.GetString(optionNameAdminPasswordHash),
+				UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
+				EnableStorageIncentives:       c.config.GetBool(optionNameEnableStorageIncentives),
 			})
 			if err != nil {
 				return err
@@ -456,18 +458,18 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 
 type networkConfig struct {
 	bootNodes []string
-	blockTime uint64
+	blockTime time.Duration
 	chainID   int64
 }
 
-func getConfigByNetworkID(networkID uint64, defaultBlockTime uint64) *networkConfig {
+func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *networkConfig {
 	var config = networkConfig{
-		blockTime: defaultBlockTime,
+		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
 	case 1:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
-		config.blockTime = 5
+		config.blockTime = 5 * time.Second
 		config.chainID = 100
 	case 5: //staging
 		config.chainID = 5
