@@ -49,6 +49,8 @@ func init() {
 // Expected behavior is that an offer message with the requested
 // To value is returned to the requester, but offer.Hashes is empty.
 func TestIncoming_WantEmptyInterval(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockTopmost        = uint64(5)
 		ps, _              = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
@@ -71,6 +73,8 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 
 }
 func TestIncoming_WantNone(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockTopmost        = uint64(5)
 		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
@@ -92,6 +96,8 @@ func TestIncoming_WantNone(t *testing.T) {
 }
 
 func TestIncoming_WantOne(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockTopmost        = uint64(5)
 		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
@@ -116,6 +122,8 @@ func TestIncoming_WantOne(t *testing.T) {
 }
 
 func TestIncoming_WantAll(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockTopmost        = uint64(5)
 		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
@@ -140,6 +148,8 @@ func TestIncoming_WantAll(t *testing.T) {
 }
 
 func TestIncoming_UnsolicitedChunk(t *testing.T) {
+	t.Parallel()
+
 	evilAddr := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000666")
 	evilData := []byte{0x66, 0x66, 0x66}
 	stamp := postagetesting.MustNewStamp()
@@ -159,6 +169,8 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 }
 
 func TestGetCursors(t *testing.T) {
+	t.Parallel()
+
 	var (
 		mockCursors = []uint64{100, 101, 102, 103}
 		ps, _       = newPullSync(nil, mock.WithCursors(mockCursors))
@@ -183,6 +195,8 @@ func TestGetCursors(t *testing.T) {
 }
 
 func TestGetCursorsError(t *testing.T) {
+	t.Parallel()
+
 	var (
 		e           = errors.New("erring")
 		ps, _       = newPullSync(nil, mock.WithCursorsErr(e))

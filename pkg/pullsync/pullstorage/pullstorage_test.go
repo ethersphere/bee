@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"runtime/pprof"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -35,6 +36,10 @@ var (
 		swarm.MustParseHexAddress("0006"),
 	}
 	limit = 5
+
+	// createLocalstoreLock is used to prevent data race issues detected when multiple localstore.New functions
+	// are being called in the tests.
+	createLocalstoreLock sync.Mutex
 )
 
 func someAddrs(i ...int) (r []swarm.Address) {
@@ -57,6 +62,7 @@ func someDescriptors(i ...int) (d []storage.Descriptor) {
 // - to the To argument of the function (in case the number of chunks in interval <= N)
 // - to BinID of the last chunk in the returned collection in case number of chunks in interval > N
 func TestIntervalChunks(t *testing.T) {
+	t.Parallel()
 
 	// we need to check four cases of the subscribe pull iterator:
 	// - no chunks in interval
@@ -80,7 +86,10 @@ func TestIntervalChunks(t *testing.T) {
 		{desc: "at the edges and the middle", from: 0, to: 5, mockAddrs: []int{0, 2, 4}, topmost: 5},
 		{desc: "more than interval", from: 0, to: 5, mockAddrs: []int{0, 1, 2, 3, 4, 5}, topmost: 5},
 	} {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
 			b := someAddrs(tc.mockAddrs...)
 			desc := someDescriptors(tc.mockAddrs...)
 			ps, _ := newPullStorage(t, mock.WithSubscribePullChunks(desc...))
@@ -106,6 +115,8 @@ func TestIntervalChunks(t *testing.T) {
 // then add more chunks to the subscribe pull iterator and make sure the loop
 // exits correctly.
 func TestIntervalChunks_GetChunksLater(t *testing.T) {
+	t.Parallel()
+
 	desc := someDescriptors(0, 2)
 	ps, db := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
 
@@ -132,6 +143,8 @@ func TestIntervalChunks_GetChunksLater(t *testing.T) {
 }
 
 func TestIntervalChunks_Blocking(t *testing.T) {
+	t.Parallel()
+
 	desc := someDescriptors(0, 2)
 	ps, _ := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,6 +164,8 @@ func TestIntervalChunks_Blocking(t *testing.T) {
 }
 
 func TestIntervalChunks_DbShutdown(t *testing.T) {
+	t.Parallel()
+
 	ps, db := newPullStorage(t, mock.WithPartialInterval(true))
 
 	go func() {
@@ -171,6 +186,8 @@ func TestIntervalChunks_DbShutdown(t *testing.T) {
 // TestIntervalChunks_Localstore is an integration test with a real
 // localstore instance.
 func TestIntervalChunks_Localstore(t *testing.T) {
+	t.Parallel()
+
 	fill := func(f, t int) (ints []int) {
 		for i := f; i <= t; i++ {
 			ints = append(ints, i)
@@ -251,7 +268,9 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 			expect: 50, top: 50, addrs: fill(1, 50),
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
 			base, db := newTestDB(t, nil)
 			ps := pullstorage.New(db)
@@ -306,6 +325,8 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 // with the same subscription call the SubscribePull only once
 // and that results are shared between both of them.
 func TestIntervalChunks_IteratorShare(t *testing.T) {
+	t.Parallel()
+
 	desc := someDescriptors(0, 2)
 	ps, db := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
 
@@ -372,6 +393,7 @@ func TestIntervalChunks_IteratorShare(t *testing.T) {
 // call are canceled, the call will be exited. During this time if a new goroutines comes,
 // a fresh subscription call should be made and results should be shared
 func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
+	t.Parallel()
 
 	type result struct {
 		addrs []swarm.Address
@@ -380,6 +402,8 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 	}
 
 	t.Run("cancel first caller", func(t *testing.T) {
+		t.Parallel()
+
 		ps, db := newPullStorage(t, mock.WithPartialInterval(true))
 		sched := make(chan struct{})
 		c := make(chan result, 3)
@@ -457,6 +481,8 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 
 	})
 	t.Run("cancel all callers", func(t *testing.T) {
+		t.Parallel()
+
 		ps, db := newPullStorage(t, mock.WithPartialInterval(true))
 		sched := make(chan struct{})
 		c := make(chan result, 3)
@@ -555,25 +581,28 @@ func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.M
 	return ps, db
 }
 
-func newTestDB(tb testing.TB, o *localstore.Options) (baseKey []byte, db *localstore.DB) {
-	tb.Helper()
+func newTestDB(t *testing.T, o *localstore.Options) (baseKey []byte, db *localstore.DB) {
+	t.Helper()
 
 	baseKey = make([]byte, 32)
 	if _, err := rand.Read(baseKey); err != nil {
-		tb.Fatal(err)
+		t.Fatal(err)
 	}
 
-	logger := log.Noop
-	db, err := localstore.New("", baseKey, nil, o, logger)
+	createLocalstoreLock.Lock()
+	defer createLocalstoreLock.Unlock()
+	db, err := localstore.New("", baseKey, nil, o, log.Noop)
 	if err != nil {
-		tb.Fatal(err)
+		t.Fatal(err)
 	}
-	tb.Cleanup(func() {
+
+	t.Cleanup(func() {
 		err := db.Close()
 		if err != nil {
-			tb.Error(err)
+			t.Error(err)
 		}
 	})
+
 	return baseKey, db
 }
 

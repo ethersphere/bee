@@ -25,6 +25,8 @@ func randomAddress() string {
 }
 
 func TestNilPath(t *testing.T) {
+	t.Parallel()
+
 	m := simple.NewManifest()
 	n, err := m.Lookup("")
 	if err == nil {
@@ -100,8 +102,13 @@ var testCases = []struct {
 }
 
 func TestEntries(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := simple.NewManifest()
 
 			checkLength(t, m, 0)
@@ -193,8 +200,13 @@ func checkEntry(t *testing.T, m simple.Manifest, reference, path string) {
 // This function wil add all test case entries to a manifest and marshal it.
 // After, it will unmarshal the result, and verify that it is equal to the original manifest.
 func TestMarshal(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := simple.NewManifest()
 
 			for _, e := range tc.entries {
@@ -222,6 +234,8 @@ func TestMarshal(t *testing.T) {
 }
 
 func TestHasPrefix(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name        string
 		toAdd       []string
@@ -262,7 +276,10 @@ func TestHasPrefix(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := simple.NewManifest()
 
 			for _, e := range tc.toAdd {
