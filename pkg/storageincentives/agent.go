@@ -184,8 +184,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			err := a.claim(ctx)
 			if err != nil {
 				a.logger.Error(err, "claim")
-			} else {
-				a.logger.Debug("claim made")
 			}
 		}
 	})
@@ -292,6 +290,8 @@ func (a *Agent) claim(ctx context.Context) error {
 		} else {
 			a.logger.Info("claimed win")
 		}
+	} else {
+		a.logger.Info("claim made, lost round")
 	}
 
 	return nil
