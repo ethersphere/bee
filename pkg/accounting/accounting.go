@@ -670,7 +670,7 @@ func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 	// announce new payment threshold to peer
 	err := a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
 	if err != nil {
-		a.logger.Error(err, "announcing increased payment threshold", accountingPeer.paymentThresholdForPeer, "to peer", peer)
+		a.logger.Error(err, "announcing increased payment threshold", "value", accountingPeer.paymentThresholdForPeer, "peer", peer)
 	}
 }
 
