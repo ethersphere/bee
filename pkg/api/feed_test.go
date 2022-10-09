@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -175,10 +174,7 @@ func TestFeed_Post(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
 			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "invalid postage batch id",
-					Code:    http.StatusBadRequest,
-				}))
+			)
 		})
 
 		t.Run("ok - batch zeros", func(t *testing.T) {

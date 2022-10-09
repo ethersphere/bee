@@ -77,7 +77,6 @@ func GetGasLimitWithDefault(ctx context.Context, defaultLimit uint64) uint64 {
 
 func SetGasPrice(ctx context.Context, price *big.Int) context.Context {
 	return context.WithValue(ctx, gasPriceKey{}, price)
-
 }
 
 func GetGasPrice(ctx context.Context) *big.Int {

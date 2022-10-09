@@ -119,10 +119,7 @@ func TestSOC(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusBadRequest,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "invalid postage batch id",
-					Code:    http.StatusBadRequest,
-				}))
+			)
 		})
 
 		t.Run("ok batch", func(t *testing.T) {
