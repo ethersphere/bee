@@ -67,6 +67,21 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "api"
 
+type Headers struct {
+	SwarmPinHeader            string   `map:"Swarm-Pin"`
+	SwarmTagHeader            string   `map:"Swarm-Tag"`
+	SwarmEncryptHeader        string   `map:"Swarm-Encrypt"`
+	SwarmIndexDocumentHeader  string   `map:"Swarm-Index-Document"`
+	SwarmErrorDocumentHeader  string   `map:"Swarm-Error-Document"`
+	SwarmFeedIndexHeader      string   `map:"Swarm-Feed-Index"`
+	SwarmFeedIndexNextHeader  string   `map:"Swarm-Feed-Index-Next"`
+	SwarmCollectionHeader     string   `map:"Swarm-Collection"`
+	SwarmPostageBatchIdHeader []byte   `map:"Swarm-Postage-Batch-Id"`
+	SwarmDeferredUploadHeader string   `map:"Swarm-Deferred-Upload"`
+	GasPrice                  *big.Int `map:"Gas-Price"`
+	GasLimit                  uint64   `map:"Gas-Limit"`
+}
+
 const (
 	SwarmPinHeader            = "Swarm-Pin"
 	SwarmTagHeader            = "Swarm-Tag"
@@ -585,6 +600,68 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			ctx := r.Context()
 			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
 			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
+
+			h.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func (s *Service) validateParseConfigMiddleware(handlerName string, mandatoryHeaders []string) func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger := s.logger.WithName(handlerName).Build()
+
+			headers := Headers{}
+
+			for _, mandatoryHeader := range mandatoryHeaders {
+				t := reflect.TypeOf(headers)
+				var isFound bool
+
+				_, ok := r.Header[mandatoryHeader]
+				if !ok {
+					valErr := &validationError{
+						Entry: mandatoryHeader,
+						Value: nil,
+						Cause: fmt.Errorf("expected mandatory header %s, got %v", mandatoryHeader, r.Header[mandatoryHeader]),
+					}
+					jsonhttp.BadRequest(w, valErr)
+					return
+				}
+				for i := 0; i < t.NumField(); i++ {
+					f := t.Field(i)
+					if val, ok := f.Tag.Lookup("map"); ok {
+						if val == mandatoryHeader {
+							isFound = true
+							break
+						}
+					}
+				}
+				if !isFound {
+					valErr := &validationError{
+						Entry: mandatoryHeader,
+						Value: r.Header.Get(mandatoryHeader),
+						Cause: fmt.Errorf("invalid header %s is not supported", mandatoryHeader),
+					}
+					jsonhttp.BadRequest(w, valErr)
+					return
+				}
+				if len(strings.TrimSpace(r.Header.Get(mandatoryHeader))) == 0 {
+					valErr := &validationError{
+						Entry: mandatoryHeader,
+						Value: nil,
+						Cause: fmt.Errorf("mandatory header %s is empty", mandatoryHeader),
+					}
+					jsonhttp.BadRequest(w, valErr)
+					return
+				}
+			}
+			if response := s.mapStructure(r.Header, &headers); response != nil {
+				response("invalid header params", logger, w)
+				return
+			}
+			ctx := r.Context()
+			ctx = sctx.SetGasPrice(ctx, Headers{}.GasPrice)
+			ctx = sctx.SetGasLimit(ctx, Headers{}.GasLimit)
 
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})

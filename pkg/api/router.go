@@ -547,6 +547,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stake/deposit/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
+		s.validateParseConfigMiddleware("deposit stake", []string{"Gas-Price", "Gas-Limit"}),
 		s.gasConfigMiddleware("deposit stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.stakingDepositHandler),
