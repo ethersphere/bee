@@ -37,7 +37,7 @@ type ChainBackend interface {
 }
 
 type Sampler interface {
-	ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error)
+	ReserveSample(context.Context, []byte, uint8, time.Duration) (storage.Sample, error)
 }
 
 type Monitor interface {
@@ -338,9 +338,9 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	timeLimiterNanoseconds := timeLimiterBlock.Time * 1000000
+	timeLimiter := time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond
 
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiterNanoseconds)
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiter)
 	if err != nil {
 		return 0, nil, err
 	}
