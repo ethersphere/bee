@@ -21,6 +21,8 @@ import (
 )
 
 func TestAddressesGetterIterateChunkAddresses(t *testing.T) {
+	t.Parallel()
+
 	store := mock.NewStorer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

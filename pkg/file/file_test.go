@@ -34,6 +34,8 @@ var (
 // It uses the same test vectors as the splitter tests to generate the
 // necessary data.
 func TestSplitThenJoin(t *testing.T) {
+	t.Parallel()
+
 	for i := start; i < end; i++ {
 		dataLengthStr := strconv.Itoa(i)
 		t.Run(dataLengthStr, testSplitThenJoin)
@@ -41,6 +43,8 @@ func TestSplitThenJoin(t *testing.T) {
 }
 
 func testSplitThenJoin(t *testing.T) {
+	t.Parallel()
+
 	var (
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)

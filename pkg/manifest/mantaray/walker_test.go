@@ -14,6 +14,8 @@ import (
 )
 
 func TestWalkNode(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name     string
 		toAdd    [][]byte
@@ -39,6 +41,7 @@ func TestWalkNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
+		tc := tc
 
 		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
 			t.Helper()
@@ -70,6 +73,8 @@ func TestWalkNode(t *testing.T) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			n := createTree(t, tc.toAdd)
 
 			walkedCount := 0
@@ -94,6 +99,8 @@ func TestWalkNode(t *testing.T) {
 		})
 
 		t.Run(tc.name+"/with load save", func(t *testing.T) {
+			t.Parallel()
+
 			n := createTree(t, tc.toAdd)
 
 			ls := newMockLoadSaver()
@@ -130,6 +137,8 @@ func TestWalkNode(t *testing.T) {
 }
 
 func TestWalk(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name     string
 		toAdd    [][]byte
@@ -189,7 +198,9 @@ func TestWalk(t *testing.T) {
 			return pathFound
 		}
 
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
 			n := createTree(t, tc.toAdd)
 
@@ -217,6 +228,7 @@ func TestWalk(t *testing.T) {
 		})
 
 		t.Run(tc.name+"/with load save", func(t *testing.T) {
+			t.Parallel()
 
 			n := createTree(t, tc.toAdd)
 

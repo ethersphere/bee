@@ -20,6 +20,8 @@ import (
 
 // TestStoreWriter tests that store writer stores the provided data and calls the next chain writer.
 func TestStoreWriter(t *testing.T) {
+	t.Parallel()
+
 	mockStore := storer.NewStorer()
 	mockChainWriter := mock.NewChainWriter()
 	ctx := context.Background()
@@ -67,6 +69,8 @@ func TestStoreWriter(t *testing.T) {
 
 // TestSum tests that calling Sum on the store writer results in Sum on the next writer in the chain.
 func TestSum(t *testing.T) {
+	t.Parallel()
+
 	mockChainWriter := mock.NewChainWriter()
 	ctx := context.Background()
 	writer := store.NewStoreWriter(ctx, nil, storage.ModePutUpload, mockChainWriter)

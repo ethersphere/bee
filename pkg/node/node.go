@@ -921,7 +921,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime)
+	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer)
@@ -974,17 +974,20 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 
-		redistributionAddress := chainCfg.Redistribution
-		if o.RedistributionContractAddress != "" {
-			if !common.IsHexAddress(o.RedistributionContractAddress) {
-				return nil, errors.New("malformed redistribution contract address")
-			}
-			redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
-		}
+		if !o.BootnodeMode && o.EnableStorageIncentives {
 
-		redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-		agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
-		b.storageIncetivesCloser = agent
+			redistributionAddress := chainCfg.Redistribution
+			if o.RedistributionContractAddress != "" {
+				if !common.IsHexAddress(o.RedistributionContractAddress) {
+					return nil, errors.New("malformed redistribution contract address")
+				}
+				redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
+			}
+
+			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			b.storageIncetivesCloser = agent
+		}
 	}
 
 	multiResolver := multiresolver.NewMultiResolver(
