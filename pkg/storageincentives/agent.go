@@ -338,7 +338,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	timeLimiterNanoseconds := timeLimiterBlock.Time * 1000000
+	timeLimiterNanoseconds := time.Second * (timeLimiterBlock.Time) / time.Nanosecond
 
 	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiterNanoseconds)
 	if err != nil {
