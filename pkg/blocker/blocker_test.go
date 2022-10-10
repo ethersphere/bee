@@ -67,14 +67,15 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 		t.Fatal("blocker did not wait flag duration")
 	}
 
-	// Suspending current goroutine for (flagTime) and expect that in this interval
+	// Suspending current goroutine and expect that in this interval
 	// block listener was called to block flagged address
-	time.Sleep(flagTime)
+	time.Sleep(flagTime * 3)
 
-	if len(blockedC) != 1 {
-		t.Fatalf("address should only be blocked once")
-	} else if a := <-blockedC; !a.Equal(addr) {
+	if a := <-blockedC; !a.Equal(addr) {
 		t.Fatalf("expecting flagged address to be blocked")
+	}
+	if len(blockedC) != 0 {
+		t.Fatalf("address should only be blocked once")
 	}
 }
 
@@ -98,9 +99,9 @@ func TestUnflagBeforeBlock(t *testing.T) {
 
 	b.Unflag(addr)
 
-	// Suspending current goroutine for (flagTime) and expect that in this interval
+	// Suspending current goroutine and expect that in this interval
 	// block listener was not called to block flagged address
-	time.Sleep(flagTime)
+	time.Sleep(flagTime * 3)
 }
 
 func TestPruneBeforeBlock(t *testing.T) {
@@ -123,9 +124,9 @@ func TestPruneBeforeBlock(t *testing.T) {
 	// communicate that we have seen no peers, resulting in the peer being removed
 	b.PruneUnseen([]swarm.Address{})
 
-	// Suspending current goroutine for (flagTime) and expect that in this interval
+	// Suspending current goroutine expect that in this interval
 	// block listener was not called to block flagged address
-	time.Sleep(flagTime)
+	time.Sleep(flagTime * 3)
 }
 
 type blocklister struct {
