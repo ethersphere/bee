@@ -29,7 +29,6 @@ const loggerName = "storageincentives"
 const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
-	MaxInt64              = 9223372036854775807
 )
 
 type ChainBackend interface {
@@ -327,7 +326,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
-	block, err := a.backend.BlockNumber(context.Background())
+	block, err := a.backend.BlockNumber(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
