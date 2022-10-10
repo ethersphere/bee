@@ -30,8 +30,9 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
-// no of times to retry to see if we have received response from pushsync
-var noOfRetries = 20
+// time to wait for received response from pushsync
+const spinTimeout = time.Second * 3
+
 var block = common.HexToHash("0x1").Bytes()
 var defaultMockValidStamp = func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
 	return ch, nil
@@ -115,16 +116,9 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,16 +159,9 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,17 +197,9 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 
 	apiC <- &pusher.Op{Chunk: chunk}
 
-	var err error
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err := spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,16 +261,9 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(10 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err != nil {
-			continue
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
@@ -330,18 +302,11 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(10 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err != nil {
-			continue
-		}
-	}
+	err = spinLock(t, time.Second, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err == nil {
-		t.Fatalf("chunk not syned error expected")
+		t.Fatal("expecting to time out")
 	}
 }
 
@@ -381,19 +346,14 @@ func TestPusherRetryShallow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := 0
-	for i := 0; i < 5; i++ {
-		c = int(atomic.LoadInt32(&callCount))
-		if c == retryCount {
-			return
-		}
-		if c > retryCount {
-			t.Fatalf("too many retries. got %d want %d", c, retryCount)
-		}
-		time.Sleep(time.Second)
-	}
 
-	t.Fatalf("timed out waiting for retries. got %d want %d", c, retryCount)
+	err = spinLock(t, spinTimeout, func() bool {
+		c := int(atomic.LoadInt32(&callCount))
+		return c == retryCount
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestChunkWithInvalidStampSkipped tests that chunks with invalid stamps are skipped in pusher
@@ -430,16 +390,9 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,4 +453,27 @@ func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) err
 		return errors.New("Chunk not synced")
 	}
 	return nil
+}
+
+type spinLockCondition func() bool
+
+func spinLock(t *testing.T, timeout time.Duration, cond spinLockCondition) error {
+	t.Helper()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			return errors.New("timed out waiting for condition")
+
+		default:
+			if cond() {
+				return nil
+			}
+		}
+
+		time.Sleep(time.Millisecond * 100)
+	}
 }
