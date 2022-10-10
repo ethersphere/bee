@@ -40,9 +40,9 @@ func (s *sampleStat) String() string {
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
-		s.IterationDuration.Load()/1000000,
-		s.GetDuration.Load()/1000000,
-		s.HmacrDuration.Load()/1000000,
+		s.IterationDuration.Load(),
+		s.GetDuration.Load(),
+		s.HmacrDuration.Load(),
 	)
 }
 
@@ -92,7 +92,7 @@ func (db *DB) ReserveSample(
 			logger.Error(err, "sampler: failed iteration")
 			return err
 		}
-		stat.IterationDuration.Add(time.Since(iterationStart).Microseconds())
+		stat.IterationDuration.Add(time.Since(iterationStart).Seconds())
 		return nil
 	})
 
@@ -106,7 +106,7 @@ func (db *DB) ReserveSample(
 			for addr := range addrChan {
 				getStart := time.Now()
 				chItem, err := db.get(ctx, storage.ModeGetSync, addr)
-				stat.GetDuration.Add(time.Since(getStart).Microseconds())
+				stat.GetDuration.Add(time.Since(getStart).Seconds())
 				if err != nil {
 					stat.NotFound.Inc()
 					continue
@@ -126,7 +126,7 @@ func (db *DB) ReserveSample(
 				}
 				taddr := hmacr.Sum(nil)
 				hmacr.Reset()
-				stat.HmacrDuration.Add(time.Since(hmacrStart).Microseconds())
+				stat.HmacrDuration.Add(time.Since(hmacrStart).Seconds())
 
 				select {
 				case sampleItemChan <- swarm.NewAddress(taddr):
