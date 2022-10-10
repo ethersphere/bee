@@ -87,8 +87,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            /tmp/k3s-${{ env.K3S_VERSION }}
-          key: k3s-${{ env.K3S_VERSION }}
+            /tmp/k3s-${{ env.K3S_VERSION }}-v2
+          key: k3s-${{ env.K3S_VERSION }}-v2
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
@@ -189,8 +189,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            /tmp/k3s-${{ env.K3S_VERSION }}
-          key: k3s-${{ env.K3S_VERSION }}
+            /tmp/k3s-${{ env.K3S_VERSION }}-v2
+          key: k3s-${{ env.K3S_VERSION }}-v2
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
@@ -256,8 +256,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            /tmp/k3s-${{ env.K3S_VERSION }}
-          key: k3s-${{ env.K3S_VERSION }}
+            /tmp/k3s-${{ env.K3S_VERSION }}-v2
+          key: k3s-${{ env.K3S_VERSION }}-v2
       - name: 'Download Artifact'
         uses: actions/download-artifact@v3
         with:
