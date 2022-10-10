@@ -52,11 +52,17 @@ jobs:
         run: |
           MSG=$(git log --format=%B -n 1 ${{github.event.after}})
           echo "::set-output name=msg::${MSG}"
-      - name: Apply patches
+      - name: Apply patches and build - 1
         run: |
           patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           patch pkg/postage/service.go .github/patches/postageservice.patch
+          make binary
+          mv dist/bee bee-1
+      - name: Apply patches and build - 2
+        run: |
           patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
+          make binary
+          mv dist/bee bee-2
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
@@ -72,7 +78,8 @@ jobs:
           path: |
             Dockerfile.goreleaser
             Makefile
-            dist/bee
+            bee-1
+            bee-2
             beekeeper
             local.yaml
             .beekeeper.yaml
@@ -95,10 +102,10 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x dist/bee beekeeper .github/bin/beekeeper_artifacts.sh
+          chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv dist/bee bee && rm -r dist
+          mv bee-1 bee && rm -r dist
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
@@ -197,10 +204,10 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x dist/bee beekeeper
+          chmod +x bee-1 beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv dist/bee bee && rm -r dist
+          mv bee-1 bee && rm -r dist
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
@@ -264,10 +271,10 @@ jobs:
           name: temp-artifacts
       - name: Unpack artifacts
         run: |
-          chmod +x dist/bee beekeeper
+          chmod +x bee-2 beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv dist/bee bee && rm -r dist
+          mv bee-2 bee && rm -r dist
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
