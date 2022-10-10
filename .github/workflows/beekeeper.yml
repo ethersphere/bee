@@ -70,7 +70,7 @@ jobs:
         with:
           name: temp-artifacts
           path: |
-            Dockerfile.ci
+            Dockerfile.goreleaser
             Makefile
             dist/bee
             beekeeper
