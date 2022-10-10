@@ -21,9 +21,16 @@ jobs:
       with:
         fetch-depth: 0
     - name: Setup Go
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/setup-go@v3
       with:
         cache: false
+        go-version-file: go.mod
+    - name: Setup Go
+      if: matrix.os == 'macos-latest' || matrix.os == 'windows-latest'
+      uses: actions/setup-go@v3
+      with:
+        cache: true
         go-version-file: go.mod
     - name: Set git to use LF
       # make sure that line endings are not converted on windows
