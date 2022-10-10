@@ -67,10 +67,14 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 		t.Fatal("blocker did not wait flag duration")
 	}
 
+	// Suspending current goroutine for (flagTime) and expect that in this interval
+	// block listener was called to block flagged address
 	time.Sleep(flagTime)
 
 	if len(blockedC) != 1 {
 		t.Fatalf("address should only be blocked once")
+	} else if a := <-blockedC; !a.Equal(addr) {
+		t.Fatalf("expecting flagged address to be blocked")
 	}
 }
 
@@ -94,6 +98,8 @@ func TestUnflagBeforeBlock(t *testing.T) {
 
 	b.Unflag(addr)
 
+	// Suspending current goroutine for (flagTime) and expect that in this interval
+	// block listener was not called to block flagged address
 	time.Sleep(flagTime)
 }
 
@@ -117,6 +123,8 @@ func TestPruneBeforeBlock(t *testing.T) {
 	// communicate that we have seen no peers, resulting in the peer being removed
 	b.PruneUnseen([]swarm.Address{})
 
+	// Suspending current goroutine for (flagTime) and expect that in this interval
+	// block listener was not called to block flagged address
 	time.Sleep(flagTime)
 }
 
