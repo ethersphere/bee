@@ -6,7 +6,6 @@ package blocker_test
 
 import (
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,12 +17,14 @@ import (
 	"github.com/ethersphere/bee/pkg/blocker"
 )
 
-var (
+const (
 	flagTime  = time.Millisecond * 25
-	checkTime = time.Millisecond * 100
 	blockTime = time.Second
-	addr      = test.RandomAddress()
-	logger    = log.Noop
+)
+
+var (
+	addr   = test.RandomAddress()
+	logger = log.Noop
 )
 
 func TestMain(m *testing.M) {
@@ -38,124 +39,111 @@ func TestMain(m *testing.M) {
 func TestBlocksAfterFlagTimeout(t *testing.T) {
 	t.Parallel()
 
-	var (
-		mu      sync.Mutex
-		blocked = make(map[string]time.Duration)
-		mock    = mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-			mu.Lock()
-			blocked[a.ByteString()] = d
-			mu.Unlock()
+	blockedC := make(chan swarm.Address, 10)
 
-			return nil
-		})
-		b = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-	)
+	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
+		blockedC <- a
+
+		if d != blockTime {
+			t.Fatalf("block time: want %v, got %v", blockTime, d)
+		}
+
+		return nil
+	})
+
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 	defer b.Close()
 
+	// Flagging address shouldn't block it imidietly
 	b.Flag(addr)
-
-	mu.Lock()
-	if _, ok := blocked[addr.ByteString()]; ok {
-		mu.Unlock()
+	if len(blockedC) != 0 {
 		t.Fatal("blocker did not wait flag duration")
 	}
-	mu.Unlock()
 
-	midway := time.After(flagTime / 2)
-	check := time.After(checkTime * 5)
-
-	<-midway
+	time.Sleep(flagTime / 2)
 	b.Flag(addr) // check thats this flag call does not overide previous call
-	<-check
-
-	mu.Lock()
-	blockedTime, ok := blocked[addr.ByteString()]
-	mu.Unlock()
-	if !ok {
-		t.Fatal("address should be blocked")
+	if len(blockedC) != 0 {
+		t.Fatal("blocker did not wait flag duration")
 	}
 
-	if blockedTime != blockTime {
-		t.Fatalf("block time: want %v, got %v", blockTime, blockedTime)
+	time.Sleep(flagTime)
+
+	if len(blockedC) != 1 {
+		t.Fatalf("address should only be blocked once")
 	}
 }
 
 func TestUnflagBeforeBlock(t *testing.T) {
 	t.Parallel()
 
-	var (
-		mu      sync.Mutex
-		blocked = make(map[string]time.Duration)
-		mock    = mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-			mu.Lock()
-			blocked[a.ByteString()] = d
-			mu.Unlock()
-			return nil
-		})
-		b = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-	)
-	defer b.Close()
-	b.Flag(addr)
+	blockedC := make(chan swarm.Address, 10)
+	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
+		blockedC <- a
 
-	mu.Lock()
-	if _, ok := blocked[addr.ByteString()]; ok {
-		mu.Unlock()
+		if d != blockTime {
+			t.Fatalf("block time: want %v, got %v", blockTime, d)
+		}
+
+		return nil
+	})
+
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
+	defer b.Close()
+
+	// Flagging address shouldn't block it imidietly
+	b.Flag(addr)
+	if len(blockedC) != 0 {
 		t.Fatal("blocker did not wait flag duration")
 	}
-	mu.Unlock()
+
+	time.Sleep(flagTime / 2)
+	b.Flag(addr) // check thats this flag call does not overide previous call
+	if len(blockedC) != 0 {
+		t.Fatal("blocker did not wait flag duration")
+	}
 
 	b.Unflag(addr)
 
-	time.Sleep(checkTime)
+	time.Sleep(flagTime)
 
-	mu.Lock()
-	_, ok := blocked[addr.ByteString()]
-	mu.Unlock()
-
-	if ok {
-		t.Fatal("address should not be blocked")
+	if len(blockedC) != 0 {
+		t.Fatalf("address should not be blocked")
 	}
-
 }
 
 func TestPruneBeforeBlock(t *testing.T) {
 	t.Parallel()
 
-	var (
-		mu      sync.Mutex
-		blocked = make(map[string]time.Duration)
-		mock    = mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-			mu.Lock()
-			blocked[a.ByteString()] = d
-			mu.Unlock()
-			return nil
-		})
-		b = blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-	)
+	blockedC := make(chan swarm.Address, 10)
+	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
+		blockedC <- a
+
+		if d != blockTime {
+			t.Fatalf("block time: want %v, got %v", blockTime, d)
+		}
+
+		return nil
+	})
+
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 	defer b.Close()
 
+	// Flagging address shouldn't block it imidietly
 	b.Flag(addr)
-
-	mu.Lock()
-	if _, ok := blocked[addr.ByteString()]; ok {
-		mu.Unlock()
+	if len(blockedC) != 0 {
 		t.Fatal("blocker did not wait flag duration")
 	}
-	mu.Unlock()
+
+	time.Sleep(flagTime / 2)
 
 	// communicate that we have seen no peers, resulting in the peer being removed
 	b.PruneUnseen([]swarm.Address{})
 
-	time.Sleep(checkTime)
+	time.Sleep(flagTime)
 
-	mu.Lock()
-	_, ok := blocked[addr.ByteString()]
-	mu.Unlock()
-
-	if ok {
-		t.Fatal("address should not be blocked")
+	if len(blockedC) != 0 {
+		t.Fatalf("swarm address should not be blocked")
 	}
-
 }
 
 type blocklister struct {
