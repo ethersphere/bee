@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	flagTime  = time.Millisecond * 25
-	blockTime = time.Second
+	sequencerResolution = time.Millisecond
+	flagTime            = sequencerResolution * 25
+	blockTime           = time.Second
 )
 
 var (
@@ -31,7 +32,7 @@ func TestMain(m *testing.M) {
 	defer func(resolution time.Duration) {
 		*blocker.SequencerResolution = resolution
 	}(*blocker.SequencerResolution)
-	*blocker.SequencerResolution = time.Millisecond
+	*blocker.SequencerResolution = sequencerResolution
 
 	os.Exit(m.Run())
 }
@@ -76,13 +77,8 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 func TestUnflagBeforeBlock(t *testing.T) {
 	t.Parallel()
 
-	blockedC := make(chan swarm.Address, 10)
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-		blockedC <- a
-
-		if d != blockTime {
-			t.Fatalf("block time: want %v, got %v", blockTime, d)
-		}
+		t.Fatalf("address should not be blocked")
 
 		return nil
 	})
@@ -92,35 +88,20 @@ func TestUnflagBeforeBlock(t *testing.T) {
 
 	// Flagging address shouldn't block it imidietly
 	b.Flag(addr)
-	if len(blockedC) != 0 {
-		t.Fatal("blocker did not wait flag duration")
-	}
 
 	time.Sleep(flagTime / 2)
 	b.Flag(addr) // check thats this flag call does not overide previous call
-	if len(blockedC) != 0 {
-		t.Fatal("blocker did not wait flag duration")
-	}
 
 	b.Unflag(addr)
 
 	time.Sleep(flagTime)
-
-	if len(blockedC) != 0 {
-		t.Fatalf("address should not be blocked")
-	}
 }
 
 func TestPruneBeforeBlock(t *testing.T) {
 	t.Parallel()
 
-	blockedC := make(chan swarm.Address, 10)
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
-		blockedC <- a
-
-		if d != blockTime {
-			t.Fatalf("block time: want %v, got %v", blockTime, d)
-		}
+		t.Fatalf("address should not be blocked")
 
 		return nil
 	})
@@ -130,9 +111,6 @@ func TestPruneBeforeBlock(t *testing.T) {
 
 	// Flagging address shouldn't block it imidietly
 	b.Flag(addr)
-	if len(blockedC) != 0 {
-		t.Fatal("blocker did not wait flag duration")
-	}
 
 	time.Sleep(flagTime / 2)
 
@@ -140,10 +118,6 @@ func TestPruneBeforeBlock(t *testing.T) {
 	b.PruneUnseen([]swarm.Address{})
 
 	time.Sleep(flagTime)
-
-	if len(blockedC) != 0 {
-		t.Fatalf("swarm address should not be blocked")
-	}
 }
 
 type blocklister struct {
