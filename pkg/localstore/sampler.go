@@ -61,7 +61,7 @@ func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
 	storageDepth uint8,
-	consensusTime uint64,
+	consensusTime time.Duration,
 ) (storage.Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -114,7 +114,7 @@ func (db *DB) ReserveSample(
 
 				// check if the timestamp on the postage stamp is not later than
 				// the consensus time.
-				if binary.BigEndian.Uint64(chItem.Timestamp) > consensusTime {
+				if time.Duration(binary.BigEndian.Uint64(chItem.Timestamp))*time.Nanosecond > consensusTime {
 					stat.NewIgnored.Inc()
 					continue
 				}

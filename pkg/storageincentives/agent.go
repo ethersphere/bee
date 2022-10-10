@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -31,10 +33,11 @@ const (
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
+	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 }
 
 type Sampler interface {
-	ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error)
+	ReserveSample(context.Context, []byte, uint8, time.Duration) (storage.Sample, error)
 }
 
 type Monitor interface {
@@ -42,16 +45,17 @@ type Monitor interface {
 }
 
 type Agent struct {
-	logger   log.Logger
-	metrics  metrics
-	backend  ChainBackend
-	monitor  Monitor
-	contract redistribution.Contract
-	reserve  postage.Storer
-	sampler  Sampler
-	overlay  swarm.Address
-	quit     chan struct{}
-	wg       sync.WaitGroup
+	logger         log.Logger
+	metrics        metrics
+	backend        ChainBackend
+	blocksPerRound uint64
+	monitor        Monitor
+	contract       redistribution.Contract
+	reserve        postage.Storer
+	sampler        Sampler
+	overlay        swarm.Address
+	quit           chan struct{}
+	wg             sync.WaitGroup
 }
 
 func New(
@@ -65,15 +69,16 @@ func New(
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
-		overlay:  overlay,
-		metrics:  newMetrics(),
-		backend:  backend,
-		logger:   logger.WithName(loggerName).Register(),
-		contract: contract,
-		reserve:  reserve,
-		monitor:  monitor,
-		sampler:  sampler,
-		quit:     make(chan struct{}),
+		overlay:        overlay,
+		metrics:        newMetrics(),
+		backend:        backend,
+		logger:         logger.WithName(loggerName).Register(),
+		contract:       contract,
+		reserve:        reserve,
+		monitor:        monitor,
+		blocksPerRound: blocksPerRound,
+		sampler:        sampler,
+		quit:           make(chan struct{}),
 	}
 
 	s.wg.Add(1)
@@ -321,7 +326,21 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(time.Now().UTC().UnixNano()))
+	block, err := a.backend.BlockNumber(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	previousRoundNumber := (block / a.blocksPerRound) - 1
+
+	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundNumber*a.blocksPerRound))
+	if err != nil {
+		return 0, nil, err
+	}
+
+	timeLimiter := time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond
+
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiter)
 	if err != nil {
 		return 0, nil, err
 	}
