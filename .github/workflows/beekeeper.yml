@@ -105,7 +105,7 @@ jobs:
           chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv bee-1 bee && rm -r dist
+          mv bee-1 bee
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
@@ -207,7 +207,7 @@ jobs:
           chmod +x bee-1 beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv bee-1 bee && rm -r dist
+          mv bee-1 bee
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
@@ -274,7 +274,7 @@ jobs:
           chmod +x bee-2 beekeeper
           mv .beekeeper.yaml ~/.beekeeper.yaml
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv bee-2 bee && rm -r dist
+          mv bee-2 bee
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
@@ -330,7 +330,7 @@ jobs:
       - name: Unpack artifacts
         run: |
           chmod +x dist/bee
-          mv dist/bee bee && rm -r dist
+          mv dist/bee bee
       - name: Build image
         run: |
           printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
