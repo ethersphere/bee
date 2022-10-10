@@ -69,9 +69,6 @@ jobs:
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
           mv ~/.beekeeper.yaml .beekeeper.yaml
           mv ~/.beekeeper/local.yaml local.yaml
-      - name: Build bee
-        run: |
-          make binary
       - uses: actions/upload-artifact@v3
         with:
           name: temp-artifacts
