@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -27,6 +28,7 @@ var errDbClosed = errors.New("database closed")
 type sampleStat struct {
 	TotalIterated     atomic.Int64
 	NotFound          atomic.Int64
+	NewIgnored        atomic.Int64
 	IterationDuration atomic.Int64
 	GetDuration       atomic.Int64
 	HmacrDuration     atomic.Int64
@@ -34,9 +36,10 @@ type sampleStat struct {
 
 func (s *sampleStat) String() string {
 	return fmt.Sprintf(
-		"Total: %d NotFound: %d Iteration Durations: %d secs GetDuration: %d secs HmacrDuration: %d",
+		"Total: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
+		s.NewIgnored.Load(),
 		s.IterationDuration.Load()/1000000,
 		s.GetDuration.Load()/1000000,
 		s.HmacrDuration.Load()/1000000,
@@ -54,7 +57,12 @@ func (s *sampleStat) String() string {
 // calculation within the round limits.
 // In order to optimize this we use a simple pipeline pattern:
 // Iterate chunk addresses -> Get the chunk data and calculate transformed hash -> Assemble the sample
-func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8) (storage.Sample, error) {
+func (db *DB) ReserveSample(
+	ctx context.Context,
+	anchor []byte,
+	storageDepth uint8,
+	consensusTime uint64, // nanoseconds
+) (storage.Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
 	addrChan := make(chan swarm.Address)
@@ -101,6 +109,13 @@ func (db *DB) ReserveSample(ctx context.Context, anchor []byte, storageDepth uin
 				stat.GetDuration.Add(time.Since(getStart).Microseconds())
 				if err != nil {
 					stat.NotFound.Inc()
+					continue
+				}
+
+				// check if the timestamp on the postage stamp is not later than
+				// the consensus time.
+				if binary.BigEndian.Uint64(chItem.Timestamp) > consensusTime {
+					stat.NewIgnored.Inc()
 					continue
 				}
 
