@@ -51,8 +51,8 @@ const (
 
 const (
 	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
-	maxAttempts       = 8
-	maxPeers          = 16
+	maxAttempts       = 32
+	maxPeers          = 64
 )
 
 var (
