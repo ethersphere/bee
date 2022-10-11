@@ -1647,6 +1647,7 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 }
 
 func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
+	t.Parallel()
 
 	defer func(p int) {
 		*kademlia.SaturationPeers = p
