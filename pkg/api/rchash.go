@@ -42,7 +42,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	anchorStr := mux.Vars(r)["anchor"]
 	anchor := []byte(anchorStr)
 
-	sample, err := s.storer.ReserveSample(r.Context(), anchor, uint8(depth))
+	sample, err := s.storer.ReserveSample(r.Context(), anchor, uint8(depth), uint64(time.Now().Nanosecond()))
 	if err != nil {
 		s.logger.Error(err, "reserve commitment hasher: failed generating sample")
 		jsonhttp.InternalServerError(w, "failed generating sample")

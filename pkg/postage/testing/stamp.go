@@ -6,6 +6,7 @@ package testing
 
 import (
 	crand "crypto/rand"
+	"encoding/binary"
 	"io"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -34,4 +35,12 @@ func MustNewStamp() *postage.Stamp {
 // random data to other fields. Panics on error
 func MustNewBatchStamp(batch []byte) *postage.Stamp {
 	return postage.NewStamp(batch, MustNewID()[:8], MustNewID()[:8], MustNewSignature())
+}
+
+// MustNewStampWithTimestamp will generate a postage stamp with provided timestamp and
+// random data for other fields. Panics on errors.
+func MustNewStampWithTimestamp(ts uint64) *postage.Stamp {
+	tsBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBuf, ts)
+	return postage.NewStamp(MustNewID(), MustNewID()[:8], tsBuf, MustNewSignature())
 }
