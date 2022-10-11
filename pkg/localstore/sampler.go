@@ -35,14 +35,17 @@ type sampleStat struct {
 }
 
 func (s *sampleStat) String() string {
+
+	seconds := int64(time.Second)
+
 	return fmt.Sprintf(
 		"Total: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
-		s.IterationDuration.Load()/1000000,
-		s.GetDuration.Load()/1000000,
-		s.HmacrDuration.Load()/1000000,
+		s.IterationDuration.Load()/seconds,
+		s.GetDuration.Load()/seconds,
+		s.HmacrDuration.Load()/seconds,
 	)
 }
 
@@ -92,7 +95,7 @@ func (db *DB) ReserveSample(
 			logger.Error(err, "sampler: failed iteration")
 			return err
 		}
-		stat.IterationDuration.Add(time.Since(iterationStart).Microseconds())
+		stat.IterationDuration.Add(time.Since(iterationStart).Nanoseconds())
 		return nil
 	})
 
@@ -106,7 +109,7 @@ func (db *DB) ReserveSample(
 			for addr := range addrChan {
 				getStart := time.Now()
 				chItem, err := db.get(ctx, storage.ModeGetSync, addr)
-				stat.GetDuration.Add(time.Since(getStart).Microseconds())
+				stat.GetDuration.Add(time.Since(getStart).Nanoseconds())
 				if err != nil {
 					stat.NotFound.Inc()
 					continue
@@ -126,7 +129,7 @@ func (db *DB) ReserveSample(
 				}
 				taddr := hmacr.Sum(nil)
 				hmacr.Reset()
-				stat.HmacrDuration.Add(time.Since(hmacrStart).Microseconds())
+				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
 				case sampleItemChan <- swarm.NewAddress(taddr):
