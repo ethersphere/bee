@@ -55,7 +55,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
 	defer b.Close()
 
-	// Flagging address shouldn't block it imidietly
+	// Flagging address shouldn't block it immediately
 	b.Flag(addr)
 	if len(blockedC) != 0 {
 		t.Fatal("blocker did not wait flag duration")
