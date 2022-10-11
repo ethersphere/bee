@@ -27,7 +27,7 @@ func TestReserveSampler(t *testing.T) {
 		ReserveCapacity: 1000,
 	})
 
-	timeVar := time.Now().UnixNano()
+	timeVar := uint64(time.Now().UnixNano())
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
@@ -48,7 +48,7 @@ func TestReserveSampler(t *testing.T) {
 	var sample1 storage.Sample
 
 	t.Run("reserve sample 1", func(t *testing.T) {
-		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5, time.Duration(timeVar))
+		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestReserveSampler(t *testing.T) {
 	// Now we generate another sample with the older timestamp. This should give us
 	// the exact same sample, ensuring that none of the later chunks were considered.
 	t.Run("reserve sample 2", func(t *testing.T) {
-		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5, time.Duration(timeVar))
+		sample, err := db.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
 		if err != nil {
 			t.Fatal(err)
 		}

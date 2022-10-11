@@ -36,10 +36,6 @@ type ChainBackend interface {
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 }
 
-type Sampler interface {
-	ReserveSample(context.Context, []byte, uint8, time.Duration) (storage.Sample, error)
-}
-
 type Monitor interface {
 	IsFullySynced() bool
 }
@@ -52,7 +48,7 @@ type Agent struct {
 	monitor        Monitor
 	contract       redistribution.Contract
 	reserve        postage.Storer
-	sampler        Sampler
+	sampler        storage.Sampler
 	overlay        swarm.Address
 	quit           chan struct{}
 	wg             sync.WaitGroup
@@ -65,7 +61,7 @@ func New(
 	monitor Monitor,
 	contract redistribution.Contract,
 	reserve postage.Storer,
-	sampler Sampler,
+	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
@@ -340,7 +336,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	timeLimiter := time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond
 
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, timeLimiter)
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
 		return 0, nil, err
 	}

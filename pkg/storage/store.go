@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -180,7 +179,7 @@ func (s *Sample) String() string {
 }
 
 type Sampler interface {
-	ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8, consensusTime time.Duration) (Sample, error)
+	ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8, consensusTime uint64) (Sample, error)
 }
 
 // StateStorer defines methods required to get, set, delete values for different keys
