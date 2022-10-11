@@ -33,7 +33,7 @@ func TestReserveSampler(t *testing.T) {
 		for i := 0; i < chunkCountPerPO; i++ {
 			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be before the consensus timestamp
-			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(uint64(timeVar) - 1))
+			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 			chs = append(chs, ch)
 		}
 	}
@@ -70,7 +70,7 @@ func TestReserveSampler(t *testing.T) {
 		for i := 0; i < chunkCountPerPO; i++ {
 			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be after the consensus timestamp
-			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(uint64(timeVar) + 1))
+			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar + 1))
 			chs = append(chs, ch)
 		}
 	}
