@@ -7,10 +7,12 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
+	"math/big"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -153,6 +155,12 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 	}
 
 	return ret, nil
+}
+
+func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
+	return &types.Header{
+		Time: uint64(time.Now().Unix()),
+	}, nil
 }
 
 type mockMonitor struct {
