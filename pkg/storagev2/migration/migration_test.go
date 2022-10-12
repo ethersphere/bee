@@ -15,19 +15,25 @@ func TestMigrate(t *testing.T) {
 	S := inmemstore.New()
 	stepsMapTests := StepsMap{
 		1: func(s storage.Store) error {
-			s.Put(&obj1{
+			err := s.Put(&obj1{
 				Id:      "aaaaaaaaaaa",
 				SomeInt: 3,
 				Buf:     []byte("hello"),
 			})
+			if err != nil {
+				return err
+			}
 			return nil
 		},
 		2: func(s storage.Store) error {
-			s.Put(&obj1{
+			err := s.Put(&obj1{
 				Id:      "bbbbbbbbbbb",
 				SomeInt: 1,
 				Buf:     []byte("hey"),
 			})
+			if err != nil {
+				return err
+			}
 			return nil
 		},
 	}
