@@ -450,7 +450,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				skipPeers.AddOverdraft(result.peer)
 			}
 
-			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
+			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) && result.pushed {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 				ps.metrics.TotalSkippedPeers.Inc()
 				logger.Debug("adding peer to skiplist", "peer_address", result.peer)
