@@ -2,8 +2,10 @@ package migration
 
 import (
 	"encoding/binary"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"errors"
 	"unsafe"
+
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 type Version = uint64
@@ -51,18 +53,22 @@ func (s *storageVersionItem) Marshal() ([]byte, error) {
 }
 
 func (s *storageVersionItem) Unmarshal(bytes []byte) error {
-	ni := storageVersionItem{}
-	ni.Version = binary.LittleEndian.Uint64(bytes)
-	s = &ni
+	s.Version = binary.LittleEndian.Uint64(bytes)
 	return nil
 }
 
 func GetVersion(s storage.Store) (Version, error) {
-
 	item := storageVersionItem{}
 	err := s.Get(&item)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return item.Version, nil
+}
+
+func SetVersion(s storage.Store, v Version) error {
+	return s.Put(&storageVersionItem{Version: v})
 }

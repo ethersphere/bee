@@ -3,10 +3,11 @@ package migration
 import (
 	"encoding/binary"
 	"errors"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"strings"
 	"testing"
+
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 )
 
 func TestMigrate(t *testing.T) {
@@ -34,6 +35,45 @@ func TestMigrate(t *testing.T) {
 		t.Parallel()
 		if err := Migrate(S, stepsMapTests); err != nil {
 			t.Errorf("Migrate() error = %v", err)
+		}
+	})
+}
+
+func Test_GetVersion(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default version", func(t *testing.T) {
+		t.Parallel()
+
+		s := inmemstore.New()
+		v, err := GetVersion(s)
+		if err != nil {
+			t.Errorf("GetVersion should succeed:  %v", err)
+		}
+
+		if v != 0 {
+			t.Error("version must be zero")
+		}
+	})
+
+	t.Run("with version", func(t *testing.T) {
+		t.Parallel()
+
+		const version = 10
+
+		s := inmemstore.New()
+		err := SetVersion(s, version)
+		if err != nil {
+			t.Errorf("SetVersion should succeed:  %v", err)
+		}
+
+		v, err := GetVersion(s)
+		if err != nil {
+			t.Errorf("GetVersion should succeed:  %v", err)
+		}
+
+		if v != version {
+			t.Errorf("have %v, want %v", v, version)
 		}
 	})
 }
