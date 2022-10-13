@@ -16,6 +16,7 @@ jobs:
       SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
       BEEKEEPER_BRANCH: "update-dependencies"
       BEEKEEPER_METRICS_ENABLED: false
+      BEELOCAL_BRANCH: "update-k3s"
       REACHABILITY_OVERRIDE_PUBLIC: true
       BATCHFACTOR_OVERRIDE_PUBLIC: 2
       TIMEOUT: 10m
@@ -40,8 +41,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            /tmp/k3s-v1.20.15+k3s1
-          key: k3s-v1.20.15+k3s1
+            /tmp/k3s-v1.21.14+k3s1
+          key: k3s-v1.21.14+k3s1
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
@@ -166,8 +167,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            /tmp/k3s-v1.20.15+k3s1
-          key: k3s-v1.20.15+k3s1
+            /tmp/k3s-v1.21.14+k3s1
+          key: k3s-v1.21.14+k3s1
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
@@ -256,8 +257,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            /tmp/k3s-v1.20.15+k3s1
-          key: k3s-v1.20.15+k3s1
+            /tmp/k3s-v1.21.14+k3s1
+          key: k3s-v1.21.14+k3s1
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
@@ -337,8 +338,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            /tmp/k3s-v1.20.15+k3s1
-          key: k3s-v1.20.15+k3s1
+            /tmp/k3s-v1.21.14+k3s1
+          key: k3s-v1.21.14+k3s1
       - name: Cache Go modules
         uses: actions/cache@v2
         with:
