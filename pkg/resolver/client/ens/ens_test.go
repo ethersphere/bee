@@ -19,6 +19,8 @@ import (
 )
 
 func TestNewENSClient(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		desc         string
 		endpoint     string
@@ -51,7 +53,10 @@ func TestNewENSClient(t *testing.T) {
 		},
 	}
 	for _, tC := range testCases {
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			cl, err := ens.NewClient(tC.endpoint,
 				ens.WithConnectFunc(tC.connectFn),
 				ens.WithContractAddress(tC.address),
@@ -73,7 +78,11 @@ func TestNewENSClient(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
+	t.Parallel()
+
 	t.Run("connected", func(t *testing.T) {
+		t.Parallel()
+
 		rpcServer := rpc.NewServer()
 		defer rpcServer.Stop()
 		ethCl := ethclient.NewClient(rpc.DialInProc(rpcServer))
@@ -97,6 +106,8 @@ func TestClose(t *testing.T) {
 		}
 	})
 	t.Run("not connected", func(t *testing.T) {
+		t.Parallel()
+
 		cl, err := ens.NewClient("",
 			ens.WithConnectFunc(func(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry, error) {
 				return nil, nil, nil
@@ -118,6 +129,8 @@ func TestClose(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
+	t.Parallel()
+
 	testContractAddrString := "00000000000C2E074eC69A0dFb2997BA6C702e1B"
 	testContractAddr := common.HexToAddress(testContractAddrString)
 	testSwarmAddr := swarm.MustParseHexAddress("aaabbbcc")
@@ -173,7 +186,10 @@ func TestResolve(t *testing.T) {
 		},
 	}
 	for _, tC := range testCases {
+		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
+			t.Parallel()
+
 			cl, err := ens.NewClient("example.com",
 				ens.WithContractAddress(testContractAddrString),
 				ens.WithConnectFunc(func(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry, error) {

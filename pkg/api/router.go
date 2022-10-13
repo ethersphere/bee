@@ -435,8 +435,11 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})
 
 		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
-			"GET":  http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": http.HandlerFunc(s.swapCashoutHandler),
+			"GET": http.HandlerFunc(s.swapCashoutStatusHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("swap cashout"),
+				web.FinalHandlerFunc(s.swapCashoutHandler),
+			),
 		})
 	}
 
@@ -450,11 +453,17 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})
 
 		handle("/chequebook/deposit", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookDepositHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("chequebook deposit"),
+				web.FinalHandlerFunc(s.chequebookDepositHandler),
+			),
 		})
 
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("chequebook withdraw"),
+				web.FinalHandlerFunc(s.chequebookWithdrawHandler),
+			),
 		})
 
 		if s.swapEnabled {
@@ -488,6 +497,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
+		s.gasConfigMiddleware("create batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
@@ -496,6 +506,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/topup/{id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
+		s.gasConfigMiddleware("topup batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
@@ -504,6 +515,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/dilute/{id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
+		s.gasConfigMiddleware("dilute batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
@@ -532,4 +544,19 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+
+	handle("/stake/deposit/{amount}", web.ChainHandlers(
+		s.stakingAccessHandler,
+		s.gasConfigMiddleware("deposit stake"),
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.stakingDepositHandler),
+		})),
+	)
+
+	handle("/stake", web.ChainHandlers(
+		s.stakingAccessHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.getStakedAmountHandler),
+		})),
+	)
 }

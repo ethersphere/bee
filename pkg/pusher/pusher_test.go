@@ -30,12 +30,17 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
-// no of times to retry to see if we have received response from pushsync
-var noOfRetries = 20
+// time to wait for received response from pushsync
+const spinTimeout = time.Second * 3
+
 var block = common.HexToHash("0x1").Bytes()
 var defaultMockValidStamp = func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
 	return ch, nil
 }
+
+// createLocalstoreLock is used to prevent data race issues detected when multiple localstore.New functions
+// are being called in the tests.
+var createLocalstoreLock sync.Mutex
 
 // Wrap the actual storer to intercept the modeSet that the pusher will call when a valid receipt is received
 type Store struct {
@@ -78,6 +83,8 @@ func (s *Store) Close() error {
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSync status.
 func TestSendChunkToSyncWithTag(t *testing.T) {
+	t.Parallel()
+
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
@@ -95,9 +102,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	mtags, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-	defer storer.Close()
-	defer p.Close()
+	mtags, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
 
 	ta, err := mtags.Create(1)
 	if err != nil {
@@ -111,16 +116,9 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,6 +131,8 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 // TestSendChunkToPushSyncWithoutTag is similar to TestSendChunkToPushSync, excep that the tags are not
 // present to simulate bzz api withotu splitter condition
 func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
+	t.Parallel()
+
 	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
@@ -152,25 +152,16 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-	defer storer.Close()
-	defer p.Close()
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +169,8 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 
 // TestSendChunkToPushSyncViaApiChannel sends chunks via the api channel
 func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
+	t.Parallel()
+
 	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
@@ -198,25 +191,15 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 	})
 
 	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-	defer storer.Close()
-	defer p.Close()
 
 	apiC := make(chan *pusher.Op)
 	p.AddFeed(apiC)
 
 	apiC <- &pusher.Op{Chunk: chunk}
 
-	var err error
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err := spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,6 +207,8 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 
 // TestSendChunkToPushSyncDirect sends chunks via the api channel
 func TestSendChunkToPushSyncDirect(t *testing.T) {
+	t.Parallel()
+
 	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
@@ -234,9 +219,7 @@ func TestSendChunkToPushSyncDirect(t *testing.T) {
 		return nil, topology.ErrWantSelf
 	})
 
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-	defer storer.Close()
-	defer p.Close()
+	_, p, _ := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
 
 	apiC := make(chan *pusher.Op)
 	p.AddFeed(apiC)
@@ -259,6 +242,8 @@ func TestSendChunkToPushSyncDirect(t *testing.T) {
 // get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
+	t.Parallel()
+
 	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
@@ -269,25 +254,16 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer))
-	defer storer.Close()
-	defer p.Close()
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer))
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(10 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err != nil {
-			continue
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
 	}
@@ -297,6 +273,8 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 // expects a timeout to get instead of getting a receipt. The test makes sure that timeout error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
+	t.Parallel()
+
 	chunk := testingc.GenerateTestRandomChunk()
 
 	// create a trigger  and a closestpeer
@@ -317,37 +295,23 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-	defer storer.Close()
-	defer p.Close()
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(10 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err != nil {
-			continue
-		}
-	}
+	err = spinLock(t, time.Second, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err == nil {
-		t.Fatalf("chunk not syned error expected")
+		t.Fatal("expecting to time out")
 	}
 }
 
 func TestPusherRetryShallow(t *testing.T) {
-	defer func(d time.Duration, retryCount int) {
-		*pusher.RetryInterval = d
-		*pusher.RetryCount = retryCount
-	}(*pusher.RetryInterval, *pusher.RetryCount)
-	*pusher.RetryInterval = 500 * time.Millisecond
-	*pusher.RetryCount = 3
+	t.Parallel()
 
 	var (
 		pivotPeer   = swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
@@ -355,6 +319,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		key, _      = crypto.GenerateSecp256k1Key()
 		signer      = crypto.NewDefaultSigner(key)
 		callCount   = int32(0)
+		retryCount  = 3
 	)
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		atomic.AddInt32(&callCount, 1)
@@ -370,8 +335,7 @@ func TestPusherRetryShallow(t *testing.T) {
 	// create the pivot peer pusher with depth 31, this makes
 	// sure that virtually any receipt generated by the random
 	// key will be considered too shallow
-	_, ps, storer := createPusher(t, pivotPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(31))
-	defer ps.Close()
+	_, _, storer := createPusherWithRetryCount(t, pivotPeer, pushSyncService, defaultMockValidStamp, retryCount, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(31))
 
 	// generate a chunk at PO 1 with closestPeer, meaning that we get a
 	// receipt which is shallower than the pivot peer's depth, resulting
@@ -382,23 +346,20 @@ func TestPusherRetryShallow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := 0
-	for i := 0; i < 5; i++ {
-		c = int(atomic.LoadInt32(&callCount))
-		if c == *pusher.RetryCount {
-			return
-		}
-		if c > *pusher.RetryCount {
-			t.Fatalf("too many retries. got %d want %d", c, *pusher.RetryCount)
-		}
-		time.Sleep(1 * time.Second)
-	}
 
-	t.Fatalf("timed out waiting for retries. got %d want %d", c, *pusher.RetryCount)
+	err = spinLock(t, spinTimeout, func() bool {
+		c := int(atomic.LoadInt32(&callCount))
+		return c == retryCount
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestChunkWithInvalidStampSkipped tests that chunks with invalid stamps are skipped in pusher
 func TestChunkWithInvalidStampSkipped(t *testing.T) {
+	t.Parallel()
+
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
@@ -420,9 +381,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		return nil, errors.New("valid stamp error")
 	}
 
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, validStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-	defer storer.Close()
-	defer p.Close()
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, validStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
 
 	chunk := testingc.GenerateTestRandomChunk()
 
@@ -431,16 +390,9 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check if the chunk is set as synced in the DB.
-	for i := 0; i < noOfRetries; i++ {
-		// Give some time for chunk to be pushed and receipt to be received
-		time.Sleep(50 * time.Millisecond)
-
-		err = checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer)
-		if err == nil {
-			break
-		}
-	}
+	err = spinLock(t, spinTimeout, func() bool {
+		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,11 +400,21 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 
 func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
+
+	return createPusherWithRetryCount(t, addr, pushSyncService, validStamp, pusher.DefaultRetryCount, mockOpts...)
+}
+
+func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, retryCount int, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
+	t.Helper()
 	logger := log.Noop
+
+	createLocalstoreLock.Lock()
 	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
 	if err != nil {
+		createLocalstoreLock.Unlock()
 		t.Fatal(err)
 	}
+	createLocalstoreLock.Unlock()
 
 	mockStatestore := statestore.NewStateStore()
 	mtags := tags.NewTags(mockStatestore, logger)
@@ -464,7 +426,13 @@ func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.Pus
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0)
+	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0, retryCount)
+
+	t.Cleanup(func() {
+		pusherService.Close()
+		pusherStorer.Close()
+	})
+
 	return mtags, pusherService, pusherStorer
 }
 
@@ -485,4 +453,27 @@ func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) err
 		return errors.New("Chunk not synced")
 	}
 	return nil
+}
+
+type spinLockCondition func() bool
+
+func spinLock(t *testing.T, timeout time.Duration, cond spinLockCondition) error {
+	t.Helper()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			return errors.New("timed out waiting for condition")
+
+		default:
+			if cond() {
+				return nil
+			}
+		}
+
+		time.Sleep(time.Millisecond * 100)
+	}
 }

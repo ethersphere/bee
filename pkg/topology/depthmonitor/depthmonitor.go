@@ -11,6 +11,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	topologyDriver "github.com/ethersphere/bee/pkg/topology"
+
+	"go.uber.org/atomic"
 )
 
 const loggerName = "depthmonitor"
@@ -19,7 +21,9 @@ const loggerName = "depthmonitor"
 // for the depth monitor wake-up interval.
 const DefaultWakeupInterval = 5 * time.Minute
 
-var minimumRadius uint8 = 4
+// defaultMinimumRadius is the default value
+// for the depth monitor minimum radius.
+const defaultMinimumRadius uint8 = 0
 
 // ReserveReporter interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
@@ -47,13 +51,15 @@ type Topology interface {
 
 // Service implements the depthmonitor service
 type Service struct {
-	topology Topology
-	syncer   SyncReporter
-	reserve  ReserveReporter
-	logger   log.Logger
-	bs       postage.Storer
-	quit     chan struct{} // to request service to stop
-	stopped  chan struct{} // to signal stopping of bg worker
+	topology      Topology
+	syncer        SyncReporter
+	reserve       ReserveReporter
+	logger        log.Logger
+	bs            postage.Storer
+	quit          chan struct{} // to request service to stop
+	stopped       chan struct{} // to signal stopping of bg worker
+	minimumRadius uint8
+	lastRSize     *atomic.Uint64
 }
 
 // New constructs a new depthmonitor service
@@ -68,13 +74,15 @@ func New(
 ) *Service {
 
 	s := &Service{
-		topology: t,
-		syncer:   syncer,
-		reserve:  reserve,
-		bs:       bs,
-		logger:   logger.WithName(loggerName).Register(),
-		quit:     make(chan struct{}),
-		stopped:  make(chan struct{}),
+		topology:      t,
+		syncer:        syncer,
+		reserve:       reserve,
+		bs:            bs,
+		logger:        logger.WithName(loggerName).Register(),
+		quit:          make(chan struct{}),
+		stopped:       make(chan struct{}),
+		minimumRadius: defaultMinimumRadius,
+		lastRSize:     atomic.NewUint64(0),
 	}
 
 	go s.manage(warmupTime, wakeupInterval)
@@ -125,6 +133,9 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 			continue
 		}
 
+		// save last calculated reserve size
+		s.lastRSize.Store(currentSize)
+
 		rate := s.syncer.Rate()
 		s.logger.Debug("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
 
@@ -136,7 +147,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
 		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
-				if radius > minimumRadius {
+				if radius > s.minimumRadius {
 					radius--
 					s.logger.Info("depthmonitor: reducing storage depth", "depth", radius)
 				}
@@ -147,6 +158,10 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 			}
 		}
 	}
+}
+
+func (s *Service) IsFullySynced() bool {
+	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()/2
 }
 
 func (s *Service) Close() error {

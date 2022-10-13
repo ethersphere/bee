@@ -15,6 +15,8 @@ import (
 )
 
 func TestWrap(t *testing.T) {
+	t.Parallel()
+
 	topic := pss.NewTopic("topic")
 	msg := []byte("some payload")
 	key, err := crypto.GenerateSecp256k1Key()
@@ -41,6 +43,8 @@ func TestWrap(t *testing.T) {
 }
 
 func TestUnwrap(t *testing.T) {
+	t.Parallel()
+
 	topic := pss.NewTopic("topic")
 	msg := []byte("some payload")
 	key, err := crypto.GenerateSecp256k1Key()
@@ -74,6 +78,8 @@ func TestUnwrap(t *testing.T) {
 }
 
 func TestUnwrapTopicEncrypted(t *testing.T) {
+	t.Parallel()
+
 	topic := pss.NewTopic("topic")
 	msg := []byte("some payload")
 

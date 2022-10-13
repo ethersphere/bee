@@ -28,11 +28,15 @@ import (
 
 // TestInmemoryStore tests basic functionality of InmemoryStore.
 func TestInmemoryStore(t *testing.T) {
+	t.Parallel()
+
 	testStore(t, mock.NewStateStore())
 }
 
 // TestDBStore tests basic functionality of DBStore.
 func TestDBStore(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	store, err := leveldb.NewStateStore(dir, log.Noop)

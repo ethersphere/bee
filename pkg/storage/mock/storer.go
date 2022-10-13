@@ -298,7 +298,7 @@ func (m *MockStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool)
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *MockStorer) ReserveSample(_ context.Context, _ []byte, _ uint8) (storage.Sample, error) {
+func (m *MockStorer) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64) (storage.Sample, error) {
 	panic("not implemented")
 }
 

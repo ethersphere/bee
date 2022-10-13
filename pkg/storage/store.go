@@ -179,7 +179,7 @@ func (s *Sample) String() string {
 }
 
 type Sampler interface {
-	ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8) (Sample, error)
+	ReserveSample(ctx context.Context, anchor []byte, storageDepth uint8, consensusTime uint64) (Sample, error)
 }
 
 // StateStorer defines methods required to get, set, delete values for different keys

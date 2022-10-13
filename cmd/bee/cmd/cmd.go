@@ -65,6 +65,8 @@ const (
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
 	optionNamePriceOracleAddress         = "price-oracle-address"
+	optionNameRedistributionAddress      = "redistribution-address"
+	optionNameStakingAddress             = "staking-address"
 	optionNameBlockTime                  = "block-time"
 	optionWarmUpTime                     = "warmup-time"
 	optionNameMainNet                    = "mainnet"
@@ -80,6 +82,7 @@ const (
 	optionNameTokenEncryptionKey         = "token-encryption-key"
 	optionNameAdminPasswordHash          = "admin-password"
 	optionNameUsePostageSnapshot         = "use-postage-snapshot"
+	optionNameStorageIncentivesEnable    = "storage-incentives-enable"
 )
 
 // nolint:gochecknoinits
@@ -258,6 +261,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
+	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
+	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().String(optionNameTransactionHash, "", "proof-of-identity transaction hash")
 	cmd.Flags().String(optionNameBlockHash, "", "block hash of the block whose parent is the block that contains the transaction hash")
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
@@ -274,6 +279,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTokenEncryptionKey, "", "admin username to get the security token")
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
+	cmd.Flags().Bool(optionNameStorageIncentivesEnable, false, "enable storage incentives feature")
+
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

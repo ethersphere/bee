@@ -222,11 +222,13 @@ components:
       type: string
 
     GasLimit:
+      description: Gas limit refers to the maximum amount of gas you’re willing to spend on a particular transaction.
       type: integer
       minimum: 0
       maximum: 18446744073709551615
 
     GasPrice:
+      description: Gas price refers to the amount you’re willing to pay for every unit of gas.
       type: integer
 
     Hash:
@@ -569,6 +571,12 @@ components:
       type: string
       pattern: "^[A-Fa-f0-9]{64}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+
+    GetStakeResponse:
+      type: object
+      properties:
+        stakedAmount:
+           $ref: "#/components/schemas/BigInt"
 
     SwarmOnlyReference:
       oneOf:

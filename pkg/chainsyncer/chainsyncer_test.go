@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 )
 
+// nolint:paralleltest
 func TestChainsyncer(t *testing.T) {
 	var (
 		expBlockHash    = common.HexToHash("0x9de2787d1d80a6164f4bc6359d9017131cbc14402ee0704bff0c6d691701c1dc").Bytes()

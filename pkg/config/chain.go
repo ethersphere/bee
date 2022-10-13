@@ -23,36 +23,54 @@ var (
 	xdaiFactoryAddress         = common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420")
 	goerliLegacyFactoryAddress = common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474")
 	// postage stamp
-	goerliPostageStampContractAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
-	xdaiPostageStampContractAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+	goerliPostageStampAddress = common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c")
+	xdaiPostageStampAddress   = common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A")
+
+	//TODO: add correct staking addresses
+
+	//staking contract
+	goerliStakingAddress = common.HexToAddress("0x18391158435582D5bE5ac1640ab5E2825F68d3a4")
+	xdaiStakingAddress   = common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614")
+
+	//TODO: add correct redistribution addresses
+
+	// redistribution contract
+	goerliRedistributionAddress = common.HexToAddress("0xF4963031E8b9f9659CB6ed35E53c031D76480EAD")
+	xdaiRedistributionAddress   = common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F")
 )
 
 type ChainConfig struct {
-	StartBlock         uint64
-	LegacyFactories    []common.Address
-	PostageStamp       common.Address
-	CurrentFactory     common.Address
-	PriceOracleAddress common.Address
+	StartBlock      uint64
+	LegacyFactories []common.Address
+	PostageStamp    common.Address
+	Staking         common.Address
+	CurrentFactory  common.Address
+	PriceOracle     common.Address
+	Redistribution  common.Address
 }
 
 func GetChainConfig(chainID int64) (*ChainConfig, bool) {
 	var cfg ChainConfig
 	switch chainID {
 	case goerliChainID:
-		cfg.PostageStamp = goerliPostageStampContractAddress
+		cfg.PostageStamp = goerliPostageStampAddress
 		cfg.StartBlock = goerliStartBlock
 		cfg.CurrentFactory = goerliFactoryAddress
 		cfg.LegacyFactories = []common.Address{
 			goerliLegacyFactoryAddress,
 		}
-		cfg.PriceOracleAddress = goerliContractAddress
+		cfg.PriceOracle = goerliContractAddress
+		cfg.Staking = goerliStakingAddress
+		cfg.Redistribution = goerliRedistributionAddress
 		return &cfg, true
 	case xdaiChainID:
-		cfg.PostageStamp = xdaiPostageStampContractAddress
+		cfg.PostageStamp = xdaiPostageStampAddress
 		cfg.StartBlock = xdaiStartBlock
 		cfg.CurrentFactory = xdaiFactoryAddress
 		cfg.LegacyFactories = []common.Address{}
-		cfg.PriceOracleAddress = xdaiContractAddress
+		cfg.PriceOracle = xdaiContractAddress
+		cfg.Staking = xdaiStakingAddress
+		cfg.Redistribution = xdaiRedistributionAddress
 		return &cfg, true
 	default:
 		return &cfg, false

@@ -31,16 +31,21 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 }
 
 func TestSingleRetrieval(t *testing.T) {
+	t.Parallel()
+
 	datasize := 4
 	dir := t.TempDir()
 	s, err := sharky.New(&dirFS{basedir: dir}, 2, datasize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() { s.Close() })
+
 	ctx := context.Background()
 
 	t.Run("write and read", func(t *testing.T) {
+		t.Parallel()
+
 		for _, tc := range []struct {
 			name string
 			want []byte
@@ -68,7 +73,7 @@ func TestSingleRetrieval(t *testing.T) {
 				nil,
 			},
 		} {
-			buf := make([]byte, datasize)
+			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 				defer cancel()
@@ -78,7 +83,9 @@ func TestSingleRetrieval(t *testing.T) {
 				}
 				if err != nil {
 					return
+
 				}
+				buf := make([]byte, datasize)
 				err = s.Read(ctx, loc, buf)
 				if err != nil {
 					t.Fatal(err)
@@ -95,6 +102,8 @@ func TestSingleRetrieval(t *testing.T) {
 // TestPersistence tests behaviour across several process sessions
 // and checks if items and pregenerated free slots are persisted correctly
 func TestPersistence(t *testing.T) {
+	t.Parallel()
+
 	datasize := 4
 	shards := 2
 	shardSize := uint32(16)
@@ -157,6 +166,8 @@ func TestPersistence(t *testing.T) {
 }
 
 func TestConcurrency(t *testing.T) {
+	t.Parallel()
+
 	datasize := 4
 	test := func(t *testing.T, workers, shards int, shardSize uint32) {
 		t.Helper()
@@ -276,7 +287,9 @@ func TestConcurrency(t *testing.T) {
 		{32, 8, 32},
 		{64, 32, 64},
 	} {
+		c := c
 		t.Run(fmt.Sprintf("workers:%d,shards:%d,size:%d", c.workers, c.shards, c.shardSize), func(t *testing.T) {
+			t.Parallel()
 			test(t, c.workers, c.shards, c.shardSize)
 		})
 	}

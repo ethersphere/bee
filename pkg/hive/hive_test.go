@@ -37,6 +37,8 @@ var (
 )
 
 func TestHandlerRateLimit(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
@@ -105,6 +107,8 @@ func TestHandlerRateLimit(t *testing.T) {
 }
 
 func TestBroadcastPeers(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Noop
 	rand.Seed(time.Now().UnixNano())
 	statestore := mock.NewStateStore()
@@ -235,7 +239,10 @@ func TestBroadcastPeers(t *testing.T) {
 	}
 
 	for name, tc := range testCases {
+		tc := tc
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			addressbookclean := ab.New(mock.NewStateStore())
 
 			// new recorder for handling Ping
