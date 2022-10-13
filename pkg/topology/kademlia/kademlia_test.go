@@ -1647,16 +1647,6 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	t.Parallel()
 
-	defer func(p int) {
-		*kademlia.SaturationPeers = p
-	}(*kademlia.SaturationPeers)
-	*kademlia.SaturationPeers = 4
-
-	defer func(p int) {
-		*kademlia.OverSaturationPeers = p
-	}(*kademlia.OverSaturationPeers)
-	*kademlia.OverSaturationPeers = 4
-
 	done := make(chan struct{})
 
 	mtx := sync.Mutex{}
@@ -1681,7 +1671,9 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			}),
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(swarm.Address) bool { return false },
+			ReachabilityFunc:    func(swarm.Address) bool { return false },
+			OverSaturationPeers: ptrInt(4),
+			SaturationPeers:     ptrInt(4),
 		})
 	)
 
