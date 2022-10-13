@@ -16,7 +16,7 @@ func Migrate(s storage.Store, sm StepsMap) error {
 		return err
 	}
 	for key, step := range sm {
-		if key == version+1 {
+		if key == version+1 || key > version {
 			err := step(s)
 			if err != nil {
 				return err
