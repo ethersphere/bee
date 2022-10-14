@@ -95,6 +95,14 @@ type peer struct {
 
 func (p *Puller) manage(warmupTime time.Duration) {
 	defer p.wg.Done()
+
+	// wait for warmup duration to complete
+	select {
+	case <-time.After(warmupTime):
+	case <-p.quit:
+		return
+	}
+
 	c, unsubscribe := p.topology.SubscribeTopologyChange()
 	defer unsubscribe()
 
@@ -103,13 +111,6 @@ func (p *Puller) manage(warmupTime time.Duration) {
 		<-p.quit
 		cancel()
 	}()
-
-	// wait for warmup duration to complete
-	select {
-	case <-time.After(warmupTime):
-	case <-p.quit:
-		return
-	}
 
 	p.logger.Info("puller: warmup period complete, worker starting.")
 
@@ -121,6 +122,9 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// check how many intervals we synced with all of them
 			// pick the one with the most
 			// sync with that one
+
+			// BUG: we should only sync with within storage radius peers
+			// because of the if po >= d check in recalc peer
 
 			// if we're already syncing with this peer, make sure
 			// that we're syncing the correct bins according to depth
@@ -362,6 +366,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
+		//BUG:
 		if err != nil {
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "error", err)
 			if ruid == 0 {

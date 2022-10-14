@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/flipflop"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -44,17 +43,14 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 
 	chunkDescriptors := make(chan storage.Descriptor)
 
-	in, out, clean := flipflop.NewFallingEdge(flipFlopBufferDuration, flipFlopWorstCaseDuration)
+	trigger := make(chan struct{})
 
 	db.pullTriggersMu.Lock()
 	if _, ok := db.pullTriggers[bin]; !ok {
 		db.pullTriggers[bin] = make([]chan<- struct{}, 0)
 	}
-	db.pullTriggers[bin] = append(db.pullTriggers[bin], in)
+	db.pullTriggers[bin] = append(db.pullTriggers[bin], trigger)
 	db.pullTriggersMu.Unlock()
-
-	// send signal for the initial iteration
-	in <- struct{}{}
 
 	stopChan := make(chan struct{})
 	var stopChanOnce sync.Once
@@ -65,7 +61,6 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 
 	db.subscriptionsWG.Add(1)
 	go func() {
-		defer clean()
 		defer db.subscriptionsWG.Done()
 		defer db.metrics.SubscribePullStop.Inc()
 		// close the returned store.Descriptor channel at the end to
@@ -83,7 +78,7 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 		first := true // first iteration flag for SkipStartFromItem
 		for {
 			select {
-			case <-out:
+			case <-trigger:
 				// iterate until:
 				// - last index Item is reached
 				// - subscription stop is called
@@ -171,9 +166,9 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 		defer db.pullTriggersMu.Unlock()
 
 		for i, t := range db.pullTriggers[bin] {
-			if t == in {
+			if t == trigger {
 				db.pullTriggers[bin] = append(db.pullTriggers[bin][:i], db.pullTriggers[bin][i+1:]...)
-				break
+				return
 			}
 		}
 	}
