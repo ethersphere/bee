@@ -13,7 +13,7 @@ import (
 func TestGetSetVersion(t *testing.T) {
 	t.Parallel()
 
-	t.Run("GetVersion v1", func(t *testing.T) {
+	t.Run("GetVersion", func(t *testing.T) {
 		t.Parallel()
 
 		s := inmemstore.New()
@@ -27,7 +27,7 @@ func TestGetSetVersion(t *testing.T) {
 		}
 	})
 
-	t.Run("GetVersion v2", func(t *testing.T) {
+	t.Run("SetVersion", func(t *testing.T) {
 		t.Parallel()
 
 		s := inmemstore.New()
@@ -51,25 +51,101 @@ func TestGetSetVersion(t *testing.T) {
 
 func TestValidateVersions(t *testing.T) {
 	t.Parallel()
-
-	// TODO
+	tests := []struct {
+		name    string
+		input   StepsMap
+		wantErr bool
+	}{
+		{
+			name: "missing version 3",
+			input: StepsMap{
+				1: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+				},
+				2: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+				},
+				4: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "not missing",
+			input: StepsMap{
+				1: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+				},
+				2: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+				},
+				3: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "desc order versions",
+			input: StepsMap{
+				3: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+				},
+				2: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+				},
+				1: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "desc order version missing",
+			input: StepsMap{
+				4: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+				},
+				2: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+				},
+				1: func(s storage.Store) error {
+					return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+				},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidateVersions(tt.input); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateVersions() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestMigrate(t *testing.T) {
 	t.Parallel()
+	objT1 := &obj1{Id: "aaa", SomeInt: 1}
+	objT2 := &obj1{Id: "bbb", SomeInt: 2}
+	objT3 := &obj1{Id: "ccc", SomeInt: 3}
 
 	t.Run("migration: 0 to 3", func(t *testing.T) {
 		t.Parallel()
 
 		steps := StepsMap{
 			1: func(s storage.Store) error {
-				return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+				return s.Put(objT1)
 			},
 			2: func(s storage.Store) error {
-				return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+				return s.Put(objT2)
 			},
 			3: func(s storage.Store) error {
-				return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+				return s.Put(objT3)
 			},
 		}
 
@@ -87,7 +163,7 @@ func TestMigrate(t *testing.T) {
 			t.Errorf("new version = %v must be 3", newVersion)
 		}
 
-		// TODO Assert that migrated values are in store
+		ObjectExists(t, s, 3, objT1, objT2, objT3)
 	})
 
 	t.Run("migration: 5 to 8", func(t *testing.T) {
@@ -95,13 +171,13 @@ func TestMigrate(t *testing.T) {
 
 		steps := StepsMap{
 			8: func(s storage.Store) error {
-				return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+				return s.Put(objT1)
 			},
 			7: func(s storage.Store) error {
-				return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+				return s.Put(objT2)
 			},
 			6: func(s storage.Store) error {
-				return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+				return s.Put(objT3)
 			},
 		}
 
@@ -118,11 +194,21 @@ func TestMigrate(t *testing.T) {
 			t.Errorf("GetVersion() error = %v", err)
 		}
 		if newVersion != 8 {
-			t.Errorf("new version = %v must be 3", newVersion)
+			t.Errorf("new version = %v must be 8", newVersion)
 		}
 
-		// TODO Assert that migrated values are in store
+		ObjectExists(t, s, 3, objT1, objT2, objT3)
 	})
+}
+func ObjectExists(t *testing.T, s storage.Store, expectedKeys int, keys ...storage.Key) {
+	if len(keys) != expectedKeys {
+		t.Errorf("expected %v keys, got %v", expectedKeys, len(keys))
+	}
+	for _, key := range keys {
+		if isExist, _ := s.Has(key); !isExist {
+			t.Errorf("key = %v doesn't exists", key)
+		}
+	}
 }
 
 type obj1 struct {

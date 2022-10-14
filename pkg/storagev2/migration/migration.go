@@ -3,6 +3,8 @@ package migration
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"sort"
 	"unsafe"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -33,20 +35,39 @@ func Migrate(s storage.Store, sm StepsMap) error {
 				return err
 			}
 		} else {
-			// there is no next version defiend
+			// there is no next version defined
 			// so we stop here
 			return nil
 		}
 	}
 }
 
+// ValidateVersions checks versions if they are in order n (where n min version value), n+1, n+2, n+3... (all values are increasing orders)
 func ValidateVersions(sm StepsMap) error {
-	// TODO
-	// all versions should be in order n (where n min version value), n+1, n+2, n+3... (all values are increasing orders)
-	// 5,6,7,8 ok
-	// 5,6,7,8,10 nok
+	keys := make([]int, len(sm))
+	i := 0
+	for k := range sm {
+		keys[i] = int(k)
+		i++
+	}
+	sort.Ints(keys)
+	missing := FindMissingNumbers(keys)
 
+	if len(missing) > 0 {
+		return fmt.Errorf("missing versions: %v", missing)
+	}
 	return nil
+}
+
+// FindMissingNumbers finds missing numbers in a slice of numbers
+func FindMissingNumbers(numbers []int) []int {
+	var missing []int
+	for i := 0; i < len(numbers)-1; i++ {
+		if numbers[i+1]-numbers[i] != 1 {
+			missing = append(missing, numbers[i]+1)
+		}
+	}
+	return missing
 }
 
 type storageVersionItem struct {
