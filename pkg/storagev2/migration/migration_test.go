@@ -3,17 +3,19 @@ package migration
 import (
 	"encoding/binary"
 	"errors"
-	"strings"
-	"testing"
-
+	"fmt"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
+	"strings"
+	"testing"
 )
 
 func TestMigrate(t *testing.T) {
 	t.Parallel()
 
 	S := inmemstore.New()
+	currentVersion, _ := GetVersion(S)
+	fmt.Println("currentVersion", currentVersion)
 	stepsMapTests := StepsMap{
 		1: func(s storage.Store) error {
 			err := s.Put(&obj1{
@@ -31,49 +33,47 @@ func TestMigrate(t *testing.T) {
 		},
 	}
 
+	// initial store version (e.g. before migration it should be 0, after migration it should be 2)
 	t.Run("migration test", func(t *testing.T) {
 		t.Parallel()
+		if currentVersion != 0 {
+			t.Errorf("current version = %v should be zero", currentVersion)
+		}
 		if err := Migrate(S, stepsMapTests); err != nil {
 			t.Errorf("Migrate() error = %v", err)
 		}
-	})
-}
+		newVersion, err := GetVersion(S)
 
-func Test_GetVersion(t *testing.T) {
-	t.Parallel()
-
-	t.Run("default version", func(t *testing.T) {
-		t.Parallel()
-
-		s := inmemstore.New()
-		v, err := GetVersion(s)
 		if err != nil {
-			t.Errorf("GetVersion should succeed:  %v", err)
+			t.Errorf("GetVersion() error = %v", err)
 		}
-
-		if v != 0 {
-			t.Error("version must be zero")
+		if currentVersion >= newVersion {
+			t.Errorf("new version = %v must be greater than current version = %v", currentVersion, newVersion)
 		}
 	})
 
-	t.Run("with version", func(t *testing.T) {
+	currentVersion, _ = GetVersion(S)
+	S.Put(&obj1{
+		Id:      "aaaaaaaaaaa",
+		SomeInt: 3,
+	})
+	t.Run("migration with store items", func(t *testing.T) {
 		t.Parallel()
 
-		const version = 10
-
-		s := inmemstore.New()
-		err := SetVersion(s, version)
-		if err != nil {
-			t.Errorf("SetVersion should succeed:  %v", err)
+		if currentVersion != 0 {
+			t.Errorf("current version = %v should be zero", currentVersion)
+		}
+		if err := Migrate(S, stepsMapTests); err != nil {
+			t.Errorf("Migrate() error = %v", err)
 		}
 
-		v, err := GetVersion(s)
+		newVersion, err := GetVersion(S)
+		fmt.Println("newVersion--", newVersion)
 		if err != nil {
-			t.Errorf("GetVersion should succeed:  %v", err)
+			t.Errorf("GetVersion() error = %v", err)
 		}
-
-		if v != version {
-			t.Errorf("have %v, want %v", v, version)
+		if currentVersion >= newVersion {
+			t.Errorf("new version = %v must be greater than current version = %v", currentVersion, newVersion)
 		}
 	})
 }
