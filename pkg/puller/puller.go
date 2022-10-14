@@ -366,7 +366,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
-		//BUG:
+		//BUG: error returned, quiting process
 		if err != nil {
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "error", err)
 			if ruid == 0 {

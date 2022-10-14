@@ -128,7 +128,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 		default:
 		}
 
-		// BUG, do not touch topmost
+		// BUG: do not touch topmost
 		if nomore {
 			// end of interval reached. no more chunks so interval is complete
 			// return requested `to`. it could be that len(chs) == 0 if the interval
