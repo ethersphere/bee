@@ -3,78 +3,125 @@ package migration
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"strings"
 	"testing"
+
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 )
+
+func TestGetSetVersion(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GetVersion v1", func(t *testing.T) {
+		t.Parallel()
+
+		s := inmemstore.New()
+
+		gotVersion, err := GetVersion(s)
+		if err != nil {
+			t.Errorf("GetVersion should succeed, %v", err)
+		}
+		if gotVersion != 0 {
+			t.Errorf("expect version to be 0, got %v", gotVersion)
+		}
+	})
+
+	t.Run("GetVersion v2", func(t *testing.T) {
+		t.Parallel()
+
+		s := inmemstore.New()
+
+		const version = 10
+
+		err := SetVersion(s, version)
+		if err != nil {
+			t.Errorf("SetVersion should succeed, %v", err)
+		}
+
+		gotVersion, err := GetVersion(s)
+		if err != nil {
+			t.Errorf("GetVersion should succeed, %v", err)
+		}
+		if gotVersion != version {
+			t.Errorf("expect version to be %d", version)
+		}
+	})
+}
+
+func TestValidateVersions(t *testing.T) {
+	t.Parallel()
+
+	// TODO
+}
 
 func TestMigrate(t *testing.T) {
 	t.Parallel()
 
-	S := inmemstore.New()
-	currentVersion, _ := GetVersion(S)
-	fmt.Println("currentVersion", currentVersion)
-	stepsMapTests := StepsMap{
-		1: func(s storage.Store) error {
-			err := s.Put(&obj1{
-				Id:      "aaaaaaaaaaa",
-				SomeInt: 3,
-			})
-			return err
-		},
-		2: func(s storage.Store) error {
-			err := s.Put(&obj1{
-				Id:      "bbbbbbbbbbb",
-				SomeInt: 1,
-			})
-			return err
-		},
-	}
-
-	// initial store version (e.g. before migration it should be 0, after migration it should be 2)
-	t.Run("migration test", func(t *testing.T) {
-		t.Parallel()
-		if currentVersion != 0 {
-			t.Errorf("current version = %v should be zero", currentVersion)
-		}
-		if err := Migrate(S, stepsMapTests); err != nil {
-			t.Errorf("Migrate() error = %v", err)
-		}
-		newVersion, err := GetVersion(S)
-
-		if err != nil {
-			t.Errorf("GetVersion() error = %v", err)
-		}
-		if currentVersion >= newVersion {
-			t.Errorf("new version = %v must be greater than current version = %v", currentVersion, newVersion)
-		}
-	})
-
-	currentVersion, _ = GetVersion(S)
-	S.Put(&obj1{
-		Id:      "aaaaaaaaaaa",
-		SomeInt: 3,
-	})
-	t.Run("migration with store items", func(t *testing.T) {
+	t.Run("migration: 0 to 3", func(t *testing.T) {
 		t.Parallel()
 
-		if currentVersion != 0 {
-			t.Errorf("current version = %v should be zero", currentVersion)
+		steps := StepsMap{
+			1: func(s storage.Store) error {
+				return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+			},
+			2: func(s storage.Store) error {
+				return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+			},
+			3: func(s storage.Store) error {
+				return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+			},
 		}
-		if err := Migrate(S, stepsMapTests); err != nil {
+
+		s := inmemstore.New()
+
+		if err := Migrate(s, steps); err != nil {
 			t.Errorf("Migrate() error = %v", err)
 		}
 
-		newVersion, err := GetVersion(S)
-		fmt.Println("newVersion--", newVersion)
+		newVersion, err := GetVersion(s)
 		if err != nil {
 			t.Errorf("GetVersion() error = %v", err)
 		}
-		if currentVersion >= newVersion {
-			t.Errorf("new version = %v must be greater than current version = %v", currentVersion, newVersion)
+		if newVersion != 3 {
+			t.Errorf("new version = %v must be 3", newVersion)
 		}
+
+		// TODO Assert that migrated values are in store
+	})
+
+	t.Run("migration: 5 to 8", func(t *testing.T) {
+		t.Parallel()
+
+		steps := StepsMap{
+			8: func(s storage.Store) error {
+				return s.Put(&obj1{Id: "aaa", SomeInt: 1})
+			},
+			7: func(s storage.Store) error {
+				return s.Put(&obj1{Id: "bbb", SomeInt: 2})
+			},
+			6: func(s storage.Store) error {
+				return s.Put(&obj1{Id: "ccc", SomeInt: 3})
+			},
+		}
+
+		s := inmemstore.New()
+
+		SetVersion(s, 5)
+
+		if err := Migrate(s, steps); err != nil {
+			t.Errorf("Migrate() error = %v", err)
+		}
+
+		newVersion, err := GetVersion(s)
+		if err != nil {
+			t.Errorf("GetVersion() error = %v", err)
+		}
+		if newVersion != 8 {
+			t.Errorf("new version = %v must be 3", newVersion)
+		}
+
+		// TODO Assert that migrated values are in store
 	})
 }
 

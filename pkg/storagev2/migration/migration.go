@@ -13,22 +13,39 @@ type StepFn func(storage.Store) error
 type StepsMap = map[Version]StepFn
 
 func Migrate(s storage.Store, sm StepsMap) error {
-	version, err := GetVersion(s)
+	if err := ValidateVersions(sm); err != nil {
+		return err
+	}
+
+	currentVersion, err := GetVersion(s)
 	if err != nil {
 		return err
 	}
-	for key, step := range sm {
-		if key == version+1 || key > version {
-			err := step(s)
+
+	for nextVersion := currentVersion + 1; ; nextVersion++ {
+		if stepFn, ok := sm[nextVersion]; ok {
+			err := stepFn(s)
 			if err != nil {
 				return err
 			}
-			err = s.Put(&storageVersionItem{Version: key})
+			err = SetVersion(s, nextVersion)
 			if err != nil {
 				return err
 			}
+		} else {
+			// there is no next version defiend
+			// so we stop here
+			return nil
 		}
 	}
+}
+
+func ValidateVersions(sm StepsMap) error {
+	// TODO
+	// all versions should be in order n (where n min version value), n+1, n+2, n+3... (all values are increasing orders)
+	// 5,6,7,8 ok
+	// 5,6,7,8,10 nok
+
 	return nil
 }
 
