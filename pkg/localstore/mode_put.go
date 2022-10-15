@@ -124,6 +124,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 		if err != nil {
 			return false, 0, 0, err
 		}
+		// BUG: what if it does not exist in the pull index
 		if exists {
 			return true, 0, 0, nil
 		}

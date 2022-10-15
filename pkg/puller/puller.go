@@ -244,6 +244,8 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	}
 
 	var want, dontWant []uint8
+	// BUG: we want nodes >= the neighborhood depth, not particularly storage radius
+	// we could have peers with PO < sync radius
 	if po >= d {
 		// within depth
 		for i := d; i < p.bins; i++ {
