@@ -73,93 +73,90 @@ type headerDescriptor struct {
 
 	// Validate will validate parameter value or
 	// return error if value is not in correct format.
-	Validate func(v interface{}, s *Service) error
+	Validate func(v string, s *Service) error
 
 	// If this function is defined it will set value to request context
-	SetToContext func(ctx context.Context, parsedValue interface{}) context.Context
+	SetToContext func(ctx context.Context, parsedValue string) context.Context
 }
 
 var (
 	swarmPinHeader = headerDescriptor{
 		Name: "Swarm-Pin",
-		Validate: func(v interface{}, _ *Service) error {
-			v = strings.ToLower(v.(string))
-			switch v {
-			case v.(*bool) == nil || !v.(bool) || v.(bool):
+		Validate: func(v string, _ *Service) error {
+			v = strings.ToLower(v)
+			if v == "true" || v == "false" || v == "" {
 				return nil
-			default:
-				return fmt.Errorf("%w: expected bool", errInvalidHeaderParams)
 			}
+			return fmt.Errorf("expected bool")
 		},
 	}
 	swarmTagHeader = headerDescriptor{
 		Name: "Swarm-Tag",
-		Validate: func(v interface{}, s *Service) error {
-			if v.(string) != "" {
-				_, err := s.getTag(v.(string))
+		Validate: func(v string, s *Service) error {
+			if v != "" {
+				_, err := s.getTag(v)
 				if err != nil {
-					return fmt.Errorf("%w: cannot get tag", errInvalidHeaderParams)
+					return fmt.Errorf("%w: cannot get tag", err)
+				}
+				_, err = strconv.ParseUint(v, 10, 32)
+				if err != nil {
+					return fmt.Errorf("%w: cannot get tag", err)
 				}
 			}
 			return nil
 		},
-		SetToContext: func(ctx context.Context, parsedValue interface{}) context.Context {
-			return sctx.SetTag(ctx, parsedValue.(*tags.Tag))
+		SetToContext: func(ctx context.Context, parsedValue string) context.Context {
+			val, _ := strconv.ParseUint(parsedValue, 10, 32)
+			return sctx.SetTag(ctx, &tags.Tag{Uid: uint32(val)})
 		},
 	}
 	swarmEncryptHeader = headerDescriptor{
 		Name: "Swarm-Encrypt",
-		Validate: func(v interface{}, s *Service) error {
-			v = strings.ToLower(v.(string))
-			switch v {
-			case v.(*bool) == nil || !v.(bool) || v.(bool):
+		Validate: func(v string, _ *Service) error {
+			v = strings.ToLower(v)
+			if v == "true" || v == "false" || v == "" {
 				return nil
-			default:
-				return fmt.Errorf("%w: expected bool", errInvalidHeaderParams)
 			}
+			return fmt.Errorf("expected bool")
 		},
 	}
 	swarmIndexDocumentHeader = headerDescriptor{
 		Name: "Swarm-Index-Document",
-		Validate: func(v interface{}, _ *Service) error {
-			if v.(string) != "" && strings.ContainsRune(v.(string), '/') {
-				return fmt.Errorf("%w:index document suffix must not include slash character", errInvalidHeaderParams)
+		Validate: func(v string, _ *Service) error {
+			if v != "" && strings.ContainsRune(v, '/') {
+				return fmt.Errorf("index document suffix must not include slash character")
 			}
 			return nil
 		},
 	}
 	swarmCollectionHeader = headerDescriptor{
 		Name: "Swarm-Collection",
-		Validate: func(v interface{}, _ *Service) error {
-			v = strings.ToLower(v.(string))
-			switch v {
-			case v.(*bool) == nil || !v.(bool) || v.(bool):
+		Validate: func(v string, _ *Service) error {
+			if v == "true" || v == "false" || v == "" {
 				return nil
-			default:
-				return fmt.Errorf("%w: expected bool", errInvalidHeaderParams)
 			}
+			return fmt.Errorf("expected bool")
 		},
 	}
 	swarmPostageBatchIdHeader = headerDescriptor{
 		Name: "Swarm-Postage-Batch-Id",
-		Validate: func(v interface{}, _ *Service) error {
-			if h := strings.ToLower(v.(string)); h != "" {
+		Validate: func(v string, _ *Service) error {
+			if h := strings.ToLower(v); h != "" {
 				if len(h) != 64 {
-					return fmt.Errorf("%w:%v", errInvalidHeaderParams, errInvalidPostageBatch)
+					return fmt.Errorf("invalid batch id length")
 				}
 				_, err := hex.DecodeString(h)
 				if err != nil {
-					return fmt.Errorf("%w:%v", errInvalidHeaderParams, errInvalidPostageBatch)
+					return fmt.Errorf("unable to decode string")
 				}
-				return nil
 			}
-			return fmt.Errorf("%w:%v", errInvalidHeaderParams, errInvalidPostageBatch)
+			return nil
 		},
 	}
 	swarmDeferredUploadHeader = headerDescriptor{
 		Name: "Swarm-Deferred-Upload",
-		Validate: func(v interface{}, _ *Service) error {
-			if h := strings.ToLower(v.(string)); h != "" {
+		Validate: func(v string, _ *Service) error {
+			if h := strings.ToLower(v); h != "" {
 				_, err := strconv.ParseBool(h)
 				return err
 			}
@@ -168,30 +165,30 @@ var (
 	}
 	swarmGasPriceHeader = headerDescriptor{
 		Name: "Gas-Price",
-		Validate: func(v interface{}, s *Service) error {
-			_, ok := new(big.Int).SetString(v.(string), 10)
+		Validate: func(v string, s *Service) error {
+			_, ok := new(big.Int).SetString(v, 10)
 
 			if !ok {
-				return fmt.Errorf("%w:invalid value for gas price", errInvalidHeaderParams)
+				return fmt.Errorf("invalid value for gas price")
 			}
 			return nil
 		},
-		SetToContext: func(ctx context.Context, parsedValue interface{}) context.Context {
-			gp, _ := new(big.Int).SetString(parsedValue.(string), 10)
+		SetToContext: func(ctx context.Context, parsedValue string) context.Context {
+			gp, _ := new(big.Int).SetString(parsedValue, 10)
 			return sctx.SetGasPrice(ctx, gp)
 		},
 	}
-	gasLimitHeader = headerDescriptor{
+	swarmGasLimitHeader = headerDescriptor{
 		Name: "Gas-Limit",
-		Validate: func(v interface{}, s *Service) error {
-			_, err := strconv.ParseUint(v.(string), 10, 64)
+		Validate: func(v string, s *Service) error {
+			_, err := strconv.ParseUint(v, 10, 64)
 			if err != nil {
-				return fmt.Errorf("%w:invalid value for gas limit", errInvalidHeaderParams)
+				return fmt.Errorf("invalid value for gas limit")
 			}
 			return nil
 		},
-		SetToContext: func(ctx context.Context, parsedValue interface{}) context.Context {
-			gl, _ := strconv.ParseUint(parsedValue.(string), 10, 64)
+		SetToContext: func(ctx context.Context, parsedValue string) context.Context {
+			gl, _ := strconv.ParseUint(parsedValue, 10, 64)
 			return sctx.SetGasLimit(ctx, gl)
 		},
 	}
@@ -206,7 +203,7 @@ var allHeaderDescriptors = []headerDescriptor{
 	swarmPostageBatchIdHeader,
 	swarmDeferredUploadHeader,
 	swarmGasPriceHeader,
-	gasLimitHeader,
+	swarmGasLimitHeader,
 }
 
 const (
@@ -252,7 +249,6 @@ var (
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 	errBatchUnusable        = errors.New("batch not usable")
-	errInvalidHeaderParams  = errors.New("invalid header params")
 )
 
 type Service struct {
@@ -705,12 +701,22 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 
 // validateHeaderValues aka parsingAndConfigMiddleware
 // this middelware will be added to all API endpoint handlers
-func (s *Service) validateHeaderValues(handlerName string) func(h http.Handler) http.Handler {
+func (s *Service) validateHeaderValues(handlerName string, mandatoryHeaders []headerDescriptor) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := s.logger.WithName(handlerName).Build()
-			ctx := r.Context()
+			for _, hd := range mandatoryHeaders {
+				if _, ok := r.Header[hd.Name]; !ok {
+					jsonhttp.BadRequest(w, &validationError{
+						Entry: hd.Name,
+						Value: r.Header.Get(hd.Name),
+						Cause: fmt.Errorf("mandatory header not found"),
+					})
+					return
+				}
+			}
 
+			ctx := r.Context()
 			for _, hd := range allHeaderDescriptors {
 				if v, ok := r.Header[hd.Name]; ok {
 					err := hd.Validate(v[0], s)
@@ -829,7 +835,7 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 		}
 	}
 
-	if err := mapStructure(input, output, s); err != nil {
+	if err := mapStructure(input, output); err != nil {
 		return response(err)
 	}
 

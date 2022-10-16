@@ -76,10 +76,7 @@ func TestTags(t *testing.T) {
 	t.Run("create tag with invalid id", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusBadRequest,
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "cannot get tag",
-				Code:    http.StatusBadRequest,
-			}),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "invalid_id.jpg"), // the value should be uint32
 		)
 	})

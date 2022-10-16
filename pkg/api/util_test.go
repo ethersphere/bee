@@ -505,7 +505,7 @@ func TestMapStructure(t *testing.T) {
 			t.Parallel()
 
 			have := reflect.New(reflect.TypeOf(tc.want).Elem()).Interface()
-			haveErr := errors.Unwrap(api.MapStructure(tc.src, have, nil))
+			haveErr := errors.Unwrap(api.MapStructure(tc.src, have))
 			if diff := cmp.Diff(tc.wantErr, haveErr); diff != "" {
 				t.Fatalf("api.MapStructure(...): error mismatch (-want +have):\n%s", diff)
 			}
@@ -523,7 +523,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		var input interface{}
-		err := api.MapStructure(input, struct{}{}, nil)
+		err := api.MapStructure(input, struct{}{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -533,7 +533,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		input := "foo"
-		err := api.MapStructure(&input, struct{}{}, nil)
+		err := api.MapStructure(&input, struct{}{})
 		if err == nil {
 			t.Fatalf("expected error; have none")
 		}
@@ -548,7 +548,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 				SomeVal string `map:"someVal"`
 			}
 		)
-		err := api.MapStructure(&input, output, nil)
+		err := api.MapStructure(&input, output)
 		if err == nil {
 			t.Fatalf("expected error; have none")
 		}
@@ -561,7 +561,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 			input  = map[string]interface{}{"someVal": "123"}
 			output interface{}
 		)
-		err := api.MapStructure(&input, output, nil)
+		err := api.MapStructure(&input, output)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -576,7 +576,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 				SomeVal string `map:"someVal"`
 			}{}
 		)
-		err := api.MapStructure(&input, &output, nil)
+		err := api.MapStructure(&input, &output)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -589,7 +589,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 			input  = map[string]interface{}{"someVal": "123"}
 			output = "foo"
 		)
-		err := api.MapStructure(&input, &output, nil)
+		err := api.MapStructure(&input, &output)
 		if err == nil {
 			t.Fatalf("expected error; have none")
 		}

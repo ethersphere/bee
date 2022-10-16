@@ -166,6 +166,14 @@ func TestBytes(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 		)
 	})
+
+	t.Run("mandatory header not found", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+	})
 }
 
 // nolint:paralleltest

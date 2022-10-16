@@ -177,10 +177,27 @@ paths:
       tags:
         - Chunk
       parameters:
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+          name: swarm-tag
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+          name: swarm-deferred-upload
+          required: false
+
       requestBody:
         description: Chunk binary data that has to have at least 8 bytes.
         content:
@@ -215,9 +232,22 @@ paths:
       tags:
         - Chunk
       parameters:
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+          name: swarm-tag
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
+
       responses:
         "200":
           description: "Returns a Websocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading."
@@ -242,15 +272,35 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FileName"
           required: false
           description: Filename when uploading single file
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+          name: swarm-tag
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+          name: swarm-deferred-upload
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+          name: swarm-encrypt
+          required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/ContentTypePreserved"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCollection"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmIndexDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
         content:
           multipart/form-data:
@@ -606,7 +656,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/PssRecipient"
           required: false
           description: Recipient publickey
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
       responses:
         "201":
           description: Subscribed to topic
@@ -663,7 +717,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Signature
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
         - in: header
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
@@ -711,8 +769,16 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
       responses:
         "201":
           description: Created

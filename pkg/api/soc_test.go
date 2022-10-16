@@ -57,6 +57,7 @@ func TestSOC(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(sig)), http.StatusUnauthorized,
 			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "invalid chunk",
 				Code:    http.StatusUnauthorized,

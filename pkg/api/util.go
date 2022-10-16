@@ -149,7 +149,7 @@ var preMapHooks = map[string]func(v string) (string, error){
 //
 // In case of parsing error, a new parseError is returned to the caller.
 // The caller can use the Unwrap method to get the original error.
-func mapStructure(input, output interface{}, s *Service) (err error) {
+func mapStructure(input, output interface{}) (err error) {
 	if input == nil || output == nil {
 		return nil
 	}
@@ -250,21 +250,11 @@ func mapStructure(input, output interface{}, s *Service) (err error) {
 				}
 				field.Set(reflect.ValueOf(*val))
 			case swarm.Address:
-				val, err := swarm.ParseHexAddress(value)
-				if err == nil {
-					field.Set(reflect.ValueOf(val))
-				} else {
-					// If no resolver is not available, return an error.
-					if s.resolver == nil {
-						return errors.New("no resolver connected")
-					}
-					val, err = s.resolver.Resolve(value)
-					if err != nil {
-						return errors.New("invalid name or bzz address")
-					}
-					field.Set(reflect.ValueOf(val))
+				val, err := hex.DecodeString(value)
+				if err != nil {
+					return errors.New("invalid value")
 				}
-
+				field.Set(reflect.ValueOf(swarm.NewAddress(val)))
 			case common.Hash:
 				val := common.HexToHash(value)
 				field.Set(reflect.ValueOf(val))
