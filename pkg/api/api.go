@@ -84,7 +84,7 @@ var (
 		Name: "Swarm-Pin",
 		Validate: func(v string, _ *Service) error {
 			v = strings.ToLower(v)
-			if v == boolHeaderSetValue || v == "false" || v == "" {
+			if v == boolHeaderSetValue || v != boolHeaderSetValue || v == "" {
 				return nil
 			}
 			return fmt.Errorf("expected bool")
@@ -114,7 +114,7 @@ var (
 		Name: "Swarm-Encrypt",
 		Validate: func(v string, _ *Service) error {
 			v = strings.ToLower(v)
-			if v == boolHeaderSetValue || v == "false" || v == "" {
+			if v == boolHeaderSetValue || v != boolHeaderSetValue || v == "" {
 				return nil
 			}
 			return fmt.Errorf("expected bool")
@@ -132,7 +132,7 @@ var (
 	swarmCollectionHeader = headerDescriptor{
 		Name: "Swarm-Collection",
 		Validate: func(v string, _ *Service) error {
-			if v == boolHeaderSetValue || v == "false" || v == "" {
+			if v == boolHeaderSetValue || v != boolHeaderSetValue || v == "" {
 				return nil
 			}
 			return fmt.Errorf("expected bool")
