@@ -183,7 +183,10 @@ func TestMigrate(t *testing.T) {
 
 		s := inmemstore.New()
 
-		SetVersion(s, 5)
+		err := SetVersion(s, 5)
+		if err != nil {
+			t.Errorf("SetVersion() error = %v", err)
+		}
 
 		if err := Migrate(s, steps); err != nil {
 			t.Errorf("Migrate() error = %v", err)
