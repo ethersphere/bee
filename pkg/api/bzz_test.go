@@ -320,6 +320,18 @@ func TestBzzFiles(t *testing.T) {
 
 	})
 
+	t.Run("upload-with-invalid-filename", func(t *testing.T) {
+		fileName := "/simple_file.txt"
+
+		jsonhttptest.Request(t, client, http.MethodPost,
+			fileUploadResource+"?name="+fileName, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
+		)
+	})
+
 	t.Run("upload-then-download-with-targets", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "65148cd89b58e91616773f5acea433f7b5a6274f2259e25f4893a332b74a7e28"
