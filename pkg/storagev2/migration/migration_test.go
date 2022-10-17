@@ -167,7 +167,7 @@ func TestMigrate(t *testing.T) {
 			t.Errorf("new version = %v must be 3", newVersion)
 		}
 
-		assertObjectExists(t, s, 3, objT1, objT2, objT3)
+		assertObjectExists(t, s, objT1, objT2, objT3)
 	})
 
 	t.Run("migration: 5 to 8", func(t *testing.T) {
@@ -204,13 +204,10 @@ func TestMigrate(t *testing.T) {
 			t.Errorf("new version = %v must be 8", newVersion)
 		}
 
-		assertObjectExists(t, s, 3, objT1, objT2, objT3)
+		assertObjectExists(t, s, objT1, objT2, objT3)
 	})
 }
-func assertObjectExists(t *testing.T, s storage.Store, expectedKeysCount int, keys ...storage.Key) {
-	if len(keys) != expectedKeysCount {
-		t.Errorf("expected %v keys, got %v", expectedKeysCount, len(keys))
-	}
+func assertObjectExists(t *testing.T, s storage.Store, keys ...storage.Key) {
 	for _, key := range keys {
 		if isExist, _ := s.Has(key); !isExist {
 			t.Errorf("key = %v doesn't exists", key)
