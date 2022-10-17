@@ -232,8 +232,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		},
 	}
 
+	validStampFunc := func(_ swarm.Chunk, stampBytes []byte) (chunk swarm.Chunk, err error) {
+		return nil, nil
+	}
+
 	var swarmAddress swarm.Address
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
+	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger, validStampFunc)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}

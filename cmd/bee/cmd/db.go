@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
 
@@ -65,7 +66,11 @@ func dbIndicesCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			validStampFunc := func(_ swarm.Chunk, stampBytes []byte) (chunk swarm.Chunk, err error) {
+				return nil, nil
+			}
+
+			storer, err := localstore.New(path, nil, nil, nil, logger, validStampFunc)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -119,7 +124,11 @@ func dbExportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			validStampFunc := func(_ swarm.Chunk, stampBytes []byte) (chunk swarm.Chunk, err error) {
+				return nil, nil
+			}
+
+			storer, err := localstore.New(path, nil, nil, nil, logger, validStampFunc)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -179,7 +188,11 @@ func dbImportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			validStampFunc := func(_ swarm.Chunk, stampBytes []byte) (chunk swarm.Chunk, err error) {
+				return nil, nil
+			}
+
+			storer, err := localstore.New(path, nil, nil, nil, logger, validStampFunc)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}

@@ -654,14 +654,15 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 	}
 
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
+	validStamp := postage.ValidStamp(batchStore)
+
+	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger, validStamp)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
 
-	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)

@@ -188,6 +188,9 @@ type DB struct {
 	metrics metrics
 
 	logger log.Logger
+
+	//
+	validStamp postage.ValidStampFn
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -278,7 +281,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger log.Logger) (db *DB, err error) {
+func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger log.Logger, validStamp postage.ValidStampFn) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -309,6 +312,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		reserveEvictionWorkerDone: make(chan struct{}),
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
+		validStamp:                validStamp,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity
