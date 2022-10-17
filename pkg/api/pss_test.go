@@ -207,10 +207,6 @@ func TestPssSend(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid postage batch id",
-				Code:    http.StatusBadRequest,
-			}),
 		)
 	})
 

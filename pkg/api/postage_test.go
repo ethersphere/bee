@@ -798,7 +798,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 				BatchID: batchOk,
 			}),
 		)
-
 	})
 }
 

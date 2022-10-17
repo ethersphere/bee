@@ -70,6 +70,141 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "api"
 
+type headerDescriptor struct {
+	// name of header parameter
+	Name string
+
+	// Validate will validate parameter value or
+	// return error if value is not in correct format.
+	Validate func(v string, s *Service) error
+
+	// If this function is defined it will set value to request context
+	SetToContext func(ctx context.Context, parsedValue string) context.Context
+}
+
+func isBool(v string) error {
+	if v == "true" || v == "false" || v == "" {
+		return nil
+	}
+	return fmt.Errorf("expected bool")
+}
+
+var (
+	swarmPinHeader = headerDescriptor{
+		Name: "Swarm-Pin",
+		Validate: func(v string, _ *Service) error {
+			return isBool(strings.ToLower(v))
+		},
+	}
+	swarmTagHeader = headerDescriptor{
+		Name: "Swarm-Tag",
+		Validate: func(v string, s *Service) error {
+			if v != "" {
+				_, err := s.getTag(v)
+				if err != nil {
+					return fmt.Errorf("%w: cannot get tag", err)
+				}
+				_, err = strconv.ParseUint(v, 10, 32)
+				if err != nil {
+					return fmt.Errorf("%w: cannot get tag", err)
+				}
+			}
+			return nil
+		},
+		SetToContext: func(ctx context.Context, parsedValue string) context.Context {
+			val, _ := strconv.ParseUint(parsedValue, 10, 32)
+			return sctx.SetTag(ctx, &tags.Tag{Uid: uint32(val)})
+		},
+	}
+	swarmEncryptHeader = headerDescriptor{
+		Name: "Swarm-Encrypt",
+		Validate: func(v string, _ *Service) error {
+			return isBool(strings.ToLower(v))
+		},
+	}
+	swarmIndexDocumentHeader = headerDescriptor{
+		Name: "Swarm-Index-Document",
+		Validate: func(v string, _ *Service) error {
+			if v != "" && strings.ContainsRune(v, '/') {
+				return fmt.Errorf("index document suffix must not include slash character")
+			}
+			return nil
+		},
+	}
+	swarmCollectionHeader = headerDescriptor{
+		Name: "Swarm-Collection",
+		Validate: func(v string, _ *Service) error {
+			return isBool(strings.ToLower(v))
+		},
+	}
+	swarmPostageBatchIdHeader = headerDescriptor{
+		Name: "Swarm-Postage-Batch-Id",
+		Validate: func(v string, _ *Service) error {
+			if h := strings.ToLower(v); h != "" {
+				if len(h) != 64 {
+					return fmt.Errorf("invalid batch id length")
+				}
+				_, err := hex.DecodeString(h)
+				if err != nil {
+					return fmt.Errorf("unable to decode string")
+				}
+			}
+			return nil
+		},
+	}
+	swarmDeferredUploadHeader = headerDescriptor{
+		Name: "Swarm-Deferred-Upload",
+		Validate: func(v string, _ *Service) error {
+			if h := strings.ToLower(v); h != "" {
+				_, err := strconv.ParseBool(h)
+				return err
+			}
+			return nil
+		},
+	}
+	swarmGasPriceHeader = headerDescriptor{
+		Name: "Gas-Price",
+		Validate: func(v string, s *Service) error {
+			_, ok := new(big.Int).SetString(v, 10)
+
+			if !ok {
+				return fmt.Errorf("invalid value for gas price")
+			}
+			return nil
+		},
+		SetToContext: func(ctx context.Context, parsedValue string) context.Context {
+			gp, _ := new(big.Int).SetString(parsedValue, 10)
+			return sctx.SetGasPrice(ctx, gp)
+		},
+	}
+	swarmGasLimitHeader = headerDescriptor{
+		Name: "Gas-Limit",
+		Validate: func(v string, s *Service) error {
+			_, err := strconv.ParseUint(v, 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid value for gas limit")
+			}
+			return nil
+		},
+		SetToContext: func(ctx context.Context, parsedValue string) context.Context {
+			gl, _ := strconv.ParseUint(parsedValue, 10, 64)
+			return sctx.SetGasLimit(ctx, gl)
+		},
+	}
+)
+
+var allHeaderDescriptors = []headerDescriptor{
+	swarmPinHeader,
+	swarmTagHeader,
+	swarmEncryptHeader,
+	swarmIndexDocumentHeader,
+	swarmCollectionHeader,
+	swarmPostageBatchIdHeader,
+	swarmDeferredUploadHeader,
+	swarmGasPriceHeader,
+	swarmGasLimitHeader,
+}
+
 const (
 	SwarmPinHeader            = "Swarm-Pin"
 	SwarmTagHeader            = "Swarm-Tag"
@@ -409,18 +544,11 @@ func requestDeferred(r *http.Request) (bool, error) {
 }
 
 func requestPostageBatchId(r *http.Request) ([]byte, error) {
-	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
-		if len(h) != 64 {
-			return nil, errInvalidPostageBatch
-		}
-		b, err := hex.DecodeString(h)
-		if err != nil {
-			return nil, errInvalidPostageBatch
-		}
-		return b, nil
+	b, err := hex.DecodeString(strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)))
+	if err != nil {
+		return nil, errInvalidPostageBatch
 	}
-
-	return nil, errInvalidPostageBatch
+	return b, nil
 }
 
 type securityTokenRsp struct {
@@ -592,25 +720,42 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 	}
 }
 
-// gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
-// gas price and gas limit through the HTTP API headers.
-func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
+// validateHeaderValues aka parsingAndConfigMiddleware
+// this middelware will be added to all API endpoint handlers
+func (s *Service) validateHeaderValues(handlerName string, mandatoryHeaders []headerDescriptor) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := s.logger.WithName(handlerName).Build()
-
-			headers := struct {
-				GasPrice *big.Int `map:"Gas-Price"`
-				GasLimit uint64   `map:"Gas-Limit"`
-			}{}
-			if response := s.mapStructure(r.Header, &headers); response != nil {
-				response("invalid header params", logger, w)
-				return
+			for _, hd := range mandatoryHeaders {
+				if _, ok := r.Header[hd.Name]; !ok {
+					jsonhttp.BadRequest(w, &validationError{
+						Entry: hd.Name,
+						Value: r.Header.Get(hd.Name),
+						Cause: fmt.Errorf("mandatory header not found"),
+					})
+					return
+				}
 			}
-			ctx := r.Context()
-			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
-			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
 
+			ctx := r.Context()
+			for _, hd := range allHeaderDescriptors {
+				if v, ok := r.Header[hd.Name]; ok {
+					err := hd.Validate(v[0], s)
+					if err != nil {
+						logger.Debug("headers validation failed", "error", err)
+						logger.Error(err, "headers validation failed")
+						jsonhttp.BadRequest(w, &validationError{
+							Entry: hd.Name,
+							Value: r.Header.Get(hd.Name),
+							Cause: err,
+						})
+						return
+					}
+					if hd.SetToContext != nil {
+						ctx = hd.SetToContext(ctx, r.Header.Get(hd.Name))
+					}
+				}
+			}
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

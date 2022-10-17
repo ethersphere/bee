@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -55,16 +56,26 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(data) < swarm.SpanSize {
+		valErr := &validationError{
+			Entry: "len(data)",
+			Value: len(data),
+			Cause: fmt.Errorf("chunk data too short"),
+		}
 		logger.Debug("chunk data too short")
 		logger.Error(nil, "chunk data too short")
-		jsonhttp.BadRequest(w, "short chunk data")
+		jsonhttp.BadRequest(w, valErr)
 		return
 	}
 
 	if len(data) > swarm.ChunkSize+swarm.SpanSize {
+		valErr := &validationError{
+			Entry: "len(data)",
+			Value: len(data),
+			Cause: fmt.Errorf("payload too large"),
+		}
 		logger.Debug("chunk data exceeds required length", "required_length", swarm.ChunkSize+swarm.SpanSize)
 		logger.Error(nil, "chunk data exceeds required length")
-		jsonhttp.RequestEntityTooLarge(w, "payload too large")
+		jsonhttp.RequestEntityTooLarge(w, valErr)
 		return
 	}
 

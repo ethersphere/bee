@@ -145,12 +145,33 @@ func TestBytes(t *testing.T) {
 		}
 	})
 
+	t.Run("bad address", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/0xabcd", http.StatusBadRequest)
+	})
+
 	t.Run("internal error", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "api download: joiner failed",
 				Code:    http.StatusInternalServerError,
 			}),
+		)
+	})
+
+	t.Run("upload multipart error", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+	})
+
+	t.Run("mandatory header not found", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 		)
 	})
 }
