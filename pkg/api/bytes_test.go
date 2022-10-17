@@ -279,7 +279,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 			Pinning:    pinningMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
-			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
+			BatchStore: mockbatchstore.New(),
 		})
 
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
