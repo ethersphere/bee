@@ -167,6 +167,9 @@ func (p *Puller) manage(warmupTime time.Duration) {
 						peersToSync = append(peersToSync, peer{addr: peerAddr, po: po})
 					} else {
 						// already syncing, recalc
+						// BUG: the depth may increase next time we enter the iterator which means
+						// that a peer that is not out depth that we are syncing with, will not get recalculated
+						// and have it's context cancelled.
 						peersToRecalc = append(peersToRecalc, peer{addr: peerAddr, po: po})
 					}
 				}
@@ -223,10 +226,10 @@ func (p *Puller) disconnectPeer(peer swarm.Address, po uint8) {
 	p.cursorsMtx.Unlock()
 }
 
-func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8) (dontSync bool) {
+func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, syncRadius uint8) (dontSync bool) {
 	loggerV2 := p.logger.V(2).Register()
 
-	loggerV2.Debug("puller recalculating peer", "peer_address", peer, "proximity_order", po, "depth", d)
+	loggerV2.Debug("puller recalculating peer", "peer_address", peer, "proximity_order", po, "depth", syncRadius)
 
 	p.syncPeersMtx.Lock()
 	syncCtx := p.syncPeers[po][peer.ByteString()]
@@ -246,9 +249,9 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	var want, dontWant []uint8
 	// BUG: we want nodes >= the neighborhood depth, not particularly storage radius
 	// we could have peers with PO < sync radius
-	if po >= d {
+	if po >= syncRadius {
 		// within depth
-		for i := d; i < p.bins; i++ {
+		for i := syncRadius; i < p.bins; i++ {
 			if i == 0 {
 				continue
 			}
@@ -262,7 +265,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 		}
 
 		// cancel everything outside of depth
-		for i := uint8(0); i < d; i++ {
+		for i := uint8(0); i < syncRadius; i++ {
 			dontWant = append(dontWant, i)
 		}
 	} else {
@@ -276,7 +279,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, d uint8
 	return false
 }
 
-func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) {
+func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, syncRadius uint8) {
 	loggerV2 := p.logger.V(2).Register()
 
 	p.syncPeersMtx.Lock()
@@ -318,7 +321,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, d uint8) 
 	}
 
 	for bin, cur := range c.cursors {
-		if bin == 0 || uint8(bin) < d {
+		if bin == 0 || uint8(bin) < syncRadius {
 			continue
 		}
 		p.syncPeerBin(ctx, syncCtx, peer, uint8(bin), cur)
