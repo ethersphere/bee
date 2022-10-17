@@ -79,15 +79,18 @@ type headerDescriptor struct {
 	SetToContext func(ctx context.Context, parsedValue string) context.Context
 }
 
+func isBool(v string) error {
+	if v == "true" || v == "false" || v == "" {
+		return nil
+	}
+	return fmt.Errorf("expected bool")
+}
+
 var (
 	swarmPinHeader = headerDescriptor{
 		Name: "Swarm-Pin",
 		Validate: func(v string, _ *Service) error {
-			v = strings.ToLower(v)
-			if v == boolHeaderSetValue || v != boolHeaderSetValue || v == "" {
-				return nil
-			}
-			return fmt.Errorf("expected bool")
+			return isBool(strings.ToLower(v))
 		},
 	}
 	swarmTagHeader = headerDescriptor{
@@ -113,11 +116,7 @@ var (
 	swarmEncryptHeader = headerDescriptor{
 		Name: "Swarm-Encrypt",
 		Validate: func(v string, _ *Service) error {
-			v = strings.ToLower(v)
-			if v == boolHeaderSetValue || v != boolHeaderSetValue || v == "" {
-				return nil
-			}
-			return fmt.Errorf("expected bool")
+			return isBool(strings.ToLower(v))
 		},
 	}
 	swarmIndexDocumentHeader = headerDescriptor{
@@ -132,10 +131,7 @@ var (
 	swarmCollectionHeader = headerDescriptor{
 		Name: "Swarm-Collection",
 		Validate: func(v string, _ *Service) error {
-			if v == boolHeaderSetValue || v != boolHeaderSetValue || v == "" {
-				return nil
-			}
-			return fmt.Errorf("expected bool")
+			return isBool(strings.ToLower(v))
 		},
 	}
 	swarmPostageBatchIdHeader = headerDescriptor{
