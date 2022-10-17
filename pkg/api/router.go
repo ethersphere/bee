@@ -231,6 +231,7 @@ func (s *Service) mountAPI() {
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
+			s.validateHeaderValues("bzz-upload", []headerDescriptor{swarmPostageBatchIdHeader}),
 			s.newTracingHandler("bzz-upload"),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
