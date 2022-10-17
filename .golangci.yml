@@ -102,8 +102,6 @@ issues:
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
       # temporally disable paralleltest in following packages
     - linters: paralleltest
-      path: pkg/topology
-    - linters: paralleltest
       path: pkg/localstore
     - linters: paralleltest
       path: pkg/postage
