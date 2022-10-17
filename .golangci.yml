@@ -40,43 +40,10 @@ linters:
 
 linters-settings:
   govet:
-    enable:
-      - asmdecl
-      - assign
-      - atomic
-      - atomicalign
-      - bools
-      - buildtag
-      - cgocall
-      - composites
-      - copylocks
-      - deepequalerrors
-      - errorsas
-      # - fieldalignment ## temporally disabled
-      - findcall
-      - framepointer
-      - httpresponse
-      - ifaceassert
-      - loopclosure
-      - lostcancel
-      - nilfunc
-      - nilness
-      - printf
-      - reflectvaluecompare
-      # - shadow ## temporally disabled
-      - shift
-      - sigchanyzer
-      - sortslice
-      - stdmethods
-      - stringintconv
-      - structtag
-      - testinggoroutine
-      - tests
-      - unmarshal
-      - unreachable
-      - unsafeptr
-      - unusedresult
-      - unusedwrite
+    enable-all: true
+    disable:
+      - fieldalignment ## temporally disabled
+      - shadow ## temporally disabled
   goheader:
     values:
       regexp:
