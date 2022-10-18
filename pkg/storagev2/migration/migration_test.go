@@ -208,6 +208,7 @@ func TestMigrate(t *testing.T) {
 	})
 }
 func assertObjectExists(t *testing.T, s storage.Store, keys ...storage.Key) {
+	t.Helper()
 	for _, key := range keys {
 		if isExist, _ := s.Has(key); !isExist {
 			t.Errorf("key = %v doesn't exists", key)

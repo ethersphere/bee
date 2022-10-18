@@ -4,10 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
-	"unsafe"
-
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"sort"
 )
 
 type Version = uint64
@@ -75,7 +73,7 @@ type storageVersionItem struct {
 	Version uint64
 }
 
-const storageVersionItemSize = unsafe.Sizeof(&storageVersionItem{})
+const storageVersionItemSize = 8
 
 func (s *storageVersionItem) ID() string {
 	return "storage_version"
