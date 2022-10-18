@@ -57,8 +57,13 @@ func syncHash(h *bmt.Hasher, data []byte) ([]byte, error) {
 
 // tests if hasher responds with correct hash comparing the reference implementation return value
 func TestHasherEmptyData(t *testing.T) {
+	t.Parallel()
+
 	for _, count := range testSegmentCounts {
+		count := count
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
+			t.Parallel()
+
 			expHash, err := refHash(count, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -79,10 +84,13 @@ func TestHasherEmptyData(t *testing.T) {
 
 // tests sequential write with entire max size written in one go
 func TestSyncHasherCorrectness(t *testing.T) {
+	t.Parallel()
 	testData := randomBytes(t, seed)
 
 	for _, count := range testSegmentCounts {
+		count := count
 		t.Run(fmt.Sprintf("segments_%v", count), func(t *testing.T) {
+			t.Parallel()
 			max := count * hashSize
 			var incr int
 			capacity := 1
@@ -102,10 +110,15 @@ func TestSyncHasherCorrectness(t *testing.T) {
 
 // tests that the BMT hasher can be synchronously reused with poolsizes 1 and testPoolSize
 func TestHasherReuse(t *testing.T) {
+	t.Parallel()
+
 	t.Run(fmt.Sprintf("poolsize_%d", 1), func(t *testing.T) {
+		t.Parallel()
 		testHasherReuse(t, 1)
 	})
+
 	t.Run(fmt.Sprintf("poolsize_%d", testPoolSize), func(t *testing.T) {
+		t.Parallel()
 		testHasherReuse(t, testPoolSize)
 	})
 }
@@ -131,6 +144,8 @@ func testHasherReuse(t *testing.T, poolsize int) {
 
 // tests if pool can be cleanly reused even in concurrent use by several hashers
 func TestBMTConcurrentUse(t *testing.T) {
+	t.Parallel()
+
 	testData := randomBytes(t, seed)
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	cycles := 100
@@ -159,8 +174,14 @@ func TestBMTConcurrentUse(t *testing.T) {
 
 // tests BMT Hasher io.Writer interface is working correctly even with random short writes
 func TestBMTWriterBuffers(t *testing.T) {
+	t.Parallel()
+
 	for i, count := range testSegmentCounts {
+		i, count := i, count
+
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
+			t.Parallel()
+
 			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, testPoolSize))
 			h := pool.Get()
 			defer pool.Put(h)
@@ -256,6 +277,8 @@ func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error)
 
 // verifies that the bmt.Hasher can be used with the hash.Hash interface
 func TestUseSyncAsOrdinaryHasher(t *testing.T) {
+	t.Parallel()
+
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	h := pool.Get()
 	defer pool.Put(h)

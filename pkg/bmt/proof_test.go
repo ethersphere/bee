@@ -17,6 +17,8 @@ import (
 )
 
 func TestProofCorrectness(t *testing.T) {
+	t.Parallel()
+
 	testData := []byte("hello world")
 	testData = append(testData, make([]byte, 4096-len(testData))...)
 
@@ -46,7 +48,9 @@ func TestProofCorrectness(t *testing.T) {
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, 128, 128))
 	hh := pool.Get()
-	defer pool.Put(hh)
+	t.Cleanup(func() {
+		pool.Put(hh)
+	})
 	hh.SetHeaderInt64(4096)
 
 	_, err := hh.Write(testData)
@@ -60,6 +64,8 @@ func TestProofCorrectness(t *testing.T) {
 	}
 
 	t.Run("proof for left most", func(t *testing.T) {
+		t.Parallel()
+
 		proof := bmt.Prover{hh}.Proof(0)
 
 		expSegmentStrings := []string{
@@ -83,6 +89,8 @@ func TestProofCorrectness(t *testing.T) {
 	})
 
 	t.Run("proof for right most", func(t *testing.T) {
+		t.Parallel()
+
 		proof := bmt.Prover{hh}.Proof(127)
 
 		expSegmentStrings := []string{
@@ -106,6 +114,8 @@ func TestProofCorrectness(t *testing.T) {
 	})
 
 	t.Run("proof for middle", func(t *testing.T) {
+		t.Parallel()
+
 		proof := bmt.Prover{hh}.Proof(64)
 
 		expSegmentStrings := []string{
@@ -129,6 +139,8 @@ func TestProofCorrectness(t *testing.T) {
 	})
 
 	t.Run("root hash calculation", func(t *testing.T) {
+		t.Parallel()
+
 		segmentStrings := []string{
 			"ad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5",
 			"b4c11951957c6f8f642c4af61cd6b24640fec6dc7fc607ee8206a99e92410d30",
@@ -165,6 +177,7 @@ func TestProofCorrectness(t *testing.T) {
 }
 
 func TestProof(t *testing.T) {
+	t.Parallel()
 
 	// BMT segment inclusion proofs
 	// Usage
@@ -176,7 +189,9 @@ func TestProof(t *testing.T) {
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, 128, 128))
 	hh := pool.Get()
-	defer pool.Put(hh)
+	t.Cleanup(func() {
+		pool.Put(hh)
+	})
 	hh.SetHeaderInt64(4096)
 
 	_, err = hh.Write(buf)
@@ -190,7 +205,10 @@ func TestProof(t *testing.T) {
 	}
 
 	for i := 0; i < 128; i++ {
+		i := i
 		t.Run(fmt.Sprintf("segmentIndex %d", i), func(t *testing.T) {
+			t.Parallel()
+
 			proof := bmt.Prover{hh}.Proof(i)
 
 			h := pool.Get()
