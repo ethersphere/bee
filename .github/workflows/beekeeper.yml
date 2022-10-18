@@ -235,7 +235,6 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
-          echo ${{ commit. }}
           bash .github/bin/beekeeper_artifacts.sh local-clef
           export FAILED='no-test'
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
