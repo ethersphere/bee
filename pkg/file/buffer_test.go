@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -86,7 +85,6 @@ func TestChunkPipe(t *testing.T) {
 			// receive the writes
 			// err may or may not be EOF, depending on whether writes end on
 			// chunk boundary
-			timer := time.NewTimer(time.Second)
 			readTotal := 0
 			for {
 				select {
@@ -101,8 +99,6 @@ func TestChunkPipe(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-				case <-timer.C:
-					t.Fatal("timeout")
 				}
 			}
 		})
@@ -193,7 +189,6 @@ func TestCopyBuffer(t *testing.T) {
 			// err may or may not be EOF, depending on whether writes end on
 			// chunk boundary
 			expected := dataSize
-			timer := time.NewTimer(time.Second)
 			readTotal := 0
 			readData := []byte{}
 			for {
@@ -217,8 +212,6 @@ func TestCopyBuffer(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-				case <-timer.C:
-					t.Fatal("timeout")
 				}
 			}
 		})

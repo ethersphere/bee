@@ -41,7 +41,10 @@ func (t *Timeout) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addr
 	return ch, nil
 }
 
+// nolint:tparallel
 func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
+	t.Parallel()
+
 	storer := &Timeout{mock.NewStorer()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
@@ -95,7 +98,10 @@ func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) fee
 	})
 }
 
+// nolint:tparallel
 func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
+	t.Parallel()
+
 	var stop bool
 	for j := 10; !stop; j += 10 {
 		t.Run(fmt.Sprintf("custom intervals up to %d", j), func(t *testing.T) {
@@ -193,8 +199,13 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 }
 
 func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
+	t.Parallel()
+
 	for j := 0; j < 3; j++ {
+		j := j
 		t.Run(fmt.Sprintf("random intervals %d", j), func(t *testing.T) {
+			t.Parallel()
+
 			var i int64
 			var n int
 			nextf := func() (bool, int64) {
