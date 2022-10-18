@@ -43,6 +43,8 @@ func sha3hash(t *testing.T, data ...[]byte) []byte {
 
 // TestRefHasher tests that the RefHasher computes the expected BMT hash for some small data lengths.
 func TestRefHasher(t *testing.T) {
+	t.Parallel()
+
 	// the test struct is used to specify the expected BMT hash for
 	// segment counts between from and to and lengths from 1 to datalength
 	for _, x := range []struct {
@@ -104,7 +106,12 @@ func TestRefHasher(t *testing.T) {
 	} {
 		for segCount := x.from; segCount <= x.to; segCount++ {
 			for length := 1; length <= segCount*32; length++ {
+				length := length
+				segCount := segCount
+				x := x
 				t.Run(fmt.Sprintf("%d_segments_%d_bytes", segCount, length), func(t *testing.T) {
+					t.Parallel()
+
 					data := make([]byte, length)
 					_, err := io.ReadFull(crand.Reader, data)
 					if err != nil {
