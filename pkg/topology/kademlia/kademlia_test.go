@@ -473,8 +473,7 @@ func TestManage(t *testing.T) {
 }
 
 func TestManageWithBalancing(t *testing.T) {
-	// use "fixed" seed for this
-	rand.Seed(2)
+	t.Parallel()
 
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
@@ -1724,6 +1723,8 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 }
 
 func TestIteratorOpts(t *testing.T) {
+	t.Parallel()
+
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
@@ -1751,6 +1752,8 @@ func TestIteratorOpts(t *testing.T) {
 	}, topology.Filter{})
 
 	t.Run("EachPeer reachable", func(t *testing.T) {
+		t.Parallel()
+
 		count := 0
 		err := kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 			if _, exists := reachable[addr.ByteString()]; !exists {
@@ -1768,6 +1771,8 @@ func TestIteratorOpts(t *testing.T) {
 	})
 
 	t.Run("EachPeerRev reachable", func(t *testing.T) {
+		t.Parallel()
+
 		count := 0
 		err := kad.EachPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 			if _, exists := reachable[addr.ByteString()]; !exists {

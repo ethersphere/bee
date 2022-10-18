@@ -16,6 +16,8 @@ import (
 
 // TestShallowestEmpty tests that ShallowestEmpty functionality works correctly.
 func TestShallowestEmpty(t *testing.T) {
+	t.Parallel()
+
 	var (
 		base  = test.RandomAddress()
 		ps    = pslice.New(16, base)
@@ -87,6 +89,8 @@ func TestShallowestEmpty(t *testing.T) {
 }
 
 func TestNoPanicOnEmptyRemove(t *testing.T) {
+	t.Parallel()
+
 	var ps = pslice.New(4, base)
 
 	addr1 := test.RandomAddressAt(base, 2)
@@ -107,6 +111,8 @@ func TestNoPanicOnEmptyRemove(t *testing.T) {
 
 // TestAddRemove checks that the Add, Remove and Exists methods work as expected.
 func TestAddRemove(t *testing.T) {
+	t.Parallel()
+
 	var (
 		base  = test.RandomAddress()
 		ps    = pslice.New(4, base)
@@ -188,6 +194,8 @@ func TestAddRemove(t *testing.T) {
 
 // TestIteratorError checks that error propagation works correctly in the iterators.
 func TestIteratorError(t *testing.T) {
+	t.Parallel()
+
 	var (
 		base = test.RandomAddress()
 		ps   = pslice.New(4, base)
@@ -209,6 +217,7 @@ func TestIteratorError(t *testing.T) {
 
 // TestIterators tests that the EachBin and EachBinRev iterators work as expected.
 func TestIterators(t *testing.T) {
+	t.Parallel()
 
 	base := test.RandomAddress()
 
@@ -248,6 +257,7 @@ func TestIterators(t *testing.T) {
 }
 
 func TestBinPeers(t *testing.T) {
+	t.Parallel()
 
 	for _, tc := range []struct {
 		peersCount []int
@@ -270,8 +280,9 @@ func TestBinPeers(t *testing.T) {
 			label:      "full-bins",
 		},
 	} {
-
+		tc := tc
 		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
 
 			base := test.RandomAddress()
 
@@ -331,6 +342,8 @@ func isEqual(a, b []swarm.Address) bool {
 
 // TestIteratorsJumpStop tests that the EachBin and EachBinRev iterators jump to next bin and stop as expected.
 func TestIteratorsJumpStop(t *testing.T) {
+	t.Parallel()
+
 	base := test.RandomAddress()
 	ps := pslice.New(4, base)
 
