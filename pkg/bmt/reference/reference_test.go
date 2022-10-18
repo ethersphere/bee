@@ -106,9 +106,8 @@ func TestRefHasher(t *testing.T) {
 	} {
 		for segCount := x.from; segCount <= x.to; segCount++ {
 			for length := 1; length <= segCount*32; length++ {
-				length := length
-				segCount := segCount
-				x := x
+				length, segCount, x := length, segCount, x
+
 				t.Run(fmt.Sprintf("%d_segments_%d_bytes", segCount, length), func(t *testing.T) {
 					t.Parallel()
 

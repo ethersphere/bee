@@ -177,8 +177,8 @@ func TestBMTWriterBuffers(t *testing.T) {
 	t.Parallel()
 
 	for i, count := range testSegmentCounts {
-		i := i
-		count := count
+		i, count := i, count
+
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
 			t.Parallel()
 
