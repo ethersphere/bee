@@ -474,7 +474,7 @@ func TestManage(t *testing.T) {
 
 func TestManageWithBalancing(t *testing.T) {
 	t.Parallel()
-  
+
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
