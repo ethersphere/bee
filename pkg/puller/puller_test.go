@@ -111,13 +111,15 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 		expLiveCalls []c    // expected live sync calls
 	}{
 		{
-			name: "cursor 0, 1 chunk on live", cursors: []uint64{0, 0},
+			name:         "cursor 0, 1 chunk on live",
+			cursors:      []uint64{0, 0},
 			intervals:    "[[1 1]]",
 			liveReplies:  []uint64{1},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max)},
 		},
 		{
-			name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0},
+			name:         "cursor 0 - calls 1-1, 2-5, 6-10",
+			cursors:      []uint64{0, 0},
 			intervals:    "[[1 10]]",
 			liveReplies:  []uint64{1, 5, 10},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
@@ -125,7 +127,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			// t.Parallel()
 
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{

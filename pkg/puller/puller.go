@@ -27,9 +27,9 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "puller"
 
-const (
-	cursorPruneTimeout = 24 * time.Hour
-)
+var errCursorsLength = errors.New("cursors length mismatch")
+
+const syncSleepDur = time.Minute * 5
 
 type Options struct {
 	Bins uint8
@@ -47,11 +47,14 @@ type Puller struct {
 	syncPeers    []map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
 
-	cursors    map[string]peerCursors
-	cursorsMtx sync.Mutex
+	// cursors    map[string]peerCursors
+	// cursorsMtx sync.Mutex
 
 	quit chan struct{}
 	wg   sync.WaitGroup
+
+	// syncRadius        uint8
+	// neighborhoodDepth uint8
 
 	bins uint8 // how many bins do we support
 }
@@ -71,7 +74,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		syncer:       pullSync,
 		metrics:      newMetrics(),
 		logger:       logger.WithName(loggerName).Register(),
-		cursors:      make(map[string]peerCursors),
+		// cursors:      make(map[string]peerCursors),
 
 		syncPeers: make([]map[string]*syncPeer, bins),
 		quit:      make(chan struct{}),
@@ -86,11 +89,6 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	p.wg.Add(1)
 	go p.manage(warmupTime)
 	return p
-}
-
-type peer struct {
-	addr swarm.Address
-	po   uint8
 }
 
 func (p *Puller) manage(warmupTime time.Duration) {
@@ -123,84 +121,27 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// pick the one with the most
 			// sync with that one
 
-			// BUG: we should only sync with within storage radius peers
-			// because of the if po >= d check in recalc peer
+			p.syncPeersMtx.Lock()
 
-			// if we're already syncing with this peer, make sure
-			// that we're syncing the correct bins according to depth
 			neighborhoodDepth := p.topology.NeighborhoodDepth()
 			syncRadius := p.reserveState.GetReserveState().StorageRadius
 
-			// we defer the actual start of syncing to get out of the iterator first
-			var (
-				peersToSync       []peer
-				peersToRecalc     []peer
-				peersDisconnected = make(map[string]peer)
-			)
-
-			p.syncPeersMtx.Lock()
-
-			// make a map of all peers we're syncing with, then remove from it
-			// the entries we get from kademlia  in the iterator, this way we
-			// know which peers are no longer there anymore (disconnected) thus
-			// should be removed from the syncPeer bin.
-			for po, bin := range p.syncPeers {
-				for peerAddr, v := range bin {
-					peersDisconnected[peerAddr] = peer{addr: v.address, po: uint8(po)}
-				}
-			}
-
-			// EachPeerRev in this case will never return an error, since the content of the callback
-			// never returns an error. In case in the future changes are made to the callback in a
-			// way that it returns an error - the value must be checked.
-			_ = p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+			_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 				if po >= neighborhoodDepth {
-					binPeer := p.syncPeers[po]
-					// delete from peersDisconnected since we'd like to sync
-					// with this peer
-					delete(peersDisconnected, peerAddr.ByteString())
-
-					// within depth, sync everything
-					if _, ok := binPeer[peerAddr.ByteString()]; !ok {
-						// we're not syncing with this peer yet, start doing so
-						binPeer[peerAddr.ByteString()] = newSyncPeer(peerAddr, p.bins)
-						peersToSync = append(peersToSync, peer{addr: peerAddr, po: po})
-					} else {
-						// already syncing, recalc
-						// BUG: the depth may increase next time we enter the iterator which means
-						// that a peer that is not out depth that we are syncing with, will not get recalculated
-						// and have it's context cancelled.
-						peersToRecalc = append(peersToRecalc, peer{addr: peerAddr, po: po})
+					// add peer to sync
+					if _, ok := p.syncPeers[po][addr.ByteString()]; !ok {
+						p.syncPeers[po][addr.ByteString()] = newSyncPeer(addr, p.bins)
 					}
+				} else {
+					// outside of neighborhood
+					p.disconnectPeer(addr, po)
 				}
-
-				// if peer is outside of depth, do nothing here, this
-				// will cause the peer to stay in the peersDisconnected
-				// map, leading to cancelling of its running syncing contexts.
 
 				return false, false, nil
 			}, topology.Filter{Reachable: true})
-
 			p.syncPeersMtx.Unlock()
 
-			for _, v := range peersToSync {
-				p.syncPeer(ctx, v.addr, v.po, syncRadius)
-			}
-
-			for _, v := range peersToRecalc {
-				dontSync := p.recalcPeer(ctx, v.addr, v.po, syncRadius)
-				// stopgap solution for peers that dont return the correct
-				// amount of cursors we expect
-				if dontSync {
-					peersDisconnected[v.addr.ByteString()] = v
-				}
-			}
-
-			p.syncPeersMtx.Lock()
-			for _, v := range peersDisconnected {
-				p.disconnectPeer(v.addr, v.po)
-			}
-			p.syncPeersMtx.Unlock()
+			p.recalcPeers(ctx, syncRadius)
 
 		case <-p.quit:
 			return
@@ -208,137 +149,77 @@ func (p *Puller) manage(warmupTime time.Duration) {
 	}
 }
 
-func (p *Puller) disconnectPeer(peer swarm.Address, po uint8) {
+func (p *Puller) disconnectPeer(peerAddr swarm.Address, po uint8) {
 	loggerV2 := p.logger.V(2).Register()
 
-	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", peer, "proximity_order", po)
-	if syncCtx, ok := p.syncPeers[po][peer.ByteString()]; ok {
-		// disconnectPeer is called under lock, this is safe
-		syncCtx.gone()
-	}
-	delete(p.syncPeers[po], peer.ByteString())
+	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", peerAddr, "proximity_order", po)
+	if peer, ok := p.syncPeers[po][peerAddr.ByteString()]; ok {
+		peer.gone()
 
-	// delete the peer cursors
-	p.cursorsMtx.Lock()
-	if c, ok := p.cursors[peer.ByteString()]; ok && c.created.Add(cursorPruneTimeout).After(time.Now()) {
-		delete(p.cursors, peer.ByteString())
 	}
-	p.cursorsMtx.Unlock()
+	delete(p.syncPeers[po], peerAddr.ByteString())
 }
 
-func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, syncRadius uint8) (dontSync bool) {
+func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) (dontSync bool) {
 	loggerV2 := p.logger.V(2).Register()
 
-	loggerV2.Debug("puller recalculating peer", "peer_address", peer, "proximity_order", po, "depth", syncRadius)
-
 	p.syncPeersMtx.Lock()
-	syncCtx := p.syncPeers[po][peer.ByteString()]
-	p.syncPeersMtx.Unlock()
+	defer p.syncPeersMtx.Unlock()
 
-	syncCtx.Lock()
-	defer syncCtx.Unlock()
+	for bin, peers := range p.syncPeers {
 
-	p.cursorsMtx.Lock()
-	c := p.cursors[peer.ByteString()].cursors
-	p.cursorsMtx.Unlock()
+		for _, peer := range peers {
 
-	if len(c) != int(p.bins) {
-		return true
-	}
-
-	var want, dontWant []uint8
-	// neighborhood depth = min(kademlia depth, storage radius)
-	// BUG: we want nodes >= the neighborhood depth, not particularly storage radius
-	// we could have peers with PO < sync radius
-	if po >= syncRadius {
-		// within depth
-		for i := syncRadius; i < p.bins; i++ {
-			if i == 0 {
+			if bin < int(syncRadius) {
+				peer.cancelBins(uint8(bin))
 				continue
 			}
-			want = append(want, i)
-		}
 
-		for _, bin := range want {
-			if !syncCtx.isBinSyncing(bin) {
-				p.syncPeerBin(ctx, syncCtx, peer, bin, c[bin])
+			err := p.syncPeer(ctx, peer, syncRadius)
+			if err != nil {
+				loggerV2.Error(err, "recalc peers sync failed", "bin", bin, "peer", peer.address)
 			}
-		}
-
-		// cancel everything outside of depth
-		for i := uint8(0); i < syncRadius; i++ {
-			dontWant = append(dontWant, i)
-		}
-	} else {
-		// peer is outside depth. cancel everything
-		for i := uint8(0); i < p.bins; i++ {
-			dontWant = append(dontWant, i)
 		}
 	}
 
-	syncCtx.cancelBins(dontWant...)
 	return false
 }
 
-func (p *Puller) syncPeer(ctx context.Context, peer swarm.Address, po, syncRadius uint8) {
-	loggerV2 := p.logger.V(2).Register()
+func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8) error {
+	peer.Lock()
+	defer peer.Unlock()
 
-	p.syncPeersMtx.Lock()
-	syncCtx := p.syncPeers[po][peer.ByteString()]
-	p.syncPeersMtx.Unlock()
-
-	syncCtx.Lock()
-	defer syncCtx.Unlock()
-
-	p.cursorsMtx.Lock()
-	c, ok := p.cursors[peer.ByteString()]
-	p.cursorsMtx.Unlock()
-
-	if !ok {
-		cursors, err := p.syncer.GetCursors(ctx, peer)
+	if peer.cursors == nil {
+		cursors, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
-			loggerV2.Debug("could not get cursors from peer", "peer_address", peer, "error", err)
-			p.syncPeersMtx.Lock()
-			delete(p.syncPeers[po], peer.ByteString())
-			p.syncPeersMtx.Unlock()
-
-			return
-			// remove from syncing peers list, trigger channel to find some other peer
-			// maybe blacklist for some time
+			return fmt.Errorf("could not get cursors from peer %s: %w", peer.address, err)
 		}
-		p.cursorsMtx.Lock()
-		p.cursors[peer.ByteString()] = peerCursors{created: time.Now(), cursors: cursors}
-		c = p.cursors[peer.ByteString()]
-		p.cursorsMtx.Unlock()
+		peer.cursors = cursors
 	}
 
-	// if length of returned cursors does not add up to
-	// what we expect it to be - dont do anything
-	if len(c.cursors) != int(p.bins) {
-		p.syncPeersMtx.Lock()
-		delete(p.syncPeers[po], peer.ByteString())
-		p.syncPeersMtx.Unlock()
-		return
+	if len(peer.cursors) != int(p.bins) {
+		return errCursorsLength
 	}
 
-	for bin, cur := range c.cursors {
-		if bin == 0 || uint8(bin) < syncRadius {
-			continue
+	for bin, cur := range peer.cursors {
+		if bin >= int(syncRadius) && !peer.isBinSyncing(uint8(bin)) {
+			p.syncPeerBin(ctx, peer, uint8(bin), cur)
 		}
-		p.syncPeerBin(ctx, syncCtx, peer, uint8(bin), cur)
 	}
+
+	return nil
 }
 
-func (p *Puller) syncPeerBin(ctx context.Context, syncCtx *syncPeer, peer swarm.Address, bin uint8, cur uint64) {
+func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur uint64) {
 	binCtx, cancel := context.WithCancel(ctx)
-	syncCtx.setBinCancel(cancel, bin)
+	peer.setBinCancel(cancel, bin)
 	if cur > 0 {
 		p.wg.Add(1)
-		go p.histSyncWorker(binCtx, peer, bin, cur)
+		go p.histSyncWorker(binCtx, peer.address, bin, cur)
 	}
 	// start live
 	p.wg.Add(1)
-	go p.liveSyncWorker(binCtx, peer, bin, cur)
+	go p.liveSyncWorker(binCtx, peer.address, bin, cur)
 }
 
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
@@ -372,7 +253,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
-		//BUG: error returned, quiting process
 		if err != nil {
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "error", err)
 			if ruid == 0 {
@@ -406,8 +286,25 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.wg.Done()
 	loggerV2.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 	from := cur + 1
+
+	sleep := false
+
 	for {
 		p.metrics.LiveWorkerIterCounter.Inc()
+
+		if sleep {
+			select {
+			case <-p.quit:
+				loggerV2.Debug("liveSyncWorker quit on shutdown", "peer_address", peer, "bin", bin, "cursor", cur)
+				return
+			case <-ctx.Done():
+				loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
+				return
+			case <-time.After(syncSleepDur):
+			}
+			sleep = false
+		}
+
 		select {
 		case <-p.quit:
 			loggerV2.Debug("liveSyncWorker quit on shutdown", "peer_address", peer, "bin", bin, "cursor", cur)
@@ -417,14 +314,20 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		default:
 		}
+
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
-		//BUG: error returned, quiting process
 		if err != nil {
-			loggerV2.Debug("liveSyncWorker exit on sync error", "peer_address", peer, "bin", bin, "from", from, "error", err)
 			if ruid == 0 {
 				p.metrics.LiveWorkerErrCounter.Inc()
 			}
 
+			if errors.Is(err, context.Canceled) {
+				loggerV2.Debug("liveSyncWorker context canceled", "peer_address", peer, "bin", bin, "from", from, "error", err)
+				sleep = true
+				continue
+			}
+
+			loggerV2.Debug("liveSyncWorker exit on sync error", "peer_address", peer, "bin", bin, "from", from, "error", err)
 			// since we use bin context cancellation to cancel interval
 			// sync operations, the context can be expired here, causing us
 			// to try to send a message with an expired context, which is
@@ -446,7 +349,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
 			return
 		}
-		loggerV2.Debug("liveSyncWorker pulled bin failed", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
+		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
 
 		from = top + 1
 	}
@@ -521,6 +424,8 @@ type syncPeer struct {
 	address        swarm.Address
 	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
 
+	cursors []uint64
+
 	sync.Mutex
 }
 
@@ -545,12 +450,10 @@ func (p *syncPeer) setBinCancel(cf func(), bin uint8) {
 	p.binCancelFuncs[bin] = cf
 }
 
-func (p *syncPeer) cancelBins(bins ...uint8) {
-	for _, bin := range bins {
-		if c, ok := p.binCancelFuncs[bin]; ok {
-			c()
-			delete(p.binCancelFuncs, bin)
-		}
+func (p *syncPeer) cancelBins(bin uint8) {
+	if c, ok := p.binCancelFuncs[bin]; ok {
+		c()
+		delete(p.binCancelFuncs, bin)
 	}
 }
 
@@ -573,9 +476,4 @@ func isSyncing(p *Puller, addr swarm.Address) bool {
 		}
 	}
 	return false
-}
-
-type peerCursors struct {
-	created time.Time
-	cursors []uint64
 }
