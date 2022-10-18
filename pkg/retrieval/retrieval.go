@@ -144,6 +144,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 		done := make(chan struct{})
 		defer close(done)
 
+		resultC := make(chan retrievalResult, 1)
 		retryC := make(chan struct{}, 1)
 
 		retry := func() {
@@ -153,8 +154,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 			}
 		}
 
-		retryC <- struct{}{}
-		resultC := make(chan retrievalResult, 1)
+		retry()
 
 		for retrievedErrorsLeft > 0 {
 
