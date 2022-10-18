@@ -51,7 +51,7 @@ jobs:
         id: commit
         run: |
           MSG=$(git log --format=%B -n 1 ${{github.event.after}})
-          echo "::set-output name=msg::${MSG}"
+          echo "msg=${MSG}" >> $GITHUB_OUTPUT
       - name: Build - 0
         run: |
           make binary
@@ -177,7 +177,7 @@ jobs:
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
       - name: Create tunshell session for debug
-        if: failure() && contains(needs.init.outputs.msg, '[debug]')
+        if: failure() && contains(needs.init.commit.outputs.msg, '[debug]')
         run: |
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
@@ -235,7 +235,7 @@ jobs:
       - name: Debug workflow if failed
         if: failure()
         run: |
-          echo ${{ needs.init.outputs.msg }}
+          echo ${{ commit. }}
           bash .github/bin/beekeeper_artifacts.sh local-clef
           export FAILED='no-test'
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
@@ -244,7 +244,7 @@ jobs:
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "\nFailed test: ${FAILED}"
       - name: Create tunshell session for debug
-        if: failure() && contains(needs.init.outputs.msg, '[debug]')
+        if: failure() && contains(needs.init.commit.outputs.msg, '[debug]')
         run: |
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests (clef enabled)** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
@@ -306,7 +306,7 @@ jobs:
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
       - name: Create tunshell session for debug
-        if: failure() && contains(needs.init.outputs.msg, '[debug]')
+        if: failure() && contains(needs.init.commit.outputs.msg, '[debug]')
         run: |
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests (storage incentives)** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
@@ -353,7 +353,7 @@ jobs:
           docker push quay.io/ethersphere/bee:latest
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Trigger Bee Factory latest build
-        uses: peter-evans/repository-dispatch@v1
+        uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/bee-factory
@@ -364,7 +364,7 @@ jobs:
         run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
       - name: Trigger ArgoCD
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        uses: peter-evans/repository-dispatch@v1
+        uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/bee-argo
