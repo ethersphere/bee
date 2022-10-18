@@ -155,15 +155,15 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			// way that it returns an error - the value must be checked.
 			_ = p.topology.EachPeerRev(func(peerAddr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 				if po >= neighborhoodDepth {
-					bp := p.syncPeers[po]
+					binPeer := p.syncPeers[po]
 					// delete from peersDisconnected since we'd like to sync
 					// with this peer
 					delete(peersDisconnected, peerAddr.ByteString())
 
 					// within depth, sync everything
-					if _, ok := bp[peerAddr.ByteString()]; !ok {
+					if _, ok := binPeer[peerAddr.ByteString()]; !ok {
 						// we're not syncing with this peer yet, start doing so
-						bp[peerAddr.ByteString()] = newSyncPeer(peerAddr, p.bins)
+						binPeer[peerAddr.ByteString()] = newSyncPeer(peerAddr, p.bins)
 						peersToSync = append(peersToSync, peer{addr: peerAddr, po: po})
 					} else {
 						// already syncing, recalc
@@ -247,6 +247,7 @@ func (p *Puller) recalcPeer(ctx context.Context, peer swarm.Address, po, syncRad
 	}
 
 	var want, dontWant []uint8
+	// neighborhood depth = min(kademlia depth, storage radius)
 	// BUG: we want nodes >= the neighborhood depth, not particularly storage radius
 	// we could have peers with PO < sync radius
 	if po >= syncRadius {
@@ -417,6 +418,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		default:
 		}
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
+		//BUG: error returned, quiting process
 		if err != nil {
 			loggerV2.Debug("liveSyncWorker exit on sync error", "peer_address", peer, "bin", bin, "from", from, "error", err)
 			if ruid == 0 {
