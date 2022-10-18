@@ -60,11 +60,6 @@ var (
 	// Limit the number of goroutines created by Getters
 	// that call updateGC function. Value 0 sets no limit.
 	maxParallelUpdateGC = 1000
-
-	// values needed to adjust subscription trigger
-	// buffer time.
-	flipFlopBufferDuration    = 150 * time.Millisecond
-	flipFlopWorstCaseDuration = 10 * time.Second
 )
 
 const (
