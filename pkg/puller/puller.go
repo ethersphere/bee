@@ -47,14 +47,8 @@ type Puller struct {
 	syncPeers    []map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
 
-	// cursors    map[string]peerCursors
-	// cursorsMtx sync.Mutex
-
 	quit chan struct{}
 	wg   sync.WaitGroup
-
-	// syncRadius        uint8
-	// neighborhoodDepth uint8
 
 	bins uint8 // how many bins do we support
 }
@@ -74,11 +68,9 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		syncer:       pullSync,
 		metrics:      newMetrics(),
 		logger:       logger.WithName(loggerName).Register(),
-		// cursors:      make(map[string]peerCursors),
-
-		syncPeers: make([]map[string]*syncPeer, bins),
-		quit:      make(chan struct{}),
-		wg:        sync.WaitGroup{},
+		syncPeers:    make([]map[string]*syncPeer, bins),
+		quit:         make(chan struct{}),
+		wg:           sync.WaitGroup{},
 
 		bins: bins,
 	}
@@ -94,7 +86,6 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 func (p *Puller) manage(warmupTime time.Duration) {
 	defer p.wg.Done()
 
-	// wait for warmup duration to complete
 	select {
 	case <-time.After(warmupTime):
 	case <-p.quit:
@@ -115,11 +106,6 @@ func (p *Puller) manage(warmupTime time.Duration) {
 	for {
 		select {
 		case <-c:
-			// get all peers from kademlia
-			// iterate on entire bin at once (get all peers first)
-			// check how many intervals we synced with all of them
-			// pick the one with the most
-			// sync with that one
 
 			p.syncPeersMtx.Lock()
 
@@ -139,9 +125,10 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 				return false, false, nil
 			}, topology.Filter{Reachable: true})
-			p.syncPeersMtx.Unlock()
 
 			p.recalcPeers(ctx, syncRadius)
+
+			p.syncPeersMtx.Unlock()
 
 		case <-p.quit:
 			return
@@ -149,6 +136,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 	}
 }
 
+// disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
+// Must be called under lock.
 func (p *Puller) disconnectPeer(peerAddr swarm.Address, po uint8) {
 	loggerV2 := p.logger.V(2).Register()
 
@@ -160,11 +149,10 @@ func (p *Puller) disconnectPeer(peerAddr swarm.Address, po uint8) {
 	delete(p.syncPeers[po], peerAddr.ByteString())
 }
 
+// recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
+// Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) (dontSync bool) {
 	loggerV2 := p.logger.V(2).Register()
-
-	p.syncPeersMtx.Lock()
-	defer p.syncPeersMtx.Unlock()
 
 	for bin, peers := range p.syncPeers {
 
@@ -210,6 +198,8 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8)
 	return nil
 }
 
+// syncPeerBin will start historical and live syncing for the peer for a particular bin.
+// Must be called under syncPeer lock.
 func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur uint64) {
 	binCtx, cancel := context.WithCancel(ctx)
 	peer.setBinCancel(cancel, bin)
