@@ -42,7 +42,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: return structured error response as in validation case.
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {

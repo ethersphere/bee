@@ -87,7 +87,7 @@ type peersResponse struct {
 	Peers []Peer `json:"peers"`
 }
 
-func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) peersHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, peersResponse{
 		Peers: mapPeers(s.p2p.Peers()),
 	})

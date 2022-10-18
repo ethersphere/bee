@@ -26,7 +26,7 @@ var (
 
 // Reason represents a reason for an invalid request entry.
 type Reason struct {
-	Entry string `json:"field"`
+	Field string `json:"field"`
 	Error string `json:"error"`
 }
 

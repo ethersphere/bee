@@ -131,19 +131,10 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_bytes_by_address").Build())
 
 	paths := struct {
-		Address string `map:"address" validate:"required"`
+		Address swarm.Address `map:"address,resolve" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
-		return
-	}
-
-	// TODO: move this to the parsing phase, consider using a `resolve` tag value to indicate this.
-	address, err := s.resolveNameOrAddress(paths.Address)
-	if err != nil {
-		logger.Debug("mapStructure address string failed", paths.Address, err)
-		logger.Error(nil, "mapStructure address string failed")
-		jsonhttp.NotFound(w, nil)
 		return
 	}
 
@@ -151,31 +142,23 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		"Content-Type": {"application/octet-stream"},
 	}
 
-	s.downloadHandler(logger, w, r, address, additionalHeaders, true)
+	s.downloadHandler(logger, w, r, paths.Address, additionalHeaders, true)
 }
 
 func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("head_bytes_by_address").Build())
 
 	paths := struct {
-		Address string `map:"address" validate:"required"`
+		Address swarm.Address `map:"address,resolve" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	// TODO: move this to the parsing phase, consider using a `resolve` tag value to indicate this.
-	address, err := s.resolveNameOrAddress(paths.Address)
+	ch, err := s.storer.Get(r.Context(), storage.ModeGetRequest, paths.Address)
 	if err != nil {
-		logger.Debug("mapStructure address string failed", "string", paths.Address, "error", err)
-		logger.Error(nil, "mapStructure address string failed")
-		w.WriteHeader(http.StatusBadRequest) // HEAD requests do not write a body
-		return
-	}
-	ch, err := s.storer.Get(r.Context(), storage.ModeGetRequest, address)
-	if err != nil {
-		logger.Debug("get root chunk failed", "chunk_address", address, "error", err)
+		logger.Debug("get root chunk failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "get rook chunk failed")
 		w.WriteHeader(http.StatusNotFound)
 		return

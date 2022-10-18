@@ -166,8 +166,8 @@ paths:
               schema:
                 type: string
                 format: binary
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
 

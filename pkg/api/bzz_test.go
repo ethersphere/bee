@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -637,4 +638,53 @@ func TestFeedIndirection(t *testing.T) {
 	jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 		jsonhttptest.WithExpectedResponse(updateData),
 	)
+}
+
+func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, fmt.Sprintf("/bzz/%s/abc", tc.address), tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }

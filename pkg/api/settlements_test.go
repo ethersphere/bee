@@ -175,6 +175,55 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 	})
 }
 
+func Test_peerSettlementsHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name string
+		peer string
+		want jsonhttp.StatusResponse
+	}{{
+		name: "peer - odd hex string",
+		peer: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "peer",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name: "peer - invalid hex character",
+		peer: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "peer",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/settlements/"+tc.peer, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
 func TestSettlementsPeersError(t *testing.T) {
 	t.Parallel()
 

@@ -90,11 +90,17 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 
-	// TODO: return custom validation error.
 	if len(result.Loggers) == 0 && err != nil {
-		logger.Debug("regexp compilation failed", "error", err)
-		logger.Error(nil, "regexp compilation failed")
-		jsonhttp.BadRequest(w, err)
+		logger.Debug("invalid path params", "error", err)
+		logger.Error(nil, "invalid path params")
+		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+			Message: "invalid path params",
+			Code:    http.StatusBadRequest,
+			Reasons: []jsonhttp.Reason{{
+				Field: "exp",
+				Error: err.Error(),
+			}},
+		})
 	} else {
 		jsonhttp.OK(w, result)
 	}
@@ -115,7 +121,16 @@ func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := logSetVerbosityByExp(paths.Exp, log.MustParseVerbosityLevel(paths.Verbosity)); err != nil {
-		jsonhttp.BadRequest(w, err)
+		logger.Debug("invalid path params", "error", err)
+		logger.Error(nil, "invalid path params")
+		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+			Message: "invalid path params",
+			Code:    http.StatusBadRequest,
+			Reasons: []jsonhttp.Reason{{
+				Field: "exp",
+				Error: err.Error(),
+			}},
+		})
 	} else {
 		jsonhttp.OK(w, nil)
 	}

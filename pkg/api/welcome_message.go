@@ -21,7 +21,7 @@ type welcomeMessageResponse struct {
 	WelcomeMesssage string `json:"welcomeMessage"`
 }
 
-func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, _ *http.Request) {
 	val := s.p2p.GetWelcomeMessage()
 	jsonhttp.OK(w, welcomeMessageResponse{
 		WelcomeMesssage: val,

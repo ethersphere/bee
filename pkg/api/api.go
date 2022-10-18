@@ -9,6 +9,7 @@ package api
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"mime"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -41,6 +43,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
@@ -174,7 +177,8 @@ type Service struct {
 	erc20Service erc20.Service
 	chainID      int64
 
-	validate *validator.Validate
+	preMapHooks map[string]func(v string) (string, error)
+	validate    *validator.Validate
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -234,6 +238,16 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.batchStore = batchStore
 	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
+	s.preMapHooks = map[string]func(v string) (string, error){
+		"mimeMediaType": func(v string) (string, error) {
+			typ, _, err := mime.ParseMediaType(v)
+			return typ, err
+		},
+		"decBase64url": func(v string) (string, error) {
+			buf, err := base64.URLEncoding.DecodeString(v)
+			return string(buf), err
+		},
+	}
 	s.validate = validator.New()
 	s.validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
 		name := strings.SplitN(fld.Tag.Get(mapStructureTagName), ",", 2)[0]
@@ -285,6 +299,17 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.syncStatus = e.SyncStatus
+
+	s.preMapHooks["resolve"] = func(v string) (string, error) {
+		switch addr, err := s.resolveNameOrAddress(v); {
+		case err == nil:
+			return addr.String(), nil
+		case errors.Is(err, ens.ErrNotImplemented):
+			return v, nil
+		default:
+			return "", err
+		}
+	}
 
 	return s.chunkPushC
 }
@@ -670,14 +695,14 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 				var perr *parseError
 				if errors.As(err, &perr) {
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
-						Entry: perr.Entry,
+						Field: perr.Entry,
 						Error: perr.Cause.Error(),
 					})
 				}
 				var verr *validationError
 				if errors.As(err, &verr) {
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
-						Entry: verr.Entry,
+						Field: verr.Entry,
 						Error: verr.Cause.Error(),
 					})
 				}
@@ -686,7 +711,7 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 		}
 	}
 
-	if err := mapStructure(input, output); err != nil {
+	if err := mapStructure(input, output, s.preMapHooks); err != nil {
 		return response(err)
 	}
 

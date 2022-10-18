@@ -126,13 +126,24 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 	// If filename is still empty, use the file hash as the filename
 	if queries.FileName == "" {
 		queries.FileName = fr.String()
-	}
-	if err := s.validate.Var(queries.FileName, "startsnotwith=/"); err != nil {
-		// TODO: return standard validation error.
-		logger.Debug("bzz upload file: / in prefix not allowed", "file_name", queries.FileName, "error", err)
-		logger.Error(nil, "bzz upload file: / in prefix not allowed", "file_name", queries.FileName)
-		jsonhttp.BadRequest(w, "/ in prefix not allowed")
-		return
+		if err := s.validate.Struct(queries); err != nil {
+			verr := &validationError{
+				Entry: "file hash",
+				Value: queries.FileName,
+				Cause: err,
+			}
+			logger.Debug("invalid body filename", "error", verr)
+			logger.Error(nil, "invalid body filename")
+			jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+				Message: "invalid body params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: "file hash",
+					Error: verr.Error(),
+				}},
+			})
+			return
+		}
 	}
 
 	encrypt := requestEncrypt(r)
@@ -240,8 +251,8 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_bzz_by_path").Build())
 
 	paths := struct {
-		Address string `map:"address" validate:"required"`
-		Path    string `map:"path"`
+		Address swarm.Address `map:"address,resolve" validate:"required"`
+		Path    string        `map:"path"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -252,16 +263,7 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	// TODO: move this to the parsing phase, consider using a `resolve` tag value to indicate this.
-	address, err := s.resolveNameOrAddress(paths.Address)
-	if err != nil {
-		logger.Debug("bzz download: mapStructure address string failed", "string", paths.Address, "error", err)
-		logger.Error(nil, "bzz download: mapStructure address string failed")
-		jsonhttp.NotFound(w, nil)
-		return
-	}
-
-	s.serveReference(logger, address, paths.Path, w, r)
+	s.serveReference(logger, paths.Address, paths.Path, w, r)
 }
 
 func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {

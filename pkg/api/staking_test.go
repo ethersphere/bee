@@ -131,3 +131,39 @@ func TestGetStake(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
 	})
 }
+
+func Test_stakingDepositHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name   string
+		amount string
+		want   jsonhttp.StatusResponse
+	}{{
+		name:   "amount - invalid value",
+		amount: "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "amount",
+					Error: "invalid value",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/stake/deposit/"+tc.amount, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}

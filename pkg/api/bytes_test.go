@@ -145,30 +145,12 @@ func TestBytes(t *testing.T) {
 		}
 	})
 
-	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodGet, resource+"/0xabcd", http.StatusNotFound,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Not Found",
-				Code:    http.StatusNotFound,
-			}),
-		)
-	})
-
 	t.Run("internal error", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "api download: joiner failed",
 				Code:    http.StatusInternalServerError,
 			}),
-		)
-	})
-
-	t.Run("upload multipart error", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW"),
-			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 		)
 	})
 }
@@ -249,4 +231,92 @@ func TestBytesInvalidStamp(t *testing.T) {
 			t.Fatal("storer check root chunk address: have ont; want none")
 		}
 	})
+}
+
+func Test_bytesUploadHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name   string
+		hdrKey string
+		hdrVal string
+		want   jsonhttp.StatusResponse
+	}{{
+		name:   "Content-Type - invalid",
+		hdrKey: "Content-Type",
+		hdrVal: "multipart/form-data",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid header params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "content-type",
+					Error: "want excludes:multipart/form-data",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/bytes", tc.want.Code,
+				jsonhttptest.WithRequestHeader(tc.hdrKey, tc.hdrVal),
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_bytesGetHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+tc.address, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }

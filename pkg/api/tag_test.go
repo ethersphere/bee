@@ -391,6 +391,45 @@ func TestTags(t *testing.T) {
 	})
 }
 
+func Test_tagHandlers_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name  string
+		tagID string
+		want  jsonhttp.StatusResponse
+	}{{
+		name:  "id - invalid value",
+		tagID: "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "id",
+					Error: strconv.ErrSyntax.Error(),
+				},
+			},
+		},
+	}}
+
+	for _, method := range []string{http.MethodGet, http.MethodDelete, http.MethodPatch} {
+		method := method
+		for _, tc := range tests {
+			tc := tc
+			t.Run(method+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				jsonhttptest.Request(t, client, method, "/tags/"+tc.tagID, tc.want.Code,
+					jsonhttptest.WithExpectedJSONResponse(tc.want),
+				)
+			})
+		}
+	}
+}
+
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
 func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {

@@ -220,3 +220,88 @@ func TestBlocklistedPeersErr(t *testing.T) {
 			}),
 	)
 }
+
+func Test_peerConnectHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name         string
+		multiAddress string
+		want         jsonhttp.StatusResponse
+	}{{
+		name:         "multi-address - invalid value",
+		multiAddress: "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "multi-address",
+					Error: "failed to parse multiaddr \"/ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a\": unknown protocol ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/connect/"+tc.multiAddress, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_peerDisconnectHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodDelete, "/peers/"+tc.address, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}

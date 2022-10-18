@@ -6,12 +6,10 @@ package api
 
 import (
 	"crypto/ecdsa"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
-	"mime"
 	"reflect"
 	"strconv"
 	"strings"
@@ -110,18 +108,6 @@ var flattenErrorsFormat = func(es []error) string {
 	)
 }
 
-// preMapHooks is a set of hooks that are called before the value is parsed.
-var preMapHooks = map[string]func(v string) (string, error){
-	"mimeMediaType": func(v string) (string, error) {
-		typ, _, err := mime.ParseMediaType(v)
-		return typ, err
-	},
-	"decBase64url": func(v string) (string, error) {
-		buf, err := base64.URLEncoding.DecodeString(v)
-		return string(buf), err
-	},
-}
-
 // mapStructure maps the input to the output values.
 // The input is one of the following:
 //   - map[string]string
@@ -146,7 +132,7 @@ var preMapHooks = map[string]func(v string) (string, error){
 //
 // In case of parsing error, a new parseError is returned to the caller.
 // The caller can use the Unwrap method to get the original error.
-func mapStructure(input, output interface{}) (err error) {
+func mapStructure(input, output interface{}, hooks map[string]func(v string) (string, error)) (err error) {
 	if input == nil || output == nil {
 		return nil
 	}
@@ -237,6 +223,9 @@ func mapStructure(input, output interface{}) (err error) {
 			case common.Hash:
 				val := common.HexToHash(value)
 				field.Set(reflect.ValueOf(val))
+			case common.Address:
+				val := common.HexToAddress(value)
+				field.Set(reflect.ValueOf(val))
 			}
 		case reflect.Struct:
 			switch field.Interface().(type) {
@@ -277,6 +266,35 @@ func mapStructure(input, output interface{}) (err error) {
 		return nil
 	}
 
+	// parseFieldTags parses the given field tags into name, hook, and omitempty.
+	parseFieldTags := func(field reflect.StructField) (name string, hook func(v string) (string, error), omitempty bool) {
+		hook = func(v string) (string, error) { return v, nil }
+
+		val, ok := field.Tag.Lookup(mapStructureTagName)
+		if !ok {
+			return field.Name, hook, false
+		}
+
+		tags := strings.SplitN(val, ",", 3)
+		name = tags[0]
+		for _, tag := range tags[1:] {
+			switch tag {
+			case "omitempty":
+				omitempty = true
+			default:
+				if len(hooks) == 0 {
+					panic(errors.New("zero registered hooks"))
+				}
+				hook, ok = hooks[tag]
+				if !ok {
+					panic(fmt.Errorf("unknown hook %q for field: %s", tag, field.Name))
+				}
+			}
+		}
+
+		return name, hook, omitempty
+	}
+
 	// Map input into output.
 	pErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
 	for i := 0; i < outputVal.NumField(); i++ {
@@ -304,29 +322,6 @@ func mapStructure(input, output interface{}) (err error) {
 		}
 	}
 	return pErrs.ErrorOrNil()
-}
-
-// parseFieldTags parses the given field tags into name, hook, and omitempty.
-func parseFieldTags(field reflect.StructField) (name string, hook func(v string) (string, error), omitempty bool) {
-	hook = func(v string) (string, error) { return v, nil }
-
-	val, ok := field.Tag.Lookup(mapStructureTagName)
-	if !ok {
-		return field.Name, hook, false
-	}
-
-	tags := strings.SplitN(val, ",", 3)
-	name = tags[0]
-	for _, tag := range tags[1:] {
-		switch tag {
-		case "omitempty":
-			omitempty = true
-		default:
-			hook = preMapHooks[tag]
-		}
-	}
-
-	return name, hook, omitempty
 }
 
 // numberSize returns the size of the number in bits.

@@ -39,8 +39,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_feed").Build()
 
 	paths := struct {
-		Owner []byte `map:"owner" validate:"required,len=20"`
-		Topic []byte `map:"topic" validate:"required"`
+		Owner common.Address `map:"owner" validate:"required"`
+		Topic []byte         `map:"topic" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -58,7 +58,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		queries.At = time.Now().Unix()
 	}
 
-	f := feeds.New(paths.Topic, common.BytesToAddress(paths.Owner))
+	f := feeds.New(paths.Topic, paths.Owner)
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
 		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
@@ -118,8 +118,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_feed").Build()
 
 	paths := struct {
-		Owner []byte `map:"owner" validate:"required,len=20"`
-		Topic []byte `map:"topic" validate:"required"`
+		Owner common.Address `map:"owner" validate:"required"`
+		Topic []byte         `map:"topic" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -153,7 +153,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := map[string]string{
-		feedMetadataEntryOwner: hex.EncodeToString(paths.Owner),
+		feedMetadataEntryOwner: hex.EncodeToString(paths.Owner.Bytes()),
 		feedMetadataEntryTopic: hex.EncodeToString(paths.Topic),
 		feedMetadataEntryType:  feeds.Sequence.String(), // only sequence allowed for now
 	}

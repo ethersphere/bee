@@ -43,7 +43,6 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// TODO: provide the reason in the response.
 	err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStakeAmount) {

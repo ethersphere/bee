@@ -390,6 +390,58 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	return pss, &privkey.PublicKey, cl, listener
 }
 
+func Test_pssPostHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name    string
+		topic   string
+		targets string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "targets - odd length hex string",
+		topic:   "test_topic",
+		targets: "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "target",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "targets - odd length hex string",
+		topic:   "test_topic",
+		targets: "1G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "target",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/"+tc.topic+"/"+tc.targets, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
 type pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error
 type mpss struct {
 	f pssSendFn
