@@ -30,6 +30,8 @@ func snapshot(t *testing.T, mc *metrics.Collector, sst time.Time, addr swarm.Add
 }
 
 func TestPeerMetricsCollector(t *testing.T) {
+	t.Parallel()
+
 	db, err := shed.NewDB("", nil)
 	if err != nil {
 		t.Fatal(err)

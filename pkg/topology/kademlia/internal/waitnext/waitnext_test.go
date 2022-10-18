@@ -15,6 +15,7 @@ import (
 )
 
 func TestSet(t *testing.T) {
+	t.Parallel()
 
 	waitNext := waitnext.New()
 
