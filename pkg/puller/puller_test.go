@@ -127,7 +127,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			// t.Parallel()
+			t.Parallel()
 
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{

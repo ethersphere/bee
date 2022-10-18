@@ -43,7 +43,8 @@ func (db *DB) SubscribePull(ctx context.Context, bin uint8, since, until uint64)
 
 	chunkDescriptors := make(chan storage.Descriptor)
 
-	trigger := make(chan struct{})
+	trigger := make(chan struct{}, 1)
+	trigger <- struct{}{}
 
 	db.pullTriggersMu.Lock()
 	if _, ok := db.pullTriggers[bin]; !ok {
