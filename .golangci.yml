@@ -68,21 +68,21 @@ issues:
         - dogsled
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
       # temporally disable paralleltest in following packages
-    - linters: 
+    - linters:
         - paralleltest
       path: pkg/localstore
-    - linters: 
+    - linters:
         - paralleltest
       path: pkg/postage
-    - linters: 
+    - linters:
         - paralleltest
       path: pkg/pushsync
-    - linters: 
+    - linters:
         - paralleltest
       path: pkg/log
-    - linters: 
+    - linters:
         - paralleltest
       path: pkg/statestore
-    - linters: 
+    - linters:
         - paralleltest
       path: pkg/p2p
