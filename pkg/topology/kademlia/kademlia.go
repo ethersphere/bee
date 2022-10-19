@@ -186,11 +186,11 @@ type Kad struct {
 	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
 	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
-	connRetryBackoff  map[string]uint64
-	depth             uint8         // current neighborhood depth
-	storageRadius     uint8         // storage area of responsibility
-	depthMu           sync.RWMutex  // protect depth changes
-	manageC           chan struct{} // trigger the manage forever loop to connect to new peers
+	connRetryBackoff  map[string]uint64     //
+	depth             uint8                 // current neighborhood depth
+	storageRadius     uint8                 // storage area of responsibility
+	depthMu           sync.RWMutex          // protect depth changes
+	manageC           chan struct{}         // trigger the manage forever loop to connect to new peers
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
 	logger            log.Logger // logger
