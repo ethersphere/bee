@@ -8,9 +8,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -66,6 +68,42 @@ func TestDebugTags(t *testing.T) {
 
 		debugTagValueTest(t, tag.Uid, 1, 1, 1, 1, 1, 1, chunk.Address(), client)
 	})
+}
+
+func Test_getDebugTagHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name  string
+		tagID string
+		want  jsonhttp.StatusResponse
+	}{{
+		name:  "id - invalid value",
+		tagID: "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "id",
+					Error: strconv.ErrSyntax.Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/tags/"+tc.tagID, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }
 
 func debugTagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }

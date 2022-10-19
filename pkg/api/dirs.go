@@ -34,21 +34,15 @@ import (
 var errEmptyDir = errors.New("no files in root directory")
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
-func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+func (s *Service) dirUploadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, storer storage.Storer, waitFn func() error) {
 	if r.Body == http.NoBody {
-		logger.Error(nil, "bzz upload dir: request has no body")
+		logger.Error(nil, "request has no body")
 		jsonhttp.BadRequest(w, errInvalidRequest)
 		return
 	}
-	contentType := r.Header.Get(contentTypeHeader)
-	mediaType, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		logger.Error(nil, "bzz upload dir: parse media type failed")
-		logger.Debug("bzz upload dir: parse media type failed", "error", err)
-		jsonhttp.BadRequest(w, errInvalidContentType)
-		return
-	}
+
+	// The error is ignored because the header was already validated by the caller.
+	mediaType, params, _ := mime.ParseMediaType(r.Header.Get(contentTypeHeader))
 
 	var dReader dirReader
 	switch mediaType {
@@ -57,7 +51,7 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	case multiPartFormData:
 		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"])}
 	default:
-		logger.Error(nil, "bzz upload dir: invalid content-type for directory upload")
+		logger.Error(nil, "invalid content-type for directory upload")
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
@@ -65,9 +59,9 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 
 	tag, created, err := s.getOrCreateTag(r.Header.Get(SwarmTagHeader))
 	if err != nil {
-		logger.Debug("bzz upload dir: get or create tag failed", "error", err)
-		logger.Error(nil, "bzz upload dir: get or create tag failed")
-		jsonhttp.InternalServerError(w, "bzz upload dir: get or create tag failed")
+		logger.Debug("get or create tag failed", "error", err)
+		logger.Error(nil, "get or create tag failed")
+		jsonhttp.InternalServerError(w, "get or create tag failed")
 		return
 	}
 
@@ -87,8 +81,8 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 		created,
 	)
 	if err != nil {
-		logger.Debug("bzz upload dir: store dir failed", "error", err)
-		logger.Error(nil, "bzz upload dir: store dir failed")
+		logger.Debug("store dir failed", "error", err)
+		logger.Error(nil, "store dir failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -104,26 +98,26 @@ func (s *Service) dirUploadHandler(w http.ResponseWriter, r *http.Request, store
 	if created {
 		_, err = tag.DoneSplit(reference)
 		if err != nil {
-			logger.Debug("bzz upload dir: done split failed", "error", err)
-			logger.Error(nil, "bzz upload dir: done split failed")
-			jsonhttp.InternalServerError(w, "bzz upload dir: done split failed")
+			logger.Debug("done split failed", "error", err)
+			logger.Error(nil, "done split failed")
+			jsonhttp.InternalServerError(w, "done split failed")
 			return
 		}
 	}
 
 	if requestPin(r) {
 		if err := s.pinning.CreatePin(r.Context(), reference, false); err != nil {
-			logger.Debug("bzz upload dir: pin creation failed", "address", reference, "error", err)
-			logger.Error(nil, "bzz upload dir: pin creation failed")
-			jsonhttp.InternalServerError(w, "bzz upload dir: create pin failed")
+			logger.Debug("pin creation failed", "address", reference, "error", err)
+			logger.Error(nil, "pin creation failed")
+			jsonhttp.InternalServerError(w, "create pin failed")
 			return
 		}
 	}
 
 	if err = waitFn(); err != nil {
-		s.logger.Debug("bzz upload: sync chunks failed", "error", err)
-		s.logger.Error(nil, "bzz upload: sync chunks failed")
-		jsonhttp.InternalServerError(w, "bzz upload: sync chunks failed")
+		logger.Debug("sync chunks failed", "error", err)
+		logger.Error(nil, "sync chunks failed")
+		jsonhttp.InternalServerError(w, "sync chunks failed")
 		return
 	}
 

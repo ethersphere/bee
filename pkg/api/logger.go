@@ -30,7 +30,7 @@ type (
 
 	node map[string]*data
 
-	logger struct {
+	loggerInfo struct {
 		Logger    string `json:"logger"`
 		Verbosity string `json:"verbosity"`
 		Subsystem string `json:"subsystem"`
@@ -38,33 +38,28 @@ type (
 	}
 
 	loggerResult struct {
-		Tree    node     `json:"tree"`
-		Loggers []logger `json:"loggers"`
+		Tree    node         `json:"tree"`
+		Loggers []loggerInfo `json:"loggers"`
 	}
 )
 
 // loggerGetHandler returns all available loggers that match the specified expression.
 func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		exp string
-		err error
-	)
+	logger := s.logger.WithName("get_loggers").Build()
 
-	if val, ok := mux.Vars(r)["exp"]; ok {
-		buf, err := base64.URLEncoding.DecodeString(val)
-		if err != nil {
-			s.logger.Debug("loggers get: decoding exp string failed", "string", mux.Vars(r)["exp"], "error", err)
-			s.logger.Error(nil, "loggers get: decoding exp string failed")
-			jsonhttp.BadRequest(w, err)
-		}
-		exp = string(buf)
+	paths := struct {
+		Exp string `map:"exp,decBase64url"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
 	}
 
-	rex, err := regexp.Compile(exp)
+	rex, err := regexp.Compile(paths.Exp)
 
 	result := loggerResult{Tree: make(node)}
 	logRegistryIterate(func(id, name string, verbosity log.Level, v uint) bool {
-		if exp == "" || exp == id || (rex != nil && rex.MatchString(id)) {
+		if paths.Exp == id || (rex != nil && rex.MatchString(id)) {
 			if int(verbosity) == int(v) {
 				verbosity = log.VerbosityAll
 			}
@@ -85,7 +80,7 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Flat structure.
-			result.Loggers = append(result.Loggers, logger{
+			result.Loggers = append(result.Loggers, loggerInfo{
 				Logger:    name,
 				Verbosity: verbosity.String(),
 				Subsystem: id,
@@ -96,9 +91,16 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if len(result.Loggers) == 0 && err != nil {
-		s.logger.Debug("loggers get: regexp compilation failed", "error", err)
-		s.logger.Error(nil, "loggers get: regexp compilation failed")
-		jsonhttp.BadRequest(w, err)
+		logger.Debug("invalid path params", "error", err)
+		logger.Error(nil, "invalid path params")
+		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+			Message: "invalid path params",
+			Code:    http.StatusBadRequest,
+			Reasons: []jsonhttp.Reason{{
+				Field: "exp",
+				Error: err.Error(),
+			}},
+		})
 	} else {
 		jsonhttp.OK(w, result)
 	}
@@ -107,24 +109,28 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 // loggerSetVerbosityHandler sets logger(s) verbosity level based on
 // the specified expression or subsystem that matches the logger(s).
 func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Request) {
-	verbosity, err := log.ParseVerbosityLevel(mux.Vars(r)["verbosity"])
-	if err != nil {
-		s.logger.Debug("loggers set verbosity: parse verbosity level failed", "error", err)
-		s.logger.Error(nil, "loggers set verbosity: parse verbosity level failed")
-		jsonhttp.BadRequest(w, err)
+	logger := s.logger.WithName("put_loggers").Build()
+
+	paths := struct {
+		Exp       string `map:"exp,decBase64url" validate:"required"`
+		Verbosity string `map:"verbosity" validate:"required,oneof=none error warning info debug all"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	exp, err := base64.URLEncoding.DecodeString(mux.Vars(r)["exp"])
-	if err != nil {
-		s.logger.Debug("loggers set verbosity: decoding exp string failed", "string", mux.Vars(r)["exp"], "error", err)
-		s.logger.Error(nil, "loggers set verbosity: decoding exp string failed")
-		jsonhttp.BadRequest(w, err)
-		return
-	}
-
-	if err := logSetVerbosityByExp(string(exp), verbosity); err != nil {
-		jsonhttp.BadRequest(w, err)
+	if err := logSetVerbosityByExp(paths.Exp, log.MustParseVerbosityLevel(paths.Verbosity)); err != nil {
+		logger.Debug("invalid path params", "error", err)
+		logger.Error(nil, "invalid path params")
+		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+			Message: "invalid path params",
+			Code:    http.StatusBadRequest,
+			Reasons: []jsonhttp.Reason{{
+				Field: "exp",
+				Error: err.Error(),
+			}},
+		})
 	} else {
 		jsonhttp.OK(w, nil)
 	}

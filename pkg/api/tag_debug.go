@@ -7,7 +7,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -43,26 +42,26 @@ func newDebugTagResponse(tag *tags.Tag) debugTagResponse {
 }
 
 func (s *Service) getDebugTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	logger := s.logger.WithName("get_tag").Build()
 
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		s.logger.Debug("get tag: parse id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "get tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+	paths := struct {
+		TagID uint32 `map:"id" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(paths.TagID)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("get tag: tag not found", "tag_id", id)
-			s.logger.Error(nil, "get tag: tag not found")
+			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("get tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "get tag: get tag failed", "tag_id", id)
+		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
+		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}

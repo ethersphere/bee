@@ -5,17 +5,14 @@
 package mock
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 )
 
 // Assure mock Resolver implements the Resolver interface.
 var _ resolver.Interface = (*Resolver)(nil)
-
-// ErrNotImplemented denotes a function has not been implemented.
-var ErrNotImplemented = errors.New("not implemented")
 
 // Resolver is the mock Resolver implementation.
 type Resolver struct {
@@ -50,7 +47,7 @@ func (r *Resolver) Resolve(name string) (resolver.Address, error) {
 	if r.resolveFunc != nil {
 		return r.resolveFunc(name)
 	}
-	return resolver.Address{}, fmt.Errorf("resolveFunc: %w", ErrNotImplemented)
+	return resolver.Address{}, fmt.Errorf("resolveFunc: %w", ens.ErrNotImplemented)
 }
 
 // Close implements the Resolver interface.

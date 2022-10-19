@@ -50,18 +50,6 @@ func TestBzzFiles(t *testing.T) {
 		})
 	)
 
-	t.Run("invalid-content-type", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource,
-			http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.InvalidContentType.Error(),
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
 	t.Run("tar-file-upload", func(t *testing.T) {
 		tr := tarFiles(t, []f{
 			{
@@ -212,21 +200,6 @@ func TestBzzFiles(t *testing.T) {
 		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
 			t.Fatal("Invalid content type detected")
 		}
-	})
-
-	t.Run("check for slash in prefix in filename", func(t *testing.T) {
-		fileName := "/my-pictures.jpeg"
-
-		_ = jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Message: "/ in prefix not allowed",
-				Code:    http.StatusBadRequest,
-			}))
 	})
 
 	t.Run("filter out filename path", func(t *testing.T) {
@@ -665,4 +638,53 @@ func TestFeedIndirection(t *testing.T) {
 	jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 		jsonhttptest.WithExpectedResponse(updateData),
 	)
+}
+
+func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, fmt.Sprintf("/bzz/%s/abc", tc.address), tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }

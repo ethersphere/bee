@@ -9,6 +9,7 @@ package api
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,7 +17,9 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"mime"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +43,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
@@ -55,7 +59,9 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -170,6 +176,9 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
+
+	preMapHooks map[string]func(v string) (string, error)
+	validate    *validator.Validate
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -229,6 +238,24 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.batchStore = batchStore
 	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
+	s.preMapHooks = map[string]func(v string) (string, error){
+		"mimeMediaType": func(v string) (string, error) {
+			typ, _, err := mime.ParseMediaType(v)
+			return typ, err
+		},
+		"decBase64url": func(v string) (string, error) {
+			buf, err := base64.URLEncoding.DecodeString(v)
+			return string(buf), err
+		},
+	}
+	s.validate = validator.New()
+	s.validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := strings.SplitN(fld.Tag.Get(mapStructureTagName), ",", 2)[0]
+		if name == "-" {
+			return ""
+		}
+		return name
+	})
 
 	return s
 }
@@ -272,6 +299,17 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.syncStatus = e.SyncStatus
+
+	s.preMapHooks["resolve"] = func(v string) (string, error) {
+		switch addr, err := s.resolveNameOrAddress(v); {
+		case err == nil:
+			return addr.String(), nil
+		case errors.Is(err, ens.ErrNotImplemented):
+			return v, nil
+		default:
+			return "", err
+		}
+	}
 
 	return s.chunkPushC
 }
@@ -318,13 +356,13 @@ func (s *Service) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
 func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
 	uid, err := strconv.Atoi(tagUid)
 	if err != nil {
-		return nil, fmt.Errorf("cannot parse taguid: %w", err)
+		return nil, fmt.Errorf("cannot mapStructure taguid: %w", err)
 	}
 	return s.tags.Get(uint32(uid))
 }
 
 func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
-	// Try and parse the name as a bzz address.
+	// Try and mapStructure the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
 	if err == nil {
 		s.loggerV1.Debug("resolve name: parsing bzz address successful", "string", str, "address", addr)
@@ -559,26 +597,19 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-			if price, ok := r.Header[gasPriceHeader]; ok {
-				p, ok := big.NewInt(0).SetString(price[0], 10)
-				if !ok {
-					s.logger.Error(nil, handlerName, "bad gas price")
-					jsonhttp.BadRequest(w, errBadGasPrice)
-					return
-				}
-				ctx = sctx.SetGasPrice(ctx, p)
-			}
+			logger := s.logger.WithName(handlerName).Build()
 
-			if limit, ok := r.Header[gasLimitHeader]; ok {
-				l, err := strconv.ParseUint(limit[0], 10, 64)
-				if err != nil {
-					s.logger.Error(err, handlerName, "bad gas limit")
-					jsonhttp.BadRequest(w, errBadGasLimit)
-					return
-				}
-				ctx = sctx.SetGasLimit(ctx, l)
+			headers := struct {
+				GasPrice *big.Int `map:"Gas-Price"`
+				GasLimit uint64   `map:"Gas-Limit"`
+			}{}
+			if response := s.mapStructure(r.Header, &headers); response != nil {
+				response("invalid header params", logger, w)
+				return
 			}
+			ctx := r.Context()
+			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
+			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
 
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -626,6 +657,90 @@ func (s *Service) checkOrigin(r *http.Request) bool {
 	return false
 }
 
+// validationError is a custom error type for validation errors.
+type validationError struct {
+	Entry string
+	Value interface{}
+	Cause error
+}
+
+// Error implements the error interface.
+func (e *validationError) Error() string {
+	return fmt.Sprintf("`%s=%v`: %v", e.Entry, e.Value, e.Cause)
+}
+
+// mapStructure maps the input into output struct and validates the output.
+// It's a helper method for the handlers, which reduces the chattiness
+// of the code.
+func (s *Service) mapStructure(input, output interface{}) func(string, log.Logger, http.ResponseWriter) {
+	// response unifies the response format for parsing and validation errors.
+	response := func(err error) func(string, log.Logger, http.ResponseWriter) {
+		return func(msg string, logger log.Logger, w http.ResponseWriter) {
+			var merr *multierror.Error
+			if !errors.As(err, &merr) {
+				logger.Debug("mapping and validation failed", "error", err)
+				logger.Error(err, "mapping and validation failed")
+				jsonhttp.InternalServerError(w, err)
+				return
+			}
+
+			logger.Debug(msg, "error", err)
+			logger.Error(err, msg)
+
+			resp := jsonhttp.StatusResponse{
+				Message: msg,
+				Code:    http.StatusBadRequest,
+			}
+			for _, err := range merr.Errors {
+				var perr *parseError
+				if errors.As(err, &perr) {
+					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
+						Field: perr.Entry,
+						Error: perr.Cause.Error(),
+					})
+				}
+				var verr *validationError
+				if errors.As(err, &verr) {
+					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
+						Field: verr.Entry,
+						Error: verr.Cause.Error(),
+					})
+				}
+			}
+			jsonhttp.BadRequest(w, resp)
+		}
+	}
+
+	if err := mapStructure(input, output, s.preMapHooks); err != nil {
+		return response(err)
+	}
+
+	if err := s.validate.Struct(output); err != nil {
+		var errs validator.ValidationErrors
+		if !errors.As(err, &errs) {
+			return response(err)
+		}
+
+		vErrs := &multierror.Error{ErrorFormat: flattenErrorsFormat}
+		for _, err := range errs {
+			val := err.Value()
+			switch v := err.Value().(type) {
+			case []byte:
+				val = string(v)
+			}
+			vErrs = multierror.Append(vErrs,
+				&validationError{
+					Entry: strings.ToLower(err.Field()),
+					Value: val,
+					Cause: fmt.Errorf("want %s:%s", err.Tag(), err.Param()),
+				})
+		}
+		return response(vErrs.ErrorOrNil())
+	}
+
+	return nil
+}
+
 // equalASCIIFold returns true if s is equal to t with ASCII case folding as
 // defined in RFC 4790.
 func equalASCIIFold(s, t string) bool {
@@ -655,12 +770,12 @@ func equalASCIIFold(s, t string) bool {
 // direct push to the network (default) a pushStamperPutter is returned.
 // returns a function to wait on the errorgroup in case of a pushing stamper putter.
 func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
-	batch, err := requestPostageBatchId(r)
+	batch, err := requestPostageBatchId(r) // TODO: extrapolate the headers parsing to the handler level!
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)
 	}
 
-	deferred, err := requestDeferred(r)
+	deferred, err := requestDeferred(r) // TODO: extrapolate the headers parsing to the handler level!
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
 	}

@@ -51,33 +51,6 @@ func TestSOC(t *testing.T) {
 		)
 	})
 
-	t.Run("malformed id", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "bbzz", "cc"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
-	t.Run("malformed owner", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, socResource("xyz", "aa", "bb"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad owner",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
-	t.Run("malformed signature", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "aa", "badsig"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad signature",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
 	t.Run("signature invalid", func(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 

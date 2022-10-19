@@ -156,3 +156,55 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, true)
 	})
 }
+
+func Test_pinHandlers_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name      string
+		reference string
+		want      jsonhttp.StatusResponse
+	}{{
+		name:      "reference - odd hex string",
+		reference: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "reference",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:      "reference - invalid hex character",
+		reference: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "reference",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
+		method := method
+		for _, tc := range tests {
+			tc := tc
+			t.Run(method+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				jsonhttptest.Request(t, client, method, "/pins/"+tc.reference, tc.want.Code,
+					jsonhttptest.WithExpectedJSONResponse(tc.want),
+				)
+			})
+		}
+	}
+}

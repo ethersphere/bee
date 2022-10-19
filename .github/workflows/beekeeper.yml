@@ -343,6 +343,7 @@ jobs:
           docker push quay.io/ethersphere/bee:latest
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Trigger Bee Factory latest build
+        if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GHA_PAT_BASIC }}
