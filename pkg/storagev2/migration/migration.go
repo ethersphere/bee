@@ -1,3 +1,7 @@
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package migration
 
 import (
@@ -8,10 +12,18 @@ import (
 	"sort"
 )
 
-type Version = uint64
-type StepFn func(storage.Store) error
-type StepsMap = map[Version]StepFn
+type (
+	// StepFn is a function that migrates the storage to the next version
+	StepFn func(storage.Store) error
+	// StepsMap is a map of versions and their migration functions
+	StepsMap = map[uint64]StepFn
+)
 
+var (
+	errStorageVersionItemUnmarshalInvalidSize = errors.New("unmarshal StorageVersionItem: invalid size")
+)
+
+// Migrate migrates the storage to the latest version
 func Migrate(s storage.Store, sm StepsMap) error {
 	if err := ValidateVersions(sm); err != nil {
 		return err
@@ -23,79 +35,75 @@ func Migrate(s storage.Store, sm StepsMap) error {
 	}
 
 	for nextVersion := currentVersion + 1; ; nextVersion++ {
-		if stepFn, ok := sm[nextVersion]; ok {
-			err := stepFn(s)
-			if err != nil {
-				return err
-			}
-			err = SetVersion(s, nextVersion)
-			if err != nil {
-				return err
-			}
-		} else {
-			// there is no next version defined
-			// so we stop here
+		stepFn, ok := sm[nextVersion]
+		if !ok {
 			return nil
 		}
+		err := stepFn(s)
+		if err != nil {
+			return err
+		}
+		err = SetVersion(s, nextVersion)
+		if err != nil {
+			return err
+		}
+
 	}
 }
 
 // ValidateVersions checks versions if they are in order n (where n min version value), n+1, n+2, n+3... (all values are increasing orders)
 func ValidateVersions(sm StepsMap) error {
+	if len(sm) == 0 {
+		return fmt.Errorf("steps map is empty")
+	}
 	versions := make([]int, len(sm))
 	i := 0
 	for key := range sm {
 		versions[i] = int(key)
 		i++
 	}
+	sort.Ints(versions)
 
-	missing := FindMissingNumbers(versions)
-
-	if len(missing) > 0 {
-		return fmt.Errorf("missing versions: %v", missing)
+	if (versions[i-1] - versions[0]) == i-1 {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("missing versions")
 }
 
-// FindMissingNumbers finds missing numbers in a slice of numbers
-func FindMissingNumbers(numbers []int) []int {
-	sort.Ints(numbers)
-	var missing []int
-	for i := 0; i < len(numbers)-1; i++ {
-		if numbers[i+1]-numbers[i] != 1 {
-			missing = append(missing, numbers[i]+1)
-		}
-	}
-	return missing
-}
-
-type storageVersionItem struct {
+type StorageVersionItem struct {
 	Version uint64
 }
 
 const storageVersionItemSize = 8
 
-func (s *storageVersionItem) ID() string {
+// ID implements the storage.Item interface.
+func (s *StorageVersionItem) ID() string {
 	return "storage_version"
 }
 
-func (s storageVersionItem) Namespace() string {
+// Namespace implements the storage.Item interface.
+func (s StorageVersionItem) Namespace() string {
 	return "migration"
 }
 
-func (s *storageVersionItem) Marshal() ([]byte, error) {
+// Marshal implements the storage.Item interface.
+func (s *StorageVersionItem) Marshal() ([]byte, error) {
 	buf := make([]byte, storageVersionItemSize)
 	binary.LittleEndian.PutUint64(buf, s.Version)
 	return buf, nil
 }
 
-func (s *storageVersionItem) Unmarshal(bytes []byte) error {
+// Unmarshal implements the storage.Item interface.
+func (s *StorageVersionItem) Unmarshal(bytes []byte) error {
+	if len(bytes) != storageVersionItemSize {
+		return errStorageVersionItemUnmarshalInvalidSize
+	}
 	s.Version = binary.LittleEndian.Uint64(bytes)
 	return nil
 }
 
-func GetVersion(s storage.Store) (Version, error) {
-	item := storageVersionItem{}
+func GetVersion(s storage.Store) (uint64, error) {
+	item := StorageVersionItem{}
 	err := s.Get(&item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -106,6 +114,6 @@ func GetVersion(s storage.Store) (Version, error) {
 	return item.Version, nil
 }
 
-func SetVersion(s storage.Store, v Version) error {
-	return s.Put(&storageVersionItem{Version: v})
+func SetVersion(s storage.Store, v uint64) error {
+	return s.Put(&StorageVersionItem{Version: v})
 }
