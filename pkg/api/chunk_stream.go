@@ -25,8 +25,9 @@ const streamReadTimeout = 15 * time.Minute
 var successWsMsg = []byte{}
 
 func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("chunks_stream").Build()
 
-	_, tag, putter, wait, err := s.processUploadRequest(r)
+	_, tag, putter, wait, err := s.processUploadRequest(logger, r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -40,8 +41,8 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.logger.Debug("chunk upload: upgrade failed", "error", err)
-		s.logger.Error(nil, "chunk upload: upgrade failed")
+		logger.Debug("chunk upload: upgrade failed", "error", err)
+		logger.Error(nil, "chunk upload: upgrade failed")
 		jsonhttp.BadRequest(w, "upgrade failed")
 		return
 	}

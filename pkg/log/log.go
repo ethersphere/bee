@@ -65,6 +65,16 @@ func ParseVerbosityLevel(s string) (Level, error) {
 	return Level(i), err
 }
 
+// MustParseVerbosityLevel returns a verbosity Level parsed from the given s.
+// It panics if the given s is not a valid verbosity level.
+func MustParseVerbosityLevel(s string) Level {
+	l, err := ParseVerbosityLevel(s)
+	if err != nil {
+		panic(err)
+	}
+	return l
+}
+
 const (
 	// VerbosityNone will silence the logger.
 	VerbosityNone = Level(iota - 4)

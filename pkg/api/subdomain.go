@@ -8,29 +8,25 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 
 func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger)
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_subdomain").Build())
 
-	nameOrHex := mux.Vars(r)["subdomain"]
-	pathVar := mux.Vars(r)["path"]
-	if strings.HasSuffix(pathVar, "/") {
-		pathVar = strings.TrimRight(pathVar, "/")
-		// NOTE: leave one slash if there was some
-		pathVar += "/"
-	}
-
-	address, err := s.resolveNameOrAddress(nameOrHex)
-	if err != nil {
-		logger.Debug("subdomain get: parse address string failed", "string", nameOrHex, "error", err)
-		logger.Error(nil, "subdomain get: parse address string failed")
-		jsonhttp.NotFound(w, nil)
+	paths := struct {
+		Subdomain swarm.Address `map:"subdomain,resolve" validate:"required"`
+		Path      string        `map:"path"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
+	if strings.HasSuffix(paths.Path, "/") {
+		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
+	}
 
-	s.serveReference(address, pathVar, w, r)
+	s.serveReference(logger, paths.Subdomain, paths.Path, w, r)
 }

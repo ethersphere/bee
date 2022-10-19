@@ -13,8 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/resolver"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
 	smock "github.com/ethersphere/bee/pkg/storage/mock"
@@ -63,63 +61,54 @@ func TestStewardship(t *testing.T) {
 	})
 }
 
-func TestStewardshipInputValidations(t *testing.T) {
+func Test_stewardshipHandlers_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	var (
-		logger         = log.Noop
-		statestoreMock = statestore.NewStateStore()
-		stewardMock    = &mock.Steward{}
-		storer         = smock.NewStorer()
-	)
-	client, _, _, _ := newTestServer(t, testServerOptions{
-		Storer:  storer,
-		Tags:    tags.NewTags(statestoreMock, logger),
-		Logger:  logger,
-		Steward: stewardMock,
-		Resolver: resolverMock.NewResolver(
-			resolverMock.WithResolveFunc(
-				func(string) (swarm.Address, error) {
-					return swarm.Address{}, resolver.ErrParse
-				},
-			),
-		),
-	})
-	for _, tt := range []struct {
-		name            string
-		reference       string
-		expectedStatus  int
-		expectedMessage string
-	}{
-		{
-			name:            "correct reference",
-			reference:       "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542da",
-			expectedStatus:  http.StatusOK,
-			expectedMessage: http.StatusText(http.StatusOK),
-		},
-		{
-			name:            "reference not found",
-			reference:       "1e477b015af480e387fbf5edd90f1685a30c0e3ba88eeb3871b326b816a542d/",
-			expectedStatus:  http.StatusNotFound,
-			expectedMessage: http.StatusText(http.StatusNotFound),
-		},
-		{
-			name:            "incorrect reference",
-			reference:       "xc0f6",
-			expectedStatus:  http.StatusBadRequest,
-			expectedMessage: "invalid address",
-		},
-	} {
-		tt := tt
-		t.Run("input validation -"+tt.name, func(t *testing.T) {
-			t.Parallel()
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
-			jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+tt.reference, tt.expectedStatus,
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: tt.expectedMessage,
-					Code:    tt.expectedStatus,
-				}),
-			)
-		})
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		method := method
+		for _, tc := range tests {
+			tc := tc
+			t.Run(method+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				jsonhttptest.Request(t, client, method, "/stewardship/"+tc.address, tc.want.Code,
+					jsonhttptest.WithExpectedJSONResponse(tc.want),
+				)
+			})
+		}
 	}
 }

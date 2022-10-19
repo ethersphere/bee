@@ -345,10 +345,16 @@ components:
     ProblemDetails:
       type: object
       properties:
-        message:
-          type: string
         code:
           type: integer
+        message:
+          type: string
+        reasons:
+          type: array
+          nullable: true
+          description: List of reasons for the error message.
+          items:
+            type: string
 
     ReferenceResponse:
       type: object

@@ -13,14 +13,16 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-func (s *Service) topologyHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) topologyHandler(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithName("get_topology").Build()
+
 	params := s.topologyDriver.Snapshot()
 
 	params.LightNodes = s.lightNodes.PeerInfo()
 
 	b, err := json.Marshal(params)
 	if err != nil {
-		s.logger.Error(err, "topology get: marshal to json failed")
+		logger.Error(err, "marshal to json failed")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

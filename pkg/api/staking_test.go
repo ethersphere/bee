@@ -50,7 +50,7 @@ func TestDepositStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(invalidMinStake), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "minimum 100000000000000000 BZZ required for staking"}))
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake amount"}))
 	})
 
 	t.Run("out of funds", func(t *testing.T) {
@@ -77,14 +77,6 @@ func TestDepositStake(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusInternalServerError)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot stake"})
-	})
-
-	t.Run("with invalid amount", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-		jsonhttptest.Request(t, ts, http.MethodPost, depositStake("abc"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid staking amount"}))
 	})
 
 	t.Run("gas limit header", func(t *testing.T) {
@@ -138,4 +130,40 @@ func TestGetStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
 	})
+}
+
+func Test_stakingDepositHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name   string
+		amount string
+		want   jsonhttp.StatusResponse
+	}{{
+		name:   "amount - invalid value",
+		amount: "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "amount",
+					Error: "invalid value",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/stake/deposit/"+tc.amount, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }

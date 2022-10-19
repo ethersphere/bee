@@ -64,17 +64,6 @@ func TestAddresses(t *testing.T) {
 		)
 	})
 
-	t.Run("post method not allowed", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/addresses", http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
-			}),
-		)
-	})
-
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/node", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.NodeResponse{
 			BeeMode:           api.FullMode.String(),

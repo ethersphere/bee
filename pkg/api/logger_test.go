@@ -139,3 +139,118 @@ func TestSetLoggerVerbosity(t *testing.T) {
 		})
 	}
 }
+
+func Test_loggerGetHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name string
+		exp  string
+		want jsonhttp.StatusResponse
+	}{{
+		name: "exp - illegal base64",
+		exp:  "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "exp",
+					Error: "illegal base64 data at input byte 0",
+				},
+			},
+		},
+	}, {
+		name: "exp - invalid regex",
+		exp:  base64.URLEncoding.EncodeToString([]byte("[")),
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "exp",
+					Error: "error parsing regexp: missing closing ]: `[`",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/loggers/"+tc.exp, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_loggerSetVerbosityHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name      string
+		exp       string
+		verbosity string
+		want      jsonhttp.StatusResponse
+	}{{
+		name:      "exp - illegal base64",
+		exp:       "123",
+		verbosity: "info",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "exp",
+					Error: "illegal base64 data at input byte 0",
+				},
+			},
+		},
+	}, {
+		name:      "exp - invalid regex",
+		exp:       base64.URLEncoding.EncodeToString([]byte("[")),
+		verbosity: "info",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "exp",
+					Error: "error parsing regexp: missing closing ]: `[`",
+				},
+			},
+		},
+	}, {
+		name:      "verbosity - invalid value",
+		exp:       base64.URLEncoding.EncodeToString([]byte("123")),
+		verbosity: "invalid",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "verbosity",
+					Error: "want oneof:none error warning info debug all",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPut, "/loggers/"+tc.exp+"/"+tc.verbosity, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}

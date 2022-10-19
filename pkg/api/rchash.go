@@ -6,7 +6,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -24,27 +23,21 @@ type rchash struct {
 // no documentation or tests are added here. This should be removed before next
 // breaking release.
 func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_rchash").Build()
 
-	start := time.Now()
-	depthStr := mux.Vars(r)["depth"]
-
-	depth, err := strconv.ParseUint(depthStr, 10, 8)
-	if err != nil {
-		s.logger.Error(err, "reserve commitment hasher: invalid depth")
-		jsonhttp.BadRequest(w, "invalid depth")
+	paths := struct {
+		Depth  uint8  `map:"depth" validate:"required"`
+		Anchor string `map:"anchor" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	if depth > 255 {
-		depth = 255
-	}
-
-	anchorStr := mux.Vars(r)["anchor"]
-	anchor := []byte(anchorStr)
-
-	sample, err := s.storer.ReserveSample(r.Context(), anchor, uint8(depth), uint64(time.Now().Nanosecond()))
+	start := time.Now()
+	sample, err := s.storer.ReserveSample(r.Context(), []byte(paths.Anchor), paths.Depth, uint64(start.Nanosecond()))
 	if err != nil {
-		s.logger.Error(err, "reserve commitment hasher: failed generating sample")
+		logger.Error(err, "reserve commitment hasher: failed generating sample")
 		jsonhttp.InternalServerError(w, "failed generating sample")
 		return
 	}

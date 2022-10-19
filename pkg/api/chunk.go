@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/log"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -28,14 +29,14 @@ type chunkAddressResponse struct {
 }
 
 func (s *Service) processUploadRequest(
-	r *http.Request,
+	logger log.Logger, r *http.Request,
 ) (ctx context.Context, tag *tags.Tag, putter storage.Putter, waitFn func() error, err error) {
 
-	if h := r.Header.Get(SwarmTagHeader); h != "" {
-		tag, err = s.getTag(h)
+	if str := r.Header.Get(SwarmTagHeader); str != "" {
+		tag, err = s.getTag(str)
 		if err != nil {
-			s.logger.Debug("chunk upload: get tag failed", "error", err)
-			s.logger.Error(nil, "chunk upload: get tag failed")
+			logger.Debug("get tag failed", "string", str, "error", err)
+			logger.Error(nil, "get tag failed", "string", str)
 			return nil, nil, nil, nil, errors.New("cannot get tag")
 		}
 
@@ -47,8 +48,8 @@ func (s *Service) processUploadRequest(
 
 	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
-		s.logger.Debug("chunk upload: putter failed", "error", err)
-		s.logger.Error(nil, "chunk upload: putter failed")
+		logger.Debug("putter failed", "error", err)
+		logger.Error(nil, "putter failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			return nil, nil, nil, nil, errors.New("batch not found")
@@ -62,7 +63,9 @@ func (s *Service) processUploadRequest(
 }
 
 func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, tag, putter, wait, err := s.processUploadRequest(r)
+	logger := s.logger.WithName("post_chunk").Build()
+
+	ctx, tag, putter, wait, err := s.processUploadRequest(logger, r)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return
@@ -163,29 +166,27 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
-	loggerV1 := s.logger.V(1).Build()
+	logger := s.logger.WithName("get_chunk_by_address").Build()
+	loggerV1 := logger.V(1).Build()
 
-	nameOrHex := mux.Vars(r)["address"]
-	ctx := r.Context()
-
-	address, err := s.resolveNameOrAddress(nameOrHex)
-	if err != nil {
-		s.logger.Debug("chunk get: parse chunk address string failed", "string", nameOrHex, "error", err)
-		s.logger.Error(nil, "chunk get: parse chunk address string failed")
-		jsonhttp.NotFound(w, nil)
+	paths := struct {
+		Address swarm.Address `map:"address,resolve" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, address)
+	chunk, err := s.storer.Get(r.Context(), storage.ModeGetRequest, paths.Address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk get: chunk not found", "address", address)
-			jsonhttp.NotFound(w, "chunk get: chunk not found")
+			loggerV1.Debug("chunk not found", "address", paths.Address)
+			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		s.logger.Debug("chunk get: read chunk failed", "chunk_address", address, "error", err)
-		s.logger.Error(nil, "chunk get: read chunk failed")
+		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return
 	}

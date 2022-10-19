@@ -166,8 +166,8 @@ paths:
               schema:
                 type: string
                 format: binary
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
 
@@ -922,8 +922,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Balance"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -991,8 +991,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Balance"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1240,7 +1240,7 @@ paths:
         default:
           description: Default response
 
-  "/pingpong/{peer-id}":
+  "/pingpong/{address}":
     post:
       summary: Try connection to node
       description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
@@ -1250,7 +1250,7 @@ paths:
         - Connectivity
       parameters:
         - in: path
-          name: peer-id
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1293,8 +1293,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Settlement"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1693,10 +1693,10 @@ paths:
         default:
           description: Default response
 
-  "/stamps/{id}":
+  "/stamps/{batch_id}":
     parameters:
       - in: path
-        name: id
+        name: batch_id
         schema:
           $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
         required: true
@@ -1720,10 +1720,10 @@ paths:
         default:
           description: Default response
 
-  "/stamps/{id}/buckets":
+  "/stamps/{batch_id}/buckets":
     parameters:
       - in: path
-        name: id
+        name: batch_id
         schema:
           $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
         required: true
@@ -1800,7 +1800,7 @@ paths:
         default:
           description: Default response
 
-  "/stamps/topup/{id}/{amount}":
+  "/stamps/topup/{batch_id}/{amount}":
     patch:
       summary: Top up an existing postage batch.
       description: |
@@ -1811,7 +1811,7 @@ paths:
         - Postage Stamps
       parameters:
         - in: path
-          name: id
+          name: batch_id
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
           required: true
@@ -1842,7 +1842,7 @@ paths:
         default:
           description: Default response
 
-  "/stamps/dilute/{id}/{depth}":
+  "/stamps/dilute/{batch_id}/{depth}":
     patch:
       summary: Dilute an existing postage batch.
       description: |
@@ -1853,7 +1853,7 @@ paths:
         - Postage Stamps
       parameters:
         - in: path
-          name: id
+          name: batch_id
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
           required: true

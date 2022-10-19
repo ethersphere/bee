@@ -9,7 +9,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -30,65 +29,59 @@ const (
 )
 
 func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
-	topicVar := mux.Vars(r)["topic"]
-	topic := pss.NewTopic(topicVar)
+	logger := s.logger.WithName("post_pss_send").Build()
 
-	targetsVar := mux.Vars(r)["targets"]
+	paths := struct {
+		Topic   string `map:"topic" validate:"required"`
+		Targets string `map:"targets" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	topic := pss.NewTopic(paths.Topic)
+
 	var targets pss.Targets
-	tgts := strings.Split(targetsVar, ",")
-
-	for _, v := range tgts {
-		target, err := hex.DecodeString(v)
-		if err != nil {
-			s.logger.Debug("pss post: decode target string failed", "string", target, "error", err)
-			s.logger.Error(nil, "pss post: decode target string failed", "string", target)
-			jsonhttp.BadRequest(w, "target is not valid hex string")
+	for _, v := range strings.Split(paths.Targets, ",") {
+		target := struct {
+			Val []byte `map:"target" validate:"required,max=3"`
+		}{}
+		if response := s.mapStructure(map[string]string{"target": v}, &target); response != nil {
+			response("invalid path params", logger, w)
 			return
 		}
-		if len(target) > targetMaxLength {
-			s.logger.Debug("pss post: invalid target string length", "string", target, "length", len(target))
-			s.logger.Error(nil, "pss post: invalid target string length", "string", target, "length", len(target))
-			jsonhttp.BadRequest(w, fmt.Sprintf("hex string target exceeds max length of %d", targetMaxLength*2))
-			return
-		}
-		targets = append(targets, target)
+		targets = append(targets, target.Val)
 	}
 
-	recipientQueryString := r.URL.Query().Get("recipient")
-	var recipient *ecdsa.PublicKey
-	if recipientQueryString == "" {
-		// use topic-based encryption
-		privkey := crypto.Secp256k1PrivateKeyFromBytes(topic[:])
-		recipient = &privkey.PublicKey
-	} else {
-		var err error
-		recipient, err = pss.ParseRecipient(recipientQueryString)
-		if err != nil {
-			s.logger.Debug("pss post: parse recipient string failed", "string", recipientQueryString, "error", err)
-			s.logger.Error(nil, "pss post: parse recipient string failed")
-			jsonhttp.BadRequest(w, "pss recipient: invalid format")
-			return
-		}
+	queries := struct {
+		Recipient *ecdsa.PublicKey `map:"recipient,omitempty"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+	if queries.Recipient == nil {
+		queries.Recipient = &(crypto.Secp256k1PrivateKeyFromBytes(topic[:])).PublicKey
 	}
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debug("pss post: read body failed", "error", err)
-		s.logger.Error(nil, "pss post: read body failed")
+		logger.Debug("read body failed", "error", err)
+		logger.Error(nil, "read body failed")
 		jsonhttp.InternalServerError(w, "pss send failed")
 		return
 	}
 	batch, err := requestPostageBatchId(r)
 	if err != nil {
-		s.logger.Debug("pss post: decode postage batch id failed", "error", err)
-		s.logger.Error(nil, "pss post: decode postage batch id failed")
+		logger.Debug("decode postage batch id failed", "error", err)
+		logger.Error(nil, "decode postage batch id failed")
 		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
 	i, err := s.post.GetStampIssuer(batch)
 	if err != nil {
-		s.logger.Debug("pss post: get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
-		s.logger.Error(nil, "pss post: get postage batch issuer failed")
+		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
+		logger.Error(nil, "get postage batch issuer failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.BadRequest(w, "batch not found")
@@ -101,10 +94,10 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	stamper := postage.NewStamper(i, s.signer)
 
-	err = s.pss.Send(r.Context(), topic, payload, stamper, recipient, targets)
+	err = s.pss.Send(r.Context(), topic, payload, stamper, queries.Recipient, targets)
 	if err != nil {
-		s.logger.Debug("pss post: send payload failed", "topic", topicVar, "error", err)
-		s.logger.Error(nil, "pss post: send payload failed")
+		logger.Debug("send payload failed", "topic", paths.Topic, "error", err)
+		logger.Error(nil, "send payload failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
@@ -118,6 +111,15 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) pssWsHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("pss_subscribe").Build()
+
+	paths := struct {
+		Topic string `map:"topic" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
 
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  swarm.ChunkSize,
@@ -127,15 +129,14 @@ func (s *Service) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.logger.Debug("pss ws: upgrade failed", "error", err)
-		s.logger.Error(nil, "pss ws: upgrade failed")
-		jsonhttp.InternalServerError(w, "pss ws: upgrade failed")
+		logger.Debug("upgrade failed", "error", err)
+		logger.Error(nil, "upgrade failed")
+		jsonhttp.InternalServerError(w, "upgrade failed")
 		return
 	}
 
-	t := mux.Vars(r)["topic"]
 	s.wsWg.Add(1)
-	go s.pumpWs(conn, t)
+	go s.pumpWs(conn, paths.Topic)
 }
 
 func (s *Service) pumpWs(conn *websocket.Conn, t string) {

@@ -45,48 +45,11 @@ func TestFeed_Get(t *testing.T) {
 			}
 			return fmt.Sprintf("/feeds/%s/%s", owner, topic)
 		}
-		mockStatestore  = statestore.NewStateStore()
-		logger          = log.Noop
-		tag             = tags.NewTags(mockStatestore, logger)
-		mockStorer      = mock.NewStorer()
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer: mockStorer,
-			Tags:   tag,
-		})
+		mockStatestore = statestore.NewStateStore()
+		logger         = log.Noop
+		tag            = tags.NewTags(mockStatestore, logger)
+		mockStorer     = mock.NewStorer()
 	)
-
-	t.Run("malformed owner", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource("xyz", "cc", ""), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad owner",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
-	t.Run("malformed topic", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "xxzzyy", ""), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad topic",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
-	t.Run("at malformed", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "aabbcc", "unbekannt"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "bad at",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
 
 	t.Run("with at", func(t *testing.T) {
 		t.Parallel()

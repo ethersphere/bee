@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -45,13 +44,15 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 }
 
 func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("post_tag").Build()
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
-		s.logger.Debug("create tag: read request body failed", "error", err)
-		s.logger.Error(nil, "create tag: read request body failed")
+		logger.Debug("read request body failed", "error", err)
+		logger.Error(nil, "read request body failed")
 		jsonhttp.InternalServerError(w, "cannot read request")
 		return
 	}
@@ -60,8 +61,8 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 	if len(body) > 0 {
 		err = json.Unmarshal(body, &tagr)
 		if err != nil {
-			s.logger.Debug("create tag: unmarshal tag name failed", "error", err)
-			s.logger.Error(nil, "create tag: unmarshal tag name failed")
+			logger.Debug("unmarshal tag name failed", "error", err)
+			logger.Error(nil, "unmarshal tag name failed")
 			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 			return
 		}
@@ -69,8 +70,8 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 
 	tag, err := s.tags.Create(0)
 	if err != nil {
-		s.logger.Debug("create tag: create tag failed", "error", err)
-		s.logger.Error(nil, "create tag: create tag failed")
+		logger.Debug("create tag failed", "error", err)
+		logger.Error(nil, "create tag failed")
 		jsonhttp.InternalServerError(w, "cannot create tag")
 		return
 	}
@@ -79,26 +80,26 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	logger := s.logger.WithName("get_tag").Build()
 
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		s.logger.Debug("get tag: parse id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "get tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+	paths := struct {
+		TagID uint32 `map:"id" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(paths.TagID)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("get tag: tag not found", "tag_id", id)
-			s.logger.Error(nil, "get tag: tag not found")
+			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("get tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "get tag: get tag failed", "tag_id", id)
+		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
+		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
@@ -108,26 +109,26 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	logger := s.logger.WithName("delete_tag").Build()
 
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		s.logger.Debug("delete tag: parse id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "delete tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+	paths := struct {
+		TagID uint32 `map:"id" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(paths.TagID)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("delete tag: tag not found", "tag_id", id)
-			s.logger.Error(nil, "delete tag: tag not found")
+			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("delete tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "delete tag: get tag failed", "tag_id", id)
+		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
+		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
@@ -137,13 +138,13 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := mux.Vars(r)["id"]
+	logger := s.logger.WithName("patch_tag").Build()
 
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		s.logger.Debug("done split tag: parse id string failed", "string", idStr, "error", err)
-		s.logger.Error(nil, "done split tag: parse id string failed")
-		jsonhttp.BadRequest(w, "invalid id")
+	paths := struct {
+		TagID uint32 `map:"id" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
@@ -152,8 +153,8 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
-		s.logger.Debug("done split tag: read request body failed", "error", err)
-		s.logger.Error(nil, "done split tag: read request body failed")
+		logger.Debug("read request body failed", "error", err)
+		logger.Error(nil, "read request body failed")
 		jsonhttp.InternalServerError(w, "cannot read request")
 		return
 	}
@@ -162,31 +163,31 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	if len(body) > 0 {
 		err = json.Unmarshal(body, &tagr)
 		if err != nil {
-			s.logger.Debug("done split tag: unmarshal tag name failed", "error", err)
-			s.logger.Error(nil, "done split tag: unmarshal tag name failed")
+			logger.Debug("unmarshal tag name failed", "error", err)
+			logger.Error(nil, "unmarshal tag name failed")
 			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 			return
 		}
 	}
 
-	tag, err := s.tags.Get(uint32(id))
+	tag, err := s.tags.Get(paths.TagID)
 	if err != nil {
 		if errors.Is(err, tags.ErrNotFound) {
-			s.logger.Debug("done split tag: tag not found", "tag_id", id)
-			s.logger.Error(nil, "done split tag: tag not found")
+			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		s.logger.Debug("done split tag: get tag failed", "tag_id", id, "error", err)
-		s.logger.Error(nil, "done split tag: get tag failed", "tag_id", id)
+		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
+		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
 
 	_, err = tag.DoneSplit(tagr.Address)
 	if err != nil {
-		s.logger.Debug("done split tag: done split failed", "address", tagr.Address, "error", err)
-		s.logger.Error(nil, "done split tag: done split failed", "address", tagr.Address)
+		logger.Debug("done split failed", "address", tagr.Address, "error", err)
+		logger.Error(nil, "done split failed", "address", tagr.Address)
 		jsonhttp.InternalServerError(w, "done split: failed")
 		return
 	}
@@ -194,32 +195,23 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		err           error
-		offset, limit = 0, 100 // default offset is 0, default limit 100
-	)
+	logger := s.logger.WithName("get_tags").Build()
 
-	if v := r.URL.Query().Get("offset"); v != "" {
-		offset, err = strconv.Atoi(v)
-		if err != nil {
-			s.logger.Debug("list tags: parse offset string failed", "string", v, "error", err)
-			s.logger.Error(nil, "list tags: parse offset string failed")
-			jsonhttp.BadRequest(w, "bad offset")
-		}
+	queries := struct {
+		Offset int `map:"offset"`
+		Limit  int `map:"limit"`
+	}{
+		Limit: 100, // Default limit.
 	}
-	if v := r.URL.Query().Get("limit"); v != "" {
-		limit, err = strconv.Atoi(v)
-		if err != nil {
-			s.logger.Debug("list tags: parse limit string failed", "string", v, "error", err)
-			s.logger.Error(nil, "list tags: parse limit string failed")
-			jsonhttp.BadRequest(w, "bad limit")
-		}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
 	}
 
-	tagList, err := s.tags.ListAll(r.Context(), offset, limit)
+	tagList, err := s.tags.ListAll(r.Context(), queries.Offset, queries.Limit)
 	if err != nil {
-		s.logger.Debug("list tags: listing failed", "offset", offset, "limit", limit, "error", err)
-		s.logger.Error(nil, "list tags: listing failed")
+		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+		logger.Error(nil, "listing failed")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

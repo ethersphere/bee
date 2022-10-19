@@ -32,12 +32,14 @@ type peerDataResponse struct {
 	GhostBalance             *bigint.BigInt `json:"ghostBalance"`
 }
 
-func (s *Service) accountingInfoHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) accountingInfoHandler(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithName("get_accounting").Build()
+
 	infos, err := s.accounting.PeerAccounting()
 	if err != nil {
 		jsonhttp.InternalServerError(w, httpErrGetAccountingInfo)
-		s.logger.Debug("accounting info failed to load balances")
-		s.logger.Error(err, "can not get accounting info")
+		logger.Debug("accounting info failed to load balances")
+		logger.Error(err, "can not get accounting info")
 		return
 	}
 
