@@ -111,7 +111,7 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
-          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
+          # printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
           timeout ${TIMEOUT} make beelocal ACTION=add-hosts
       - name: Set kube config
@@ -213,7 +213,7 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
-          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
+          # printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
           timeout ${TIMEOUT} make beelocal ACTION=add-hosts
       - name: Set kube config
@@ -279,7 +279,7 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
-          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
+          # printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
       - name: Set kube config
         run: |
@@ -334,13 +334,13 @@ jobs:
           mv bee-0 bee
       - name: Build image
         run: |
-          printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
+          # printf ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u $ --password-stdin
           timeout ${TIMEOUT} make beelocal ACTION=build OPTS='ci skip-vet skip-push'
-      - name: Retag Docker image and push for cache
-        if: success()
-        run: |
-          docker tag k3d-registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee
-          docker push ghcr.io/ethersphere/bee
+      # - name: Retag Docker image and push for cache
+      #   if: success()
+      #   run: |
+      #     docker tag k3d-registry.localhost:5000/ethersphere/bee:latest ghcr.io/ethersphere/bee
+      #     docker push ghcr.io/ethersphere/bee
       - name: Retag Docker image and push
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         run: |
